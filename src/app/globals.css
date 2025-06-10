@@ -1,0 +1,12 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom styling */
+body {
+  @apply bg-background text-foreground font-sans;
+}
+
+input, textarea, select, button {
+  @apply focus:outline-none focus:ring-2 focus:ring-accent;
+}

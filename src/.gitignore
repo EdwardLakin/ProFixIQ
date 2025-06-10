@@ -1,0 +1,18 @@
+# dependencies
+node_modules
+.env
+.env.local
+.DS_Store
+
+# builds
+out
+dist
+.next
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# VS Code settings
+.vscode
