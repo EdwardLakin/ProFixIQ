@@ -5,6 +5,7 @@ import WorkOrderLineEditor from './WorkOrderLineEditor'
 import { parseRepairOutput, RepairLine } from '../lib/parseRepairOutput'
 import { saveWorkOrderLines } from '../lib/saveWorkOrderLines'
 import { WorkOrderPDFDownloadButton } from './WorkOrderPDF'
+import { sendWorkOrderEmail } from '../lib/sendEmail'
 
 type Props = {
   rawOutput?: string
@@ -12,8 +13,6 @@ type Props = {
   userId: string
   vehicleId: string
   workOrderId: string
-
-  // Optional new props
   vehicleInfo?: {
     year?: string
     make?: string
@@ -70,7 +69,7 @@ export default function WorkOrderEditorPage({
 
       <WorkOrderLineEditor lines={lines} onChange={setLines} />
 
-      <div className="flex gap-4">
+      <div className="flex gap-4 flex-wrap">
         <button
           onClick={handleSave}
           className="px-6 py-3 bg-primary text-white rounded hover:bg-primary-dark"
@@ -86,6 +85,27 @@ export default function WorkOrderEditorPage({
           vehicleInfo={vehicleInfo}
           customerInfo={customerInfo}
         />
+
+        <button
+          onClick={async () => {
+            try {
+              await sendWorkOrderEmail({
+                vehicleId,
+                workOrderId,
+                lines,
+                summary: correctionSummary,
+                vehicleInfo,
+                customerInfo,
+              })
+              alert('📧 Email sent to customer!')
+            } catch (err: any) {
+              alert(`❌ Failed to send email: ${err.message}`)
+            }
+          }}
+          className="px-6 py-3 bg-green-600 text-white rounded hover:bg-green-700"
+        >
+          Email to Customer
+        </button>
       </div>
 
       {saved && <p className="text-green-500">✅ Work order saved</p>}
