@@ -7,6 +7,7 @@ import { saveWorkOrderLines } from '../lib/saveWorkOrderLines'
 import { WorkOrderPDFDownloadButton } from './WorkOrderPDF'
 import { WorkOrderInvoiceDownloadButton } from './WorkOrderInvoiceDownloadButton'
 import { sendWorkOrderEmail } from '../lib/sendEmail'
+import { sendInvoiceEmail } from '../lib/sendInvoiceEmail'
 
 type Props = {
   rawOutput?: string
@@ -106,14 +107,35 @@ export default function WorkOrderEditorPage({
                 vehicleInfo,
                 customerInfo,
               })
-              alert('📧 Email sent to customer!')
+              alert('📧 Work order email sent to customer!')
             } catch (err: any) {
-              alert(`❌ Failed to send email: ${err.message}`)
+              alert(`❌ Failed to send work order email: ${err.message}`)
             }
           }}
           className="px-6 py-3 bg-green-600 text-white rounded hover:bg-green-700"
         >
           Email Work Order
+        </button>
+
+        <button
+          onClick={async () => {
+            try {
+              await sendInvoiceEmail({
+                vehicleId,
+                workOrderId,
+                lines,
+                summary: correctionSummary,
+                vehicleInfo,
+                customerInfo,
+              })
+              alert('📧 Invoice email sent to customer!')
+            } catch (err: any) {
+              alert(`❌ Failed to send invoice email: ${err.message}`)
+            }
+          }}
+          className="px-6 py-3 bg-indigo-700 text-white rounded hover:bg-indigo-800"
+        >
+          Email Invoice
         </button>
       </div>
 
