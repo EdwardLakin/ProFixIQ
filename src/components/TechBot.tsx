@@ -1,64 +1,107 @@
 'use client'
 
 import { useState } from 'react'
-import { askTechBot } from '../lib/techBot'
-import LoadingOverlay from './LoadingOverlay'
+import { askTechBot } from '@/lib/techBot'
+
+type Message = {
+  role: 'user' | 'ai'
+  text: string
+}
 
 export default function TechBot() {
-  const [prompt, setPrompt] = useState('')
-  const [vehicle, setVehicle] = useState('')
-  const [response, setResponse] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
+  const [messages, setMessages] = useState<Message[]>([])
+  const [input, setInput] = useState('')
+  const [mode, setMode] = useState<'general' | 'dtc'>('general')
+  const [dtcCode, setDtcCode] = useState('')
+  const [loading, setLoading] = useState(false)
 
   const handleSubmit = async () => {
-    if (!prompt) return
-    setIsLoading(true)
-    try {
-      const result = await askTechBot(prompt, vehicle)
-      setResponse(result)
-    } catch (error) {
-      setResponse('Error contacting TechBot.')
-      console.error(error)
-    } finally {
-      setIsLoading(false)
-    }
+    if (!input && mode === 'general') return
+    if (mode === 'dtc' && !dtcCode) return
+
+    setLoading(true)
+
+    const userPrompt =
+      mode === 'general' ? input : `DTC Code: ${dtcCode}\n${input}`
+
+    const userMessage: Message = { role: 'user', text: userPrompt }
+    setMessages((prev) => [...prev, userMessage])
+
+    const aiResponse = await askTechBot(userPrompt)
+    const aiMessage: Message = { role: 'ai', text: aiResponse }
+
+    setMessages((prev) => [...prev, aiMessage])
+    setInput('')
+    setDtcCode('')
+    setLoading(false)
   }
 
   return (
-    <div className="max-w-2xl mx-auto p-6 bg-surface text-accent shadow-card rounded-md space-y-4">
-      {isLoading && <LoadingOverlay />}
-      
-      <h2 className="text-xl font-semibold">Ask TechBot</h2>
+    <div className="p-4 space-y-4 max-w-xl mx-auto">
+      <h2 className="text-lg font-bold">TechBot</h2>
 
-      <input
-        type="text"
-        placeholder="Enter vehicle (e.g. 2015 Ford F-150)"
-        value={vehicle}
-        onChange={(e) => setVehicle(e.target.value)}
-        className="w-full p-2 border border-muted rounded bg-background"
-      />
+      <div className="flex gap-4">
+        <label>
+          <input
+            type="radio"
+            value="general"
+            checked={mode === 'general'}
+            onChange={() => setMode('general')}
+          />
+          <span className="ml-2">General Repair</span>
+        </label>
+        <label>
+          <input
+            type="radio"
+            value="dtc"
+            checked={mode === 'dtc'}
+            onChange={() => setMode('dtc')}
+          />
+          <span className="ml-2">DTC Diagnosis</span>
+        </label>
+      </div>
+
+      {mode === 'dtc' && (
+        <input
+          className="w-full border p-2 rounded"
+          placeholder="Enter DTC code (e.g., P0455)"
+          value={dtcCode}
+          onChange={(e) => setDtcCode(e.target.value)}
+        />
+      )}
 
       <textarea
-        placeholder="Describe your issue or ask a repair question..."
-        value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
-        rows={4}
-        className="w-full p-2 border border-muted rounded bg-background"
+        className="w-full border p-2 rounded"
+        rows={3}
+        placeholder={
+          mode === 'general'
+            ? 'Describe the problem...'
+            : 'Optional: Add extra details or symptoms...'
+        }
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
       />
 
       <button
         onClick={handleSubmit}
-        className="px-6 py-2 bg-primary text-white rounded hover:bg-primary-dark"
+        disabled={loading}
+        className="bg-blue-600 text-white px-4 py-2 rounded"
       >
-        Ask AI
+        {loading ? 'Thinking…' : 'Ask AI'}
       </button>
 
-      {response && (
-        <div className="mt-4 p-4 border border-muted rounded bg-muted/10 whitespace-pre-line">
-          <strong>Response:</strong>
-          <p className="mt-2">{response}</p>
-        </div>
-      )}
+      <div className="space-y-2 mt-6">
+        {messages.map((msg, i) => (
+          <div
+            key={i}
+            className={`p-3 rounded ${
+              msg.role === 'user' ? 'bg-gray-200' : 'bg-green-100'
+            }`}
+          >
+            <strong>{msg.role === 'user' ? 'You' : 'AI'}:</strong> {msg.text}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

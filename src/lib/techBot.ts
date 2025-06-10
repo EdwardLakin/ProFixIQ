@@ -1,21 +1,14 @@
-// src/lib/techBot.ts
-
-export async function askTechBot(prompt: string, vehicle?: string): Promise<string> {
-  const response = await fetch(`${process.env.NEXT_PUBLIC_ASK_SNAPFIX_AI_URL}`, {
+export async function askTechBot(prompt: string) {
+  const response = await fetch('/api/ask-techbot', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      prompt,
-      vehicle,
-    }),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt }),
   })
 
   if (!response.ok) {
-    throw new Error('TechBot request failed')
+    throw new Error('Failed to get AI response')
   }
 
-  const result = await response.json()
-  return result.answer || 'No response received.'
+  const data = await response.json()
+  return data.result as string
 }

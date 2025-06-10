@@ -1,29 +1,29 @@
-import { createBrowserClient } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 import { Database } from '@/types/supabase'
 
-const supabase = createBrowserClient<Database>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
-
 export const getWorkOrderById = async (id: string) => {
-  // Fetch work order record
-  const { data: order, error: orderError } = await supabase
+  const supabase = createClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+
+  const { data: workOrder, error } = await supabase
     .from('work_orders')
     .select('*')
     .eq('id', id)
     .single()
 
-  // Fetch associated lines
-  const { data: lines, error: lineError } = await supabase
+  const { data: lines, error: linesError } = await supabase
     .from('work_order_lines')
     .select('*')
     .eq('work_order_id', id)
 
-  if (orderError || lineError) {
-    console.error('Error loading work order:', orderError || lineError)
-    return null
+  if (error || linesError) {
+    throw new Error(error?.message || linesError?.message || 'Failed to fetch work order')
   }
 
-  return { ...order, lines }
+  return {
+    ...workOrder,
+    lines: lines || [],
+  }
 }
