@@ -1,5 +1,52 @@
-import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer'
+'use client'
+
+import {
+  Document,
+  Page,
+  Text,
+  View,
+  StyleSheet,
+  Font,
+  Image,
+} from '@react-pdf/renderer'
 import { RepairLine } from '../lib/parseRepairOutput'
+
+Font.register({
+  family: 'Helvetica-Bold',
+  fonts: [
+    {
+      src: 'https://fonts.gstatic.com/s/helveticaneue/v11/q4UO_Hp7rjNMrQkpAgEFqx1GDk.jpg',
+    },
+  ],
+})
+
+const styles = StyleSheet.create({
+  page: {
+    padding: 40,
+    fontSize: 12,
+    fontFamily: 'Helvetica',
+    lineHeight: 1.5,
+  },
+  header: {
+    fontSize: 20,
+    marginBottom: 10,
+    textAlign: 'center',
+    fontFamily: 'Helvetica-Bold',
+  },
+  section: {
+    marginBottom: 20,
+  },
+  label: {
+    fontWeight: 'bold',
+  },
+  lineItem: {
+    marginBottom: 8,
+  },
+  signature: {
+    marginTop: 32,
+    alignItems: 'center',
+  },
+})
 
 type Props = {
   workOrderId: string
@@ -7,6 +54,7 @@ type Props = {
   customerInfo?: { name?: string; phone?: string; email?: string }
   lines: RepairLine[]
   summary?: string
+  signatureImage?: string
 }
 
 export function WorkOrderInvoicePDF({
@@ -15,89 +63,56 @@ export function WorkOrderInvoicePDF({
   customerInfo,
   lines,
   summary,
+  signatureImage,
 }: Props) {
   return (
     <Document>
       <Page size="A4" style={styles.page}>
-        {/* Shop Branding */}
-        <View style={styles.header}>
-          <Text style={styles.logo}>ProFixIQ</Text>
-          <Text style={styles.subtitle}>Mobile Repair & Diagnostics</Text>
-          <Text>📞 (555) 123-4567 | ✉ support@profixiq.com</Text>
-          <Text style={styles.invoiceTitle}>Invoice - Work Order #{workOrderId}</Text>
+        <Text style={styles.header}>Invoice - Work Order #{workOrderId}</Text>
+
+        <View style={styles.section}>
+          <Text style={styles.label}>Customer Info:</Text>
+          <Text>Name: {customerInfo?.name || 'N/A'}</Text>
+          <Text>Phone: {customerInfo?.phone || 'N/A'}</Text>
+          <Text>Email: {customerInfo?.email || 'N/A'}</Text>
         </View>
 
-        {/* Customer + Vehicle Info */}
-        <View style={styles.infoSection}>
-          <View>
-            <Text style={styles.label}>Customer Info:</Text>
-            <Text>{customerInfo?.name}</Text>
-            <Text>{customerInfo?.phone}</Text>
-            <Text>{customerInfo?.email}</Text>
-          </View>
-
-          <View>
-            <Text style={styles.label}>Vehicle Info:</Text>
-            <Text>
-              {vehicleInfo?.year} {vehicleInfo?.make} {vehicleInfo?.model}
-            </Text>
-            <Text>VIN: {vehicleInfo?.vin}</Text>
-          </View>
+        <View style={styles.section}>
+          <Text style={styles.label}>Vehicle Info:</Text>
+          <Text>
+            {vehicleInfo?.year || '----'} {vehicleInfo?.make || ''}{' '}
+            {vehicleInfo?.model || ''}
+          </Text>
+          <Text>VIN: {vehicleInfo?.vin || 'N/A'}</Text>
         </View>
 
-        {/* Repair Lines */}
-        <View style={styles.lineTable}>
+        <View style={styles.section}>
+          <Text style={styles.label}>Repair Summary:</Text>
+          <Text>{summary || 'N/A'}</Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.label}>Work Performed:</Text>
           {lines.map((line, idx) => (
-            <View key={idx} style={styles.lineRow}>
-              <Text style={styles.lineLabel}>Complaint:</Text>
-              <Text>{line.complaint}</Text>
-              <Text style={styles.lineLabel}>Correction:</Text>
-              <Text>{line.correction}</Text>
+            <View key={idx} style={styles.lineItem}>
+              <Text>• Complaint: {line.complaint}</Text>
+              <Text>  Cause: {line.cause}</Text>
+              <Text>  Correction: {line.correction}</Text>
+              <Text>  Labor Time: {line.labor_time} hrs</Text>
             </View>
           ))}
         </View>
 
-        {/* Repair Summary */}
-        {summary && (
-          <View style={styles.section}>
-            <Text style={styles.label}>Repair Summary:</Text>
-            <Text>{summary}</Text>
+        {signatureImage && (
+          <View style={styles.signature}>
+            <Text style={{ fontSize: 12, marginBottom: 4 }}>Customer Signature:</Text>
+            <Image
+              src={signatureImage}
+              style={{ width: 200, height: 80, border: '1pt solid #ccc' }}
+            />
           </View>
         )}
       </Page>
     </Document>
   )
 }
-
-const styles = StyleSheet.create({
-  page: { padding: 30, fontSize: 12 },
-  header: {
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  logo: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1E40AF',
-  },
-  subtitle: {
-    fontSize: 12,
-    marginBottom: 4,
-  },
-  invoiceTitle: {
-    fontSize: 14,
-    marginTop: 10,
-    fontWeight: 'bold',
-    textDecoration: 'underline',
-  },
-  infoSection: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 20,
-  },
-  label: { fontWeight: 'bold', marginTop: 4 },
-  section: { marginVertical: 10 },
-  lineTable: { marginTop: 10 },
-  lineRow: { marginBottom: 8 },
-  lineLabel: { fontWeight: 'bold' },
-})
