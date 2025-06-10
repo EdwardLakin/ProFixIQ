@@ -5,6 +5,7 @@ import WorkOrderLineEditor from './WorkOrderLineEditor'
 import { parseRepairOutput, RepairLine } from '../lib/parseRepairOutput'
 import { saveWorkOrderLines } from '../lib/saveWorkOrderLines'
 import { WorkOrderPDFDownloadButton } from './WorkOrderPDF'
+import { WorkOrderInvoiceDownloadButton } from './WorkOrderInvoiceDownloadButton'
 import { sendWorkOrderEmail } from '../lib/sendEmail'
 
 type Props = {
@@ -86,6 +87,14 @@ export default function WorkOrderEditorPage({
           customerInfo={customerInfo}
         />
 
+        <WorkOrderInvoiceDownloadButton
+          workOrderId={workOrderId}
+          lines={lines}
+          summary={correctionSummary}
+          vehicleInfo={vehicleInfo}
+          customerInfo={customerInfo}
+        />
+
         <button
           onClick={async () => {
             try {
@@ -104,7 +113,7 @@ export default function WorkOrderEditorPage({
           }}
           className="px-6 py-3 bg-green-600 text-white rounded hover:bg-green-700"
         >
-          Email to Customer
+          Email Work Order
         </button>
       </div>
 
