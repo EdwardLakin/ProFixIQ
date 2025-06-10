@@ -19,11 +19,15 @@ export function WorkOrderInvoicePDF({
   return (
     <Document>
       <Page size="A4" style={styles.page}>
+        {/* Shop Branding */}
         <View style={styles.header}>
           <Text style={styles.logo}>ProFixIQ</Text>
-          <Text style={styles.title}>Work Order #{workOrderId}</Text>
+          <Text style={styles.subtitle}>Mobile Repair & Diagnostics</Text>
+          <Text>📞 (555) 123-4567 | ✉ support@profixiq.com</Text>
+          <Text style={styles.invoiceTitle}>Invoice - Work Order #{workOrderId}</Text>
         </View>
 
+        {/* Customer + Vehicle Info */}
         <View style={styles.infoSection}>
           <View>
             <Text style={styles.label}>Customer Info:</Text>
@@ -41,6 +45,7 @@ export function WorkOrderInvoicePDF({
           </View>
         </View>
 
+        {/* Repair Lines */}
         <View style={styles.lineTable}>
           {lines.map((line, idx) => (
             <View key={idx} style={styles.lineRow}>
@@ -52,6 +57,7 @@ export function WorkOrderInvoicePDF({
           ))}
         </View>
 
+        {/* Repair Summary */}
         {summary && (
           <View style={styles.section}>
             <Text style={styles.label}>Repair Summary:</Text>
@@ -65,9 +71,25 @@ export function WorkOrderInvoicePDF({
 
 const styles = StyleSheet.create({
   page: { padding: 30, fontSize: 12 },
-  header: { marginBottom: 20, textAlign: 'center' },
-  logo: { fontSize: 18, fontWeight: 'bold' },
-  title: { fontSize: 14, marginTop: 4 },
+  header: {
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  logo: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1E40AF',
+  },
+  subtitle: {
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  invoiceTitle: {
+    fontSize: 14,
+    marginTop: 10,
+    fontWeight: 'bold',
+    textDecoration: 'underline',
+  },
   infoSection: {
     flexDirection: 'row',
     justifyContent: 'space-between',
