@@ -1,87 +1,122 @@
 'use client'
 
-import React from 'react'
+import { useState, useEffect } from 'react'
 
 type WorkOrderLine = {
+  id: string
   complaint: string
   cause?: string
   correction?: string
-  tools?: string[]
-  labor_time?: string
+  labor_time?: number
+  status?: 'unassigned' | 'assigned' | 'in_progress' | 'on_hold' | 'completed'
+  hold_reason?: 'parts' | 'authorization' | 'diagnosis_pending' | 'other' | ''
 }
 
 type Props = {
-  lines: WorkOrderLine[]
-  onChange: (lines: WorkOrderLine[]) => void
+  line: WorkOrderLine
+  onUpdate: (line: WorkOrderLine) => void
 }
 
-export default function WorkOrderLineEditor({ lines, onChange }: Props) {
-  const updateLine = (index: number, field: keyof WorkOrderLine, value: string | string[]) => {
-    const updated = [...lines]
-    if (field === 'tools' && typeof value === 'string') {
-      updated[index][field] = value.split(',').map(t => t.trim())
-    } else {
-      updated[index][field] = value as any
-    }
-    onChange(updated)
-  }
+export default function WorkOrderLineEditor({ line, onUpdate }: Props) {
+  const [localLine, setLocalLine] = useState<WorkOrderLine>(line)
+
+  useEffect(() => {
+    onUpdate(localLine)
+  }, [localLine])
 
   return (
-    <div className="space-y-6">
-      {lines.map((line, index) => (
-        <div key={index} className="p-4 bg-muted/10 border border-muted rounded space-y-3">
-          <div>
-            <label className="font-semibold block">Complaint</label>
-            <input
-              type="text"
-              value={line.complaint}
-              onChange={(e) => updateLine(index, 'complaint', e.target.value)}
-              className="w-full p-2 bg-background border border-muted rounded"
-                        />
-        </div>
+    <div className="bg-white dark:bg-surface border rounded-lg p-4 mb-4 shadow-card">
+      <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-100">
+        Complaint
+      </label>
+      <input
+        value={localLine.complaint}
+        onChange={(e) =>
+          setLocalLine({ ...localLine, complaint: e.target.value })
+        }
+        className="w-full border rounded px-2 py-1 mb-3 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+      />
 
-        <div>
-          <label className="font-semibold block">Cause</label>
-          <input
-            type="text"
-            value={line.cause || ''}
-            onChange={(e) => updateLine(index, 'cause', e.target.value)}
-            className="w-full p-2 bg-background border border-muted rounded"
-          />
-        </div>
+      <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-100">
+        Cause
+      </label>
+      <input
+        value={localLine.cause || ''}
+        onChange={(e) =>
+          setLocalLine({ ...localLine, cause: e.target.value })
+        }
+        className="w-full border rounded px-2 py-1 mb-3 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+      />
 
-        <div>
-          <label className="font-semibold block">Correction</label>
-          <input
-            type="text"
-            value={line.correction || ''}
-            onChange={(e) => updateLine(index, 'correction', e.target.value)}
-            className="w-full p-2 bg-background border border-muted rounded"
-          />
-        </div>
+      <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-100">
+        Correction
+      </label>
+      <input
+        value={localLine.correction || ''}
+        onChange={(e) =>
+          setLocalLine({ ...localLine, correction: e.target.value })
+        }
+        className="w-full border rounded px-2 py-1 mb-3 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+      />
 
-        <div>
-          <label className="font-semibold block">Tools (comma-separated)</label>
-          <input
-            type="text"
-            value={(line.tools || []).join(', ')}
-            onChange={(e) => updateLine(index, 'tools', e.target.value)}
-            className="w-full p-2 bg-background border border-muted rounded"
-          />
-        </div>
+      <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-100">
+        Labor Time (hrs)
+      </label>
+      <input
+        type="number"
+        value={localLine.labor_time ?? ''}
+        onChange={(e) =>
+          setLocalLine({
+            ...localLine,
+            labor_time: parseFloat(e.target.value),
+          })
+        }
+        className="w-full border rounded px-2 py-1 mb-3 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+      />
 
-        <div>
-          <label className="font-semibold block">Labor Time (hours)</label>
-          <input
-            type="number"
-            step="0.1"
-            value={line.labor_time || ''}
-            onChange={(e) => updateLine(index, 'labor_time', e.target.value)}
-            className="w-full p-2 bg-background border border-muted rounded"
-          />
-        </div>
-      </div>
-      ))}
+      <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-100">
+        Status
+      </label>
+      <select
+        value={localLine.status || 'unassigned'}
+        onChange={(e) =>
+          setLocalLine({
+            ...localLine,
+            status: e.target.value as WorkOrderLine['status'],
+          })
+        }
+        className="w-full border rounded px-2 py-1 mb-3 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+      >
+        <option value="unassigned">Unassigned</option>
+        <option value="assigned">Assigned</option>
+        <option value="in_progress">In Progress</option>
+        <option value="on_hold">On Hold</option>
+        <option value="completed">Completed</option>
+      </select>
+
+      {localLine.status === 'on_hold' && (
+        <>
+          <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-100">
+            Hold Reason
+          </label>
+          <select
+            value={localLine.hold_reason || ''}
+            onChange={(e) =>
+              setLocalLine({
+                ...localLine,
+                hold_reason: e.target.value as WorkOrderLine['hold_reason'],
+              })
+            }
+            className="w-full border rounded px-2 py-1 mb-3 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+          >
+            <option value="">Select Reason</option>
+            <option value="parts">Parts Hold</option>
+            <option value="authorization">Awaiting Authorization</option>
+            <option value="diagnosis_pending">Waiting Diagnosis</option>
+            <option value="other">Other</option>
+          </select>
+        </>
+      )}
     </div>
   )
 }
