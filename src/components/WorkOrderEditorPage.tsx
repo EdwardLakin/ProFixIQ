@@ -1,146 +1,101 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import WorkOrderLineEditor from './WorkOrderLineEditor'
-import { parseRepairOutput, RepairLine } from '../lib/parseRepairOutput'
-import { saveWorkOrderLines } from '../lib/saveWorkOrderLines'
-import { WorkOrderPDFDownloadButton } from './WorkOrderPDF'
-import { WorkOrderInvoiceDownloadButton } from './WorkOrderInvoiceDownloadButton'
-import { sendWorkOrderEmail } from '../lib/sendEmail'
-import { sendInvoiceEmail } from '../lib/sendInvoiceEmail'
+import { useState } from 'react'
+import toast from 'react-hot-toast'
+import { RepairLine } from '../lib/parseRepairOutput'
+import { WorkOrderInvoicePDF } from './WorkOrderInvoicePDF'
+import { PDFDownloadLink } from '@react-pdf/renderer'
+import InvoicePreviewModal from './InvoicePreviewModal'
 
 type Props = {
-  rawOutput?: string
-  initialLines?: RepairLine[]
-  userId: string
-  vehicleId: string
   workOrderId: string
-  vehicleInfo?: {
-    year?: string
-    make?: string
-    model?: string
-    vin?: string
-  }
-  customerInfo?: {
-    name?: string
-    phone?: string
-    email?: string
-  }
+  vehicleInfo?: { year?: string; make?: string; model?: string; vin?: string }
+  customerInfo?: { name?: string; phone?: string; email?: string }
+  lines: RepairLine[]
+  summary?: string
 }
 
 export default function WorkOrderEditorPage({
-  rawOutput,
-  initialLines,
-  userId,
-  vehicleId,
   workOrderId,
   vehicleInfo,
   customerInfo,
+  lines,
+  summary,
 }: Props) {
-  const [lines, setLines] = useState<RepairLine[]>([])
-  const [saved, setSaved] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false)
+  const [isSending, setIsSending] = useState(false)
 
-  useEffect(() => {
-    if (initialLines) {
-      setLines(initialLines)
-    } else if (rawOutput) {
-      const parsed = parseRepairOutput(rawOutput)
-      setLines(parsed)
-    }
-  }, [initialLines, rawOutput])
-
-  const handleSave = async () => {
+  const sendInvoice = async () => {
     try {
-      await saveWorkOrderLines(lines, userId, vehicleId, workOrderId)
-      setSaved(true)
-      setError(null)
-    } catch (err: any) {
-      console.error(err)
-      setError(err.message)
-      setSaved(false)
+      setIsSending(true)
+      const res = await fetch('/api/send-invoice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workOrderId, vehicleInfo, customerInfo, lines, summary }),
+      })
+
+      if (!res.ok) throw new Error('Failed to send invoice')
+      toast.success('Invoice sent successfully!')
+    } catch (err) {
+      toast.error('Failed to send invoice')
+    } finally {
+      setIsSending(false)
     }
   }
 
-  const correctionSummary =
-    lines.find((line) => line.complaint === 'General Repair Summary')?.correction || ''
-
   return (
-    <div className="max-w-3xl mx-auto p-6 bg-surface text-accent shadow-card rounded space-y-6">
-      <h2 className="text-xl font-semibold">Work Order Editor</h2>
+    <div className="p-4">
+      <h1 className="text-xl font-semibold mb-4">Work Order #{workOrderId}</h1>
 
-      <WorkOrderLineEditor lines={lines} onChange={setLines} />
-
-      <div className="flex gap-4 flex-wrap">
+      <div className="space-x-4 mb-6">
         <button
-          onClick={handleSave}
-          className="px-6 py-3 bg-primary text-white rounded hover:bg-primary-dark"
+          onClick={() => setIsPreviewOpen(true)}
+          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
         >
-          Save Work Order
+          Preview Invoice
         </button>
 
-        <WorkOrderPDFDownloadButton
-          vehicleId={vehicleId}
-          workOrderId={workOrderId}
-          lines={lines}
-          summary={correctionSummary}
-          vehicleInfo={vehicleInfo}
-          customerInfo={customerInfo}
-        />
-
-        <WorkOrderInvoiceDownloadButton
-          workOrderId={workOrderId}
-          lines={lines}
-          summary={correctionSummary}
-          vehicleInfo={vehicleInfo}
-          customerInfo={customerInfo}
-        />
+        <PDFDownloadLink
+          document={
+            <WorkOrderInvoicePDF
+              workOrderId={workOrderId}
+              vehicleInfo={vehicleInfo}
+              customerInfo={customerInfo}
+              lines={lines}
+              summary={summary}
+            />
+          }
+          fileName={`invoice-${workOrderId}.pdf`}
+        >
+          {({ loading }) =>
+            loading ? (
+              <span className="text-gray-500">Preparing PDF…</span>
+            ) : (
+              <button className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
+                Download PDF
+              </button>
+            )
+          }
+        </PDFDownloadLink>
 
         <button
-          onClick={async () => {
-            try {
-              await sendWorkOrderEmail({
-                vehicleId,
-                workOrderId,
-                lines,
-                summary: correctionSummary,
-                vehicleInfo,
-                customerInfo,
-              })
-              alert('📧 Work order email sent to customer!')
-            } catch (err: any) {
-              alert(`❌ Failed to send work order email: ${err.message}`)
-            }
-          }}
-          className="px-6 py-3 bg-green-600 text-white rounded hover:bg-green-700"
+          onClick={sendInvoice}
+          disabled={isSending}
+          className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 disabled:opacity-50"
         >
-          Email Work Order
-        </button>
-
-        <button
-          onClick={async () => {
-            try {
-              await sendInvoiceEmail({
-                vehicleId,
-                workOrderId,
-                lines,
-                summary: correctionSummary,
-                vehicleInfo,
-                customerInfo,
-              })
-              alert('📧 Invoice email sent to customer!')
-            } catch (err: any) {
-              alert(`❌ Failed to send invoice email: ${err.message}`)
-            }
-          }}
-          className="px-6 py-3 bg-indigo-700 text-white rounded hover:bg-indigo-800"
-        >
-          Email Invoice
+          {isSending ? 'Sending…' : 'Send Invoice'}
         </button>
       </div>
 
-      {saved && <p className="text-green-500">✅ Work order saved</p>}
-      {error && <p className="text-red-500">❌ {error}</p>}
+      <InvoicePreviewModal
+        isOpen={isPreviewOpen}
+        onClose={() => setIsPreviewOpen(false)}
+        workOrderId={workOrderId}
+        vehicleInfo={vehicleInfo}
+        customerInfo={customerInfo}
+        lines={lines}
+        summary={summary}
+      />
     </div>
   )
 }
