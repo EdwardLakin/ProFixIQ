@@ -5,3 +5,4 @@ node_modules\
 .env.*.local
 supabase/secrets.ts
 node_modules/
+node_modules/
