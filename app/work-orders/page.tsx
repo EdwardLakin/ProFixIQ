@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { getWorkOrderById } from '@/lib/db'
-import WorkOrderLineEditor from '@/components/WorkOrderLineEditor'
+import { getWorkOrderById } from '../../src/lib/db'
+import WorkOrderLineEditor from '../../src/components/WorkOrderLineEditor'
 import { useParams } from 'next/navigation'
 
 type WorkOrderLine = {
