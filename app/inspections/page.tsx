@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
-import { generateCorrectionStory } from '../lib/generateCorrectionStoryFromInspection'
+import { generateCorrectionStory } from '../../src/lib/generateCorrectionStoryFromInspection'
 import { saveWorkOrderLines } from '../lib/saveWorkOrderLines'
 import { RepairLine } from '../lib/parseRepairOutput'
 import WorkOrderEditorPage from './WorkOrderEditorPage'

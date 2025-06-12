@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import DTCCodeLookup from '../../../components/DTCCodeLookup';
+import DTCCodeLookup from '../../src/components/DTCCodeLookup';
 
 export default function Page() {
   return (
