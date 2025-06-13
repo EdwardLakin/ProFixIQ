@@ -11,16 +11,6 @@
       "static/chunks/main-app.js",
       "static/chunks/app/page.js"
     ],
-    "/work-orders/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/work-orders/page.js"
-    ],
-    "/inspections/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/inspections/page.js"
-    ],
     "/ai/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
@@ -30,16 +20,6 @@
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/ai/dtc/page.js"
-    ],
-    "/ai/chat/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/ai/chat/page.js"
-    ],
-    "/ai/photo/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/ai/photo/page.js"
     ]
   }
 }

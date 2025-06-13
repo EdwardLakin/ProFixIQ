@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useVehicleInfo } from '@/hooks/useVehicleInfo';
+import { useVehicleInfo } from '../hooks/useVehicleInfo';
 
 const years = Array.from({ length: 31 }, (_, i) => 2025 - i);
 const makes = ['Ford', 'Chevrolet', 'Toyota', 'Honda', 'Dodge', 'Nissan']; // Extend as needed
