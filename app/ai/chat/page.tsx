@@ -2,10 +2,12 @@
 
 import React from 'react';
 import TechBot from '../../../src/components/TechBot';
+import VehicleSelector from '../../../src/components/VehicleSelector';
 
-export default function Page() {
+export default function AIChatPage() {
   return (
-    <div className="p-4 max-w-3xl mx-auto">
+    <div className="p-4">
+      <VehicleSelector />
       <TechBot />
     </div>
   );

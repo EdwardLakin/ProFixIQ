@@ -1,137 +1,69 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabaseClient';
+import React, { useState, useEffect } from 'react';
+import { useVehicleInfo } from '@/hooks/useVehicleInfo';
 
-type Vehicle = {
-  id: string;
-  year: string;
-  make: string;
-  model: string;
-  engine?: string;
-  nickname?: string;
+const years = Array.from({ length: 31 }, (_, i) => 2025 - i);
+const makes = ['Ford', 'Chevrolet', 'Toyota', 'Honda', 'Dodge', 'Nissan']; // Extend as needed
+const modelsByMake: Record<string, string[]> = {
+  Ford: ['F-150', 'Escape', 'Fusion'],
+  Chevrolet: ['Silverado', 'Malibu', 'Equinox'],
+  Toyota: ['Corolla', 'Camry', 'Tacoma'],
+  Honda: ['Civic', 'Accord', 'CR-V'],
+  Dodge: ['Ram', 'Charger', 'Durango'],
+  Nissan: ['Altima', 'Rogue', 'Frontier'],
 };
 
-export default function VehicleSelector({
-  userId,
-  onVehicleSelect,
-}: {
-  userId: string;
-  onVehicleSelect: (vehicle: Vehicle) => void;
-}) {
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [newVehicle, setNewVehicle] = useState<Partial<Vehicle>>({});
-  const [loading, setLoading] = useState(false);
+export default function VehicleSelector() {
+  const { vehicle, setVehicle } = useVehicleInfo();
+  const [localVehicle, setLocalVehicle] = useState(vehicle);
 
-  // Load vehicles on mount
   useEffect(() => {
-    const fetchVehicles = async () => {
-      const { data, error } = await supabase
-        .from('vehicles')
-        .select('*')
-        .eq('user_id', userId);
-      if (!error && data) {
-        setVehicles(data);
-        const storedId = localStorage.getItem('selectedVehicleId');
-        if (storedId) {
-          const existing = data.find(v => v.id === storedId);
-          if (existing) {
-            setSelectedId(existing.id);
-            onVehicleSelect(existing);
-          }
-        }
-      }
-    };
-    if (userId) fetchVehicles();
-  }, [userId]);
+    setVehicle(localVehicle);
+  }, [localVehicle]);
 
-  const handleSelect = (id: string) => {
-    const vehicle = vehicles.find(v => v.id === id);
-    if (vehicle) {
-      setSelectedId(id);
-      localStorage.setItem('selectedVehicleId', id);
-      onVehicleSelect(vehicle);
-    }
-  };
-
-  const handleAddVehicle = async () => {
-    if (!newVehicle.year || !newVehicle.make || !newVehicle.model) return;
-    setLoading(true);
-    const { data, error } = await supabase.from('vehicles').insert([
-      {
-        ...newVehicle,
-        user_id: userId,
-      },
-    ]).select().single();
-    setLoading(false);
-    if (data && !error) {
-      setVehicles(prev => [...prev, data]);
-      setSelectedId(data.id);
-      localStorage.setItem('selectedVehicleId', data.id);
-      onVehicleSelect(data);
-      setNewVehicle({});
-    }
+  const updateField = (field: string, value: string) => {
+    setLocalVehicle((prev) => ({ ...prev, [field]: value }));
   };
 
   return (
-    <div className="bg-surface p-4 rounded shadow-card">
-      <h2 className="text-xl font-semibold text-accent mb-3">Select Your Vehicle</h2>
-
-      <select
-        className="w-full p-2 border rounded mb-4"
-        value={selectedId || ''}
-        onChange={e => handleSelect(e.target.value)}
-      >
-        <option value="">-- Select Vehicle --</option>
-        {vehicles.map(v => (
-          <option key={v.id} value={v.id}>
-            {`${v.year} ${v.make} ${v.model}${v.nickname ? ' (' + v.nickname + ')' : ''}`}
-          </option>
-        ))}
-      </select>
-
-      <div className="border-t pt-4 mt-4">
-        <h3 className="text-md font-medium mb-2">Add New Vehicle</h3>
-        <div className="grid grid-cols-2 gap-2">
-          <input
-            placeholder="Year"
-            className="border p-2 rounded"
-            onChange={e => setNewVehicle({ ...newVehicle, year: e.target.value })}
-            value={newVehicle.year || ''}
-          />
-          <input
-            placeholder="Make"
-            className="border p-2 rounded"
-            onChange={e => setNewVehicle({ ...newVehicle, make: e.target.value })}
-            value={newVehicle.make || ''}
-          />
-          <input
-            placeholder="Model"
-            className="border p-2 rounded"
-            onChange={e => setNewVehicle({ ...newVehicle, model: e.target.value })}
-            value={newVehicle.model || ''}
-          />
-          <input
-            placeholder="Engine (optional)"
-            className="border p-2 rounded"
-            onChange={e => setNewVehicle({ ...newVehicle, engine: e.target.value })}
-            value={newVehicle.engine || ''}
-          />
-          <input
-            placeholder="Nickname (optional)"
-            className="col-span-2 border p-2 rounded"
-            onChange={e => setNewVehicle({ ...newVehicle, nickname: e.target.value })}
-            value={newVehicle.nickname || ''}
-          />
-        </div>
-        <button
-          onClick={handleAddVehicle}
-          className="mt-3 bg-accent text-white px-4 py-2 rounded hover:bg-opacity-90"
-          disabled={loading}
+    <div className="bg-surface shadow-card p-4 rounded mb-6">
+      <h2 className="text-lg font-semibold mb-2 text-accent">Select Vehicle</h2>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <select
+          className="border p-2 rounded"
+          value={localVehicle.year || ''}
+          onChange={(e) => updateField('year', e.target.value)}
         >
-          {loading ? 'Saving...' : 'Add Vehicle'}
-        </button>
+          <option value="">Year</option>
+          {years.map((y) => (
+            <option key={y} value={y}>{y}</option>
+          ))}
+        </select>
+        <select
+          className="border p-2 rounded"
+          value={localVehicle.make || ''}
+          onChange={(e) => {
+            updateField('make', e.target.value);
+            updateField('model', ''); // reset model
+          }}
+        >
+          <option value="">Make</option>
+          {makes.map((make) => (
+            <option key={make} value={make}>{make}</option>
+          ))}
+        </select>
+        <select
+          className="border p-2 rounded"
+          value={localVehicle.model || ''}
+          onChange={(e) => updateField('model', e.target.value)}
+          disabled={!localVehicle.make}
+        >
+          <option value="">Model</option>
+          {(modelsByMake[localVehicle.make] || []).map((model) => (
+            <option key={model} value={model}>{model}</option>
+          ))}
+        </select>
       </div>
     </div>
   );
