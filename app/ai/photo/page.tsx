@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import VehicleSelector from '../../../../components/VehicleSelector';
-import PhotoCapture from '../../../../components/PhotoCapture';
-import { useVehicleInfo } from '../../../../hooks/useVehicleInfo';
+import VehicleSelector from '../../../src/components/VehicleSelector';
+import PhotoCapture from '../../../src/components/PhotoCapture';
+import { useVehicleInfo } from '../../../src/hooks/useVehicleInfo';
 
 export default function VisualDiagnosisPage() {
   const [result, setResult] = useState<string | null>(null);
