@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import TechBot from '../../../components/TechBot';
+import TechBot from '../../../src/components/TechBot';
 
 export default function Page() {
   return (
