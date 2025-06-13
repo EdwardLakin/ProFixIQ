@@ -1,4 +1,4 @@
 {
-  "/ai/page": "app/ai/page.js",
-  "/ai/dtc/page": "app/ai/dtc/page.js"
+  "/page": "app/page.js",
+  "/ai/page": "app/ai/page.js"
 }
