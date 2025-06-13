@@ -5,7 +5,7 @@ import { createClient } from '@supabase/supabase-js'
 import { generateCorrectionStory } from '../../src/lib/generateCorrectionStoryFromInspection'
 import { saveWorkOrderLines } from '../../src/lib/saveWorkOrderLines'
 import { RepairLine } from '../../src/lib/parseRepairOutput'
-import WorkOrderEditorPage from '../src/components/WorkOrderEditorPage'
+import WorkOrderEditorPage from '../../src/components/WorkOrderEditorPage'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
