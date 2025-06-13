@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { getWorkOrderById } from '../../src/lib/db'
 import WorkOrderLineEditor from '../../src/components/WorkOrderLineEditor'
 import { useParams } from 'next/navigation'
+import WorkOrderEditorPage from '../../src/components/WorkOrderEditorPage';
 
 type WorkOrderLine = {
   id: string
