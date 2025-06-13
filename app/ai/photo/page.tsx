@@ -2,7 +2,7 @@
 
 import React from 'react'
 import PhotoCapture from '../../../src/components/PhotoCapture'
-import { useVehicleInfo } from '../../../hooks/useVehicleInfo'
+import { useVehicleInfo } from '../../../src/hooks/useVehicleInfo'
 
 export default function VisualDiagnosisPage() {
   const { vehicle } = useVehicleInfo()
