@@ -4,61 +4,65 @@ import React, { useState } from 'react';
 import { useVehicleInfo } from '../hooks/useVehicleInfo';
 
 export default function DTCCodeLookup() {
-  const { vehicle } = useVehicleInfo();
-  const [dtcCode, setDtcCode] = useState('');
+  const [code, setCode] = useState('');
   const [result, setResult] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const { vehicle } = useVehicleInfo();
 
-  const handleLookup = async () => {
-    if (!dtcCode || !vehicle) return;
-    setLoading(true);
+  const handleSearch = async () => {
+    if (!code || !vehicle || !vehicle.make || !vehicle.year || !vehicle.model) {
+      alert('Please enter a DTC code and select a vehicle.');
+      return;
+    }
+
+    setIsLoading(true);
+    setResult(null);
 
     try {
       const res = await fetch('/api/diagnose', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dtc: dtcCode, vehicle }),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          code,
+          vehicle,
+        }),
       });
 
+      if (!res.ok) throw new Error('DTC lookup failed');
+
       const data = await res.json();
-      setResult(data.result);
+      setResult(data.result || 'No info found for this code.');
     } catch (err) {
-      setResult('❌ Error diagnosing code.');
+      console.error(err);
+      setResult('An error occurred while looking up the DTC code.');
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="p-4 max-w-2xl mx-auto">
-      <h2 className="text-xl font-bold mb-4">🔍 DTC Lookup</h2>
-
-      {vehicle ? (
-        <div className="text-sm text-muted mb-2">
-          Vehicle: {vehicle.year} {vehicle.make} {vehicle.model}
-        </div>
-      ) : (
-        <div className="text-red-600 mb-2">⚠️ No vehicle selected.</div>
-      )}
-
-      <input
-        type="text"
-        className="w-full border p-2 mb-3 rounded"
-        placeholder="Enter a DTC code (e.g. P0300)"
-        value={dtcCode}
-        onChange={(e) => setDtcCode(e.target.value)}
-      />
-
-      <button
-        onClick={handleLookup}
-        disabled={!dtcCode || loading}
-        className="bg-accent text-white px-4 py-2 rounded disabled:opacity-50"
-      >
-        {loading ? 'Looking up...' : 'Search'}
-      </button>
-
+    <div className="mt-4">
+      <label className="block mb-1 text-sm font-medium">Enter a DTC code (e.g., P0131)</label>
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={code}
+          onChange={e => setCode(e.target.value)}
+          placeholder="P0131"
+          className="border rounded p-2 w-48"
+        />
+        <button
+          onClick={handleSearch}
+          disabled={!code || isLoading}
+          className="bg-accent text-white px-4 py-2 rounded disabled:opacity-50"
+        >
+          {isLoading ? 'Searching...' : 'Search'}
+        </button>
+      </div>
       {result && (
-        <div className="mt-4 bg-muted p-3 rounded text-sm whitespace-pre-line">
+        <div className="mt-4 p-4 border rounded bg-muted text-sm whitespace-pre-wrap">
           {result}
         </div>
       )}
