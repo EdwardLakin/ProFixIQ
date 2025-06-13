@@ -1,8 +1,8 @@
 'use client'
 
 import React from 'react'
-import PhotoCapture from '@/components/PhotoCapture'
-import { useVehicleInfo } from '@/hooks/useVehicleInfo'
+import PhotoCapture from '../../../src/components/PhotoCapture'
+import { useVehicleInfo } from '../../hooks/useVehicleInfo'
 
 export default function VisualDiagnosisPage() {
   const { vehicle } = useVehicleInfo()
