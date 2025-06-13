@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { askTechBot } from '../lib/techbot';
-import { useVehicleInfo } from '../../src/hooks/useVehicleInfo';
+import { askTechBot } from '../lib/techBot';
+import { useVehicleInfo } from '../hooks/useVehicleInfo';
 
 export default function TechBot() {
   const [input, setInput] = useState('');
@@ -16,25 +16,25 @@ export default function TechBot() {
 
     try {
       const reply = await askTechBot({ message: input, vehicle });
-      setChat(prev => [...prev, `🧑‍🔧 You: ${input}`, `🤖 TechBot: ${reply}`]);
+      setChat(prev => [...prev, `🧠 You: ${input}`, `🤖 TechBot: ${reply}`]);
       setInput('');
     } catch (err) {
-      setChat(prev => [...prev, '⚠️ Error talking to TechBot.']);
-    } finally {
-      setLoading(false);
+      setChat(prev => [...prev, '❌ Error talking to TechBot.']);
     }
+
+    setLoading(false);
   };
 
   return (
-    <div className="p-4 max-w-xl mx-auto space-y-4">
-      <h2 className="text-2xl font-bold">TechBot Assistant</h2>
+    <div className="p-4 max-w-3xl mx-auto space-y-4">
+      <h2 className="text-2xl font-bold">🤖 TechBot Assistant</h2>
 
       {vehicle ? (
         <p className="text-sm text-muted">
           Active Vehicle: {vehicle.year} {vehicle.make} {vehicle.model}
         </p>
       ) : (
-        <p className="text-sm text-red-600">No vehicle selected.</p>
+        <p className="text-sm text-red-600">⚠️ No vehicle selected.</p>
       )}
 
       <div className="space-y-3">
@@ -51,16 +51,16 @@ export default function TechBot() {
           disabled={loading || !input}
           className="bg-accent text-white px-4 py-2 rounded disabled:opacity-50"
         >
-          {loading ? 'Thinking...' : 'Send to TechBot'}
+          {loading ? '⏳ Thinking...' : '📤 Send to TechBot'}
         </button>
-      </div>
 
-      <div className="mt-6 space-y-2">
-        {chat.map((line, index) => (
-          <div key={index} className="bg-muted p-2 rounded text-sm">
-            {line}
-          </div>
-        ))}
+        <div className="mt-6 space-y-2">
+          {chat.map((line, index) => (
+            <div key={index} className="bg-muted p-2 rounded text-sm">
+              {line}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
