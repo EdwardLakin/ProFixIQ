@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { askTechBot } from '../../src/lib/techbot';
+import { askTechBot } from '../lib/techbot';
 import { useVehicleInfo } from '../../src/hooks/useVehicleInfo';
 
 export default function TechBot() {
