@@ -16,10 +16,10 @@
       "static/chunks/main-app.js",
       "static/chunks/app/ai/page.js"
     ],
-    "/ai/dtc/page": [
+    "/ai/photo/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/ai/dtc/page.js"
+      "static/chunks/app/ai/photo/page.js"
     ]
   }
 }
