@@ -1,4 +1,11 @@
 import { NextResponse } from 'next/server';
+import { Configuration, OpenAIApi } from 'openai';
+
+const configuration = new Configuration({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+const openai = new OpenAIApi(configuration);
 
 export async function POST(req: Request) {
   try {
@@ -9,33 +16,20 @@ export async function POST(req: Request) {
     }
 
     const vehicleStr = `${vehicle.year} ${vehicle.make} ${vehicle.model}`;
-    const prompt = `You are an expert automotive technician. A ${vehicleStr} has triggered DTC code ${code}. Provide the meaning, severity, and recommended diagnostic steps for this code. Respond clearly and concisely.`;
+    const prompt = `You are an expert automotive technician. The user has provided a DTC code and vehicle information.\n\nVehicle: ${vehicleStr}\nCode: ${code}\n\nExplain what the code means, how serious it is, common causes, and recommended diagnostic steps. Be concise but thorough.`;
 
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) throw new Error('Missing OpenAI API key');
-
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4',
-        messages: [{ role: 'user', content: prompt }],
-      }),
+    const res = await openai.createChatCompletion({
+      model: 'gpt-4',
+      messages: [
+        { role: 'system', content: 'You are an expert auto technician.' },
+        { role: 'user', content: prompt },
+      ],
     });
 
-    if (!res.ok) {
-      const errText = await res.text();
-      return NextResponse.json({ error: `OpenAI error: ${errText}` }, { status: 500 });
-    }
-
-    const data = await res.json();
-    const result = data.choices?.[0]?.message?.content || 'No result returned.';
+    const result = res.data.choices[0]?.message?.content || 'No result returned.';
     return NextResponse.json({ result });
   } catch (err) {
-    console.error('DTC Diagnose Error:', err);
-    return NextResponse.json({ error: 'Internal error during DTC lookup.' }, { status: 500 });
+    console.error('DTC Diagnose API Error:', err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
