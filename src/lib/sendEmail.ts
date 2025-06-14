@@ -1,48 +1,52 @@
-export async function sendWorkOrderEmail({
-  vehicleId,
-  workOrderId,
-  lines,
-  summary,
-  vehicleInfo,
-  customerInfo,
+// lib/sendEmail.ts
+
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY! // Only safe on the server!
+)
+
+export async function sendBookingConfirmation({
+  customerEmail,
+  customerName,
+  vehicle,
+  services,
+  estimatedTotal,
+  appointmentTime,
 }: {
-  vehicleId: string
-  workOrderId: string
-  lines: any[]
-  summary: string
-  vehicleInfo?: {
-    year?: string
-    make?: string
-    model?: string
-    vin?: string
-  }
-  customerInfo?: {
-    name?: string
-    phone?: string
-    email?: string
-  }
+  customerEmail: string
+  customerName: string
+  vehicle: string
+  services: string[]
+  estimatedTotal: string
+  appointmentTime: string
 }) {
-  const res = await fetch(
-    'https://jaqjlyhvyofjvtwaeurr.supabase.co/functions/v1/send-workorder-email',
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        vehicleId,
-        workOrderId,
-        lines,
-        summary,
-        vehicleInfo,
-        customerInfo,
-      }),
-    }
-  )
+  const emailContent = `
+    Hi ${customerName},
 
-  if (!res.ok) {
-    throw new Error('Failed to send work order email')
+    Your booking with ProFixIQ has been confirmed!
+
+    📅 Appointment Time: ${appointmentTime}
+    🚗 Vehicle: ${vehicle}
+    🧰 Services: ${services.join(', ')}
+    💰 Estimated Total: ${estimatedTotal}
+
+    If you have any questions or need to reschedule, contact us at support@profixiq.com.
+
+    Thanks for choosing ProFixIQ!
+  `
+
+  const { error } = await supabase.functions.invoke('send-email', {
+    body: {
+      to: customerEmail,
+      subject: 'Booking Confirmation – ProFixIQ',
+      text: emailContent,
+    },
+  })
+
+  if (error) {
+    console.error('Failed to send booking confirmation:', error)
+    throw error
   }
-
-  return await res.json()
 }
