@@ -1,33 +1,47 @@
-// functions/sendEmail/index.ts
-
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { corsHeaders } from '../_shared/cors.ts'
 
 serve(async (req) => {
-  const { to, subject, html } = await req.json()
-
-  const apiKey = Deno.env.get('SENDGRID_API_KEY')
-  if (!apiKey) {
-    return new Response('Missing SENDGRID_API_KEY', { status: 500 })
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method Not Allowed' }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 405,
+    })
   }
 
-  const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
+  const { email, subject, message } = await req.json()
+
+  if (!email || !subject || !message) {
+    return new Response(JSON.stringify({ error: 'Missing fields' }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 400,
+    })
+  }
+
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  )
+
+  const { data, error } = await supabase.functions.invoke('sendgrid-proxy', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      personalizations: [{ to: [{ email: to }] }],
-      from: { email: 'support@profixiq.app', name: 'ProFixIQ' },
+    body: {
+      to: email,
       subject,
-      content: [{ type: 'text/html', value: html }],
-    }),
+      message,
+    },
   })
 
-  if (!response.ok) {
-    const error = await response.text()
-    return new Response(`SendGrid Error: ${error}`, { status: 500 })
+  if (error) {
+    return new Response(JSON.stringify({ error: error.message }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 500,
+    })
   }
 
-  return new Response('Email sent successfully', { status: 200 })
+  return new Response(JSON.stringify({ success: true, data }), {
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    status: 200,
+  })
 })
