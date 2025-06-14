@@ -17,6 +17,7 @@ export default function VehicleSelector() {
   return (
     <div className="mb-4 space-y-2">
       <h3 className="font-semibold">Vehicle Info</h3>
+
       <input
         type="text"
         name="year"
@@ -25,6 +26,7 @@ export default function VehicleSelector() {
         onChange={handleChange}
         className="w-full p-2 border rounded"
       />
+
       <input
         type="text"
         name="make"
@@ -33,6 +35,7 @@ export default function VehicleSelector() {
         onChange={handleChange}
         className="w-full p-2 border rounded"
       />
+
       <input
         type="text"
         name="model"
