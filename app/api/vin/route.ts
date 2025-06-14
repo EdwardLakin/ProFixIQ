@@ -1,30 +1,36 @@
+import { createServerClient } from '@supabase/ssr';
 import { NextResponse } from 'next/server';
 
 export async function POST(req: Request) {
+  const supabase = createServerClient();
+  const { vin, user_id } = await req.json();
+
   try {
-    const { vin } = await req.json();
-    if (!vin || vin.length < 11) {
-      return NextResponse.json({ error: 'Invalid VIN' }, { status: 400 });
-    }
+    const vinRes = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/${vin}?format=json`);
+    const vinData = await vinRes.json();
+    const decoded = vinData?.Results?.[0] || {};
 
-    const res = await fetch(
-      `https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValuesExtended/${vin}?format=json`
-    );
+    const { Year, Make, Model, Trim, EngineModel } = decoded;
 
-    if (!res.ok) throw new Error('Failed to fetch VIN data');
+    await supabase.from('vin_decodes').upsert({
+      vin,
+      user_id,
+      year: Year,
+      make: Make,
+      model: Model,
+      trim: Trim,
+      engine: EngineModel,
+    });
 
-    const data = await res.json();
-    const decoded = data.Results[0];
-
-    const vehicle = {
-      year: decoded.ModelYear,
-      make: decoded.Make,
-      model: decoded.Model,
-    };
-
-    return NextResponse.json(vehicle);
-  } catch (error) {
-    console.error('VIN Decode Error:', error);
-    return NextResponse.json({ error: 'VIN decoding failed' }, { status: 500 });
+    return NextResponse.json({
+      year: Year,
+      make: Make,
+      model: Model,
+      trim: Trim,
+      engine: EngineModel,
+    });
+  } catch (e: any) {
+    console.error('VIN decode failed:', e);
+    return NextResponse.json({ error: 'Failed to decode VIN' }, { status: 500 });
   }
 }

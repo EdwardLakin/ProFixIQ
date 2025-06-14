@@ -1,56 +1,107 @@
-'use client';
+'use client'
 
-import React, { useEffect, useState } from 'react';
-import { getWorkOrderById } from '../../src/lib/db';
-import { useParams } from 'next/navigation';
-
-type WorkOrderLine = {
-  id: string;
-  complaint: string;
-  cause: string;
-  correction: string;
-  labor_time?: number;
-  line_type?: 'diagnose' | 'repair' | 'maintenance';
-  status?: 'in_progress' | 'completed' | 'on_hold';
-};
+import { useEffect, useState } from 'react'
+import { useVehicleInfo } from '@/hooks/useVehicleInfo'
+import { useUser } from '@/hooks/useUser'
+import { createBrowserClient } from '@supabase/ssr'
+import { MenuItem, WorkOrderLine } from '@/types'
+import WorkOrderLineForm from '@/components/WorkOrderLineForm'
 
 export default function WorkOrderEditorPage() {
-  const params = useParams();
-  const workOrderId = params?.id as string;
-
-  const [lines, setLines] = useState<WorkOrderLine[]>([]);
-  const [loading, setLoading] = useState(true);
+  const supabase = createBrowserClient()
+  const { vehicle } = useVehicleInfo()
+  const { user } = useUser()
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([])
+  const [lines, setLines] = useState<WorkOrderLine[]>([])
+  const [query, setQuery] = useState('')
+  const [filtered, setFiltered] = useState<MenuItem[]>([])
 
   useEffect(() => {
-    const load = async () => {
-      const data = await getWorkOrderById(workOrderId);
-      if (data?.lines) {
-        setLines(data.lines);
+    const fetchMenuItems = async () => {
+      if (user && vehicle?.id) {
+        const { data, error } = await supabase
+          .from('menu_items')
+          .select('*')
+          .eq('vehicle_id', vehicle.id)
+
+        if (!error && data) {
+          setMenuItems(data)
+        }
       }
-      setLoading(false);
-    };
+    }
+    fetchMenuItems()
+  }, [user, vehicle?.id])
 
-    if (workOrderId) load();
-  }, [workOrderId]);
+  useEffect(() => {
+    if (query.length > 1) {
+      const lowerQuery = query.toLowerCase()
+      setFiltered(
+        menuItems.filter(item =>
+          item.complaint.toLowerCase().includes(lowerQuery)
+        )
+      )
+    } else {
+      setFiltered([])
+    }
+  }, [query, menuItems])
 
-  if (loading) return <div className="p-4">Loading work order...</div>;
-  if (!lines.length) return <div className="p-4">No work order lines found.</div>;
+  const handleSuggestionClick = (item: MenuItem) => {
+    setLines([
+      ...lines,
+      {
+        complaint: item.complaint,
+        cause: item.cause || '',
+        correction: item.correction || '',
+        labor_time: item.labor_time || '',
+        tools: item.tools || ''
+      }
+    ])
+    setQuery('')
+    setFiltered([])
+  }
 
   return (
-    <div className="p-4 max-w-3xl mx-auto">
-      <h2 className="text-2xl font-bold mb-4">Work Order #{workOrderId}</h2>
+    <div className="p-4">
+      <h1 className="text-xl font-bold mb-2">Create Work Order</h1>
 
-      <ul className="space-y-4">
-        {lines.map((line) => (
-          <li key={line.id} className="p-4 border rounded shadow-card bg-muted">
-            <p><strong>Complaint:</strong> {line.complaint}</p>
-            <p><strong>Cause:</strong> {line.cause}</p>
-            <p><strong>Correction:</strong> {line.correction}</p>
-            <p><strong>Labor Time:</strong> {line.labor_time ?? 'N/A'} hrs</p>
-            <p><strong>Status:</strong> {line.status ?? 'N/A'}</p>
-          </li>
-        ))}
-      </ul>
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Enter complaint (e.g. B for brakes)"
+        className="w-full px-3 py-2 border rounded shadow mb-2"
+      />
+
+      {filtered.length > 0 && (
+        <ul className="bg-white border shadow rounded mb-4 max-h-40 overflow-y-auto">
+          {filtered.map((item) => (
+            <li
+              key={item.id}
+              onClick={() => handleSuggestionClick(item)}
+              className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
+            >
+              {item.complaint} — {item.labor_time} hr
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {lines.map((line, index) => (
+        <WorkOrderLineForm
+          key={index}
+          line={line}
+          onUpdate={(updatedLine) => {
+            const updated = [...lines]
+            updated[index] = updatedLine
+            setLines(updated)
+          }}
+          onDelete={() => {
+            const updated = [...lines]
+            updated.splice(index, 1)
+            setLines(updated)
+          }}
+        />
+      ))}
     </div>
-  );
+  )
 }
