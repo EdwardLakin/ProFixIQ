@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import VehicleSelector from '../../../src/components/VehicleSelector';
-import PhotoCapture from '../../../src/components/PhotoCapture';
-import { useVehicleInfo } from '../../../src/hooks/useVehicleInfo';
+import VehicleSelector from '../../../../components/VehicleSelector';
+import PhotoCapture from '../../../../components/PhotoCapture';
+import { useVehicleInfo } from '../../../../hooks/useVehicleInfo';
 
 export default function VisualDiagnosisPage() {
   const [result, setResult] = useState<string | null>(null);
@@ -11,7 +11,7 @@ export default function VisualDiagnosisPage() {
   const { vehicle } = useVehicleInfo();
 
   const handleAnalyze = async (file: File) => {
-    if (!file || !vehicle || !vehicle.model || !vehicle.year || !vehicle.make) {
+    if (!file || !vehicle?.year || !vehicle.make || !vehicle.model) {
       alert('Please select a vehicle and upload a photo.');
       return;
     }
@@ -45,12 +45,10 @@ export default function VisualDiagnosisPage() {
     <div className="p-4">
       <VehicleSelector />
       <PhotoCapture onAnalyze={handleAnalyze} />
-      {isLoading && (
-        <p className="text-yellow-500 font-semibold mt-4">Analyzing...</p>
-      )}
+      {isLoading && <p className="text-yellow-500 font-semibold mt-4">Analyzing...</p>}
       {result && (
         <div className="mt-4 p-4 bg-muted border rounded shadow">
-          <h2 className="font-bold text-accent mb-2">AI Diagnosis</h2>
+          <h2 className="font-semibold text-accent mb-2">AI Diagnosis</h2>
           <pre className="whitespace-pre-wrap text-sm">{result}</pre>
         </div>
       )}

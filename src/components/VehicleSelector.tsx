@@ -1,66 +1,43 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useVehicleInfo } from '../hooks/useVehicleInfo';
-
-const years = Array.from({ length: 31 }, (_, i) => 2025 - i);
-const makes = ['Ford', 'Chevrolet', 'Toyota', 'Honda', 'Dodge', 'Nissan']; // Extend as needed
+import React from 'react';
+import { useVehicleInfo } from '@/hooks/useVehicleInfo';
 
 export default function VehicleSelector() {
   const { vehicle, setVehicle } = useVehicleInfo();
-  const [localVehicle, setLocalVehicle] = useState({
-    year: vehicle?.year ?? '',
-    make: vehicle?.make ?? '',
-    model: vehicle?.model ?? '',
-  });
 
-  useEffect(() => {
-    if (vehicle) {
-      setLocalVehicle({
-        year: vehicle.year ?? '',
-        make: vehicle.make ?? '',
-        model: vehicle.model ?? '',
-      });
-    }
-  }, [vehicle]);
-
-  const handleChange = (field: string, value: string) => {
-    const updated = { ...localVehicle, [field]: value };
-    setLocalVehicle(updated);
-    setVehicle(updated); // update global context
+  const handleChange = (e: React.ChangeEvent<HTMLSelectElement | HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setVehicle({ ...vehicle, [name]: value });
   };
 
   return (
-    <div className="space-y-2">
-      <div className="flex gap-2">
-        <select
-          value={localVehicle.year}
-          onChange={e => handleChange('year', e.target.value)}
-          className="border p-2 rounded"
-        >
-          <option value="">Year</option>
-          {years.map(year => (
-            <option key={year}>{year}</option>
-          ))}
-        </select>
-
-        <select
-          value={localVehicle.make}
-          onChange={e => handleChange('make', e.target.value)}
-          className="border p-2 rounded"
-        >
-          <option value="">Make</option>
-          {makes.map(make => (
-            <option key={make}>{make}</option>
-          ))}
-        </select>
-
+    <div className="mb-6">
+      <h3 className="text-sm font-semibold text-muted mb-2">Select Vehicle</h3>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <input
           type="text"
+          name="year"
+          value={vehicle.year || ''}
+          onChange={handleChange}
+          placeholder="Year"
+          className="input"
+        />
+        <input
+          type="text"
+          name="make"
+          value={vehicle.make || ''}
+          onChange={handleChange}
+          placeholder="Make"
+          className="input"
+        />
+        <input
+          type="text"
+          name="model"
+          value={vehicle.model || ''}
+          onChange={handleChange}
           placeholder="Model"
-          value={localVehicle.model}
-          onChange={e => handleChange('model', e.target.value)}
-          className="border p-2 rounded w-full"
+          className="input"
         />
       </div>
     </div>
