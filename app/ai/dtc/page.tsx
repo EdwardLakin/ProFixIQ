@@ -1,73 +1,71 @@
-'use client'
+'use client';
 
-import React, { useState } from 'react'
-import VehicleSelector from '../../../components/VehicleSelector'
-import DTCCodeLookup from '../../../components/DTCCodeLookup'
-import { useVehicleInfo } from '../../../hooks/useVehicleInfo'
+import { useState } from 'react';
+import { useVehicleInfo } from '@/hooks/useVehicleInfo';
+import VehicleSelector from '@/components/VehicleSelector';
+import { diagnoseDTC } from '@/lib/techBot';
 
-export default function DTCPage() {
-  const { vehicle } = useVehicleInfo()
-  const [code, setCode] = useState('')
-  const [result, setResult] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+export default function DTCCodeLookupPage() {
+  const { vehicleInfo } = useVehicleInfo();
+  const [dtcCode, setDtcCode] = useState('');
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const handleLookup = async () => {
-    if (!code || !vehicle?.year || !vehicle?.make || !vehicle?.model) {
-      alert('Please enter a DTC code and select a vehicle.')
-      return
+  const handleSubmit = async () => {
+    if (!vehicleInfo || !dtcCode.trim()) {
+      setError('Please enter a DTC code and select a vehicle.');
+      return;
     }
 
-    setLoading(true)
-    setResult(null)
+    setLoading(true);
+    setError(null);
+    setResult(null);
 
     try {
-      const res = await fetch('/api/diagnose', {
-        method: 'POST',
-        body: JSON.stringify({ code, vehicle }),
-      })
+      const response = await diagnoseDTC({
+        vehicle: vehicleInfo,
+        dtc: dtcCode.trim(),
+      });
 
-      if (!res.ok) throw new Error('Failed to fetch DTC info')
-      const data = await res.json()
-      setResult(data.result)
+      setResult(response);
     } catch (err) {
-      console.error('DTC Lookup Error:', err)
-      setResult('❌ Failed to fetch DTC info. Try again.')
+      console.error(err);
+      setError('Failed to retrieve diagnosis.');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   return (
-    <div className="p-4">
+    <div className="p-4 space-y-4">
+      <h1 className="text-xl font-bold">DTC Code Lookup</h1>
+
       <VehicleSelector />
 
-      <h1 className="text-xl font-bold mt-4">🔍 DTC Lookup</h1>
+      <input
+        type="text"
+        placeholder="Enter DTC code (e.g., P0171)"
+        value={dtcCode}
+        onChange={(e) => setDtcCode(e.target.value)}
+        className="w-full p-2 border border-gray-300 rounded"
+      />
 
-      <div className="mt-2">
-        <input
-          type="text"
-          placeholder="Enter a DTC code (e.g., P0131)"
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          className="p-2 border rounded mr-2"
-        />
-        <button
-          onClick={handleLookup}
-          disabled={loading || !code}
-          className="bg-accent text-white px-3 py-2 rounded"
-        >
-          {loading ? 'Searching...' : 'Search'}
-        </button>
-      </div>
+      <button
+        onClick={handleSubmit}
+        className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
+        disabled={loading}
+      >
+        {loading ? 'Looking up...' : 'Lookup DTC'}
+      </button>
 
+      {error && <p className="text-red-500">{error}</p>}
       {result && (
-        <div className="mt-6">
-          <h2 className="text-lg font-semibold mb-2">AI Diagnosis</h2>
-          <pre className="whitespace-pre-wrap text-sm bg-muted p-2 rounded shadow">
-            {result}
-          </pre>
+        <div className="mt-4 p-4 bg-gray-100 rounded shadow">
+          <h2 className="font-semibold mb-2">AI Diagnosis:</h2>
+          <pre className="whitespace-pre-wrap text-sm">{result}</pre>
         </div>
       )}
     </div>
-  )
+  );
 }
