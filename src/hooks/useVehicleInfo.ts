@@ -1,22 +1,34 @@
-// hooks/useVehicleInfo.ts
-import { useState, useEffect } from 'react';
+'use client';
 
-export function useVehicleInfo() {
-  const [vehicle, setVehicle] = useState<any>(null);
+import React, { createContext, useContext, useState, ReactNode } from 'react';
 
-  useEffect(() => {
-    const storedId = localStorage.getItem('selectedVehicleId');
-    const storedVehicle = localStorage.getItem('selectedVehicleData');
-    if (storedId && storedVehicle) {
-      setVehicle(JSON.parse(storedVehicle));
-    }
-  }, []);
-
-  const setVehicleContext = (v: any) => {
-    localStorage.setItem('selectedVehicleId', v.id);
-    localStorage.setItem('selectedVehicleData', JSON.stringify(v));
-    setVehicle(v);
-  };
-
-  return { vehicle, setVehicle: setVehicleContext };
+export interface VehicleInfo {
+  year: string;
+  make: string;
+  model: string;
 }
+
+type VehicleContextType = {
+  vehicle: VehicleInfo | null;
+  setVehicle: (vehicle: VehicleInfo) => void;
+};
+
+const VehicleContext = createContext<VehicleContextType | undefined>(undefined);
+
+export const VehicleProvider = ({ children }: { children: ReactNode }) => {
+  const [vehicle, setVehicle] = useState<VehicleInfo | null>(null);
+
+  return (
+    <VehicleContext.Provider value={{ vehicle, setVehicle }}>
+      {children}
+    </VehicleContext.Provider>
+  );
+};
+
+export const useVehicleInfo = () => {
+  const context = useContext(VehicleContext);
+  if (!context) {
+    throw new Error('useVehicleInfo must be used within a VehicleProvider');
+  }
+  return context;
+};

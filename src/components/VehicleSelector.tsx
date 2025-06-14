@@ -1,45 +1,46 @@
 'use client';
 
 import React from 'react';
-import { useVehicleInfo } from '@/hooks/useVehicleInfo';
+import { useVehicleInfo } from '../hooks/useVehicleInfo';
 
 export default function VehicleSelector() {
   const { vehicle, setVehicle } = useVehicleInfo();
 
-  const handleChange = (e: React.ChangeEvent<HTMLSelectElement | HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setVehicle({ ...vehicle, [name]: value });
+    setVehicle({
+      ...vehicle,
+      [name]: value,
+    } as any);
   };
 
   return (
-    <div className="mb-6">
-      <h3 className="text-sm font-semibold text-muted mb-2">Select Vehicle</h3>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <input
-          type="text"
-          name="year"
-          value={vehicle.year || ''}
-          onChange={handleChange}
-          placeholder="Year"
-          className="input"
-        />
-        <input
-          type="text"
-          name="make"
-          value={vehicle.make || ''}
-          onChange={handleChange}
-          placeholder="Make"
-          className="input"
-        />
-        <input
-          type="text"
-          name="model"
-          value={vehicle.model || ''}
-          onChange={handleChange}
-          placeholder="Model"
-          className="input"
-        />
-      </div>
+    <div className="mb-4 space-y-2">
+      <h3 className="font-semibold">Vehicle Info</h3>
+      <input
+        type="text"
+        name="year"
+        placeholder="Year"
+        value={vehicle?.year || ''}
+        onChange={handleChange}
+        className="w-full p-2 border rounded"
+      />
+      <input
+        type="text"
+        name="make"
+        placeholder="Make"
+        value={vehicle?.make || ''}
+        onChange={handleChange}
+        className="w-full p-2 border rounded"
+      />
+      <input
+        type="text"
+        name="model"
+        placeholder="Model"
+        value={vehicle?.model || ''}
+        onChange={handleChange}
+        className="w-full p-2 border rounded"
+      />
     </div>
   );
 }

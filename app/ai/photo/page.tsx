@@ -1,55 +1,57 @@
 'use client';
 
 import React, { useState } from 'react';
-import VehicleSelector from '../../../../components/VehicleSelector';
-import PhotoCapture from '../../../../components/PhotoCapture';
-import { useVehicleInfo } from '../../../../hooks/useVehicleInfo';
+import VehicleSelector from '@/components/VehicleSelector';
+import PhotoCapture from '@/components/PhotoCapture';
+import { useVehicleInfo } from '@/hooks/useVehicleInfo';
+import { analyzeImageWithAI } from '@/lib/analyze';
 
 export default function VisualDiagnosisPage() {
+  const { vehicle } = useVehicleInfo();
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const { vehicle } = useVehicleInfo();
 
-  const handleAnalyze = async (file: File) => {
-    if (!file || !vehicle?.year || !vehicle.make || !vehicle.model) {
-      alert('Please select a vehicle and upload a photo.');
+  const handleImageUpload = async (file: File) => {
+    setImageFile(file);
+    setResult(null);
+  };
+
+  const handleAnalyze = async () => {
+    if (!vehicle || !imageFile) {
+      alert('Please select a vehicle and upload an image.');
       return;
     }
 
     setIsLoading(true);
-    setResult(null);
-
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('vehicle', JSON.stringify(vehicle));
-
-      const res = await fetch('/api/analyze', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!res.ok) throw new Error('Failed to analyze image');
-
-      const data = await res.json();
-      setResult(data.result || 'No issues detected.');
-    } catch (err) {
-      console.error('Image analysis error:', err);
-      setResult('An error occurred while analyzing the image.');
+      const output = await analyzeImageWithAI(imageFile, vehicle);
+      setResult(output || 'No response from AI.');
+    } catch (error) {
+      console.error('Error analyzing image:', error);
+      setResult('An error occurred during analysis.');
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="p-4">
+    <div className="p-6 space-y-4 max-w-2xl mx-auto">
+      <h1 className="text-2xl font-bold">Visual Diagnosis</h1>
       <VehicleSelector />
-      <PhotoCapture onAnalyze={handleAnalyze} />
-      {isLoading && <p className="text-yellow-500 font-semibold mt-4">Analyzing...</p>}
+      <PhotoCapture onImageSelected={handleImageUpload} />
+      <button
+        onClick={handleAnalyze}
+        disabled={isLoading || !imageFile}
+        className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
+      >
+        {isLoading ? 'Analyzing…' : 'Analyze'}
+      </button>
+
       {result && (
-        <div className="mt-4 p-4 bg-muted border rounded shadow">
-          <h2 className="font-semibold text-accent mb-2">AI Diagnosis</h2>
-          <pre className="whitespace-pre-wrap text-sm">{result}</pre>
+        <div className="mt-4 p-4 bg-gray-100 rounded border">
+          <h2 className="text-lg font-semibold mb-2">AI Results</h2>
+          <p>{result}</p>
         </div>
       )}
     </div>
