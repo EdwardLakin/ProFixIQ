@@ -1,47 +1,54 @@
+// app/page.tsx
 'use client';
 
-import React from 'react';
 import Link from 'next/link';
 
-export default function ProFixIQLanding() {
+export default function Home() {
   return (
-    <div className="min-h-screen bg-surface text-accent px-6 py-12 flex flex-col items-center">
-      <h1 className="text-5xl font-bold mb-4">ProFixIQ</h1>
-      <p className="text-muted mb-10 text-center">AI-powered repair assistant for diagnostics, inspections, and workflow management.</p>
+    <main className="max-w-3xl mx-auto px-4 py-8">
+      <h1 className="text-3xl font-bold mb-2">ProFixIQ</h1>
+      <p className="text-muted mb-6">
+        AI-powered repair assistant for diagnostics, inspections, and workflow management.
+      </p>
 
-      <div className="grid sm:grid-cols-2 gap-6 mb-12 w-full max-w-4xl">
-        <Link href="/ai">
-          <div className="bg-card hover:bg-muted p-6 rounded-xl shadow-card transition">
-            <h2 className="text-2xl font-semibold mb-2">🧠 AI Diagnostics</h2>
-            <p className="text-muted-foreground">Use GPT-powered repair suggestions from DTCs or photos.</p>
-          </div>
+      <h2 className="text-xl font-bold text-accent mb-2">🤖 AI Diagnostics</h2>
+      <p className="text-muted mb-4">
+        <Link href="/ai/dtc" className="underline text-blue-600">
+          Use GPT-powered repair suggestions from DTCs or photos.
         </Link>
+      </p>
 
-        <Link href="/work-orders">
-          <div className="bg-card hover:bg-muted p-6 rounded-xl shadow-card transition">
-            <h2 className="text-2xl font-semibold mb-2">🧾 Work Orders</h2>
-            <p className="text-muted-foreground">Create and manage repair jobs with AI assistance.</p>
-          </div>
+      <h2 className="text-xl font-bold text-accent mb-2">🧾 Work Orders</h2>
+      <p className="text-muted mb-4">
+        <Link href="/workorders" className="underline text-blue-600">
+          Create and manage repair jobs with AI assistance.
         </Link>
+      </p>
 
-        <Link href="/inspections">
-          <div className="bg-card hover:bg-muted p-6 rounded-xl shadow-card transition">
-            <h2 className="text-2xl font-semibold mb-2">✅ Inspections</h2>
-            <p className="text-muted-foreground">Run and review inspections with voice & photo input.</p>
-          </div>
+      <h2 className="text-xl font-bold text-accent mb-2">✅ Inspections</h2>
+      <p className="text-muted mb-4">
+        <Link href="/inspections" className="underline text-blue-600">
+          Run and review inspections with voice & photo input.
         </Link>
+      </p>
 
-        <Link href="/account">
-          <div className="bg-card hover:bg-muted p-6 rounded-xl shadow-card transition">
-            <h2 className="text-2xl font-semibold mb-2">👤 Account</h2>
-            <p className="text-muted-foreground">Manage your plan, settings, and ProFixIQ preferences.</p>
-          </div>
+      <h2 className="text-xl font-bold text-accent mb-2">📅 Bookings</h2>
+      <p className="text-muted mb-4">
+        <Link href="/booking" className="underline text-blue-600">
+          Request an appointment and get an estimate.
         </Link>
-      </div>
+      </p>
 
-      <div className="text-muted-foreground text-sm mt-auto">
+      <h2 className="text-xl font-bold text-accent mb-2">👤 Account</h2>
+      <p className="text-muted mb-4">
+        <Link href="/dashboard/approvals" className="underline text-blue-600">
+          Manage your plan, settings, and ProFixIQ preferences.
+        </Link>
+      </p>
+
+      <p className="text-sm text-yellow-600 mt-6">
         💡 Tip: Upgrade to Pro+ for voice-guided inspections and unlimited work orders.
-      </div>
-    </div>
+      </p>
+    </main>
   );
 }
