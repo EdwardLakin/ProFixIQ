@@ -1,6 +1,6 @@
 // app/api/analyze/route.ts
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabaseClient';
+import { createClient } from '@lib/supabaseClient';
 import OpenAI from 'openai';
 
 const openai = new OpenAI({

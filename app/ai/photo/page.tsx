@@ -3,10 +3,10 @@
 'use client';
 
 import { useState } from 'react';
-import { useVehicleInfo } from '@/hooks/useVehicleInfo';
-import VehicleSelector from '@/components/VehicleSelector';
-import PhotoCapture from '@/components/PhotoCapture';
-import { analyzeImage } from '@/lib/analyze';
+import { useVehicleInfo } from '@hooks/useVehicleInfo';
+import VehicleSelector from '@components/VehicleSelector';
+import PhotoCapture from '@components/PhotoCapture';
+import { analyzeImage } from '@lib/analyze';
 
 export default function VisualDiagnosisPage() {
   const { vehicleInfo } = useVehicleInfo();

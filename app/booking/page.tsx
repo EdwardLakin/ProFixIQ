@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
-import { Database } from '@/types/supabase';
+import { Database } from '@types/supabase';
 import { useRouter } from 'next/navigation';
 
 const supabase = createBrowserClient<Database>();

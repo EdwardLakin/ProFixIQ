@@ -4,8 +4,8 @@
 
 import { useEffect, useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
-import { Database } from '@/types/supabase';
-import { Button } from '@/components/ui/button';
+import { Database } from '@types/supabase';
+import { Button } from '@components/ui/button';
 
 const supabase = createBrowserClient<Database>();
 
