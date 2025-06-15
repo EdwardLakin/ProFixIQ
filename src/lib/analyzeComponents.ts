@@ -1,36 +1,44 @@
-// lib/analyzeComponents.ts
+'use client';
 
-import { VehicleInfo } from '@/types'
-import { createBrowserClient } from '@supabase/ssr'
+import { createBrowserClient } from '@supabase/ssr';
 
-const supabase = createBrowserClient()
+const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
-export async function analyzeImageComponents({
-  imageUrl,
-  vehicleInfo,
-}: {
-  imageUrl: string
-  vehicleInfo: VehicleInfo
-}): Promise<string> {
-  const { data: sessionData } = await supabase.auth.getSession()
-  const accessToken = sessionData.session?.access_token
+type AnalyzePayload = {
+  image: File;
+  vehicle: {
+    year: string;
+    make: string;
+    model: string;
+  };
+};
 
-  const res = await fetch('/api/analyze/image', {
+export async function analyzeImage(image: File, vehicle: AnalyzePayload['vehicle']) {
+  const toBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        const base64 = (reader.result as string).split(',')[1]; // strip the "data:image/jpeg;base64," part
+        resolve(base64);
+      };
+      reader.onerror = reject;
+    });
+  };
+
+  const base64Image = await toBase64(image);
+
+  const res = await fetch('/api/analyze', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${accessToken}`,
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      imageUrl,
-      vehicleInfo,
-    }),
-  })
+      image: base64Image,
+      vehicle
+    })
+  });
 
-  if (!res.ok) {
-    throw new Error('Failed to analyze image.')
-  }
-
-  const json = await res.json()
-  return json.result || 'No issues detected.'
+  return res.json();
 }

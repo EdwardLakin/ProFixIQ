@@ -20,25 +20,15 @@
       "static/chunks/main-app.js",
       "static/chunks/app/ai/photo/page.js"
     ],
-    "/ai/dtc/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/ai/dtc/page.js"
-    ],
-    "/api/diagnose/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/diagnose/route.js"
-    ],
-    "/ai/chat/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/ai/chat/page.js"
-    ],
     "/api/analyze/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/api/analyze/route.js"
+    ],
+    "/_not-found/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/_not-found/page.js"
     ]
   }
 }

@@ -9,22 +9,36 @@ export async function POST(req: Request) {
   try {
     const { image, vehicle } = await req.json();
 
-    if (!vehicle || !vehicle.year || !vehicle.make || !vehicle.model) {
-      return NextResponse.json({ error: 'Missing vehicle info' }, { status: 400 });
+    if (!image || !vehicle?.year || !vehicle.make || !vehicle.model) {
+      return NextResponse.json({ error: 'Missing image or vehicle info' }, { status: 400 });
     }
 
-    if (!image) {
-      return NextResponse.json({ error: 'Missing image file' }, { status: 400 });
-    }
+    const prompt = `
+You are an expert automotive diagnostic technician. Analyze the following image of a damaged component and provide a concise but structured repair assessment.
 
-    const prompt = `You are a professional automotive technician AI. Analyze the photo and provide a short summary of what the issue might be, based on the visible condition of the part. Include suggestions if possible.\n\nVehicle: ${vehicle.year} ${vehicle.make} ${vehicle.model}`;
+Vehicle: ${vehicle.year} ${vehicle.make} ${vehicle.model}
+
+Return your response using the following format:
+
+**Issue Identified:** (What is the likely problem?)
+**Recommended Action:** (What should be done to fix it?)
+**Severity:** (Low / Medium / High)
+**Estimated Labor Time:** (Rough estimate in hours)
+**Tools Needed:** (Comma-separated list)
+**Part Suggestions:** (If visible, suggest replacement part)
+
+If the image is unclear or cannot be diagnosed, respond with:
+{ "error": "Image analysis failed" }
+
+Only respond in this structured format.
+    `.trim();
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4-vision-preview',
+      model: 'gpt-4o',
       messages: [
         {
           role: 'system',
-          content: 'You are a master auto technician specializing in diagnostics based on photos and symptoms.',
+          content: 'You are an advanced automotive technician AI specializing in visual diagnostics.',
         },
         {
           role: 'user',
@@ -34,13 +48,18 @@ export async function POST(req: Request) {
           ],
         },
       ],
-      max_tokens: 1000,
+      temperature: 0.7,
     });
 
-    const result = response.choices?.[0]?.message?.content;
-    return NextResponse.json({ result });
-  } catch (error) {
-    console.error('AI analyze error:', error);
-    return NextResponse.json({ error: 'Image analysis failed' }, { status: 500 });
+    const aiResponse = response.choices?.[0]?.message?.content;
+
+    if (!aiResponse || aiResponse.includes('image analysis failed')) {
+      return NextResponse.json({ error: 'Image analysis failed' }, { status: 500 });
+    }
+
+    return NextResponse.json({ result: aiResponse });
+  } catch (err) {
+    console.error('AI analyze error:', err);
+    return NextResponse.json({ error: 'Failed to analyze image' }, { status: 500 });
   }
 }
