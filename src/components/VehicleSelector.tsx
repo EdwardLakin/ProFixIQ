@@ -1,28 +1,28 @@
-"use client";
+'use client'
 
-import React from "react";
-import { useVehicleInfo } from "@hooks/useVehicleInfo";
+import React from 'react'
+import { useVehicleInfo } from '@/hooks/useVehicleInfo'
 
 export default function VehicleSelector() {
-  const { vehicle, setVehicle } = useVehicleInfo();
+  const { vehicleInfo, updateVehicle } = useVehicleInfo()
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setVehicle({
-      ...vehicle,
+    const { name, value } = e.target
+    updateVehicle({
+      ...vehicleInfo,
       [name]: value,
-    } as any);
-  };
+    })
+  }
 
   return (
     <div className="mb-4 space-y-2">
-      <h3 className="font-semibold">Vehicle Info</h3>
+      <h3 className="font-semibold text-accent">Vehicle Info</h3>
 
       <input
         type="text"
         name="year"
         placeholder="Year"
-        value={vehicle?.year || ""}
+        value={vehicleInfo?.year || ''}
         onChange={handleChange}
         className="w-full p-2 border rounded"
       />
@@ -31,7 +31,7 @@ export default function VehicleSelector() {
         type="text"
         name="make"
         placeholder="Make"
-        value={vehicle?.make || ""}
+        value={vehicleInfo?.make || ''}
         onChange={handleChange}
         className="w-full p-2 border rounded"
       />
@@ -40,10 +40,10 @@ export default function VehicleSelector() {
         type="text"
         name="model"
         placeholder="Model"
-        value={vehicle?.model || ""}
+        value={vehicleInfo?.model || ''}
         onChange={handleChange}
         className="w-full p-2 border rounded"
       />
     </div>
-  );
+  )
 }

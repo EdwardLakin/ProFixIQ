@@ -1,26 +1,26 @@
-"use client";
+'use client'
 
-import React, { useRef, useState } from "react";
+import React, { useRef, useState } from 'react'
 
 type Props = {
-  onImageSelect: (file: File) => void;
-};
+  onImageSelect: (file: File) => void
+}
 
 export default function PhotoCapture({ onImageSelect }: Props) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
 
   const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+    const file = event.target.files?.[0]
     if (file) {
-      setPreviewUrl(URL.createObjectURL(file));
-      onImageSelect(file);
+      setPreviewUrl(URL.createObjectURL(file))
+      onImageSelect(file)
     }
-  };
+  }
 
   const handleButtonClick = () => {
-    fileInputRef.current?.click();
-  };
+    fileInputRef.current?.click()
+  }
 
   return (
     <div className="mb-4">
@@ -31,6 +31,7 @@ export default function PhotoCapture({ onImageSelect }: Props) {
       >
         Capture or Upload Photo
       </button>
+
       <input
         type="file"
         accept="image/*"
@@ -39,6 +40,7 @@ export default function PhotoCapture({ onImageSelect }: Props) {
         onChange={handleImageChange}
         className="hidden"
       />
+
       {previewUrl && (
         <div className="mt-4">
           <img
@@ -49,5 +51,5 @@ export default function PhotoCapture({ onImageSelect }: Props) {
         </div>
       )}
     </div>
-  );
+  )
 }

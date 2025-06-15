@@ -1,20 +1,7 @@
 {
-  "/_not-found/page": "app/_not-found/page.js",
-  "/api/analyze/route": "app/api/analyze/route.js",
-  "/api/diagnose/route": "app/api/diagnose/route.js",
-  "/api/vin/route": "app/api/vin/route.js",
-  "/ai/chat/page": "app/ai/chat/page.js",
-  "/ai/dtc/page": "app/ai/dtc/page.js",
-  "/ai/page": "app/ai/page.js",
-  "/ai/photo/page": "app/ai/photo/page.js",
-  "/booking/confirmation/page": "app/booking/confirmation/page.js",
-  "/booking/page": "app/booking/page.js",
-  "/dashboard/approvals/page": "app/dashboard/approvals/page.js",
-  "/history/page": "app/history/page.js",
-  "/inspections/page": "app/inspections/page.js",
-  "/menu/page": "app/menu/page.js",
   "/page": "app/page.js",
-  "/thank-you/page": "app/thank-you/page.js",
-  "/vin/page": "app/vin/page.js",
-  "/work-orders/page": "app/work-orders/page.js"
+  "/inspections/page": "app/inspections/page.js",
+  "/booking/page": "app/booking/page.js",
+  "/ai/dtc/page": "app/ai/dtc/page.js",
+  "/dashboard/approvals/page": "app/dashboard/approvals/page.js"
 }
