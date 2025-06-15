@@ -1,33 +1,39 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
-import { useUser } from '@/hooks/useUser';
+import { useState, useEffect } from "react";
+import { createBrowserClient } from "@supabase/ssr";
+import { useUser } from "@/hooks/useUser";
 
 export default function MenuItemsPage() {
   const supabase = createBrowserClient();
   const { user } = useUser();
   const [items, setItems] = useState<any[]>([]);
   const [form, setForm] = useState({
-    name: '',
-    labor_time: '',
-    parts_cost: '',
-    total_price: '',
-    category: '',
+    name: "",
+    labor_time: "",
+    parts_cost: "",
+    total_price: "",
+    category: "",
   });
 
   const fetchItems = async () => {
     const { data, error } = await supabase
-      .from('menu_items')
-      .select('*')
-      .eq('user_id', user?.id);
+      .from("menu_items")
+      .select("*")
+      .eq("user_id", user?.id);
     if (!error) setItems(data || []);
   };
 
   const handleCreate = async () => {
-    if (!form.name || !form.total_price) return alert('Fill required fields');
-    await supabase.from('menu_items').insert([{ ...form, user_id: user?.id }]);
-    setForm({ name: '', labor_time: '', parts_cost: '', total_price: '', category: '' });
+    if (!form.name || !form.total_price) return alert("Fill required fields");
+    await supabase.from("menu_items").insert([{ ...form, user_id: user?.id }]);
+    setForm({
+      name: "",
+      labor_time: "",
+      parts_cost: "",
+      total_price: "",
+      category: "",
+    });
     fetchItems();
   };
 
@@ -75,7 +81,10 @@ export default function MenuItemsPage() {
         />
       </div>
 
-      <button onClick={handleCreate} className="bg-blue-600 text-white px-4 py-2 rounded">
+      <button
+        onClick={handleCreate}
+        className="bg-blue-600 text-white px-4 py-2 rounded"
+      >
         Add Menu Item
       </button>
 
@@ -83,9 +92,12 @@ export default function MenuItemsPage() {
       {items.length === 0 && <p>No menu items yet.</p>}
       {items.map((item) => (
         <div key={item.id} className="border p-3 rounded mb-2">
-          <strong>{item.name}</strong> – ${item.total_price} ({item.labor_time} hrs)
+          <strong>{item.name}</strong> – ${item.total_price} ({item.labor_time}{" "}
+          hrs)
           <br />
-          <span className="text-sm text-gray-600">Category: {item.category}</span>
+          <span className="text-sm text-gray-600">
+            Category: {item.category}
+          </span>
         </div>
       ))}
     </div>

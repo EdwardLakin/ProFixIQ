@@ -1,12 +1,12 @@
 // app/ai/photo/page.tsx
 
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { useVehicleInfo } from '@hooks/useVehicleInfo';
-import VehicleSelector from '@components/VehicleSelector';
-import PhotoCapture from '@components/PhotoCapture';
-import { analyzeImage } from '@lib/analyze';
+import { useState } from "react";
+import { useVehicleInfo } from "@hooks/useVehicleInfo";
+import VehicleSelector from "@components/VehicleSelector";
+import PhotoCapture from "@components/PhotoCapture";
+import { analyzeImage } from "@lib/analyze";
 
 export default function VisualDiagnosisPage() {
   const { vehicleInfo } = useVehicleInfo();
@@ -17,7 +17,7 @@ export default function VisualDiagnosisPage() {
 
   const handleAnalyze = async () => {
     if (!vehicleInfo || !imageFile) {
-      setError('Please select a vehicle and upload an image.');
+      setError("Please select a vehicle and upload an image.");
       return;
     }
 
@@ -41,7 +41,7 @@ export default function VisualDiagnosisPage() {
       reader.readAsDataURL(imageFile);
     } catch (err) {
       console.error(err);
-      setError('Image analysis failed.');
+      setError("Image analysis failed.");
     } finally {
       setLoading(false);
     }
@@ -60,7 +60,7 @@ export default function VisualDiagnosisPage() {
         className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
         disabled={loading}
       >
-        {loading ? 'Analyzing…' : 'Analyze'}
+        {loading ? "Analyzing…" : "Analyze"}
       </button>
 
       {error && <p className="text-red-500">{error}</p>}

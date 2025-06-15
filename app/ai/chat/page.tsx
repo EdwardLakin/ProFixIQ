@@ -1,20 +1,20 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { askTechBot } from '@lib/techBot';
-import { useVehicleInfo } from '@hooks/useVehicleInfo';
-import VehicleSelector from '@components/VehicleSelector';
+import { useState } from "react";
+import { askTechBot } from "@lib/techBot";
+import { useVehicleInfo } from "@hooks/useVehicleInfo";
+import VehicleSelector from "@components/VehicleSelector";
 
 export default function TechBotPage() {
   const { vehicleInfo } = useVehicleInfo();
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState("");
   const [response, setResponse] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleAsk = async () => {
     if (!vehicleInfo || !message.trim()) {
-      setError('Please enter a question and select a vehicle.');
+      setError("Please enter a question and select a vehicle.");
       return;
     }
 
@@ -31,7 +31,7 @@ export default function TechBotPage() {
       setResponse(result);
     } catch (err) {
       console.error(err);
-      setError('Failed to get response from TechBot.');
+      setError("Failed to get response from TechBot.");
     } finally {
       setLoading(false);
     }
@@ -55,7 +55,7 @@ export default function TechBotPage() {
         className="px-4 py-2 bg-green-600 text-white rounded disabled:opacity-50"
         disabled={loading}
       >
-        {loading ? 'Thinking…' : 'Ask TechBot'}
+        {loading ? "Thinking…" : "Ask TechBot"}
       </button>
 
       {error && <p className="text-red-500">{error}</p>}

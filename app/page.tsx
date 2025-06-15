@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import React from 'react';
-import ProFixIQLanding from '@components/ProFixIQLanding';
+import React from "react";
+import ProFixIQLanding from "@components/ProFixIQLanding";
 
 export default function Page() {
   return (

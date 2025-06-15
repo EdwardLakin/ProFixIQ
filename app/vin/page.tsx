@@ -1,21 +1,21 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
-import { useUser } from '@/hooks/useUser';
+import { useState } from "react";
+import { createBrowserClient } from "@supabase/ssr";
+import { useUser } from "@/hooks/useUser";
 
 export default function VinDecoderPage() {
   const supabase = createBrowserClient();
   const { user } = useUser();
-  const [vin, setVin] = useState('');
+  const [vin, setVin] = useState("");
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
 
   const decodeVIN = async () => {
-    if (!vin || vin.length < 5) return alert('Enter valid VIN (min 5 chars)');
+    if (!vin || vin.length < 5) return alert("Enter valid VIN (min 5 chars)");
     setLoading(true);
-    const res = await fetch('/api/vin/decode', {
-      method: 'POST',
+    const res = await fetch("/api/vin/decode", {
+      method: "POST",
       body: JSON.stringify({ vin, user_id: user?.id }),
     });
     const data = await res.json();
@@ -32,8 +32,11 @@ export default function VinDecoderPage() {
         placeholder="Enter VIN"
         className="w-full p-2 border rounded mb-4"
       />
-      <button onClick={decodeVIN} className="bg-blue-600 text-white px-4 py-2 rounded">
-        {loading ? 'Decoding...' : 'Decode VIN'}
+      <button
+        onClick={decodeVIN}
+        className="bg-blue-600 text-white px-4 py-2 rounded"
+      >
+        {loading ? "Decoding..." : "Decode VIN"}
       </button>
 
       {result && (

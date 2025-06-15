@@ -1,5 +1,5 @@
 // src/lib/analyzeComponents.ts
-import OpenAI from 'openai';
+import OpenAI from "openai";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -15,18 +15,19 @@ Return a list of findings in plain English. Use bullet points. Keep it concise b
 `;
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4-vision-preview',
+      model: "gpt-4-vision-preview",
       messages: [
         {
-          role: 'system',
-          content: 'You are a professional mechanic assistant helping identify issues from images.',
+          role: "system",
+          content:
+            "You are a professional mechanic assistant helping identify issues from images.",
         },
         {
-          role: 'user',
+          role: "user",
           content: [
-            { type: 'text', text: prompt },
+            { type: "text", text: prompt },
             {
-              type: 'image_url',
+              type: "image_url",
               image_url: {
                 url: imageBase64,
               },
@@ -38,9 +39,9 @@ Return a list of findings in plain English. Use bullet points. Keep it concise b
     });
 
     const result = response.choices[0]?.message?.content;
-    return result || 'No analysis result.';
+    return result || "No analysis result.";
   } catch (err) {
-    console.error('Error analyzing image:', err);
-    return '⚠️ Failed to analyze image.';
+    console.error("Error analyzing image:", err);
+    return "⚠️ Failed to analyze image.";
   }
 }

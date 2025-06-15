@@ -1,17 +1,17 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import { useVehicleInfo } from '@hooks/useVehicleInfo';
+import React, { useState } from "react";
+import { useVehicleInfo } from "@hooks/useVehicleInfo";
 
 export default function DTCCodeLookup() {
-  const [code, setCode] = useState('');
+  const [code, setCode] = useState("");
   const [result, setResult] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const { vehicle } = useVehicleInfo();
 
   const handleSearch = async () => {
     if (!code || !vehicle || !vehicle.make || !vehicle.year || !vehicle.model) {
-      alert('Please enter a DTC code and select a vehicle.');
+      alert("Please enter a DTC code and select a vehicle.");
       return;
     }
 
@@ -19,10 +19,10 @@ export default function DTCCodeLookup() {
     setResult(null);
 
     try {
-      const res = await fetch('/api/diagnose', {
-        method: 'POST',
+      const res = await fetch("/api/diagnose", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           code,
@@ -30,13 +30,13 @@ export default function DTCCodeLookup() {
         }),
       });
 
-      if (!res.ok) throw new Error('DTC lookup failed');
+      if (!res.ok) throw new Error("DTC lookup failed");
 
       const data = await res.json();
-      setResult(data.result || 'No info found for this code.');
+      setResult(data.result || "No info found for this code.");
     } catch (err) {
       console.error(err);
-      setResult('An error occurred while looking up the DTC code.');
+      setResult("An error occurred while looking up the DTC code.");
     } finally {
       setIsLoading(false);
     }
@@ -44,12 +44,14 @@ export default function DTCCodeLookup() {
 
   return (
     <div className="mt-4">
-      <label className="block mb-1 text-sm font-medium">Enter a DTC code (e.g., P0131)</label>
+      <label className="block mb-1 text-sm font-medium">
+        Enter a DTC code (e.g., P0131)
+      </label>
       <div className="flex items-center gap-2">
         <input
           type="text"
           value={code}
-          onChange={e => setCode(e.target.value)}
+          onChange={(e) => setCode(e.target.value)}
           placeholder="P0131"
           className="border rounded p-2 w-48"
         />
@@ -58,7 +60,7 @@ export default function DTCCodeLookup() {
           disabled={!code || isLoading}
           className="bg-accent text-white px-4 py-2 rounded disabled:opacity-50"
         >
-          {isLoading ? 'Searching...' : 'Search'}
+          {isLoading ? "Searching..." : "Search"}
         </button>
       </div>
       {result && (

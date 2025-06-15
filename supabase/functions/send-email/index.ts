@@ -4,12 +4,12 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.42.3";
 
 serve(async (req) => {
-  const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
-  const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  const SENDGRID_API_KEY = Deno.env.get('SENDGRID_API_KEY');
+  const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+  const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const SENDGRID_API_KEY = Deno.env.get("SENDGRID_API_KEY");
 
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !SENDGRID_API_KEY) {
-    return new Response('Missing environment variables', { status: 500 });
+    return new Response("Missing environment variables", { status: 500 });
   }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -17,7 +17,7 @@ serve(async (req) => {
   const { email, subject, html } = await req.json();
 
   if (!email || !subject || !html) {
-    return new Response('Missing required fields', { status: 400 });
+    return new Response("Missing required fields", { status: 400 });
   }
 
   const response = await fetch("https://api.sendgrid.com/v3/mail/send", {
@@ -43,5 +43,5 @@ serve(async (req) => {
     return new Response(`SendGrid Error: ${error}`, { status: 500 });
   }
 
-  return new Response('Email sent successfully', { status: 200 });
+  return new Response("Email sent successfully", { status: 200 });
 });

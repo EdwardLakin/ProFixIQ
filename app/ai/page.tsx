@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import React from 'react';
-import Link from 'next/link';
+import React from "react";
+import Link from "next/link";
 
 export default function AIDashboardPage() {
   return (
@@ -18,7 +18,8 @@ export default function AIDashboardPage() {
         >
           <h2 className="text-lg font-semibold">🔍 DTC Code Lookup</h2>
           <p className="text-sm text-muted-foreground">
-            Enter a diagnostic trouble code (e.g. P0171) and get repair insights.
+            Enter a diagnostic trouble code (e.g. P0171) and get repair
+            insights.
           </p>
         </Link>
 

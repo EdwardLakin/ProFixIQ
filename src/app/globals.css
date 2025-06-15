@@ -7,6 +7,9 @@ body {
   @apply bg-background text-foreground font-sans;
 }
 
-input, textarea, select, button {
+input,
+textarea,
+select,
+button {
   @apply focus:outline-none focus:ring-2 focus:ring-accent;
 }

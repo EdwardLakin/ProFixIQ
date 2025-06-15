@@ -1,25 +1,25 @@
-'use client'
+"use client";
 
-import { PDFDownloadLink } from '@react-pdf/renderer'
-import { WorkOrderInvoicePDF } from '@components/WorkOrderInvoicePDF'
-import { RepairLine } from '@lib/parseRepairOutput'
+import { PDFDownloadLink } from "@react-pdf/renderer";
+import { WorkOrderInvoicePDF } from "@components/WorkOrderInvoicePDF";
+import { RepairLine } from "@lib/parseRepairOutput";
 
 type Props = {
-  workOrderId: string
-  lines: RepairLine[]
-  summary?: string
+  workOrderId: string;
+  lines: RepairLine[];
+  summary?: string;
   vehicleInfo?: {
-    year?: string
-    make?: string
-    model?: string
-    vin?: string
-  }
+    year?: string;
+    make?: string;
+    model?: string;
+    vin?: string;
+  };
   customerInfo?: {
-    name?: string
-    phone?: string
-    email?: string
-  }
-}
+    name?: string;
+    phone?: string;
+    email?: string;
+  };
+};
 
 export function WorkOrderInvoiceDownloadButton({
   workOrderId,
@@ -43,7 +43,9 @@ export function WorkOrderInvoiceDownloadButton({
     >
       {({ loading }) =>
         loading ? (
-          <button className="px-4 py-2 bg-gray-400 text-white rounded">Generating...</button>
+          <button className="px-4 py-2 bg-gray-400 text-white rounded">
+            Generating...
+          </button>
         ) : (
           <button className="px-4 py-2 bg-blue-700 text-white rounded hover:bg-blue-800">
             Download Invoice PDF
@@ -51,5 +53,5 @@ export function WorkOrderInvoiceDownloadButton({
         )
       }
     </PDFDownloadLink>
-  )
+  );
 }

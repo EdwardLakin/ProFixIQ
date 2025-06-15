@@ -1,29 +1,29 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { analyzeImage } from '@lib/ai'
-import LoadingOverlay from '@components/LoadingOverlay'
+import { useState } from "react";
+import { analyzeImage } from "@lib/ai";
+import LoadingOverlay from "@components/LoadingOverlay";
 
 export default function PhotoCaptureView() {
-  const [result, setResult] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
+  const [result, setResult] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    setIsLoading(true)
+    setIsLoading(true);
     try {
-      const response = await analyzeImage(file)
-      const parsed = response.result || 'No result returned'
-      setResult(parsed)
+      const response = await analyzeImage(file);
+      const parsed = response.result || "No result returned";
+      setResult(parsed);
     } catch (error) {
-      console.error(error)
-      setResult('Error analyzing image.')
+      console.error(error);
+      setResult("Error analyzing image.");
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   return (
     <div className="max-w-2xl mx-auto p-6 bg-surface text-accent shadow-card rounded-md space-y-4">
@@ -46,5 +46,5 @@ export default function PhotoCaptureView() {
         </div>
       )}
     </div>
-  )
+  );
 }

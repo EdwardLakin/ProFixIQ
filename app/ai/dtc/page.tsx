@@ -1,20 +1,20 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { useVehicleInfo } from '@hooks/useVehicleInfo';
-import VehicleSelector from '@components/VehicleSelector';
-import { diagnoseDTC } from '@lib/techBot';
+import { useState } from "react";
+import { useVehicleInfo } from "@hooks/useVehicleInfo";
+import VehicleSelector from "@components/VehicleSelector";
+import { diagnoseDTC } from "@lib/techBot";
 
 export default function DTCCodeLookupPage() {
   const { vehicleInfo } = useVehicleInfo();
-  const [dtcCode, setDtcCode] = useState('');
+  const [dtcCode, setDtcCode] = useState("");
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
     if (!vehicleInfo || !dtcCode.trim()) {
-      setError('Please enter a DTC code and select a vehicle.');
+      setError("Please enter a DTC code and select a vehicle.");
       return;
     }
 
@@ -31,7 +31,7 @@ export default function DTCCodeLookupPage() {
       setResult(response);
     } catch (err) {
       console.error(err);
-      setError('Failed to retrieve diagnosis.');
+      setError("Failed to retrieve diagnosis.");
     } finally {
       setLoading(false);
     }
@@ -56,7 +56,7 @@ export default function DTCCodeLookupPage() {
         className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
         disabled={loading}
       >
-        {loading ? 'Looking up...' : 'Lookup DTC'}
+        {loading ? "Looking up..." : "Lookup DTC"}
       </button>
 
       {error && <p className="text-red-500">{error}</p>}

@@ -1,15 +1,15 @@
-import React from 'react';
-import { useRouter } from 'next/router';
+import React from "react";
+import { useRouter } from "next/router";
 
 export default function QuickActions() {
   const router = useRouter();
 
   const actions = [
-    { label: '📸 Diagnose from Photo', path: '/diagnose' },
-    { label: '🔍 Run DTC Diagnosis', path: '/dtc-lookup' },
-    { label: '🧾 View Work Orders', path: '/work-orders' },
-    { label: '📋 Start Inspection', path: '/inspections' },
-    { label: '🚘 Add Vehicle', path: '/vehicles' },
+    { label: "📸 Diagnose from Photo", path: "/diagnose" },
+    { label: "🔍 Run DTC Diagnosis", path: "/dtc-lookup" },
+    { label: "🧾 View Work Orders", path: "/work-orders" },
+    { label: "📋 Start Inspection", path: "/inspections" },
+    { label: "🚘 Add Vehicle", path: "/vehicles" },
   ];
 
   return (

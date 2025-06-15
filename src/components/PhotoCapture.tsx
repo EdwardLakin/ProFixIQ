@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState } from "react";
 
 type Props = {
   onImageSelect: (file: File) => void;
@@ -41,7 +41,11 @@ export default function PhotoCapture({ onImageSelect }: Props) {
       />
       {previewUrl && (
         <div className="mt-4">
-          <img src={previewUrl} alt="Preview" className="max-w-full h-auto rounded border" />
+          <img
+            src={previewUrl}
+            alt="Preview"
+            className="max-w-full h-auto rounded border"
+          />
         </div>
       )}
     </div>

@@ -1,30 +1,30 @@
-'use client'
+"use client";
 
-import { useRef } from 'react'
-import SignatureCanvas from 'react-signature-canvas'
+import { useRef } from "react";
+import SignatureCanvas from "react-signature-canvas";
 
 type Props = {
-  onSave: (base64: string) => void
-  onCancel: () => void
-}
+  onSave: (base64: string) => void;
+  onCancel: () => void;
+};
 
 export default function SignaturePad({ onSave, onCancel }: Props) {
-  const sigRef = useRef<SignatureCanvas | null>(null)
+  const sigRef = useRef<SignatureCanvas | null>(null);
 
   const handleClear = () => {
-    sigRef.current?.clear()
-  }
+    sigRef.current?.clear();
+  };
 
   const handleSave = () => {
-    const canvas = sigRef.current
+    const canvas = sigRef.current;
     if (!canvas || canvas.isEmpty()) {
-      alert('Please draw a signature before saving.')
-      return
+      alert("Please draw a signature before saving.");
+      return;
     }
 
-    const base64 = canvas.getTrimmedCanvas().toDataURL('image/png')
-    onSave(base64)
-  }
+    const base64 = canvas.getTrimmedCanvas().toDataURL("image/png");
+    onSave(base64);
+  };
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
@@ -40,7 +40,7 @@ export default function SignaturePad({ onSave, onCancel }: Props) {
           canvasProps={{
             width: 400,
             height: 200,
-            className: 'border border-gray-300 rounded-md',
+            className: "border border-gray-300 rounded-md",
           }}
         />
 
@@ -66,5 +66,5 @@ export default function SignaturePad({ onSave, onCancel }: Props) {
         </div>
       </div>
     </div>
-  )
+  );
 }

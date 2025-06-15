@@ -1,4 +1,4 @@
-import OpenAI from 'openai';
+import OpenAI from "openai";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -14,25 +14,28 @@ function convertToBase64(file: File): Promise<string> {
   });
 }
 
-export async function analyzeImageWithAI(imageFile: File, vehicle: { year: string; make: string; model: string }) {
+export async function analyzeImageWithAI(
+  imageFile: File,
+  vehicle: { year: string; make: string; model: string },
+) {
   const base64Image = await convertToBase64(imageFile);
 
   const response = await openai.chat.completions.create({
-    model: 'gpt-4o',
+    model: "gpt-4o",
     messages: [
       {
-        role: 'system',
+        role: "system",
         content: `You are an expert automotive technician. The user will upload a photo and tell you the vehicle details. Identify potential problems in the image, and recommend a likely cause and fix.`,
       },
       {
-        role: 'user',
+        role: "user",
         content: [
           {
-            type: 'text',
+            type: "text",
             text: `This is a ${vehicle.year} ${vehicle.make} ${vehicle.model}. What do you see in this photo?`,
           },
           {
-            type: 'image_url',
+            type: "image_url",
             image_url: {
               url: base64Image,
             },

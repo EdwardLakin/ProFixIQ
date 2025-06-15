@@ -1,28 +1,28 @@
-'use client'
+"use client";
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect } from "react";
 
 type WorkOrderLine = {
-  id: string
-  complaint: string
-  cause?: string
-  correction?: string
-  labor_time?: number
-  status?: 'unassigned' | 'assigned' | 'in_progress' | 'on_hold' | 'completed'
-  hold_reason?: 'parts' | 'authorization' | 'diagnosis_pending' | 'other' | ''
-}
+  id: string;
+  complaint: string;
+  cause?: string;
+  correction?: string;
+  labor_time?: number;
+  status?: "unassigned" | "assigned" | "in_progress" | "on_hold" | "completed";
+  hold_reason?: "parts" | "authorization" | "diagnosis_pending" | "other" | "";
+};
 
 type Props = {
-  line: WorkOrderLine
-  onUpdate: (line: WorkOrderLine) => void
-}
+  line: WorkOrderLine;
+  onUpdate: (line: WorkOrderLine) => void;
+};
 
 export default function WorkOrderLineEditor({ line, onUpdate }: Props) {
-  const [localLine, setLocalLine] = useState<WorkOrderLine>(line)
+  const [localLine, setLocalLine] = useState<WorkOrderLine>(line);
 
   useEffect(() => {
-    onUpdate(localLine)
-  }, [localLine])
+    onUpdate(localLine);
+  }, [localLine]);
 
   return (
     <div className="bg-white dark:bg-surface border rounded-lg p-4 mb-4 shadow-card">
@@ -41,10 +41,8 @@ export default function WorkOrderLineEditor({ line, onUpdate }: Props) {
         Cause
       </label>
       <input
-        value={localLine.cause || ''}
-        onChange={(e) =>
-          setLocalLine({ ...localLine, cause: e.target.value })
-        }
+        value={localLine.cause || ""}
+        onChange={(e) => setLocalLine({ ...localLine, cause: e.target.value })}
         className="w-full border rounded px-2 py-1 mb-3 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
       />
 
@@ -52,7 +50,7 @@ export default function WorkOrderLineEditor({ line, onUpdate }: Props) {
         Correction
       </label>
       <input
-        value={localLine.correction || ''}
+        value={localLine.correction || ""}
         onChange={(e) =>
           setLocalLine({ ...localLine, correction: e.target.value })
         }
@@ -64,7 +62,7 @@ export default function WorkOrderLineEditor({ line, onUpdate }: Props) {
       </label>
       <input
         type="number"
-        value={localLine.labor_time ?? ''}
+        value={localLine.labor_time ?? ""}
         onChange={(e) =>
           setLocalLine({
             ...localLine,
@@ -78,11 +76,11 @@ export default function WorkOrderLineEditor({ line, onUpdate }: Props) {
         Status
       </label>
       <select
-        value={localLine.status || 'unassigned'}
+        value={localLine.status || "unassigned"}
         onChange={(e) =>
           setLocalLine({
             ...localLine,
-            status: e.target.value as WorkOrderLine['status'],
+            status: e.target.value as WorkOrderLine["status"],
           })
         }
         className="w-full border rounded px-2 py-1 mb-3 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
@@ -94,17 +92,17 @@ export default function WorkOrderLineEditor({ line, onUpdate }: Props) {
         <option value="completed">Completed</option>
       </select>
 
-      {localLine.status === 'on_hold' && (
+      {localLine.status === "on_hold" && (
         <>
           <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-100">
             Hold Reason
           </label>
           <select
-            value={localLine.hold_reason || ''}
+            value={localLine.hold_reason || ""}
             onChange={(e) =>
               setLocalLine({
                 ...localLine,
-                hold_reason: e.target.value as WorkOrderLine['hold_reason'],
+                hold_reason: e.target.value as WorkOrderLine["hold_reason"],
               })
             }
             className="w-full border rounded px-2 py-1 mb-3 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
@@ -118,5 +116,5 @@ export default function WorkOrderLineEditor({ line, onUpdate }: Props) {
         </>
       )}
     </div>
-  )
+  );
 }

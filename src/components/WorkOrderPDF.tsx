@@ -1,14 +1,14 @@
-import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer'
-import { RepairLine } from '@lib/parseRepairOutput'
+import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
+import { RepairLine } from "@lib/parseRepairOutput";
 
 type Props = {
-  vehicleId: string
-  workOrderId: string
-  vehicleInfo?: { year?: string; make?: string; model?: string; vin?: string }
-  customerInfo?: { name?: string; phone?: string; email?: string }
-  lines: RepairLine[]
-  summary?: string
-}
+  vehicleId: string;
+  workOrderId: string;
+  vehicleInfo?: { year?: string; make?: string; model?: string; vin?: string };
+  customerInfo?: { name?: string; phone?: string; email?: string };
+  lines: RepairLine[];
+  summary?: string;
+};
 
 export function WorkOrderPDF({
   vehicleId,
@@ -68,19 +68,19 @@ export function WorkOrderPDF({
         )}
       </Page>
     </Document>
-  )
+  );
 }
 
 const styles = StyleSheet.create({
   page: { padding: 30, fontSize: 12 },
   header: {
-    textAlign: 'center',
+    textAlign: "center",
     marginBottom: 20,
   },
   logo: {
     fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1E40AF',
+    fontWeight: "bold",
+    color: "#1E40AF",
   },
   subtitle: {
     fontSize: 12,
@@ -89,17 +89,17 @@ const styles = StyleSheet.create({
   invoiceTitle: {
     fontSize: 14,
     marginTop: 10,
-    fontWeight: 'bold',
-    textDecoration: 'underline',
+    fontWeight: "bold",
+    textDecoration: "underline",
   },
   infoSection: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginBottom: 20,
   },
-  label: { fontWeight: 'bold', marginTop: 4 },
+  label: { fontWeight: "bold", marginTop: 4 },
   section: { marginVertical: 10 },
   lineTable: { marginTop: 10 },
   lineRow: { marginBottom: 8 },
-  lineLabel: { fontWeight: 'bold' },
-})
+  lineLabel: { fontWeight: "bold" },
+});

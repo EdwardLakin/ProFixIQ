@@ -6,28 +6,28 @@ export async function sendInvoiceEmail({
   vehicleInfo,
   customerInfo,
 }: {
-  vehicleId: string
-  workOrderId: string
-  lines: any[]
-  summary?: string
+  vehicleId: string;
+  workOrderId: string;
+  lines: any[];
+  summary?: string;
   vehicleInfo?: {
-    year?: string
-    make?: string
-    model?: string
-    vin?: string
-  }
+    year?: string;
+    make?: string;
+    model?: string;
+    vin?: string;
+  };
   customerInfo?: {
-    name?: string
-    phone?: string
-    email?: string
-  }
+    name?: string;
+    phone?: string;
+    email?: string;
+  };
 }) {
   const res = await fetch(
-    'https://jaqjlyhvyofjvtwaeurr.supabase.co/functions/v1/send-invoice-email',
+    "https://jaqjlyhvyofjvtwaeurr.supabase.co/functions/v1/send-invoice-email",
     {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         vehicleId,
@@ -37,10 +37,10 @@ export async function sendInvoiceEmail({
         vehicleInfo,
         customerInfo,
       }),
-    }
-  )
+    },
+  );
 
-  if (!res.ok) throw new Error('Failed to send invoice email')
+  if (!res.ok) throw new Error("Failed to send invoice email");
 
-  return await res.json()
+  return await res.json();
 }

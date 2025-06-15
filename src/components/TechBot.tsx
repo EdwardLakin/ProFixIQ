@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import { askTechBot } from '@lib/techBot';
-import { useVehicleInfo } from '@hooks/useVehicleInfo';
+import React, { useState } from "react";
+import { askTechBot } from "@lib/techBot";
+import { useVehicleInfo } from "@hooks/useVehicleInfo";
 
 export default function TechBot() {
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState("");
   const [chat, setChat] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const { vehicle } = useVehicleInfo();
@@ -16,10 +16,10 @@ export default function TechBot() {
 
     try {
       const reply = await askTechBot({ message: input, vehicle });
-      setChat(prev => [...prev, `🧠 You: ${input}`, `🤖 TechBot: ${reply}`]);
-      setInput('');
+      setChat((prev) => [...prev, `🧠 You: ${input}`, `🤖 TechBot: ${reply}`]);
+      setInput("");
     } catch (err) {
-      setChat(prev => [...prev, '❌ Error talking to TechBot.']);
+      setChat((prev) => [...prev, "❌ Error talking to TechBot."]);
     }
 
     setLoading(false);
@@ -43,7 +43,7 @@ export default function TechBot() {
           placeholder="Ask a question about a repair..."
           rows={3}
           value={input}
-          onChange={e => setInput(e.target.value)}
+          onChange={(e) => setInput(e.target.value)}
         />
 
         <button
@@ -51,7 +51,7 @@ export default function TechBot() {
           disabled={loading || !input}
           className="bg-accent text-white px-4 py-2 rounded disabled:opacity-50"
         >
-          {loading ? '⏳ Thinking...' : '📤 Send to TechBot'}
+          {loading ? "⏳ Thinking..." : "📤 Send to TechBot"}
         </button>
 
         <div className="mt-6 space-y-2">

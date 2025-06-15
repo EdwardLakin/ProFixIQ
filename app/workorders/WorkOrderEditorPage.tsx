@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import React, { useEffect, useState } from 'react';
-import { createClient } from '@supabase/ssr';
-import { useUser } from '@/hooks/useUser';
-import { useVehicleInfo } from '@/hooks/useVehicleInfo';
-import { Database } from '@/types/supabase';
+import React, { useEffect, useState } from "react";
+import { createClient } from "@supabase/ssr";
+import { useUser } from "@/hooks/useUser";
+import { useVehicleInfo } from "@/hooks/useVehicleInfo";
+import { Database } from "@/types/supabase";
 
 const supabase = createClient<Database>();
 
@@ -14,22 +14,22 @@ export default function WorkOrderEditorPage() {
 
   const [laborTime, setLaborTime] = useState<number>(1); // in hours
   const [slots, setSlots] = useState<any[]>([]);
-  const [selectedSlot, setSelectedSlot] = useState<string>('');
+  const [selectedSlot, setSelectedSlot] = useState<string>("");
 
   useEffect(() => {
     if (!user?.id) return;
 
     const fetchSlots = async () => {
       const { data, error } = await supabase
-        .from('shop_time_slots')
-        .select('*')
-        .eq('shop_id', user.id) // adjust this as needed
-        .eq('is_booked', false)
-        .gte('start_time', new Date().toISOString())
-        .order('start_time', { ascending: true });
+        .from("shop_time_slots")
+        .select("*")
+        .eq("shop_id", user.id) // adjust this as needed
+        .eq("is_booked", false)
+        .gte("start_time", new Date().toISOString())
+        .order("start_time", { ascending: true });
 
       if (error) {
-        console.error('Error loading slots:', error);
+        console.error("Error loading slots:", error);
       } else {
         setSlots(data);
       }
@@ -39,9 +39,9 @@ export default function WorkOrderEditorPage() {
   }, [user]);
 
   const handleSlotSelect = async () => {
-    if (!selectedSlot) return alert('Please select a time slot');
+    if (!selectedSlot) return alert("Please select a time slot");
     // proceed with saving to work order
-    console.log('Selected slot:', selectedSlot);
+    console.log("Selected slot:", selectedSlot);
   };
 
   return (
@@ -70,7 +70,7 @@ export default function WorkOrderEditorPage() {
           <option value="">-- Select --</option>
           {slots.map((slot) => (
             <option key={slot.id} value={slot.id}>
-              {new Date(slot.start_time).toLocaleString()} -{' '}
+              {new Date(slot.start_time).toLocaleString()} -{" "}
               {new Date(slot.end_time).toLocaleTimeString()}
             </option>
           ))}

@@ -1,6 +1,6 @@
 // src/components/LoadingOverlay.tsx
 
-'use client'
+"use client";
 
 export default function LoadingOverlay() {
   return (
@@ -10,5 +10,5 @@ export default function LoadingOverlay() {
         <p className="text-white text-lg font-semibold">Analyzing with AI...</p>
       </div>
     </div>
-  )
+  );
 }

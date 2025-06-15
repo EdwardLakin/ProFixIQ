@@ -1,30 +1,32 @@
-'use client';
+"use client";
 
-import React, { useEffect, useState } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
-import { Database } from '@types/supabase';
-import { useRouter } from 'next/navigation';
+import React, { useEffect, useState } from "react";
+import { createBrowserClient } from "@supabase/ssr";
+import { Database } from "@types/supabase";
+import { useRouter } from "next/navigation";
 
 const supabase = createBrowserClient<Database>();
 
 export default function BookingPage() {
   const router = useRouter();
   const [menuItems, setMenuItems] = useState<string[]>([]);
-  const [selectedComplaint, setSelectedComplaint] = useState('');
+  const [selectedComplaint, setSelectedComplaint] = useState("");
   const [timeSlots, setTimeSlots] = useState<any[]>([]);
-  const [selectedSlot, setSelectedSlot] = useState<string>('');
-  const [customerName, setCustomerName] = useState('');
-  const [phone, setPhone] = useState('');
+  const [selectedSlot, setSelectedSlot] = useState<string>("");
+  const [customerName, setCustomerName] = useState("");
+  const [phone, setPhone] = useState("");
 
   useEffect(() => {
     const fetchData = async () => {
-      const { data: items } = await supabase.from('menu_items').select('complaint');
-      setMenuItems(items?.map(i => i.complaint) || []);
+      const { data: items } = await supabase
+        .from("menu_items")
+        .select("complaint");
+      setMenuItems(items?.map((i) => i.complaint) || []);
 
       const { data: slots } = await supabase
-        .from('shop_time_slots')
-        .select('*')
-        .eq('is_booked', false);
+        .from("shop_time_slots")
+        .select("*")
+        .eq("is_booked", false);
       setTimeSlots(slots || []);
     };
 
@@ -33,22 +35,22 @@ export default function BookingPage() {
 
   const handleSubmit = async () => {
     if (!customerName || !selectedComplaint || !selectedSlot) {
-      alert('Please fill all fields');
+      alert("Please fill all fields");
       return;
     }
 
-    const { error } = await supabase.from('work_orders').insert({
+    const { error } = await supabase.from("work_orders").insert({
       customer_name: customerName,
       customer_phone: phone,
-      status: 'requested',
+      status: "requested",
       scheduled_time: selectedSlot,
       complaints: [selectedComplaint],
     });
 
     if (error) {
-      alert('Failed to submit booking');
+      alert("Failed to submit booking");
     } else {
-      router.push('/thank-you');
+      router.push("/thank-you");
     }
   };
 
@@ -60,21 +62,21 @@ export default function BookingPage() {
       <input
         className="w-full border p-2 mb-4"
         value={customerName}
-        onChange={e => setCustomerName(e.target.value)}
+        onChange={(e) => setCustomerName(e.target.value)}
       />
 
       <label className="block mb-1">Phone</label>
       <input
         className="w-full border p-2 mb-4"
         value={phone}
-        onChange={e => setPhone(e.target.value)}
+        onChange={(e) => setPhone(e.target.value)}
       />
 
       <label className="block mb-1">Complaint</label>
       <select
         className="w-full border p-2 mb-4"
         value={selectedComplaint}
-        onChange={e => setSelectedComplaint(e.target.value)}
+        onChange={(e) => setSelectedComplaint(e.target.value)}
       >
         <option value="">Select</option>
         {menuItems.map((item, i) => (
@@ -88,10 +90,10 @@ export default function BookingPage() {
       <select
         className="w-full border p-2 mb-4"
         value={selectedSlot}
-        onChange={e => setSelectedSlot(e.target.value)}
+        onChange={(e) => setSelectedSlot(e.target.value)}
       >
         <option value="">Select</option>
-        {timeSlots.map(slot => (
+        {timeSlots.map((slot) => (
           <option key={slot.id} value={slot.start_time}>
             {new Date(slot.start_time).toLocaleString()}
           </option>

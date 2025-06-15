@@ -1,64 +1,64 @@
-'use client'
+"use client";
 
-import { useEffect, useState } from 'react'
-import { useVehicleInfo } from '@/hooks/useVehicleInfo'
-import { useUser } from '@/hooks/useUser'
-import { createBrowserClient } from '@supabase/ssr'
-import { MenuItem, WorkOrderLine } from '@/types'
-import WorkOrderLineForm from '@/components/WorkOrderLineEditor'
+import { useEffect, useState } from "react";
+import { useVehicleInfo } from "@/hooks/useVehicleInfo";
+import { useUser } from "@/hooks/useUser";
+import { createBrowserClient } from "@supabase/ssr";
+import { MenuItem, WorkOrderLine } from "@/types";
+import WorkOrderLineForm from "@/components/WorkOrderLineEditor";
 
 export default function WorkOrderEditorPage() {
-  const supabase = createBrowserClient()
-  const { vehicle } = useVehicleInfo()
-  const { user } = useUser()
-  const [menuItems, setMenuItems] = useState<MenuItem[]>([])
-  const [lines, setLines] = useState<WorkOrderLine[]>([])
-  const [query, setQuery] = useState('')
-  const [filtered, setFiltered] = useState<MenuItem[]>([])
+  const supabase = createBrowserClient();
+  const { vehicle } = useVehicleInfo();
+  const { user } = useUser();
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [lines, setLines] = useState<WorkOrderLine[]>([]);
+  const [query, setQuery] = useState("");
+  const [filtered, setFiltered] = useState<MenuItem[]>([]);
 
   useEffect(() => {
     const fetchMenuItems = async () => {
       if (user && vehicle?.id) {
         const { data, error } = await supabase
-          .from('menu_items')
-          .select('*')
-          .eq('vehicle_id', vehicle.id)
+          .from("menu_items")
+          .select("*")
+          .eq("vehicle_id", vehicle.id);
 
         if (!error && data) {
-          setMenuItems(data)
+          setMenuItems(data);
         }
       }
-    }
-    fetchMenuItems()
-  }, [user, vehicle?.id])
+    };
+    fetchMenuItems();
+  }, [user, vehicle?.id]);
 
   useEffect(() => {
     if (query.length > 1) {
-      const lowerQuery = query.toLowerCase()
+      const lowerQuery = query.toLowerCase();
       setFiltered(
-        menuItems.filter(item =>
-          item.complaint.toLowerCase().includes(lowerQuery)
-        )
-      )
+        menuItems.filter((item) =>
+          item.complaint.toLowerCase().includes(lowerQuery),
+        ),
+      );
     } else {
-      setFiltered([])
+      setFiltered([]);
     }
-  }, [query, menuItems])
+  }, [query, menuItems]);
 
   const handleSuggestionClick = (item: MenuItem) => {
     setLines([
       ...lines,
       {
         complaint: item.complaint,
-        cause: item.cause || '',
-        correction: item.correction || '',
-        labor_time: item.labor_time || '',
-        tools: item.tools || ''
-      }
-    ])
-    setQuery('')
-    setFiltered([])
-  }
+        cause: item.cause || "",
+        correction: item.correction || "",
+        labor_time: item.labor_time || "",
+        tools: item.tools || "",
+      },
+    ]);
+    setQuery("");
+    setFiltered([]);
+  };
 
   return (
     <div className="p-4">
@@ -91,17 +91,17 @@ export default function WorkOrderEditorPage() {
           key={index}
           line={line}
           onUpdate={(updatedLine) => {
-            const updated = [...lines]
-            updated[index] = updatedLine
-            setLines(updated)
+            const updated = [...lines];
+            updated[index] = updatedLine;
+            setLines(updated);
           }}
           onDelete={() => {
-            const updated = [...lines]
-            updated.splice(index, 1)
-            setLines(updated)
+            const updated = [...lines];
+            updated.splice(index, 1);
+            setLines(updated);
           }}
         />
       ))}
     </div>
-  )
+  );
 }

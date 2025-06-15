@@ -1,18 +1,18 @@
 // src/lib/saveWorkOrderLines.ts
 
-import { createClient } from '@supabase/supabase-js'
-import { RepairLine } from './parseRepairOutput'
+import { createClient } from "@supabase/supabase-js";
+import { RepairLine } from "./parseRepairOutput";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+);
 
 export async function saveWorkOrderLines(
   lines: RepairLine[],
   userId: string,
   vehicleId: string,
-  workOrderId: string
+  workOrderId: string,
 ) {
   const formatted = lines.map((line) => ({
     user_id: userId,
@@ -23,12 +23,12 @@ export async function saveWorkOrderLines(
     correction: line.correction,
     tools: line.tools,
     labor_time: line.labor_time,
-  }))
+  }));
 
   const { data, error } = await supabase
-    .from('work_order_lines')
-    .insert(formatted)
+    .from("work_order_lines")
+    .insert(formatted);
 
-  if (error) throw new Error(error.message)
-  return data
+  if (error) throw new Error(error.message);
+  return data;
 }

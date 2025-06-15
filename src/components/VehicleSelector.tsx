@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import React from 'react';
-import { useVehicleInfo } from '@hooks/useVehicleInfo';
+import React from "react";
+import { useVehicleInfo } from "@hooks/useVehicleInfo";
 
 export default function VehicleSelector() {
   const { vehicle, setVehicle } = useVehicleInfo();
@@ -22,7 +22,7 @@ export default function VehicleSelector() {
         type="text"
         name="year"
         placeholder="Year"
-        value={vehicle?.year || ''}
+        value={vehicle?.year || ""}
         onChange={handleChange}
         className="w-full p-2 border rounded"
       />
@@ -31,7 +31,7 @@ export default function VehicleSelector() {
         type="text"
         name="make"
         placeholder="Make"
-        value={vehicle?.make || ''}
+        value={vehicle?.make || ""}
         onChange={handleChange}
         className="w-full p-2 border rounded"
       />
@@ -40,7 +40,7 @@ export default function VehicleSelector() {
         type="text"
         name="model"
         placeholder="Model"
-        value={vehicle?.model || ''}
+        value={vehicle?.model || ""}
         onChange={handleChange}
         className="w-full p-2 border rounded"
       />

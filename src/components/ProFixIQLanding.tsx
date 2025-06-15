@@ -1,14 +1,15 @@
 // app/page.tsx
-'use client';
+"use client";
 
-import Link from 'next/link';
+import Link from "next/link";
 
 export default function Home() {
   return (
     <main className="max-w-3xl mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-2">ProFixIQ</h1>
       <p className="text-muted mb-6">
-        AI-powered repair assistant for diagnostics, inspections, and workflow management.
+        AI-powered repair assistant for diagnostics, inspections, and workflow
+        management.
       </p>
 
       <h2 className="text-xl font-bold text-accent mb-2">🤖 AI Diagnostics</h2>
@@ -47,7 +48,8 @@ export default function Home() {
       </p>
 
       <p className="text-sm text-yellow-600 mt-6">
-        💡 Tip: Upgrade to Pro+ for voice-guided inspections and unlimited work orders.
+        💡 Tip: Upgrade to Pro+ for voice-guided inspections and unlimited work
+        orders.
       </p>
     </main>
   );

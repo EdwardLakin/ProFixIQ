@@ -1,46 +1,46 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { useState } from "react";
+import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+);
 
 type Props = {
-  userId: string
-  onCreated: (workOrderId: string) => void
-}
+  userId: string;
+  onCreated: (workOrderId: string) => void;
+};
 
 export default function CreateWorkOrderForm({ userId, onCreated }: Props) {
-  const [vehicleId, setVehicleId] = useState('')
-  const [notes, setNotes] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [vehicleId, setVehicleId] = useState("");
+  const [notes, setNotes] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   const handleCreate = async () => {
-    if (!vehicleId) return setError('Vehicle ID is required.')
+    if (!vehicleId) return setError("Vehicle ID is required.");
 
     const { data, error } = await supabase
-      .from('work_orders')
+      .from("work_orders")
       .insert([
         {
           user_id: userId,
           vehicle_id: vehicleId,
           notes,
-          status: 'new',
+          status: "new",
         },
       ])
       .select()
-      .single()
+      .single();
 
     if (error) {
-      console.error(error)
-      setError(error.message)
+      console.error(error);
+      setError(error.message);
     } else {
-      onCreated(data.id)
+      onCreated(data.id);
     }
-  }
+  };
 
   return (
     <div className="max-w-xl mx-auto p-4 bg-surface border border-muted rounded space-y-4">
@@ -71,5 +71,5 @@ export default function CreateWorkOrderForm({ userId, onCreated }: Props) {
 
       {error && <p className="text-red-500">{error}</p>}
     </div>
-  )
+  );
 }

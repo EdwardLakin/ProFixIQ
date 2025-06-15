@@ -1,63 +1,64 @@
-'use client'
+"use client";
 
-import { useEffect, useState } from 'react'
-import { createClient } from '@supabase/supabase-js'
-import { RepairLine } from '@lib/parseRepairOutput'
-import WorkOrderLineEditor from '@WorkOrderLineEditor'
-import { saveWorkOrderLines } from '@lib/saveWorkOrderLines'
+import { useEffect, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
+import { RepairLine } from "@lib/parseRepairOutput";
+import WorkOrderLineEditor from "@WorkOrderLineEditor";
+import { saveWorkOrderLines } from "@lib/saveWorkOrderLines";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+);
 
 export default function LoadWorkOrderById({
   userId,
   vehicleId,
   workOrderId,
 }: {
-  userId: string
-  vehicleId: string
-  workOrderId: string
+  userId: string;
+  vehicleId: string;
+  workOrderId: string;
 }) {
-  const [lines, setLines] = useState<RepairLine[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [saved, setSaved] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [lines, setLines] = useState<RepairLine[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadLines = async () => {
       const { data, error } = await supabase
-        .from('work_order_lines')
-        .select('*')
-        .eq('work_order_id', workOrderId)
+        .from("work_order_lines")
+        .select("*")
+        .eq("work_order_id", workOrderId);
 
       if (error) {
-        console.error(error)
-        setError(error.message)
+        console.error(error);
+        setError(error.message);
       } else {
-        setLines(data)
+        setLines(data);
       }
 
-      setIsLoading(false)
-    }
+      setIsLoading(false);
+    };
 
-    loadLines()
-  }, [workOrderId])
+    loadLines();
+  }, [workOrderId]);
 
   const handleSave = async () => {
     try {
-      await saveWorkOrderLines(lines, userId, vehicleId, workOrderId)
-      setSaved(true)
-      setError(null)
+      await saveWorkOrderLines(lines, userId, vehicleId, workOrderId);
+      setSaved(true);
+      setError(null);
     } catch (err: any) {
-      console.error(err)
-      setError(err.message)
-      setSaved(false)
+      console.error(err);
+      setError(err.message);
+      setSaved(false);
     }
-  }
+  };
 
-  if (isLoading) return <p className="p-6 text-accent">Loading work order...</p>
+  if (isLoading)
+    return <p className="p-6 text-accent">Loading work order...</p>;
 
   return (
     <div className="max-w-3xl mx-auto p-6 bg-surface text-accent shadow-card rounded space-y-6">
@@ -75,5 +76,5 @@ export default function LoadWorkOrderById({
       {saved && <p className="text-green-500">✅ Changes saved!</p>}
       {error && <p className="text-red-500">⚠️ {error}</p>}
     </div>
-  )
+  );
 }

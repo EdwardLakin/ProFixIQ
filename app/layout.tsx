@@ -1,16 +1,18 @@
 // app/layout.tsx (or _app.tsx)
-'use client';
+"use client";
 
-import React from 'react';
-import { VehicleProvider } from '@/hooks/useVehicleInfo';
+import React from "react";
+import { VehicleProvider } from "@/hooks/useVehicleInfo";
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en">
       <body>
-        <VehicleProvider>
-          {children}
-        </VehicleProvider>
+        <VehicleProvider>{children}</VehicleProvider>
       </body>
     </html>
   );
