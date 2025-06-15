@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { analyzeImage } from '../lib/ai'
-import LoadingOverlay from './LoadingOverlay'
+import { analyzeImage } from '@lib/ai'
+import LoadingOverlay from '@components/LoadingOverlay'
 
 export default function PhotoCaptureView() {
   const [result, setResult] = useState<string | null>(null)

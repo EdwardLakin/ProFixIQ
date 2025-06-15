@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@supabase/supabase-js'
-import { RepairLine } from '../lib/parseRepairOutput'
-import WorkOrderLineEditor from './WorkOrderLineEditor'
-import { saveWorkOrderLines } from '../lib/saveWorkOrderLines'
+import { RepairLine } from '@lib/parseRepairOutput'
+import WorkOrderLineEditor from '@WorkOrderLineEditor'
+import { saveWorkOrderLines } from '@lib/saveWorkOrderLines'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,

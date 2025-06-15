@@ -1,8 +1,8 @@
 'use client'
 
 import { PDFDownloadLink } from '@react-pdf/renderer'
-import { WorkOrderInvoicePDF } from './WorkOrderInvoicePDF'
-import { RepairLine } from '../lib/parseRepairOutput'
+import { WorkOrderInvoicePDF } from '@components/WorkOrderInvoicePDF'
+import { RepairLine } from '@lib/parseRepairOutput'
 
 type Props = {
   workOrderId: string

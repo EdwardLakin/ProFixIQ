@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { useVehicleInfo } from '../hooks/useVehicleInfo';
+import { useVehicleInfo } from '@hooks/useVehicleInfo';
 
 export default function VehicleSelector() {
   const { vehicle, setVehicle } = useVehicleInfo();

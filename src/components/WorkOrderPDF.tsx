@@ -1,5 +1,5 @@
 import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer'
-import { RepairLine } from '../lib/parseRepairOutput'
+import { RepairLine } from '@lib/parseRepairOutput'
 
 type Props = {
   vehicleId: string
