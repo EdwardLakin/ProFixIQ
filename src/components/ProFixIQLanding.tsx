@@ -1,56 +1,41 @@
-// app/page.tsx
-"use client";
+'use client'
 
-import Link from "next/link";
+import Link from 'next/link'
 
-export default function Home() {
+export default function ProFixIQLanding() {
   return (
-    <main className="max-w-3xl mx-auto px-4 py-8">
+    <main className="max-w-xl mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-2">ProFixIQ</h1>
       <p className="text-muted mb-6">
-        AI-powered repair assistant for diagnostics, inspections, and workflow
-        management.
+        AI-powered repair assistant for diagnostics, inspections, and workflow management.
       </p>
 
-      <h2 className="text-xl font-bold text-accent mb-2">🤖 AI Diagnostics</h2>
-      <p className="text-muted mb-4">
-        <Link href="/ai/dtc" className="underline text-blue-600">
-          Use GPT-powered repair suggestions from DTCs or photos.
-        </Link>
-      </p>
+      <Link
+        href="/ai"
+        className="block w-full bg-blue-600 text-white text-center py-3 rounded shadow mb-6 text-lg font-semibold"
+      >
+        🧠 AI Diagnosis
+      </Link>
 
-      <h2 className="text-xl font-bold text-accent mb-2">🧾 Work Orders</h2>
-      <p className="text-muted mb-4">
-        <Link href="/workorders" className="underline text-blue-600">
-          Create and manage repair jobs with AI assistance.
-        </Link>
-      </p>
+      <h2 className="text-xl font-bold text-accent mb-2">📋 Work Orders</h2>
+      <p className="text-muted mb-4">Create and manage repair jobs with AI assistance.</p>
+      <Link href="/workorders" className="underline text-blue-600">Manage Work Orders</Link>
 
-      <h2 className="text-xl font-bold text-accent mb-2">✅ Inspections</h2>
-      <p className="text-muted mb-4">
-        <Link href="/inspections" className="underline text-blue-600">
-          Run and review inspections with voice & photo input.
-        </Link>
-      </p>
+      <h2 className="text-xl font-bold text-accent mt-8 mb-2">✅ Inspections</h2>
+      <p className="text-muted mb-4">Run and review inspections with voice & photo input.</p>
+      <Link href="/inspections" className="underline text-blue-600">View Inspection Templates</Link>
 
-      <h2 className="text-xl font-bold text-accent mb-2">📅 Bookings</h2>
-      <p className="text-muted mb-4">
-        <Link href="/booking" className="underline text-blue-600">
-          Request an appointment and get an estimate.
-        </Link>
-      </p>
+      <h2 className="text-xl font-bold text-accent mt-8 mb-2">📅 Bookings</h2>
+      <p className="text-muted mb-4">Request an appointment and get an estimate.</p>
+      <Link href="/booking" className="underline text-blue-600">Start a Booking</Link>
 
-      <h2 className="text-xl font-bold text-accent mb-2">👤 Account</h2>
-      <p className="text-muted mb-4">
-        <Link href="/dashboard/approvals" className="underline text-blue-600">
-          Manage your plan, settings, and ProFixIQ preferences.
-        </Link>
-      </p>
+      <h2 className="text-xl font-bold text-accent mt-8 mb-2">👤 Account</h2>
+      <p className="text-muted mb-4">Manage your plan, settings, and ProFixIQ preferences.</p>
+      <Link href="/dashboard/approvals" className="underline text-blue-600">Open Account Settings</Link>
 
       <p className="text-sm text-yellow-600 mt-6">
-        💡 Tip: Upgrade to Pro+ for voice-guided inspections and unlimited work
-        orders.
+        💡 Tip: Upgrade to Pro+ for voice-guided inspections and unlimited work orders.
       </p>
     </main>
-  );
+  )
 }

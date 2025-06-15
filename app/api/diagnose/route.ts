@@ -1,30 +1,36 @@
-import  OpenAIStream  from "openai-edge-stream";
-import { NextResponse } from "next/server";
+import { NextResponse } from 'next/server'
+import OpenAI from 'openai'
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+})
 
 export async function POST(req: Request) {
   try {
-    const { vehicle, dtc } = await req.json();
+    const { dtc, prompt, vehicle } = await req.json()
 
-    const prompt = `A ${vehicle} has thrown a diagnostic trouble code (DTC): ${dtc}. Explain what this code means, its severity, and the recommended steps for diagnosis and repair.`;
+    const userPrompt = prompt || `Explain how to diagnose and fix this DTC: ${dtc}`
 
-    const response = await OpenAIStream({
-      model: "gpt-4o",
+    const fullPrompt = `
+Vehicle: ${vehicle?.year} ${vehicle?.make} ${vehicle?.model}
+Request: ${userPrompt}
+
+Provide a clear explanation of the issue and recommended steps to fix it.
+`
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
       messages: [
-        {
-          role: "system",
-          content: "You are an expert automotive technician.",
-        },
-        {
-          role: "user",
-          content: prompt,
-        },
+        { role: 'system', content: 'You are an expert automotive technician.' },
+        { role: 'user', content: fullPrompt },
       ],
-      temperature: 0.7,
-    });
+      temperature: 0.5,
+    })
 
-    return NextResponse.json({ result: response });
+    const result = response.choices[0].message.content
+    return NextResponse.json({ result })
   } catch (error) {
-    console.error("AI diagnose error:", error);
-    return NextResponse.json({ error: "Failed to generate response" }, { status: 500 });
+    console.error('TechBot Error:', error)
+    return NextResponse.json({ error: 'TechBot failed to respond.' }, { status: 500 })
   }
 }

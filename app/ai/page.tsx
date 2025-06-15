@@ -1,48 +1,52 @@
-"use client";
+'use client'
 
-import React from "react";
-import Link from "next/link";
+import Link from 'next/link'
 
-export default function AIDashboardPage() {
+export default function AIDiagnosisMenuPage() {
   return (
-    <div className="p-6 max-w-3xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">🧠 ProFixIQ AI Tools</h1>
-      <p className="mb-6 text-muted-foreground">
-        Choose an AI-powered tool to assist your diagnostics.
+    <div className="max-w-xl mx-auto p-6">
+      <h1 className="text-2xl font-bold text-accent mb-4">🧠 AI Diagnosis</h1>
+      <p className="text-muted mb-6">
+        Select a diagnostic method below to begin:
       </p>
 
-      <div className="grid gap-4">
-        <Link
-          href="/ai/dtc"
-          className="block p-4 rounded-lg shadow bg-muted hover:bg-muted/80 transition"
-        >
-          <h2 className="text-lg font-semibold">🔍 DTC Code Lookup</h2>
-          <p className="text-sm text-muted-foreground">
-            Enter a diagnostic trouble code (e.g. P0171) and get repair
-            insights.
-          </p>
-        </Link>
+      <ul className="space-y-4">
+        <li>
+          <Link
+            href="/ai/photo"
+            className="block p-4 rounded bg-surface shadow-card hover:bg-gray-100 transition"
+          >
+            <h2 className="text-lg font-semibold">📷 Analyze Image</h2>
+            <p className="text-sm text-muted">
+              Upload or capture a photo to identify visible vehicle issues using GPT-4o vision.
+            </p>
+          </Link>
+        </li>
 
-        <Link
-          href="/ai/chat"
-          className="block p-4 rounded-lg shadow bg-muted hover:bg-muted/80 transition"
-        >
-          <h2 className="text-lg font-semibold">💬 TechBot Assistant</h2>
-          <p className="text-sm text-muted-foreground">
-            Ask general repair questions and get live AI answers.
-          </p>
-        </Link>
+        <li>
+          <Link
+            href="/ai/dtc"
+            className="block p-4 rounded bg-surface shadow-card hover:bg-gray-100 transition"
+          >
+            <h2 className="text-lg font-semibold">🧾 DTC Code Lookup</h2>
+            <p className="text-sm text-muted">
+              Enter a diagnostic trouble code (e.g. P0171) to get an explanation and repair advice.
+            </p>
+          </Link>
+        </li>
 
-        <Link
-          href="/ai/photo"
-          className="block p-4 rounded-lg shadow bg-muted hover:bg-muted/80 transition"
-        >
-          <h2 className="text-lg font-semibold">📸 Visual Diagnosis</h2>
-          <p className="text-sm text-muted-foreground">
-            Upload a photo of a broken part for instant repair suggestions.
-          </p>
-        </Link>
-      </div>
+        <li>
+          <Link
+            href="/ai/chat"
+            className="block p-4 rounded bg-surface shadow-card hover:bg-gray-100 transition"
+          >
+            <h2 className="text-lg font-semibold">💬 TechBot Assistant</h2>
+            <p className="text-sm text-muted">
+              Ask the AI mechanic about symptoms, repairs, or next steps using freeform text.
+            </p>
+          </Link>
+        </li>
+      </ul>
     </div>
-  );
+  )
 }

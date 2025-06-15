@@ -2,6 +2,6 @@
   "/page": "app/page.js",
   "/inspections/page": "app/inspections/page.js",
   "/booking/page": "app/booking/page.js",
-  "/ai/dtc/page": "app/ai/dtc/page.js",
-  "/dashboard/approvals/page": "app/dashboard/approvals/page.js"
+  "/dashboard/approvals/page": "app/dashboard/approvals/page.js",
+  "/ai/dtc/page": "app/ai/dtc/page.js"
 }
