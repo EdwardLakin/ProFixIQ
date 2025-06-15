@@ -1,34 +1,50 @@
-"use client";
+'use client';
 
-import React from "react";
+import { useEffect, useState } from 'react';
+import { createBrowserClient } from '@supabase/ssr';
+import type { Database } from '@/types/supabase';
+import type { RepairLine } from '@/types/types';
 
-type RepairLine = {
-  complaint: string;
-  cause?: string;
-  correction?: string;
-  tools?: string[];
-  labor_time?: string;
-};
+const supabase = createBrowserClient<Database>();
 
-export default function RepairResultsViewer({
-  results,
-}: {
-  results: RepairLine[];
-}) {
-  if (!results || results.length === 0) return null;
+export default function HistoryPage() {
+  const [results, setResults] = useState<RepairLine[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchHistory = async () => {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('repair_lines')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching repair history:', error.message);
+      } else {
+        setResults(data as RepairLine[]);
+      }
+
+      setLoading(false);
+    };
+
+    fetchHistory();
+  }, []);
 
   return (
-    <div className="max-w-3xl mx-auto mt-6 p-6 bg-surface text-accent shadow-card rounded space-y-4">
-      <h2 className="text-xl font-semibold">Repair Results</h2>
-
+    <div className="p-4">
+      <h1 className="text-xl font-bold mb-4">Repair History</h1>
+      {loading && <p>Loading history...</p>}
+      {!loading && results.length === 0 && (
+        <p className="text-gray-500">No repair history found.</p>
+      )}
       {results.map((line, index) => (
-        <div
-          key={index}
-          className="border border-muted rounded p-4 bg-muted/10 space-y-2"
-        >
-          <div>
-            <strong>Complaint:</strong> {line.complaint}
-          </div>
+        <div key={index} className="mb-4 p-4 border rounded shadow-sm bg-white">
+          {line.complaint && (
+            <div>
+              <strong>Complaint:</strong> {line.complaint}
+            </div>
+          )}
           {line.cause && (
             <div>
               <strong>Cause:</strong> {line.cause}
@@ -41,7 +57,7 @@ export default function RepairResultsViewer({
           )}
           {line.tools && line.tools.length > 0 && (
             <div>
-              <strong>Tools:</strong> {line.tools.join(", ")}
+              <strong>Tools:</strong> {line.tools.join(', ')}
             </div>
           )}
           {line.labor_time && (

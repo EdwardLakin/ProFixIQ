@@ -1,4 +1,4 @@
-import { OpenAIStream } from "openai-edge-stream";
+import  OpenAIStream  from "openai-edge-stream";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {

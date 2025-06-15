@@ -1,16 +1,16 @@
-"use client";
+'use client';
 
-import { useState, useEffect } from "react";
+import { useState, useEffect } from 'react';
 
 export type VehicleInfo = {
   year: string;
   make: string;
   model: string;
   vin?: string;
-  engine?: string;
+  plate?: string;
 };
 
-const LOCAL_STORAGE_KEY = "selectedVehicle";
+const LOCAL_STORAGE_KEY = 'selectedVehicle';
 
 export const useVehicleInfo = () => {
   const [vehicleInfo, setVehicleInfo] = useState<VehicleInfo | null>(null);
@@ -20,9 +20,10 @@ export const useVehicleInfo = () => {
     const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (stored) {
       try {
-        setVehicleInfo(JSON.parse(stored));
+        const parsed = JSON.parse(stored);
+        setVehicleInfo(parsed);
       } catch (error) {
-        console.error("Failed to parse stored vehicle info:", error);
+        console.error('Failed to parse stored vehicle info:', error);
       }
     }
   }, []);
