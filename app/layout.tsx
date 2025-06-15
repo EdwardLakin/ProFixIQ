@@ -1,8 +1,5 @@
-// app/layout.tsx (or _app.tsx)
-"use client";
-
 import React from "react";
-import { VehicleProvider } from "@/hooks/useVehicleInfo";
+import { VehicleProvider } from "@hooks/useVehicleInfo";
 
 export default function RootLayout({
   children,

@@ -1,49 +1,67 @@
-// app/ai/photo/page.tsx
+'use client';
 
-"use client";
-
-import { useState } from "react";
-import { useVehicleInfo } from "@hooks/useVehicleInfo";
-import VehicleSelector from "@components/VehicleSelector";
-import PhotoCapture from "@components/PhotoCapture";
-import { analyzeImage } from "@lib/analyze";
+import { useState } from 'react';
+import { useVehicleInfo } from '@/hooks/useVehicleInfo';
+import PhotoCapture from '@/components/PhotoCapture';
+import VehicleSelector from '@/components/VehicleSelector';
 
 export default function VisualDiagnosisPage() {
-  const { vehicleInfo } = useVehicleInfo();
+  const { localVehicle } = useVehicleInfo();
   const [imageFile, setImageFile] = useState<File | null>(null);
-  const [analysis, setAnalysis] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const handleAnalyze = async () => {
-    if (!vehicleInfo || !imageFile) {
-      setError("Please select a vehicle and upload an image.");
+  const convertToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = reader.result?.toString().split(',')[1];
+        if (base64) {
+          resolve(base64);
+        } else {
+          reject('Failed to convert image to base64');
+        }
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const analyzeImage = async () => {
+    if (!imageFile || !localVehicle) {
+      setError('Please select a vehicle and upload an image.');
       return;
     }
 
-    setLoading(true);
+    setIsLoading(true);
     setError(null);
-    setAnalysis(null);
+    setResult(null);
 
     try {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64Image = reader.result as string;
+      const base64Image = await convertToBase64(imageFile);
 
-        const result = await analyzeImage({
-          vehicle: vehicleInfo,
+      const response = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           image: base64Image,
-        });
+          vehicle: localVehicle,
+        }),
+      });
 
-        setAnalysis(result);
-      };
+      const data = await response.json();
 
-      reader.readAsDataURL(imageFile);
+      if (response.ok && data.result) {
+        setResult(data.result);
+      } else {
+        setError(data.error || 'Unknown error occurred');
+      }
     } catch (err) {
       console.error(err);
-      setError("Image analysis failed.");
+      setError('Failed to analyze image.');
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
@@ -56,18 +74,18 @@ export default function VisualDiagnosisPage() {
       <PhotoCapture onImageSelect={setImageFile} />
 
       <button
-        onClick={handleAnalyze}
-        className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
-        disabled={loading}
+        onClick={analyzeImage}
+        disabled={isLoading}
+        className="bg-blue-600 text-white px-4 py-2 rounded shadow"
       >
-        {loading ? "Analyzing…" : "Analyze"}
+        {isLoading ? 'Analyzing...' : 'Analyze'}
       </button>
 
-      {error && <p className="text-red-500">{error}</p>}
-      {analysis && (
-        <div className="mt-4 p-4 bg-gray-100 rounded shadow">
-          <h2 className="font-semibold mb-2">AI Analysis:</h2>
-          <pre className="whitespace-pre-wrap text-sm">{analysis}</pre>
+      {error && <p className="text-red-600">{error}</p>}
+      {result && (
+        <div className="p-4 bg-gray-100 rounded">
+          <h2 className="font-semibold mb-2">Diagnosis Result:</h2>
+          <pre>{result}</pre>
         </div>
       )}
     </div>
