@@ -1,34 +1,33 @@
-import { OpenAIStream } from './openaiStream';
+type Vehicle = {
+  year: string;
+  make: string;
+  model: string;
+};
 
-export const analyzeImage = async (
-  base64Image: string,
-  vehicle: string
-): Promise<string> => {
-  const prompt = `Analyze the following image for vehicle issues. The vehicle is a ${vehicle}. Provide a diagnostic summary and any detected problems.`;
+function isBase64(input: unknown): input is string {
+  return typeof input === 'string' && input.startsWith('data:image');
+}
 
-  const response = await OpenAIStream({
-    model: 'gpt-4o-vision-preview',
-    messages: [
-      {
-        role: 'system',
-        content: 'You are a visual vehicle diagnostics expert. Describe problems clearly and concisely.'
-      },
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: prompt },
-          {
-            type: 'image_url',
-            image_url: {
-              url: base64Image,
-              detail: 'high'
-            }
-          }
-        ]
-      }
-    ],
-    temperature: 0.7
+function toBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+export async function analyzeImage(
+  image: File | string,
+  vehicle: Vehicle
+) {
+  const base64Image = isBase64(image) ? image : await toBase64(image);
+
+  const res = await fetch('/api/analyze', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image: base64Image, vehicle }),
   });
 
-  return response;
-};
+  return res.json();
+}
