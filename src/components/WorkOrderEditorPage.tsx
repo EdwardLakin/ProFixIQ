@@ -5,7 +5,7 @@ import { useVehicleInfo } from '@/hooks/useVehicleInfo'
 import { useUser } from '@/hooks/useUser'
 import { createBrowserClient } from '@supabase/ssr'
 import { MenuItem, WorkOrderLine } from '@/types'
-import WorkOrderLineForm from '@/components/WorkOrderLineForm'
+import WorkOrderLineForm from '@/components/WorkOrderLineEditor'
 
 export default function WorkOrderEditorPage() {
   const supabase = createBrowserClient()
@@ -87,7 +87,7 @@ export default function WorkOrderEditorPage() {
       )}
 
       {lines.map((line, index) => (
-        <WorkOrderLineForm
+        <WorkOrderLineEditor
           key={index}
           line={line}
           onUpdate={(updatedLine) => {
