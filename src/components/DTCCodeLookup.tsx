@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useVehicleInfo } from '../hooks/useVehicleInfo';
+import { useVehicleInfo } from '@hooks/useVehicleInfo';
 
 export default function DTCCodeLookup() {
   const [code, setCode] = useState('');
