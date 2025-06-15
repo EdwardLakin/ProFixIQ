@@ -1,57 +1,105 @@
 'use client';
 
-import React, { useRef } from 'react';
+import { useState, useRef } from 'react';
+import { analyzeImage } from '@/lib/analyzeComponents';
+import { useVehicleInfo } from '@/lib/useVehicleInfo';
+import LoadingOverlay from './LoadingOverlay';
 
-type Props = {
-  onImageSelect: (file: File) => void;
-};
+export default function PhotoCapture() {
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [result, setResult] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const { vehicle } = useVehicleInfo();
 
-export default function PhotoCapture({ onImageSelect }: Props) {
-  const captureInputRef = useRef<HTMLInputElement>(null);
-  const uploadInputRef = useRef<HTMLInputElement>(null);
+  const handleCaptureClick = () => {
+    const captureInput = document.createElement('input');
+    captureInput.type = 'file';
+    captureInput.accept = 'image/*';
+    captureInput.capture = 'environment';
+    captureInput.onchange = async (e: Event) => {
+      const file = (e.target as HTMLInputElement)?.files?.[0];
+      if (file) {
+        await processFile(file);
+      }
+    };
+    captureInput.click();
+  };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      onImageSelect(file);
+      await processFile(file);
+    }
+  };
+
+  const processFile = async (file: File) => {
+    if (!vehicle?.year || !vehicle.make || !vehicle.model) {
+      alert('Please select a vehicle first.');
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(file);
+    setImagePreview(previewUrl);
+    setIsLoading(true);
+    setResult(null);
+
+    try {
+      const response = await analyzeImage(file, vehicle);
+      setResult(response);
+    } catch (err) {
+      console.error('Analysis failed:', err);
+      setResult('Failed to analyze image.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex gap-4">
+    <div className="p-4 max-w-xl mx-auto bg-surface shadow-card rounded-lg space-y-4">
+      <h2 className="text-xl font-bold text-accent">Visual Diagnosis</h2>
+
+      <div className="flex justify-center space-x-4">
         <button
-          onClick={() => captureInputRef.current?.click()}
-          className="px-4 py-2 bg-blue-600 text-white rounded"
+          onClick={handleCaptureClick}
+          className="bg-accent text-white px-4 py-2 rounded"
         >
-          📷 Capture Photo
+          Capture Photo
         </button>
         <button
-          onClick={() => uploadInputRef.current?.click()}
-          className="px-4 py-2 bg-green-600 text-white rounded"
+          onClick={handleUploadClick}
+          className="bg-accent text-white px-4 py-2 rounded"
         >
-          🖼️ Upload Photo
+          Upload Photo
         </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleFileChange}
+          className="hidden"
+        />
       </div>
 
-      {/* Hidden capture input */}
-      <input
-        type="file"
-        accept="image/*"
-        capture="environment"
-        ref={captureInputRef}
-        onChange={handleFileChange}
-        className="hidden"
-      />
+      {imagePreview && (
+        <img
+          src={imagePreview}
+          alt="Preview"
+          className="w-full h-auto rounded shadow"
+        />
+      )}
 
-      {/* Hidden upload input */}
-      <input
-        type="file"
-        accept="image/*"
-        ref={uploadInputRef}
-        onChange={handleFileChange}
-        className="hidden"
-      />
+      {isLoading && <LoadingOverlay message="Analyzing image..." />}
+
+      {result && (
+        <div className="p-4 bg-muted rounded shadow-inner whitespace-pre-wrap text-sm">
+          {result}
+        </div>
+      )}
     </div>
   );
 }

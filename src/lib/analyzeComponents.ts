@@ -1,43 +1,36 @@
-export type AnalyzePayload = {
-  image: File;
-  vehicle: {
-    year: string;
-    make: string;
-    model: string;
-  };
-};
+// lib/analyzeComponents.ts
 
-export async function analyzeImageComponent(
-  image: File,
-  vehicle: { year: string; make: string; model: string }
-): Promise<{ result?: string; error?: string }> {
-  const toBase64 = (file: File): Promise<string> =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const base64 = (reader.result as string).split(',')[1]; // strip prefix
-        resolve(base64);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
+import { VehicleInfo } from '@/types'
+import { createBrowserClient } from '@supabase/ssr'
 
-  try {
-    const base64Image = await toBase64(image);
+const supabase = createBrowserClient()
 
-    const res = await fetch('/api/analyze', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        image: base64Image,
-        vehicle,
-      }),
-    });
+export async function analyzeImageComponents({
+  imageUrl,
+  vehicleInfo,
+}: {
+  imageUrl: string
+  vehicleInfo: VehicleInfo
+}): Promise<string> {
+  const { data: sessionData } = await supabase.auth.getSession()
+  const accessToken = sessionData.session?.access_token
 
-    const data = await res.json();
-    return data;
-  } catch (err) {
-    console.error('analyzeImageComponent error:', err);
-    return { error: 'Failed to analyze image' };
+  const res = await fetch('/api/analyze/image', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      imageUrl,
+      vehicleInfo,
+    }),
+  })
+
+  if (!res.ok) {
+    throw new Error('Failed to analyze image.')
   }
+
+  const json = await res.json()
+  return json.result || 'No issues detected.'
 }
