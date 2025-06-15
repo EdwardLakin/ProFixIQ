@@ -1,83 +1,80 @@
-'use client';
+'use client'
 
-import { useState } from 'react';
-import { useVehicleInfo } from '@/hooks/useVehicleInfo';
-import VehicleSelector from '@/components/VehicleSelector';
+import { useState } from 'react'
+import { useVehicleInfo } from '@/hooks/useVehicleInfo'
+import VehicleSelector from '@/src/components/VehicleSelector'
 
 export default function TechChatPage() {
-  const { localVehicle } = useVehicleInfo();
-  const [prompt, setPrompt] = useState('');
-  const [response, setResponse] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { vehicleInfo } = useVehicleInfo()
+  const [prompt, setPrompt] = useState('')
+  const [response, setResponse] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const handleAsk = async () => {
     if (!prompt.trim()) {
-      setError('Please enter a question.');
-      return;
+      setError('Please enter a question.')
+      return
     }
 
-    if (!localVehicle) {
-      setError('Please select a vehicle.');
-      return;
+    if (!vehicleInfo) {
+      setError('Please select a vehicle.')
+      return
     }
 
-    setIsLoading(true);
-    setError(null);
-    setResponse(null);
+    setIsLoading(true)
+    setError(null)
+    setResponse(null)
 
     try {
       const res = await fetch('/api/diagnose', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          dtc: prompt, // Using the same endpoint for simplicity
-          vehicle: localVehicle,
-        }),
-      });
+        body: JSON.stringify({ prompt, vehicle: vehicleInfo }),
+      })
 
-      const data = await res.json();
-
+      const data = await res.json()
       if (res.ok && data.result) {
-        setResponse(data.result);
+        setResponse(data.result)
       } else {
-        setError(data.error || 'No response from TechBot.');
+        setError(data.error || 'No response from TechBot.')
       }
     } catch (err) {
-      console.error(err);
-      setError('Error talking to TechBot.');
+      console.error(err)
+      setError('Error talking to TechBot.')
     } finally {
-      setIsLoading(false);
+      setIsLoading(false)
     }
-  };
+  }
 
   return (
-    <div className="p-4 space-y-4">
-      <h1 className="text-xl font-bold">TechBot Chat</h1>
-
+    <div className="p-4 max-w-xl mx-auto">
+      <h1 className="text-xl font-bold text-accent mb-4">💬 TechBot Chat</h1>
       <VehicleSelector />
 
       <textarea
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
         placeholder="Ask a repair question..."
-        className="w-full p-2 border rounded min-h-[120px]"
+        className="w-full p-2 border rounded mb-4 min-h-[100px]"
       />
 
       <button
         onClick={handleAsk}
         disabled={isLoading}
-        className="bg-blue-600 text-white px-4 py-2 rounded shadow"
+        className="px-4 py-2 bg-blue-600 text-white rounded shadow"
       >
         {isLoading ? 'Thinking…' : 'Ask TechBot'}
       </button>
 
-      {error && <p className="text-red-600">{error}</p>}
+      {error && <p className="text-red-600 mt-4">{error}</p>}
+
       {response && (
-        <div className="p-4 bg-gray-100 rounded whitespace-pre-wrap">
+        <div className="mt-6 bg-gray-100 p-4 rounded whitespace-pre-wrap">
+          <h2 className="font-semibold mb-2">TechBot Says:</h2>
           {response}
         </div>
       )}
     </div>
-  );
+  )
 }

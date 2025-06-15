@@ -10,21 +10,6 @@
       "static/chunks/main-app.js",
       "static/chunks/app/page.js"
     ],
-    "/inspections/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/inspections/page.js"
-    ],
-    "/booking/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/booking/page.js"
-    ],
-    "/dashboard/approvals/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/dashboard/approvals/page.js"
-    ],
     "/ai/dtc/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
