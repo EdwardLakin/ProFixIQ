@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import OpenAI from 'openai';
+import { OpenAI } from 'openai';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -7,47 +7,55 @@ const openai = new OpenAI({
 
 export async function POST(req: Request) {
   try {
-    const { prompt, dtc, image, vehicle } = await req.json();
+    const { dtcCode, vehicle } = await req.json();
 
-    if (!vehicle || !vehicle.year || !vehicle.make || !vehicle.model) {
-      return NextResponse.json({ error: 'Missing vehicle info' }, { status: 400 });
+    if (!vehicle || !vehicle.year || !vehicle.make || !vehicle.model || !dtcCode) {
+      return NextResponse.json({ error: 'Missing DTC code or vehicle info' }, { status: 400 });
     }
 
-    const baseVehicle = `${vehicle.year} ${vehicle.make} ${vehicle.model}`;
+    const vehicleDesc = `${vehicle.year} ${vehicle.make} ${vehicle.model}`;
+    const prompt = `
+You are a highly skilled automotive technician. Provide a structured diagnosis for DTC code ${dtcCode} on a ${vehicleDesc}.
 
-    let systemPrompt = `You are an expert automotive diagnostic technician. Answer as if you're guiding a professional mechanic. Output in HTML format using <strong>, <br>, and <ul>/<li> where helpful.`;
+Format the response using these bolded markdown headers:
 
-    let userPrompt = '';
+**DTC Code Summary:**  
+Code: ${dtcCode}  
+Meaning: (short description)  
+Severity: (Low/Medium/High)  
+Common causes: (list)
 
-    if (dtc) {
-      userPrompt = `Explain DTC code ${dtc} for a ${baseVehicle}. Include:
-- A brief summary
-- Severity of the issue
-- Common causes
-- Recommended tests (include meter readings if applicable)
-- Most likely fixes
-Format using HTML.`;
-    } else if (image) {
-      userPrompt = `Analyze this photo of a component from a ${baseVehicle}. Assume it was uploaded by a technician trying to identify damage or issues. Output a diagnosis summary, what the component likely is, visible wear or faults, and suggest next steps. Format using HTML.`;
-    } else if (prompt) {
-      userPrompt = `For a ${baseVehicle}, answer this technician's question in detail:\n\n${prompt}\n\nInclude step-by-step instructions if appropriate, and format with HTML.`;
-    } else {
-      return NextResponse.json({ error: 'Missing DTC code, image, or prompt' }, { status: 400 });
-    }
+**Troubleshooting Steps:**  
+(Step-by-step diagnostic process)
 
-    const response = await openai.chat.completions.create({
+**Tools Required:**  
+(List of tools or test equipment)
+
+**Estimated Labor Time:**  
+(Approximate time range)
+
+Only return the structured response. Avoid adding explanations or disclaimers outside the format.
+`;
+
+    const completion = await openai.chat.completions.create({
       model: 'gpt-4o',
+      temperature: 0.5,
       messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
+        {
+          role: 'system',
+          content: 'You are a top-level automotive diagnostic expert.',
+        },
+        {
+          role: 'user',
+          content: prompt,
+        },
       ],
-      temperature: 0.4,
     });
 
-    const result = response.choices?.[0]?.message?.content;
-    return NextResponse.json({ result });
-  } catch (error: any) {
-    console.error('AI Diagnose Error:', error);
-    return NextResponse.json({ error: 'Failed to process request.' }, { status: 500 });
+    const reply = completion.choices?.[0]?.message?.content || 'No diagnosis returned.';
+    return NextResponse.json({ result: reply });
+  } catch (err) {
+    console.error('AI Diagnose Error:', err);
+    return NextResponse.json({ error: 'Failed to process DTC request.' }, { status: 500 });
   }
 }

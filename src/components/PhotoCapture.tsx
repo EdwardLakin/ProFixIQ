@@ -13,27 +13,25 @@ export default function PhotoCapture({ onImageSelect }: Props) {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setPreviewUrl(URL.createObjectURL(file));
-      onImageSelect(file);
-    }
-  };
+    if (!file) return;
 
-  const handleCaptureClick = () => {
-    captureInputRef.current?.click();
-  };
-
-  const handleUploadClick = () => {
-    uploadInputRef.current?.click();
+    setPreviewUrl(URL.createObjectURL(file));
+    onImageSelect(file);
   };
 
   return (
-    <div className="mb-4">
-      <div className="flex gap-2 mb-2">
-        <button onClick={handleCaptureClick} className="px-2 py-1 bg-blue-500 text-white rounded">
+    <div className="mt-4">
+      <div className="flex gap-4 mb-2">
+        <button
+          onClick={() => captureInputRef.current?.click()}
+          className="px-4 py-2 bg-blue-600 text-white rounded"
+        >
           📷 Capture Photo
         </button>
-        <button onClick={handleUploadClick} className="px-2 py-1 bg-blue-500 text-white rounded">
+        <button
+          onClick={() => uploadInputRef.current?.click()}
+          className="px-4 py-2 bg-gray-700 text-white rounded"
+        >
           📁 Upload Photo
         </button>
       </div>
@@ -46,6 +44,7 @@ export default function PhotoCapture({ onImageSelect }: Props) {
         onChange={handleFileChange}
         className="hidden"
       />
+
       <input
         type="file"
         accept="image/*"
@@ -56,7 +55,7 @@ export default function PhotoCapture({ onImageSelect }: Props) {
 
       {previewUrl && (
         <div className="mt-4">
-          <img src={previewUrl} alt="Preview" className="max-w-full h-auto rounded border" />
+          <img src={previewUrl} alt="Preview" className="rounded max-w-full border" />
         </div>
       )}
     </div>

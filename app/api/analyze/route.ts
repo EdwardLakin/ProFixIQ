@@ -14,52 +14,53 @@ export async function POST(req: Request) {
     }
 
     const prompt = `
-You are an expert automotive diagnostic technician. Analyze the following image of a damaged component and provide a concise but structured repair assessment.
-
+You are an expert automotive technician. A user has submitted a photo for visual diagnosis.
 Vehicle: ${vehicle.year} ${vehicle.make} ${vehicle.model}
 
-Return your response using the following format:
+Analyze the photo and return the following diagnosis structure using markdown:
 
-**Issue Identified:** (What is the likely problem?)
-**Recommended Action:** (What should be done to fix it?)
-**Severity:** (Low / Medium / High)
-**Estimated Labor Time:** (Rough estimate in hours)
-**Tools Needed:** (Comma-separated list)
-**Part Suggestions:** (If visible, suggest replacement part)
+**Issue Identified:**  
+[Short summary of visible problem]
 
-If the image is unclear or cannot be diagnosed, respond with:
-{ "error": "Image analysis failed" }
+**Recommended Action:**  
+[What to do next]
 
-Only respond in this structured format.
-    `.trim();
+**Severity:**  
+[Low / Medium / High]
+
+**Estimated Labor Time:**  
+[Range in hours or minutes]
+
+**Tools Needed:**  
+[List of tools]
+
+**Parts Suggestions:**  
+[What parts might be needed]
+`;
 
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [
         {
-          role: 'system',
-          content: 'You are an advanced automotive technician AI specializing in visual diagnostics.',
-        },
-        {
           role: 'user',
           content: [
             { type: 'text', text: prompt },
-            { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${image}` } },
+            { type: 'image_url', image_url: { url: image } },
           ],
         },
       ],
-      temperature: 0.7,
+      temperature: 0.5,
     });
 
-    const aiResponse = response.choices?.[0]?.message?.content;
+    const text = response.choices?.[0]?.message?.content?.trim();
 
-    if (!aiResponse || aiResponse.includes('image analysis failed')) {
-      return NextResponse.json({ error: 'Image analysis failed' }, { status: 500 });
+    if (!text) {
+      return NextResponse.json({ result: '**AI Diagnosis:**\n\n_No issues detected or image was unclear._' });
     }
 
-    return NextResponse.json({ result: aiResponse });
-  } catch (err) {
-    console.error('AI analyze error:', err);
-    return NextResponse.json({ error: 'Failed to analyze image' }, { status: 500 });
+    return NextResponse.json({ result: text });
+  } catch (error: any) {
+    console.error('AI analyze error:', error);
+    return NextResponse.json({ error: 'Image analysis failed' }, { status: 500 });
   }
 }

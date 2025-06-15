@@ -24,6 +24,16 @@
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/api/analyze/route.js"
+    ],
+    "/ai/dtc/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/ai/dtc/page.js"
+    ],
+    "/api/diagnose/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/diagnose/route.js"
     ]
   }
 }
