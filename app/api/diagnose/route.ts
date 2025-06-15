@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import OpenAI from 'openai'
+import { OpenAIStream, StreamingTextResponse } from 'ai'
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -7,30 +8,84 @@ const openai = new OpenAI({
 
 export async function POST(req: Request) {
   try {
-    const { dtc, prompt, vehicle } = await req.json()
+    const { prompt, dtc, vehicle } = await req.json()
 
-    const userPrompt = prompt || `Explain how to diagnose and fix this DTC: ${dtc}`
+    if (!vehicle || (!prompt && !dtc)) {
+      return NextResponse.json(
+        { error: 'Missing vehicle or query.' },
+        { status: 400 }
+      )
+    }
 
-    const fullPrompt = `
-Vehicle: ${vehicle?.year} ${vehicle?.make} ${vehicle?.model}
-Request: ${userPrompt}
+    const vehicleInfo = `${vehicle.year} ${vehicle.make} ${vehicle.model}`
 
-Provide a clear explanation of the issue and recommended steps to fix it.
+    const userPrompt = dtc
+      ? `
+You are diagnosing DTC code "${dtc}" on a ${vehicleInfo}.
+
+Respond in this exact format using bold markdown headers (**Section:**) and line breaks:
+
+**DTC Description:**  
+[Explain what the code means]
+
+**Severity:**  
+[Low / Medium / High and why]
+
+**Possible Causes:**  
+- [Cause 1]  
+- [Cause 2]
+
+**Diagnostic Steps:**  
+1. [Test 1]  
+2. [Test 2]
+
+**Recommended Fix:**  
+[Final repair recommendation]
+`
+      : `
+You are assisting with a diagnosis on a ${vehicleInfo}. The technician says: "${prompt}".
+
+Respond in this format using bold markdown headers and clear line breaks:
+
+**Issue Summary:**  
+...
+
+**Possible Causes:**  
+- Cause 1  
+- Cause 2
+
+**Diagnostic Steps:**  
+1. Step 1  
+2. Step 2
+
+**Next Actions:**  
+...
 `
 
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
+      stream: true,
+      temperature: 0.4,
       messages: [
-        { role: 'system', content: 'You are an expert automotive technician.' },
-        { role: 'user', content: fullPrompt },
+        {
+          role: 'system',
+          content:
+            'You are a highly advanced diagnostic technician with deep expertise in drivability, electronics, and root cause analysis. Return clear, formatted, professional diagnostics using bold section headers (e.g. "**Diagnostic Steps:**") and bullet points. Avoid fluff. Be direct and useful.',
+        },
+        {
+          role: 'user',
+          content: userPrompt,
+        },
       ],
-      temperature: 0.5,
     })
 
-    const result = response.choices[0].message.content
-    return NextResponse.json({ result })
-  } catch (error) {
-    console.error('TechBot Error:', error)
-    return NextResponse.json({ error: 'TechBot failed to respond.' }, { status: 500 })
+    const stream = OpenAIStream(response)
+    return new StreamingTextResponse(stream)
+  } catch (err: any) {
+    console.error('Error in /api/diagnose:', err)
+    return NextResponse.json(
+      { error: 'Failed to process request.' },
+      { status: 500 }
+    )
   }
 }

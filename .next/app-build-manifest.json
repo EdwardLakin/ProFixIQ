@@ -10,6 +10,11 @@
       "static/chunks/main-app.js",
       "static/chunks/app/page.js"
     ],
+    "/ai/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/ai/page.js"
+    ],
     "/ai/dtc/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",

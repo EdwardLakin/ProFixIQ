@@ -2,24 +2,29 @@
 
 import { useState } from 'react'
 import { useVehicleInfo } from '@/hooks/useVehicleInfo'
-import VehicleSelector from '@/src/components/VehicleSelector'
+import VehicleSelector from '@components/VehicleSelector'
 
 export default function DTCCodeLookupPage() {
   const { vehicleInfo } = useVehicleInfo()
   const [dtcCode, setDtcCode] = useState('')
-  const [result, setResult] = useState<string | null>(null)
+  const [result, setResult] = useState<string>('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const handleLookup = async () => {
-    if (!vehicleInfo || !dtcCode.trim()) {
+    if (
+      !vehicleInfo?.year?.trim() ||
+      !vehicleInfo?.make?.trim() ||
+      !vehicleInfo?.model?.trim() ||
+      !dtcCode.trim()
+    ) {
       setError('Please select a vehicle and enter a DTC code.')
       return
     }
 
     setIsLoading(true)
     setError(null)
-    setResult(null)
+    setResult('')
 
     try {
       const response = await fetch('/api/diagnose', {
@@ -31,11 +36,20 @@ export default function DTCCodeLookupPage() {
         }),
       })
 
-      const data = await response.json()
-      if (response.ok && data.result) {
-        setResult(data.result)
-      } else {
-        setError(data.error || 'Failed to get DTC diagnosis.')
+      if (!response.body) {
+        setError('No stream received from AI.')
+        return
+      }
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder('utf-8')
+      let finalText = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        finalText += decoder.decode(value)
+        setResult(finalText)
       }
     } catch (err) {
       console.error(err)
@@ -69,9 +83,13 @@ export default function DTCCodeLookupPage() {
       {error && <p className="text-red-600 mt-4">{error}</p>}
 
       {result && (
-        <div className="mt-6 bg-gray-100 p-4 rounded">
-          <h2 className="font-semibold mb-2">Diagnosis Result:</h2>
-          <pre>{result}</pre>
+        <div className="mt-6 bg-gray-100 p-4 rounded prose">
+          <h2 className="font-semibold mb-2">DTC Analysis:</h2>
+          <div
+            dangerouslySetInnerHTML={{
+              __html: result.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>'),
+            }}
+          />
         </div>
       )}
     </div>
