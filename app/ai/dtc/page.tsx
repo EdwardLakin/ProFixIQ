@@ -1,67 +1,58 @@
-'use client'
+'use client';
 
-import { useState } from 'react'
-import { useVehicleInfo } from '@/hooks/useVehicleInfo'
-import VehicleSelector from '@components/VehicleSelector'
+import { useState } from 'react';
+import { useVehicleInfo } from '@/hooks/useVehicleInfo';
+import VehicleSelector from '@/components/VehicleSelector';
 
 export default function DTCCodeLookupPage() {
-  const { vehicleInfo } = useVehicleInfo()
-  const [dtcCode, setDtcCode] = useState('')
-  const [result, setResult] = useState<string>('')
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { vehicle: vehicleInfo } = useVehicleInfo();
+
+  const [dtcCode, setDtcCode] = useState('');
+  const [result, setResult] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleLookup = async () => {
-    if (
-      !vehicleInfo?.year?.trim() ||
-      !vehicleInfo?.make?.trim() ||
-      !vehicleInfo?.model?.trim() ||
-      !dtcCode.trim()
-    ) {
-      setError('Please select a vehicle and enter a DTC code.')
-      return
+    if (!vehicleInfo || !vehicleInfo.year || !vehicleInfo.make || !vehicleInfo.model || !dtcCode.trim()) {
+      setError('Please select a vehicle and enter a DTC code.');
+      return;
     }
 
-    setIsLoading(true)
-    setError(null)
-    setResult('')
+    setIsLoading(true);
+    setError(null);
+    setResult(null);
 
     try {
       const response = await fetch('/api/diagnose', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
           dtc: dtcCode,
           vehicle: vehicleInfo,
         }),
-      })
+      });
 
-      if (!response.body) {
-        setError('No stream received from AI.')
-        return
-      }
+      const data = await response.json();
 
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder('utf-8')
-      let finalText = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        finalText += decoder.decode(value)
-        setResult(finalText)
+      if (response.ok && data.result) {
+        setResult(data.result);
+      } else {
+        setError(data.error || 'Failed to get DTC diagnosis.');
       }
     } catch (err) {
-      console.error(err)
-      setError('Something went wrong while looking up the DTC.')
+      console.error(err);
+      setError('Something went wrong while looking up the DTC.');
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   return (
-    <div className="p-4 max-w-xl mx-auto">
-      <h1 className="text-xl font-bold text-accent mb-4">🧾 DTC Code Lookup</h1>
+    <div className="p-4 max-w-2xl mx-auto">
+      <h1 className="text-xl font-bold text-accent mb-4">🔍 DTC Code Lookup</h1>
+
       <VehicleSelector />
 
       <input
@@ -83,15 +74,16 @@ export default function DTCCodeLookupPage() {
       {error && <p className="text-red-600 mt-4">{error}</p>}
 
       {result && (
-        <div className="mt-6 bg-gray-100 p-4 rounded prose">
+        <div className="mt-6 bg-gray-100 p-4 rounded border border-muted whitespace-pre-wrap">
           <h2 className="font-semibold mb-2">DTC Analysis:</h2>
           <div
+            className="prose"
             dangerouslySetInnerHTML={{
-              __html: result.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>'),
+              __html: result.replace(/\n/g, '<br />'),
             }}
           />
         </div>
       )}
     </div>
-  )
+  );
 }

@@ -1,91 +1,53 @@
-import { NextResponse } from 'next/server'
-import OpenAI from 'openai'
-import { OpenAIStream, StreamingTextResponse } from 'ai'
+import { NextResponse } from 'next/server';
+import OpenAI from 'openai';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-})
+});
 
 export async function POST(req: Request) {
   try {
-    const { prompt, dtc, vehicle } = await req.json()
+    const { prompt, dtc, image, vehicle } = await req.json();
 
-    if (!vehicle || (!prompt && !dtc)) {
-      return NextResponse.json(
-        { error: 'Missing vehicle or query.' },
-        { status: 400 }
-      )
+    if (!vehicle || !vehicle.year || !vehicle.make || !vehicle.model) {
+      return NextResponse.json({ error: 'Missing vehicle info' }, { status: 400 });
     }
 
-    const vehicleInfo = `${vehicle.year} ${vehicle.make} ${vehicle.model}`
+    const baseVehicle = `${vehicle.year} ${vehicle.make} ${vehicle.model}`;
 
-    const userPrompt = dtc
-      ? `
-You are diagnosing DTC code "${dtc}" on a ${vehicleInfo}.
+    let systemPrompt = `You are an expert automotive diagnostic technician. Answer as if you're guiding a professional mechanic. Output in HTML format using <strong>, <br>, and <ul>/<li> where helpful.`;
 
-Respond in this exact format using bold markdown headers (**Section:**) and line breaks:
+    let userPrompt = '';
 
-**DTC Description:**  
-[Explain what the code means]
-
-**Severity:**  
-[Low / Medium / High and why]
-
-**Possible Causes:**  
-- [Cause 1]  
-- [Cause 2]
-
-**Diagnostic Steps:**  
-1. [Test 1]  
-2. [Test 2]
-
-**Recommended Fix:**  
-[Final repair recommendation]
-`
-      : `
-You are assisting with a diagnosis on a ${vehicleInfo}. The technician says: "${prompt}".
-
-Respond in this format using bold markdown headers and clear line breaks:
-
-**Issue Summary:**  
-...
-
-**Possible Causes:**  
-- Cause 1  
-- Cause 2
-
-**Diagnostic Steps:**  
-1. Step 1  
-2. Step 2
-
-**Next Actions:**  
-...
-`
+    if (dtc) {
+      userPrompt = `Explain DTC code ${dtc} for a ${baseVehicle}. Include:
+- A brief summary
+- Severity of the issue
+- Common causes
+- Recommended tests (include meter readings if applicable)
+- Most likely fixes
+Format using HTML.`;
+    } else if (image) {
+      userPrompt = `Analyze this photo of a component from a ${baseVehicle}. Assume it was uploaded by a technician trying to identify damage or issues. Output a diagnosis summary, what the component likely is, visible wear or faults, and suggest next steps. Format using HTML.`;
+    } else if (prompt) {
+      userPrompt = `For a ${baseVehicle}, answer this technician's question in detail:\n\n${prompt}\n\nInclude step-by-step instructions if appropriate, and format with HTML.`;
+    } else {
+      return NextResponse.json({ error: 'Missing DTC code, image, or prompt' }, { status: 400 });
+    }
 
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
-      stream: true,
-      temperature: 0.4,
       messages: [
-        {
-          role: 'system',
-          content:
-            'You are a highly advanced diagnostic technician with deep expertise in drivability, electronics, and root cause analysis. Return clear, formatted, professional diagnostics using bold section headers (e.g. "**Diagnostic Steps:**") and bullet points. Avoid fluff. Be direct and useful.',
-        },
-        {
-          role: 'user',
-          content: userPrompt,
-        },
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
       ],
-    })
+      temperature: 0.4,
+    });
 
-    const stream = OpenAIStream(response)
-    return new StreamingTextResponse(stream)
-  } catch (err: any) {
-    console.error('Error in /api/diagnose:', err)
-    return NextResponse.json(
-      { error: 'Failed to process request.' },
-      { status: 500 }
-    )
+    const result = response.choices?.[0]?.message?.content;
+    return NextResponse.json({ result });
+  } catch (error: any) {
+    console.error('AI Diagnose Error:', error);
+    return NextResponse.json({ error: 'Failed to process request.' }, { status: 500 });
   }
 }

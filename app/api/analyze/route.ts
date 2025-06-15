@@ -1,60 +1,58 @@
-// app/api/analyze/route.ts
-import { NextResponse } from "next/server";
-import { createClient } from "@lib/supabaseClient";
-import OpenAI from "openai";
+import { NextResponse } from 'next/server'
+import OpenAI from 'openai'
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
-});
+  apiKey: process.env.OPENAI_API_KEY,
+})
 
 export async function POST(req: Request) {
   try {
-    const formData = await req.formData();
-    const file = formData.get("file") as File;
-    const vehicle = formData.get("vehicle") as string;
+    const { image, vehicle } = await req.json()
 
-    if (!file || !vehicle) {
+    if (!image || !vehicle) {
       return NextResponse.json(
-        { error: "Missing file or vehicle data" },
-        { status: 400 },
-      );
+        { error: 'Missing image or vehicle info' },
+        { status: 400 }
+      )
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer());
+    const prompt = `
+You are an expert automotive diagnostic technician. Based on the uploaded photo of the vehicle component and the vehicle details (Year: ${vehicle.year}, Make: ${vehicle.make}, Model: ${vehicle.model}), analyze what issue might be visible.
+
+Give your answer in the following format:
+
+**Visual Diagnosis**
+- Main issue: [describe the problem]
+- Severity: [low, moderate, high]
+- Suggested repair: [what to do]
+- Safety risk: [yes/no]
+
+Be concise, clear, and accurate.
+`
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4-vision-preview",
+      model: 'gpt-4-vision-preview',
       messages: [
         {
-          role: "system",
-          content: `You are an expert auto technician. The user will provide an image and vehicle info. Identify repair issues and return a JSON response with each detected issue including: complaint, cause, correction, tools required, estimated labor time.`,
+          role: 'system',
+          content: 'You are a master automotive diagnostic technician.',
         },
         {
-          role: "user",
+          role: 'user',
           content: [
-            {
-              type: "text",
-              text: `Vehicle Info: ${vehicle}. Analyze this image for issues:`,
-            },
-            {
-              type: "image_url",
-              image_url: {
-                url: `data:${file.type};base64,${buffer.toString("base64")}`,
-              },
-            },
+            { type: 'text', text: prompt },
+            { type: 'image_url', image_url: { url: image } },
           ],
         },
       ],
-      max_tokens: 1024,
-    });
+      max_tokens: 1000,
+    })
 
-    const result = response.choices[0].message.content;
-    return NextResponse.json({ result });
+    const result = response.choices[0]?.message?.content
+
+    return NextResponse.json({ result })
   } catch (err: any) {
-    console.error("Analyze API Error:", err);
-    return NextResponse.json(
-      { error: "Failed to analyze image" },
-      { status: 500 },
-    );
+    console.error('Error analyzing image:', err)
+    return NextResponse.json({ error: 'Failed to analyze image' }, { status: 500 })
   }
 }
