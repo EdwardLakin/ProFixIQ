@@ -1,37 +1,32 @@
-import { NextResponse } from 'next/server';
-import { OpenAI } from 'openai';
+export type TechBotPromptPayload = {
+  vehicle: {
+    year: string;
+    make: string;
+    model: string;
+  };
+  prompt: string;
+};
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+/**
+ * Formats the vehicle and user question into a structured prompt
+ * for TechBot to process.
+ */
+export function formatTechBotPrompt({
+  vehicle,
+  prompt,
+}: TechBotPromptPayload): string {
+  const { year, make, model } = vehicle;
 
-export async function POST(req: Request) {
-  try {
-    const { prompt, vehicle } = await req.json();
+  return `
+You are a highly advanced and experienced automotive diagnostic technician named "TechBot", specialized in all modern vehicles. You assist mechanics, technicians, and DIY users with detailed, step-by-step answers to their questions. 
 
-    if (!prompt || !vehicle || !vehicle.year || !vehicle.make || !vehicle.model) {
-      return NextResponse.json({ error: 'Missing prompt or vehicle info' }, { status: 400 });
-    }
+Always consider the specific vehicle context: ${year} ${make} ${model}. Your answers must include:
+- Professional terminology and structured explanation.
+- Step-by-step guidance for troubleshooting or completing tasks.
+- Diagnostic logic when applicable (e.g., test methods, tool usage, what-if scenarios).
+- Practical tool recommendations and safety tips.
 
-    const vehicleString = `${vehicle.year} ${vehicle.make} ${vehicle.model}`;
-
-    const systemPrompt = `
-You are a highly skilled automotive technician. The user is asking a question about a specific vehicle: ${vehicleString}.
-Answer clearly and concisely. Include diagnostic steps, safety warnings, estimated labor time, and recommended tools where applicable.
-Avoid generic responses. Be direct and mechanical in tone. Assume the user is experienced unless they ask for beginner steps.
-`;
-
-    const chatResponse = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        { role: 'system', content: systemPrompt.trim() },
-        { role: 'user', content: prompt },
-      ],
-    });
-
-    const result = chatResponse.choices[0].message.content;
-
-    return NextResponse.json({ response: result });
-  } catch (err: any) {
-    console.error('TechBot Error:', err);
-    return NextResponse.json({ error: 'Failed to process request.' }, { status: 500 });
-  }
+User Question:
+"${prompt}"
+  `.trim();
 }
