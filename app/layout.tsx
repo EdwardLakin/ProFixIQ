@@ -1,5 +1,5 @@
 import React from 'react';
-import './globals.css'; // Tailwind theme utilities: text-accent, shadow-card, etc.
+import '../public/output.css';
 
 export default function RootLayout({
   children,
