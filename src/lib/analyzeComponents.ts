@@ -1,30 +1,36 @@
-// src/lib/analyzeComponents.ts
-
 import { VehicleInfo } from '@/types/vehicle';
 
-export async function analyzeImage(imageUrl: string, vehicle: VehicleInfo): Promise<{ result: string }> {
+export async function analyzeImageComponents(
+  imageURL: string,
+  vehicle: VehicleInfo
+): Promise<{ result?: string; error?: string }> {
   try {
+    // Validate imageURL is a string and starts with https
+    if (typeof imageURL !== 'string' || !imageURL.startsWith('https://')) {
+      return { error: 'Invalid image URL. Must be a valid HTTPS URL.' };
+    }
+
     const res = await fetch('/api/analyze', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        image: imageUrl,
+        image_url: imageURL,
         vehicle,
       }),
     });
 
     if (!res.ok) {
       const errorText = await res.text();
-      console.error('analyzeImage error:', errorText);
-      throw new Error('Image analysis failed');
+      console.error('Analyze API error:', errorText);
+      return { error: 'Image analysis failed' };
     }
 
     const data = await res.json();
     return data;
   } catch (error: any) {
-    console.error('Image analysis error:', error);
-    return { result: 'Error: Image analysis failed.' };
+    console.error('analyzeImageComponents error:', error);
+    return { error: 'Image analysis failed' };
   }
 }

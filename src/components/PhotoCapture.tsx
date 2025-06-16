@@ -6,58 +6,63 @@ type Props = {
   onImageSelect: (file: File) => void;
 };
 
-export default function PhotoCapture({ onImageSelect }: Props) {
+export const PhotoCapture: React.FC<Props> = ({ onImageSelect }) => {
   const captureInputRef = useRef<HTMLInputElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewURL, setPreviewURL] = useState<string | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setPreviewUrl(URL.createObjectURL(file));
+    const url = URL.createObjectURL(file);
+    setPreviewURL(url);
     onImageSelect(file);
   };
 
   return (
-    <div className="mt-4">
-      <div className="flex gap-4 mb-2">
+    <div className="space-y-4">
+      <div className="flex gap-4">
         <button
           onClick={() => captureInputRef.current?.click()}
-          className="px-4 py-2 bg-blue-600 text-white rounded"
+          className="px-4 py-2 bg-blue-600 text-white rounded shadow"
         >
           📷 Capture Photo
         </button>
         <button
           onClick={() => uploadInputRef.current?.click()}
-          className="px-4 py-2 bg-gray-700 text-white rounded"
+          className="px-4 py-2 bg-gray-700 text-white rounded shadow"
         >
           📁 Upload Photo
         </button>
       </div>
 
+      {/* Hidden Inputs */}
       <input
+        ref={captureInputRef}
         type="file"
         accept="image/*"
         capture="environment"
-        ref={captureInputRef}
         onChange={handleFileChange}
         className="hidden"
       />
-
       <input
+        ref={uploadInputRef}
         type="file"
         accept="image/*"
-        ref={uploadInputRef}
         onChange={handleFileChange}
         className="hidden"
       />
 
-      {previewUrl && (
+      {previewURL && (
         <div className="mt-4">
-          <img src={previewUrl} alt="Preview" className="rounded max-w-full border" />
+          <img
+            src={previewURL}
+            alt="Preview"
+            className="rounded shadow-md max-w-full border border-gray-300"
+          />
         </div>
       )}
     </div>
   );
-}
+};
