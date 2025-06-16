@@ -3,79 +3,72 @@
 import { useState } from 'react';
 import { useVehicleInfo } from '@/hooks/useVehicleInfo';
 import VehicleSelector from '@/components/VehicleSelector';
+import { diagnoseDTC } from '@/lib/analyze';
 
 export default function DTCCodeLookupPage() {
   const { vehicleInfo } = useVehicleInfo();
   const [dtcCode, setDtcCode] = useState('');
   const [result, setResult] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   const handleLookup = async () => {
-    if (!vehicleInfo || !vehicleInfo.year || !vehicleInfo.make || !vehicleInfo.model || !dtcCode.trim()) {
+    if (!vehicleInfo?.year || !vehicleInfo?.make || !vehicleInfo?.model || !dtcCode.trim()) {
       setError('Please select a vehicle and enter a DTC code.');
       return;
     }
 
-    setLoading(true);
     setError(null);
     setResult(null);
+    setLoading(true);
 
     try {
-      const response = await fetch('/api/diagnose', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          vehicle: vehicleInfo,
-          dtcCode,
-        }),
-      });
-
-      const data = await response.json();
-      if (response.ok) {
-        setResult(data.result || 'No result returned');
-      } else {
-        setError(data.error || 'Failed to fetch DTC diagnosis');
-      }
+      const response = await diagnoseDTC(vehicleInfo, dtcCode.trim());
+      setResult(response || 'No information found.');
     } catch (err) {
-      console.error(err);
-      setError('Unexpected error occurred during DTC lookup.');
+      console.error('DTC lookup error:', err);
+      setError('Failed to look up the DTC code.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="p-4 max-w-xl mx-auto">
-      <h1 className="text-xl font-bold text-accent mb-4">🔍 DTC Code Lookup</h1>
+    <main className="max-w-2xl mx-auto px-4 py-8 text-gray-800">
+      <h1 className="text-3xl font-bold text-blue-600 mb-2 text-center">🔍 DTC Code Lookup</h1>
+      <p className="text-center text-gray-600 mb-6">
+        Enter a DTC code to get diagnosis, severity, and recommended fix based on the selected vehicle.
+      </p>
 
-      <h2 className="font-semibold">Vehicle Info</h2>
-      <VehicleSelector />
+      <div className="mb-6">
+        <VehicleSelector />
+      </div>
 
-      <input
-        type="text"
-        placeholder="Enter DTC code (e.g. P0131)"
-        value={dtcCode}
-        onChange={(e) => setDtcCode(e.target.value)}
-        className="w-full p-2 border rounded mb-4"
-      />
+      <div className="flex flex-col sm:flex-row gap-2 mb-4">
+        <input
+          type="text"
+          value={dtcCode}
+          onChange={(e) => setDtcCode(e.target.value)}
+          placeholder="e.g. P0301"
+          className="flex-grow p-3 border border-blue-300 rounded-md shadow-sm focus:outline-none"
+        />
+        <button
+          onClick={handleLookup}
+          disabled={loading}
+          className="bg-blue-600 text-white font-semibold px-4 py-2 rounded shadow hover:bg-blue-700 transition"
+        >
+          {loading ? 'Looking up...' : 'Lookup'}
+        </button>
+      </div>
 
-      <button
-        onClick={handleLookup}
-        disabled={loading}
-        className="px-4 py-2 bg-blue-600 text-white rounded shadow"
-      >
-        {loading ? 'Looking up...' : 'Lookup'}
-      </button>
-
-      {error && <p className="text-red-600 mt-4">{error}</p>}
+      {error && <p className="text-red-600 text-sm mb-4 text-center">{error}</p>}
 
       {result && (
-        <div className="mt-6 bg-gray-100 p-4 rounded">
-          <h2 className="font-semibold mb-2">DTC Analysis:</h2>
-          <pre>{result}</pre>
+        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 shadow-sm mt-4">
+          <h2 className="text-lg font-semibold text-orange-700 mb-2">DTC Diagnosis Result:</h2>
+          <pre className="whitespace-pre-wrap text-sm text-gray-800">{result}</pre>
         </div>
       )}
-    </div>
+    </main>
   );
 }

@@ -3,18 +3,18 @@
 import { useState } from 'react';
 import VehicleSelector from '@/components/VehicleSelector';
 import PhotoCapture from '@/components/PhotoCapture';
-import { analyzeImage } from '@/lib/analyze';
+import { analyzeImage } from '@/lib/analyzeComponents';
 import { useVehicleInfo } from '@/hooks/useVehicleInfo';
 
 export default function VisualDiagnosisPage() {
   const { vehicleInfo } = useVehicleInfo();
   const [imageFile, setImageFile] = useState<File | null>(null);
-  const [result, setResult] = useState<string | object | null>(null);
+  const [result, setResult] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleAnalyze = async () => {
-    if (!vehicleInfo || !vehicleInfo.year || !vehicleInfo.make || !vehicleInfo.model) {
+    if (!vehicleInfo?.year || !vehicleInfo.make || !vehicleInfo.model) {
       setError('Please select a vehicle.');
       return;
     }
@@ -25,42 +25,51 @@ export default function VisualDiagnosisPage() {
     }
 
     setError(null);
+    setResult(null);
     setLoading(true);
+
     try {
       const response = await analyzeImage(imageFile, vehicleInfo);
-      setResult(response.result || 'No result returned');
-    } catch (err: any) {
-      console.error(err);
-      setError('Failed to analyze image');
+      setResult(response.result || 'No result returned.');
+    } catch (err) {
+      console.error('Image analysis error:', err);
+      setError('Image analysis failed');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="p-4 max-w-2xl mx-auto bg-surface text-accent shadow-card rounded-lg">
-      <h1 className="text-2xl font-bold mb-4">🖼️ Visual Diagnosis</h1>
-      <VehicleSelector />
+    <main className="max-w-2xl mx-auto px-4 py-8 text-gray-800">
+      <h1 className="text-3xl font-bold text-blue-600 mb-2 text-center">🧠 Visual Diagnosis</h1>
+      <p className="text-center text-gray-600 mb-6">
+        Upload a photo of the issue to get AI-powered analysis and repair guidance.
+      </p>
 
-      <h2 className="text-lg font-semibold mt-4 mb-2">Upload or Capture Vehicle Photo</h2>
-      <PhotoCapture onImageSelect={(file) => setImageFile(file)} />
+      <div className="mb-6">
+        <VehicleSelector />
+      </div>
+
+      <div className="mb-4">
+        <PhotoCapture onImageSelect={(file) => setImageFile(file)} />
+      </div>
 
       <button
         onClick={handleAnalyze}
         disabled={loading}
-        className="mt-4 px-4 py-2 bg-blue-600 text-white rounded shadow"
+        className="w-full bg-blue-600 text-white font-semibold py-3 rounded shadow hover:bg-blue-700 transition"
       >
-        {loading ? 'Analyzing...' : 'Analyze Image'}
+        {loading ? 'Analyzing image...' : 'Analyze Image'}
       </button>
 
-      {error && <p className="text-red-600 mt-4">{error}</p>}
+      {error && <p className="text-red-600 text-sm mt-4 text-center">{error}</p>}
 
       {result && (
-        <div className="mt-6 bg-gray-100 p-4 rounded border border-muted">
-          <h2 className="font-bold text-lg mb-2">AI Diagnosis Result:</h2>
-          <pre className="whitespace-pre-wrap text-sm">{typeof result === 'string' ? result : JSON.stringify(result, null, 2)}</pre>
+        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 shadow-sm mt-6">
+          <h2 className="text-lg font-semibold text-orange-700 mb-2">AI Diagnosis Result:</h2>
+          <pre className="whitespace-pre-wrap text-sm text-gray-800">{result}</pre>
         </div>
       )}
-    </div>
+    </main>
   );
 }

@@ -8,71 +8,78 @@ import { analyzeWithTechBot } from '@/lib/analyze';
 export default function TechBotChatPage() {
   const { vehicleInfo } = useVehicleInfo();
   const [question, setQuestion] = useState('');
-  const [response, setResponse] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
   const [followUp, setFollowUp] = useState('');
+  const [response, setResponse] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleAsk = async () => {
-    if (!vehicleInfo || !vehicleInfo.year || !vehicleInfo.make || !vehicleInfo.model || !question.trim()) {
+    if (!vehicleInfo?.year || !vehicleInfo?.make || !vehicleInfo?.model || !question.trim()) {
       setError('Please select a vehicle and enter a question.');
       return;
     }
 
-    setIsLoading(true);
-    setResponse(null);
+    setLoading(true);
     setError(null);
+    setResponse(null);
 
     try {
       const result = await analyzeWithTechBot({
-        prompt: question,
         vehicle: vehicleInfo,
+        prompt: question,
       });
+
       setResponse(result?.response || 'No response returned.');
-    } catch (err: any) {
-      console.error(err);
+    } catch (err) {
+      console.error('TechBot Error:', err);
       setError('Something went wrong while contacting TechBot.');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
   return (
-    <div className="p-4 max-w-2xl mx-auto">
-      <h1 className="text-xl font-bold text-accent mb-4">🧠 TechBot Chat</h1>
-      <VehicleSelector />
+    <main className="max-w-3xl mx-auto px-4 py-8 text-gray-800">
+      <h1 className="text-3xl font-bold text-blue-600 mb-2 text-center">🧠 TechBot Chat</h1>
+      <p className="text-center text-gray-600 mb-6">
+        Ask diagnostic questions or get repair guidance based on the selected vehicle.
+      </p>
+
+      <div className="mb-6">
+        <VehicleSelector />
+      </div>
 
       <textarea
         placeholder="Ask TechBot a question..."
-        className="w-full p-2 border rounded mb-2"
+        className="w-full p-3 border border-blue-300 rounded-md mb-4 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
         value={question}
         onChange={(e) => setQuestion(e.target.value)}
       />
 
       <button
         onClick={handleAsk}
-        disabled={isLoading}
-        className="bg-blue-600 text-white px-4 py-2 rounded shadow"
+        disabled={loading}
+        className="w-full bg-blue-600 text-white font-semibold py-2 rounded shadow hover:bg-blue-700 transition"
       >
-        {isLoading ? 'Asking...' : 'Ask TechBot'}
+        {loading ? 'Asking…' : 'Ask TechBot'}
       </button>
 
-      {error && <p className="text-red-600 mt-4">{error}</p>}
+      {error && <p className="mt-4 text-sm text-red-600 text-center">{error}</p>}
 
       {response && (
-        <div className="mt-6 bg-gray-100 p-4 border rounded">
-          <h2 className="font-semibold mb-2">TechBot Says:</h2>
-          <pre className="whitespace-pre-wrap text-sm">{response}</pre>
+        <div className="mt-6 bg-orange-50 border border-orange-200 rounded-lg p-4 shadow-sm">
+          <h2 className="text-lg font-semibold text-orange-700 mb-2">TechBot Says:</h2>
+          <pre className="whitespace-pre-wrap text-sm text-gray-800">{response}</pre>
         </div>
       )}
 
       <input
         type="text"
         placeholder="Ask a follow-up..."
-        className="w-full p-2 border rounded mt-4"
+        className="w-full mt-6 p-3 border border-gray-300 rounded-md shadow-sm focus:outline-none"
         value={followUp}
         onChange={(e) => setFollowUp(e.target.value)}
       />
-    </div>
+    </main>
   );
 }
