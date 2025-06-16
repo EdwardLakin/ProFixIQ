@@ -1,80 +1,85 @@
-'use client';
+'use client'
 
-import { useState } from 'react';
-import { analyzeWithTechBot } from '@/lib/analyze';
-import { useVehicleInfo } from '@/hooks/useVehicleInfo';
-import VehicleSelector from './VehicleSelector';
+import { useState } from 'react'
+import { useVehicleInfo } from '@/lib/useVehicleInfo'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Textarea } from '@/components/ui/textarea'
 
 export default function TechBot() {
-  const { vehicleInfo } = useVehicleInfo();
-  const [question, setQuestion] = useState('');
-  const [followUp, setFollowUp] = useState('');
-  const [response, setResponse] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { localVehicle } = useVehicleInfo()
+  const [input, setInput] = useState('')
+  const [response, setResponse] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
-  const handleAsk = async () => {
-    if (!vehicleInfo?.year || !vehicleInfo.make || !vehicleInfo.model || !question.trim()) {
-      setError('Please select a vehicle and enter a question.');
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-    setResponse(null);
+  const handleAskTechBot = async () => {
+    setLoading(true)
+    setResponse('')
+    setError('')
 
     try {
-      const result = await analyzeWithTechBot({
-        prompt: question,
-        vehicle: vehicleInfo,
-      });
-      setResponse(result);
-    } catch (err) {
-      console.error(err);
-      setError('Failed to process request.');
+      if (!localVehicle || !localVehicle.make || !localVehicle.model || !localVehicle.year) {
+        setError('Please select a vehicle first.')
+        setLoading(false)
+        return
+      }
+
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vehicle: localVehicle,
+          input,
+        }),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Something went wrong.')
+      }
+
+      setResponse(data.result)
+    } catch (err: any) {
+      setError(err.message)
     } finally {
-      setIsLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   return (
-    <div className="p-4 max-w-3xl mx-auto">
-      <h1 className="text-xl font-bold text-accent mb-4">🧠 TechBot Chat</h1>
-      <VehicleSelector />
+    <Card className="max-w-2xl mx-auto mt-6 bg-surface shadow-card border border-border">
+      <CardHeader>
+        <CardTitle className="text-accent">TechBot Diagnostic Assistant</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-muted-foreground text-sm">
+          TechBot is your AI-powered repair assistant. Ask about fault codes, symptoms, or
+          diagnostic procedures. It factors in your selected vehicle and responds like a seasoned
+          technician.
+        </p>
 
-      <label className="block mt-4 font-semibold">Your Question</label>
-      <textarea
-        className="w-full border rounded p-2"
-        value={question}
-        onChange={(e) => setQuestion(e.target.value)}
-        placeholder="Describe the issue or ask a repair question..."
-      />
+        <Input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="Describe the issue or enter a DTC code..."
+          className="bg-background"
+        />
+        <Button onClick={handleAskTechBot} disabled={loading || !input}>
+          {loading ? 'Analyzing...' : 'Ask TechBot'}
+        </Button>
 
-      <button
-        onClick={handleAsk}
-        disabled={isLoading}
-        className="mt-4 px-4 py-2 bg-blue-600 text-white rounded shadow"
-      >
-        {isLoading ? 'Thinking...' : 'Ask TechBot'}
-      </button>
-
-      {error && <p className="text-red-600 mt-4">{error}</p>}
-
-      {response && (
-        <div className="mt-6 bg-muted p-4 rounded shadow">
-          <h2 className="font-bold mb-2">TechBot Says:</h2>
-          <pre className="whitespace-pre-wrap">{response}</pre>
-
-          <label className="block mt-4 font-semibold">Follow-up Question</label>
-          <input
-            className="w-full border rounded p-2"
-            value={followUp}
-            onChange={(e) => setFollowUp(e.target.value)}
-            placeholder="Ask a follow-up..."
+        {error && <p className="text-destructive text-sm">{error}</p>}
+        {response && (
+          <Textarea
+            value={response}
+            readOnly
+            className="bg-muted border-muted text-sm h-64"
           />
-          {/* Placeholder — future: send followUp prompt continuation */}
-        </div>
-      )}
-    </div>
-  );
+        )}
+      </CardContent>
+    </Card>
+  )
 }

@@ -1,32 +1,30 @@
-export type TechBotPromptPayload = {
-  vehicle: {
-    year: string;
-    make: string;
-    model: string;
-  };
-  prompt: string;
-};
+import { NextRequest, NextResponse } from 'next/server'
+import OpenAI from 'openai'
+import { formatTechBotPrompt } from '@/lib/formatTechBotPrompt'
 
-/**
- * Formats the vehicle and user question into a structured prompt
- * for TechBot to process.
- */
-export function formatTechBotPrompt({
-  vehicle,
-  prompt,
-}: TechBotPromptPayload): string {
-  const { year, make, model } = vehicle;
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+})
 
-  return `
-You are a highly advanced and experienced automotive diagnostic technician named "TechBot", specialized in all modern vehicles. You assist mechanics, technicians, and DIY users with detailed, step-by-step answers to their questions. 
+export async function POST(req: NextRequest) {
+  try {
+    const { vehicle, input } = await req.json()
 
-Always consider the specific vehicle context: ${year} ${make} ${model}. Your answers must include:
-- Professional terminology and structured explanation.
-- Step-by-step guidance for troubleshooting or completing tasks.
-- Diagnostic logic when applicable (e.g., test methods, tool usage, what-if scenarios).
-- Practical tool recommendations and safety tips.
+    if (!vehicle || !input) {
+      return NextResponse.json({ error: 'Missing vehicle or input' }, { status: 400 })
+    }
 
-User Question:
-"${prompt}"
-  `.trim();
+    const prompt = formatTechBotPrompt(vehicle, input)
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: prompt }],
+    })
+
+    const message = completion.choices[0]?.message?.content
+    return NextResponse.json({ result: message })
+  } catch (error) {
+    console.error('[TechBot Error]', error)
+    return NextResponse.json({ error: 'Failed to contact TechBot' }, { status: 500 })
+  }
 }
