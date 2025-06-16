@@ -1,6 +1,5 @@
-// app/layout.tsx
 import React from 'react';
-import '../app/globals.css'; // ✅ Tailwind theme utilities: text-accent, shadow-card, etc.
+import './globals.css'; // Tailwind theme utilities: text-accent, shadow-card, etc.
 
 export default function RootLayout({
   children,
@@ -9,7 +8,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="bg-surface text-black">{children}</body>
+      <body className="bg-surface text-accent">{children}</body>
     </html>
   );
 }
