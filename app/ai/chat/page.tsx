@@ -1,114 +1,78 @@
-'use client'
+'use client';
 
-import { useState } from 'react'
-import { useVehicleInfo } from '@/hooks/useVehicleInfo'
-import VehicleSelector from '@components/VehicleSelector'
+import { useState } from 'react';
+import VehicleSelector from '@/components/VehicleSelector';
+import { useVehicleInfo } from '@/hooks/useVehicleInfo';
+import { analyzeWithTechBot } from '@/lib/analyzeComponents';
 
-export default function TechChatPage() {
-  const { vehicleInfo } = useVehicleInfo()
-  const [prompt, setPrompt] = useState('')
-  const [response, setResponse] = useState<string>('')
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+export default function TechBotChatPage() {
+  const { vehicleInfo } = useVehicleInfo();
+  const [question, setQuestion] = useState('');
+  const [response, setResponse] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [followUp, setFollowUp] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   const handleAsk = async () => {
-    if (!prompt.trim()) {
-      setError('Please enter a question.')
-      return
+    if (!vehicleInfo || !vehicleInfo.year || !vehicleInfo.make || !vehicleInfo.model || !question.trim()) {
+      setError('Please select a vehicle and enter a question.');
+      return;
     }
 
-    if (
-      !vehicleInfo?.year?.trim() ||
-      !vehicleInfo?.make?.trim() ||
-      !vehicleInfo?.model?.trim()
-    ) {
-      setError('Please select a vehicle.')
-      return
-    }
-
-    setIsLoading(true)
-    setError(null)
-    setResponse('')
+    setIsLoading(true);
+    setResponse(null);
+    setError(null);
 
     try {
-      const res = await fetch('/api/diagnose', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, vehicle: vehicleInfo }),
-      })
-
-      if (!res.body) {
-        setError('No stream returned from GPT.')
-        return
-      }
-
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder('utf-8')
-
-      let finalText = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        finalText += decoder.decode(value)
-        setResponse(finalText)
-      }
-    } catch (err) {
-      console.error(err)
-      setError('Error talking to TechBot.')
+      const result = await analyzeWithTechBot({
+        prompt: question,
+        vehicle: vehicleInfo,
+      });
+      setResponse(result?.response || 'No response returned.');
+    } catch (err: any) {
+      console.error(err);
+      setError('Something went wrong while contacting TechBot.');
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   return (
-    <div className="p-4 max-w-xl mx-auto">
-      <h1 className="text-xl font-bold text-accent mb-4">💬 TechBot Chat</h1>
+    <div className="p-4 max-w-2xl mx-auto">
+      <h1 className="text-xl font-bold text-accent mb-4">🧠 TechBot Chat</h1>
       <VehicleSelector />
 
       <textarea
-        value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
-        placeholder="Ask a repair question..."
-        className="w-full p-2 border rounded mb-4 min-h-[100px]"
+        placeholder="Ask TechBot a question..."
+        className="w-full p-2 border rounded mb-2"
+        value={question}
+        onChange={(e) => setQuestion(e.target.value)}
       />
 
       <button
         onClick={handleAsk}
         disabled={isLoading}
-        className="px-4 py-2 bg-blue-600 text-white rounded shadow"
+        className="bg-blue-600 text-white px-4 py-2 rounded shadow"
       >
-        {isLoading ? 'Thinking…' : 'Ask TechBot'}
+        {isLoading ? 'Asking...' : 'Ask TechBot'}
       </button>
 
       {error && <p className="text-red-600 mt-4">{error}</p>}
 
       {response && (
-        <div className="mt-6 bg-gray-100 p-4 rounded prose">
+        <div className="mt-6 bg-gray-100 p-4 border rounded">
           <h2 className="font-semibold mb-2">TechBot Says:</h2>
-          <div
-            dangerouslySetInnerHTML={{
-              __html: response.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>'),
-            }}
-          />
-
-          <div className="mt-6">
-            <h3 className="font-semibold mb-1">Follow-up Question</h3>
-            <input
-              type="text"
-              placeholder="Ask a follow-up..."
-              className="w-full p-2 border rounded"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  setPrompt(e.currentTarget.value)
-                  handleAsk()
-                  e.currentTarget.value = ''
-                }
-              }}
-            />
-          </div>
+          <pre className="whitespace-pre-wrap text-sm">{response}</pre>
         </div>
       )}
+
+      <input
+        type="text"
+        placeholder="Ask a follow-up..."
+        className="w-full p-2 border rounded mt-4"
+        value={followUp}
+        onChange={(e) => setFollowUp(e.target.value)}
+      />
     </div>
-  )
+  );
 }
