@@ -8,16 +8,10 @@ export default function VehicleSelector() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-
-    // fallback in case vehicleInfo is null
-    const newVehicle = {
-      year: vehicleInfo?.year || '',
-      make: vehicleInfo?.make || '',
-      model: vehicleInfo?.model || '',
+    updateVehicle({
+      ...vehicleInfo,
       [name]: value,
-    };
-
-    updateVehicle(newVehicle);
+    });
   };
 
   return (
@@ -32,6 +26,7 @@ export default function VehicleSelector() {
         onChange={handleChange}
         className="w-full p-2 border rounded"
       />
+
       <input
         type="text"
         name="make"
@@ -40,6 +35,7 @@ export default function VehicleSelector() {
         onChange={handleChange}
         className="w-full p-2 border rounded"
       />
+
       <input
         type="text"
         name="model"

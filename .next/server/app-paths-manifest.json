@@ -1,3 +1,7 @@
 {
-  "/ai/dtc/page": "app/ai/dtc/page.js"
+  "/api/chat/route": "app/api/chat/route.js",
+  "/ai/page": "app/ai/page.js",
+  "/ai/dtc/page": "app/ai/dtc/page.js",
+  "/ai/chat/page": "app/ai/chat/page.js",
+  "/page": "app/page.js"
 }

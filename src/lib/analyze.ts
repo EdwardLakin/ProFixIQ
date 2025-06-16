@@ -1,5 +1,4 @@
-// lib/analyze.ts
-
+// src/lib/analyze.ts
 import { VehicleInfo } from '@/types/vehicle';
 
 export async function analyzeWithTechBot({
@@ -11,7 +10,9 @@ export async function analyzeWithTechBot({
 }) {
   const res = await fetch('/api/chat', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+    },
     body: JSON.stringify({ vehicle, prompt }),
   });
 
@@ -28,8 +29,10 @@ export async function analyzeWithTechBot({
 export async function diagnoseDTC(vehicle: VehicleInfo, dtcCode: string) {
   const res = await fetch('/api/diagnose', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ vehicle, dtc: dtcCode }),
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ vehicle, dtcCode }), // ✅ FIXED: key name must match what API expects
   });
 
   if (!res.ok) {
