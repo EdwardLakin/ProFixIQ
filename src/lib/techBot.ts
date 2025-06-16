@@ -1,30 +1,28 @@
-import { ChatCompletionMessageParam, OpenAI } from 'openai-edge'
-import { Vehicle } from '@/types/vehicle'
-import { formatTechBotPrompt } from './formatTechBotPrompt'
+import { VehicleInfo } from '@/types/vehicle';
 
-export async function askTechBot(vehicle: Vehicle, input: string): Promise<string> {
-  const prompt = formatTechBotPrompt(vehicle, input)
+export async function analyzeWithTechBot(prompt: string, vehicle: VehicleInfo) {
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        message: prompt,
+        vehicle,
+      }),
+    });
 
-  const messages: ChatCompletionMessageParam[] = [
-    {
-      role: 'system',
-      content: `You are TechBot, a certified master technician AI that provides accurate and step-by-step diagnostics for automotive issues. Always tailor your response based on the user's selected vehicle and explain issues as clearly as possible. Avoid speculation. If you're unsure, prompt the user for more details or test results.`,
-    },
-    {
-      role: 'user',
-      content: prompt,
-    },
-  ]
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error('TechBot API error:', errorText);
+      return { error: 'TechBot failed to respond.' };
+    }
 
-  const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY!,
-  })
-
-  const completion = await openai.chat.completions.create({
-    model: 'gpt-4o',
-    messages,
-  })
-
-  const result = completion.choices?.[0]?.message?.content?.trim()
-  return result || 'TechBot could not generate a response.'
+    const data = await res.json();
+    return data;
+  } catch (error) {
+    console.error('TechBot fetch error:', error);
+    return { error: 'TechBot is currently unavailable.' };
+  }
 }
