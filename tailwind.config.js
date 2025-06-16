@@ -1,10 +1,12 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: [
-    './app/**/*.{ts,tsx,js,jsx}',
-    './src/**/*.{ts,tsx,js,jsx}',
-    './components/**/*.{ts,tsx,js,jsx}',
-  ],
+  './app/**/*.{js,ts,jsx,tsx}',      // App Router pages
+  './pages/**/*.{js,ts,jsx,tsx}',    // Optional: legacy Pages support
+  './components/**/*.{js,ts,jsx,tsx}',
+  './src/**/*.{js,ts,jsx,tsx}',      // Include src files
+],
+
   theme: {
     extend: {
       colors: {

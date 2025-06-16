@@ -5,10 +5,9 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Color & Utility Themes */
 @layer utilities {
   .text-accent {
-    @apply text-blue-700;
+    @apply text-orange-400;
   }
 
   .text-muted {
@@ -16,10 +15,10 @@
   }
 
   .bg-surface {
-    @apply bg-white;
+    @apply bg-[#101010];
   }
 
   .shadow-card {
-    @apply shadow-md border border-gray-200;
+    @apply shadow-md border border-gray-800;
   }
 }
