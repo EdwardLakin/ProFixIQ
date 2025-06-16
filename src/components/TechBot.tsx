@@ -1,67 +1,80 @@
-"use client";
+'use client';
 
-import React, { useState } from "react";
-import { askTechBot } from "@lib/techBot";
-import { useVehicleInfo } from "@hooks/useVehicleInfo";
+import { useState } from 'react';
+import { analyzeWithTechBot } from '@/lib/analyze';
+import { useVehicleInfo } from '@/hooks/useVehicleInfo';
+import VehicleSelector from './VehicleSelector';
 
 export default function TechBot() {
-  const [input, setInput] = useState("");
-  const [chat, setChat] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
-  const { vehicle } = useVehicleInfo();
+  const { vehicleInfo } = useVehicleInfo();
+  const [question, setQuestion] = useState('');
+  const [followUp, setFollowUp] = useState('');
+  const [response, setResponse] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async () => {
-    if (!input || !vehicle) return;
-    setLoading(true);
-
-    try {
-      const reply = await askTechBot({ message: input, vehicle });
-      setChat((prev) => [...prev, `🧠 You: ${input}`, `🤖 TechBot: ${reply}`]);
-      setInput("");
-    } catch (err) {
-      setChat((prev) => [...prev, "❌ Error talking to TechBot."]);
+  const handleAsk = async () => {
+    if (!vehicleInfo?.year || !vehicleInfo.make || !vehicleInfo.model || !question.trim()) {
+      setError('Please select a vehicle and enter a question.');
+      return;
     }
 
-    setLoading(false);
+    setIsLoading(true);
+    setError(null);
+    setResponse(null);
+
+    try {
+      const result = await analyzeWithTechBot({
+        prompt: question,
+        vehicle: vehicleInfo,
+      });
+      setResponse(result);
+    } catch (err) {
+      console.error(err);
+      setError('Failed to process request.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
-    <div className="p-4 max-w-3xl mx-auto space-y-4">
-      <h2 className="text-2xl font-bold">🤖 TechBot Assistant</h2>
+    <div className="p-4 max-w-3xl mx-auto">
+      <h1 className="text-xl font-bold text-accent mb-4">🧠 TechBot Chat</h1>
+      <VehicleSelector />
 
-      {vehicle ? (
-        <p className="text-sm text-muted">
-          Active Vehicle: {vehicle.year} {vehicle.make} {vehicle.model}
-        </p>
-      ) : (
-        <p className="text-sm text-red-600">⚠️ No vehicle selected.</p>
-      )}
+      <label className="block mt-4 font-semibold">Your Question</label>
+      <textarea
+        className="w-full border rounded p-2"
+        value={question}
+        onChange={(e) => setQuestion(e.target.value)}
+        placeholder="Describe the issue or ask a repair question..."
+      />
 
-      <div className="space-y-3">
-        <textarea
-          className="w-full p-2 border rounded resize-none"
-          placeholder="Ask a question about a repair..."
-          rows={3}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-        />
+      <button
+        onClick={handleAsk}
+        disabled={isLoading}
+        className="mt-4 px-4 py-2 bg-blue-600 text-white rounded shadow"
+      >
+        {isLoading ? 'Thinking...' : 'Ask TechBot'}
+      </button>
 
-        <button
-          onClick={handleSubmit}
-          disabled={loading || !input}
-          className="bg-accent text-white px-4 py-2 rounded disabled:opacity-50"
-        >
-          {loading ? "⏳ Thinking..." : "📤 Send to TechBot"}
-        </button>
+      {error && <p className="text-red-600 mt-4">{error}</p>}
 
-        <div className="mt-6 space-y-2">
-          {chat.map((line, index) => (
-            <div key={index} className="bg-muted p-2 rounded text-sm">
-              {line}
-            </div>
-          ))}
+      {response && (
+        <div className="mt-6 bg-muted p-4 rounded shadow">
+          <h2 className="font-bold mb-2">TechBot Says:</h2>
+          <pre className="whitespace-pre-wrap">{response}</pre>
+
+          <label className="block mt-4 font-semibold">Follow-up Question</label>
+          <input
+            className="w-full border rounded p-2"
+            value={followUp}
+            onChange={(e) => setFollowUp(e.target.value)}
+            placeholder="Ask a follow-up..."
+          />
+          {/* Placeholder — future: send followUp prompt continuation */}
         </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -1,64 +1,76 @@
+// lib/analyze.ts
+
 import { OpenAI } from 'openai';
+import { AnalyzePayload } from '@/types';
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
+  apiKey: process.env.OPENAI_API_KEY,
 });
 
-type VehicleInfo = {
-  year: string;
-  make: string;
-  model: string;
-};
+export async function analyzeImage({ image, vehicle }: AnalyzePayload): Promise<string> {
+  const { year, make, model } = vehicle;
+  const prompt = `You are a highly skilled automotive technician. A user has submitted a photo for visual diagnosis. 
+The vehicle is a ${year} ${make} ${model}.
+Analyze the image and return the result in the following format:
 
-export async function analyzePrompt({
-  prompt,
-  vehicle,
-  mode = 'general',
-}: {
-  prompt: string;
-  vehicle: VehicleInfo;
-  mode?: 'general' | 'dtc';
-}) {
-  const vehicleString = `${vehicle.year} ${vehicle.make} ${vehicle.model}`;
+**Issue Identified:** What is the most likely issue
+**Recommended Action:** What to do about it
+**Severity:** Low, Medium, or High
+**Estimated Labor Time:** Estimate in hours or minutes
+**Tools Needed:** List tools
+**Parts Suggestions:** If any, suggest parts to replace or inspect
 
-  const systemPrompt =
-    mode === 'dtc'
-      ? `
-You are a highly experienced automotive technician specializing in diagnostics.
-The user will give you a Diagnostic Trouble Code (DTC) and a vehicle (${vehicleString}).
-Return a well-structured breakdown including:
+Keep it short, readable, and professional.`;
 
-**Code Meaning:** Explain what the code stands for.
-
-**Severity:** How critical is it? Can the vehicle still be driven?
-
-**Common Causes:** List the most likely root causes.
-
-**Diagnostic Steps:** Guide the user through diagnosis using tools like multimeters, scan tools, or pressure gauges.
-
-**Fixes:** List possible fixes with estimated labor time and parts that might be needed.
-
-Be brief but detailed. Write in a format readable on mobile. Use **bold headers**.
-`
-      : `
-You are a highly skilled automotive technician. The user is asking a question about a specific vehicle: ${vehicleString}.
-Answer clearly and concisely. Include diagnostic steps, safety warnings, estimated labor time, and recommended tools where applicable.
-Avoid generic responses. Be direct and mechanical in tone. Assume the user is experienced unless they ask for beginner steps.
-`;
-
-  const completion = await openai.chat.completions.create({
+  const response = await openai.chat.completions.create({
     model: 'gpt-4o',
     messages: [
-      {
-        role: 'system',
-        content: systemPrompt.trim(),
-      },
+      { role: 'system', content: 'You are an expert mechanic diagnosing vehicle issues from images.' },
+      { role: 'user', content: prompt },
       {
         role: 'user',
-        content: prompt,
+        content: [
+          {
+            type: 'image_url',
+            image_url: {
+              url: image,
+            },
+          },
+        ],
       },
     ],
+    temperature: 0.7,
   });
 
-  return completion.choices[0].message.content || '';
+  return response.choices[0]?.message?.content ?? 'Image analysis failed.';
+}
+
+export async function analyzeDTC({ dtcCode, vehicle }: { dtcCode: string; vehicle: { year: string; make: string; model: string } }): Promise<string> {
+  const prompt = `Vehicle: ${vehicle.year} ${vehicle.make} ${vehicle.model}. Diagnose DTC code ${dtcCode}. 
+Return a plain-English explanation of what the code means, how severe it is, and the steps to troubleshoot and fix it.`;
+
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages: [
+      { role: 'system', content: 'You are a master diagnostic technician.' },
+      { role: 'user', content: prompt },
+    ],
+    temperature: 0.7,
+  });
+
+  return response.choices[0]?.message?.content ?? 'DTC analysis failed.';
+}
+
+export async function analyzeWithTechBot({ prompt, vehicle }: { prompt: string; vehicle: { year: string; make: string; model: string } }): Promise<string> {
+  const context = `You are helping diagnose or repair a ${vehicle.year} ${vehicle.make} ${vehicle.model}.`;
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages: [
+      { role: 'system', content: 'You are an expert automotive technician assistant.' },
+      { role: 'user', content: `${context}\n\n${prompt}` },
+    ],
+    temperature: 0.7,
+  });
+
+  return response.choices[0]?.message?.content ?? 'TechBot response failed.';
 }

@@ -1,33 +1,55 @@
-import { OpenAIStream } from './openaiStream';
+import OpenAI from 'openai';
 
-export async function askTechBot(prompt: string): Promise<string> {
-  const response = await fetch('/api/ask-techbot', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY!,
+});
+
+type VehicleInfo = {
+  year: string;
+  make: string;
+  model: string;
+};
+
+export async function askTechBot(prompt: string, vehicle?: VehicleInfo): Promise<string> {
+  const messages = [
+    {
+      role: 'system',
+      content: `You are an expert automotive diagnostic assistant.`,
     },
-    body: JSON.stringify({ prompt })
+    {
+      role: 'user',
+      content: vehicle
+        ? `Vehicle: ${vehicle.year} ${vehicle.make} ${vehicle.model}\n\n${prompt}`
+        : prompt,
+    },
+  ];
+
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages,
+    temperature: 0.7,
   });
 
-  if (!response.ok) {
-    throw new Error('Failed to get AI response');
-  }
-
-  const data = await response.json();
-  return data.result as string;
+  return response.choices[0]?.message.content?.trim() || 'No response.';
 }
 
-export const diagnoseDTC = async (vehicle: string, code: string): Promise<string> => {
-  const prompt = `Given a ${vehicle}, diagnose the DTC code ${code}. Provide a description, severity, and recommended fix.`;
+export async function diagnoseDTC(vehicle: VehicleInfo, code: string): Promise<string> {
+  const messages = [
+    {
+      role: 'system',
+      content: 'You are an expert diagnostic technician specializing in OBD-II codes.',
+    },
+    {
+      role: 'user',
+      content: `Vehicle: ${vehicle.year} ${vehicle.make} ${vehicle.model}\n\nDTC Code: ${code}\nPlease describe the code, severity, likely cause, and suggested fix.`,
+    },
+  ];
 
-  const response = await OpenAIStream({
+  const response = await openai.chat.completions.create({
     model: 'gpt-4o',
-    messages: [
-      { role: 'system', content: 'You are an expert automotive diagnostic assistant.' },
-      { role: 'user', content: prompt }
-    ],
-    temperature: 0.7
+    messages,
+    temperature: 0.7,
   });
 
-  return response;
-};
+  return response.choices[0]?.message.content?.trim() || 'No response.';
+}
