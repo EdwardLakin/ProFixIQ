@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Color & Utility Themes */
+@layer utilities {
+  .text-accent {
+    @apply text-blue-700;
+  }
+
+  .text-muted {
+    @apply text-gray-500;
+  }
+
+  .bg-surface {
+    @apply bg-white;
+  }
+
+  .shadow-card {
+    @apply shadow-md border border-gray-200;
+  }
+}

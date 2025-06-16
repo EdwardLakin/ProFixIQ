@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useVehicleInfo } from '@/hooks/useVehicleInfo';
 import VehicleSelector from '@/components/VehicleSelector';
-import { diagnoseDTC } from '@/lib/analyze';
+import { diagnoseDTC } from '@/lib/techBot';
 
 export default function DTCCodeLookupPage() {
   const { vehicleInfo } = useVehicleInfo();

@@ -4,77 +4,85 @@ import Link from 'next/link';
 
 export default function ProFixIQLanding() {
   return (
-    <main className="max-w-4xl mx-auto px-4 py-8 text-gray-800">
-      <h1 className="text-4xl font-bold text-blue-600 text-center mb-2">Welcome to ProFixIQ</h1>
-      <p className="text-center text-gray-600 text-lg mb-8">
+    <main className="max-w-xl mx-auto px-4 py-8">
+      <h1 className="text-3xl font-bold text-accent mb-4">🚗 Welcome to ProFixIQ</h1>
+      <p className="text-muted mb-8">
         AI-powered repair assistant for diagnostics, inspections, and workflow management.
       </p>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-        {/* AI Chat Assistant */}
-        <Link href="/ai/chat">
-          <div className="rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 shadow-md p-5 transition-colors">
-            <h2 className="text-xl font-semibold text-blue-800 mb-1">🧠 AI Diagnosis</h2>
-            <p className="text-gray-700">
-              Use GPT-powered tools to troubleshoot vehicles, ask questions, and find issues.
-            </p>
-          </div>
+      {/* AI DIAGNOSIS */}
+      <section className="mb-8 bg-surface p-4 rounded shadow-card">
+        <h2 className="text-xl font-bold text-accent mb-2">🧠 AI Diagnosis</h2>
+        <p className="text-muted mb-4">
+          Use GPT-powered tools to troubleshoot vehicles, ask questions, and find issues.
+        </p>
+        <Link
+          href="/ai"
+          className="block w-full bg-blue-600 hover:bg-blue-700 text-white text-center py-2 rounded font-semibold"
+        >
+          Open AI Diagnostic Tools
         </Link>
+      </section>
 
-        {/* Visual Diagnosis */}
-        <Link href="/ai/photo">
-          <div className="rounded-xl border border-orange-200 bg-orange-50 hover:bg-orange-100 shadow-md p-5 transition-colors">
-            <h2 className="text-xl font-semibold text-orange-800 mb-1">📸 Visual Diagnosis</h2>
-            <p className="text-gray-700">
-              Upload photos to detect problems like leaks, rust, or worn parts.
-            </p>
-          </div>
+      {/* WORK ORDERS */}
+      <section className="mb-8 bg-surface p-4 rounded shadow-card">
+        <h2 className="text-xl font-bold text-accent mb-2">🧾 Work Orders</h2>
+        <p className="text-muted mb-4">
+          Create and manage repair jobs with AI-generated complaint, cause, and correction lines.
+        </p>
+        <Link
+          href="/workorders"
+          className="underline text-blue-600 hover:text-blue-800"
+        >
+          Manage Work Orders
         </Link>
+      </section>
 
-        {/* Work Orders */}
-        <Link href="/workorders">
-          <div className="rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 shadow-md p-5 transition-colors">
-            <h2 className="text-xl font-semibold text-blue-800 mb-1">🛠️ Work Orders</h2>
-            <p className="text-gray-700">
-              Create and manage repair jobs with AI-generated complaint, cause, and correction lines.
-            </p>
-          </div>
+      {/* INSPECTIONS */}
+      <section className="mb-8 bg-surface p-4 rounded shadow-card">
+        <h2 className="text-xl font-bold text-accent mb-2">🔍 Inspections</h2>
+        <p className="text-muted mb-4">
+          Run and review inspections with voice & photo capture (Pro+).
+        </p>
+        <Link
+          href="/inspections"
+          className="underline text-blue-600 hover:text-blue-800"
+        >
+          Start an Inspection
         </Link>
+      </section>
 
-        {/* Inspections */}
-        <Link href="/inspections">
-          <div className="rounded-xl border border-orange-200 bg-orange-50 hover:bg-orange-100 shadow-md p-5 transition-colors">
-            <h2 className="text-xl font-semibold text-orange-800 mb-1">🧾 Inspections</h2>
-            <p className="text-gray-700">
-              Run and review inspections with voice & photo capture (Pro+).
-            </p>
-          </div>
+      {/* BOOKINGS */}
+      <section className="mb-8 bg-surface p-4 rounded shadow-card">
+        <h2 className="text-xl font-bold text-accent mb-2">📆 Bookings</h2>
+        <p className="text-muted mb-4">
+          Let customers request appointments and get instant AI-generated estimates.
+        </p>
+        <Link
+          href="/booking"
+          className="underline text-blue-600 hover:text-blue-800"
+        >
+          Start a Booking
         </Link>
+      </section>
 
-        {/* Bookings */}
-        <Link href="/booking">
-          <div className="rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 shadow-md p-5 transition-colors">
-            <h2 className="text-xl font-semibold text-blue-800 mb-1">📅 Bookings</h2>
-            <p className="text-gray-700">
-              Let customers request appointments and get instant AI-generated estimates.
-            </p>
-          </div>
+      {/* ACCOUNT */}
+      <section className="mb-8 bg-surface p-4 rounded shadow-card">
+        <h2 className="text-xl font-bold text-accent mb-2">👤 Account</h2>
+        <p className="text-muted mb-4">
+          Manage your plan, settings, and ProFixIQ preferences.
+        </p>
+        <Link
+          href="/dashboard/approvals"
+          className="underline text-blue-600 hover:text-blue-800"
+        >
+          Open Account Panel
         </Link>
+      </section>
 
-        {/* Account / Approvals */}
-        <Link href="/dashboard/approvals">
-          <div className="rounded-xl border border-orange-200 bg-orange-50 hover:bg-orange-100 shadow-md p-5 transition-colors">
-            <h2 className="text-xl font-semibold text-orange-800 mb-1">👤 Account</h2>
-            <p className="text-gray-700">
-              Manage your plan, settings, and approve repair quotes from techs.
-            </p>
-          </div>
-        </Link>
-      </div>
-
-      {/* Upgrade Tip */}
-      <div className="mt-8 text-sm text-center text-yellow-600 bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3 shadow-sm">
-        <strong>Tip:</strong> Upgrade to Pro+ for voice-guided inspections and unlimited work orders.
+      {/* TIP */}
+      <div className="text-sm text-yellow-600 mt-6">
+        💡 Tip: Upgrade to Pro+ for voice-guided inspections and unlimited work orders.
       </div>
     </main>
   );

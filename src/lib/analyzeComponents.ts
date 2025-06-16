@@ -1,11 +1,8 @@
-'use client';
+// src/lib/analyzeComponents.ts
 
 import { VehicleInfo } from '@/types/vehicle';
 
-export async function analyzeImageComponents(
-  imageUrl: string,
-  vehicle: VehicleInfo
-): Promise<{ result?: string; error?: string }> {
+export async function analyzeImage(imageUrl: string, vehicle: VehicleInfo): Promise<{ result: string }> {
   try {
     const res = await fetch('/api/analyze', {
       method: 'POST',
@@ -18,10 +15,16 @@ export async function analyzeImageComponents(
       }),
     });
 
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error('analyzeImage error:', errorText);
+      throw new Error('Image analysis failed');
+    }
+
     const data = await res.json();
     return data;
   } catch (error: any) {
-    console.error('analyzeImageComponents error:', error);
-    return { error: 'Image analysis failed' };
+    console.error('Image analysis error:', error);
+    return { result: 'Error: Image analysis failed.' };
   }
 }

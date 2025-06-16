@@ -1,4 +1,4 @@
-// lib/analyze.ts
+// src/lib/analyze.ts
 
 type VehicleInfo = {
   year: string;
@@ -6,29 +6,24 @@ type VehicleInfo = {
   model: string;
 };
 
-export async function analyzeWithTechBot(message: string, vehicle: VehicleInfo) {
-  try {
-    const res = await fetch('/api/chat/route', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        message,
-        vehicle,
-      }),
-    });
+export async function diagnoseDTC(vehicle: VehicleInfo, code: string): Promise<string> {
+  const res = await fetch('/api/diagnose', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      vehicle,
+      code,
+    }),
+  });
 
-    if (!res.ok) {
-      const errorText = await res.text();
-      console.error('TechBot API error:', errorText);
-      throw new Error(`API Error: ${errorText}`);
-    }
-
-    const data = await res.json();
-    return data.result; // expecting { result: "..." }
-  } catch (error: any) {
-    console.error('Error in analyzeWithTechBot:', error.message || error);
-    return 'Something went wrong while contacting TechBot. Please try again.';
+  if (!res.ok) {
+    const errorText = await res.text();
+    console.error('DTC diagnose error:', errorText);
+    throw new Error('Failed to diagnose DTC');
   }
+
+  const data = await res.json();
+  return data.result;
 }
