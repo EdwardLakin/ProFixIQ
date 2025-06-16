@@ -1,13 +1,22 @@
 import { VehicleInfo } from '@/types/vehicle';
 
 export async function analyzeImageComponents(
-  imageURL: string,
+  imageFile: File,
   vehicle: VehicleInfo
 ): Promise<{ result?: string; error?: string }> {
   try {
-    // Validate imageURL is a string and starts with https
-    if (typeof imageURL !== 'string' || !imageURL.startsWith('https://')) {
-      return { error: 'Invalid image URL. Must be a valid HTTPS URL.' };
+    // Convert file to Data URL
+    const reader = new FileReader();
+
+    const imageURL: string = await new Promise((resolve, reject) => {
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject('Failed to read file as Data URL');
+      reader.readAsDataURL(imageFile);
+    });
+
+    // Validate it's a base64 image string
+    if (!imageURL.startsWith('data:image')) {
+      return { error: 'Invalid image format. Must be an image file.' };
     }
 
     const res = await fetch('/api/analyze', {
@@ -15,10 +24,7 @@ export async function analyzeImageComponents(
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        image_url: imageURL,
-        vehicle,
-      }),
+      body: JSON.stringify({ image_url: imageURL, vehicle }),
     });
 
     if (!res.ok) {
@@ -29,7 +35,7 @@ export async function analyzeImageComponents(
 
     const data = await res.json();
     return data;
-  } catch (error: any) {
+  } catch (error) {
     console.error('analyzeImageComponents error:', error);
     return { error: 'Image analysis failed' };
   }

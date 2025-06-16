@@ -16,15 +16,15 @@
       "static/chunks/main-app.js",
       "static/chunks/app/ai/page.js"
     ],
-    "/ai/photo/page": [
+    "/ai/chat/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/ai/photo/page.js"
+      "static/chunks/app/ai/chat/page.js"
     ],
-    "/api/analyze/route": [
+    "/api/chat/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/api/analyze/route.js"
+      "static/chunks/app/api/chat/route.js"
     ]
   }
 }
