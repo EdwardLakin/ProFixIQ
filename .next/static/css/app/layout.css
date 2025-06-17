@@ -5,6 +5,49 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Font Imports */
+@import url('https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Rubik:wght@400;500;700&display=swap');
+
+/* Global Font Setup */
 body {
-  @apply bg-surface text-accent;
+  font-family: 'Rubik', sans-serif;
+  background-color: #f9f9f9;
+  color: #111827;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  scroll-behavior: smooth;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, .header-font {
+  font-family: 'Black Ops One', cursive;
+}
+
+/* Custom Utilities */
+.error {
+  @apply text-red-500;
+}
+
+.button-primary {
+  @apply bg-blue-600 text-white font-bold py-2 px-4 rounded hover:bg-blue-700;
+}
+
+.button-secondary {
+  @apply bg-orange-500 text-white font-bold py-2 px-4 rounded hover:bg-orange-600;
+}
+
+.card {
+  @apply bg-white rounded-lg shadow-md p-4;
+}
+
+/* Scrollbar Styling (optional) */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
 }

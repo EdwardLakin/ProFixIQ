@@ -1,17 +1,27 @@
-import './globals.css'
-import { ReactNode } from 'react'
+// app/layout.tsx
 
-export const metadata = {
+import './globals.css';
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
   title: 'ProFixIQ',
-  description: 'AI-powered vehicle diagnostics and repair automation',
-}
+  description: 'AI-powered diagnostics and repair assistant for vehicles',
+};
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
-    <html lang="en" className="dark">
-      <body className="bg-background text-accent font-sans antialiased">
-        {children}
-      </body>
+    <html lang="en">
+      <head>
+        <link
+          href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Rubik:wght@400;500;700&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      <body>{children}</body>
     </html>
-  )
+  );
 }
