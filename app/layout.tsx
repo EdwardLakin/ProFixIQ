@@ -1,6 +1,6 @@
 // app/layout.tsx
 
-import '/output.css';
+import '../public/output.css';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {

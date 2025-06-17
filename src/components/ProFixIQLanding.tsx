@@ -1,94 +1,97 @@
-'use client'
+'use client';
 
-import Link from 'next/link'
+import Link from 'next/link';
+import { useEffect } from 'react';
 
 export default function ProFixIQLanding() {
+  useEffect(() => {
+    document.body.style.background =
+      'linear-gradient(to bottom right, #0f172a, #1e3a8a)'; // Dark to blue gradient
+    document.body.style.backgroundImage +=
+      ', url("/carbon-weave.png")'; // Make sure this file exists in /public
+    document.body.style.backgroundSize = 'cover';
+    document.body.style.backgroundRepeat = 'repeat';
+  }, []);
+
   return (
-    <main className="max-w-xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-blackops mb-4 flex items-center gap-2">
-        <span role="img" aria-label="wave">👋</span> Welcome to ProFixIQ
+    <main className="min-h-screen flex flex-col items-center px-4 py-8 text-white font-sans space-y-6">
+      <h1 className="text-4xl md:text-5xl font-black font-header tracking-wide text-orange-400 mb-6">
+        Welcome to ProFixIQ
       </h1>
-      <p className="text-muted mb-8">
-        AI-powered repair assistant for diagnostics, inspections, and workflow automation.
-      </p>
 
-      {/* === AI Diagnosis === */}
-      <section className="card mb-6">
-        <h2 className="text-2xl font-blackops flex items-center gap-2 mb-2">
-          <span role="img" aria-label="ai">🧠</span> AI Diagnosis
-        </h2>
-        <p className="text-muted mb-2">
-          Use GPT-powered tools to troubleshoot vehicle issues, decode DTCs, and analyze photos.
-        </p>
-        <Link href="/ai">
-          <button className="button-primary">Open AI Diagnostic Tools</button>
+      <section className="w-full max-w-xl flex flex-col space-y-4">
+        <Link
+          href="/ai"
+          className="w-full bg-orange-500 hover:bg-orange-600 text-white py-4 px-6 rounded-xl text-left transition-all shadow-md"
+        >
+          <div>
+            <div className="text-xl font-bold font-header">AI Diagnosis</div>
+            <div className="text-sm text-white font-light">
+              Snap a photo or enter a code to get AI repair help.
+            </div>
+          </div>
         </Link>
-      </section>
 
-      {/* === Work Orders === */}
-      <section className="card mb-6">
-        <h2 className="text-2xl font-blackops flex items-center gap-2 mb-2">
-          <span role="img" aria-label="clipboard">📋</span> Work Orders
-        </h2>
-        <p className="text-muted mb-2">
-          Create and manage repair jobs with AI-generated complaint, cause, correction, and labor time.
-        </p>
-        <Link href="/workorders">
-          <button className="button-primary">Manage Work Orders</button>
+        <Link
+          href="/workorders"
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 px-6 rounded-xl text-left transition-all shadow-md"
+        >
+          <div>
+            <div className="text-xl font-bold font-header">Work Orders</div>
+            <div className="text-sm text-white font-light">
+              Create, track, and manage repair work orders.
+            </div>
+          </div>
         </Link>
-      </section>
 
-      {/* === Inspections === */}
-      <section className="card mb-6">
-        <h2 className="text-2xl font-blackops flex items-center gap-2 mb-2">
-          <span role="img" aria-label="inspection">✅</span> Inspections
-        </h2>
-        <p className="text-muted mb-2">
-          Perform structured inspections with pass/fail tracking, notes, photos, and auto-quoting.
-        </p>
-        <Link href="/inspections">
-          <button className="button-primary">Start or Review Inspections</button>
+        <Link
+          href="/inspections"
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 px-6 rounded-xl text-left transition-all shadow-md"
+        >
+          <div>
+            <div className="text-xl font-bold font-header">Inspections</div>
+            <div className="text-sm text-white font-light">
+              Start or review vehicle inspections and reports.
+            </div>
+          </div>
         </Link>
-      </section>
 
-      {/* === VIN Decoder === */}
-      <section className="card mb-6">
-        <h2 className="text-2xl font-blackops flex items-center gap-2 mb-2">
-          <span role="img" aria-label="vin">🆔</span> VIN Decoder
-        </h2>
-        <p className="text-muted mb-2">
-          Decode vehicle VINs to auto-fill year, make, model, and build info.
-        </p>
-        <Link href="/vin">
-          <button className="button-primary">Open VIN Decoder</button>
+        <Link
+          href="/vin"
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 px-6 rounded-xl text-left transition-all shadow-md"
+        >
+          <div>
+            <div className="text-xl font-bold font-header">VIN Decoder</div>
+            <div className="text-sm text-white font-light">
+              Decode VINs and auto-fill vehicle data.
+            </div>
+          </div>
         </Link>
-      </section>
 
-      {/* === History === */}
-      <section className="card mb-6">
-        <h2 className="text-2xl font-blackops flex items-center gap-2 mb-2">
-          <span role="img" aria-label="history">📅</span> History
-        </h2>
-        <p className="text-muted mb-2">
-          Review previous inspections, work orders, and AI sessions by vehicle.
-        </p>
-        <Link href="/history">
-          <button className="button-secondary">View Repair History</button>
+        <Link
+          href="/history"
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 px-6 rounded-xl text-left transition-all shadow-md"
+        >
+          <div>
+            <div className="text-xl font-bold font-header">Repair History</div>
+            <div className="text-sm text-white font-light">
+              View previous diagnostics, repairs, and visits.
+            </div>
+          </div>
         </Link>
-      </section>
 
-      {/* === Bookings === */}
-      <section className="card mb-6">
-        <h2 className="text-2xl font-blackops flex items-center gap-2 mb-2">
-          <span role="img" aria-label="calendar">📆</span> Bookings
-        </h2>
-        <p className="text-muted mb-2">
-          Accept customer requests, confirm appointments, and view open slots.
-        </p>
-        <Link href="/booking">
-          <button className="button-secondary">Manage Bookings</button>
+        <Link
+          href="/booking"
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 px-6 rounded-xl text-left transition-all shadow-md"
+        >
+          <div>
+            <div className="text-xl font-bold font-header">Customer Booking</div>
+            <div className="text-sm text-white font-light">
+              Customers can request appointments or quotes.
+            </div>
+          </div>
         </Link>
       </section>
     </main>
-  )
+  );
 }
