@@ -6,42 +6,82 @@ export type Json =
   | { [key: string]: Json }
   | Json[];
 
-export type WorkOrderStatus =
-  | "unassigned"
-  | "in_progress"
-  | "on_hold"
-  | "completed";
-
 export interface Database {
   public: {
     Tables: {
       work_order_lines: {
         Row: {
-          id: number;
-          complaint: string;
+          id: string;
+          work_order_id: string | null;
+          vehicle_id: string | null;
+          complaint: string | null;
           cause: string | null;
           correction: string | null;
-          tools: string[] | null;
-          labor_time: number | null;
-          priority: "diagnose" | "repair" | "maintenance";
+          status: 'ready' | 'active' | 'paused' | 'on_hold' | 'complete' | null;
           assigned_to: string | null;
-          status: WorkOrderStatus;
-          hold_reason: string | null;
+          labor_time: number | null;
+          parts_needed: string[] | null;
+          parts_received: string[] | null;
           created_at: string;
           updated_at: string;
         };
-        Insert: Omit<
-          Database["public"]["Tables"]["work_order_lines"]["Row"],
-          "id" | "created_at" | "updated_at"
-        >;
-        Update: Partial<
-          Database["public"]["Tables"]["work_order_lines"]["Row"]
-        >;
-        Relationships: [];
+        Insert: {
+          id?: string;
+          work_order_id?: string | null;
+          vehicle_id?: string | null;
+          complaint?: string | null;
+          cause?: string | null;
+          correction?: string | null;
+          status?: 'ready' | 'active' | 'paused' | 'on_hold' | 'complete' | null;
+          assigned_to?: string | null;
+          labor_time?: number | null;
+          parts_needed?: string[] | null;
+          parts_received?: string[] | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          work_order_id?: string | null;
+          vehicle_id?: string | null;
+          complaint?: string | null;
+          cause?: string | null;
+          correction?: string | null;
+          status?: 'ready' | 'active' | 'paused' | 'on_hold' | 'complete' | null;
+          assigned_to?: string | null;
+          labor_time?: number | null;
+          parts_needed?: string[] | null;
+          parts_received?: string[] | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'work_order_lines_assigned_to_fkey';
+            columns: ['assigned_to'];
+            referencedRelation: 'users';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'work_order_lines_work_order_id_fkey';
+            columns: ['work_order_id'];
+            referencedRelation: 'work_orders';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'work_order_lines_vehicle_id_fkey';
+            columns: ['vehicle_id'];
+            referencedRelation: 'vehicles';
+            referencedColumns: ['id'];
+          }
+        ];
       };
+
+      // Add other tables like `vehicles`, `work_orders`, etc. here as needed
     };
-    Enums: {
-      WorkOrderStatus: WorkOrderStatus;
-    };
+    Views: {};
+    Functions: {};
+    Enums: {};
+    CompositeTypes: {};
   };
 }
