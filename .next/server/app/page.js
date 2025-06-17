@@ -30,7 +30,7 @@ eval("__webpack_require__.r(__webpack_exports__);\n/* harmony export */ __webpac
 /***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
 
 "use strict";
-eval("__webpack_require__.r(__webpack_exports__);\n/* harmony export */ __webpack_require__.d(__webpack_exports__, {\n/* harmony export */   \"default\": () => (/* binding */ RootLayout),\n/* harmony export */   metadata: () => (/* binding */ metadata)\n/* harmony export */ });\n/* harmony import */ var react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react/jsx-dev-runtime */ \"(rsc)/./node_modules/next/dist/server/route-modules/app-page/vendored/rsc/react-jsx-dev-runtime.js\");\n/* harmony import */ var react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__);\n/* harmony import */ var _globals_css__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ./globals.css */ \"(rsc)/./app/globals.css\");\n\n\nconst metadata = {\n    title: 'ProFixIQ',\n    description: 'AI-powered vehicle diagnostics and repair automation'\n};\nfunction RootLayout({ children }) {\n    return /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(\"html\", {\n        lang: \"en\",\n        className: \"dark\",\n        children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(\"body\", {\n            className: \"bg-background text-accent font-sans antialiased\",\n            children: children\n        }, void 0, false, {\n            fileName: \"/workspaces/ProFixIQ/app/layout.tsx\",\n            lineNumber: 12,\n            columnNumber: 7\n        }, this)\n    }, void 0, false, {\n        fileName: \"/workspaces/ProFixIQ/app/layout.tsx\",\n        lineNumber: 11,\n        columnNumber: 5\n    }, this);\n}\n//# sourceURL=[module]\n//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiKHJzYykvLi9hcHAvbGF5b3V0LnRzeCIsIm1hcHBpbmdzIjoiOzs7Ozs7Ozs7QUFBc0I7QUFHZixNQUFNQSxXQUFXO0lBQ3RCQyxPQUFPO0lBQ1BDLGFBQWE7QUFDZixFQUFDO0FBRWMsU0FBU0MsV0FBVyxFQUFFQyxRQUFRLEVBQTJCO0lBQ3RFLHFCQUNFLDhEQUFDQztRQUFLQyxNQUFLO1FBQUtDLFdBQVU7a0JBQ3hCLDRFQUFDQztZQUFLRCxXQUFVO3NCQUNiSDs7Ozs7Ozs7Ozs7QUFJVCIsInNvdXJjZXMiOlsiL3dvcmtzcGFjZXMvUHJvRml4SVEvYXBwL2xheW91dC50c3giXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0ICcuL2dsb2JhbHMuY3NzJ1xuaW1wb3J0IHsgUmVhY3ROb2RlIH0gZnJvbSAncmVhY3QnXG5cbmV4cG9ydCBjb25zdCBtZXRhZGF0YSA9IHtcbiAgdGl0bGU6ICdQcm9GaXhJUScsXG4gIGRlc2NyaXB0aW9uOiAnQUktcG93ZXJlZCB2ZWhpY2xlIGRpYWdub3N0aWNzIGFuZCByZXBhaXIgYXV0b21hdGlvbicsXG59XG5cbmV4cG9ydCBkZWZhdWx0IGZ1bmN0aW9uIFJvb3RMYXlvdXQoeyBjaGlsZHJlbiB9OiB7IGNoaWxkcmVuOiBSZWFjdE5vZGUgfSkge1xuICByZXR1cm4gKFxuICAgIDxodG1sIGxhbmc9XCJlblwiIGNsYXNzTmFtZT1cImRhcmtcIj5cbiAgICAgIDxib2R5IGNsYXNzTmFtZT1cImJnLWJhY2tncm91bmQgdGV4dC1hY2NlbnQgZm9udC1zYW5zIGFudGlhbGlhc2VkXCI+XG4gICAgICAgIHtjaGlsZHJlbn1cbiAgICAgIDwvYm9keT5cbiAgICA8L2h0bWw+XG4gIClcbn0iXSwibmFtZXMiOlsibWV0YWRhdGEiLCJ0aXRsZSIsImRlc2NyaXB0aW9uIiwiUm9vdExheW91dCIsImNoaWxkcmVuIiwiaHRtbCIsImxhbmciLCJjbGFzc05hbWUiLCJib2R5Il0sImlnbm9yZUxpc3QiOltdLCJzb3VyY2VSb290IjoiIn0=\n//# sourceURL=webpack-internal:///(rsc)/./app/layout.tsx\n");
+eval("__webpack_require__.r(__webpack_exports__);\n/* harmony export */ __webpack_require__.d(__webpack_exports__, {\n/* harmony export */   \"default\": () => (/* binding */ RootLayout),\n/* harmony export */   metadata: () => (/* binding */ metadata)\n/* harmony export */ });\n/* harmony import */ var react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react/jsx-dev-runtime */ \"(rsc)/./node_modules/next/dist/server/route-modules/app-page/vendored/rsc/react-jsx-dev-runtime.js\");\n/* harmony import */ var react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__);\n/* harmony import */ var _globals_css__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ./globals.css */ \"(rsc)/./app/globals.css\");\n// app/layout.tsx\n\n\nconst metadata = {\n    title: 'ProFixIQ',\n    description: 'AI-powered diagnostics and repair assistant for vehicles'\n};\nfunction RootLayout({ children }) {\n    return /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(\"html\", {\n        lang: \"en\",\n        children: [\n            /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(\"head\", {\n                children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(\"link\", {\n                    href: \"https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Rubik:wght@400;500;700&display=swap\",\n                    rel: \"stylesheet\"\n                }, void 0, false, {\n                    fileName: \"/workspaces/ProFixIQ/app/layout.tsx\",\n                    lineNumber: 19,\n                    columnNumber: 9\n                }, this)\n            }, void 0, false, {\n                fileName: \"/workspaces/ProFixIQ/app/layout.tsx\",\n                lineNumber: 18,\n                columnNumber: 7\n            }, this),\n            /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(\"body\", {\n                children: children\n            }, void 0, false, {\n                fileName: \"/workspaces/ProFixIQ/app/layout.tsx\",\n                lineNumber: 24,\n                columnNumber: 7\n            }, this)\n        ]\n    }, void 0, true, {\n        fileName: \"/workspaces/ProFixIQ/app/layout.tsx\",\n        lineNumber: 17,\n        columnNumber: 5\n    }, this);\n}\n//# sourceURL=[module]\n//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiKHJzYykvLi9hcHAvbGF5b3V0LnRzeCIsIm1hcHBpbmdzIjoiOzs7Ozs7OztBQUFBLGlCQUFpQjs7QUFFTTtBQUdoQixNQUFNQSxXQUFxQjtJQUNoQ0MsT0FBTztJQUNQQyxhQUFhO0FBQ2YsRUFBRTtBQUVhLFNBQVNDLFdBQVcsRUFDakNDLFFBQVEsRUFHVDtJQUNDLHFCQUNFLDhEQUFDQztRQUFLQyxNQUFLOzswQkFDVCw4REFBQ0M7MEJBQ0MsNEVBQUNDO29CQUNDQyxNQUFLO29CQUNMQyxLQUFJOzs7Ozs7Ozs7OzswQkFHUiw4REFBQ0M7MEJBQU1QOzs7Ozs7Ozs7Ozs7QUFHYiIsInNvdXJjZXMiOlsiL3dvcmtzcGFjZXMvUHJvRml4SVEvYXBwL2xheW91dC50c3giXSwic291cmNlc0NvbnRlbnQiOlsiLy8gYXBwL2xheW91dC50c3hcblxuaW1wb3J0ICcuL2dsb2JhbHMuY3NzJztcbmltcG9ydCB0eXBlIHsgTWV0YWRhdGEgfSBmcm9tICduZXh0JztcblxuZXhwb3J0IGNvbnN0IG1ldGFkYXRhOiBNZXRhZGF0YSA9IHtcbiAgdGl0bGU6ICdQcm9GaXhJUScsXG4gIGRlc2NyaXB0aW9uOiAnQUktcG93ZXJlZCBkaWFnbm9zdGljcyBhbmQgcmVwYWlyIGFzc2lzdGFudCBmb3IgdmVoaWNsZXMnLFxufTtcblxuZXhwb3J0IGRlZmF1bHQgZnVuY3Rpb24gUm9vdExheW91dCh7XG4gIGNoaWxkcmVuLFxufToge1xuICBjaGlsZHJlbjogUmVhY3QuUmVhY3ROb2RlO1xufSkge1xuICByZXR1cm4gKFxuICAgIDxodG1sIGxhbmc9XCJlblwiPlxuICAgICAgPGhlYWQ+XG4gICAgICAgIDxsaW5rXG4gICAgICAgICAgaHJlZj1cImh0dHBzOi8vZm9udHMuZ29vZ2xlYXBpcy5jb20vY3NzMj9mYW1pbHk9QmxhY2srT3BzK09uZSZmYW1pbHk9UnViaWs6d2dodEA0MDA7NTAwOzcwMCZkaXNwbGF5PXN3YXBcIlxuICAgICAgICAgIHJlbD1cInN0eWxlc2hlZXRcIlxuICAgICAgICAvPlxuICAgICAgPC9oZWFkPlxuICAgICAgPGJvZHk+e2NoaWxkcmVufTwvYm9keT5cbiAgICA8L2h0bWw+XG4gICk7XG59Il0sIm5hbWVzIjpbIm1ldGFkYXRhIiwidGl0bGUiLCJkZXNjcmlwdGlvbiIsIlJvb3RMYXlvdXQiLCJjaGlsZHJlbiIsImh0bWwiLCJsYW5nIiwiaGVhZCIsImxpbmsiLCJocmVmIiwicmVsIiwiYm9keSJdLCJpZ25vcmVMaXN0IjpbXSwic291cmNlUm9vdCI6IiJ9\n//# sourceURL=webpack-internal:///(rsc)/./app/layout.tsx\n");
 
 /***/ }),
 
@@ -97,6 +97,24 @@ eval("__webpack_require__.r(__webpack_exports__);\n/* harmony export */ __webpac
 
 /***/ }),
 
+/***/ "(ssr)/./node_modules/@supabase/realtime-js/dist/main sync recursive":
+/*!************************************************************!*\
+  !*** ./node_modules/@supabase/realtime-js/dist/main/ sync ***!
+  \************************************************************/
+/***/ ((module) => {
+
+function webpackEmptyContext(req) {
+	var e = new Error("Cannot find module '" + req + "'");
+	e.code = 'MODULE_NOT_FOUND';
+	throw e;
+}
+webpackEmptyContext.keys = () => ([]);
+webpackEmptyContext.resolve = webpackEmptyContext;
+webpackEmptyContext.id = "(ssr)/./node_modules/@supabase/realtime-js/dist/main sync recursive";
+module.exports = webpackEmptyContext;
+
+/***/ }),
+
 /***/ "(ssr)/./node_modules/next/dist/build/webpack/loaders/next-flight-client-entry-loader.js?modules=%7B%22request%22%3A%22%2Fworkspaces%2FProFixIQ%2Fapp%2Fglobals.css%22%2C%22ids%22%3A%5B%5D%7D&server=true!":
 /*!************************************************************************************************************************************************************************************************************!*\
   !*** ./node_modules/next/dist/build/webpack/loaders/next-flight-client-entry-loader.js?modules=%7B%22request%22%3A%22%2Fworkspaces%2FProFixIQ%2Fapp%2Fglobals.css%22%2C%22ids%22%3A%5B%5D%7D&server=true! ***!
@@ -134,7 +152,7 @@ eval("Promise.resolve(/*! import() eager */).then(__webpack_require__.t.bind(__w
 /***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
 
 "use strict";
-eval("__webpack_require__.r(__webpack_exports__);\n/* harmony export */ __webpack_require__.d(__webpack_exports__, {\n/* harmony export */   \"default\": () => (/* binding */ ProFixIQLanding)\n/* harmony export */ });\n/* harmony import */ var react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react/jsx-dev-runtime */ \"(ssr)/./node_modules/next/dist/server/route-modules/app-page/vendored/ssr/react-jsx-dev-runtime.js\");\n/* harmony import */ var react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__);\n/* harmony import */ var next_link__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! next/link */ \"(ssr)/./node_modules/next/dist/client/app-dir/link.js\");\n/* harmony import */ var next_link__WEBPACK_IMPORTED_MODULE_1___default = /*#__PURE__*/__webpack_require__.n(next_link__WEBPACK_IMPORTED_MODULE_1__);\n/* __next_internal_client_entry_do_not_use__ default auto */ \n\nfunction ProFixIQLanding() {\n    return /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(\"main\", {\n        className: \"min-h-screen bg-white p-6\",\n        children: [\n            /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(\"h1\", {\n                className: \"text-4xl header-font text-accent mb-8 text-center\",\n                children: \"ProFixIQ\"\n            }, void 0, false, {\n                fileName: \"/workspaces/ProFixIQ/src/components/ProFixIQLanding.tsx\",\n                lineNumber: 8,\n                columnNumber: 7\n            }, this),\n            /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(\"div\", {\n                className: \"grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-3xl mx-auto\",\n                children: [\n                    /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)((next_link__WEBPACK_IMPORTED_MODULE_1___default()), {\n                        href: \"/ai\",\n                        children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(\"div\", {\n                            className: \"header-font text-xl bg-primary text-white rounded-lg p-6 shadow-lg text-center hover:bg-orange-600 transition-all\",\n                            children: \"AI Diagnosis\"\n                        }, void 0, false, {\n                            fileName: \"/workspaces/ProFixIQ/src/components/ProFixIQLanding.tsx\",\n                            lineNumber: 12,\n                            columnNumber: 11\n                        }, this)\n                    }, void 0, false, {\n                        fileName: \"/workspaces/ProFixIQ/src/components/ProFixIQLanding.tsx\",\n                        lineNumber: 11,\n                        columnNumber: 9\n                    }, this),\n                    /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)((next_link__WEBPACK_IMPORTED_MODULE_1___default()), {\n                        href: \"/workorders\",\n                        children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(\"div\", {\n                            className: \"header-font text-xl bg-primary text-white rounded-lg p-6 shadow-lg text-center hover:bg-orange-600 transition-all\",\n                            children: \"Work Orders\"\n                        }, void 0, false, {\n                            fileName: \"/workspaces/ProFixIQ/src/components/ProFixIQLanding.tsx\",\n                            lineNumber: 18,\n                            columnNumber: 11\n                        }, this)\n                    }, void 0, false, {\n                        fileName: \"/workspaces/ProFixIQ/src/components/ProFixIQLanding.tsx\",\n                        lineNumber: 17,\n                        columnNumber: 9\n                    }, this),\n                    /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)((next_link__WEBPACK_IMPORTED_MODULE_1___default()), {\n                        href: \"/inspections\",\n                        children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(\"div\", {\n                            className: \"header-font text-xl bg-primary text-white rounded-lg p-6 shadow-lg text-center hover:bg-orange-600 transition-all\",\n                            children: \"Inspections\"\n                        }, void 0, false, {\n                            fileName: \"/workspaces/ProFixIQ/src/components/ProFixIQLanding.tsx\",\n                            lineNumber: 24,\n                            columnNumber: 11\n                        }, this)\n                    }, void 0, false, {\n                        fileName: \"/workspaces/ProFixIQ/src/components/ProFixIQLanding.tsx\",\n                        lineNumber: 23,\n                        columnNumber: 9\n                    }, this),\n                    /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)((next_link__WEBPACK_IMPORTED_MODULE_1___default()), {\n                        href: \"/vin\",\n                        children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(\"div\", {\n                            className: \"header-font text-xl bg-primary text-white rounded-lg p-6 shadow-lg text-center hover:bg-orange-600 transition-all\",\n                            children: \"VIN Decoder\"\n                        }, void 0, false, {\n                            fileName: \"/workspaces/ProFixIQ/src/components/ProFixIQLanding.tsx\",\n                            lineNumber: 30,\n                            columnNumber: 11\n                        }, this)\n                    }, void 0, false, {\n                        fileName: \"/workspaces/ProFixIQ/src/components/ProFixIQLanding.tsx\",\n                        lineNumber: 29,\n                        columnNumber: 9\n                    }, this),\n                    /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)((next_link__WEBPACK_IMPORTED_MODULE_1___default()), {\n                        href: \"/history\",\n                        children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(\"div\", {\n                            className: \"header-font text-xl bg-primary text-white rounded-lg p-6 shadow-lg text-center hover:bg-orange-600 transition-all\",\n                            children: \"Repair History\"\n                        }, void 0, false, {\n                            fileName: \"/workspaces/ProFixIQ/src/components/ProFixIQLanding.tsx\",\n                            lineNumber: 36,\n                            columnNumber: 11\n                        }, this)\n                    }, void 0, false, {\n                        fileName: \"/workspaces/ProFixIQ/src/components/ProFixIQLanding.tsx\",\n                        lineNumber: 35,\n                        columnNumber: 9\n                    }, this),\n                    /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)((next_link__WEBPACK_IMPORTED_MODULE_1___default()), {\n                        href: \"/booking\",\n                        children: /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(\"div\", {\n                            className: \"header-font text-xl bg-primary text-white rounded-lg p-6 shadow-lg text-center hover:bg-orange-600 transition-all\",\n                            children: \"Booking\"\n                        }, void 0, false, {\n                            fileName: \"/workspaces/ProFixIQ/src/components/ProFixIQLanding.tsx\",\n                            lineNumber: 42,\n                            columnNumber: 11\n                        }, this)\n                    }, void 0, false, {\n                        fileName: \"/workspaces/ProFixIQ/src/components/ProFixIQLanding.tsx\",\n                        lineNumber: 41,\n                        columnNumber: 9\n                    }, this)\n                ]\n            }, void 0, true, {\n                fileName: \"/workspaces/ProFixIQ/src/components/ProFixIQLanding.tsx\",\n                lineNumber: 10,\n                columnNumber: 7\n            }, this)\n        ]\n    }, void 0, true, {\n        fileName: \"/workspaces/ProFixIQ/src/components/ProFixIQLanding.tsx\",\n        lineNumber: 7,\n        columnNumber: 5\n    }, this);\n}\n//# sourceURL=[module]\n//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiKHNzcikvLi9zcmMvY29tcG9uZW50cy9Qcm9GaXhJUUxhbmRpbmcudHN4IiwibWFwcGluZ3MiOiI7Ozs7Ozs7OztBQUU0QjtBQUViLFNBQVNDO0lBQ3RCLHFCQUNFLDhEQUFDQztRQUFLQyxXQUFVOzswQkFDZCw4REFBQ0M7Z0JBQUdELFdBQVU7MEJBQW9EOzs7Ozs7MEJBRWxFLDhEQUFDRTtnQkFBSUYsV0FBVTs7a0NBQ2IsOERBQUNILGtEQUFJQTt3QkFBQ00sTUFBSztrQ0FDVCw0RUFBQ0Q7NEJBQUlGLFdBQVU7c0NBQW9IOzs7Ozs7Ozs7OztrQ0FLckksOERBQUNILGtEQUFJQTt3QkFBQ00sTUFBSztrQ0FDVCw0RUFBQ0Q7NEJBQUlGLFdBQVU7c0NBQW9IOzs7Ozs7Ozs7OztrQ0FLckksOERBQUNILGtEQUFJQTt3QkFBQ00sTUFBSztrQ0FDVCw0RUFBQ0Q7NEJBQUlGLFdBQVU7c0NBQW9IOzs7Ozs7Ozs7OztrQ0FLckksOERBQUNILGtEQUFJQTt3QkFBQ00sTUFBSztrQ0FDVCw0RUFBQ0Q7NEJBQUlGLFdBQVU7c0NBQW9IOzs7Ozs7Ozs7OztrQ0FLckksOERBQUNILGtEQUFJQTt3QkFBQ00sTUFBSztrQ0FDVCw0RUFBQ0Q7NEJBQUlGLFdBQVU7c0NBQW9IOzs7Ozs7Ozs7OztrQ0FLckksOERBQUNILGtEQUFJQTt3QkFBQ00sTUFBSztrQ0FDVCw0RUFBQ0Q7NEJBQUlGLFdBQVU7c0NBQW9IOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7OztBQU83SSIsInNvdXJjZXMiOlsiL3dvcmtzcGFjZXMvUHJvRml4SVEvc3JjL2NvbXBvbmVudHMvUHJvRml4SVFMYW5kaW5nLnRzeCJdLCJzb3VyY2VzQ29udGVudCI6WyIndXNlIGNsaWVudCdcblxuaW1wb3J0IExpbmsgZnJvbSAnbmV4dC9saW5rJ1xuXG5leHBvcnQgZGVmYXVsdCBmdW5jdGlvbiBQcm9GaXhJUUxhbmRpbmcoKSB7XG4gIHJldHVybiAoXG4gICAgPG1haW4gY2xhc3NOYW1lPVwibWluLWgtc2NyZWVuIGJnLXdoaXRlIHAtNlwiPlxuICAgICAgPGgxIGNsYXNzTmFtZT1cInRleHQtNHhsIGhlYWRlci1mb250IHRleHQtYWNjZW50IG1iLTggdGV4dC1jZW50ZXJcIj5Qcm9GaXhJUTwvaDE+XG5cbiAgICAgIDxkaXYgY2xhc3NOYW1lPVwiZ3JpZCBncmlkLWNvbHMtMSBzbTpncmlkLWNvbHMtMiBnYXAtNiBtYXgtdy0zeGwgbXgtYXV0b1wiPlxuICAgICAgICA8TGluayBocmVmPVwiL2FpXCI+XG4gICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJoZWFkZXItZm9udCB0ZXh0LXhsIGJnLXByaW1hcnkgdGV4dC13aGl0ZSByb3VuZGVkLWxnIHAtNiBzaGFkb3ctbGcgdGV4dC1jZW50ZXIgaG92ZXI6Ymctb3JhbmdlLTYwMCB0cmFuc2l0aW9uLWFsbFwiPlxuICAgICAgICAgICAgQUkgRGlhZ25vc2lzXG4gICAgICAgICAgPC9kaXY+XG4gICAgICAgIDwvTGluaz5cblxuICAgICAgICA8TGluayBocmVmPVwiL3dvcmtvcmRlcnNcIj5cbiAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImhlYWRlci1mb250IHRleHQteGwgYmctcHJpbWFyeSB0ZXh0LXdoaXRlIHJvdW5kZWQtbGcgcC02IHNoYWRvdy1sZyB0ZXh0LWNlbnRlciBob3ZlcjpiZy1vcmFuZ2UtNjAwIHRyYW5zaXRpb24tYWxsXCI+XG4gICAgICAgICAgICBXb3JrIE9yZGVyc1xuICAgICAgICAgIDwvZGl2PlxuICAgICAgICA8L0xpbms+XG5cbiAgICAgICAgPExpbmsgaHJlZj1cIi9pbnNwZWN0aW9uc1wiPlxuICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiaGVhZGVyLWZvbnQgdGV4dC14bCBiZy1wcmltYXJ5IHRleHQtd2hpdGUgcm91bmRlZC1sZyBwLTYgc2hhZG93LWxnIHRleHQtY2VudGVyIGhvdmVyOmJnLW9yYW5nZS02MDAgdHJhbnNpdGlvbi1hbGxcIj5cbiAgICAgICAgICAgIEluc3BlY3Rpb25zXG4gICAgICAgICAgPC9kaXY+XG4gICAgICAgIDwvTGluaz5cblxuICAgICAgICA8TGluayBocmVmPVwiL3ZpblwiPlxuICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiaGVhZGVyLWZvbnQgdGV4dC14bCBiZy1wcmltYXJ5IHRleHQtd2hpdGUgcm91bmRlZC1sZyBwLTYgc2hhZG93LWxnIHRleHQtY2VudGVyIGhvdmVyOmJnLW9yYW5nZS02MDAgdHJhbnNpdGlvbi1hbGxcIj5cbiAgICAgICAgICAgIFZJTiBEZWNvZGVyXG4gICAgICAgICAgPC9kaXY+XG4gICAgICAgIDwvTGluaz5cblxuICAgICAgICA8TGluayBocmVmPVwiL2hpc3RvcnlcIj5cbiAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImhlYWRlci1mb250IHRleHQteGwgYmctcHJpbWFyeSB0ZXh0LXdoaXRlIHJvdW5kZWQtbGcgcC02IHNoYWRvdy1sZyB0ZXh0LWNlbnRlciBob3ZlcjpiZy1vcmFuZ2UtNjAwIHRyYW5zaXRpb24tYWxsXCI+XG4gICAgICAgICAgICBSZXBhaXIgSGlzdG9yeVxuICAgICAgICAgIDwvZGl2PlxuICAgICAgICA8L0xpbms+XG5cbiAgICAgICAgPExpbmsgaHJlZj1cIi9ib29raW5nXCI+XG4gICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJoZWFkZXItZm9udCB0ZXh0LXhsIGJnLXByaW1hcnkgdGV4dC13aGl0ZSByb3VuZGVkLWxnIHAtNiBzaGFkb3ctbGcgdGV4dC1jZW50ZXIgaG92ZXI6Ymctb3JhbmdlLTYwMCB0cmFuc2l0aW9uLWFsbFwiPlxuICAgICAgICAgICAgQm9va2luZ1xuICAgICAgICAgIDwvZGl2PlxuICAgICAgICA8L0xpbms+XG4gICAgICA8L2Rpdj5cbiAgICA8L21haW4+XG4gIClcbn0iXSwibmFtZXMiOlsiTGluayIsIlByb0ZpeElRTGFuZGluZyIsIm1haW4iLCJjbGFzc05hbWUiLCJoMSIsImRpdiIsImhyZWYiXSwiaWdub3JlTGlzdCI6W10sInNvdXJjZVJvb3QiOiIifQ==\n//# sourceURL=webpack-internal:///(ssr)/./src/components/ProFixIQLanding.tsx\n");
+eval("__webpack_require__.r(__webpack_exports__);\n/* harmony export */ __webpack_require__.d(__webpack_exports__, {\n/* harmony export */   \"default\": () => (/* binding */ ProFixIQLanding)\n/* harmony export */ });\n/* harmony import */ var react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! react/jsx-dev-runtime */ \"(ssr)/./node_modules/next/dist/server/route-modules/app-page/vendored/ssr/react-jsx-dev-runtime.js\");\n/* harmony import */ var react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__);\n/* harmony import */ var next_navigation__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! next/navigation */ \"(ssr)/./node_modules/next/dist/api/navigation.js\");\n/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! react */ \"(ssr)/./node_modules/next/dist/server/route-modules/app-page/vendored/ssr/react.js\");\n/* harmony import */ var react__WEBPACK_IMPORTED_MODULE_2___default = /*#__PURE__*/__webpack_require__.n(react__WEBPACK_IMPORTED_MODULE_2__);\n/* harmony import */ var _supabase_ssr__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! @supabase/ssr */ \"(ssr)/./node_modules/@supabase/ssr/dist/module/index.js\");\n/* __next_internal_client_entry_do_not_use__ default auto */ \n\n\n\nconst supabase = (0,_supabase_ssr__WEBPACK_IMPORTED_MODULE_3__.createBrowserClient)();\nfunction ProFixIQLanding() {\n    const router = (0,next_navigation__WEBPACK_IMPORTED_MODULE_1__.useRouter)();\n    (0,react__WEBPACK_IMPORTED_MODULE_2__.useEffect)({\n        \"ProFixIQLanding.useEffect\": ()=>{\n            const checkSession = {\n                \"ProFixIQLanding.useEffect.checkSession\": async ()=>{\n                    const { data } = await supabase.auth.getSession();\n                    if (!data.session) {\n                        router.push('/login');\n                    }\n                }\n            }[\"ProFixIQLanding.useEffect.checkSession\"];\n            checkSession();\n        }\n    }[\"ProFixIQLanding.useEffect\"], []);\n    return /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(\"div\", {\n        className: \"min-h-screen bg-white dark:bg-surface px-4 py-8\",\n        children: [\n            /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(\"h1\", {\n                className: \"text-center text-4xl sm:text-5xl font-header text-blue-700 mb-10\",\n                children: \"Welcome to ProFixIQ\"\n            }, void 0, false, {\n                fileName: \"/workspaces/ProFixIQ/src/components/ProFixIQLanding.tsx\",\n                lineNumber: 25,\n                columnNumber: 7\n            }, this),\n            /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(\"div\", {\n                className: \"grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-4xl mx-auto\",\n                children: [\n                    /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(\"button\", {\n                        onClick: ()=>router.push('/ai'),\n                        className: \"rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 shadow-md py-6 text-white text-2xl font-header tracking-wide hover:scale-105 transition\",\n                        children: \"AI Diagnosis\"\n                    }, void 0, false, {\n                        fileName: \"/workspaces/ProFixIQ/src/components/ProFixIQLanding.tsx\",\n                        lineNumber: 30,\n                        columnNumber: 9\n                    }, this),\n                    /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(\"button\", {\n                        onClick: ()=>router.push('/workorders'),\n                        className: \"rounded-xl bg-gradient-to-br from-orange-500 to-yellow-400 shadow-md py-6 text-white text-2xl font-header tracking-wide hover:scale-105 transition\",\n                        children: \"Work Orders\"\n                    }, void 0, false, {\n                        fileName: \"/workspaces/ProFixIQ/src/components/ProFixIQLanding.tsx\",\n                        lineNumber: 37,\n                        columnNumber: 9\n                    }, this),\n                    /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(\"button\", {\n                        onClick: ()=>router.push('/inspections'),\n                        className: \"rounded-xl bg-gradient-to-br from-green-600 to-emerald-400 shadow-md py-6 text-white text-2xl font-header tracking-wide hover:scale-105 transition\",\n                        children: \"Inspections\"\n                    }, void 0, false, {\n                        fileName: \"/workspaces/ProFixIQ/src/components/ProFixIQLanding.tsx\",\n                        lineNumber: 44,\n                        columnNumber: 9\n                    }, this),\n                    /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(\"button\", {\n                        onClick: ()=>router.push('/vin'),\n                        className: \"rounded-xl bg-gradient-to-br from-purple-600 to-pink-500 shadow-md py-6 text-white text-2xl font-header tracking-wide hover:scale-105 transition\",\n                        children: \"VIN Decoder\"\n                    }, void 0, false, {\n                        fileName: \"/workspaces/ProFixIQ/src/components/ProFixIQLanding.tsx\",\n                        lineNumber: 51,\n                        columnNumber: 9\n                    }, this),\n                    /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(\"button\", {\n                        onClick: ()=>router.push('/history'),\n                        className: \"rounded-xl bg-gradient-to-br from-slate-700 to-gray-500 shadow-md py-6 text-white text-2xl font-header tracking-wide hover:scale-105 transition\",\n                        children: \"History\"\n                    }, void 0, false, {\n                        fileName: \"/workspaces/ProFixIQ/src/components/ProFixIQLanding.tsx\",\n                        lineNumber: 58,\n                        columnNumber: 9\n                    }, this),\n                    /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(\"button\", {\n                        onClick: ()=>router.push('/booking'),\n                        className: \"rounded-xl bg-gradient-to-br from-red-500 to-orange-400 shadow-md py-6 text-white text-2xl font-header tracking-wide hover:scale-105 transition\",\n                        children: \"Booking\"\n                    }, void 0, false, {\n                        fileName: \"/workspaces/ProFixIQ/src/components/ProFixIQLanding.tsx\",\n                        lineNumber: 65,\n                        columnNumber: 9\n                    }, this)\n                ]\n            }, void 0, true, {\n                fileName: \"/workspaces/ProFixIQ/src/components/ProFixIQLanding.tsx\",\n                lineNumber: 29,\n                columnNumber: 7\n            }, this),\n            /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(\"p\", {\n                className: \"mt-10 text-center text-sm text-muted font-body\",\n                children: [\n                    \"Questions? Contact us at \",\n                    /*#__PURE__*/ (0,react_jsx_dev_runtime__WEBPACK_IMPORTED_MODULE_0__.jsxDEV)(\"a\", {\n                        href: \"mailto:support@profixiq.com\",\n                        className: \"underline\",\n                        children: \"support@profixiq.com\"\n                    }, void 0, false, {\n                        fileName: \"/workspaces/ProFixIQ/src/components/ProFixIQLanding.tsx\",\n                        lineNumber: 74,\n                        columnNumber: 34\n                    }, this)\n                ]\n            }, void 0, true, {\n                fileName: \"/workspaces/ProFixIQ/src/components/ProFixIQLanding.tsx\",\n                lineNumber: 73,\n                columnNumber: 7\n            }, this)\n        ]\n    }, void 0, true, {\n        fileName: \"/workspaces/ProFixIQ/src/components/ProFixIQLanding.tsx\",\n        lineNumber: 24,\n        columnNumber: 5\n    }, this);\n}\n//# sourceURL=[module]\n//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiKHNzcikvLi9zcmMvY29tcG9uZW50cy9Qcm9GaXhJUUxhbmRpbmcudHN4IiwibWFwcGluZ3MiOiI7Ozs7Ozs7Ozs7O0FBRTJDO0FBQ1Y7QUFDa0I7QUFHbkQsTUFBTUcsV0FBV0Qsa0VBQW1CQTtBQUVyQixTQUFTRTtJQUN0QixNQUFNQyxTQUFTTCwwREFBU0E7SUFFeEJDLGdEQUFTQTtxQ0FBQztZQUNSLE1BQU1LOzBEQUFlO29CQUNuQixNQUFNLEVBQUVDLElBQUksRUFBRSxHQUFHLE1BQU1KLFNBQVNLLElBQUksQ0FBQ0MsVUFBVTtvQkFDL0MsSUFBSSxDQUFDRixLQUFLRyxPQUFPLEVBQUU7d0JBQ2pCTCxPQUFPTSxJQUFJLENBQUM7b0JBQ2Q7Z0JBQ0Y7O1lBQ0FMO1FBQ0Y7b0NBQUcsRUFBRTtJQUVMLHFCQUNFLDhEQUFDTTtRQUFJQyxXQUFVOzswQkFDYiw4REFBQ0M7Z0JBQUdELFdBQVU7MEJBQW1FOzs7Ozs7MEJBSWpGLDhEQUFDRDtnQkFBSUMsV0FBVTs7a0NBQ2IsOERBQUNFO3dCQUNDQyxTQUFTLElBQU1YLE9BQU9NLElBQUksQ0FBQzt3QkFDM0JFLFdBQVU7a0NBQ1g7Ozs7OztrQ0FJRCw4REFBQ0U7d0JBQ0NDLFNBQVMsSUFBTVgsT0FBT00sSUFBSSxDQUFDO3dCQUMzQkUsV0FBVTtrQ0FDWDs7Ozs7O2tDQUlELDhEQUFDRTt3QkFDQ0MsU0FBUyxJQUFNWCxPQUFPTSxJQUFJLENBQUM7d0JBQzNCRSxXQUFVO2tDQUNYOzs7Ozs7a0NBSUQsOERBQUNFO3dCQUNDQyxTQUFTLElBQU1YLE9BQU9NLElBQUksQ0FBQzt3QkFDM0JFLFdBQVU7a0NBQ1g7Ozs7OztrQ0FJRCw4REFBQ0U7d0JBQ0NDLFNBQVMsSUFBTVgsT0FBT00sSUFBSSxDQUFDO3dCQUMzQkUsV0FBVTtrQ0FDWDs7Ozs7O2tDQUlELDhEQUFDRTt3QkFDQ0MsU0FBUyxJQUFNWCxPQUFPTSxJQUFJLENBQUM7d0JBQzNCRSxXQUFVO2tDQUNYOzs7Ozs7Ozs7Ozs7MEJBS0gsOERBQUNJO2dCQUFFSixXQUFVOztvQkFBaUQ7a0NBQ25DLDhEQUFDSzt3QkFBRUMsTUFBSzt3QkFBOEJOLFdBQVU7a0NBQVk7Ozs7Ozs7Ozs7Ozs7Ozs7OztBQUk3RiIsInNvdXJjZXMiOlsiL3dvcmtzcGFjZXMvUHJvRml4SVEvc3JjL2NvbXBvbmVudHMvUHJvRml4SVFMYW5kaW5nLnRzeCJdLCJzb3VyY2VzQ29udGVudCI6WyIndXNlIGNsaWVudCdcblxuaW1wb3J0IHsgdXNlUm91dGVyIH0gZnJvbSAnbmV4dC9uYXZpZ2F0aW9uJ1xuaW1wb3J0IHsgdXNlRWZmZWN0IH0gZnJvbSAncmVhY3QnXG5pbXBvcnQgeyBjcmVhdGVCcm93c2VyQ2xpZW50IH0gZnJvbSAnQHN1cGFiYXNlL3NzcidcbmltcG9ydCB7IERhdGFiYXNlIH0gZnJvbSAnQC90eXBlcy9zdXBhYmFzZSdcblxuY29uc3Qgc3VwYWJhc2UgPSBjcmVhdGVCcm93c2VyQ2xpZW50PERhdGFiYXNlPigpXG5cbmV4cG9ydCBkZWZhdWx0IGZ1bmN0aW9uIFByb0ZpeElRTGFuZGluZygpIHtcbiAgY29uc3Qgcm91dGVyID0gdXNlUm91dGVyKClcblxuICB1c2VFZmZlY3QoKCkgPT4ge1xuICAgIGNvbnN0IGNoZWNrU2Vzc2lvbiA9IGFzeW5jICgpID0+IHtcbiAgICAgIGNvbnN0IHsgZGF0YSB9ID0gYXdhaXQgc3VwYWJhc2UuYXV0aC5nZXRTZXNzaW9uKClcbiAgICAgIGlmICghZGF0YS5zZXNzaW9uKSB7XG4gICAgICAgIHJvdXRlci5wdXNoKCcvbG9naW4nKVxuICAgICAgfVxuICAgIH1cbiAgICBjaGVja1Nlc3Npb24oKVxuICB9LCBbXSlcblxuICByZXR1cm4gKFxuICAgIDxkaXYgY2xhc3NOYW1lPVwibWluLWgtc2NyZWVuIGJnLXdoaXRlIGRhcms6Ymctc3VyZmFjZSBweC00IHB5LThcIj5cbiAgICAgIDxoMSBjbGFzc05hbWU9XCJ0ZXh0LWNlbnRlciB0ZXh0LTR4bCBzbTp0ZXh0LTV4bCBmb250LWhlYWRlciB0ZXh0LWJsdWUtNzAwIG1iLTEwXCI+XG4gICAgICAgIFdlbGNvbWUgdG8gUHJvRml4SVFcbiAgICAgIDwvaDE+XG5cbiAgICAgIDxkaXYgY2xhc3NOYW1lPVwiZ3JpZCBncmlkLWNvbHMtMSBzbTpncmlkLWNvbHMtMiBnYXAtNiBtYXgtdy00eGwgbXgtYXV0b1wiPlxuICAgICAgICA8YnV0dG9uXG4gICAgICAgICAgb25DbGljaz17KCkgPT4gcm91dGVyLnB1c2goJy9haScpfVxuICAgICAgICAgIGNsYXNzTmFtZT1cInJvdW5kZWQteGwgYmctZ3JhZGllbnQtdG8tYnIgZnJvbS1ibHVlLTYwMCB0by1jeWFuLTUwMCBzaGFkb3ctbWQgcHktNiB0ZXh0LXdoaXRlIHRleHQtMnhsIGZvbnQtaGVhZGVyIHRyYWNraW5nLXdpZGUgaG92ZXI6c2NhbGUtMTA1IHRyYW5zaXRpb25cIlxuICAgICAgICA+XG4gICAgICAgICAgQUkgRGlhZ25vc2lzXG4gICAgICAgIDwvYnV0dG9uPlxuXG4gICAgICAgIDxidXR0b25cbiAgICAgICAgICBvbkNsaWNrPXsoKSA9PiByb3V0ZXIucHVzaCgnL3dvcmtvcmRlcnMnKX1cbiAgICAgICAgICBjbGFzc05hbWU9XCJyb3VuZGVkLXhsIGJnLWdyYWRpZW50LXRvLWJyIGZyb20tb3JhbmdlLTUwMCB0by15ZWxsb3ctNDAwIHNoYWRvdy1tZCBweS02IHRleHQtd2hpdGUgdGV4dC0yeGwgZm9udC1oZWFkZXIgdHJhY2tpbmctd2lkZSBob3ZlcjpzY2FsZS0xMDUgdHJhbnNpdGlvblwiXG4gICAgICAgID5cbiAgICAgICAgICBXb3JrIE9yZGVyc1xuICAgICAgICA8L2J1dHRvbj5cblxuICAgICAgICA8YnV0dG9uXG4gICAgICAgICAgb25DbGljaz17KCkgPT4gcm91dGVyLnB1c2goJy9pbnNwZWN0aW9ucycpfVxuICAgICAgICAgIGNsYXNzTmFtZT1cInJvdW5kZWQteGwgYmctZ3JhZGllbnQtdG8tYnIgZnJvbS1ncmVlbi02MDAgdG8tZW1lcmFsZC00MDAgc2hhZG93LW1kIHB5LTYgdGV4dC13aGl0ZSB0ZXh0LTJ4bCBmb250LWhlYWRlciB0cmFja2luZy13aWRlIGhvdmVyOnNjYWxlLTEwNSB0cmFuc2l0aW9uXCJcbiAgICAgICAgPlxuICAgICAgICAgIEluc3BlY3Rpb25zXG4gICAgICAgIDwvYnV0dG9uPlxuXG4gICAgICAgIDxidXR0b25cbiAgICAgICAgICBvbkNsaWNrPXsoKSA9PiByb3V0ZXIucHVzaCgnL3ZpbicpfVxuICAgICAgICAgIGNsYXNzTmFtZT1cInJvdW5kZWQteGwgYmctZ3JhZGllbnQtdG8tYnIgZnJvbS1wdXJwbGUtNjAwIHRvLXBpbmstNTAwIHNoYWRvdy1tZCBweS02IHRleHQtd2hpdGUgdGV4dC0yeGwgZm9udC1oZWFkZXIgdHJhY2tpbmctd2lkZSBob3ZlcjpzY2FsZS0xMDUgdHJhbnNpdGlvblwiXG4gICAgICAgID5cbiAgICAgICAgICBWSU4gRGVjb2RlclxuICAgICAgICA8L2J1dHRvbj5cblxuICAgICAgICA8YnV0dG9uXG4gICAgICAgICAgb25DbGljaz17KCkgPT4gcm91dGVyLnB1c2goJy9oaXN0b3J5Jyl9XG4gICAgICAgICAgY2xhc3NOYW1lPVwicm91bmRlZC14bCBiZy1ncmFkaWVudC10by1iciBmcm9tLXNsYXRlLTcwMCB0by1ncmF5LTUwMCBzaGFkb3ctbWQgcHktNiB0ZXh0LXdoaXRlIHRleHQtMnhsIGZvbnQtaGVhZGVyIHRyYWNraW5nLXdpZGUgaG92ZXI6c2NhbGUtMTA1IHRyYW5zaXRpb25cIlxuICAgICAgICA+XG4gICAgICAgICAgSGlzdG9yeVxuICAgICAgICA8L2J1dHRvbj5cblxuICAgICAgICA8YnV0dG9uXG4gICAgICAgICAgb25DbGljaz17KCkgPT4gcm91dGVyLnB1c2goJy9ib29raW5nJyl9XG4gICAgICAgICAgY2xhc3NOYW1lPVwicm91bmRlZC14bCBiZy1ncmFkaWVudC10by1iciBmcm9tLXJlZC01MDAgdG8tb3JhbmdlLTQwMCBzaGFkb3ctbWQgcHktNiB0ZXh0LXdoaXRlIHRleHQtMnhsIGZvbnQtaGVhZGVyIHRyYWNraW5nLXdpZGUgaG92ZXI6c2NhbGUtMTA1IHRyYW5zaXRpb25cIlxuICAgICAgICA+XG4gICAgICAgICAgQm9va2luZ1xuICAgICAgICA8L2J1dHRvbj5cbiAgICAgIDwvZGl2PlxuXG4gICAgICA8cCBjbGFzc05hbWU9XCJtdC0xMCB0ZXh0LWNlbnRlciB0ZXh0LXNtIHRleHQtbXV0ZWQgZm9udC1ib2R5XCI+XG4gICAgICAgIFF1ZXN0aW9ucz8gQ29udGFjdCB1cyBhdCA8YSBocmVmPVwibWFpbHRvOnN1cHBvcnRAcHJvZml4aXEuY29tXCIgY2xhc3NOYW1lPVwidW5kZXJsaW5lXCI+c3VwcG9ydEBwcm9maXhpcS5jb208L2E+XG4gICAgICA8L3A+XG4gICAgPC9kaXY+XG4gIClcbn0iXSwibmFtZXMiOlsidXNlUm91dGVyIiwidXNlRWZmZWN0IiwiY3JlYXRlQnJvd3NlckNsaWVudCIsInN1cGFiYXNlIiwiUHJvRml4SVFMYW5kaW5nIiwicm91dGVyIiwiY2hlY2tTZXNzaW9uIiwiZGF0YSIsImF1dGgiLCJnZXRTZXNzaW9uIiwic2Vzc2lvbiIsInB1c2giLCJkaXYiLCJjbGFzc05hbWUiLCJoMSIsImJ1dHRvbiIsIm9uQ2xpY2siLCJwIiwiYSIsImhyZWYiXSwiaWdub3JlTGlzdCI6W10sInNvdXJjZVJvb3QiOiIifQ==\n//# sourceURL=webpack-internal:///(ssr)/./src/components/ProFixIQLanding.tsx\n");
 
 /***/ }),
 
@@ -182,6 +200,92 @@ module.exports = require("next/dist/server/app-render/work-unit-async-storage.ex
 
 /***/ }),
 
+/***/ "?32c4":
+/*!****************************!*\
+  !*** bufferutil (ignored) ***!
+  \****************************/
+/***/ (() => {
+
+/* (ignored) */
+
+/***/ }),
+
+/***/ "?66e9":
+/*!********************************!*\
+  !*** utf-8-validate (ignored) ***!
+  \********************************/
+/***/ (() => {
+
+/* (ignored) */
+
+/***/ }),
+
+/***/ "buffer":
+/*!*************************!*\
+  !*** external "buffer" ***!
+  \*************************/
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("buffer");
+
+/***/ }),
+
+/***/ "crypto":
+/*!*************************!*\
+  !*** external "crypto" ***!
+  \*************************/
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("crypto");
+
+/***/ }),
+
+/***/ "events":
+/*!*************************!*\
+  !*** external "events" ***!
+  \*************************/
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("events");
+
+/***/ }),
+
+/***/ "http":
+/*!***********************!*\
+  !*** external "http" ***!
+  \***********************/
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("http");
+
+/***/ }),
+
+/***/ "https":
+/*!************************!*\
+  !*** external "https" ***!
+  \************************/
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("https");
+
+/***/ }),
+
+/***/ "net":
+/*!**********************!*\
+  !*** external "net" ***!
+  \**********************/
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("net");
+
+/***/ }),
+
 /***/ "next/dist/compiled/next-server/app-page.runtime.dev.js":
 /*!*************************************************************************!*\
   !*** external "next/dist/compiled/next-server/app-page.runtime.dev.js" ***!
@@ -202,6 +306,61 @@ module.exports = require("next/dist/compiled/next-server/app-page.runtime.dev.js
 "use strict";
 module.exports = require("path");
 
+/***/ }),
+
+/***/ "punycode":
+/*!***************************!*\
+  !*** external "punycode" ***!
+  \***************************/
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("punycode");
+
+/***/ }),
+
+/***/ "stream":
+/*!*************************!*\
+  !*** external "stream" ***!
+  \*************************/
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("stream");
+
+/***/ }),
+
+/***/ "tls":
+/*!**********************!*\
+  !*** external "tls" ***!
+  \**********************/
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("tls");
+
+/***/ }),
+
+/***/ "url":
+/*!**********************!*\
+  !*** external "url" ***!
+  \**********************/
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("url");
+
+/***/ }),
+
+/***/ "zlib":
+/*!***********************!*\
+  !*** external "zlib" ***!
+  \***********************/
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("zlib");
+
 /***/ })
 
 };
@@ -211,7 +370,7 @@ module.exports = require("path");
 var __webpack_require__ = require("../webpack-runtime.js");
 __webpack_require__.C(exports);
 var __webpack_exec__ = (moduleId) => (__webpack_require__(__webpack_require__.s = moduleId))
-var __webpack_exports__ = __webpack_require__.X(0, ["vendor-chunks/next","vendor-chunks/@opentelemetry"], () => (__webpack_exec__("(rsc)/./node_modules/next/dist/build/webpack/loaders/next-app-loader/index.js?name=app%2Fpage&page=%2Fpage&appPaths=%2Fpage&pagePath=private-next-app-dir%2Fpage.tsx&appDir=%2Fworkspaces%2FProFixIQ%2Fapp&pageExtensions=tsx&pageExtensions=ts&pageExtensions=jsx&pageExtensions=js&rootDir=%2Fworkspaces%2FProFixIQ&isDev=true&tsconfigPath=tsconfig.json&basePath=&assetPrefix=&nextConfigOutput=&preferredRegion=&middlewareConfig=e30%3D!")));
+var __webpack_exports__ = __webpack_require__.X(0, ["vendor-chunks/next","vendor-chunks/@supabase","vendor-chunks/@opentelemetry","vendor-chunks/ws","vendor-chunks/whatwg-url","vendor-chunks/tr46","vendor-chunks/webidl-conversions","vendor-chunks/cookie"], () => (__webpack_exec__("(rsc)/./node_modules/next/dist/build/webpack/loaders/next-app-loader/index.js?name=app%2Fpage&page=%2Fpage&appPaths=%2Fpage&pagePath=private-next-app-dir%2Fpage.tsx&appDir=%2Fworkspaces%2FProFixIQ%2Fapp&pageExtensions=tsx&pageExtensions=ts&pageExtensions=jsx&pageExtensions=js&rootDir=%2Fworkspaces%2FProFixIQ&isDev=true&tsconfigPath=tsconfig.json&basePath=&assetPrefix=&nextConfigOutput=&preferredRegion=&middlewareConfig=e30%3D!")));
 module.exports = __webpack_exports__;
 
 })();
