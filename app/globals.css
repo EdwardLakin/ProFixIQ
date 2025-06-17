@@ -2,15 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --color-surface: #1a1a1a;
+  --color-background: #101010;
+  --color-accent: #62c6ff;
+  --color-primary: #3b82f6;
+  --color-secondary: #f97316;
+  --color-highlight: #1e293b;
+}
+
 body {
-  @apply bg-surface text-accent font-sans;
-}
-
-/* Optional helpers */
-.text-muted {
-  @apply text-sm text-muted;
-}
-
-.shadow-card {
-  @apply shadow-card rounded-lg border border-gray-700;
+  @apply bg-surface text-accent;
 }

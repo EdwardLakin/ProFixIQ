@@ -5,32 +5,24 @@ import Button from './ui/Button'
 
 export default function ProFixIQLanding() {
   return (
-    <main className="max-w-4xl mx-auto px-4 py-10">
+    <main className="max-w-xl mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold text-accent mb-4">👋 Welcome to ProFixIQ</h1>
       <p className="text-muted mb-8">
         AI-powered repair assistant for diagnostics, inspections, and workflow automation.
       </p>
 
-      {/* AI Diagnosis Section */}
+      {/* AI DIAGNOSIS */}
       <section className="mb-8 bg-surface p-4 rounded shadow-card">
-        <h2 className="text-xl font-bold text-accent mb-2">🔍 AI Diagnosis</h2>
+        <h2 className="text-xl font-bold text-accent mb-2">🧠 AI Diagnosis</h2>
         <p className="text-muted mb-4">
           Use GPT-powered tools to troubleshoot vehicle issues, decode DTCs, and analyze photos.
         </p>
-        <div className="flex flex-wrap gap-3">
-          <Link href="/ai/chat">
-            <Button>AI Chat</Button>
-          </Link>
-          <Link href="/ai/dtc">
-            <Button>DTC Code Lookup</Button>
-          </Link>
-          <Link href="/ai/photo">
-            <Button>Photo-Based Diagnosis</Button>
-          </Link>
-        </div>
+        <Link href="/ai">
+          <Button>Open AI Diagnostic Tools</Button>
+        </Link>
       </section>
 
-      {/* Work Orders */}
+      {/* WORK ORDERS */}
       <section className="mb-8 bg-surface p-4 rounded shadow-card">
         <h2 className="text-xl font-bold text-accent mb-2">🧾 Work Orders</h2>
         <p className="text-muted mb-4">
@@ -41,7 +33,7 @@ export default function ProFixIQLanding() {
         </Link>
       </section>
 
-      {/* Inspections */}
+      {/* INSPECTIONS */}
       <section className="mb-8 bg-surface p-4 rounded shadow-card">
         <h2 className="text-xl font-bold text-accent mb-2">✅ Inspections</h2>
         <p className="text-muted mb-4">
@@ -52,9 +44,9 @@ export default function ProFixIQLanding() {
         </Link>
       </section>
 
-      {/* VIN Decoder */}
+      {/* VIN DECODER */}
       <section className="mb-8 bg-surface p-4 rounded shadow-card">
-        <h2 className="text-xl font-bold text-accent mb-2">🔎 VIN Decoder</h2>
+        <h2 className="text-xl font-bold text-accent mb-2">🔍 VIN Decoder</h2>
         <p className="text-muted mb-4">
           Decode vehicle VINs to auto-fill year, make, model, and build info.
         </p>
@@ -63,7 +55,7 @@ export default function ProFixIQLanding() {
         </Link>
       </section>
 
-      {/* History */}
+      {/* HISTORY */}
       <section className="mb-8 bg-surface p-4 rounded shadow-card">
         <h2 className="text-xl font-bold text-accent mb-2">📖 History</h2>
         <p className="text-muted mb-4">
@@ -74,7 +66,7 @@ export default function ProFixIQLanding() {
         </Link>
       </section>
 
-      {/* Bookings */}
+      {/* BOOKINGS */}
       <section className="mb-8 bg-surface p-4 rounded shadow-card">
         <h2 className="text-xl font-bold text-accent mb-2">📅 Bookings</h2>
         <p className="text-muted mb-4">
