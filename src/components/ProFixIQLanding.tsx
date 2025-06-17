@@ -1,97 +1,63 @@
-'use client';
+'use client'
 
-import Link from 'next/link';
-import { useEffect } from 'react';
+import Link from 'next/link'
+
+const menuItems = [
+  {
+    title: 'AI Diagnosis',
+    description: 'Snap a photo or enter a code to get AI repair help.',
+    href: '/ai',
+  },
+  {
+    title: 'Work Orders',
+    description: 'Create, track, and manage repair work orders.',
+    href: '/workorders',
+  },
+  {
+    title: 'Inspections',
+    description: 'Start or review vehicle inspections and reports.',
+    href: '/inspections',
+  },
+  {
+    title: 'VIN Decoder',
+    description: 'Decode VINs and auto-fill vehicle data.',
+    href: '/vin',
+  },
+  {
+    title: 'Repair History',
+    description: 'View previous diagnostics, repairs, and visits.',
+    href: '/history',
+  },
+  {
+    title: 'Customer Booking',
+    description: 'Customers can request appointments or quotes.',
+    href: '/booking',
+  },
+]
 
 export default function ProFixIQLanding() {
-  useEffect(() => {
-    document.body.style.background =
-      'linear-gradient(to bottom right, #0f172a, #1e3a8a)'; // Dark to blue gradient
-    document.body.style.backgroundImage +=
-      ', url("/carbon-weave.png")'; // Make sure this file exists in /public
-    document.body.style.backgroundSize = 'cover';
-    document.body.style.backgroundRepeat = 'repeat';
-  }, []);
-
   return (
-    <main className="min-h-screen flex flex-col items-center px-4 py-8 text-white font-sans space-y-6">
-      <h1 className="text-4xl md:text-5xl font-black font-header tracking-wide text-orange-400 mb-6">
+    <main
+      className="min-h-screen flex flex-col items-center justify-center bg-cover bg-center px-4"
+      style={{ backgroundImage: 'url("/carbon-weave.png")' }}
+    >
+      <h1 className="text-5xl lg:text-6xl font-blackops text-accent mb-2 text-center">
         Welcome to ProFixIQ
       </h1>
+      <p className="text-muted text-center mb-10 max-w-xl">
+        The AI-powered diagnostic platform built for pros and DIYers.
+      </p>
 
-      <section className="w-full max-w-xl flex flex-col space-y-4">
-        <Link
-          href="/ai"
-          className="w-full bg-orange-500 hover:bg-orange-600 text-white py-4 px-6 rounded-xl text-left transition-all shadow-md"
-        >
-          <div>
-            <div className="text-xl font-bold font-header">AI Diagnosis</div>
-            <div className="text-sm text-white font-light">
-              Snap a photo or enter a code to get AI repair help.
+      <div className="space-y-10 w-full max-w-md">
+        {menuItems.map((item) => (
+          <Link key={item.title} href={item.href}>
+            <div className="rounded-xl border-2 border-accent bg-black shadow-lg text-white px-6 py-6 hover:scale-[1.02] transition duration-200 text-center">
+              <h2 className="text-2xl font-blackops mb-2">{item.title}</h2>
+              <p className="text-sm text-white opacity-80">{item.description}</p>
             </div>
-          </div>
-        </Link>
-
-        <Link
-          href="/workorders"
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 px-6 rounded-xl text-left transition-all shadow-md"
-        >
-          <div>
-            <div className="text-xl font-bold font-header">Work Orders</div>
-            <div className="text-sm text-white font-light">
-              Create, track, and manage repair work orders.
-            </div>
-          </div>
-        </Link>
-
-        <Link
-          href="/inspections"
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 px-6 rounded-xl text-left transition-all shadow-md"
-        >
-          <div>
-            <div className="text-xl font-bold font-header">Inspections</div>
-            <div className="text-sm text-white font-light">
-              Start or review vehicle inspections and reports.
-            </div>
-          </div>
-        </Link>
-
-        <Link
-          href="/vin"
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 px-6 rounded-xl text-left transition-all shadow-md"
-        >
-          <div>
-            <div className="text-xl font-bold font-header">VIN Decoder</div>
-            <div className="text-sm text-white font-light">
-              Decode VINs and auto-fill vehicle data.
-            </div>
-          </div>
-        </Link>
-
-        <Link
-          href="/history"
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 px-6 rounded-xl text-left transition-all shadow-md"
-        >
-          <div>
-            <div className="text-xl font-bold font-header">Repair History</div>
-            <div className="text-sm text-white font-light">
-              View previous diagnostics, repairs, and visits.
-            </div>
-          </div>
-        </Link>
-
-        <Link
-          href="/booking"
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 px-6 rounded-xl text-left transition-all shadow-md"
-        >
-          <div>
-            <div className="text-xl font-bold font-header">Customer Booking</div>
-            <div className="text-sm text-white font-light">
-              Customers can request appointments or quotes.
-            </div>
-          </div>
-        </Link>
-      </section>
+          </Link>
+        ))}
+      </div>
     </main>
-  );
+  )
 }

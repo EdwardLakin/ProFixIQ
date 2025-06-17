@@ -1,7 +1,6 @@
-export function formatDate(date: string) {
-  return new Date(date).toLocaleDateString();
-}
+import { clsx } from 'clsx'
+import { twMerge } from 'tailwind-merge'
 
-export function truncate(text: string, maxLength = 100) {
-  return text.length > maxLength ? text.slice(0, maxLength) + "..." : text;
+export function cn(...inputs: any[]) {
+  return twMerge(clsx(inputs))
 }

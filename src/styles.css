@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Font setup */
+@font-face {
+  font-family: 'Black Ops One';
+  src: url('/black-ops-one.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+body {
+  @apply bg-background text-foreground font-rubik;
+}
+
+h1 {
+  @apply text-5xl font-blackops text-accent text-center mb-10;
+}
+
+/* Tile Buttons */
+.button-tile {
+  @apply w-full bg-black border border-accent text-white px-6 py-6 text-xl font-blackops rounded-xl shadow-card transition-all duration-200 text-center;
+}
+
+.button-tile:hover {
+  @apply bg-surface;
+}
+
+/* Button group spacing */
+.tile-group {
+  @apply space-y-10;
+}

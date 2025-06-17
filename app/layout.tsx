@@ -1,27 +1,17 @@
-// app/layout.tsx
+import '../public/output.css'; // Tailwind output with custom styles
+import { ReactNode } from 'react';
 
-import '../public/output.css';
-import type { Metadata } from 'next';
-
-export const metadata: Metadata = {
+export const metadata = {
   title: 'ProFixIQ',
-  description: 'AI-powered diagnostics and repair assistant for vehicles',
+  description: 'AI-powered vehicle diagnostics and repair automation',
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <head>
-        <link
-          href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Rubik:wght@400;500;700&display=swap"
-          rel="stylesheet"
-        />
-      </head>
-      <body>{children}</body>
+      <body className="bg-background text-foreground font-sans antialiased">
+        {children}
+      </body>
     </html>
   );
 }
