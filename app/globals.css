@@ -2,42 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --color-surface: #0f1f2a;
-  --color-foreground: #e6f1ff;
-  --color-primary: #3b82f6;
-  --color-secondary: #f97316;
-  --color-highlight: #1e293b;
-}
-
-/* Apply global styles */
 body {
-  background-color: var(--color-surface);
-  color: var(--color-foreground);
-  font-family: system-ui, sans-serif;
+  @apply bg-surface text-accent font-sans;
 }
 
-/* Utility classes */
-.bg-surface {
-  background-color: var(--color-surface);
-}
-
-.text-accent {
-  color: var(--color-foreground);
+/* Optional helpers */
+.text-muted {
+  @apply text-sm text-muted;
 }
 
 .shadow-card {
-  @apply shadow-md rounded-lg p-4 bg-surface text-accent;
-}
-
-.btn {
-  @apply px-4 py-2 rounded-md font-semibold transition;
-}
-
-.btn-primary {
-  @apply text-white bg-blue-600 hover:bg-blue-700;
-}
-
-.btn-secondary {
-  @apply text-white bg-orange-500 hover:bg-orange-600;
+  @apply shadow-card rounded-lg border border-gray-700;
 }
