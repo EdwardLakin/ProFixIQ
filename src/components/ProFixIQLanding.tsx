@@ -1,63 +1,101 @@
 'use client'
 
 import Link from 'next/link'
-
-const menuItems = [
-  {
-    title: 'AI Diagnosis',
-    description: 'Snap a photo or enter a code to get AI repair help.',
-    href: '/ai',
-  },
-  {
-    title: 'Work Orders',
-    description: 'Create, track, and manage repair work orders.',
-    href: '/workorders',
-  },
-  {
-    title: 'Inspections',
-    description: 'Start or review vehicle inspections and reports.',
-    href: '/inspections',
-  },
-  {
-    title: 'VIN Decoder',
-    description: 'Decode VINs and auto-fill vehicle data.',
-    href: '/vin',
-  },
-  {
-    title: 'Repair History',
-    description: 'View previous diagnostics, repairs, and visits.',
-    href: '/history',
-  },
-  {
-    title: 'Customer Booking',
-    description: 'Customers can request appointments or quotes.',
-    href: '/booking',
-  },
-]
+import Container from '@/components/ui/Container'
+import Section from '@/components/ui/Section'
+import Card from '@/components/ui/Card'
+import Header from '@/components/ui/Header'
+import Footer from '@/components/ui/Footer'
 
 export default function ProFixIQLanding() {
   return (
-    <main
-      className="min-h-screen flex flex-col items-center justify-center bg-cover bg-center px-4"
-      style={{ backgroundImage: 'url("/carbon-weave.png")' }}
-    >
-      <h1 className="text-5xl lg:text-6xl font-blackops text-accent mb-2 text-center">
-        Welcome to ProFixIQ
-      </h1>
-      <p className="text-muted text-center mb-10 max-w-xl">
-        The AI-powered diagnostic platform built for pros and DIYers.
-      </p>
+    <div className="min-h-screen bg-gradient-to-b from-black via-[#0c0c0c] to-[#121e2e] text-white font-sans">
+      <Header />
 
-      <div className="space-y-10 w-full max-w-md">
-        {menuItems.map((item) => (
-          <Link key={item.title} href={item.href}>
-            <div className="rounded-xl border-2 border-accent bg-black shadow-lg text-white px-6 py-6 hover:scale-[1.02] transition duration-200 text-center">
-              <h2 className="text-2xl font-blackops mb-2">{item.title}</h2>
-              <p className="text-sm text-white opacity-80">{item.description}</p>
-            </div>
+      <main className="flex flex-col items-center justify-center py-10 px-4 space-y-6">
+        <h1 className="text-5xl sm:text-6xl md:text-7xl font-blackops text-orange-500 text-center">
+          Welcome to ProFixIQ
+        </h1>
+        <p className="text-lg sm:text-xl text-muted max-w-xl text-center">
+          The AI-powered diagnostic platform built for pros and DIYers.
+        </p>
+
+        <Container className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-5xl mt-10">
+          {/* AI Diagnosis */}
+          <Link href="/ai">
+            <Card className="bg-black border border-orange-500 hover:shadow-orange hover:scale-105 transition duration-200">
+              <div className="h-full w-full flex flex-col justify-center items-center p-6">
+                <h2 className="text-2xl font-bold text-white text-center font-blackops">AI Diagnosis</h2>
+                <p className="text-gray-300 mt-2 text-sm text-center">
+                  Chat, Visual, and DTC Code Support
+                </p>
+              </div>
+            </Card>
           </Link>
-        ))}
-      </div>
-    </main>
+
+          {/* Work Orders */}
+          <Link href="/workorders">
+            <Card className="bg-black border border-orange-500 hover:shadow-orange hover:scale-105 transition duration-200">
+              <div className="h-full w-full flex flex-col justify-center items-center p-6">
+                <h2 className="text-2xl font-bold text-white text-center font-blackops">Work Orders</h2>
+                <p className="text-gray-300 mt-2 text-sm text-center">
+                  Create, Edit, and Track Work Orders
+                </p>
+              </div>
+            </Card>
+          </Link>
+
+          {/* Inspections */}
+          <Link href="/inspections">
+            <Card className="bg-black border border-orange-500 hover:shadow-orange hover:scale-105 transition duration-200">
+              <div className="h-full w-full flex flex-col justify-center items-center p-6">
+                <h2 className="text-2xl font-bold text-white text-center font-blackops">Inspections</h2>
+                <p className="text-gray-300 mt-2 text-sm text-center">
+                  CVIP, Used, Custom, and More
+                </p>
+              </div>
+            </Card>
+          </Link>
+
+          {/* VIN Decoder */}
+          <Link href="/vin">
+            <Card className="bg-black border border-orange-500 hover:shadow-orange hover:scale-105 transition duration-200">
+              <div className="h-full w-full flex flex-col justify-center items-center p-6">
+                <h2 className="text-2xl font-bold text-white text-center font-blackops">VIN Decoder</h2>
+                <p className="text-gray-300 mt-2 text-sm text-center">
+                  Decode and Analyze Vehicle Info
+                </p>
+              </div>
+            </Card>
+          </Link>
+
+          {/* Repair History */}
+          <Link href="/history">
+            <Card className="bg-black border border-orange-500 hover:shadow-orange hover:scale-105 transition duration-200">
+              <div className="h-full w-full flex flex-col justify-center items-center p-6">
+                <h2 className="text-2xl font-bold text-white text-center font-blackops">Repair History</h2>
+                <p className="text-gray-300 mt-2 text-sm text-center">
+                  Track Issues by VIN and Customer
+                </p>
+              </div>
+            </Card>
+          </Link>
+
+          {/* Customer Booking */}
+          <Link href="/booking">
+            <Card className="bg-black border border-orange-500 hover:shadow-orange hover:scale-105 transition duration-200">
+              <div className="h-full w-full flex flex-col justify-center items-center p-6">
+                <h2 className="text-2xl font-bold text-white text-center font-blackops">Customer Booking</h2>
+                <p className="text-gray-300 mt-2 text-sm text-center">
+                  Self-Service Scheduling with Quotes
+                </p>
+              </div>
+            </Card>
+          </Link>
+        </Container>
+      </main>
+
+      <Footer />
+    </div>
   )
 }

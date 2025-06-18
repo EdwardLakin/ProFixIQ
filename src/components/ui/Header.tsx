@@ -1,21 +1,46 @@
 'use client';
 
 import React from 'react';
+import { cn } from '@/lib/utils';
 
-type HeaderProps = {
+interface HeadingProps {
   title: string;
   subtitle?: string;
-  children?: React.ReactNode; // optional buttons or actions
-};
+  center?: boolean;
+  size?: 'xl' | '2xl' | '3xl' | '4xl';
+}
 
-export default function Header({ title, subtitle, children }: HeaderProps) {
+export default function Heading({
+  title,
+  subtitle,
+  center = true,
+  size = '4xl',
+}: HeadingProps) {
   return (
-    <div className="bg-surface text-accent shadow-card rounded p-4 mb-4 flex items-center justify-between">
-      <div>
-        <h1 className="text-2xl font-bold">{title}</h1>
-        {subtitle && <p className="text-muted text-sm">{subtitle}</p>}
-      </div>
-      {children && <div className="flex items-center space-x-2">{children}</div>}
+    <div
+      className={cn(
+        'mb-10',
+        center && 'text-center',
+      )}
+    >
+      <h1
+        className={cn(
+          `font-blackops text-${size}`,
+          'text-orange-500 drop-shadow-sm tracking-wide leading-tight'
+        )}
+      >
+        {title}
+      </h1>
+      {subtitle && (
+        <p
+          className={cn(
+            'text-sm md:text-base mt-2 text-neutral-300',
+            center && 'mx-auto max-w-xl'
+          )}
+        >
+          {subtitle}
+        </p>
+      )}
     </div>
   );
 }

@@ -1,32 +1,17 @@
-'use client';
-
+// src/components/ui/Button.tsx
 import React from 'react';
-import clsx from 'clsx';
+import { cn } from '@/lib/utils';
 
-type ButtonProps = {
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   children: React.ReactNode;
-  onClick?: () => void;
-  type?: 'button' | 'submit' | 'reset';
-  disabled?: boolean;
-  className?: string;
-};
+}
 
-export default function Button({
-  children,
-  onClick,
-  type = 'button',
-  disabled = false,
-  className,
-}: ButtonProps) {
+export default function Button({ children, className, ...props }: ButtonProps) {
   return (
     <button
-      type={type}
-      disabled={disabled}
-      onClick={onClick}
-      className={clsx(
-        'px-4 py-2 rounded font-semibold transition-colors duration-200',
-        'bg-accent text-white hover:bg-orange-600',
-        'disabled:opacity-50 disabled:cursor-not-allowed',
+      {...props}
+      className={cn(
+        'w-full text-center font-bold uppercase tracking-wide rounded-lg px-6 py-4 text-white text-lg bg-black border-2 border-orange-500 hover:bg-orange-600 hover:border-orange-400 transition-all duration-300 shadow-md hover:shadow-lg',
         className
       )}
     >

@@ -1,23 +1,21 @@
 'use client';
 
 import React from 'react';
-import clsx from 'clsx';
+import { cn } from '@/lib/utils';
 
-type CardProps = {
-  title?: string;
+interface CardProps {
   children: React.ReactNode;
   className?: string;
-};
+}
 
-export default function Card({ title, children, className }: CardProps) {
+export default function Card({ children, className }: CardProps) {
   return (
     <div
-      className={clsx(
-        'bg-surface text-white rounded-xl shadow-card p-4 md:p-6',
+      className={cn(
+        'rounded-xl border border-orange-500 bg-black/50 text-white shadow-xl p-6 hover:shadow-orange-400/20 transition-shadow duration-200',
         className
       )}
     >
-      {title && <h2 className="text-xl font-semibold mb-4 text-accent">{title}</h2>}
       {children}
     </div>
   );

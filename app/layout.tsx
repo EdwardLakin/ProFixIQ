@@ -1,17 +1,18 @@
-import '../public/output.css'; // Tailwind output with custom styles
-import { ReactNode } from 'react';
+// app/layout.tsx
+import './globals.css' // this will alias to src/styles.css or your Tailwind entrypoint
+import type { Metadata } from 'next'
 
-export const metadata = {
+export const metadata: Metadata = {
   title: 'ProFixIQ',
-  description: 'AI-powered vehicle diagnostics and repair automation',
-};
+  description: 'AI-powered diagnostics and shop workflow automation',
+}
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="bg-background text-foreground font-sans antialiased">
+      <body className="bg-background text-foreground font-rubik">
         {children}
       </body>
     </html>
-  );
+  )
 }

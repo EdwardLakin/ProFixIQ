@@ -1,23 +1,21 @@
 'use client';
 
 import React from 'react';
-import clsx from 'clsx';
+import { cn } from '@/lib/utils';
 
-type SectionProps = {
-  title?: string;
+interface SectionProps {
   children: React.ReactNode;
   className?: string;
-};
+}
 
-export default function Section({ title, children, className }: SectionProps) {
+export default function Section({ children, className }: SectionProps) {
   return (
     <section
-      className={clsx(
-        'bg-surface rounded-lg shadow-card px-4 py-6 md:px-6 md:py-8',
+      className={cn(
+        'w-full py-10 md:py-14 lg:py-20',
         className
       )}
     >
-      {title && <h2 className="text-2xl font-bold text-accent mb-4">{title}</h2>}
       {children}
     </section>
   );

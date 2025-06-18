@@ -1,11 +1,19 @@
 'use client';
 
 import React from 'react';
+import { cn } from '@/lib/utils';
 
-export default function Footer() {
+export default function Footer({ className }: { className?: string }) {
   return (
-    <footer className="w-full py-6 mt-12 border-t border-border bg-surface text-muted text-sm text-center">
-      <p>© {new Date().getFullYear()} ProFixIQ. All rights reserved.</p>
+    <footer
+      className={cn(
+        'w-full text-center py-6 text-neutral-400 text-sm border-t border-neutral-800 bg-black/30 backdrop-blur-sm',
+        className
+      )}
+    >
+      <p className="font-mono">
+        © {new Date().getFullYear()} ProFixIQ. Built for pros, powered by AI.
+      </p>
     </footer>
   );
 }
