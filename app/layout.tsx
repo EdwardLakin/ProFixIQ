@@ -1,6 +1,5 @@
 // app/layout.tsx
-import '../public/output.css';
-import type { Metadata } from 'next';
+import './globals.css';
 
 export const metadata: Metadata = {
   title: 'ProFixIQ',
@@ -20,3 +19,7 @@ export default function RootLayout({
     </html>
   );
 }
+
+<div className="bg-green-500 text-white text-xl p-4 rounded-lg shadow-lg">
+  ✅ Tailwind is working!
+</div>

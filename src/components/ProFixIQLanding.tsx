@@ -11,7 +11,7 @@ export default function ProFixIQLanding() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-black via-[#0c0c0c] to-[#121212] text-white font-sans">
       <main className="flex flex-col items-center justify-center py-10 px-4 space-y-6">
-        <h1 className="text-5xl sm:text-6xl md:text-7xl font-blackops text-orange-500 text-center">
+        <h1 className="text-6xl sm:text-7xl md:text-8xl font-blackops text-orange-500 tracking-wide text-center">
           Welcome to ProFixIQ
         </h1>
         <p className="text-lg text-neutral-300 max-w-xl text-center">
@@ -52,8 +52,10 @@ export default function ProFixIQLanding() {
             },
           ].map(({ title, subtitle, href }) => (
             <Link key={href} href={href}>
-              <Card className="bg-black border border-orange-500 hover:shadow-orange hover:scale-105 transition duration-200 p-6 flex flex-col justify-center items-center">
-                <Header title={title} size="4xl" />
+              <Card className="bg-black border border-orange-500 hover:shadow-orange hover:scale-105 transition duration-200 p-8 sm:p-10 md:p-12 min-h-[160px] w-full flex flex-col justify-center items-center">
+                <h2 className="font-blackops text-3xl sm:text-4xl text-white text-center tracking-wide uppercase">
+                  {title}
+                </h2>
                 <p className="text-sm text-gray-300 mt-2 text-center">{subtitle}</p>
               </Card>
             </Link>
