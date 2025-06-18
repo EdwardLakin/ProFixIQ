@@ -1,5 +1,5 @@
 // app/layout.tsx
-import './globals.css' // this will alias to src/styles.css or your Tailwind entrypoint
+import '../public/output.css' // this will alias to src/styles.css or your Tailwind entrypoint
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {

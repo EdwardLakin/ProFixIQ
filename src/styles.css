@@ -2,28 +2,36 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Font setup */
 @font-face {
   font-family: 'Black Ops One';
   src: url('/black-ops-one.ttf') format('truetype');
   font-display: swap;
+  font-style: normal;
+  font-weight: normal;
 }
 
 html, body {
-  @apply bg-gradient-to-br from-[#0d0d0d] via-[#1a1a2e] to-[#001f3f] text-white;
+  @apply min-h-screen text-white;
+  font-family: 'Black Ops One', sans-serif;
   background-image: url('/carbon-weave.png'), linear-gradient(to bottom right, #0d0d0d, #001f3f);
   background-blend-mode: overlay;
   background-repeat: repeat;
   background-size: auto;
-  font-family: 'Black Ops One', sans-serif;
-  @apply min-h-screen;
 }
 
+/* Font utilities */
 .font-blackops {
   font-family: 'Black Ops One', sans-serif;
 }
 
+.font-heading {
+  font-family: 'Black Ops One', sans-serif;
+}
+
+/* Button styling */
 button {
-  @apply rounded-lg border border-orange-500 text-white font-bold py-3 px-6 transition-all duration-200 shadow-md;
+  @apply rounded-lg border border-orange-500 text-white font-bold py-3 px-6 transition-all;
   background: linear-gradient(to bottom right, #111, #222);
 }
 
