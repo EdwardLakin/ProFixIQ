@@ -7,7 +7,7 @@ interface HeadingProps {
   title: string;
   subtitle?: string;
   center?: boolean;
-  size?: 'xl' | '2xl' | '3xl' | '4xl';
+  size?: '2xl' | '3xl' | '4xl';
 }
 
 export default function Heading({
@@ -17,12 +17,7 @@ export default function Heading({
   size = '4xl',
 }: HeadingProps) {
   return (
-    <div
-      className={cn(
-        'mb-10',
-        center && 'text-center',
-      )}
-    >
+    <div className={cn('mb-10', center && 'text-center')}>
       <h1
         className={cn(
           `font-blackops text-${size}`,

@@ -1,11 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Black+Ops+One&display=swap');
 
-/* Font utility */
-.font-header {
-  font-family: 'Black Ops One', sans-serif;
-}
+/* =======================
+   Reset / Base Styles
+========================== */
 
-/* Reset / base */
 * {
   margin: 0;
   padding: 0;
@@ -20,18 +18,24 @@ body {
   min-height: 100%;
 }
 
-/* Buttons */
+/* =======================
+   Buttons
+========================== */
+
 button,
-a {
+a.button {
   transition: all 0.3s ease;
 }
 
 button:hover,
-a:hover {
+a.button:hover {
   opacity: 0.9;
 }
 
-/* Rounded box cards */
+/* =======================
+   Rounded Card Style (fallback only)
+========================== */
+
 .card {
   background-color: #1e293b;
   border-radius: 1rem;
@@ -40,7 +44,10 @@ a:hover {
   margin-bottom: 1rem;
 }
 
-/* Gradient + carbon background (optional override if needed) */
+/* =======================
+   Gradient + Background Weave
+========================== */
+
 body::before {
   content: '';
   position: fixed;
@@ -49,7 +56,7 @@ body::before {
   width: 100%;
   height: 100%;
   background: linear-gradient(to bottom right, #0f172a, #1e3a8a),
-              url('/carbon-weave.png');
+    url('/carbon-weave.png');
   background-size: cover;
   background-repeat: repeat;
   opacity: 0.2;
