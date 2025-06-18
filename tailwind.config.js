@@ -2,7 +2,6 @@
 module.exports = {
   content: [
     './app/**/*.{ts,tsx}',
-    './src/**/*.{ts,tsx}',
     './components/**/*.{ts,tsx}',
     './src/styles.css',
   ],
@@ -10,18 +9,17 @@ module.exports = {
     extend: {
       fontFamily: {
         blackops: ['"Black Ops One"', 'sans-serif'],
-        heading: ['"Black Ops One"', 'sans-serif'],
         rubik: ['Rubik', 'sans-serif'],
       },
       colors: {
-        background: '#101010', // dark background
-        surface: '#1a1a1a',     // tile background
-        accent: '#FF851B',      // orange accent
-        primary: '#0074D9',     // optional blue for hover/buttons
-        muted: '#999999',       // subtitle/hint text
+        background: '#101010',   // main dark background
+        surface: '#1a1a1a',      // tile/card background
+        accent: '#FF851B',       // orange accent
+        primary: '#0074D9',      // blue hover/focus option
+        muted: '#999999',        // subdued subtitle color
       },
       boxShadow: {
-        card: '0 4px 14px rgba(0,0,0,0.4)', // tile shadow
+        card: '0 4px 14px rgba(0,0,0,0.4)',
       },
       spacing: {
         'screen-sm': '90vh',
@@ -30,4 +28,4 @@ module.exports = {
   },
   plugins: [],
   darkMode: 'class',
-};
+}
