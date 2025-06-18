@@ -10,7 +10,8 @@ export default function HomePage() {
     <div className="min-h-screen bg-gradient-to-b from-black via-[#0e0e0e] to-[#121212] text-white font-sans">
       <main className="flex flex-col items-center justify-center px-4 py-10">
         <Header
-          title="Welcome to ProFixIQ"
+          title="Welcome To"
+          highlight="ProFixIQ"
           subtitle="The AI-powered diagnostic platform built for pros and DIYers."
         />
 
