@@ -1,39 +1,55 @@
-// app/context/useVehicleInfo.tsx
 'use client';
 
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 
-type VehicleInfo = {
+export type VehicleInfo = {
   year: string;
   make: string;
   model: string;
   vin?: string;
+  plate?: string;
 };
 
-type VehicleContextType = {
-  vehicleInfo: VehicleInfo | null;
-  setVehicleInfo: (info: VehicleInfo) => void;
-  clearVehicleInfo: () => void;
-};
+const LOCAL_STORAGE_KEY = 'selectedVehicle';
 
-const VehicleContext = createContext<VehicleContextType | undefined>(undefined);
-
-export const VehicleProvider = ({ children }: { children: ReactNode }) => {
+const useVehicleInfo = () => {
   const [vehicleInfo, setVehicleInfo] = useState<VehicleInfo | null>(null);
 
-  const clearVehicleInfo = () => setVehicleInfo(null);
+  // Load from localStorage on first render
+  useEffect(() => {
+    const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        setVehicleInfo(parsed);
+      } catch (error) {
+        console.error('Failed to parse stored vehicle info:', error);
+      }
+    }
+  }, []);
 
-  return (
-    <VehicleContext.Provider value={{ vehicleInfo, setVehicleInfo, clearVehicleInfo }}>
-      {children}
-    </VehicleContext.Provider>
-  );
+  // Persist to localStorage when updated
+  useEffect(() => {
+    if (vehicleInfo) {
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(vehicleInfo));
+    }
+  }, [vehicleInfo]);
+
+  const updateVehicle = (newInfo: VehicleInfo) => {
+    setVehicleInfo(newInfo);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newInfo));
+  };
+
+  const clearVehicle = () => {
+    setVehicleInfo(null);
+    localStorage.removeItem(LOCAL_STORAGE_KEY);
+  };
+
+  return {
+    vehicleInfo,
+    updateVehicle,
+    clearVehicle,
+  };
 };
 
-export default function useVehicleInfo() {
-  const context = useContext(VehicleContext);
-  if (!context) {
-    throw new Error('useVehicleInfo must be used within a VehicleProvider');
-  }
-  return context;
-}
+export default useVehicleInfo;

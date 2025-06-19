@@ -1,33 +1,11 @@
-import { VehicleInfo } from '@/types/vehicle';
+export async function analyzeDTC(code: string, vehicle: any): Promise<{ result: string }> {
+  const res = await fetch('/api/diagnose', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code, vehicle }),
+  });
 
-export async function diagnoseDTC(
-  vehicle: VehicleInfo,
-  dtcCode: string,
-  context?: string
-): Promise<{ result?: string; error?: string }> {
-  try {
-    const res = await fetch('/api/dtc/diagnose', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        vehicle,
-        dtcCode,
-        context, // <-- attach optional follow-up context
-      }),
-    });
+  if (!res.ok) throw new Error('DTC Analysis failed');
 
-    if (!res.ok) {
-      const errorText = await res.text();
-      console.error('DTC Diagnose API Error:', errorText);
-      return { error: 'DTC analysis failed.' };
-    }
-
-    const data = await res.json();
-    return data;
-  } catch (error) {
-    console.error('diagnoseDTC handler error:', error);
-    return { error: 'DTC request failed.' };
-  }
+  return res.json();
 }

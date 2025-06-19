@@ -1,49 +1,31 @@
-'use client';
+// app/layout.tsx
 
-import React, {
-  createContext,
-  useContext,
-  useState,
-  ReactNode,
-  Dispatch,
-  SetStateAction,
-} from 'react';
+import './globals.css'
+import type { Metadata } from 'next'
+import { Black_Ops_One } from 'next/font/google'
 
-interface VehicleInfo {
-  year: string;
-  make: string;
-  model: string;
-  vin?: string;
+const blackOpsOne = Black_Ops_One({
+  subsets: ['latin'],
+  weight: '400',
+  display: 'swap',
+  variable: '--font-blackopsone',
+})
+
+export const metadata: Metadata = {
+  title: 'ProFixIQ',
+  description: 'AI-powered auto diagnostics and repair assistant',
 }
 
-interface VehicleContextType {
-  vehicleInfo: VehicleInfo | null;
-  setVehicleInfo: Dispatch<SetStateAction<VehicleInfo | null>>;
-  clearVehicleInfo: () => void;
-}
-
-const VehicleContext = createContext<VehicleContextType | undefined>(undefined);
-
-export const VehicleProvider = ({ children }: { children: ReactNode }) => {
-  const [vehicleInfo, setVehicleInfo] = useState<VehicleInfo | null>(null);
-
-  const clearVehicleInfo = () => {
-    setVehicleInfo(null);
-  };
-
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
   return (
-    <VehicleContext.Provider value={{ vehicleInfo, setVehicleInfo, clearVehicleInfo }}>
-      {children}
-    </VehicleContext.Provider>
-  );
-};
-
-const useVehicleInfo = () => {
-  const context = useContext(VehicleContext);
-  if (!context) {
-    throw new Error('useVehicleInfo must be used within a VehicleProvider');
-  }
-  return context;
-};
-
-export default useVehicleInfo;
+    <html lang="en" className={blackOpsOne.variable}>
+      <body className="bg-gradient-to-b from-black via-gray-900 to-black text-white font-sans min-h-screen">
+        {children}
+      </body>
+    </html>
+  )
+}

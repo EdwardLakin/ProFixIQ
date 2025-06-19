@@ -1,111 +1,114 @@
-'use client'
+'use client';
 
-import { useState } from 'react'
-import useVehicleInfo from '@/hooks/useVehicleInfo'
-import { analyzeDTC } from '@/lib/diagnoseHandler'
-import Markdown from 'react-markdown'
-import { VehicleSelectorModal } from '@/components/VehicleSelectorModal'
+import { useState, useRef, useEffect } from 'react';
+import useVehicleInfo from '@/hooks/useVehicleInfo';
+import { analyze } from '@/lib/analyze';
+import Markdown from 'react-markdown';
+import VehicleSelector from '@/components/VehicleSelector';
 
 export default function DTCDecoder() {
-  const { vehicle, setVehicle, clearVehicle } = useVehicleInfo()
-  const [dtc, setDtc] = useState('')
-  const [answer, setAnswer] = useState('')
-  const [followUp, setFollowUp] = useState('')
-  const [messages, setMessages] = useState<any[]>([])
-  const [loading, setLoading] = useState(false)
-  const [showModal, setShowModal] = useState(false)
+  const { vehicleInfo, clearVehicle } = useVehicleInfo();
+  const [dtcCode, setDtcCode] = useState('');
+  const [response, setResponse] = useState('');
+  const [followUp, setFollowUp] = useState('');
+  const [messages, setMessages] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const handleSubmit = async () => {
-    if (!vehicle) {
-      alert('Please select a vehicle first.')
-      return
+    if (!vehicleInfo?.year || !vehicleInfo.make || !vehicleInfo.model || !dtcCode) {
+      alert('Please select a vehicle and enter a valid DTC code.');
+      return;
     }
 
-    setLoading(true)
-    const response = await analyzeDTC(dtc, messages, vehicle)
-    const updatedMessages = [...messages, { role: 'user', content: dtc }, { role: 'assistant', content: response }]
-    setMessages(updatedMessages)
-    setAnswer(response)
-    setLoading(false)
-  }
+    setLoading(true);
+    const input = `DTC: ${dtcCode}`;
+    const result = await analyze(input, vehicleInfo);
+    const updatedMessages = [...messages, `**You:** ${input}`, result.response || ''];
+    setMessages(updatedMessages);
+    setResponse(result.response || '');
+    setLoading(false);
+  };
 
   const handleFollowUp = async () => {
-    if (!followUp.trim()) return
-    setLoading(true)
-    const response = await analyzeDTC(followUp, messages, vehicle)
-    const updatedMessages = [...messages, { role: 'user', content: followUp }, { role: 'assistant', content: response }]
-    setMessages(updatedMessages)
-    setAnswer(response)
-    setFollowUp('')
-    setLoading(false)
-  }
+    if (!followUp.trim()) return;
+    setLoading(true);
+    const result = await analyze(followUp, vehicleInfo);
+    const updatedMessages = [...messages, `**You:** ${followUp}`, result.response || ''];
+    setMessages(updatedMessages);
+    setFollowUp('');
+    setResponse(result.response || '');
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white px-4 py-12">
-      <div className="max-w-4xl mx-auto bg-white bg-opacity-5 backdrop-blur-md p-8 rounded-lg shadow-lg">
-        <h1 className="text-5xl font-blackOps text-center mb-8">DTC Decoder</h1>
+    <div className="p-4 max-w-3xl mx-auto text-white">
+      <h1 className="text-4xl font-black font-blackopsone text-center mb-6 text-orange-500">
+        🔧 DTC Decoder
+      </h1>
 
-        {!vehicle ? (
-          <div className="text-center space-y-4">
-            <p className="text-xl">Please select your vehicle</p>
-            <button
-              onClick={() => setShowModal(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
-            >
-              Enter Vehicle Info
-            </button>
-          </div>
-        ) : (
-          <>
-            <div className="flex flex-col items-center text-center gap-4 mb-6">
-              <h2 className="text-3xl font-blackOps">Vehicle Info</h2>
-              <p className="text-xl">{vehicle.year} {vehicle.make} {vehicle.model}</p>
-              <button onClick={clearVehicle} className="text-sm text-red-400 underline">Change Vehicle</button>
-            </div>
+      <p className="text-sm text-center text-gray-300 mb-4">
+        Enter a diagnostic trouble code (DTC) or ask questions related to the code.
+      </p>
 
-            <div className="flex flex-col gap-6 items-center">
-              <input
-                type="text"
-                value={dtc}
-                onChange={(e) => setDtc(e.target.value.toUpperCase())}
-                placeholder="Enter DTC"
-                className="w-72 text-center py-3 px-4 rounded-lg border border-gray-600 bg-white bg-opacity-10 text-xl font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase"
-              />
-              <button
-                onClick={handleSubmit}
-                className="w-40 h-14 text-lg font-blackOps bg-blue-700 hover:bg-blue-800 text-white rounded-lg shadow-md"
-              >
-                Analyze DTC
-              </button>
-            </div>
-          </>
-        )}
-
-        {answer && (
-          <div className="mt-10 bg-black bg-opacity-30 rounded-lg p-6 border border-white/10">
-            <Markdown className="prose prose-invert">{answer}</Markdown>
-
-            <div className="mt-6 flex flex-col gap-4">
-              <input
-                type="text"
-                value={followUp}
-                onChange={(e) => setFollowUp(e.target.value)}
-                placeholder="Ask a follow-up question..."
-                className="w-full px-4 py-2 rounded bg-white/10 border border-gray-500 text-white placeholder-gray-300"
-              />
-              <button
-                onClick={handleFollowUp}
-                disabled={loading}
-                className="self-start px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded font-semibold disabled:opacity-50"
-              >
-                Ask
-              </button>
-            </div>
-          </div>
+      <div className="bg-black bg-opacity-20 rounded-lg p-4 mb-6">
+        <h3 className="text-yellow-500 font-bold text-lg text-center mb-2">🚗 Vehicle Info</h3>
+        <VehicleSelector />
+        {vehicleInfo.year && (
+          <button onClick={clearVehicle} className="text-xs text-blue-400 mt-2 underline">
+            Change Vehicle
+          </button>
         )}
       </div>
 
-      <VehicleSelectorModal isOpen={showModal} onClose={() => setShowModal(false)} onSelect={(v) => setVehicle(v)} />
+      <input
+        type="text"
+        value={dtcCode}
+        onChange={(e) => setDtcCode(e.target.value.toUpperCase())}
+        placeholder="Enter DTC"
+        className="w-full p-3 rounded-md text-center text-black placeholder:text-gray-400 mb-4"
+      />
+
+      <button
+        onClick={handleSubmit}
+        disabled={loading}
+        className="w-full py-3 text-lg bg-orange-500 hover:bg-orange-600 font-blackopsone rounded disabled:opacity-50 mb-6"
+      >
+        {loading ? 'Analyzing...' : 'Analyze DTC'}
+      </button>
+
+      <div
+        ref={scrollRef}
+        className="space-y-4 bg-neutral-900 p-4 rounded-md max-h-[400px] overflow-y-auto mb-4"
+      >
+        {messages.map((msg, idx) => (
+          <Markdown key={idx} className="prose prose-invert max-w-none text-sm">
+            {msg}
+          </Markdown>
+        ))}
+      </div>
+
+      <input
+        type="text"
+        value={followUp}
+        onChange={(e) => setFollowUp(e.target.value)}
+        placeholder="Ask a follow-up question..."
+        className="w-full p-3 rounded-md text-sm text-black placeholder:text-gray-500"
+      />
+
+      <button
+        onClick={handleFollowUp}
+        disabled={loading}
+        className="w-full mt-2 py-2 text-sm bg-blue-500 hover:bg-blue-600 font-blackopsone rounded disabled:opacity-50"
+      >
+        Send Follow-up
+      </button>
     </div>
-  )
+  );
 }
