@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { useVehicleInfo } from '@/hooks/useVehicleInfo';
+import useVehicleInfo from '@/hooks/useVehicleInfo';
 import { analyzeImageComponents } from '@/lib/analyzeComponents';
-import { VehicleSelector } from '@/components/VehicleSelector';
+import VehicleSelector from '@/components/VehicleSelector';
 import { PhotoCapture } from '@/components/PhotoCapture';
 
 export default function VisualDiagnosisPage() {

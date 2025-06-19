@@ -12,9 +12,10 @@ export type VehicleInfo = {
 
 const LOCAL_STORAGE_KEY = 'selectedVehicle';
 
-export const useVehicleInfo = () => {
+const useVehicleInfo = () => {
   const [vehicleInfo, setVehicleInfo] = useState<VehicleInfo | null>(null);
 
+  // Load from localStorage on first render
   useEffect(() => {
     const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (stored) {
@@ -27,6 +28,7 @@ export const useVehicleInfo = () => {
     }
   }, []);
 
+  // Persist when updated
   useEffect(() => {
     if (vehicleInfo) {
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(vehicleInfo));
@@ -45,3 +47,5 @@ export const useVehicleInfo = () => {
 
   return { vehicleInfo, updateVehicle, clearVehicle };
 };
+
+export default useVehicleInfo;
