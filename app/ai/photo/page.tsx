@@ -2,9 +2,9 @@
 
 import { useState } from 'react';
 import { useVehicleInfo } from '@/hooks/useVehicleInfo';
-import VehicleSelector from '@/components/VehicleSelector';
-import { PhotoCapture } from '@/components/PhotoCapture';
 import { analyzeImageComponents } from '@/lib/analyzeComponents';
+import VehicleSelector from '@/components/VehicleSelector';
+import PhotoCapture from '@/components/PhotoCapture';
 
 export default function VisualDiagnosisPage() {
   const { vehicleInfo } = useVehicleInfo();
@@ -14,7 +14,7 @@ export default function VisualDiagnosisPage() {
   const [loading, setLoading] = useState(false);
 
   const handleAnalyze = async () => {
-    if (!vehicleInfo?.year || !vehicleInfo?.make || !vehicleInfo?.model) {
+    if (!vehicleInfo.year || !vehicleInfo.make || !vehicleInfo.model) {
       setError('Please select a vehicle.');
       return;
     }
@@ -24,8 +24,8 @@ export default function VisualDiagnosisPage() {
       return;
     }
 
-    setError(null);
     setResult(null);
+    setError(null);
     setLoading(true);
 
     try {
@@ -40,36 +40,38 @@ export default function VisualDiagnosisPage() {
   };
 
   return (
-    <main className="max-w-2xl mx-auto px-4 py-8 text-gray-800">
-      <h1 className="text-3xl font-bold text-blue-600 mb-2 text-center">📸 Visual Diagnosis</h1>
-      <p className="text-center text-gray-600 mb-6">
-        Upload a photo of the issue to get AI-powered analysis and repair guidance.
-      </p>
-
-      <div className="mb-6">
-        <VehicleSelector />
+    <main className="max-w-3xl mx-auto px-6 py-8 text-gray-200">
+      <div className="mb-10 text-center">
+        <h1 className="text-4xl font-header text-accent drop-shadow-md mb-2">🖼️ Visual Diagnosis</h1>
+        <p className="text-neutral-400">
+          Upload a photo of the issue to get AI-powered analysis and repair guidance.
+        </p>
       </div>
 
-      <div className="mb-4">
+      <VehicleSelector />
+
+      <div className="mt-6">
         <PhotoCapture onImageSelect={(file) => setImageFile(file)} />
       </div>
 
       <button
         onClick={handleAnalyze}
         disabled={loading}
-        className="w-full bg-blue-600 text-white font-semibold py-3 rounded shadow hover:bg-blue-700 transition"
+        className="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded shadow-card"
       >
-        {loading ? '🔎 Analyzing image…' : 'Analyze Image'}
+        {loading ? '🔄 Analyzing image…' : '🔍 Analyze Image'}
       </button>
 
       {error && (
-        <p className="text-red-600 text-sm mt-4 text-center">{error}</p>
+        <div className="mt-4 text-red-500 text-sm text-center">
+          {error}
+        </div>
       )}
 
       {result && (
-        <div className="mt-6 bg-orange-50 border border-orange-200 rounded-lg p-4 shadow-sm">
-          <h2 className="text-lg font-semibold text-orange-700 mb-2">🧠 AI Diagnosis</h2>
-          <pre className="whitespace-pre-wrap text-sm text-gray-800">{result}</pre>
+        <div className="mt-6 bg-surface border border-orange-500 rounded-lg p-4 shadow-glow">
+          <h2 className="text-lg font-semibold text-orange-400 mb-2">📋 AI Diagnosis Result</h2>
+          <pre className="whitespace-pre-wrap text-sm text-gray-300">{result}</pre>
         </div>
       )}
     </main>

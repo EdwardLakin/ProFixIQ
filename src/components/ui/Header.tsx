@@ -24,7 +24,7 @@ export default function Heading({
         </h1>
 
         {/* ProFixIQ line */}
-        <h2 className="text-8xl sm:text-9xl font-blackops tracking-tight mt-2">
+        <h2 className="text-8xl sm:text-9xl font-header tracking-tight mt-2">
           <span className="bg-gradient-to-br from-orange-500 via-orange-400 to-yellow-300 text-transparent bg-clip-text drop-shadow-[0_0_10px_rgba(255,100,0,0.6)]">
             ProFix
           </span>

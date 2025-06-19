@@ -1,39 +1,52 @@
 'use client';
 
-import React from 'react';
 import { useRouter } from 'next/navigation';
-import { cn } from '@/lib/utils';
 
 const features = [
-  { icon: '🧰', label: 'Start Diagnosis', route: '/diagnose' },
-  { icon: '📸', label: 'Scan a Part', route: '/scan' },
-  { icon: '📄', label: 'View Repair Logs', route: '/logs' },
-  { icon: '⚙️', label: 'Tools & Specs', route: '/tools' },
-  { icon: '💡', label: 'AI Suggestions', route: '/ai-help' },
-  { icon: '📚', label: 'Manual Library', route: '/manuals' },
+  { label: 'AI Diagnosis', route: '/ai' },
+  { label: 'Scan a Part', route: '#' },
+  { label: 'View Repair Logs', route: '#' },
+  { label: 'Tools & Specs', route: '#' },
+  { label: 'AI Suggestions', route: '#' },
+  { label: 'Manual Library', route: '#' },
 ];
 
 export default function LandingButtons() {
   const router = useRouter();
 
   return (
-    <div className="mt-16 grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 place-items-center">
-      {features.map(({ icon, label, route }) => (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 px-4 mt-12">
+      {features.map(({ label, route }) => (
         <button
           key={label}
           onClick={() => router.push(route)}
-          className={cn(
-            'w-full sm:w-72 p-6 rounded-xl border border-white/10',
-            'bg-white/5 backdrop-blur-md text-white shadow-md',
-            'hover:shadow-lg hover:scale-105 transition-all duration-300'
-          )}
+          className="bg-black/70 text-white border border-orange-500 rounded-xl shadow-xl hover:shadow-orange-500/40 p-6 transition duration-200 ease-in-out"
         >
-          <div className="flex flex-col items-center space-y-3">
-            <span className="text-4xl">{icon}</span>
-            <span className="text-xl font-semibold">{label}</span>
-          </div>
+          <h3 className="text-xl font-header text-white mb-2 text-center">{label}</h3>
+          <p className="text-sm text-gray-300 text-center">
+            {getDescription(label)}
+          </p>
         </button>
       ))}
     </div>
   );
+}
+
+function getDescription(label: string) {
+  switch (label) {
+    case 'AI Diagnosis':
+      return 'Chat, Visual, and DTC Code Support';
+    case 'Scan a Part':
+      return 'Image-based Parts Identification';
+    case 'View Repair Logs':
+      return 'Track Issues and Fixes by VIN or Customer';
+    case 'Tools & Specs':
+      return 'Torque, Fluids, Sizes, Tools';
+    case 'AI Suggestions':
+      return 'Smart Fixes and Repair Guidance';
+    case 'Manual Library':
+      return 'OEM + Aftermarket References';
+    default:
+      return '';
+  }
 }

@@ -6,36 +6,37 @@ type Props = {
   onImageSelect: (file: File) => void;
 };
 
-export function PhotoCapture({ onImageSelect }: Props) {
+export default function PhotoCapture({ onImageSelect }: Props) {
   const captureInputRef = useRef<HTMLInputElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewURL, setPreviewURL] = useState<string | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setPreviewUrl(URL.createObjectURL(file));
+    setPreviewURL(URL.createObjectURL(file));
     onImageSelect(file);
   };
 
   return (
-    <div className="mt-4">
-      <div className="flex gap-4 mb-2">
+    <div className="space-y-4">
+      <div className="flex gap-4 justify-center">
         <button
           onClick={() => captureInputRef.current?.click()}
-          className="px-4 py-2 bg-blue-600 text-white rounded shadow-card"
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded shadow-card transition"
         >
-          📷 Capture Photo
+          📸 Capture Photo
         </button>
         <button
           onClick={() => uploadInputRef.current?.click()}
-          className="px-4 py-2 bg-gray-700 text-white rounded shadow-card"
+          className="px-4 py-2 bg-gray-700 hover:bg-gray-800 text-white font-bold rounded shadow-card transition"
         >
           📁 Upload Photo
         </button>
       </div>
 
+      {/* Hidden Inputs */}
       <input
         type="file"
         accept="image/*"
@@ -52,12 +53,13 @@ export function PhotoCapture({ onImageSelect }: Props) {
         className="hidden"
       />
 
-      {previewUrl && (
-        <div className="mt-4">
+      {/* Preview */}
+      {previewURL && (
+        <div className="mt-4 text-center">
           <img
-            src={previewUrl}
+            src={previewURL}
             alt="Preview"
-            className="rounded border max-w-full shadow-card"
+            className="rounded border border-neutral-700 max-w-full shadow-card"
           />
         </div>
       )}
