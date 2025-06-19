@@ -2,17 +2,17 @@
 
 import { useState } from 'react';
 import { useVehicleInfo } from '@/hooks/useVehicleInfo';
-import { analyzeDTC } from '@/lib/analyzeDTC';
-import VehicleSelector from '@/components/VehicleSelector';
+import { VehicleSelector } from '@/components/VehicleSelector';
+import { diagnoseDTC } from '@/lib/analyze';
 
-export default function DTCDiagnosisPage() {
+export default function DTCCodeLookupPage() {
   const { vehicleInfo, clearVehicle } = useVehicleInfo();
   const [dtcCode, setDtcCode] = useState('');
-  const [response, setResponse] = useState('');
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
 
-  const handleSubmit = async () => {
+  const handleAnalyze = async () => {
     if (!vehicleInfo?.year || !vehicleInfo.make || !vehicleInfo.model) {
       setError('Please select a vehicle.');
       return;
@@ -23,66 +23,72 @@ export default function DTCDiagnosisPage() {
       return;
     }
 
-    setError('');
-    setResponse('');
     setLoading(true);
+    setError(null);
+    setResult(null);
 
     try {
-      const result = await analyzeDTC(dtcCode, vehicleInfo);
-      setResponse(result || 'No response returned.');
+      const response = await diagnoseDTC(vehicleInfo, dtcCode.trim());
+      if (response?.error) {
+        setError(response.error);
+      } else {
+        setResult(response.result);
+      }
     } catch (err) {
-      console.error('DTC analysis error:', err);
-      setError('DTC analysis failed.');
+      console.error('DTC Diagnose Error:', err);
+      setError('Something went wrong while diagnosing the DTC.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <main className="max-w-3xl mx-auto px-4 py-8 text-gray-800">
-      <div className="mb-10 text-center">
-        <h1 className="text-4xl font-header text-accent drop-shadow-md mb-2">
-          📟 DTC Diagnosis
-        </h1>
-        <p className="text-neutral-400">
-          Enter a diagnostic trouble code (like P0420) to get a detailed AI explanation and repair path.
-        </p>
-      </div>
+    <main className="max-w-2xl mx-auto px-4 py-8 text-gray-800">
+      <h1 className="text-3xl font-bold text-yellow-700 mb-2 flex items-center gap-2">
+        ⚠️ DTC Code Lookup
+      </h1>
+      <p className="text-gray-600 mb-6">
+        Enter a diagnostic trouble code (e.g., P0171) to get an explanation and fix.
+      </p>
 
-      <VehicleSelector />
-
-      <div className="mt-2 flex justify-end">
+      <div className="mb-6 space-y-2">
+        <VehicleSelector />
         <button
           onClick={clearVehicle}
-          className="text-sm text-blue-400 hover:text-blue-600 underline"
+          className="text-sm text-blue-500 hover:text-blue-700 underline"
         >
           Change Vehicle
         </button>
       </div>
 
-      <div className="mt-6">
-        <input
-          type="text"
-          value={dtcCode}
-          onChange={(e) => setDtcCode(e.target.value)}
-          placeholder="e.g. P0301"
-          className="w-full p-3 border border-gray-300 rounded-md shadow-inner text-gray-800"
-        />
-        <button
-          onClick={handleSubmit}
-          disabled={loading}
-          className="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded shadow-card"
-        >
-          {loading ? 'Analyzing DTC…' : 'Analyze DTC'}
-        </button>
-      </div>
+      <input
+        type="text"
+        placeholder="P0171"
+        className="w-full p-2 border rounded-md mb-4"
+        value={dtcCode}
+        onChange={(e) => setDtcCode(e.target.value)}
+      />
 
-      {error && <p className="mt-4 text-red-600 text-sm text-center">{error}</p>}
+      <button
+        onClick={handleAnalyze}
+        disabled={loading}
+        className="w-full bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 rounded shadow-card"
+      >
+        {loading ? '🔎 Analyzing…' : 'Analyze DTC'}
+      </button>
 
-      {response && (
-        <div className="mt-6 bg-surface border border-green-500 rounded-lg p-4 shadow-glow">
-          <h2 className="text-lg font-semibold text-green-300 mb-2">🧾 AI DTC Explanation</h2>
-          <pre className="whitespace-pre-wrap text-sm text-gray-300">{response}</pre>
+      {error && (
+        <p className="text-red-600 text-sm mt-4 text-center">{error}</p>
+      )}
+
+      {result && (
+        <div className="mt-6 bg-orange-50 border border-orange-200 rounded-lg p-4 shadow-glow">
+          <h2 className="text-lg font-semibold text-orange-700 mb-2">
+            🧠 Diagnosis Result
+          </h2>
+          <pre className="whitespace-pre-wrap text-sm text-gray-800">
+            {result}
+          </pre>
         </div>
       )}
     </main>
