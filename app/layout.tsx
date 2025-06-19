@@ -1,19 +1,17 @@
 // app/layout.tsx
-
 import './globals.css'
 import type { Metadata } from 'next'
 import { Black_Ops_One } from 'next/font/google'
 
 const blackOpsOne = Black_Ops_One({
   subsets: ['latin'],
-  weight: '400',
-  display: 'swap',
-  variable: '--font-blackopsone',
+  weight: ['400'],
+  variable: '--font-blackops',
 })
 
 export const metadata: Metadata = {
   title: 'ProFixIQ',
-  description: 'AI-powered auto diagnostics and repair assistant',
+  description: 'AI-powered vehicle diagnostics and repair assistant',
 }
 
 export default function RootLayout({
@@ -22,8 +20,10 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={blackOpsOne.variable}>
-      <body className="bg-gradient-to-b from-black via-gray-900 to-black text-white font-sans min-h-screen">
+    <html lang="en">
+      <body
+        className={`${blackOpsOne.variable} font-sans bg-gradient-to-b from-gray-900 via-black to-gray-900 text-white min-h-screen`}
+      >
         {children}
       </body>
     </html>

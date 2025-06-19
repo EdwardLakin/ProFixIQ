@@ -1,11 +1,22 @@
-export async function analyzeDTC(code: string, vehicle: any): Promise<{ result: string }> {
-  const res = await fetch('/api/diagnose', {
+// src/lib/analyze.ts
+
+export default async function analyze(input: string, vehicleInfo: any, context = '') {
+  const response = await fetch('/api/diagnose', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code, vehicle }),
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      dtcCode: input,
+      vehicle: vehicleInfo,
+      context,
+    }),
   });
 
-  if (!res.ok) throw new Error('DTC Analysis failed');
+  if (!response.ok) {
+    throw new Error('DTC analysis failed');
+  }
 
-  return res.json();
+  const result = await response.json();
+  return result;
 }

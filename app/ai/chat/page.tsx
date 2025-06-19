@@ -1,101 +1,67 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import useVehicleInfo from '@/hooks/useVehicleInfo';
 import { sendChatMessage } from '@/lib/chatgptHandler';
 import ReactMarkdown from 'react-markdown';
 
 export default function ChatPage() {
-  const { vehicleInfo, clearVehicle } = useVehicleInfo();
+  const { vehicleInfo } = useVehicleInfo();
   const [input, setInput] = useState('');
-  const [messageHistory, setMessageHistory] = useState<any[]>([]);
+  const [messages, setMessages] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const stored = localStorage.getItem('chat_history');
-    if (stored) {
-      setMessageHistory(JSON.parse(stored));
-    }
+    if (stored) setMessages(JSON.parse(stored));
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('chat_history', JSON.stringify(messageHistory));
+    localStorage.setItem('chat_history', JSON.stringify(messages));
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messageHistory]);
+  }, [messages]);
 
-  const handleSend = async () => {
-    if (!input.trim() || !vehicleInfo?.year || !vehicleInfo?.make || !vehicleInfo?.model) return;
-
-    const userMessage = { role: 'user', content: input.trim() };
-    const history = [...messageHistory, userMessage];
-
-    setMessageHistory(history);
-    setInput('');
+  const handleSubmit = async () => {
+    if (!input.trim()) return;
     setLoading(true);
+    const updatedMessages = [...messages, `**You:** ${input}`];
+    setMessages(updatedMessages);
 
-    try {
-      const assistantResponse = await sendChatMessage(input.trim(), vehicleInfo, history);
-      const botMessage = { role: 'assistant', content: assistantResponse };
-
-      setMessageHistory(prev => [...prev, botMessage]);
-    } catch (err) {
-      console.error('Chat send error', err);
-    } finally {
-      setLoading(false);
-    }
+    const response = await sendChatMessage(input, vehicleInfo);
+    setMessages([...updatedMessages, response]);
+    setInput('');
+    setLoading(false);
   };
 
   return (
-    <main className="max-w-3xl mx-auto px-6 py-6">
-      <h1 className="text-4xl font-header text-accent drop-shadow-md mb-4 text-center">🔧 TechBot</h1>
-      <p className="text-center text-neutral-400 mb-6">
-        Ask diagnostic questions or get repair guidance based on the selected vehicle.
-      </p>
+    <div className="max-w-2xl mx-auto px-4 py-6">
+      <h1 className="text-4xl font-blackops text-orange-500 text-center mb-6">TechBot</h1>
 
-      <div className="mb-4">
-        <h3 className="text-lg font-semibold text-orange-400">🚗 Vehicle Info</h3>
-        <div className="flex gap-2 mt-1 mb-2">
-          <div className="bg-surface border border-neutral-700 px-3 py-1 rounded">{vehicleInfo?.year}</div>
-          <div className="bg-surface border border-neutral-700 px-3 py-1 rounded">{vehicleInfo?.make}</div>
-          <div className="bg-surface border border-neutral-700 px-3 py-1 rounded">{vehicleInfo?.model}</div>
-        </div>
-        <button onClick={clearVehicle} className="text-sm text-blue-400 underline hover:text-blue-300">
-          Change Vehicle
-        </button>
-      </div>
-
-      <div
-        ref={scrollRef}
-        className="bg-neutral-900 p-4 mb-4 rounded-md max-h-[50vh] overflow-y-auto space-y-4 border border-neutral-700"
-      >
-        {messageHistory.map((msg, idx) => (
-          <div key={idx} className={`whitespace-pre-wrap text-sm ${msg.role === 'user' ? 'text-blue-300' : 'text-orange-300'}`}>
-            {msg.role === 'assistant' ? <ReactMarkdown>{msg.content}</ReactMarkdown> : <>You: {msg.content}</>}
-          </div>
+      <div className="my-6 max-h-[400px] overflow-y-auto p-4 border border-gray-600 rounded bg-white bg-opacity-10" ref={scrollRef}>
+        {messages.map((msg, index) => (
+          <ReactMarkdown key={index} className="text-white mb-4 whitespace-pre-wrap">{msg}</ReactMarkdown>
         ))}
-        {loading && <div className="text-sm text-neutral-500">TechBot is thinking...</div>}
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 mt-4">
         <input
           type="text"
-          className="flex-1 p-3 rounded-md bg-surface border border-neutral-700"
-          placeholder="Ask TechBot a question..."
+          placeholder="Ask TechBot..."
           value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleSend()}
+          onChange={(e) => setInput(e.target.value)}
+          className="w-full p-2 rounded border border-gray-600 text-black"
         />
         <button
-          onClick={handleSend}
+          onClick={handleSubmit}
           disabled={loading}
-          className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md"
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
         >
-          Send
+          Ask
         </button>
       </div>
-    </main>
+    </div>
   );
 }

@@ -1,12 +1,9 @@
-'use client';
-
 import { useEffect, useState } from 'react';
 
 export type VehicleInfo = {
   year: string;
   make: string;
   model: string;
-  vin?: string;
   plate?: string;
 };
 
@@ -15,7 +12,6 @@ const LOCAL_STORAGE_KEY = 'selectedVehicle';
 const useVehicleInfo = () => {
   const [vehicleInfo, setVehicleInfo] = useState<VehicleInfo | null>(null);
 
-  // Load from localStorage on first render
   useEffect(() => {
     const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (stored) {
@@ -28,7 +24,6 @@ const useVehicleInfo = () => {
     }
   }, []);
 
-  // Persist to localStorage when updated
   useEffect(() => {
     if (vehicleInfo) {
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(vehicleInfo));
@@ -45,11 +40,7 @@ const useVehicleInfo = () => {
     localStorage.removeItem(LOCAL_STORAGE_KEY);
   };
 
-  return {
-    vehicleInfo,
-    updateVehicle,
-    clearVehicle,
-  };
+  return { vehicleInfo, updateVehicle, clearVehicle };
 };
 
 export default useVehicleInfo;

@@ -1,32 +1,40 @@
-// /app/api/chat/route.ts
-import { OpenAI } from "openai";
-import { NextResponse } from "next/server";
+// app/api/chat/route.ts
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || "" });
+import { NextResponse } from 'next/server';
+import OpenAI from 'openai';
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 export async function POST(req: Request) {
   try {
-    const { prompt, history = [], vehicle } = await req.json();
+    const { prompt, vehicle } = await req.json();
 
-    const systemPrompt = vehicle
-      ? `You are a master automotive technician helping diagnose issues with a ${vehicle}. Answer clearly and concisely.`
-      : "You are a master automotive technician helping diagnose vehicle issues. Answer clearly and concisely.";
+    if (!vehicle || !vehicle.year || !vehicle.make || !vehicle.model || !prompt?.trim()) {
+      return NextResponse.json({ error: 'Missing vehicle info or prompt' }, { status: 400 });
+    }
 
-    const messages = [
-      { role: "system", content: systemPrompt },
-      ...history,
-      { role: "user", content: prompt },
-    ];
+    const vehicleDesc = `${vehicle.year} ${vehicle.make} ${vehicle.model}`;
+    const systemPrompt = `You are a top-level automotive diagnostic expert. A technician is asking a repair question for a ${vehicleDesc}. Reply clearly and professionally in markdown format using sections like: **Complaint**, **Likely Causes**, **Recommended Fix**, and **Estimated Labor Time**.`;
+
+    const fullPrompt = `
+${prompt}
+`;
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages,
+      model: 'gpt-4o',
+      temperature: 0.6,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: fullPrompt },
+      ],
     });
 
-    const response = completion.choices[0].message.content;
-    return NextResponse.json({ message: response });
-  } catch (error) {
-    console.error("Chat route error:", error);
-    return NextResponse.json({ message: "Error generating response" }, { status: 500 });
+    const reply = completion.choices?.[0]?.message?.content?.trim() || 'No response generated.';
+    return NextResponse.json({ result: reply });
+  } catch (err) {
+    console.error('Chat route error:', err);
+    return NextResponse.json({ error: 'Failed to generate TechBot response.' }, { status: 500 });
   }
 }
