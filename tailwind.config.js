@@ -1,31 +1,21 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: [
-    './app/**/*.{ts,tsx}',
-    './pages/**/*.{ts,tsx}',
-    './components/**/*.{ts,tsx}',
-    './src/**/*.{ts,tsx}',
-    './styles/**/*.css',
+    './app/**/*.{js,ts,jsx,tsx}',
+    './components/**/*.{js,ts,jsx,tsx}',
+    './src/**/*.{js,ts,jsx,tsx}', // optional, if using src/
   ],
   theme: {
     extend: {
       fontFamily: {
-        blackops: ['"Black Ops One"', 'sans-serif'],
-        rubik: ['"Rubik"', 'sans-serif'], // optional, in case you're using elsewhere
+        rubik: ['Rubik', 'sans-serif'],
+        blackops: ['"Black Ops One"', 'cursive'],
       },
       colors: {
-        background: '#101010',
-        surface: '#1a1a1a',
-        accent: '#FF851B',
-        primary: '#0094D9',
-        muted: '#999999',
-      },
-      boxShadow: {
-        card: '0 4px 14px rgba(0, 0, 0, 0.4)',
-        orange: '0 0 12px rgba(255, 133, 27, 0.5)',
+        background: '#0e0e0e',
+        accent: '#f97316', // orange-500
       },
     },
   },
   plugins: [],
-  darkMode: 'class',
 };

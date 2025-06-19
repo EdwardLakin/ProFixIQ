@@ -1,60 +1,16 @@
-@import url('https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Rubik&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@font-face {
-  font-family: 'Black Ops One';
-  src: url('/BlackOpsOne-Regular.ttf') format('truetype');
-  font-weight: normal;
-  font-style: normal;
-}
+/* === Custom global styles === */
 
-/* =======================
-   Reset / Base Styles
-========================== */
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-html,
 body {
-  font-family: 'Rubik', sans-serif;
-  background-color: #0f172a;
-  color: #f8fafc;
-  min-height: 100%;
+  @apply bg-background text-white font-rubik antialiased;
 }
 
-/* =======================
-   Buttons
-========================== */
-button,
-a.button {
-  transition: all 0.3s ease;
-}
-
-button:hover,
-a.button:hover {
-  opacity: 0.9;
-}
-
-/* =======================
-   Gradient + Weave
-========================== */
-body::before {
-  content: '';
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(to bottom right, #0f172a, #1e3a8a),
-              url('/carbon-weave.png');
-  background-size: cover;
-  background-repeat: repeat;
-  opacity: 0.2;
-  z-index: -1;
+/* Smooth font rendering on all devices */
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
