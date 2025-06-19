@@ -4,7 +4,7 @@ import React from 'react';
 import useVehicleInfo from '@/hooks/useVehicleInfo';
 
 export default function VehicleSelector() {
-  const { vehicleInfo, updateVehicle } = useVehicleInfo();
+  const { vehicleInfo, updateVehicle, clearVehicle } = useVehicleInfo();
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -16,7 +16,7 @@ export default function VehicleSelector() {
 
   return (
     <div className="mb-6 space-y-4 text-left">
-      <h3 className="font-header text-xl text-accent font-bold">🚗 Vehicle Info</h3>
+      <h3 className="font-header text-xl text-accent font-bold">Vehicle Info</h3>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <input
@@ -25,7 +25,7 @@ export default function VehicleSelector() {
           placeholder="Year"
           value={vehicleInfo?.year || ''}
           onChange={handleChange}
-          className="w-full p-3 rounded-md bg-surface border border-neutral-700 text-white placeholder:text-neutral-400"
+          className="w-full p-3 rounded-md bg-surface border border-neutral-700"
         />
         <input
           type="text"
@@ -33,7 +33,7 @@ export default function VehicleSelector() {
           placeholder="Make"
           value={vehicleInfo?.make || ''}
           onChange={handleChange}
-          className="w-full p-3 rounded-md bg-surface border border-neutral-700 text-white placeholder:text-neutral-400"
+          className="w-full p-3 rounded-md bg-surface border border-neutral-700"
         />
         <input
           type="text"
@@ -41,9 +41,18 @@ export default function VehicleSelector() {
           placeholder="Model"
           value={vehicleInfo?.model || ''}
           onChange={handleChange}
-          className="w-full p-3 rounded-md bg-surface border border-neutral-700 text-white placeholder:text-neutral-400"
+          className="w-full p-3 rounded-md bg-surface border border-neutral-700"
         />
       </div>
+
+      {vehicleInfo && (
+        <button
+          onClick={clearVehicle}
+          className="mt-2 text-sm text-blue-400 underline hover:text-blue-200"
+        >
+          Change Vehicle
+        </button>
+      )}
     </div>
   );
 }

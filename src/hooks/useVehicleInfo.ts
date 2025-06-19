@@ -1,55 +1,42 @@
+// hooks/useVehicleInfo.ts
 'use client';
 
-import { useEffect, useState } from 'react';
+import { createContext, useContext, useState, ReactNode } from 'react';
 
-export type VehicleInfo = {
+export type Vehicle = {
   year: string;
   make: string;
   model: string;
   vin?: string;
   plate?: string;
+} | null;
+
+type VehicleContextType = {
+  vehicle: Vehicle;
+  setVehicle: (vehicle: Vehicle) => void;
+  clearVehicle: () => void;
 };
 
-const LOCAL_STORAGE_KEY = 'selectedVehicle';
+const VehicleContext = createContext<VehicleContextType | undefined>(undefined);
 
-const useVehicleInfo = () => {
-  const [vehicleInfo, setVehicleInfo] = useState<VehicleInfo | null>(null);
-
-  // Load from localStorage on first render
-  useEffect(() => {
-    const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        setVehicleInfo(parsed);
-        console.log('[VehicleInfo] Loaded from localStorage:', parsed);
-      } catch (error) {
-        console.error('Failed to parse stored vehicle info:', error);
-      }
-    }
-  }, []);
-
-  // Save to localStorage whenever it changes
-  useEffect(() => {
-    if (vehicleInfo) {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(vehicleInfo));
-      console.log('[VehicleInfo] Updated localStorage:', vehicleInfo);
-    }
-  }, [vehicleInfo]);
-
-  const updateVehicle = (newInfo: VehicleInfo) => {
-    setVehicleInfo(newInfo);
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newInfo));
-    console.log('[VehicleInfo] Set new vehicle:', newInfo);
-  };
+export function VehicleProvider({ children }: { children: ReactNode }) {
+  const [vehicle, setVehicle] = useState<Vehicle>(null);
 
   const clearVehicle = () => {
-    setVehicleInfo(null);
-    localStorage.removeItem(LOCAL_STORAGE_KEY);
-    console.log('[VehicleInfo] Cleared vehicle info');
+    setVehicle(null);
   };
 
-  return { vehicleInfo, updateVehicle, clearVehicle };
-};
+  return (
+    <VehicleContext.Provider value={{ vehicle, setVehicle, clearVehicle }}>
+      {children}
+    </VehicleContext.Provider>
+  );
+}
 
-export default useVehicleInfo;
+export default function useVehicleInfo() {
+  const context = useContext(VehicleContext);
+  if (!context) {
+    throw new Error('useVehicleInfo must be used within a VehicleProvider');
+  }
+  return context;
+}

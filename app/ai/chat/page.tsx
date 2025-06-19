@@ -1,99 +1,101 @@
-// /app/ai/chat/page.tsx
-"use client";
+'use client';
 
-import { useEffect, useRef, useState } from "react";
-import { sendChatMessage } from "@/lib/chatgptHandler";
-import { useVehicleInfo } from "@/hooks/useVehicleInfo";
-import ReactMarkdown from "react-markdown";
+import { useEffect, useRef, useState } from 'react';
+import useVehicleInfo from '@/hooks/useVehicleInfo';
+import { sendChatMessage } from '@/lib/chatgptHandler';
+import ReactMarkdown from 'react-markdown';
 
 export default function ChatPage() {
-  const [input, setInput] = useState("");
+  const { vehicleInfo, clearVehicle } = useVehicleInfo();
+  const [input, setInput] = useState('');
   const [messageHistory, setMessageHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const { selectedVehicle } = useVehicleInfo();
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Load history from localStorage
   useEffect(() => {
-    const stored = localStorage.getItem("chat_history");
+    const stored = localStorage.getItem('chat_history');
     if (stored) {
       setMessageHistory(JSON.parse(stored));
     }
   }, []);
 
-  // Save history on change
   useEffect(() => {
-    localStorage.setItem("chat_history", JSON.stringify(messageHistory));
+    localStorage.setItem('chat_history', JSON.stringify(messageHistory));
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messageHistory]);
 
-  const handleSubmit = async () => {
-    if (!input.trim()) return;
+  const handleSend = async () => {
+    if (!input.trim() || !vehicleInfo?.year || !vehicleInfo?.make || !vehicleInfo?.model) return;
 
-    const userMessage = { role: "user", content: input };
-    const updatedHistory = [...messageHistory, userMessage];
+    const userMessage = { role: 'user', content: input.trim() };
+    const history = [...messageHistory, userMessage];
 
-    setMessageHistory(updatedHistory);
+    setMessageHistory(history);
+    setInput('');
     setLoading(true);
-    setInput("");
 
-    const assistantReply = await sendChatMessage(input, updatedHistory, selectedVehicle);
-    const assistantMessage = { role: "assistant", content: assistantReply };
+    try {
+      const assistantResponse = await sendChatMessage(input.trim(), vehicleInfo, history);
+      const botMessage = { role: 'assistant', content: assistantResponse };
 
-    setMessageHistory([...updatedHistory, assistantMessage]);
-    setLoading(false);
-  };
-
-  const handleClear = () => {
-    setMessageHistory([]);
-    localStorage.removeItem("chat_history");
+      setMessageHistory(prev => [...prev, botMessage]);
+    } catch (err) {
+      console.error('Chat send error', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="max-w-3xl mx-auto p-4 pt-8 text-white">
-      <h1 className="text-4xl font-black text-center mb-6 font-blackops">TechBot AI Diagnosis</h1>
-      <button
-        className="mb-4 text-sm text-blue-400 hover:underline"
-        onClick={handleClear}
-      >
-        Clear Conversation
-      </button>
-      <div
-        ref={scrollRef}
-        className="h-[50vh] overflow-y-auto p-4 mb-4 bg-black/20 rounded-lg backdrop-blur-lg shadow-inner border border-white/10"
-      >
-        {messageHistory.map((msg, idx) => (
-          <div
-            key={idx}
-            className={`mb-3 p-3 rounded-md ${
-              msg.role === "user" ? "bg-blue-500/20 text-right" : "bg-white/10"
-            }`}
-          >
-            <ReactMarkdown className="prose prose-invert text-sm">{msg.content}</ReactMarkdown>
-          </div>
-        ))}
-        {loading && <div className="text-sm text-gray-400 italic">TechBot is thinking...</div>}
+    <main className="max-w-3xl mx-auto px-6 py-6">
+      <h1 className="text-4xl font-header text-accent drop-shadow-md mb-4 text-center">🔧 TechBot</h1>
+      <p className="text-center text-neutral-400 mb-6">
+        Ask diagnostic questions or get repair guidance based on the selected vehicle.
+      </p>
+
+      <div className="mb-4">
+        <h3 className="text-lg font-semibold text-orange-400">🚗 Vehicle Info</h3>
+        <div className="flex gap-2 mt-1 mb-2">
+          <div className="bg-surface border border-neutral-700 px-3 py-1 rounded">{vehicleInfo?.year}</div>
+          <div className="bg-surface border border-neutral-700 px-3 py-1 rounded">{vehicleInfo?.make}</div>
+          <div className="bg-surface border border-neutral-700 px-3 py-1 rounded">{vehicleInfo?.model}</div>
+        </div>
+        <button onClick={clearVehicle} className="text-sm text-blue-400 underline hover:text-blue-300">
+          Change Vehicle
+        </button>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div
+        ref={scrollRef}
+        className="bg-neutral-900 p-4 mb-4 rounded-md max-h-[50vh] overflow-y-auto space-y-4 border border-neutral-700"
+      >
+        {messageHistory.map((msg, idx) => (
+          <div key={idx} className={`whitespace-pre-wrap text-sm ${msg.role === 'user' ? 'text-blue-300' : 'text-orange-300'}`}>
+            {msg.role === 'assistant' ? <ReactMarkdown>{msg.content}</ReactMarkdown> : <>You: {msg.content}</>}
+          </div>
+        ))}
+        {loading && <div className="text-sm text-neutral-500">TechBot is thinking...</div>}
+      </div>
+
+      <div className="flex gap-2">
         <input
           type="text"
-          value={input}
+          className="flex-1 p-3 rounded-md bg-surface border border-neutral-700"
           placeholder="Ask TechBot a question..."
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-          className="flex-1 p-2 rounded bg-gray-900 border border-gray-700"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleSend()}
         />
         <button
-          onClick={handleSubmit}
+          onClick={handleSend}
           disabled={loading}
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+          className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md"
         >
           Send
         </button>
       </div>
-    </div>
+    </main>
   );
 }
