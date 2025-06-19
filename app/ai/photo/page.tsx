@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useVehicleInfo } from '@/hooks/useVehicleInfo';
-import { analyzeImageComponents } from '@/lib/analyzeComponents';
+import { analyzeImageComponents } from '@/lib/analyze';
 import VehicleSelector from '@/components/VehicleSelector';
 import PhotoCapture from '@/components/PhotoCapture';
 
@@ -14,7 +14,7 @@ export default function VisualDiagnosisPage() {
   const [loading, setLoading] = useState(false);
 
   const handleAnalyze = async () => {
-    if (!vehicleInfo.year || !vehicleInfo.make || !vehicleInfo.model) {
+    if (!vehicleInfo?.year || !vehicleInfo.make || !vehicleInfo.model) {
       setError('Please select a vehicle.');
       return;
     }
@@ -40,9 +40,9 @@ export default function VisualDiagnosisPage() {
   };
 
   return (
-    <main className="max-w-3xl mx-auto px-6 py-8 text-gray-200">
+    <main className="max-w-3xl mx-auto px-6 py-8 text-white">
       <div className="mb-10 text-center">
-        <h1 className="text-4xl font-header text-accent drop-shadow-md mb-2">🖼️ Visual Diagnosis</h1>
+        <h1 className="text-4xl font-header text-accent drop-shadow-md mb-2">📸 Visual Diagnosis</h1>
         <p className="text-neutral-400">
           Upload a photo of the issue to get AI-powered analysis and repair guidance.
         </p>
@@ -57,20 +57,18 @@ export default function VisualDiagnosisPage() {
       <button
         onClick={handleAnalyze}
         disabled={loading}
-        className="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded shadow-card"
+        className="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white font-header font-bold py-2 rounded shadow-card"
       >
-        {loading ? '🔄 Analyzing image…' : '🔍 Analyze Image'}
+        {loading ? '🔍 Analyzing image…' : 'Analyze Image'}
       </button>
 
       {error && (
-        <div className="mt-4 text-red-500 text-sm text-center">
-          {error}
-        </div>
+        <p className="mt-4 text-red-500 text-sm text-center">{error}</p>
       )}
 
       {result && (
         <div className="mt-6 bg-surface border border-orange-500 rounded-lg p-4 shadow-glow">
-          <h2 className="text-lg font-semibold text-orange-400 mb-2">📋 AI Diagnosis Result</h2>
+          <h2 className="text-lg font-header text-orange-400 mb-2">🧾 AI Diagnosis Result</h2>
           <pre className="whitespace-pre-wrap text-sm text-gray-300">{result}</pre>
         </div>
       )}

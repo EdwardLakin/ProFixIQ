@@ -9,13 +9,12 @@ type Props = {
 export default function PhotoCapture({ onImageSelect }: Props) {
   const captureInputRef = useRef<HTMLInputElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
-  const [previewURL, setPreviewURL] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    setPreviewURL(URL.createObjectURL(file));
+    setPreviewUrl(URL.createObjectURL(file));
     onImageSelect(file);
   };
 
@@ -24,13 +23,13 @@ export default function PhotoCapture({ onImageSelect }: Props) {
       <div className="flex gap-4 justify-center">
         <button
           onClick={() => captureInputRef.current?.click()}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded shadow-card transition"
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold font-header rounded shadow-card"
         >
-          📸 Capture Photo
+          📷 Capture Photo
         </button>
         <button
           onClick={() => uploadInputRef.current?.click()}
-          className="px-4 py-2 bg-gray-700 hover:bg-gray-800 text-white font-bold rounded shadow-card transition"
+          className="px-4 py-2 bg-gray-700 hover:bg-gray-800 text-white font-bold font-header rounded shadow-card"
         >
           📁 Upload Photo
         </button>
@@ -53,13 +52,12 @@ export default function PhotoCapture({ onImageSelect }: Props) {
         className="hidden"
       />
 
-      {/* Preview */}
-      {previewURL && (
-        <div className="mt-4 text-center">
+      {previewUrl && (
+        <div className="mt-4 flex justify-center">
           <img
-            src={previewURL}
+            src={previewUrl}
             alt="Preview"
-            className="rounded border border-neutral-700 max-w-full shadow-card"
+            className="rounded border max-w-full shadow-card"
           />
         </div>
       )}
