@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { OpenAI } from 'openai';
+import OpenAI from 'openai';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -7,55 +7,58 @@ const openai = new OpenAI({
 
 export async function POST(req: Request) {
   try {
-    const { dtcCode, vehicle } = await req.json();
+    const { vehicle, dtcCode, context } = await req.json();
 
-    if (!vehicle || !vehicle.year || !vehicle.make || !vehicle.model || !dtcCode) {
-      return NextResponse.json({ error: 'Missing DTC code or vehicle info' }, { status: 400 });
+    if (
+      !vehicle ||
+      !vehicle.year ||
+      !vehicle.make ||
+      !vehicle.model ||
+      !dtcCode?.trim()
+    ) {
+      return NextResponse.json(
+        { error: 'Missing vehicle info or DTC code' },
+        { status: 400 }
+      );
     }
 
     const vehicleDesc = `${vehicle.year} ${vehicle.make} ${vehicle.model}`;
-    const prompt = `
-You are a highly skilled automotive technician. Provide a structured diagnosis for DTC code ${dtcCode} on a ${vehicleDesc}.
 
-Format the response using these bolded markdown headers:
+    const systemPrompt = `You are a top-level automotive diagnostic expert. 
+A technician is working on a ${vehicleDesc} and needs help diagnosing DTC code ${dtcCode}.
+Reply in professional markdown format using sections like **DTC Code Summary**, **Troubleshooting Steps**, **Tools Required**, and **Estimated Labor Time**.`;
 
-**DTC Code Summary:**  
-Code: ${dtcCode}  
-Meaning: (short description)  
-Severity: (Low/Medium/High)  
-Common causes: (list)
+    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: `Code: ${dtcCode}` },
+    ];
 
-**Troubleshooting Steps:**  
-(Step-by-step diagnostic process)
-
-**Tools Required:**  
-(List of tools or test equipment)
-
-**Estimated Labor Time:**  
-(Approximate time range)
-
-Only return the structured response. Avoid adding explanations or disclaimers outside the format.
-`;
+    // If a follow-up user question is present, include the conversation context
+    if (context && context.trim().length > 0) {
+      messages.push({
+        role: 'assistant',
+        content: `Previous diagnosis has already been provided for DTC ${dtcCode}.`,
+      });
+      messages.push({
+        role: 'user',
+        content: context,
+      });
+    }
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o',
-      temperature: 0.5,
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a top-level automotive diagnostic expert.',
-        },
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
+      temperature: 0.6,
+      messages,
     });
 
-    const reply = completion.choices?.[0]?.message?.content || 'No diagnosis returned.';
+    const reply = completion.choices?.[0]?.message?.content?.trim() || '';
+
     return NextResponse.json({ result: reply });
   } catch (err) {
-    console.error('AI Diagnose Error:', err);
-    return NextResponse.json({ error: 'Failed to process DTC request.' }, { status: 500 });
+    console.error('DTC handler error:', err);
+    return NextResponse.json(
+      { error: 'Failed to generate DTC response.' },
+      { status: 500 }
+    );
   }
 }

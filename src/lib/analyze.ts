@@ -1,46 +1,33 @@
-// src/lib/analyze.ts
 import { VehicleInfo } from '@/types/vehicle';
 
-export async function analyzeWithTechBot({
-  vehicle,
-  prompt,
-}: {
-  vehicle: VehicleInfo;
-  prompt: string;
-}) {
-  const res = await fetch('/api/chat', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ vehicle, prompt }),
-  });
+export async function diagnoseDTC(
+  vehicle: VehicleInfo,
+  dtcCode: string,
+  context?: string
+): Promise<{ result?: string; error?: string }> {
+  try {
+    const res = await fetch('/api/dtc/diagnose', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        vehicle,
+        dtcCode,
+        context, // <-- attach optional follow-up context
+      }),
+    });
 
-  if (!res.ok) {
-    const error = await res.text();
-    console.error('TechBot API error:', error);
-    return { error: 'AI response failed.' };
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error('DTC Diagnose API Error:', errorText);
+      return { error: 'DTC analysis failed.' };
+    }
+
+    const data = await res.json();
+    return data;
+  } catch (error) {
+    console.error('diagnoseDTC handler error:', error);
+    return { error: 'DTC request failed.' };
   }
-
-  const data = await res.json();
-  return data;
-}
-
-export async function diagnoseDTC(vehicle: VehicleInfo, dtcCode: string) {
-  const res = await fetch('/api/diagnose', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ vehicle, dtcCode }), // ✅ FIXED: key name must match what API expects
-  });
-
-  if (!res.ok) {
-    const error = await res.text();
-    console.error('DTC Diagnose API error:', error);
-    return { error: 'AI DTC diagnosis failed.' };
-  }
-
-  const data = await res.json();
-  return data;
 }

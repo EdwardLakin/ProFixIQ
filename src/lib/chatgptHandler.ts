@@ -1,27 +1,26 @@
-// src/lib/chatgptHandler.ts
-
-export async function sendToChatGPT(
-  prompt: string,
-  context?: string,
-): Promise<string> {
-  const response = await fetch(
-    `${process.env.NEXT_PUBLIC_CHATGPT_HANDLER_URL}`,
-    {
+// /lib/chatgptHandler.ts
+export async function sendChatMessage(prompt: string, history: any[], vehicle: string | null) {
+  try {
+    const res = await fetch("/api/chat", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         prompt,
-        context,
+        history,
+        vehicle,
       }),
-    },
-  );
+    });
 
-  if (!response.ok) {
-    throw new Error("ChatGPT handler failed");
+    if (!res.ok) {
+      throw new Error("Failed to get AI response");
+    }
+
+    const data = await res.json();
+    return data.message;
+  } catch (error) {
+    console.error("Chat handler error:", error);
+    return "An error occurred while communicating with TechBot.";
   }
-
-  const result = await response.json();
-  return result.answer || "No response received.";
 }
