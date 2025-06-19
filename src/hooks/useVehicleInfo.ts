@@ -1,37 +1,34 @@
-// hooks/useVehicleInfo.ts
+// app/context/useVehicleInfo.tsx
 'use client';
 
-import { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode } from 'react';
 
-export type Vehicle = {
+type VehicleInfo = {
   year: string;
   make: string;
   model: string;
   vin?: string;
-  plate?: string;
-} | null;
+};
 
 type VehicleContextType = {
-  vehicle: Vehicle;
-  setVehicle: (vehicle: Vehicle) => void;
-  clearVehicle: () => void;
+  vehicleInfo: VehicleInfo | null;
+  setVehicleInfo: (info: VehicleInfo) => void;
+  clearVehicleInfo: () => void;
 };
 
 const VehicleContext = createContext<VehicleContextType | undefined>(undefined);
 
-export function VehicleProvider({ children }: { children: ReactNode }) {
-  const [vehicle, setVehicle] = useState<Vehicle>(null);
+export const VehicleProvider = ({ children }: { children: ReactNode }) => {
+  const [vehicleInfo, setVehicleInfo] = useState<VehicleInfo | null>(null);
 
-  const clearVehicle = () => {
-    setVehicle(null);
-  };
+  const clearVehicleInfo = () => setVehicleInfo(null);
 
   return (
-    <VehicleContext.Provider value={{ vehicle, setVehicle, clearVehicle }}>
+    <VehicleContext.Provider value={{ vehicleInfo, setVehicleInfo, clearVehicleInfo }}>
       {children}
     </VehicleContext.Provider>
   );
-}
+};
 
 export default function useVehicleInfo() {
   const context = useContext(VehicleContext);
