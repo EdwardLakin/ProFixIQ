@@ -10,7 +10,6 @@
 }
 
 /* === Custom global styles === */
-
 body {
   @apply bg-background text-white font-rubik antialiased;
 }

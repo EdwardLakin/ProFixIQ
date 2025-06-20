@@ -4,28 +4,26 @@ import { useRouter } from 'next/navigation';
 
 const features = [
   { label: 'AI Diagnosis', route: '/ai' },
-  { label: 'Scan a Part', route: '#' },
-  { label: 'View Repair Logs', route: '#' },
-  { label: 'Tools & Specs', route: '#' },
-  { label: 'AI Suggestions', route: '#' },
-  { label: 'Manual Library', route: '#' },
+  { label: 'Scan a Part', route: '/ai/photo' },
+  { label: 'View Repair Logs', route: '/history' },
+  { label: 'Tools & Specs', route: '/tools' },
+  { label: 'AI Suggestions', route: '/chat' },
+  { label: 'Manual Library', route: '/manuals' },
 ];
 
 export default function LandingButtons() {
   const router = useRouter();
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 px-4 mt-12">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 px-6 sm:px-12 lg:px-24 mt-12">
       {features.map(({ label, route }) => (
         <button
           key={label}
           onClick={() => router.push(route)}
-          className="bg-black/70 text-white border border-orange-500 rounded-xl shadow-xl hover:shadow-orange-500/40 p-6 transition duration-200 ease-in-out"
+          className="rounded-2xl border border-orange-500 bg-black/30 backdrop-blur-md shadow-card hover:shadow-glow text-white px-6 py-8 transition-all duration-300 hover:scale-105"
         >
-          <h3 className="text-xl font-header text-white mb-2 text-center">{label}</h3>
-          <p className="text-sm text-gray-300 text-center">
-            {getDescription(label)}
-          </p>
+          <h3 className="text-2xl font-header text-white mb-3">{label}</h3>
+          <p className="text-base text-neutral-300 leading-snug">{getDescription(label)}</p>
         </button>
       ))}
     </div>

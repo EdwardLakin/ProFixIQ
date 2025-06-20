@@ -1,44 +1,56 @@
 'use client';
 
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
-export default function AIDiagnosisMenuPage() {
+export default function AIDiagnosisPage() {
+  const router = useRouter();
+
   return (
-    <div className="max-w-3xl mx-auto px-4 py-12 text-center">
-      <h1 className="text-4xl font-header text-orange-500 drop-shadow-sm mb-4">
-        <span className="mr-2">🧠</span>AI Diagnosis
-      </h1>
-      <p className="text-neutral-300 mb-10 text-lg">
-        Select a diagnostic method below to begin:
-      </p>
+    <div className="max-w-4xl mx-auto px-4 py-10">
+      {/* Heading */}
+      <div className="mb-12 text-center">
+        <h1 className="text-7xl sm:text-8xl font-blackops text-orange-500 drop-shadow-lg">
+          AI Diagnosis
+        </h1>
+        <p className="mt-4 text-lg text-neutral-300">
+          Select a diagnostic method below to begin:
+        </p>
+      </div>
 
-      <div className="grid gap-6">
-        <Link href="/ai/photo">
-          <div className="bg-black bg-opacity-40 backdrop-blur-md border border-orange-500 rounded-lg p-6 hover:scale-[1.02] transition transform duration-200 shadow-glow cursor-pointer">
-            <h2 className="text-2xl font-header text-blue-400 mb-2">📷 Analyze Image</h2>
-            <p className="text-neutral-300 text-sm">
-              Upload or capture a photo to identify visible issues using GPT-4o Vision.
-            </p>
-          </div>
-        </Link>
+      {/* Diagnostic Options */}
+      <div className="space-y-6">
+        {/* Analyze Image */}
+        <button
+          onClick={() => router.push('/ai/photo')}
+          className="w-full py-5 px-6 border-4 border-blue-400 text-blue-400 font-blackops text-2xl rounded-xl bg-black bg-opacity-30 hover:scale-105 transition-all duration-200"
+        >
+          Analyze Image
+          <p className="mt-2 text-sm font-normal text-white">
+            Upload or capture a photo to identify visible issues using GPT-4o Vision.
+          </p>
+        </button>
 
-        <Link href="/ai/dtc">
-          <div className="bg-black bg-opacity-40 backdrop-blur-md border border-orange-500 rounded-lg p-6 hover:scale-[1.02] transition transform duration-200 shadow-glow cursor-pointer">
-            <h2 className="text-2xl font-header text-orange-400 mb-2">⚠️ DTC Code Lookup</h2>
-            <p className="text-neutral-300 text-sm">
-              Enter a diagnostic trouble code (e.g., P0171) to get an explanation and fix.
-            </p>
-          </div>
-        </Link>
+        {/* DTC Code Lookup */}
+        <button
+          onClick={() => router.push('/ai/dtc')}
+          className="w-full py-5 px-6 border-4 border-yellow-400 text-yellow-400 font-blackops text-2xl rounded-xl bg-black bg-opacity-30 hover:scale-105 transition-all duration-200"
+        >
+          DTC Code Lookup
+          <p className="mt-2 text-sm font-normal text-white">
+            Enter a trouble code (e.g., P0171) to get an explanation and fix.
+          </p>
+        </button>
 
-        <Link href="/ai/chat">
-          <div className="bg-black bg-opacity-40 backdrop-blur-md border border-orange-500 rounded-lg p-6 hover:scale-[1.02] transition transform duration-200 shadow-glow cursor-pointer">
-            <h2 className="text-2xl font-header text-pink-500 mb-2">🧰 TechBot Assistant</h2>
-            <p className="text-neutral-300 text-sm">
-              Ask the AI mechanic about symptoms, repairs, or next steps using freeform chat.
-            </p>
-          </div>
-        </Link>
+        {/* TechBot */}
+        <button
+          onClick={() => router.push('/ai/chat')}
+          className="w-full py-5 px-6 border-4 border-green-400 text-green-400 font-blackops text-2xl rounded-xl bg-black bg-opacity-30 hover:scale-105 transition-all duration-200"
+        >
+          TechBot Assistant
+          <p className="mt-2 text-sm font-normal text-white">
+            Ask the AI mechanic about symptoms, repairs, or next steps using freeform chat.
+          </p>
+        </button>
       </div>
     </div>
   );
