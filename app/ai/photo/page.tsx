@@ -3,15 +3,15 @@
 import React, { useState } from 'react';
 import useVehicleInfo from '@/hooks/useVehicleInfo';
 import { analyzeImage } from '@/lib/analyzeComponents';
-import Image from 'next/image';
 
 export default function PhotoDiagnosisPage() {
-  const { vehicleInfo } = useVehicleInfo();
+  const { vehicleInfo, clearVehicle } = useVehicleInfo();
+
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [analysis, setAnalysis] = useState('');
+  const [analysis, setAnalysis] = useState<string>('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -22,42 +22,65 @@ export default function PhotoDiagnosisPage() {
   };
 
   const handleAnalyze = async () => {
-    if (!selectedFile || !vehicleInfo) {
-      setError('Please select an image and a vehicle');
+    if (!selectedFile) {
+      setError('Please upload an image.');
       return;
     }
 
-    setError('');
+    if (!vehicleInfo?.year || !vehicleInfo?.make || !vehicleInfo?.model) {
+      setError('Please select complete vehicle information before analyzing.');
+      return;
+    }
+
+    setError(null);
     setLoading(true);
+
     const result = await analyzeImage(selectedFile, vehicleInfo);
-    setAnalysis(result?.response || 'No result');
+
+    if (typeof result === 'object' && 'error' in result) {
+      setError(result.error);
+    } else {
+      setAnalysis(result as string);
+    }
+
     setLoading(false);
   };
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
-      <h1 className="text-4xl font-blackops text-orange-500 text-center mb-6">AI Photo Diagnosis</h1>
+      <h1 className="text-4xl font-blackops text-orange-500 text-center mb-6">
+        Photo Diagnosis
+      </h1>
 
-      <div className="my-4">
-        <input type="file" accept="image/*" onChange={handleFileChange} />
-        {imagePreview && (
-          <div className="mt-4">
-            <Image src={imagePreview} alt="preview" width={400} height={300} className="rounded border border-gray-600" />
-          </div>
-        )}
-        <button
-          onClick={handleAnalyze}
-          disabled={loading}
-          className="w-full py-3 mt-4 text-xl font-blackops bg-orange-600 hover:bg-orange-700 text-white rounded"
-        >
-          {loading ? 'Analyzing...' : 'Analyze Image'}
-        </button>
-      </div>
+      <input
+        type="file"
+        accept="image/*"
+        onChange={handleFileChange}
+        className="mb-4"
+      />
 
-      {error && <p className="text-red-400">{error}</p>}
+      {imagePreview && (
+        <img
+          src={imagePreview}
+          alt="Preview"
+          className="mb-4 max-w-full max-h-64 rounded border"
+        />
+      )}
+
+      <button
+        onClick={handleAnalyze}
+        disabled={loading}
+        className="w-full py-3 px-4 bg-blue-600 text-white rounded font-blackops hover:bg-blue-700"
+      >
+        {loading ? 'Analyzing...' : 'Analyze Image'}
+      </button>
+
+      {error && (
+        <div className="mt-4 p-4 bg-red-200 text-red-800 rounded">{error}</div>
+      )}
 
       {analysis && (
-        <div className="my-6 p-4 border border-gray-600 bg-white bg-opacity-10 text-white whitespace-pre-wrap">
+        <div className="mt-6 p-4 bg-gray-100 rounded whitespace-pre-wrap text-sm text-black">
           {analysis}
         </div>
       )}
