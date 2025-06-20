@@ -1,22 +1,19 @@
-'use client';
-
 import React from 'react';
-import { cn } from '@/lib/utils';
 
 interface CardProps {
   children: React.ReactNode;
-  className?: string;
+  onClick?: () => void;
 }
 
-export default function Card({ children, className }: CardProps) {
+const Card = ({ children, onClick }: CardProps) => {
   return (
     <div
-      className={cn(
-        'rounded-xl border border-orange-500 bg-black/50 text-white shadow-xl p-6 hover:shadow-orange-400/20 transition-shadow duration-200',
-        className
-      )}
+      className="bg-white/10 border border-white/20 rounded-xl p-6 cursor-pointer hover:bg-white/20 transition-all"
+      onClick={onClick}
     >
       {children}
     </div>
   );
-}
+};
+
+export default Card;
