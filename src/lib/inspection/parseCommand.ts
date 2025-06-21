@@ -1,46 +1,43 @@
-type ParsedCommand =
-  | { type: "add"; text: string }
-  | { type: "measurement"; text: string }
-  | { type: "recommend"; text: string }
-  | { type: "na"; section: string }
-  | { type: "undo" }
-  | { type: "pause" }
-  | { type: "resume" }
-  | { type: "complete" }
-  | { type: "unknown"; original: string };
+import type { ParsedCommand } from './types';
 
-const synonyms = {
-  add: ["add", "replace", "install", "failed", "broken"],
-  measurement: ["measurement", "measure", "size", "depth", "reading"],
-  recommend: ["recommend", "watch", "monitor", "future"],
-  na: ["n/a", "not applicable", "skip section"],
-  undo: ["undo", "go back", "remove"],
-  pause: ["pause", "stop for now"],
-  resume: ["resume", "continue"],
-  complete: ["complete", "done", "finish"],
-};
+export function parseCommandText(input: string): ParsedCommand | null {
+  const lower = input.trim().toLowerCase();
 
-export function parseCommand(input: string): ParsedCommand {
-  const lower = input.toLowerCase().trim();
-
-  if (matchAny(lower, synonyms.undo)) return { type: "undo" };
-  if (matchAny(lower, synonyms.pause)) return { type: "pause" };
-  if (matchAny(lower, synonyms.resume)) return { type: "resume" };
-  if (matchAny(lower, synonyms.complete)) return { type: "complete" };
-
-  if (matchAny(lower, synonyms.add)) return { type: "add", text: input };
-  if (matchAny(lower, synonyms.measurement)) return { type: "measurement", text: input };
-  if (matchAny(lower, synonyms.recommend)) return { type: "recommend", text: input };
-
-  if (matchAny(lower, synonyms.na)) {
-    const sectionMatch = input.match(/section (\w+)/i);
-    const section = sectionMatch ? sectionMatch[1] : "unknown";
-    return { type: "na", section };
+  if (lower.startsWith('add')) {
+    const match = lower.match(/^add (.*?) to (.*?) with (status|note) (.+)$/);
+    if (match) {
+      return {
+        type: 'add',
+        item: match[1],
+        section: match[2],
+        [match[3] === 'status' ? 'status' : 'notes']: match[4],
+      };
+    }
   }
 
-  return { type: "unknown", original: input };
-}
+  if (lower.startsWith('mark')) {
+    const naMatch = lower.match(/^mark (.*?) (.*?) as na$/);
+    if (naMatch) {
+      return {
+        type: 'mark_na',
+        item: naMatch[1],
+        section: naMatch[2],
+      };
+    }
 
-function matchAny(text: string, keywords: string[]) {
-  return keywords.some((keyword) => text.includes(keyword));
+    const sectionMatch = lower.match(/^mark section (.*?) as na$/);
+    if (sectionMatch) {
+      return {
+        type: 'mark_section_na',
+        section: sectionMatch[1],
+      };
+    }
+
+    const completeMatch = lower.match(/^mark complete$/);
+    if (completeMatch) {
+      return { type: 'complete' };
+    }
+  }
+
+  return null;
 }

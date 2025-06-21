@@ -1,108 +1,35 @@
-export type CommandType =
-  | "add"
-  | "recommend"
-  | "measurement"
-  | "na"
-  | "undo"
-  | "pause"
-  | "resume"
-  | "complete"
-  | "unknown";
+export type InspectionItem = {
+  status: 'pass' | 'fail' | 'na' | 'unmarked';
+  notes?: string;
+  measurement?: string;
+};
 
-export interface ParsedCommand {
-  type: CommandType;
+export type InspectionSection = Record<string, InspectionItem>;
+
+export type InspectionState = {
+  sections: Record<string, InspectionSection>;
+  transcriptLog: string[];
+  paused: boolean;
+  isComplete: boolean;
+  currentItemId: string | null;
+};
+
+export type InspectionAction = {
+  type: 'add' | 'mark_na' | 'measure' | 'recommend' | 'pause' | 'resume' | 'complete';
   section?: string;
   item?: string;
   status?: string;
-  measurement?: string;
-  original?: string;
-}
-
-export interface InspectionItem {
-  id: string;
-  label: string;
-  section: string;
-  status: "good" | "fail" | "na";
   notes?: string;
   measurement?: string;
-  measurement2?: string;
-}
+};
 
-export interface InspectionSection {
-  name: string;
-  items: Record<string, InspectionItem>;
-}
-
-export interface InspectionState {
-  sections: Record<string, Record<string, InspectionItem>>;
-  transcriptLog: string[];
-  isPaused: boolean;
-  isComplete: boolean;
-  currentItemId: string | null;
-}
-
-export type InspectionAction =
-  | {
-      type: "add";
-      section: string;
-      item: string;
-      status: string;
-      notes?: string;
-      measurement?: string;
-    }
-  | {
-      type: "recommend";
-      section: string;
-      item: string;
-      notes?: string;
-      measurement?: string;
-    }
-  | {
-      type: "measurement";
-      section: string;
-      item: string;
-      notes: string;
-      measurement: string;
-    }
-  | {
-      type: "na";
-      section: string;
-    }
-  | {
-      type: "undo";
-    }
-  | {
-      type: "pause";
-    }
-  | {
-      type: "resume";
-    }
-  | {
-      type: "complete";
-    };
-
-export type InspectionActions = InspectionAction[];
-
-export interface InspectionInput {
-  inspectionId: string;
-  userId: string;
-  vehicleId: string;
-  draft: Record<string, any>;
-  photos?: string[];
-}
-
-export interface InspectionCommand {
-  type: string;
+export type InspectionCommand = {
+  intent: string;
   section?: string;
   item?: string;
+  status?: string;
   notes?: string;
   measurement?: string;
-}
+};
 
-export interface InspectionDraft {
-  sections: Record<string, Record<string, InspectionItem>>;
-  transcriptLog: string[];
-  isPaused: boolean;
-  isComplete: boolean;
-  currentItemId: string | null;
-}
+export type ParsedCommand = InspectionCommand;

@@ -1,71 +1,60 @@
 import type {
-  InspectionAction,
-  InspectionState,
+  InspectionDraft,
+  InspectionActions,
   InspectionItem,
 } from './types';
 
-/**
- * Applies an array of inspection actions to the current inspection state.
- */
 export function applyInspectionActions(
-  state: InspectionState,
-  actions: InspectionAction[]
-): InspectionState {
-  const newState: InspectionState = {
-    ...state,
-    sections: { ...state.sections },
-  };
+  draft: InspectionDraft,
+  actions: InspectionActions
+): InspectionDraft {
+  const newState: InspectionDraft = JSON.parse(JSON.stringify(draft));
 
   for (const action of actions) {
-    if (
-      action.type === 'add' ||
-      action.type === 'recommend' ||
-      action.type === 'measurement'
-    ) {
-      const section = action.section;
-      const item = action.item;
+    const section = action.section;
+    const item = action.item;
 
-      const updatedItem: InspectionItem = {
-        status: action.status || '',
-        notes: action.notes || '',
-        measurement: action.measurement || '',
-      };
-
-      if (!newState.sections[section]) {
-        newState.sections[section] = { name: section, items: {} };
-      }
-
-      newState.sections[section].items[item] = updatedItem;
+    // Ensure section and item exist
+    if (!newState.sections[section]) {
+      newState.sections[section] = {};
     }
 
-    if (action.type === 'na') {
-      const section = action.section;
-
-      if (!newState.sections[section]) {
-        newState.sections[section] = { name: section, items: {} };
-      }
-
-      newState.sections[section].items['__section_status__'] = {
-        status: 'na',
+    if (!newState.sections[section][item]) {
+      newState.sections[section][item] = {
+        id: item,
+        label: item,
+        status: '',
         notes: '',
         measurement: '',
       };
     }
 
-    if (action.type === 'undo') {
-      // No-op for now
+    const updatedItem: InspectionItem = {
+      ...newState.sections[section][item],
+      notes: action.notes || '',
+      measurement: action.measurement || '',
+    };
+
+    if (action.type === 'na') {
+      updatedItem.status = 'na';
+      updatedItem.notes = '';
+      updatedItem.measurement = '';
+    } else if (action.type === 'measurement') {
+      updatedItem.measurement = action.measurement || '';
+    } else if (action.type === 'add' || action.type === 'recommend') {
+      updatedItem.status = action.status || '';
     }
 
+    newState.sections[section][item] = updatedItem;
+
+    // Handle pause/resume/complete
     if (action.type === 'pause') {
-      newState.paused = true;
-    }
-
-    if (action.type === 'resume') {
-      newState.paused = false;
-    }
-
-    if (action.type === 'complete') {
+      newState.isPaused = true;
+    } else if (action.type === 'resume') {
+      newState.isPaused = false;
+    } else if (action.type === 'complete') {
       newState.transcriptLog.push('[Inspection Completed]');
+      newState.isComplete = true;
     }
   }
 

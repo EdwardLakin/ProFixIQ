@@ -1,72 +1,83 @@
-import { parseCommand } from "./parseCommand";
-
-export interface InspectionItem {
-  id: string;
-  label: string;
-  section: string;
-  status: "good" | "fail" | "na";
-  notes?: string;
-  measurement?: string;
-}
-
-export interface InspectionDraft {
-  items: InspectionItem[];
-  history: string[];
-  paused: boolean;
-  completed: boolean;
-}
+import { parseCommand } from './parseCommand';
+import type { InspectionDraft } from './types';
 
 export function handleInspectionCommand(input: string, draft: InspectionDraft): InspectionDraft {
   const command = parseCommand(input);
-  const updated = { ...draft, history: [...draft.history, input] };
+  const updated = { ...draft, history: [...(draft.history || []), input] };
 
   switch (command.type) {
-    case "pause":
+    case 'pause':
       return { ...updated, paused: true };
 
-    case "resume":
+    case 'resume':
       return { ...updated, paused: false };
 
-    case "complete":
+    case 'complete':
       return { ...updated, completed: true };
 
-    case "undo":
-      if (draft.history.length === 0) return draft;
+    case 'undo':
+      if (!draft.history?.length) return draft;
       return {
         ...updated,
         items: draft.items.slice(0, -1),
         history: draft.history.slice(0, -1),
       };
 
-    case "na":
+    case 'na':
       return {
         ...updated,
-        items: updated.items.map((item) =>
+        items: draft.items.map((item) =>
           item.section.toLowerCase() === command.section.toLowerCase()
-            ? { ...item, status: "na" }
+            ? { ...item, status: 'na' }
             : item
         ),
       };
 
-    case "add":
+    case 'add':
       return {
         ...updated,
-        items: [...updated.items, { id: genId(), label: command.text, section: "unknown", status: "fail", notes: command.text }],
+        items: [
+          ...updated.items,
+          {
+            id: genId(),
+            label: command.text,
+            section: 'unknown',
+            status: '',
+          },
+        ],
       };
 
-    case "measurement":
+    case 'measurement':
       return {
         ...updated,
-        items: [...updated.items, { id: genId(), label: command.text, section: "unknown", status: "good", measurement: command.text }],
+        items: [
+          ...updated.items,
+          {
+            id: genId(),
+            label: command.text,
+            section: 'unknown',
+            measurement: command.text,
+            status: '',
+          },
+        ],
       };
 
-    case "recommend":
+    case 'recommend':
       return {
         ...updated,
-        items: [...updated.items, { id: genId(), label: command.text, section: "unknown", status: "good", notes: `Recommended: ${command.text}` }],
+        items: [
+          ...updated.items,
+          {
+            id: genId(),
+            label: command.text,
+            section: 'unknown',
+            notes: 'recommend',
+            status: '',
+          },
+        ],
       };
 
-    case "unknown":
+    default:
       return updated;
   }
 }

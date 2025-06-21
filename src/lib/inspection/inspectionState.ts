@@ -19,7 +19,7 @@ export function getInspectionState(): InspectionState {
     sections: inspectionDraft,
     transcriptLog,
     paused: isPaused,
-    complete: isComplete,
+    isComplete,
     currentItemId,
   };
   return state;
