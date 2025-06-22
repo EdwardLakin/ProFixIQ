@@ -1,35 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateQuoteFromInspection } from "@/lib/quote/generateQuoteFromInspection";
-import { getFeatureAccess } from "@/lib/config/userTier";
-import { InspectionState } from "@/lib/inspection/types";
-
-// Optional: Replace with real auth/user lookup
-const getUserTier = async (req: NextRequest): Promise<"diy" | "pro" | "pro+"> => {
-  // Replace this mock with Supabase or session check
-  return "pro+";
-};
+import { InspectionResultItem } from "@/lib/quote/types";
 
 export async function POST(req: NextRequest) {
   try {
-    const tier = await getUserTier(req);
-    const features = getFeatureAccess(tier);
-
-    if (!features.quoteGeneration) {
-      return NextResponse.json({ error: "Upgrade required to generate quotes." }, { status: 403 });
-    }
-
     const body = await req.json();
-    const inspection: InspectionState = body.inspection;
+    const results: InspectionResultItem[] = body.results;
 
-    if (!inspection || !inspection.sections) {
-      return NextResponse.json({ error: "Invalid inspection data." }, { status: 400 });
+    if (!results || !Array.isArray(results)) {
+      return NextResponse.json({ error: "Invalid or missing results." }, { status: 400 });
     }
 
-    const quote = generateQuoteFromInspection(inspection);
-    return NextResponse.json({ quote });
+    const { summary, quote } = generateQuoteFromInspection(results);
 
+    return NextResponse.json({ summary, quote });
   } catch (err) {
-    console.error("Quote API error:", err);
-    return NextResponse.json({ error: "Failed to generate quote." }, { status: 500 });
+    console.error("Quote generation failed:", err);
+    return NextResponse.json({ error: "Internal error generating quote." }, { status: 500 });
   }
 }
