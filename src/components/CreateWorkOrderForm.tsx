@@ -10,11 +10,30 @@ const supabase = createClient(
 );
 
 export default function CreateWorkOrderForm() {
-  const [customer, setCustomer] = useState('');
-  const [vehicle, setVehicle] = useState('');
+  const [customer, setCustomer] = useState({
+    name: '',
+    address: '',
+    city: '',
+    postalCode: '',
+    phone: '',
+    email: '',
+  });
+
+  const [vehicle, setVehicle] = useState({
+    year: '',
+    make: '',
+    model: '',
+    vin: '',
+  });
+
   const [inspection, setInspection] = useState('');
   const [concerns, setConcerns] = useState<string[]>(['']);
   const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+
+  const handleAddConcern = () => {
+    setConcerns([...concerns, '']);
+  };
 
   const handleConcernChange = (index: number, value: string) => {
     const updated = [...concerns];
@@ -22,104 +41,125 @@ export default function CreateWorkOrderForm() {
     setConcerns(updated);
   };
 
-  const addConcern = () => setConcerns([...concerns, '']);
-
-  const submitWorkOrder = async () => {
+  const handleSubmit = async () => {
     setLoading(true);
-    const workOrderId = uuidv4();
+    setMessage('');
 
-    const { error: orderError } = await supabase.from('work_orders').insert({
-      id: workOrderId,
-      customer_name: customer,
-      vehicle_info: vehicle,
-      inspection_type: inspection,
-    });
+    try {
+      const workOrderId = uuidv4();
 
-    if (orderError) {
-      console.error('Failed to create work order:', orderError);
+      const { error: orderError } = await supabase.from('work_orders').insert({
+        id: workOrderId,
+        customer_name: customer.name,
+        customer_address: `${customer.address}, ${customer.city}, ${customer.postalCode}`,
+        customer_phone: customer.phone,
+        customer_email: customer.email,
+        vehicle_year: vehicle.year,
+        vehicle_make: vehicle.make,
+        vehicle_model: vehicle.model,
+        vehicle_vin: vehicle.vin,
+        inspection_type: inspection,
+        status: 'active',
+        created_at: new Date().toISOString(),
+      });
+
+      if (orderError) throw orderError;
+
+      const lineInserts = concerns
+        .filter(c => c.trim() !== '')
+        .map(description => ({
+          work_order_id: workOrderId,
+          description,
+          status: 'pending',
+        }));
+
+      if (lineInserts.length > 0) {
+        const { error: lineError } = await supabase.from('work_order_lines').insert(lineInserts);
+        if (lineError) throw lineError;
+      }
+
+      setMessage('Work order created successfully!');
+      setCustomer({ name: '', address: '', city: '', postalCode: '', phone: '', email: '' });
+      setVehicle({ year: '', make: '', model: '', vin: '' });
+      setInspection('');
+      setConcerns(['']);
+    } catch (err: any) {
+      console.error('Error creating work order:', err.message);
+      setMessage('Failed to create work order.');
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const lines = concerns
-      .filter((line) => line.trim() !== '')
-      .map((line) => ({
-        id: uuidv4(),
-        work_order_id: workOrderId,
-        description: line,
-      }));
-
-    const { error: linesError } = await supabase
-      .from('work_order_lines')
-      .insert(lines);
-
-    if (linesError) {
-      console.error('Failed to add work order lines:', linesError);
-    }
-
-    setLoading(false);
-    alert('Work order created!');
-    setCustomer('');
-    setVehicle('');
-    setInspection('');
-    setConcerns(['']);
   };
 
   return (
-    <div className="p-6 max-w-2xl mx-auto bg-black/30 rounded-xl backdrop-blur shadow-lg border border-orange-500">
-      <h2 className="text-2xl font-header text-orange-400 mb-4">Create Work Order</h2>
-      
-      <input
-        type="text"
-        placeholder="Customer Name"
-        value={customer}
-        onChange={(e) => setCustomer(e.target.value)}
-        className="w-full mb-3 px-4 py-2 rounded bg-black/60 border border-orange-400"
-      />
-      
-      <input
-        type="text"
-        placeholder="Vehicle Info"
-        value={vehicle}
-        onChange={(e) => setVehicle(e.target.value)}
-        className="w-full mb-3 px-4 py-2 rounded bg-black/60 border border-orange-400"
-      />
+    <div className="max-w-2xl mx-auto mt-8 p-6 border border-orange-500 rounded-xl bg-black/60 backdrop-blur-md shadow-card text-white space-y-4">
+      <h2 className="text-3xl font-bold text-center text-yellow-400 font-blackops">Create Work Order</h2>
 
-      <select
-        value={inspection}
-        onChange={(e) => setInspection(e.target.value)}
-        className="w-full mb-3 px-4 py-2 rounded bg-black/60 border border-orange-400"
-      >
-        <option value="">Select Inspection Type</option>
-        <option value="Full Inspection">Full Inspection</option>
-        <option value="Brake Check">Brake Check</option>
-        <option value="Oil Change">Oil Change</option>
-      </select>
+      {/* Customer Info */}
+      <div>
+        <h3 className="text-xl font-semibold text-orange-400">Customer Information</h3>
+        <input type="text" placeholder="Name" value={customer.name} onChange={e => setCustomer({ ...customer, name: e.target.value })} className="input" />
+        <input type="text" placeholder="Address" value={customer.address} onChange={e => setCustomer({ ...customer, address: e.target.value })} className="input" />
+        <div className="flex gap-2">
+          <input type="text" placeholder="City" value={customer.city} onChange={e => setCustomer({ ...customer, city: e.target.value })} className="input flex-1" />
+          <input type="text" placeholder="Postal Code" value={customer.postalCode} onChange={e => setCustomer({ ...customer, postalCode: e.target.value })} className="input flex-1" />
+        </div>
+        <input type="text" placeholder="Phone" value={customer.phone} onChange={e => setCustomer({ ...customer, phone: e.target.value })} className="input" />
+        <input type="email" placeholder="Email" value={customer.email} onChange={e => setCustomer({ ...customer, email: e.target.value })} className="input" />
+      </div>
 
-      {concerns.map((concern, i) => (
-        <textarea
-          key={i}
-          value={concern}
-          onChange={(e) => handleConcernChange(i, e.target.value)}
-          placeholder={`Concern ${i + 1}`}
-          className="w-full mb-2 px-4 py-2 rounded bg-black/60 border border-orange-400"
-        />
-      ))}
+      {/* Vehicle Info */}
+      <div>
+        <h3 className="text-xl font-semibold text-orange-400">Vehicle Information</h3>
+        <div className="flex gap-2">
+          <input type="text" placeholder="Year" value={vehicle.year} onChange={e => setVehicle({ ...vehicle, year: e.target.value })} className="input flex-1" />
+          <input type="text" placeholder="Make" value={vehicle.make} onChange={e => setVehicle({ ...vehicle, make: e.target.value })} className="input flex-1" />
+        </div>
+        <input type="text" placeholder="Model" value={vehicle.model} onChange={e => setVehicle({ ...vehicle, model: e.target.value })} className="input" />
+        <input type="text" placeholder="VIN" value={vehicle.vin} onChange={e => setVehicle({ ...vehicle, vin: e.target.value })} className="input" />
+      </div>
 
+      {/* Inspection Type */}
+      <div>
+        <h3 className="text-xl font-semibold text-orange-400">Inspection</h3>
+        <select value={inspection} onChange={e => setInspection(e.target.value)} className="input">
+          <option value="">Select Inspection Type</option>
+          <option value="Full Inspection">Full Inspection</option>
+          <option value="Diagnostic Only">Diagnostic Only</option>
+          <option value="No Inspection">No Inspection</option>
+        </select>
+      </div>
+
+      {/* Concern Lines */}
+      <div>
+        <h3 className="text-xl font-semibold text-orange-400">Concerns</h3>
+        {concerns.map((concern, index) => (
+          <input
+            key={index}
+            type="text"
+            placeholder={`Concern #${index + 1}`}
+            value={concern}
+            onChange={e => handleConcernChange(index, e.target.value)}
+            className="input"
+          />
+        ))}
+        <button onClick={handleAddConcern} className="text-sm text-yellow-300 hover:underline mt-1">+ Add Concern</button>
+      </div>
+
+      {/* Submit Button */}
       <button
-        onClick={addConcern}
-        className="mb-4 text-sm text-orange-300 underline"
-      >
-        + Add Another Concern
-      </button>
-
-      <button
-        onClick={submitWorkOrder}
+        onClick={handleSubmit}
         disabled={loading}
-        className="w-full py-2 bg-orange-500 hover:bg-orange-600 text-black font-bold rounded"
+        className="w-full mt-4 py-3 font-blackops text-lg rounded bg-orange-600 hover:bg-orange-700 transition-all"
       >
-        {loading ? 'Submitting...' : 'Submit Work Order'}
+        {loading ? 'Creating...' : 'Create Work Order'}
       </button>
+
+      {/* Message */}
+      {message && <p className="text-center text-sm mt-2 text-yellow-300">{message}</p>}
     </div>
   );
 }
+
+// Tailwind CSS reusable class
+const input = "w-full mt-2 p-2 rounded bg-neutral-900 text-white border border-neutral-700 focus:outline-none focus:ring-2 focus:ring-orange-500";

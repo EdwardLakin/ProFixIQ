@@ -1,14 +1,12 @@
 {
   "compilerOptions": {
     "target": "es2017",
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
-    ],
+    "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
+    "strictNullChecks": true,
+    "forceConsistentCasingInFileNames": true,
     "noEmit": true,
     "incremental": true,
     "module": "esnext",
@@ -18,43 +16,20 @@
     "jsx": "preserve",
     "baseUrl": ".",
     "paths": {
-      "@/hooks/*": [
-        "src/hooks/*"
-      ],
-      "@/lib/*": [
-        "src/lib/*"
-      ],
-      "@/components/*": [
-        "src/components/*"
-      ],
-      "@/types/*": [
-        "src/types/*"
-      ]
+      "@hooks/*": ["src/hooks/*"],
+      "@lib/*": ["lib/*"],
+      "@components/*": ["src/components/ui/*"],
+      "@types/*": ["src/types/*"]
     },
-    "types": [
-      "react",
-      "react-dom"
-    ],
+    "types": ["react", "react-dom"],
     "allowSyntheticDefaultImports": true,
-    "esModuleInterop": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ]
+    "esModuleInterop": true
   },
   "include": [
     "**/*.ts",
     "**/*.tsx",
     "next-env.d.ts",
-    ".next/types/**/*.ts"
+    "src/types/**/*.ts"
   ],
-  "exclude": [
-    "node_modules"
-  ],
-  "plugins": [
-    {
-      "name": "next"
-    }
-  ]
+  "exclude": ["node_modules"]
 }

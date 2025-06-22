@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
-import Heading from '@/components/ui/Heading';
+import Header from '@/components/ui/Header';
 import Card from '@/components/ui/Card';
 
 const supabase = createClient(
@@ -83,7 +83,7 @@ export default function CreateWorkOrderPage() {
 
   return (
     <div className="max-w-3xl mx-auto p-6">
-      <Heading title="Create Work Order" subtitle="Start a new repair or inspection job" center />
+      <Header title="Create Work Order" subtitle="Start a new repair or inspection job" center />
       
       <Card>
         <div className="space-y-4">
