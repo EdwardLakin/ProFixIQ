@@ -1,0 +1,7 @@
+{
+  "/work-orders/route": "app/work-orders/route.js",
+  "/page": "app/page.js",
+  "/work-orders/page": "app/work-orders/page.js",
+  "/ai/page": "app/ai/page.js",
+  "/history/page": "app/history/page.js"
+}

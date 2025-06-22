@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 
 const features = [
   { label: 'AI Diagnosis', route: '/ai' },
-  { label: 'Scan a Part', route: '/ai/photo' },
+  { label: 'Work Orders', route: '/work-orders' },
   { label: 'View Repair Logs', route: '/history' },
   { label: 'Tools & Specs', route: '/tools' },
   { label: 'AI Suggestions', route: '/chat' },
@@ -34,8 +34,8 @@ function getDescription(label: string) {
   switch (label) {
     case 'AI Diagnosis':
       return 'Chat, Visual, and DTC Code Support';
-    case 'Scan a Part':
-      return 'Image-based Parts Identification';
+    case 'Work Orders':
+      return 'Create, Track, and Manage Repair Jobs';
     case 'View Repair Logs':
       return 'Track Issues and Fixes by VIN or Customer';
     case 'Tools & Specs':
