@@ -1,63 +1,57 @@
-"use client";
+'use client';
 
-import { useEffect, useState } from "react";
+import React from 'react';
+import { useRouter } from 'next/navigation';
+import Heading from '@/components/ui/Header';
+import Card from '@/components/ui/Card';
 
-interface WOItem {
-  type: "diagnose" | "inspection" | "maintenance";
-  description: string;
-}
+export default function WorkOrdersPage() {
+  const router = useRouter();
 
-interface WorkOrder {
-  id: string;
-  userId: string;
-  items: WOItem[];
-  appointment: string;
-  status: string;
-  createdAt: string;
-}
-
-export default function WorkOrderQueue() {
-  const [orders, setOrders] = useState<WorkOrder[]>([]);
-
-  useEffect(() => {
-    fetch("/workorders/list")
-      .then((res) => res.json())
-      .then((data) => setOrders(data.orders || []));
-  }, []);
-
-  const sortByPriority = (items: WOItem[]) => {
-    const priority = { diagnose: 1, inspection: 2, maintenance: 3 };
-    return [...items].sort((a, b) => priority[a.type] - priority[b.type]);
-  };
+  const actions = [
+    {
+      title: 'View Work Orders',
+      description: 'Access active and completed jobs.',
+      route: '/work-orders/list',
+    },
+    {
+      title: 'Create Work Order',
+      description: 'Start a new repair or inspection job.',
+      route: '/work-orders/create',
+    },
+    {
+      title: 'Review Quotes',
+      description: 'Review and approve customer quotes.',
+      route: '/work-orders/quote-review',
+    },
+  ];
 
   return (
-    <div className="p-4 space-y-6">
-      <h1 className="text-2xl font-bold text-orange-400">Work Order Queue</h1>
+    <div className="min-h-screen px-4 py-10 sm:px-8">
+      <Heading
+        title="Work Orders"
+        highlight="ProFixIQ"
+        subtitle="Manage, track, and create work orders efficiently"
+        center
+      />
 
-      {orders.length === 0 ? (
-        <p className="text-white/70">No work orders in queue.</p>
-      ) : (
-        orders.map((wo) => (
-          <div
-            key={wo.id}
-            className="rounded-lg bg-black/20 p-4 shadow-lg backdrop-blur-md border border-white/10"
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mt-10 max-w-6xl mx-auto">
+        {actions.map((action) => (
+          <Card
+            key={action.title}
+            onClick={() => router.push(action.route)}
           >
-            <p className="text-sm text-white/70 mb-1">Appointment: {wo.appointment}</p>
-            <ul className="text-white/90">
-              {sortByPriority(wo.items).map((item, index) => (
-                <li key={index}>• {item.type.toUpperCase()} — {item.description}</li>
-              ))}
-            </ul>
-
-            <button
-              className="mt-3 bg-orange-500 text-black px-4 py-2 rounded-md hover:bg-orange-400"
-              onClick={() => alert("Punching into WO (future logic)")}
-            >
-              Punch In
-            </button>
-          </div>
-        ))
-      )}
+            <div className="p-6">
+              <h3 className="text-2xl font-header text-orange-400 drop-shadow mb-2">
+                {action.title}
+              </h3>
+              <p className="text-neutral-300 leading-snug">
+                {action.description}
+              </p>
+            </div>
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }
