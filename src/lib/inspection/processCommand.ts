@@ -1,46 +1,17 @@
-import type { ParsedCommand, InspectionAction } from './types';
+import { parseCommand } from './parseCommand';
+import { applyInspectionActions } from './applyInspectionActions';
+import type { InspectionState, ParsedCommand } from './types';
+import { processParsedCommand } from './commandProcessor';
 
-export function processCommand(cmd: ParsedCommand): InspectionAction[] {
-  const actions: InspectionAction[] = [];
+export function processCommand(
+  input: string,
+  state: InspectionState
+): InspectionState {
+  const parsedCommand: ParsedCommand = parseCommand(input);
 
-  switch (cmd.type) {
-    case 'add':
-      actions.push({
-        type: 'add',
-        section: cmd.section,
-        item: cmd.item,
-        status: cmd.status || 'N/A',
-        notes: cmd.notes,
-      });
-      break;
+  const actions = processParsedCommand(parsedCommand, state);
 
-    case 'mark_na':
-      actions.push({
-        type: 'mark_na',
-        section: cmd.section,
-        item: cmd.item,
-        status: 'N/A',
-      });
-      break;
+  const updatedState = applyInspectionActions(state, actions);
 
-    case 'mark_section_na':
-      actions.push({
-        type: 'mark_section_na',
-        section: cmd.section,
-        status: 'N/A',
-      });
-      break;
-
-    case 'complete':
-      actions.push({
-        type: 'complete',
-      });
-      break;
-
-    default:
-      // Unknown command type
-      break;
-  }
-
-  return actions;
+  return updatedState;
 }

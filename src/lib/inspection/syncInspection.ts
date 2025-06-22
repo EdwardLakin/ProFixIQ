@@ -1,36 +1,24 @@
-import { createServerSupabaseClient } from "@/lib/utils/supabase/server";
-import { Database } from "@/types/supabase";
-import { cookies } from "next/headers";
+import type { InspectionState } from './types';
 
-const supabase = createServerSupabaseClient<Database>({ cookies });
+export async function syncInspection(state: InspectionState) {
+  try {
+    const response = await fetch('/api/inspection/sync', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(state),
+    });
 
-export async function syncInspectionDraft({
-  inspectionId,
-  userId,
-  vehicleId,
-  draft,
-}: {
-  inspectionId: string;
-  userId: string;
-  vehicleId: string;
-  draft: Record<string, any>;
-}) {
-  const { data, error } = await supabase
-    .from("inspections")
-    .upsert(
-      [
-        {
-          id: inspectionId,
-          user_id: userId,
-          vehicle_id: vehicleId,
-          draft_json: draft,
-          updated_at: new Date().toISOString(),
-        },
-      ],
-      { onConflict: "id" }
-    )
-    .select();
+    if (!response.ok) {
+      throw new Error(`Failed to sync inspection: ${response.statusText}`);
+    }
 
-  if (error) throw error;
-  return data?.[0];
+    const result = await response.json();
+    console.log('Inspection synced:', result);
+    return result;
+  } catch (error) {
+    console.error('Sync error:', error);
+    return null;
+  }
 }
