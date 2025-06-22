@@ -1,75 +1,125 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { useState } from 'react';
+import { createClient } from '@supabase/supabase-js';
+import { v4 as uuidv4 } from 'uuid';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-type Props = {
-  userId: string;
-  onCreated: (workOrderId: string) => void;
-};
+export default function CreateWorkOrderForm() {
+  const [customer, setCustomer] = useState('');
+  const [vehicle, setVehicle] = useState('');
+  const [inspection, setInspection] = useState('');
+  const [concerns, setConcerns] = useState<string[]>(['']);
+  const [loading, setLoading] = useState(false);
 
-export default function CreateWorkOrderForm({ userId, onCreated }: Props) {
-  const [vehicleId, setVehicleId] = useState("");
-  const [notes, setNotes] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const handleConcernChange = (index: number, value: string) => {
+    const updated = [...concerns];
+    updated[index] = value;
+    setConcerns(updated);
+  };
 
-  const handleCreate = async () => {
-    if (!vehicleId) return setError("Vehicle ID is required.");
+  const addConcern = () => setConcerns([...concerns, '']);
 
-    const { data, error } = await supabase
-      .from("work_orders")
-      .insert([
-        {
-          user_id: userId,
-          vehicle_id: vehicleId,
-          notes,
-          status: "new",
-        },
-      ])
-      .select()
-      .single();
+  const submitWorkOrder = async () => {
+    setLoading(true);
+    const workOrderId = uuidv4();
 
-    if (error) {
-      console.error(error);
-      setError(error.message);
-    } else {
-      onCreated(data.id);
+    const { error: orderError } = await supabase.from('work_orders').insert({
+      id: workOrderId,
+      customer_name: customer,
+      vehicle_info: vehicle,
+      inspection_type: inspection,
+    });
+
+    if (orderError) {
+      console.error('Failed to create work order:', orderError);
+      setLoading(false);
+      return;
     }
+
+    const lines = concerns
+      .filter((line) => line.trim() !== '')
+      .map((line) => ({
+        id: uuidv4(),
+        work_order_id: workOrderId,
+        description: line,
+      }));
+
+    const { error: linesError } = await supabase
+      .from('work_order_lines')
+      .insert(lines);
+
+    if (linesError) {
+      console.error('Failed to add work order lines:', linesError);
+    }
+
+    setLoading(false);
+    alert('Work order created!');
+    setCustomer('');
+    setVehicle('');
+    setInspection('');
+    setConcerns(['']);
   };
 
   return (
-    <div className="max-w-xl mx-auto p-4 bg-surface border border-muted rounded space-y-4">
-      <h2 className="text-lg font-semibold">Create New Work Order</h2>
-
+    <div className="p-6 max-w-2xl mx-auto bg-black/30 rounded-xl backdrop-blur shadow-lg border border-orange-500">
+      <h2 className="text-2xl font-header text-orange-400 mb-4">Create Work Order</h2>
+      
       <input
         type="text"
-        placeholder="Vehicle ID"
-        value={vehicleId}
-        onChange={(e) => setVehicleId(e.target.value)}
-        className="w-full p-2 border border-muted rounded bg-background"
+        placeholder="Customer Name"
+        value={customer}
+        onChange={(e) => setCustomer(e.target.value)}
+        className="w-full mb-3 px-4 py-2 rounded bg-black/60 border border-orange-400"
+      />
+      
+      <input
+        type="text"
+        placeholder="Vehicle Info"
+        value={vehicle}
+        onChange={(e) => setVehicle(e.target.value)}
+        className="w-full mb-3 px-4 py-2 rounded bg-black/60 border border-orange-400"
       />
 
-      <textarea
-        placeholder="Optional notes"
-        value={notes}
-        onChange={(e) => setNotes(e.target.value)}
-        className="w-full p-2 border border-muted rounded bg-background"
-        rows={3}
-      />
+      <select
+        value={inspection}
+        onChange={(e) => setInspection(e.target.value)}
+        className="w-full mb-3 px-4 py-2 rounded bg-black/60 border border-orange-400"
+      >
+        <option value="">Select Inspection Type</option>
+        <option value="Full Inspection">Full Inspection</option>
+        <option value="Brake Check">Brake Check</option>
+        <option value="Oil Change">Oil Change</option>
+      </select>
+
+      {concerns.map((concern, i) => (
+        <textarea
+          key={i}
+          value={concern}
+          onChange={(e) => handleConcernChange(i, e.target.value)}
+          placeholder={`Concern ${i + 1}`}
+          className="w-full mb-2 px-4 py-2 rounded bg-black/60 border border-orange-400"
+        />
+      ))}
 
       <button
-        onClick={handleCreate}
-        className="px-6 py-2 bg-primary text-white rounded hover:bg-primary-dark"
+        onClick={addConcern}
+        className="mb-4 text-sm text-orange-300 underline"
       >
-        Create Work Order
+        + Add Another Concern
       </button>
 
-      {error && <p className="text-red-500">{error}</p>}
+      <button
+        onClick={submitWorkOrder}
+        disabled={loading}
+        className="w-full py-2 bg-orange-500 hover:bg-orange-600 text-black font-bold rounded"
+      >
+        {loading ? 'Submitting...' : 'Submit Work Order'}
+      </button>
     </div>
   );
 }
