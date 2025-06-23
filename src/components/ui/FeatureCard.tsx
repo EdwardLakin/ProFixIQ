@@ -19,9 +19,10 @@ export default function FeatureCard({
   return (
     <div
       className={cn(
-        'rounded-xl p-5 backdrop-blur-md border bg-neutral-900/50 border-neutral-700 shadow-[0_0_20px_rgba(255,255,255,0.05)] transition-transform hover:scale-[1.02]',
-        'flex flex-col gap-2 items-start text-left font-blackopsone text-white',
-        available ? 'border-green-600' : 'border-red-500 opacity-80',
+        'rounded-xl p-5 backdrop-blur-md border text-white flex flex-col gap-2 items-start text-left font-blackopsone',
+        available
+          ? 'border-green-600'
+          : 'border-red-500 opacity-80',
         className
       )}
     >

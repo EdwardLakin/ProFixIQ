@@ -26,7 +26,7 @@ export interface Database {
           updated_at: string;
         };
         Insert: {
-          id?: string;
+          id: string;
           work_order_id?: string | null;
           vehicle_id?: string | null;
           complaint?: string | null;
@@ -77,7 +77,23 @@ export interface Database {
         ];
       };
 
-      // Add other tables like `vehicles`, `work_orders`, etc. here as needed
+      profiles: {
+        Row: {
+          id: string;
+          plan: 'diy' | 'pro' | 'elite';
+          created_at: string | null;
+        };
+        Insert: {
+          id: string;
+          plan?: 'diy' | 'pro' | 'elite';
+          created_at?: string | null;
+        };
+        Update: {
+          plan?: 'diy' | 'pro' | 'elite';
+          created_at?: string | null;
+        };
+        Relationships: [];
+      };
     };
     Views: {};
     Functions: {};
