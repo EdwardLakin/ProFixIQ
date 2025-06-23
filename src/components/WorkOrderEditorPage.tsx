@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useVehicleInfo } from "@/hooks/useVehicleInfo";
-import { useUser } from "@/hooks/useUser";
+import  useUser from "@/hooks/useUser";
 import { createBrowserClient } from "@supabase/ssr";
 import { MenuItem, WorkOrderLine } from "@/types";
 import WorkOrderLineForm from "@/components/WorkOrderLineEditor";

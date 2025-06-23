@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from '@supabase/auth-helpers-react';
-import { useUser } from '@/hooks/useUser';
+import useUser from '@/hooks/useUser';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import React from 'react';
 

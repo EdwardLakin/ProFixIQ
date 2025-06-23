@@ -1,7 +1,10 @@
-import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+// src/hooks/useUser.ts
+'use client';
 
-export function useUser() {
+import { useEffect, useState } from 'react';
+import supabase from '@/lib/supabaseClient';
+
+export default function useUser() {
   const [user, setUser] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -10,24 +13,55 @@ export function useUser() {
       setIsLoading(true);
 
       const {
-        data: { session },
-      } = await supabase.auth.getSession();
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
 
-      const userId = session?.user?.id;
-
-      if (!userId) {
+      if (userError || !user) {
+        console.error('Error getting user:', userError);
         setUser(null);
         setIsLoading(false);
         return;
       }
 
-      const { data, error } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('*, shop(*)')
-        .eq('id', userId)
+        .select('*')
+        .eq('id', user.id)
         .single();
 
-      setUser(data);
+      if (profileError) {
+        if (profileError.code === 'PGRST116') {
+          // Not found, create new profile
+          const { error: insertError } = await supabase.from('profiles').insert({
+            id: user.id,
+            email: user.email,
+            name: user.user_metadata?.name ?? '',
+            plan: 'diy',
+            shop_name: '',
+            labor_rate: 0,
+            parts_markup: 0,
+            created_at: new Date().toISOString(),
+            shop_id: null,
+            is_active: true,
+          });
+
+          if (insertError) {
+            console.error('Failed to create profile:', insertError);
+            setUser(null);
+            setIsLoading(false);
+            return;
+          }
+
+          setUser({ id: user.id, email: user.email, plan: 'diy' });
+        } else {
+          console.error('Failed to fetch user profile:', profileError);
+          setUser(null);
+        }
+      } else {
+        setUser(profile);
+      }
+
       setIsLoading(false);
     };
 

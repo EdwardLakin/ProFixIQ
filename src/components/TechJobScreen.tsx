@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useUser } from '@/lib/useUser';
+import useUser from '@/hooks/useUser';
 import { createBrowserClient } from '@supabase/ssr';
 import { Database } from '@/types/supabase';
 import JobQueueCard from './JobQueueCard';
