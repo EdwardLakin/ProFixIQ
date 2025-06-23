@@ -1,26 +1,38 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import { createBrowserClient } from "@supabase/ssr";
-import { Database } from "../types/supabase";
-
-const supabase = createBrowserClient<Database>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-);
+import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabaseClient';
 
 export function useUser() {
   const [user, setUser] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const getSession = async () => {
+    const fetchUser = async () => {
+      setIsLoading(true);
+
       const {
         data: { session },
       } = await supabase.auth.getSession();
-      setUser(session?.user ?? null);
+
+      const userId = session?.user?.id;
+
+      if (!userId) {
+        setUser(null);
+        setIsLoading(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*, shop(*)')
+        .eq('id', userId)
+        .single();
+
+      setUser(data);
+      setIsLoading(false);
     };
-    getSession();
+
+    fetchUser();
   }, []);
 
-  return { user };
+  return { user, isLoading };
 }

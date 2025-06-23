@@ -6,40 +6,53 @@ export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
   const supabase = createMiddlewareClient({ req, res });
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  try {
+    // Ensure session is loaded (even if no user logged in)
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
 
-  if (!user) {
-    // User is not signed in
+    const pathname = req.nextUrl.pathname;
+    const PUBLIC_PATHS = ['/', '/sign-in', '/sign-up', '/api', '/thank-you', '/reset-password'];
+
+    if (PUBLIC_PATHS.some(path => pathname.startsWith(path))) {
+      return res;
+    }
+
+    if (!session) {
+      return NextResponse.redirect(new URL('/sign-in', req.url));
+    }
+
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('plan')
+      .eq('id', session.user.id)
+      .single();
+
+    if (error || !profile) {
+      return NextResponse.redirect(new URL('/sign-in', req.url));
+    }
+
+    const plan = profile.plan;
+
+    const restrictedProRoutes = ['/quote', '/inspections'];
+    const restrictedEliteRoutes = ['/quote', '/settings/shop'];
+
+    if (plan === 'diy' && restrictedProRoutes.some(path => pathname.startsWith(path))) {
+      return NextResponse.redirect(new URL('/upgrade', req.url));
+    }
+
+    if (plan === 'pro' && restrictedEliteRoutes.some(path => pathname.startsWith(path))) {
+      return NextResponse.redirect(new URL('/upgrade', req.url));
+    }
+
+    return res;
+  } catch (err) {
+    console.error('Middleware error:', err);
     return NextResponse.redirect(new URL('/sign-in', req.url));
   }
-
-  const { data: profile, error } = await supabase
-    .from('profiles')
-    .select('plan')
-    .eq('id', user.id)
-    .single();
-
-  if (error || !profile) {
-    return NextResponse.redirect(new URL('/sign-in', req.url));
-  }
-
-  const plan = profile.plan;
-
-  // Route-based access control
-  const restrictedProRoutes = ['/work-orders', '/inspections'];
-  const restrictedEliteRoutes = ['/quote', '/settings/shop'];
-
-  // DIY users blocked from Pro+ features
-  if (plan === 'diy' && restrictedProRoutes.some((path) => req.nextUrl.pathname.startsWith(path))) {
-    return NextResponse.redirect(new URL('/upgrade', req.url));
-  }
-
-  // Pro users blocked from Elite features
-  if (plan === 'pro' && restrictedEliteRoutes.some((path) => req.nextUrl.pathname.startsWith(path))) {
-    return NextResponse.redirect(new URL('/upgrade', req.url));
-  }
-
-  return res;
 }
+
+export const config = {
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+};

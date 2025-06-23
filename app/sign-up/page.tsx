@@ -1,49 +1,29 @@
 'use client';
 
 import { useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
 import { useRouter } from 'next/navigation';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+import { supabase } from '@/lib/supabaseClient';
+import Link from 'next/link';
 
 export default function SignUpPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError('');
+    setError(null);
 
-    const { data, error: signUpError } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signUp({
       email,
       password,
     });
 
-    if (signUpError || !data.user) {
-      setError(signUpError?.message || 'Failed to sign up');
-      setLoading(false);
-      return;
-    }
-
-    const { error: profileError } = await supabase.from('profiles').insert([
-      {
-        id: data.user.id,
-        email,
-        name,
-        plan: 'DIY',
-      },
-    ]);
-
-    if (profileError) {
-      setError(profileError.message);
+    if (error) {
+      setError(error.message);
     } else {
       router.push('/');
     }
@@ -51,47 +31,75 @@ export default function SignUpPage() {
     setLoading(false);
   };
 
+  const handleGoogleSignUp = async () => {
+    setLoading(true);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin,
+      },
+    });
+    if (error) setError(error.message);
+    setLoading(false);
+  };
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <div className="w-full max-w-md bg-black/50 border border-orange-500 p-6 rounded-xl shadow-card backdrop-blur-md">
-        <h1 className="text-4xl font-blackops text-orange-500 mb-4 text-center">
-          Create Account
-        </h1>
-        <form onSubmit={handleSignUp} className="space-y-4">
-          <input
-            type="text"
-            className="input"
-            placeholder="Your Name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-          />
-          <input
-            type="email"
-            className="input"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-          <input
-            type="password"
-            className="input"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-          {error && <p className="text-red-500 text-sm">{error}</p>}
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-orange-500 hover:bg-orange-600 text-black font-bold py-2 rounded transition-all duration-200"
-          >
-            {loading ? 'Creating account...' : 'Sign Up'}
-          </button>
-        </form>
+    <div className="flex flex-col items-center justify-center min-h-screen px-4 bg-black text-white">
+      <div className="animate-pulse mb-8 text-4xl font-black tracking-wide text-orange-500">
+        ProFixIQ
       </div>
+
+      <form
+        onSubmit={handleSignUp}
+        className="bg-neutral-900 bg-opacity-60 border border-neutral-700 p-6 rounded w-full max-w-md space-y-4"
+      >
+        <h2 className="text-2xl font-bold mb-2 text-center">Create an Account</h2>
+
+        <input
+          type="email"
+          placeholder="Email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+          className="input"
+        />
+
+        <input
+          type="password"
+          placeholder="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+          className="input"
+        />
+
+        {error && <p className="text-red-500 text-sm">{error}</p>}
+
+        <button
+          type="submit"
+          className="w-full bg-orange-600 hover:bg-orange-700 text-white py-2 rounded"
+          disabled={loading}
+        >
+          {loading ? 'Signing up...' : 'Sign Up'}
+        </button>
+
+        <div className="text-center text-sm text-neutral-400">or</div>
+
+        <button
+          type="button"
+          onClick={handleGoogleSignUp}
+          className="w-full bg-white text-black py-2 rounded font-semibold hover:bg-neutral-200"
+        >
+          Sign Up with Google
+        </button>
+
+        <p className="text-sm text-center text-neutral-400 mt-4">
+          Already have an account?{' '}
+          <Link href="/sign-in" className="text-orange-500 hover:underline">
+            Sign in
+          </Link>
+        </p>
+      </form>
     </div>
   );
 }

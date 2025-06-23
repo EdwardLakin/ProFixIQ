@@ -1,55 +1,52 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@supabase/supabase-js';
+import { useSession } from '@supabase/auth-helpers-react';
+import { useUser } from '@/hooks/useUser';
+import LoadingSpinner from '@/components/ui/LoadingSpinner';
+import React from 'react';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
-
-export default function withAuthAndPlan(
-  Component: React.FC,
-  allowedPlans: string[] = ['Pro', 'Elite']
-) {
-  return function ProtectedPage() {
+export default function withAuthAndPlan<P extends object>(
+  Component: React.ComponentType<P>,
+  requiredPlans: string[] = []
+): React.FC<P> {
+  const WrappedComponent: React.FC<P> = (props: P) => {
+    const session = useSession();
+    const { user, isLoading: userLoading } = useUser();
     const router = useRouter();
-    const [loading, setLoading] = useState(true);
-    const [unauthorized, setUnauthorized] = useState(false);
+
+    const plan = user?.shop?.plan;
+    const isAuthorized =
+      requiredPlans.length === 0 || requiredPlans.includes(plan);
 
     useEffect(() => {
-      const checkAuth = async () => {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-          router.push('/sign-in');
-          return;
-        }
+      if (!session && !userLoading) {
+        router.push('/sign-in');
+      }
+    }, [session, userLoading, router]);
 
-        const { data: profile, error } = await supabase
-          .from('profiles')
-          .select('plan')
-          .eq('id', user.id)
-          .single();
-
-        if (error || !allowedPlans.includes(profile?.plan)) {
-          setUnauthorized(true);
-        }
-
-        setLoading(false);
-      };
-
-      checkAuth();
-    }, [router]);
-
-    if (loading) return <div className="text-white p-6">Loading...</div>;
-    if (unauthorized)
+    if (!session || !user || userLoading) {
       return (
-        <div className="text-red-500 p-6 text-xl">
-          Access Denied: Upgrade your plan to continue.
+        <div className="flex items-center justify-center min-h-screen bg-black">
+          <LoadingSpinner />
         </div>
       );
+    }
 
-    return <Component />;
+    if (!isAuthorized) {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-screen bg-black text-white">
+          <h1 className="text-3xl font-bold">Access Denied</h1>
+          <p className="mt-2 text-lg">
+            Your current plan doesn’t grant access to this feature.
+          </p>
+        </div>
+      );
+    }
+
+    return <Component {...props} />;
   };
+
+  return WrappedComponent;
 }

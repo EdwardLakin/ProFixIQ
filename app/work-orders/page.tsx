@@ -1,35 +1,31 @@
 'use client';
 
-import { withAuthAndPlan } from '@/lib/withAuthAndPlan';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useSession } from '@supabase/auth-helpers-react';
+import withAuthAndPlan from '@/lib/withAuthAndPlan';
 
 function WorkOrdersPage() {
+  const session = useSession();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!session) {
+      router.replace('/sign-in');
+    }
+  }, [session, router]);
+
   return (
-    <div className="min-h-screen px-4 py-10 bg-background text-white">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-4xl font-blackops text-orange-500 text-center mb-8">
-          Work Orders
-        </h1>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-          <a
-            href="/work-orders/create"
-            className="bg-black/30 backdrop-blur-md border border-orange-500 rounded-xl p-6 shadow-card hover:bg-black/50 transition"
-          >
-            <h2 className="text-2xl font-blackops mb-1 text-white">Create Work Order</h2>
-            <p className="text-neutral-300 text-sm">Enter customer and vehicle info, select inspections, and create concern lines.</p>
-          </a>
-
-          <a
-            href="/work-orders/view"
-            className="bg-black/30 backdrop-blur-md border border-orange-500 rounded-xl p-6 shadow-card hover:bg-black/50 transition"
-          >
-            <h2 className="text-2xl font-blackops mb-1 text-white">View Work Orders</h2>
-            <p className="text-neutral-300 text-sm">Review submitted work orders and manage jobs.</p>
-          </a>
-        </div>
-      </div>
+    <div className="min-h-screen p-8 text-white">
+      <h1 className="text-4xl font-blackops text-orange-400 mb-6">
+        Work Orders
+      </h1>
+      <p className="text-lg text-neutral-300">
+        This is where you'll manage all your repair jobs.
+      </p>
+      {/* You can insert table, job queue, or work order cards here */}
     </div>
   );
 }
 
-export default withAuthAndPlan(WorkOrdersPage, ['Pro', 'Pro+']);
+export default withAuthAndPlan(WorkOrdersPage, ['pro', 'proPlus']);
