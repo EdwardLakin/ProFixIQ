@@ -686,6 +686,9 @@ video {
 .max-w-xl {
   max-width: 36rem;
 }
+.max-w-sm {
+  max-width: 24rem;
+}
 .flex-1 {
   flex: 1 1 0%;
 }
@@ -1209,6 +1212,9 @@ video {
 }
 .tracking-wide {
   letter-spacing: 0.025em;
+}
+.tracking-widest {
+  letter-spacing: 0.1em;
 }
 .text-accent {
   --tw-text-opacity: 1;

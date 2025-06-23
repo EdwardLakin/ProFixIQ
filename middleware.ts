@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabaseServer';
-import { Database } from '@/types/supabase';
+import { createSupabaseServerClient } from '@/lib/supabaseServer';
+import type { Database } from '@/types/supabase';
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
-  const supabase = createServerSupabaseClient(req, res);
+  const supabase = createSupabaseServerClient(req, res);
 
   const PUBLIC_PATHS = [
     '/',
@@ -27,7 +27,6 @@ export async function middleware(req: NextRequest) {
       data: { session },
     } = await supabase.auth.getSession();
 
-    // ✅ DEBUG LOGGING
     console.log('✅ SESSION:', session);
     console.log('✅ USER:', session?.user);
 
@@ -40,7 +39,7 @@ export async function middleware(req: NextRequest) {
       error,
     } = await supabase
       .from('profiles')
-      .select('plan')
+      .select('plan, shop(*)')
       .eq('id', session.user.id)
       .single();
 
@@ -53,17 +52,11 @@ export async function middleware(req: NextRequest) {
     const restrictedProRoutes = ['/quote', '/inspections'];
     const restrictedEliteRoutes = ['/quote', '/settings/shop'];
 
-    if (
-      plan === 'diy' &&
-      restrictedProRoutes.some((path) => pathname.startsWith(path))
-    ) {
+    if (plan === 'diy' && restrictedProRoutes.some((path) => pathname.startsWith(path))) {
       return NextResponse.redirect(new URL('/upgrade', req.url));
     }
 
-    if (
-      plan === 'pro' &&
-      restrictedEliteRoutes.some((path) => pathname.startsWith(path))
-    ) {
+    if (plan === 'pro' && restrictedEliteRoutes.some((path) => pathname.startsWith(path))) {
       return NextResponse.redirect(new URL('/upgrade', req.url));
     }
 

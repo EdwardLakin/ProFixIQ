@@ -5,18 +5,17 @@ import { useRouter } from 'next/navigation';
 import { useSession } from '@supabase/auth-helpers-react';
 import useUser from '@/hooks/useUser';
 import LoadingSpinner from '@/components/ui/LoadingSpinner';
-import React from 'react';
 
 export default function withAuthAndPlan<P extends object>(
   Component: React.ComponentType<P>,
   requiredPlans: string[] = []
 ): React.FC<P> {
   const WrappedComponent: React.FC<P> = (props: P) => {
+    const router = useRouter();
     const session = useSession();
     const { user, isLoading: userLoading } = useUser();
-    const router = useRouter();
 
-    const plan = user?.shop?.plan;
+    const plan = user?.plan;
     const isAuthorized =
       requiredPlans.length === 0 || requiredPlans.includes(plan);
 
@@ -26,7 +25,7 @@ export default function withAuthAndPlan<P extends object>(
       }
     }, [session, userLoading, router]);
 
-    if (!session || !user || userLoading) {
+    if (!session || userLoading) {
       return (
         <div className="flex items-center justify-center min-h-screen bg-black">
           <LoadingSpinner />
