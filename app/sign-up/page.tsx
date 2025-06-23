@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import supabase from '@/lib/supabaseClient';
 import Link from 'next/link';
+import supabase from '@/lib/supabaseClient';
 
 export default function SignUpPage() {
   const router = useRouter();
@@ -17,29 +17,24 @@ export default function SignUpPage() {
     setLoading(true);
     setError(null);
 
-    const { error, data: signUpData } = await supabase.auth.signUp({
+    const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
     });
 
-    if (error) {
-      setError(error.message);
+    if (signUpError) {
+      setError(signUpError.message);
       setLoading(false);
       return;
     }
 
-    const user = signUpData?.user;
-
+    const user = data.user;
     if (user) {
-      const { error: profileError } = await supabase.from('profiles').insert([
-        {
-          id: user.id,
-          email: user.email,
-          plan: 'diy', // default
-          is_active: true,
-          created_at: new Date().toISOString(),
-        },
-      ]);
+      const { error: profileError } = await supabase.from('profiles').insert({
+        id: user.id,
+        email: user.email,
+        plan: 'DIY', // default
+      });
 
       if (profileError) {
         setError(profileError.message);
@@ -47,7 +42,7 @@ export default function SignUpPage() {
         return;
       }
 
-      router.push('/');
+      router.push('/onboarding/plan');
     }
 
     setLoading(false);
@@ -61,59 +56,51 @@ export default function SignUpPage() {
         redirectTo: window.location.origin,
       },
     });
+
     if (error) setError(error.message);
     setLoading(false);
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen px-4">
-      <div className="animate-pulse mb-8 text-4xl font-black tracking-widest text-white">
-        ProFixIQ
-      </div>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-black text-white px-4">
+      <div className="animate-pulse mb-8 text-4xl font-black tracking-wider text-orange-500">ProFixIQ</div>
 
-      <form
-        onSubmit={handleSignUp}
-        className="w-full max-w-md bg-neutral-900 bg-opacity-60 p-6 rounded-lg shadow-lg"
-      >
-        <h2 className="text-2xl font-bold mb-4 text-center text-white">
-          Create an Account
-        </h2>
+      <form onSubmit={handleSignUp} className="bg-neutral-900 bg-opacity-60 border border-neutral-700 rounded p-6 w-full max-w-md">
+        <h2 className="text-2xl font-bold mb-2 text-center">Create an Account</h2>
 
         <input
           type="email"
           placeholder="Email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
+          className="input"
           required
-          className="input mb-4"
         />
         <input
           type="password"
           placeholder="Password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
+          className="input"
           required
-          className="input mb-4"
         />
 
-        {error && (
-          <p className="text-red-500 text-sm mb-4 text-center">{error}</p>
-        )}
+        {error && <p className="text-red-500 text-sm">{error}</p>}
 
         <button
           type="submit"
-          className="w-full bg-orange-600 hover:bg-orange-700 text-white py-2 rounded"
           disabled={loading}
+          className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded mt-4"
         >
           {loading ? 'Signing up...' : 'Sign Up'}
         </button>
 
-        <div className="text-center text-sm text-neutral-400 mt-4">or</div>
+        <div className="text-center text-sm text-neutral-400 my-4">or</div>
 
         <button
           type="button"
           onClick={handleGoogleSignUp}
-          className="w-full bg-white text-black py-2 rounded font-semibold mt-2"
+          className="w-full bg-white text-black py-2 px-4 rounded font-semibold"
         >
           Sign Up with Google
         </button>
