@@ -7,31 +7,45 @@ export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
   const supabase = createMiddlewareClient<Database>({ req, res });
 
-  const PUBLIC_PATHS = ['/', '/sign-in', '/sign-up', '/api', '/thank-you', '/reset-password'];
+  const PUBLIC_PATHS = [
+    '/',
+    '/sign-in',
+    '/sign-up',
+    '/thank-you',
+    '/reset-password',
+    '/onboarding/plan',
+    '/onboarding/shop',
+    '/api'
+  ];
+
   const pathname = req.nextUrl.pathname;
 
+  // Allow public paths
   if (PUBLIC_PATHS.some((path) => pathname.startsWith(path))) {
     return res;
   }
 
   try {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+    const { data: session } = await supabase.auth.getSession();
 
-    if (!session) {
+    if (!session || !session.user) {
       return NextResponse.redirect(new URL('/sign-in', req.url));
     }
+
+    const userId = session.user.id;
 
     const { data: profile, error } = await supabase
       .from('profiles')
       .select('plan')
-      .eq('id', session.user.id)
-      .single<Database['public']['Tables']['profiles']['Row']>();
+      .eq('id', userId)
+      .single();
 
     if (error || !profile) {
-      console.error('Middleware profile error:', error);
-      return NextResponse.redirect(new URL('/sign-in', req.url));
+      // Allow access to onboarding if profile doesn't exist yet
+      if (pathname.startsWith('/onboarding')) {
+        return res;
+      }
+      return NextResponse.redirect(new URL('/onboarding/plan', req.url));
     }
 
     const plan = profile.plan;
@@ -54,5 +68,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 };
