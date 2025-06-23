@@ -1,5 +1,5 @@
 import { useSession } from '@supabase/auth-helpers-react';
-import { features, FeatureAccess } from '@/lib/plan/features';
+import { features, type FeatureKey } from '@/lib/plan/features';
 
 interface UseFeatureAccessResult {
   allowed: boolean;
@@ -7,24 +7,23 @@ interface UseFeatureAccessResult {
   reason: string | null;
 }
 
-export function useFeatureAccess(feature: string): UseFeatureAccessResult {
+export function useFeatureAccess(feature: FeatureKey): UseFeatureAccessResult {
   const session = useSession();
-  const plan = session?.user?.user_metadata?.plan;
+  const plan = session?.user?.user_metadata?.plan as 'diy' | 'pro' | 'proPlus' | undefined;
 
-  const featureConfig = features[feature];
+  const featureConfig = features.find((f) => f.key === feature);
 
-  if (!plan || !featureConfig) {
+  if (!featureConfig || !plan) {
     return {
       allowed: false,
       addOnAvailable: false,
-      reason: 'Unknown feature',
+      reason: 'Unknown plan access for feature',
     };
   }
 
-  const access: FeatureAccess = featureConfig[plan as keyof typeof featureConfig];
-
-  const allowed = access?.pro || access?.proPlus || access?.diy || false;
-  const addOnAvailable = access?.addOnAvailable ?? false;
+  const access = featureConfig.access[plan];
+  const allowed = !!access;
+  const addOnAvailable = featureConfig.access.addOnAvailable ?? false;
 
   return {
     allowed,
