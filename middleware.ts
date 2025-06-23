@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabaseServer'; // ✅ NEW SERVER CLIENT
-import { Database } from '@/types/supabase'; // or use `any` if you don't have types
+import { createServerSupabaseClient } from '@/lib/supabaseServer';
+import { Database } from '@/types/supabase';
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
-  const supabase = createServerSupabaseClient(req, res); // ✅ fixed for middleware use
+  const supabase = createServerSupabaseClient(req, res);
 
   const PUBLIC_PATHS = [
     '/',
@@ -17,7 +17,7 @@ export async function middleware(req: NextRequest) {
 
   const pathname = req.nextUrl.pathname;
 
-  // ✅ Allow public paths
+  // ✅ Allow access to public paths
   if (PUBLIC_PATHS.some((path) => pathname.startsWith(path))) {
     return res;
   }
@@ -26,6 +26,10 @@ export async function middleware(req: NextRequest) {
     const {
       data: { session },
     } = await supabase.auth.getSession();
+
+    // ✅ DEBUG LOGGING
+    console.log('✅ SESSION:', session);
+    console.log('✅ USER:', session?.user);
 
     if (!session || !session.user) {
       return NextResponse.redirect(new URL('/sign-in', req.url));
@@ -41,7 +45,7 @@ export async function middleware(req: NextRequest) {
       .single();
 
     if (error || !profile) {
-      console.error('Middleware profile error:', error);
+      console.error('❌ Middleware profile error:', error);
       return NextResponse.redirect(new URL('/sign-in', req.url));
     }
 
@@ -65,19 +69,13 @@ export async function middleware(req: NextRequest) {
 
     return res;
   } catch (err) {
-    console.error('Middleware error:', err);
+    console.error('❌ Middleware error:', err);
     return NextResponse.redirect(new URL('/sign-in', req.url));
   }
 }
 
 export const config = {
   matcher: [
-    /*
-     * Match all routes except:
-     * - _next/static
-     * - _next/image
-     * - favicon.ico
-     */
     '/((?!_next/static|_next/image|favicon.ico).*)',
   ],
 };
