@@ -1,44 +1,60 @@
-import { parseCommand } from './parseCommand';
-import { dispatchCommand } from './dispatchCommand';
-import type {
-  InspectionDraft,
-  InspectionCommand,
-  InspectionActions,
-  ParsedCommand,
-} from './types';
-import synonyms from './synonyms';
+import { InspectionCommand, InspectionAction, InspectionState } from '@/lib/inspection/types';
+import { applyInspectionActions } from '@/lib/inspection/inspectionState';
 
-export function handleInspectionCommand({
-  text,
-  draft,
-  recentActions,
-}: {
-  text: string;
-  draft: InspectionDraft;
-  recentActions: InspectionActions;
-}): {
-  updatedDraft: InspectionDraft;
-  updatedActions: InspectionActions;
-  parsed: ParsedCommand;
-  command: InspectionCommand;
-} {
-  const parsed = parseCommand(text);
+export function handleInspectionCommand(
+  command: InspectionCommand,
+  state: InspectionState
+): InspectionState {
+  const actions: InspectionAction[] = [];
 
-  const command: InspectionCommand = {
-    type: parsed.type,
-    section2: parsed.section2 || '',
-    item2: parsed.item2 || '',
-    status2: parsed.status2 || '',
-    notes2: parsed.notes2 || '',
-    measurement2: parsed.measurement2 || '',
-  };
+  switch (command.type) {
+    case 'add':
+      actions.push({
+        type: 'setStatus',
+        section: command.section,
+        item: command.item,
+        status: 'fail',
+        note: command.note,
+      });
+      break;
 
-  const { updatedDraft, updatedActions } = dispatchCommand(draft, command);
+    case 'recommend':
+      actions.push({
+        type: 'setStatus',
+        section: command.section,
+        item: command.item,
+        status: 'recommend',
+        note: command.note,
+      });
+      break;
 
-  return {
-    updatedDraft,
-    updatedActions,
-    parsed,
-    command,
-  };
+    case 'measurement':
+      actions.push({
+        type: 'setMeasurement',
+        section: command.section,
+        item: command.item,
+        value: command.value,
+        unit: command.unit,
+      });
+      break;
+
+    case 'na':
+      actions.push({
+        type: 'setStatus',
+        section: command.section,
+        item: command.item,
+        status: 'na',
+      });
+      break;
+
+    case 'pause':
+      actions.push({ type: 'pauseInspection' });
+      break;
+
+    case 'resume':
+      actions.push({ type: 'resumeInspection' });
+      break;
+  }
+
+  return applyInspectionActions(state, actions);
 }

@@ -1,5 +1,5 @@
 import { features } from '@/lib/plan/features';
-import { useFeatureAccess } from '@/lib/hooks/useFeatureAccess';
+import { useFeatureAccess } from '@/hooks/useFeatureAccess';
 import FeatureCard from '@/components/ui/FeatureCard';
 
 export default function FeaturesPage() {

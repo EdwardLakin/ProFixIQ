@@ -1,17 +1,19 @@
-import { parseCommand } from './parseCommand';
-import { applyInspectionActions } from './applyInspectionActions';
-import type { InspectionState, ParsedCommand } from './types';
-import { processParsedCommand } from './commandProcessor';
+import { InspectionCommand } from './types';
+import { parseAddCommand } from '@/lib/inspection/parsers/parseAddCommand';
+import { parseRecommendCommand } from '@/lib/inspection/parsers/parseRecommendCommand';
+import { parseMeasurementCommand } from '@lib/inspection/parsers/parseMeasurementCommand';
+import { parseNACommand } from '@lib/inspection/parsers/parseNACommand';
+import { parsePauseCommand } from './parsers/parsePauseCommand';
 
-export function processCommand(
-  input: string,
-  state: InspectionState
-): InspectionState {
-  const parsedCommand: ParsedCommand = parseCommand(input);
+export function processCommand(input: string): InspectionCommand | null {
+  const trimmed = input.trim().toLowerCase();
 
-  const actions = processParsedCommand(parsedCommand, state);
-
-  const updatedState = applyInspectionActions(state, actions);
-
-  return updatedState;
+  return (
+    parseAddCommand(trimmed) ||
+    parseRecommendCommand(trimmed) ||
+    parseMeasurementCommand(trimmed) ||
+    parseNACommand(trimmed) ||
+    parsePauseCommand(trimmed) ||
+    null
+  );
 }

@@ -1,39 +1,18 @@
-const synonyms: Record<string, string> = {
-  // Tire synonyms
-  "lf tire": "left front tire",
-  "rf tire": "right front tire",
-  "lr tire": "left rear tire",
-  "rr tire": "right rear tire",
-  "spare": "spare tire",
-
-  // Lights
-  "left signal": "left turn signal",
-  "right signal": "right turn signal",
-  "high beam": "high beam headlight",
-  "low beam": "low beam headlight",
-
-  // Brake components
-  "front pads": "front brake pads",
-  "rear pads": "rear brake pads",
-  "rotors": "brake rotors",
-
-  // Suspension / Steering
-  "tie rod": "tie rod end",
-  "ball joint": "lower ball joint",
-
-  // Driveline
-  "u-joint": "universal joint",
-  "hanger bearing": "driveshaft hanger bearing",
-
-  // Measurements
-  "tread": "tire tread depth",
-  "pressure": "tire pressure",
-
-  // Generic references
-  "lf": "left front",
-  "rf": "right front",
-  "lr": "left rear",
-  "rr": "right rear",
+export const synonymMap: Record<string, { section: string; item: string }> = {
+  'brake pads': { section: 'Brakes', item: 'Brake Pads' },
+  'front brakes': { section: 'Brakes', item: 'Front Brake Pads' },
+  'rear brakes': { section: 'Brakes', item: 'Rear Brake Pads' },
+  'oil': { section: 'Engine', item: 'Engine Oil' },
+  'engine oil': { section: 'Engine', item: 'Engine Oil' },
+  'air filter': { section: 'Engine', item: 'Air Filter' },
+  'cabin filter': { section: 'HVAC', item: 'Cabin Air Filter' },
+  'alignment': { section: 'Suspension', item: 'Wheel Alignment' },
+  'battery': { section: 'Electrical', item: 'Battery' },
+  'tire tread': { section: 'Tires', item: 'Tire Tread Depth' },
+  'coolant': { section: 'Cooling', item: 'Coolant Level' },
 };
 
-export default synonyms;
+export function resolveSynonym(rawInput: string): { section: string; item: string } | null {
+  const normalized = rawInput.toLowerCase().trim();
+  return synonymMap[normalized] || null;
+}
