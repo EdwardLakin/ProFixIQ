@@ -1,33 +1,37 @@
-import { InspectionState } from '@lib/inspection/types';
-import { loadInspectionState } from '@lib/inspection/inspectionState';
+import type { InspectionState, InspectionSection, InspectionItem, SummaryLine } from './types';
 
-export interface InspectionSummaryItem {
-  section: string;
-  item: string;
-  status: string;
-  note?: string;
-  measurement?: string;
-}
+export function generateInspectionSummary(state: InspectionState): SummaryLine[] {
+  const lines = state.sections.flatMap((section: InspectionSection) =>
+    section.items.map((item: InspectionItem): SummaryLine => {
+      let status: SummaryLine['status'];
 
-export function generateInspectionSummary(): InspectionSummaryItem[] {
-  const inspection: InspectionState | null = loadInspectionState();
-  if (!inspection) return [];
+      switch (item.status.toLowerCase()) {
+        case 'ok':
+        case 'good':
+        case 'pass':
+        case 'passed':
+          status = 'ok';
+          break;
+        case 'fail':
+        case 'failed':
+          status = 'fail';
+          break;
+        case 'na':
+        case 'n/a':
+          status = 'na';
+          break;
+        default:
+          status = 'ok';
+      }
 
-  const summary: InspectionSummaryItem[] = [];
+      return {
+        section: section.title,
+        item: item.item,
+        status,
+        note: item.note || '',
+      };
+    })
+  );
 
-  for (const [section, items] of Object.entries(inspection.sections)) {
-    for (const [item, result] of Object.entries(items)) {
-      summary.push({
-        section,
-        item,
-        status: result.status,
-        note: result.notes?.[0],
-        measurement: result.measurement
-          ? `${result.measurement.value} ${result.measurement.unit}`
-          : undefined,
-      });
-    }
-  }
-
-  return summary;
+  return lines;
 }
