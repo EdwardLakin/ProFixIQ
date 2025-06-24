@@ -33,7 +33,7 @@ export default function SignUpPage() {
       const { error: profileError } = await supabase.from('profiles').insert({
         id: user.id,
         email: user.email,
-        plan: 'DIY', // default
+        plan: 'diy', // default
       });
 
       if (profileError) {
