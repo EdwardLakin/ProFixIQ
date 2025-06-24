@@ -1,26 +1,11 @@
-// lib/inspection/types.ts
-
-export type InspectionResult = {
-  status: 'ok' | 'fail' | 'na';
-  notes: string[];
-  measurement?: {
-    value: number;
-    unit: string;
-  };
-};
-
-export type InspectionState = {
-  startedAt: string;
-  updatedAt: string;
-  sections: Record<string, Record<string, InspectionResult>>;
-};
+export type InspectionStatus = 'ok' | 'fail' | 'na';
 
 export type InspectionAction =
   | {
       type: 'setStatus';
       section: string;
       item: string;
-      status: 'ok' | 'fail' | 'na';
+      status: InspectionStatus;
       note?: string;
     }
   | {
@@ -35,14 +20,40 @@ export type InspectionAction =
       item: string;
       value: number;
       unit: string;
+    }
+  | {
+      type: 'pause';
+    }
+  | {
+      type: 'stop';
     };
 
 export type InspectionCommand = {
-  type: 'add' | 'recommend' | 'measurement' | 'na' | 'pause';
-  section: string;
-  item: string;
-  action: 'ok' | 'fail' | 'na' | 'recommend' | 'measure';
-  note?: string;
+  type: 'ok' | 'fail' | 'na' | 'recommend' | 'measure' | 'pause' | 'stop';
+  section?: string;
+  item?: string;
   value?: number;
   unit?: string;
+  note?: string;
+};
+
+export type InspectionResult = {
+  status: InspectionStatus;
+  notes: string[];
+  measurement?: {
+    value: number;
+    unit: string;
+  };
+};
+
+export type InspectionSection = {
+  [item: string]: InspectionResult;
+};
+
+export type InspectionState = {
+  startedAt: string;
+  updatedAt: string;
+  sections: {
+    [section: string]: InspectionSection;
+  };
 };

@@ -1,24 +1,18 @@
-// lib/inspection/summary.ts
+import { InspectionState, InspectionResult } from '@/lib/inspection/types';
 
-import type { InspectionState } from '@/lib/inspection/types';
-
-export function generateInspectionSummary(state: InspectionState): string {
+export function summarizeInspection(state: InspectionState): string {
   const lines: string[] = [];
 
   for (const [section, items] of Object.entries(state.sections)) {
-    lines.push(`\n🔧 ${section}:\n`);
-
     for (const [item, result] of Object.entries(items)) {
-      const { status, notes, measurement } = result;
+      if (!result || result.status === 'ok') continue;
 
-      let line = `• ${item}: ${status.toUpperCase()}`;
-
-      if (measurement) {
-        line += ` (${measurement.value} ${measurement.unit})`;
+      let line = `${item}: ${result.status.toUpperCase()}`;
+      if (result.notes?.length) {
+        line += ` – ${result.notes.join('; ')}`;
       }
-
-      if (notes?.length) {
-        line += ` — Notes: ${notes.join('; ')}`;
+      if (result.measurement) {
+        line += ` (${result.measurement.value} ${result.measurement.unit || ''})`;
       }
 
       lines.push(line);

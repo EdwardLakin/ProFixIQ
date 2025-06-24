@@ -1,84 +1,46 @@
-// lib/inspection/inspectionState.ts
-
-import type {
-  InspectionState,
-  InspectionAction,
-  InspectionResult,
-} from '@/lib/inspection/types';
-import { createMaintenance50PointInspection } from '@/lib/inspection/templates/maintenance50Point';
-
-export function createEmptyInspection(): InspectionState {
-  return {
-    startedAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    sections: {},
-  };
-}
-
-export function initialInspectionState(): InspectionState {
-  return createMaintenance50PointInspection();
-}
+import { InspectionAction, InspectionState } from './types';
 
 export function applyInspectionActions(
   state: InspectionState,
   actions: InspectionAction[]
 ): InspectionState {
-  const newState: InspectionState = JSON.parse(JSON.stringify(state));
+  const newState = structuredClone(state);
+  newState.updatedAt = new Date().toISOString();
 
   for (const action of actions) {
     switch (action.type) {
       case 'setStatus': {
         const { section, item, status, note } = action;
-        if (!newState.sections[section]) newState.sections[section] = {};
-        if (!newState.sections[section][item])
-          newState.sections[section][item] = {
-            status: 'ok',
-            notes: [],
-          };
-
-        newState.sections[section][item].status = status;
-
-        if (note) {
-          newState.sections[section][item].notes =
-            newState.sections[section][item].notes || [];
-          newState.sections[section][item].notes.push(note);
+        const target = newState.sections[section]?.[item];
+        if (target) {
+          target.status = status;
+          if (note) target.notes.push(note);
         }
         break;
       }
 
       case 'addNote': {
         const { section, item, note } = action;
-        if (!newState.sections[section]) newState.sections[section] = {};
-        if (!newState.sections[section][item])
-          newState.sections[section][item] = {
-            status: 'ok',
-            notes: [],
-          };
-
-        newState.sections[section][item].notes =
-          newState.sections[section][item].notes || [];
-        newState.sections[section][item].notes.push(note);
+        const target = newState.sections[section]?.[item];
+        if (target) target.notes.push(note);
         break;
       }
 
       case 'setMeasurement': {
         const { section, item, value, unit } = action;
-        if (!newState.sections[section]) newState.sections[section] = {};
-        if (!newState.sections[section][item])
-          newState.sections[section][item] = {
-            status: 'ok',
-            notes: [],
-          };
-
-        newState.sections[section][item].measurement = {
-          value,
-          unit,
-        };
+        const target = newState.sections[section]?.[item];
+        if (target) {
+          target.measurement = { value, unit };
+        }
         break;
       }
+
+      case 'pause':
+      case 'stop':
+        // These actions may trigger app behavior elsewhere, not state mutation
+        break;
     }
   }
 
-  newState.updatedAt = new Date().toISOString();
   return newState;
 }

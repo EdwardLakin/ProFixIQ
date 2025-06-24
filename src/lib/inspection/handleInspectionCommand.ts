@@ -1,43 +1,50 @@
-// lib/inspection/handleInspectionCommand.ts
-
 import type {
   InspectionState,
   InspectionCommand,
   InspectionAction,
-} from '@/lib/inspection/types';
+} from './types';
 
 export default function handleInspectionCommand(
   state: InspectionState,
   command: InspectionCommand
 ): InspectionAction[] {
-  const { section, item, action, note, value, unit } = command;
+  const { section, item, note, value, unit, type } = command;
 
   const actions: InspectionAction[] = [];
 
-  switch (action) {
+  switch (type) {
     case 'ok':
     case 'fail':
     case 'na':
-      actions.push({
-        type: 'setStatus',
-        section,
-        item,
-        status: action,
-        note,
-      });
+      if (section && item) {
+        actions.push({
+          type: 'setStatus',
+          section,
+          item,
+          status: type === 'na' ? 'na' : type,
+          note,
+        });
+      }
       break;
 
     case 'recommend':
-      actions.push({
-        type: 'addNote',
-        section,
-        item,
-        note: note || 'Recommended for future service',
-      });
+      if (section && item) {
+        actions.push({
+          type: 'addNote',
+          section,
+          item,
+          note: note ?? 'Recommended for future service',
+        });
+      }
       break;
 
     case 'measure':
-      if (typeof value === 'number' && unit) {
+      if (
+        section &&
+        item &&
+        typeof value === 'number' &&
+        typeof unit === 'string'
+      ) {
         actions.push({
           type: 'setMeasurement',
           section,
@@ -46,6 +53,14 @@ export default function handleInspectionCommand(
           unit,
         });
       }
+      break;
+
+    case 'pause':
+      actions.push({ type: 'pause' });
+      break;
+
+    case 'stop':
+      actions.push({ type: 'stop' });
       break;
   }
 

@@ -1,5 +1,3 @@
-// lib/inspection/dispatchCommand.ts
-
 import type { InspectionState, InspectionCommand } from '@/lib/inspection/types';
 import handleInspectionCommand from '@/lib/inspection/handleInspectionCommand';
 import { applyInspectionActions } from '@/lib/inspection/inspectionState';
