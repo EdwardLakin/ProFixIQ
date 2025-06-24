@@ -1,164 +1,105 @@
 'use client';
 
-import { useState } from 'react';
-import { dispatchCommand } from '@/lib/inspection/dispatchCommand';
-import { generateInspectionSummary } from '@/lib/inspection/summary';
-import { createMaintenance50PointInspection } from '@/lib/inspection/templates/maintenance50Point';
-import type { InspectionState } from '@/lib/inspection/types';
+import { useEffect, useState } from 'react';
+import { initialInspectionState, updateInspectionItem } from '@/lib/inspection/inspectionState';
 import useVoiceInput from '@/lib/inspection/useVoiceInput';
 import { interpretInspectionVoice } from '@/lib/inspection/aiInterpreter';
 
 export default function InspectionPage() {
-  const [inspectionStarted, setInspectionStarted] = useState(false);
-  const [state, setState] = useState<InspectionState | null>(null);
+  const [state, setState] = useState(initialInspectionState());
   const [input, setInput] = useState('');
-  const [summary, setSummary] = useState<string | null>(null);
+  const [listening, setListening] = useState(false);
 
-  const handleVoiceCommand = async (text: string) => {
-    if (!state || !text.trim()) return;
-
-    try {
-      const interpreted = await interpretInspectionVoice(text);
-      const updated = await dispatchCommand(text, state);
-      setState(updated);
-      setSummary(null);
-
-      // Log suggested repair for now
-      if (interpreted.repairLine || interpreted.partSuggestion) {
-        console.log('🛠️ Suggested Repair:', interpreted.repairLine);
-        console.log('🔧 Part:', interpreted.partSuggestion);
-        console.log('⏱️ Labor:', interpreted.laborHours);
-      }
-    } catch (err) {
-      console.error('Voice interpretation failed:', err);
+  const handleCommand = async (command: string) => {
+    const interpreted = await interpretInspectionVoice(command);
+    if (interpreted.section && interpreted.item) {
+      setState(prev =>
+        updateInspectionItem(prev, interpreted.section, interpreted.item, {
+          status: interpreted.type === 'na' ? 'n/a' : interpreted.type === 'recommend' ? 'recommended' : interpreted.type === 'add' ? 'fail' : 'ok',
+          notes: interpreted.note ? [interpreted.note] : [],
+          measurement: interpreted.value ? { value: interpreted.value, unit: interpreted.unit || '' } : undefined,
+        })
+      );
     }
   };
 
-  const { listening, start, stop } = useVoiceInput(handleVoiceCommand);
+  const { start, stop } = useVoiceInput(handleCommand, setListening);
 
-  const handleStart = () => {
-    setState(createMaintenance50PointInspection());
-    setInspectionStarted(true);
-    setSummary(null);
-    setInput('');
+  const handleStatusChange = (section: string, item: string, status: string) => {
+    setState(prev => updateInspectionItem(prev, section, item, { status }));
   };
 
-  const handleSubmit = async () => {
-    if (!input.trim() || !state) return;
-    const updated = await dispatchCommand(input, state);
-    setState(updated);
-    setInput('');
-    setSummary(null);
+  const handleNoteChange = (section: string, item: string, note: string) => {
+    setState(prev => updateInspectionItem(prev, section, item, { notes: [note] }));
   };
 
-  const handleFinish = () => {
-    if (!state) return;
-
-    const updatedState = { ...state };
-
-    for (const [section, items] of Object.entries(updatedState.sections)) {
-      for (const [item, result] of Object.entries(items)) {
-        if (!(result.status as string)) {
-          result.status = 'ok';
-        }
-      }
+  const handleSubmit = () => {
+    if (input.trim()) {
+      handleCommand(input.trim());
+      setInput('');
     }
-
-    setState(updatedState);
-    setSummary(generateInspectionSummary(updatedState));
   };
 
   return (
-    <div className="min-h-screen bg-black text-white font-blackopsone px-4 py-6">
-      <div className="max-w-4xl mx-auto bg-white/5 backdrop-blur-md rounded-xl p-6 shadow-md border border-white/10">
-        <h1 className="text-3xl mb-6 text-center tracking-wide">Maintenance Inspection</h1>
+    <main className="min-h-screen bg-black text-white p-6 font-sans">
+      <div className="max-w-4xl mx-auto bg-white/10 border border-white/20 rounded-xl p-6 shadow-xl backdrop-blur">
+        <h1 className="text-3xl font-bold font-blackops mb-4 text-center text-orange-400">Maintenance Inspection</h1>
 
-        {!inspectionStarted ? (
-          <div className="text-center">
-            <button
-              onClick={handleStart}
-              className="px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded font-bold"
-            >
-              Start Inspection
-            </button>
-          </div>
-        ) : (
-          <>
-            <div className="flex flex-col md:flex-row gap-4 mb-4">
-              <input
-                type="text"
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                placeholder="Enter inspection command"
-                className="flex-1 px-4 py-3 rounded-md bg-white/10 text-white placeholder-white/50 border border-white/20 focus:outline-none"
-              />
-              <button
-                onClick={handleSubmit}
-                className="px-6 py-3 rounded-md bg-orange-600 hover:bg-orange-700 transition text-white font-bold"
-              >
-                Submit
-              </button>
-            </div>
+        <div className="flex items-center gap-3 mb-4">
+          <input
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            placeholder="Enter inspection command"
+            className="flex-1 rounded bg-black border border-white/20 p-2 text-white placeholder:text-gray-400"
+          />
+          <button onClick={handleSubmit} className="bg-orange-600 hover:bg-orange-700 px-4 py-2 rounded text-white font-bold">Submit</button>
+        </div>
 
-            <div className="flex justify-between items-center mb-6">
-              <button
-                onClick={listening ? stop : start}
-                className={`px-6 py-3 rounded-md font-bold transition ${
-                  listening
-                    ? 'bg-red-600 hover:bg-red-700'
-                    : 'bg-green-600 hover:bg-green-700'
-                } text-white`}
-              >
-                {listening ? '⏹ Stop Listening' : '🎙 Start Listening'}
-              </button>
+        <div className="flex gap-3 mb-6">
+          {!listening ? (
+            <button onClick={start} className="bg-green-600 hover:bg-green-700 px-4 py-2 rounded text-white font-bold">🎙 Start Inspection</button>
+          ) : (
+            <button onClick={stop} className="bg-yellow-600 hover:bg-yellow-700 px-4 py-2 rounded text-white font-bold">⏸ Pause Inspection</button>
+          )}
+          <button onClick={() => console.log(state)} className="bg-orange-600 hover:bg-orange-700 px-4 py-2 rounded text-white font-bold">Finish Inspection</button>
+        </div>
 
-              <button
-                onClick={handleFinish}
-                className="py-3 px-6 bg-orange-500 hover:bg-orange-600 transition text-white rounded-md font-bold"
-              >
-                Finish Inspection
-              </button>
-            </div>
-
-            {state && (
-              <>
-                <div>
-                  <h2 className="text-xl mb-3 border-b border-white/10 pb-1">Inspection Results</h2>
-                  {Object.entries(state.sections).map(([section, items]) => (
-                    <div key={section} className="mb-4">
-                      <h3 className="text-lg font-semibold mb-1 text-orange-400">{section}</h3>
-                      <ul className="pl-5 space-y-1 list-disc text-sm">
-                        {Object.entries(items).map(([item, result]) => (
-                          <li key={item}>
-                            <strong>{item}:</strong>{' '}
-                            <span className="capitalize">{result.status}</span>
-                            {result.notes?.length && (
-                              <span> — {result.notes.join('; ')}</span>
-                            )}
-                            {result.measurement && (
-                              <span>
-                                {' '}
-                                — {result.measurement.value} {result.measurement.unit}
-                              </span>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
+        <div className="space-y-6">
+          {Object.entries(state.sections).map(([section, items]) => (
+            <div key={section}>
+              <h2 className="text-xl font-bold text-orange-400 mb-2">{section}</h2>
+              <ul className="space-y-2">
+                {Object.entries(items).map(([item, result]) => (
+                  <li key={item} className="bg-white/5 rounded p-3 flex flex-col md:flex-row md:items-center md:justify-between">
+                    <div className="font-semibold capitalize">{item}</div>
+                    <div className="flex items-center gap-2 mt-2 md:mt-0">
+                      {['ok', 'fail', 'n/a'].map(status => (
+                        <button
+                          key={status}
+                          onClick={() => handleStatusChange(section, item, status)}
+                          className={`px-2 py-1 rounded text-sm font-semibold ${
+                            result.status === status
+                              ? 'bg-orange-600 text-white'
+                              : 'bg-white/10 hover:bg-white/20 text-white'
+                          }`}
+                        >
+                          {status.toUpperCase()}
+                        </button>
+                      ))}
+                      <input
+                        placeholder="Note"
+                        className="ml-2 rounded bg-black/30 border border-white/20 px-2 py-1 text-white text-sm"
+                        value={result.notes?.[0] || ''}
+                        onChange={e => handleNoteChange(section, item, e.target.value)}
+                      />
                     </div>
-                  ))}
-                </div>
-
-                {summary && (
-                  <div className="mt-6 p-4 bg-white/10 border border-white/20 rounded-lg">
-                    <h2 className="text-xl font-semibold mb-2 text-orange-400">Inspection Summary</h2>
-                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{summary}</p>
-                  </div>
-                )}
-              </>
-            )}
-          </>
-        )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
       </div>
-    </div>
+    </main>
   );
 }

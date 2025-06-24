@@ -1,48 +1,33 @@
-// -----------------
-// Inspection Commands
-// -----------------
-export type InspectionCommand =
-  | {
-      type: 'add';
-      section: string;
-      item: string;
-      note?: string;
-    }
-  | {
-      type: 'recommend';
-      section: string;
-      item: string;
-      note?: string;
-    }
-  | {
-      type: 'measurement';
-      section: string;
-      item: string;
-      value: number;
-      unit: string;
-    }
-  | {
-      type: 'na';
-      section: string;
-      item: string;
-    }
-  | {
-      type: 'pause';
-    }
-  | {
-      type: 'resume';
-    };
+// lib/inspection/types.ts
 
-// -----------------
-// Actions to Apply to State
-// -----------------
+export type InspectionResult = {
+  status: 'ok' | 'fail' | 'na';
+  notes: string[];
+  measurement?: {
+    value: number;
+    unit: string;
+  };
+};
+
+export type InspectionState = {
+  startedAt: string;
+  updatedAt: string;
+  sections: Record<string, Record<string, InspectionResult>>;
+};
+
 export type InspectionAction =
   | {
       type: 'setStatus';
       section: string;
       item: string;
-      status: 'ok' | 'fail' | 'recommend' | 'na' | 'measured';
+      status: 'ok' | 'fail' | 'na';
       note?: string;
+    }
+  | {
+      type: 'addNote';
+      section: string;
+      item: string;
+      note: string;
     }
   | {
       type: 'setMeasurement';
@@ -50,32 +35,14 @@ export type InspectionAction =
       item: string;
       value: number;
       unit: string;
-    }
-  | { type: 'pauseInspection' }
-  | { type: 'resumeInspection' };
-
-// -----------------
-// Result per Item
-// -----------------
-export interface InspectionResult {
-  status: 'ok' | 'fail' | 'recommend' | 'na' | 'measured';
-  notes?: string[];
-  measurement?: {
-    value: number;
-    unit: string;
-  };
-}
-
-// -----------------
-// Entire State Tree
-// -----------------
-export interface InspectionState {
-  sections: {
-    [sectionName: string]: {
-      [itemName: string]: InspectionResult;
     };
-  };
-  paused: boolean;
-  startedAt: string;
-  updatedAt: string;
-}
+
+export type InspectionCommand = {
+  type: 'add' | 'recommend' | 'measurement' | 'na' | 'pause';
+  section: string;
+  item: string;
+  action: 'ok' | 'fail' | 'na' | 'recommend' | 'measure';
+  note?: string;
+  value?: number;
+  unit?: string;
+};

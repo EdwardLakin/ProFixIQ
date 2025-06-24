@@ -1,17 +1,13 @@
-import { InspectionCommand, InspectionState } from '@/lib/inspection/types';
-import { processCommand } from '@/lib/inspection/processCommand';
-import { handleInspectionCommand } from '@/lib/inspection/handleInspectionCommand';
+// lib/inspection/dispatchCommand.ts
 
-export async function dispatchCommand(
-  input: string,
-  state: InspectionState
-): Promise<InspectionState> {
-  const parsed: InspectionCommand | null = processCommand(input);
-  if (!parsed) {
-    console.warn('Unrecognized command:', input);
-    return state;
-  }
+import type { InspectionState, InspectionCommand } from '@/lib/inspection/types';
+import handleInspectionCommand from '@/lib/inspection/handleInspectionCommand';
+import { applyInspectionActions } from '@/lib/inspection/inspectionState';
 
-  const newState = handleInspectionCommand(parsed, state);
-  return newState;
+export function dispatchInspectionCommand(
+  state: InspectionState,
+  command: InspectionCommand
+): InspectionState {
+  const actions = handleInspectionCommand(state, command);
+  return applyInspectionActions(state, actions);
 }

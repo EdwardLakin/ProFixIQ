@@ -1,60 +1,53 @@
-import { InspectionCommand, InspectionAction, InspectionState } from '@/lib/inspection/types';
-import { applyInspectionActions } from '@/lib/inspection/inspectionState';
+// lib/inspection/handleInspectionCommand.ts
 
-export function handleInspectionCommand(
-  command: InspectionCommand,
-  state: InspectionState
-): InspectionState {
+import type {
+  InspectionState,
+  InspectionCommand,
+  InspectionAction,
+} from '@/lib/inspection/types';
+
+export default function handleInspectionCommand(
+  state: InspectionState,
+  command: InspectionCommand
+): InspectionAction[] {
+  const { section, item, action, note, value, unit } = command;
+
   const actions: InspectionAction[] = [];
 
-  switch (command.type) {
-    case 'add':
+  switch (action) {
+    case 'ok':
+    case 'fail':
+    case 'na':
       actions.push({
         type: 'setStatus',
-        section: command.section,
-        item: command.item,
-        status: 'fail',
-        note: command.note,
+        section,
+        item,
+        status: action,
+        note,
       });
       break;
 
     case 'recommend':
       actions.push({
-        type: 'setStatus',
-        section: command.section,
-        item: command.item,
-        status: 'recommend',
-        note: command.note,
+        type: 'addNote',
+        section,
+        item,
+        note: note || 'Recommended for future service',
       });
       break;
 
-    case 'measurement':
-      actions.push({
-        type: 'setMeasurement',
-        section: command.section,
-        item: command.item,
-        value: command.value,
-        unit: command.unit,
-      });
-      break;
-
-    case 'na':
-      actions.push({
-        type: 'setStatus',
-        section: command.section,
-        item: command.item,
-        status: 'na',
-      });
-      break;
-
-    case 'pause':
-      actions.push({ type: 'pauseInspection' });
-      break;
-
-    case 'resume':
-      actions.push({ type: 'resumeInspection' });
+    case 'measure':
+      if (typeof value === 'number' && unit) {
+        actions.push({
+          type: 'setMeasurement',
+          section,
+          item,
+          value,
+          unit,
+        });
+      }
       break;
   }
 
-  return applyInspectionActions(state, actions);
+  return actions;
 }

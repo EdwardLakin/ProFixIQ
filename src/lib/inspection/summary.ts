@@ -1,37 +1,29 @@
-import { InspectionState } from '@/lib/inspection/types';
+// lib/inspection/summary.ts
+
+import type { InspectionState } from '@/lib/inspection/types';
 
 export function generateInspectionSummary(state: InspectionState): string {
   const lines: string[] = [];
 
   for (const [section, items] of Object.entries(state.sections)) {
+    lines.push(`\n🔧 ${section}:\n`);
+
     for (const [item, result] of Object.entries(items)) {
-      const prefix = `${item} (${section})`;
+      const { status, notes, measurement } = result;
 
-      switch (result.status) {
-        case 'fail':
-          lines.push(`${prefix} failed${result.notes?.length ? `: ${result.notes.join('; ')}` : '.'}`);
-          break;
+      let line = `• ${item}: ${status.toUpperCase()}`;
 
-        case 'recommend':
-          lines.push(`${prefix} was recommended${result.notes?.length ? `: ${result.notes.join('; ')}` : '.'}`);
-          break;
-
-        case 'na':
-          lines.push(`${prefix} was marked not applicable.`);
-          break;
-
-        case 'measured':
-          if (result.measurement) {
-            lines.push(`${prefix} measured at ${result.measurement.value} ${result.measurement.unit}.`);
-          }
-          break;
-
-        case 'ok':
-          // We don’t mention OK items in the summary
-          break;
+      if (measurement) {
+        line += ` (${measurement.value} ${measurement.unit})`;
       }
+
+      if (notes?.length) {
+        line += ` — Notes: ${notes.join('; ')}`;
+      }
+
+      lines.push(line);
     }
   }
 
-  return lines.join(' ');
+  return lines.join('\n');
 }

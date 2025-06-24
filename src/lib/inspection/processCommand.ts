@@ -1,4 +1,4 @@
-import { InspectionCommand } from './types';
+import { InspectionCommand } from '@/lib/inspection/types';
 import { parseAddCommand } from '@/lib/inspection/parsers/parseAddCommand';
 import { parseRecommendCommand } from '@/lib/inspection/parsers/parseRecommendCommand';
 import { parseMeasurementCommand } from '@lib/inspection/parsers/parseMeasurementCommand';

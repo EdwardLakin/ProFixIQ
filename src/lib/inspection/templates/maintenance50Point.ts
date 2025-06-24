@@ -1,84 +1,83 @@
-import { InspectionState } from '@/lib/inspection/types';
+import type { InspectionState, InspectionResult } from '@/lib/inspection/types';
+
+const empty: InspectionResult = {
+  status: 'ok',
+  notes: [],
+};
 
 export function createMaintenance50PointInspection(): InspectionState {
-  const now = new Date().toISOString();
-
-  const items = (items: string[]) =>
-    Object.fromEntries(items.map((item) => [item, { status: 'ok' }]));
-
   return {
-    startedAt: now,
-    updatedAt: now,
-    paused: false,
+    startedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
     sections: {
-      'Engine Bay': items([
-        'Engine Oil',
-        'Oil Filter',
-        'Air Filter',
-        'Cabin Air Filter',
-        'Coolant Level',
-        'Brake Fluid Level',
-        'Transmission Fluid Level',
-        'Battery Terminals',
-        'Belts',
-        'Hoses',
-      ]),
-      'Brakes': items([
-        'Front Brake Pads',
-        'Rear Brake Pads',
-        'Brake Rotors',
-        'Brake Lines',
-        'Brake Fluid Condition',
-      ]),
-      'Tires': items([
-        'Tire Tread Depth',
-        'Tire Pressure',
-        'Spare Tire',
-        'Wheel Condition',
-        'Valve Stems',
-      ]),
-      'Lights & Signals': items([
-        'Headlights',
-        'Brake Lights',
-        'Reverse Lights',
-        'Turn Signals',
-        'License Plate Light',
-      ]),
-      'Interior': items([
-        'Horn',
-        'Windshield Wipers',
-        'Washer Fluid',
-        'Heater Operation',
-        'AC Operation',
-        'Cabin Air Filter',
-        'Check Engine Light',
-        'Warning Lights',
-      ]),
-      'Undercarriage': items([
-        'Suspension Components',
-        'Steering Linkages',
-        'CV Boots',
-        'Exhaust System',
-        'Driveline',
-        'Oil Leaks',
-        'Transmission Leaks',
-        'Differential Leaks',
-      ]),
-      'Fluids': items([
-        'Engine Oil',
-        'Coolant',
-        'Transmission Fluid',
-        'Brake Fluid',
-        'Power Steering Fluid',
-        'Windshield Washer Fluid',
-      ]),
-      'Service Items': items([
-        'Oil Change',
-        'Oil Filter Change',
-        'Reset Maintenance Light',
-        'Top Off Fluids',
-        'Inspect for Recalls',
-      ]),
+      'Engine Bay': {
+        'Engine Oil': { ...empty },
+        'Oil Filter': { ...empty },
+        'Air Filter': { ...empty },
+        'Cabin Air Filter': { ...empty },
+        'Coolant Level': { ...empty },
+        'Brake Fluid Level': { ...empty },
+        'Transmission Fluid Level': { ...empty },
+        'Battery Terminals': { ...empty },
+        'Belts': { ...empty },
+        'Hoses': { ...empty },
+      },
+      'Brakes': {
+        'Front Brake Pads': { ...empty },
+        'Rear Brake Pads': { ...empty },
+        'Brake Rotors': { ...empty },
+        'Brake Lines': { ...empty },
+        'Brake Fluid Condition': { ...empty },
+      },
+      'Tires': {
+        'Tire Tread Depth': { ...empty },
+        'Tire Pressure': { ...empty },
+        'Spare Tire': { ...empty },
+        'Wheel Condition': { ...empty },
+        'Valve Stems': { ...empty },
+      },
+      'Lights & Signals': {
+        'Headlights': { ...empty },
+        'Brake Lights': { ...empty },
+        'Reverse Lights': { ...empty },
+        'Turn Signals': { ...empty },
+        'License Plate Light': { ...empty },
+      },
+      'Interior': {
+        'Horn': { ...empty },
+        'Windshield Wipers': { ...empty },
+        'Washer Fluid': { ...empty },
+        'Heater Operation': { ...empty },
+        'AC Operation': { ...empty },
+        'Cabin Air Filter': { ...empty },
+        'Check Engine Light': { ...empty },
+        'Warning Lights': { ...empty },
+      },
+      'Undercarriage': {
+        'Suspension Components': { ...empty },
+        'Steering Linkages': { ...empty },
+        'CV Boots': { ...empty },
+        'Exhaust System': { ...empty },
+        'Driveline': { ...empty },
+        'Oil Leaks': { ...empty },
+        'Transmission Leaks': { ...empty },
+        'Differential Leaks': { ...empty },
+      },
+      'Fluids': {
+        'Engine Oil': { ...empty },
+        'Coolant': { ...empty },
+        'Transmission Fluid': { ...empty },
+        'Brake Fluid': { ...empty },
+        'Power Steering Fluid': { ...empty },
+        'Windshield Washer Fluid': { ...empty },
+      },
+      'Service Items': {
+        'Oil Change': { ...empty },
+        'Oil Filter Change': { ...empty },
+        'Reset Maintenance Light': { ...empty },
+        'Top Off Fluids': { ...empty },
+        'Inspect for Recalls': { ...empty },
+      },
     },
-  } as InspectionState;
+  };
 }

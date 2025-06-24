@@ -1,4 +1,6 @@
-import { InspectionCommand } from '@/lib/inspection/types';
+// lib/inspection/parsers/parsePauseCommand.ts
+
+import type { InspectionCommand } from '@/lib/inspection/types';
 
 export function parsePauseCommand(input: string): InspectionCommand | null {
   const lower = input.trim().toLowerCase();
@@ -13,7 +15,11 @@ export function parsePauseCommand(input: string): InspectionCommand | null {
   ];
 
   if (matches.includes(lower)) {
-    return { type: 'pause' };
+    return {
+      type: 'pause',
+      section: 'general',
+      item: 'pause',
+    };
   }
 
   return null;

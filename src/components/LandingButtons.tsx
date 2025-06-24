@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 const features = [
   { label: 'AI Diagnosis', route: '/ai' },
   { label: 'Work Orders', route: '/work-orders' },
-  { label: 'View Repair Logs', route: '/history' },
+  { label: 'Inspection', route: '/inspection' },
   { label: 'Tools & Specs', route: '/tools' },
   { label: 'AI Suggestions', route: '/chat' },
   { label: 'Manual Library', route: '/manuals' },
@@ -36,8 +36,8 @@ function getDescription(label: string) {
       return 'Chat, Visual, and DTC Code Support';
     case 'Work Orders':
       return 'Create, Track, and Manage Repair Jobs';
-    case 'View Repair Logs':
-      return 'Track Issues and Fixes by VIN or Customer';
+    case 'Inspections':
+      return 'Start an Inspection';
     case 'Tools & Specs':
       return 'Torque, Fluids, Sizes, Tools';
     case 'AI Suggestions':
