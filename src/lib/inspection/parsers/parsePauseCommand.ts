@@ -1,4 +1,4 @@
-import type { InspectionCommand } from '@/lib/inspection/types';
+import type { InspectionCommand } from '@lib/inspection/types';
 
 export function parsePauseCommand(input: string): InspectionCommand | null {
   const lower = input.trim().toLowerCase();

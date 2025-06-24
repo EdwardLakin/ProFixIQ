@@ -1,117 +1,141 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { initialInspectionState, updateInspectionItem } from '@/lib/inspection/inspectionState';
-import useVoiceInput from '@/lib/inspection/useVoiceInput';
-import interpretInspectionVoice from '@/lib/inspection/aiInterpreter';
+import { useEffect, useRef, useState } from 'react';
+import { dispatchInspectionCommand } from '@/lib/inspection/dispatchCommand';
+import { parseInspectionVoice } from '@/lib/inspection/aiInterpreter';
+import { InspectionState, InspectionCommand } from '@/lib/inspection/types';
+import { createMaintenance50PointInspection } from '@/lib/inspection/templates/maintenance50Point';
 
 export default function InspectionPage() {
-  const [state, setState] = useState(initialInspectionState());
+  const [state, setState] = useState<InspectionState>(() =>
+    createMaintenance50PointInspection()
+  );
   const [input, setInput] = useState('');
   const [listening, setListening] = useState(false);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   const handleCommand = async (command: string) => {
-    const interpreted = await interpretInspectionVoice(command);
-    if (interpreted.section && interpreted.item) {
-      setState(prev => updateInspectionItem(prev, interpreted.section, interpreted.item, {
-        status: interpreted.type === 'na' || interpreted.type === 'n/a'
-          ? 'n/a'
-          : interpreted.type === 'recommend'
-          ? 'recommended'
-          : interpreted.type,
-        notes: interpreted.note ? [interpreted.note] : [],
-        measurement: interpreted.value
-          ? { value: interpreted.value, unit: interpreted.unit || '' }
-          : undefined,
-      }));
+    const interpreted = await parseInspectionVoice(command);
+    if (interpreted) {
+      setState((prev) => dispatchInspectionCommand(prev, interpreted));
     }
   };
 
-  const { start, stop } = useVoiceInput(handleCommand, setListening);
+  useEffect(() => {
+    const SpeechRecognition =
+      typeof window !== 'undefined'
+        ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+        : null;
+
+    if (!SpeechRecognition) {
+      console.warn('Speech recognition not supported in this browser.');
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
+
+    recognition.onstart = () => setListening(true);
+    recognition.onend = () => setListening(false);
+
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      const transcript = Array.from(event.results)
+        .map((result) => result[0].transcript)
+        .join('')
+        .trim();
+      if (transcript) handleCommand(transcript);
+    };
+
+    recognitionRef.current = recognition;
+  }, []);
+
+  const start = () => recognitionRef.current?.start();
+  const stop = () => recognitionRef.current?.stop();
+
+  const handleSubmit = () => {
+    if (input.trim()) {
+      handleCommand(input.trim());
+      setInput('');
+    }
+  };
 
   const handleStatusChange = (section: string, item: string, status: string) => {
-    setState(prev => updateInspectionItem(prev, section, item, { status }));
+    const command: InspectionCommand = {
+      section,
+      item,
+      type: status as any,
+    };
+    setState((prev) => dispatchInspectionCommand(prev, command));
   };
 
   const handleNoteChange = (section: string, item: string, note: string) => {
-    setState(prev => updateInspectionItem(prev, section, item, { notes: [note] }));
-  };
-
-  const handleSubmit = () => {
-    if (!input.trim()) return;
-    handleCommand(input.trim());
-    setInput('');
+    const command: InspectionCommand = {
+      section,
+      item,
+      type: 'recommend',
+      note,
+    };
+    setState((prev) => dispatchInspectionCommand(prev, command));
   };
 
   return (
     <div className="p-6 text-white">
-      <h1 className="text-3xl font-black mb-4">Inspection</h1>
+      <h1 className="text-2xl font-bold mb-4">Inspection</h1>
 
-      <div className="flex items-center gap-2 mb-4">
-        <button
-          onClick={start}
-          className="px-4 py-2 bg-green-600 rounded font-bold"
-        >
-          Start Inspection
+      {Object.entries(state.sections).map(([section, items]) => (
+        <div key={section} className="mb-4">
+          <h2 className="text-xl font-semibold mb-2">{section}</h2>
+          {Object.entries(items).map(([item, result]) => (
+            <div key={item} className="mb-2">
+              <div className="flex items-center space-x-4 mb-1">
+                <span className="w-48">{item}</span>
+                {['ok', 'fail', 'na'].map((status) => (
+                  <button
+                    key={status}
+                    onClick={() => handleStatusChange(section, item, status)}
+                    className={`px-3 py-1 rounded ${
+                      result.status === status ? 'bg-orange-500' : 'bg-gray-700'
+                    }`}
+                  >
+                    {status.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="text"
+                value={result.note || ''}
+                onChange={(e) => handleNoteChange(section, item, e.target.value)}
+                placeholder="Add note..."
+                className="w-full p-2 rounded bg-gray-800 text-white mb-2"
+              />
+            </div>
+          ))}
+        </div>
+      ))}
+
+      <div className="flex gap-2 mb-4">
+        <button onClick={start} className="bg-green-600 px-4 py-2 rounded">
+          Start Listening
         </button>
-        <button
-          onClick={stop}
-          className="px-4 py-2 bg-red-600 rounded font-bold"
-        >
+        <button onClick={stop} className="bg-red-600 px-4 py-2 rounded">
           Pause
         </button>
       </div>
 
-      <div className="mb-6">
+      <div className="flex gap-2 mb-4">
         <input
-          className="w-full p-2 text-black rounded"
-          placeholder="Type inspection input..."
+          type="text"
           value={input}
-          onChange={e => setInput(e.target.value)}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="Type a command"
+          className="flex-1 p-2 rounded bg-gray-800 text-white"
         />
-        <button
-          onClick={handleSubmit}
-          className="mt-2 px-4 py-2 bg-blue-600 rounded font-bold"
-        >
+        <button onClick={handleSubmit} className="bg-blue-600 px-4 py-2 rounded">
           Submit
         </button>
       </div>
-
-      {Object.entries(state.sections).map(([section, items]) => (
-        <div key={section} className="mb-6">
-          <h2 className="text-2xl font-bold mb-2">{section}</h2>
-          <ul>
-            {Object.entries(items).map(([item, result]) => (
-              <li key={item} className="mb-4">
-                <div className="flex justify-between items-center mb-1">
-                  <span className="font-medium">{item}</span>
-                  <div className="flex gap-2">
-                    {['ok', 'fail', 'n/a'].map(status => (
-                      <button
-                        key={status}
-                        onClick={() => handleStatusChange(section, item, status)}
-                        className={`px-3 py-1 rounded font-bold border transition ${
-                          result.status === status
-                            ? 'bg-orange-500 text-white'
-                            : 'bg-transparent border-gray-400 text-gray-300'
-                        }`}
-                      >
-                        {status.toUpperCase()}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <input
-                  className="mt-1 w-full text-black p-1 rounded"
-                  placeholder="Add notes..."
-                  value={result.notes?.[0] || ''}
-                  onChange={e => handleNoteChange(section, item, e.target.value)}
-                />
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
     </div>
   );
 }

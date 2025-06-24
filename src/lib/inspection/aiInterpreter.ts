@@ -1,5 +1,5 @@
 import { OpenAI } from 'openai'; // or your custom GPT client
-import { InspectionCommand } from '@/lib/inspection/types';
+import { InspectionCommand } from '@lib/inspection/types';
 
 const systemPrompt = `
 You are an automotive repair AI. Interpret inspection input like "brakes 2mm fail" or "recommend cabin filter" and return a structured object:

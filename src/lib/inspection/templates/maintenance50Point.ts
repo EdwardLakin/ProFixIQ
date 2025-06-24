@@ -1,4 +1,4 @@
-import type { InspectionState, InspectionResult } from '@/lib/inspection/types';
+import type { InspectionState, InspectionResult } from '@lib/inspection/types';
 
 const empty: InspectionResult = {
   status: 'ok',

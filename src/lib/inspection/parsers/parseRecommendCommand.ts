@@ -1,5 +1,5 @@
-import { InspectionCommand } from '@/lib/inspection/types';
-import { resolveSynonym } from '@/lib/inspection/synonyms';
+import { InspectionCommand } from '@lib/inspection/types';
+import { resolveSynonym } from '@lib/inspection/synonyms';
 
 export function parseRecommendCommand(input: string): InspectionCommand | null {
   if (!input.startsWith('recommend ')) return null;

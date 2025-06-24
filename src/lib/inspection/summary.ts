@@ -1,4 +1,4 @@
-import { InspectionState, InspectionResult } from '@/lib/inspection/types';
+import { InspectionState, InspectionResult } from '@lib/inspection/types';
 
 export function summarizeInspection(state: InspectionState): string {
   const lines: string[] = [];

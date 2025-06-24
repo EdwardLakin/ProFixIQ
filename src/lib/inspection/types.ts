@@ -1,12 +1,10 @@
-export type InspectionStatus = 'ok' | 'fail' | 'na';
-
 export type InspectionAction =
   | {
       type: 'setStatus';
       section: string;
       item: string;
       status: InspectionStatus;
-      note?: string;
+      note2?: string;
     }
   | {
       type: 'addNote';
@@ -28,14 +26,15 @@ export type InspectionAction =
       type: 'stop';
     };
 
-export type InspectionCommand = {
-  type: 'ok' | 'fail' | 'na' | 'recommend' | 'measure' | 'pause' | 'stop';
-  section?: string;
-  item?: string;
-  value?: number;
-  unit?: string;
-  note?: string;
-};
+export type InspectionCommand =
+  | { type: 'ok' | 'fail' | 'na' | 'recommend'; section: string; item: string; note?: string }
+  | { type: 'add'; section: string; item: string; note?: string }
+  | { type: 'addNote'; section: string; item: string; note: string }
+  | { type: 'measurement'; section: string; item: string; value?: number; unit?: string; note?: string }
+  | { type: 'pause' }
+  | { type: 'stop' };
+
+export type InspectionStatus = 'ok' | 'fail' | 'na';
 
 export type InspectionResult = {
   status: InspectionStatus;
