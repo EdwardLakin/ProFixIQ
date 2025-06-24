@@ -1,68 +1,52 @@
-import type {
-  InspectionState,
-  InspectionCommand,
-  InspectionAction,
-} from './types';
+// src/lib/inspection/handleInspectionCommand.ts
 
-export default function handleInspectionCommand(
+import { InspectionState, InspectionCommand, InspectionAction } from '@lib/inspection/types';
+
+export function handleInspectionCommand(
   state: InspectionState,
   command: InspectionCommand
-): InspectionAction[] {
-  const { section, item, note, value, unit, type } = command;
-
-  const actions: InspectionAction[] = [];
+): InspectionAction | null {
+  const { type, section, item, value, unit, note } = command;
 
   switch (type) {
     case 'ok':
     case 'fail':
     case 'na':
-      if (section && item) {
-        actions.push({
-          type: 'setStatus',
-          section,
-          item,
-          status: type === 'na' ? 'na' : type,
-          note,
-        });
-      }
-      break;
+      if (!section || !item) return null;
+      return {
+        type: 'setStatus',
+        section,
+        item,
+        status: type,
+        note,
+      };
 
     case 'recommend':
-      if (section && item) {
-        actions.push({
-          type: 'addNote',
-          section,
-          item,
-          note: note ?? 'Recommended for future service',
-        });
-      }
-      break;
+      if (!section || !item) return null;
+      return {
+        type: 'addNote',
+        section,
+        item,
+        note: note || 'Recommended for future service',
+      };
 
     case 'measure':
-      if (
-        section &&
-        item &&
-        typeof value === 'number' &&
-        typeof unit === 'string'
-      ) {
-        actions.push({
-          type: 'setMeasurement',
-          section,
-          item,
-          value,
-          unit,
-        });
-      }
-      break;
+      if (!section || !item || typeof value !== 'number' || !unit) return null;
+      return {
+        type: 'setMeasurement',
+        section,
+        item,
+        value,
+        unit,
+      };
 
     case 'pause':
-      actions.push({ type: 'pause' });
-      break;
+      return { type: 'pause' };
 
     case 'stop':
-      actions.push({ type: 'stop' });
-      break;
-  }
+      return { type: 'stop' };
 
-  return actions;
+    default:
+      return null;
+  }
 }

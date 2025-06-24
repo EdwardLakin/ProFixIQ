@@ -1,141 +1,138 @@
+// src/app/inspection/page.tsx
+
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { dispatchInspectionCommand } from '@/lib/inspection/dispatchCommand';
-import { parseInspectionVoice } from '@/lib/inspection/aiInterpreter';
-import { InspectionState, InspectionCommand } from '@/lib/inspection/types';
-import { createMaintenance50PointInspection } from '@/lib/inspection/templates/maintenance50Point';
+import { useEffect, useState } from 'react';
+import maintenance50Point from '@lib/inspection/templates/maintenance50Point';
+import { loadInspectionState, saveInspectionState } from '@lib/inspection/inspectionState';
+import { InspectionState, InspectionStatus } from '@lib/inspection/types';
+import { v4 as uuidv4 } from 'uuid';
 
 export default function InspectionPage() {
-  const [state, setState] = useState<InspectionState>(() =>
-    createMaintenance50PointInspection()
-  );
-  const [input, setInput] = useState('');
+  const [inspection, setInspection] = useState<InspectionState | null>(null);
   const [listening, setListening] = useState(false);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
-
-  const handleCommand = async (command: string) => {
-    const interpreted = await parseInspectionVoice(command);
-    if (interpreted) {
-      setState((prev) => dispatchInspectionCommand(prev, interpreted));
-    }
-  };
 
   useEffect(() => {
-    const SpeechRecognition =
-      typeof window !== 'undefined'
-        ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-        : null;
-
-    if (!SpeechRecognition) {
-      console.warn('Speech recognition not supported in this browser.');
-      return;
+    const loaded = loadInspectionState();
+    if (loaded) {
+      setInspection(loaded);
+    } else {
+      // Init inspection state
+      const initialized: InspectionState = {
+        startedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        sections: {},
+      };
+      for (const section in maintenance50Point) {
+        initialized.sections[section] = {};
+        maintenance50Point[section].forEach((item) => {
+          initialized.sections[section][item] = {
+            status: 'ok',
+            notes: [],
+          };
+        });
+      }
+      setInspection(initialized);
+      saveInspectionState(initialized);
     }
-
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = false;
-    recognition.lang = 'en-US';
-
-    recognition.onstart = () => setListening(true);
-    recognition.onend = () => setListening(false);
-
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      const transcript = Array.from(event.results)
-        .map((result) => result[0].transcript)
-        .join('')
-        .trim();
-      if (transcript) handleCommand(transcript);
-    };
-
-    recognitionRef.current = recognition;
   }, []);
 
-  const start = () => recognitionRef.current?.start();
-  const stop = () => recognitionRef.current?.stop();
-
-  const handleSubmit = () => {
-    if (input.trim()) {
-      handleCommand(input.trim());
-      setInput('');
-    }
+  const updateItem = (section: string, item: string, status: InspectionStatus) => {
+    if (!inspection) return;
+    const updated = { ...inspection };
+    updated.sections[section][item].status = status;
+    updated.updatedAt = new Date().toISOString();
+    saveInspectionState(updated);
+    setInspection(updated);
   };
 
-  const handleStatusChange = (section: string, item: string, status: string) => {
-    const command: InspectionCommand = {
-      section,
-      item,
-      type: status as any,
-    };
-    setState((prev) => dispatchInspectionCommand(prev, command));
+  const updateNote = (section: string, item: string, note: string) => {
+    if (!inspection) return;
+    const updated = { ...inspection };
+    updated.sections[section][item].notes = [note];
+    updated.updatedAt = new Date().toISOString();
+    saveInspectionState(updated);
+    setInspection(updated);
   };
 
-  const handleNoteChange = (section: string, item: string, note: string) => {
-    const command: InspectionCommand = {
-      section,
-      item,
-      type: 'recommend',
-      note,
-    };
-    setState((prev) => dispatchInspectionCommand(prev, command));
+  const addPicture = (section: string, item: string) => {
+    alert(`Add picture functionality coming soon for ${section} - ${item}`);
   };
+
+  if (!inspection) return <div className="text-white p-6">Loading inspection...</div>;
 
   return (
-    <div className="p-6 text-white">
-      <h1 className="text-2xl font-bold mb-4">Inspection</h1>
+    <div className="min-h-screen bg-[#0d0d0d] text-white px-4 py-6 font-blackops">
+      <h1 className="text-3xl mb-4">Maintenance 50-Point Inspection</h1>
+      <button
+        onClick={() => setListening((prev) => !prev)}
+        className={`mb-6 px-4 py-2 rounded-md font-bold ${
+          listening ? 'bg-red-600' : 'bg-green-600'
+        }`}
+      >
+        {listening ? 'Pause Listening' : 'Start Listening'}
+      </button>
 
-      {Object.entries(state.sections).map(([section, items]) => (
-        <div key={section} className="mb-4">
-          <h2 className="text-xl font-semibold mb-2">{section}</h2>
-          {Object.entries(items).map(([item, result]) => (
-            <div key={item} className="mb-2">
-              <div className="flex items-center space-x-4 mb-1">
-                <span className="w-48">{item}</span>
-                {['ok', 'fail', 'na'].map((status) => (
-                  <button
-                    key={status}
-                    onClick={() => handleStatusChange(section, item, status)}
-                    className={`px-3 py-1 rounded ${
-                      result.status === status ? 'bg-orange-500' : 'bg-gray-700'
-                    }`}
-                  >
-                    {status.toUpperCase()}
-                  </button>
-                ))}
-              </div>
-              <input
-                type="text"
-                value={result.note || ''}
-                onChange={(e) => handleNoteChange(section, item, e.target.value)}
-                placeholder="Add note..."
-                className="w-full p-2 rounded bg-gray-800 text-white mb-2"
-              />
+      <div className="space-y-6">
+        {Object.entries(inspection.sections).map(([section, items]) => (
+          <div key={section}>
+            <h2 className="text-xl text-orange-400 mb-2">{section}</h2>
+            <div className="space-y-4 pl-4">
+              {Object.entries(items).map(([item, result]) => (
+                <div key={item} className="bg-black/30 p-3 rounded-lg shadow-inner">
+                  <div className="flex justify-between items-center">
+                    <div className="text-lg font-semibold">{item}</div>
+                    <div className="flex gap-2">
+                      <button
+                        className="bg-green-600 px-3 py-1 rounded-md"
+                        onClick={() => updateItem(section, item, 'ok')}
+                      >
+                        OK
+                      </button>
+                      <button
+                        className="bg-red-600 px-3 py-1 rounded-md"
+                        onClick={() => updateItem(section, item, 'fail')}
+                      >
+                        FAIL
+                      </button>
+                      <button
+                        className="bg-orange-500 px-3 py-1 rounded-md"
+                        onClick={() => updateItem(section, item, 'na')}
+                      >
+                        N/A
+                      </button>
+                    </div>
+                  </div>
+
+                  <input
+                    type="text"
+                    placeholder="Notes..."
+                    className="w-full mt-2 p-2 bg-black/20 rounded-md text-white"
+                    value={result.notes?.[0] || ''}
+                    onChange={(e) => updateNote(section, item, e.target.value)}
+                  />
+
+                  {result.status === 'fail' && (
+                    <button
+                      onClick={() => addPicture(section, item)}
+                      className="mt-2 px-3 py-1 bg-blue-600 rounded-md"
+                    >
+                      Add Picture
+                    </button>
+                  )}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      ))}
-
-      <div className="flex gap-2 mb-4">
-        <button onClick={start} className="bg-green-600 px-4 py-2 rounded">
-          Start Listening
-        </button>
-        <button onClick={stop} className="bg-red-600 px-4 py-2 rounded">
-          Pause
-        </button>
+          </div>
+        ))}
       </div>
 
-      <div className="flex gap-2 mb-4">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Type a command"
-          className="flex-1 p-2 rounded bg-gray-800 text-white"
-        />
-        <button onClick={handleSubmit} className="bg-blue-600 px-4 py-2 rounded">
-          Submit
-        </button>
-      </div>
+      <button
+        onClick={() => alert('Finish inspection logic goes here')}
+        className="mt-10 bg-orange-600 px-6 py-3 text-xl rounded-md"
+      >
+        Finish Inspection
+      </button>
     </div>
   );
 }

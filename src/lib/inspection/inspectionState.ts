@@ -1,46 +1,43 @@
-import { InspectionAction, InspectionState } from './types';
+// src/lib/inspection/inspectionState.ts
 
-export function applyInspectionActions(
+import { InspectionState, InspectionStatus } from '@lib/inspection/types';
+
+const STORAGE_KEY = 'inspectionState';
+
+export function loadInspectionState(): InspectionState | null {
+  if (typeof window === 'undefined') return null;
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw) as InspectionState;
+  } catch (e) {
+    console.error('Failed to parse inspection state:', e);
+    return null;
+  }
+}
+
+export function saveInspectionState(state: InspectionState) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+export function updateItemStatus(
   state: InspectionState,
-  actions: InspectionAction[]
+  section: string,
+  item: string,
+  status: InspectionStatus,
+  note?: string
 ): InspectionState {
-  const newState = structuredClone(state);
-  newState.updatedAt = new Date().toISOString();
+  const updated = { ...state };
+  const result = updated.sections?.[section]?.[item];
+  if (!result) return state;
 
-  for (const action of actions) {
-    switch (action.type) {
-      case 'setStatus': {
-        const { section, item, status, note } = action;
-        const target = newState.sections[section]?.[item];
-        if (target) {
-          target.status = status;
-          if (note) target.notes.push(note);
-        }
-        break;
-      }
-
-      case 'addNote': {
-        const { section, item, note } = action;
-        const target = newState.sections[section]?.[item];
-        if (target) target.notes.push(note);
-        break;
-      }
-
-      case 'setMeasurement': {
-        const { section, item, value, unit } = action;
-        const target = newState.sections[section]?.[item];
-        if (target) {
-          target.measurement = { value, unit };
-        }
-        break;
-      }
-
-      case 'pause':
-      case 'stop':
-        // These actions may trigger app behavior elsewhere, not state mutation
-        break;
-    }
+  result.status = status;
+  if (note) {
+    result.notes.push(note);
   }
 
-  return newState;
+  updated.updatedAt = new Date().toISOString();
+  return updated;
 }
