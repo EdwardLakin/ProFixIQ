@@ -1,5 +1,5 @@
 import { useSession } from '@supabase/auth-helpers-react';
-import { features, type FeatureKey } from '@/lib/plan/features';
+import { features, type FeatureKey } from '@lib/plan/features';
 
 type UseFeatureAccessResult = {
   allowed: boolean;

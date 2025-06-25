@@ -1,11 +1,11 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import useUser from '@/hooks/useUser';
+import useUser from '@hooks/useUser';
 import { createBrowserClient } from '@supabase/ssr';
-import { Database } from '@/types/supabase';
+import { Database } from '@custom-types/supabase';
 import JobQueueCard from './JobQueueCard';
-import Button from './ui/Button';
+import Button from '@components/ui/Button';
 
 type JobLine = Database['public']['Tables']['work_order_lines']['Row'];
 

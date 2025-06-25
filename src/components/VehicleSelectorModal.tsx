@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useVehicleInfo } from '../context/useVehicleInfo';
+import { useVehicleInfo } from '@hooks/useVehicleInfo';
 
 const VehicleSelectorModal = () => {
   const {

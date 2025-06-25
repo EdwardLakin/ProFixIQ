@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { JobQueueCard } from './JobQueueCard'
+import JobQueueCard from '@components/JobQueueCard'
 
 type JobLine = {
   id: string

@@ -1,6 +1,6 @@
 "use client";
 
-import { QuoteLineItem } from "@/lib/quote/types";
+import { QuoteLineItem } from "@lib/quote/types";
 
 interface QuoteViewerProps {
   summary: string;

@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import type { InspectionState } from '@/lib/inspection/types';
+import type { InspectionState } from '@lib/inspection/types';
 
 let serverState: InspectionState | null = null;
 

@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from '@supabase/auth-helpers-react';
-import withAuthAndPlan from '@/lib/withAuthAndPlan';
+import withAuthAndPlan from '@lib/withAuthAndPlan';
 
 function WorkOrdersPage() {
   const session = useSession();

@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { Database } from "@/types/supabase";
+import { Database } from "@custom-types/supabase";
 
 export const getWorkOrderById = async (id: string) => {
   const supabase = createClient<Database>(

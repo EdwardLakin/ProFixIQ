@@ -1,6 +1,6 @@
 // src/lib/techBot.ts
 
-import { VehicleInfo } from '@/types/vehicle';
+import { VehicleInfo } from '@hooks/useVehicleInfo';
 
 export async function analyzeWithTechBot({
   vehicle,

@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useVehicleInfo } from "@/hooks/useVehicleInfo";
-import  useUser from "@/hooks/useUser";
+import { useVehicleInfo } from "@hooks/useVehicleInfo";
+import  useUser from "@hooks/useUser";
 import { createBrowserClient } from "@supabase/ssr";
-import { MenuItem, WorkOrderLine } from "@/types";
-import WorkOrderLineForm from "@/components/WorkOrderLineEditor";
+import { MenuItem, WorkOrderLine } from "@lib/types";
+import WorkOrderLineForm from "@components/WorkOrderLineEditor";
 
 export default function WorkOrderEditorPage() {
   const supabase = createBrowserClient();

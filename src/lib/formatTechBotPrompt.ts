@@ -1,4 +1,4 @@
-import { Vehicle } from '@/hooks/useVehicleInfo'
+import { Vehicle } from '@hooks/useVehicleInfo'
 
 export function formatTechBotPrompt(vehicle: Vehicle, userInput: string): string {
   const { year, make, model, engine } = vehicle || {}

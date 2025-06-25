@@ -1,6 +1,6 @@
-import { features } from '@/lib/plan/features';
-import { useFeatureAccess } from '@/hooks/useFeatureAccess';
-import FeatureCard from '@/components/ui/FeatureCard';
+import { features } from '@lib/plan/features';
+import { useFeatureAccess } from '@hooks/useFeatureAccess';
+import FeatureCard from '@components/ui/FeatureCard';
 
 export default function FeaturesPage() {
   return (

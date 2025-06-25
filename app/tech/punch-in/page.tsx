@@ -3,9 +3,9 @@
 import { useEffect, useState } from 'react'
 import { useUser } from '@supabase/auth-helpers-react'
 import { createBrowserClient } from '@supabase/ssr'
-import { Database } from '@/types/supabase'
-import JobQueueCard from '@/src/components/JobQueueCard'
-import { Button } from '@/src/components/ui/Button'
+import { Database } from '@types/supabase'
+import JobQueueCard from '@components/JobQueueCard'
+import { Button } from '@components/ui/Button'
 import { format } from 'date-fns'
 
 const supabase = createBrowserClient<Database>()

@@ -1,10 +1,10 @@
 'use client';
 
 import React from 'react';
-import Navbar from '@/components/Navbar';
-import Header from '@/components/ui/Header';
-import SubscribeBanner from '@/components/SubscribeBanner';
-import LandingButtons from '@/components/LandingButtons';
+import Navbar from '@components/Navbar';
+import Header from '@components/ui/Header';
+import SubscribeBanner from '@components/SubscribeBanner';
+import LandingButtons from '@components/LandingButtons';
 
 export default function ProFixIQLanding() {
   return (

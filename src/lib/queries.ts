@@ -1,7 +1,7 @@
 // lib/queries.ts
 
 import { createBrowserClient } from '@supabase/ssr';
-import { Database } from '@/types/supabase';
+import type { Database } from '@custom-types/supabase';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
 // Fallback browser client (safe)

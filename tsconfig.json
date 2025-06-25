@@ -17,7 +17,7 @@
       "@components/*": ["src/components/*"],
       "@hooks/*": ["src/hooks/*"],
       "@lib/*": ["src/lib/*"],
-      "@types/*": ["src/types/*"]
+      "@custom-types/*": ["src/types/*"]
     },
     "types": [],
     "esModuleInterop": true,
