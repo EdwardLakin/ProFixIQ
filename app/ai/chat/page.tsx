@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import useVehicleInfo from '@/hooks/useVehicleInfo';
-import chatgptHandler from '@/lib/chatgptHandler';
+import useVehicleInfo from '@hooks/useVehicleInfo';
+import chatgptHandler from '@lib/chatgptHandler';
 import Markdown from 'react-markdown';
+import HomeButton from '@components/ui/HomeButton';
+import PreviousPageButton from '@components/ui/PreviousPageButton';
 
 export default function ChatPage() {
   const { vehicleInfo } = useVehicleInfo();
@@ -33,6 +35,7 @@ export default function ChatPage() {
       ...messages,
       `**You:** ${input}`,
     ];
+
     setMessages(updatedMessages);
 
     const response = await chatgptHandler(updatedMessages);
@@ -43,8 +46,15 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-6">
-      <h1 className="text-4xl font-blackops text-orange-500 text-center mb-6">TechBot 🤖</h1>
+    <div className="max-w-2xl mx-auto px-4 py-6 text-white">
+      <div className="flex justify-between mb-4">
+        <HomeButton />
+        <PreviousPageButton to="/ai" />
+      </div>
+
+      <h1 className="text-4xl font-blackops text-orange-500 text-center mb-6">
+        TechBot Assistant
+      </h1>
 
       <div
         className="my-6 max-h-[400px] overflow-y-auto p-4 border border-gray-600 rounded"

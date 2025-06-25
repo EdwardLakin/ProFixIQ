@@ -11,3 +11,8 @@ export interface Project {
   user_id: string;
   created_at: string;
 }
+
+export interface Message {
+  role: "user" | "assistant";
+  content: string;
+}

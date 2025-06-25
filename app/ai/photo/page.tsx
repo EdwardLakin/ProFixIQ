@@ -1,8 +1,10 @@
 'use client';
 
 import React, { useState } from 'react';
-import useVehicleInfo from '@/hooks/useVehicleInfo';
-import { analyzeImage } from '@/lib/analyzeComponents';
+import useVehicleInfo from '@hooks/useVehicleInfo';
+import { analyzeImage } from '@lib/analyzeComponents';
+import HomeButton from '@components/ui/HomeButton';
+import PreviousPageButton from '@components/ui/PreviousPageButton';
 
 export default function PhotoDiagnosisPage() {
   const { vehicleInfo, clearVehicle } = useVehicleInfo();
@@ -22,6 +24,8 @@ export default function PhotoDiagnosisPage() {
   };
 
   const handleAnalyze = async () => {
+    setError(null);
+
     if (!selectedFile) {
       setError('Please upload an image.');
       return;
@@ -32,7 +36,6 @@ export default function PhotoDiagnosisPage() {
       return;
     }
 
-    setError(null);
     setLoading(true);
 
     const result = await analyzeImage(selectedFile, vehicleInfo);
@@ -47,7 +50,12 @@ export default function PhotoDiagnosisPage() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-6">
+    <div className="max-w-2xl mx-auto px-4 py-6 text-white">
+      <div className="flex justify-between mb-4">
+        <HomeButton />
+        <PreviousPageButton to="/ai" label="← Back to AI Menu" />
+      </div>
+
       <h1 className="text-4xl font-blackops text-orange-500 text-center mb-6">
         Photo Diagnosis
       </h1>
@@ -70,7 +78,7 @@ export default function PhotoDiagnosisPage() {
       <button
         onClick={handleAnalyze}
         disabled={loading}
-        className="w-full py-3 px-4 bg-blue-600 text-white rounded font-blackops hover:bg-blue-700"
+        className="w-full py-3 px-4 bg-blue-600 text-white rounded font-blackops"
       >
         {loading ? 'Analyzing...' : 'Analyze Image'}
       </button>

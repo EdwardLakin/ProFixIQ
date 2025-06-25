@@ -1,138 +1,80 @@
-// src/app/inspection/page.tsx
-
 'use client';
 
-import { useEffect, useState } from 'react';
-import maintenance50Point from '@lib/inspection/templates/maintenance50Point';
-import { loadInspectionState, saveInspectionState } from '@lib/inspection/inspectionState';
-import { InspectionState, InspectionStatus } from '@lib/inspection/types';
-import { v4 as uuidv4 } from 'uuid';
+import { useRouter } from 'next/navigation';
+import HomeButton from '@components/ui/HomeButton';
 
-export default function InspectionPage() {
-  const [inspection, setInspection] = useState<InspectionState | null>(null);
-  const [listening, setListening] = useState(false);
-
-  useEffect(() => {
-    const loaded = loadInspectionState();
-    if (loaded) {
-      setInspection(loaded);
-    } else {
-      // Init inspection state
-      const initialized: InspectionState = {
-        startedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        sections: {},
-      };
-      for (const section in maintenance50Point) {
-        initialized.sections[section] = {};
-        maintenance50Point[section].forEach((item) => {
-          initialized.sections[section][item] = {
-            status: 'ok',
-            notes: [],
-          };
-        });
-      }
-      setInspection(initialized);
-      saveInspectionState(initialized);
-    }
-  }, []);
-
-  const updateItem = (section: string, item: string, status: InspectionStatus) => {
-    if (!inspection) return;
-    const updated = { ...inspection };
-    updated.sections[section][item].status = status;
-    updated.updatedAt = new Date().toISOString();
-    saveInspectionState(updated);
-    setInspection(updated);
-  };
-
-  const updateNote = (section: string, item: string, note: string) => {
-    if (!inspection) return;
-    const updated = { ...inspection };
-    updated.sections[section][item].notes = [note];
-    updated.updatedAt = new Date().toISOString();
-    saveInspectionState(updated);
-    setInspection(updated);
-  };
-
-  const addPicture = (section: string, item: string) => {
-    alert(`Add picture functionality coming soon for ${section} - ${item}`);
-  };
-
-  if (!inspection) return <div className="text-white p-6">Loading inspection...</div>;
+export default function InspectionMenuPage() {
+  const router = useRouter();
 
   return (
-    <div className="min-h-screen bg-[#0d0d0d] text-white px-4 py-6 font-blackops">
-      <h1 className="text-3xl mb-4">Maintenance 50-Point Inspection</h1>
-      <button
-        onClick={() => setListening((prev) => !prev)}
-        className={`mb-6 px-4 py-2 rounded-md font-bold ${
-          listening ? 'bg-red-600' : 'bg-green-600'
-        }`}
-      >
-        {listening ? 'Pause Listening' : 'Start Listening'}
-      </button>
-
-      <div className="space-y-6">
-        {Object.entries(inspection.sections).map(([section, items]) => (
-          <div key={section}>
-            <h2 className="text-xl text-orange-400 mb-2">{section}</h2>
-            <div className="space-y-4 pl-4">
-              {Object.entries(items).map(([item, result]) => (
-                <div key={item} className="bg-black/30 p-3 rounded-lg shadow-inner">
-                  <div className="flex justify-between items-center">
-                    <div className="text-lg font-semibold">{item}</div>
-                    <div className="flex gap-2">
-                      <button
-                        className="bg-green-600 px-3 py-1 rounded-md"
-                        onClick={() => updateItem(section, item, 'ok')}
-                      >
-                        OK
-                      </button>
-                      <button
-                        className="bg-red-600 px-3 py-1 rounded-md"
-                        onClick={() => updateItem(section, item, 'fail')}
-                      >
-                        FAIL
-                      </button>
-                      <button
-                        className="bg-orange-500 px-3 py-1 rounded-md"
-                        onClick={() => updateItem(section, item, 'na')}
-                      >
-                        N/A
-                      </button>
-                    </div>
-                  </div>
-
-                  <input
-                    type="text"
-                    placeholder="Notes..."
-                    className="w-full mt-2 p-2 bg-black/20 rounded-md text-white"
-                    value={result.notes?.[0] || ''}
-                    onChange={(e) => updateNote(section, item, e.target.value)}
-                  />
-
-                  {result.status === 'fail' && (
-                    <button
-                      onClick={() => addPicture(section, item)}
-                      className="mt-2 px-3 py-1 bg-blue-600 rounded-md"
-                    >
-                      Add Picture
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
+    <div className="max-w-4xl mx-auto px-4 py-10 text-white">
+      <div className="flex justify-end mb-6">
+        <HomeButton />
       </div>
 
-      <button
-        onClick={() => alert('Finish inspection logic goes here')}
-        className="mt-10 bg-orange-600 px-6 py-3 text-xl rounded-md"
-      >
-        Finish Inspection
-      </button>
+      <h1 className="text-7xl text-center font-blackops text-orange-500 drop-shadow mb-2">
+        Inspection
+      </h1>
+      <p className="text-lg text-center text-neutral-300 mb-10">
+        Choose an inspection type to begin:
+      </p>
+
+      <div className="space-y-6">
+        <button
+          onClick={() => router.push('/inspection/maintenance')}
+          className="w-full py-5 px-6 border-4 border-blue-400 text-blue-400 font-blackops text-xl rounded-lg hover:scale-105 hover:bg-blue-900 transition-transform duration-200"
+        >
+          Maintenance 50 Point
+          <p className="mt-2 text-sm font-normal text-white">
+            General systems check for wear, damage, and fluid levels.
+          </p>
+        </button>
+
+        <button
+          className="w-full py-5 px-6 border-4 border-green-400 text-green-400 font-blackops text-xl rounded-lg hover:scale-105 hover:bg-green-900 transition-transform duration-200"
+        >
+          Pre-Purchase
+          <p className="mt-2 text-sm font-normal text-white">
+            Inspection before buying a used vehicle.
+          </p>
+        </button>
+
+        <button
+          className="w-full py-5 px-6 border-4 border-red-400 text-red-400 font-blackops text-xl rounded-lg hover:scale-105 hover:bg-red-900 transition-transform duration-200"
+        >
+          Safety
+          <p className="mt-2 text-sm font-normal text-white">
+            Safety-focused checklist for roadworthiness.
+          </p>
+        </button>
+
+        <button
+          className="w-full py-5 px-6 border-4 border-yellow-400 text-yellow-400 font-blackops text-xl rounded-lg hover:scale-105 hover:bg-yellow-900 transition-transform duration-200"
+        >
+          Used Vehicle
+          <p className="mt-2 text-sm font-normal text-white">
+            Deep dive into wear and past repairs.
+          </p>
+        </button>
+
+        <button
+          className="w-full py-5 px-6 border-4 border-purple-400 text-purple-400 font-blackops text-xl rounded-lg hover:scale-105 hover:bg-purple-900 transition-transform duration-200"
+        >
+          Seasonal
+          <p className="mt-2 text-sm font-normal text-white">
+            Get ready for winter, summer, or road trips.
+          </p>
+        </button>
+
+        <button
+          className="w-full py-5 px-6 border-4 border-orange-400 text-orange-400 font-blackops text-xl rounded-lg hover:scale-105 hover:bg-orange-900 transition-transform duration-200"
+        >
+          Custom
+          <p className="mt-2 text-sm font-normal text-white">
+            Build your own checklist tailored to your needs.
+          </p>
+        </button>
+      </div>
     </div>
   );
 }

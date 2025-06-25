@@ -1,7 +1,7 @@
 'use client';
 
 import { CheckCircle2, Lock } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn } from '@lib/utils';
 
 interface FeatureCardProps {
   title: string;
