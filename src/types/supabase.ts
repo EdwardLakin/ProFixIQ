@@ -17,22 +17,22 @@ export interface Database {
           complaint: string | null;
           cause: string | null;
           correction: string | null;
-          status: 'ready' | 'active' | 'paused' | 'on_hold' | 'complete' | null;
+          status: 'ready' | 'active' | 'paused' | 'on_hold' | 'completed';
           assigned_to: string | null;
-          labor_time: number | null;
-          parts_needed: string[] | null;
-          parts_received: string[] | null;
+          labor_time?: number | null;
+          parts_needed?: string[] | null;
+          parts_received?: string[] | null;
           created_at: string;
           updated_at: string;
         };
         Insert: {
-          id: string;
+          id?: string;
           work_order_id?: string | null;
           vehicle_id?: string | null;
           complaint?: string | null;
           cause?: string | null;
           correction?: string | null;
-          status?: 'ready' | 'active' | 'paused' | 'on_hold' | 'complete' | null;
+          status?: 'ready' | 'active' | 'paused' | 'on_hold' | 'completed';
           assigned_to?: string | null;
           labor_time?: number | null;
           parts_needed?: string[] | null;
@@ -47,7 +47,7 @@ export interface Database {
           complaint?: string | null;
           cause?: string | null;
           correction?: string | null;
-          status?: 'ready' | 'active' | 'paused' | 'on_hold' | 'complete' | null;
+          status?: 'ready' | 'active' | 'paused' | 'on_hold' | 'completed';
           assigned_to?: string | null;
           labor_time?: number | null;
           parts_needed?: string[] | null;
@@ -89,12 +89,42 @@ export interface Database {
           created_at?: string | null;
         };
         Update: {
+          id?: string;
           plan?: 'diy' | 'pro' | 'elite';
           created_at?: string | null;
         };
         Relationships: [];
       };
+
+      inspections: {
+        Row: {
+          id: string;
+          user_id: string;
+          template: string;
+          result: Json;
+          vehicle: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          template: string;
+          result: Json;
+          vehicle?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          template?: string;
+          result?: Json;
+          vehicle?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
     };
+
     Views: {};
     Functions: {};
     Enums: {};
