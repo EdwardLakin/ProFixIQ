@@ -1,37 +1,30 @@
-import type { InspectionState, InspectionSection, InspectionItem, SummaryLine } from './types';
+import {
+  InspectionSession,
+  InspectionSummary,
+  InspectionSummaryItem,
+} from './types';
 
-export function generateInspectionSummary(state: InspectionState): SummaryLine[] {
-  const lines = state.sections.flatMap((section: InspectionSection) =>
-    section.items.map((item: InspectionItem): SummaryLine => {
-      let status: SummaryLine['status'];
+export function generateInspectionSummary(
+  session: InspectionSession
+): InspectionSummary {
+  const summary: InspectionSummaryItem[] = [];
 
-      switch (item.status.toLowerCase()) {
-        case 'ok':
-        case 'good':
-        case 'pass':
-        case 'passed':
-          status = 'ok';
-          break;
-        case 'fail':
-        case 'failed':
-          status = 'fail';
-          break;
-        case 'na':
-        case 'n/a':
-          status = 'na';
-          break;
-        default:
-          status = 'ok';
-      }
-
-      return {
+  for (const section of session.sections) {
+    for (const item of section.items) {
+      summary.push({
         section: section.title,
-        item: item.item,
-        status,
-        note: item.note || '',
-      };
-    })
-  );
+        item: item.name,
+        status: item.status ?? 'ok',
+        notes: Array.isArray(item.notes) ? item.notes : [],
+      });
+    }
+  }
 
-  return lines;
+  return {
+    templateName: session.templateName,
+    date: new Date().toISOString(),
+    items: summary,
+  };
 }
+
+export type { InspectionSummary };

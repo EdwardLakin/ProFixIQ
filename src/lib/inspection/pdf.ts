@@ -1,36 +1,49 @@
-import React from 'react';
-import { pdf, Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
-import type { InspectionSummaryItem } from './summary';
+import { PDFDocument } from 'pdf-lib';
+import { InspectionSummary } from './summary';
+import { rgb } from 'pdf-lib';
 
-const styles = StyleSheet.create({
-  page: { padding: 30 },
-  header: { fontSize: 18, marginBottom: 10, fontWeight: 'bold' },
-  item: { fontSize: 12, marginBottom: 6 },
-});
+export async function generateInspectionPDF(summary: InspectionSummary) {
+  const pdfDoc = await PDFDocument.create();
+  let page = pdfDoc.addPage();
+  const { width, height } = page.getSize();
+  const margin = 50;
+  let y = height - margin;
 
-export async function generateInspectionPDF(summary: InspectionSummaryItem[]): Promise<Uint8Array> {
-  const doc = React.createElement(
-    Document,
-    null,
-    React.createElement(
-      Page,
-      { size: 'A4', style: styles.page },
-      React.createElement(Text, { style: styles.header }, 'Maintenance Inspection Summary'),
-      ...summary.map((item, index) =>
-        React.createElement(
-          View,
-          { key: index },
-          React.createElement(
-            Text,
-            { style: styles.item },
-            `${item.section} - ${item.item}: ${item.status}` +
-              (item.note ? ` | Note: ${item.note}` : '')
-          )
-        )
-      )
-    )
-  );
+  const drawText = (text: string, x: number, y: number) => {
+    page.drawText(text, {
+      x,
+      y,
+      size: 12,
+      color: rgb(0, 0, 0),
+    });
+  };
 
-  const pdfBuffer = await (pdf() as any).updateContainer(doc).toBuffer();
-  return pdfBuffer;
+  drawText(`Inspection Summary - ${summary.templateName}`, margin, y);
+  y -= 25;
+
+  for (const item of summary.items) {
+    drawText(`Section: ${item.section}`, margin, y);
+    y -= 15;
+
+    drawText(`Item: ${item.item}`, margin + 20, y);
+    y -= 15;
+
+    drawText(`Status: ${item.status}`, margin + 20, y);
+    y -= 15;
+
+    if (item.notes && item.notes.length > 0) {
+      drawText(`Notes: ${item.notes}`, margin + 20, y);
+      y -= 15;
+    }
+
+    y -= 10;
+
+    if (y < margin + 50) {
+      y = height - margin;
+      page = pdfDoc.addPage(); // ✅ changed const to let so this works
+    }
+  }
+
+  const pdfBytes = await pdfDoc.save();
+  return pdfBytes;
 }

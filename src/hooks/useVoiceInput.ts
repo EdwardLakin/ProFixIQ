@@ -1,59 +1,55 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
-export function useVoiceInput(
-  onCommand: (input: string) => void,
-  setListening: (value: boolean) => void
-) {
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+declare global {
+  interface Window {
+    webkitSpeechRecognition: any;
+  }
+}
 
-  useEffect(() => {
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+export default function useVoiceInput() {
+  const [isListening, setIsListening] = useState(false);
+  const session = useRef<SpeechRecognition | null>(null);
 
-    if (!SpeechRecognition) {
-      console.warn('Speech recognition not supported in this browser.');
-      return;
-    }
+  const startListening = () => {
+    if (typeof window === 'undefined' || !('webkitSpeechRecognition' in window)) return;
 
-    const recognition = new SpeechRecognition();
+    const recognition = new window.webkitSpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = false;
     recognition.lang = 'en-US';
 
-    recognition.onstart = () => {
-      setListening(true);
-    };
-
-    recognition.onend = () => {
-      setListening(false);
-    };
-
     recognition.onresult = (event: SpeechRecognitionEvent) => {
       const transcript = Array.from(event.results)
-        .map(result => result[0])
-        .map(result => result.transcript)
-        .join('')
-        .trim();
-
-      if (transcript) {
-        onCommand(transcript);
-      }
+        .map(result => result[0].transcript)
+        .join('');
+      console.log('Voice input:', transcript);
+      // You can call a handler here to process voice command
     };
 
-    recognitionRef.current = recognition;
+    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+      console.error('Speech recognition error:', event);
+    };
 
+    recognition.start();
+    session.current = recognition;
+    setIsListening(true);
+  };
+
+  const stopListening = () => {
+    session.current?.stop();
+    setIsListening(false);
+  };
+
+  useEffect(() => {
     return () => {
-      recognition.stop();
+      stopListening();
     };
-  }, [onCommand, setListening]);
+  }, []);
 
-  const start = () => {
-    recognitionRef.current?.start();
+  return {
+    isListening,
+    startListening,
+    stopListening,
+    session,
   };
-
-  const stop = () => {
-    recognitionRef.current?.stop();
-  };
-
-  return { start, stop };
 }

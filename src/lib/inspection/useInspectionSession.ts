@@ -1,39 +1,42 @@
 import { useState } from 'react';
-import { InspectionTemplate, InspectionSession } from '@lib/inspection/types';
+import { InspectionSession, InspectionSection } from './types';
+import useVoiceInput from '@hooks/useVoiceInput';
+import handleInspectionCommand from './handleInspectionCommand';
+import dispatchCommand from './dispatchCommand';
 
 export default function useInspectionSession() {
-  const [inspection, setInspection] = useState<InspectionSession | null>(null);
-  const [isListening, setIsListening] = useState(false);
+  const [inspection, setInspection] = useState<InspectionSession>({
+    sections: [],
+    currentSectionIndex: 0,
+    started: false,
+    completed: false,
+  });
 
-  const startSession = (template: InspectionTemplate) => {
-    const initialized: InspectionSession = {
-      templateName: template.name,
-      sections: template.sections.map((section) => ({
-        title: section.title,
-        items: section.items.map((item) => ({
-          name: item,
-          status: 'unmarked',
-          notes: '',
-          photo: null,
-        })),
-      })),
-    };
-    setInspection(initialized);
-  };
+  const {
+    isListening,
+    startListening,
+    stopListening,
+    session,
+  } = useVoiceInput();
 
   const updateInspection = (updated: InspectionSession) => {
     setInspection(updated);
   };
 
-  const pauseSession = () => {
-    setIsListening(false);
+  const processVoiceCommand = async (text: string) => {
+    const command = await dispatchCommand(text);
+    if (command) {
+      const updated = handleInspectionCommand(inspection, command);
+      setInspection(updated);
+    }
   };
 
   return {
     inspection,
     updateInspection,
     isListening,
-    startSession,
-    pauseSession,
+    startListening,
+    stopListening,
+    session,
   };
 }
