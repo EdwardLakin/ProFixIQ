@@ -13,7 +13,7 @@ export default function InspectionSummaryPage() {
 
     const response = await fetch('/api/inspection/submit', {
       method: 'POST',
-      body: JSON.stringify({ summary }),
+      body: JSON.stringify(summary),
       headers: {
         'Content-Type': 'application/json',
       },
@@ -21,10 +21,12 @@ export default function InspectionSummaryPage() {
 
     const result = await response.json();
 
-    if (result.attachedToWorkOrder) {
+    if (result.attachedWorkOrder) {
       router.push(`/app/workorders/${result.workOrderId}`);
     } else if (result.pdfUrl) {
       window.open(result.pdfUrl, '_blank');
+    } else {
+      alert('Failed to process summary');
     }
   };
 
@@ -37,19 +39,15 @@ export default function InspectionSummaryPage() {
 
         <SummaryComponent />
 
-        <div className="mt-8 flex gap-4">
-          <Link
-            href="/app/inspection"
-            className="inline-block bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded transition"
-          >
-            Back to Inspection
+        <div className="flex justify-end mt-8 gap-4">
+          <Link href="/inspection/start">
+            <button className="bg-gray-600 text-white px-6 py-2 rounded-md">Back</button>
           </Link>
-
           <button
             onClick={handleSubmit}
-            className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded"
+            className="bg-orange-600 text-white px-6 py-2 rounded-md hover:bg-orange-500"
           >
-            Submit Summary
+            Submit
           </button>
         </div>
       </div>

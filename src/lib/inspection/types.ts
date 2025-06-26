@@ -1,9 +1,10 @@
-// lib/inspection/types.ts
+export type InspectionStatus = 'ok' | 'fail' | 'na' | 'unmarked';
 
 export type InspectionItem = {
-  item: string;
-  status: string;
-  note?: string;
+  name: string;
+  status: InspectionStatus;
+  notes: string;
+  photo: string | null;
 };
 
 export type InspectionSection = {
@@ -11,13 +12,21 @@ export type InspectionSection = {
   items: InspectionItem[];
 };
 
-export type InspectionState = {
+export type InspectionTemplate = {
+  name: string;
+  sections: {
+    title: string;
+    items: string[];
+  }[];
+};
+
+export type InspectionSession = {
+  templateName: string;
   sections: InspectionSection[];
 };
 
-export type SummaryLine = {
-  section: string;
+export type InspectionCommand = {
   item: string;
-  status: 'ok' | 'fail' | 'na';
-  note?: string;
+  status: InspectionStatus;
+  notes?: string;
 };

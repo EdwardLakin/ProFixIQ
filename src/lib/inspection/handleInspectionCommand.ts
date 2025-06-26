@@ -1,52 +1,23 @@
-// src/lib/inspection/handleInspectionCommand.ts
+import { InspectionCommand, InspectionSession } from '@lib/inspection/types';
 
-import { InspectionState, InspectionCommand, InspectionAction } from '@lib/inspection/types';
-
-export function handleInspectionCommand(
-  state: InspectionState,
+export default function handleInspectionCommand(
+  inspection: InspectionSession,
   command: InspectionCommand
-): InspectionAction | null {
-  const { type, section, item, value, unit, note } = command;
+): InspectionSession {
+  const updated = { ...inspection };
 
-  switch (type) {
-    case 'ok':
-    case 'fail':
-    case 'na':
-      if (!section || !item) return null;
-      return {
-        type: 'setStatus',
-        section,
-        item,
-        status: type,
-        note,
-      };
-
-    case 'recommend':
-      if (!section || !item) return null;
-      return {
-        type: 'addNote',
-        section,
-        item,
-        note: note || 'Recommended for future service',
-      };
-
-    case 'measure':
-      if (!section || !item || typeof value !== 'number' || !unit) return null;
-      return {
-        type: 'setMeasurement',
-        section,
-        item,
-        value,
-        unit,
-      };
-
-    case 'pause':
-      return { type: 'pause' };
-
-    case 'stop':
-      return { type: 'stop' };
-
-    default:
-      return null;
+  for (const section of updated.sections) {
+    for (const item of section.items) {
+      if (item.name.toLowerCase() === command.item.toLowerCase()) {
+        item.status = command.status;
+        if (command.notes) {
+          item.notes = command.notes;
+        }
+        return updated;
+      }
+    }
   }
+
+  // If no exact match found, return original
+  return inspection;
 }

@@ -1,69 +1,54 @@
-export const synonymMap: Record<string, { section: string; item: string }> = {
-  // Engine Bay
-  'engine oil': { section: 'Engine Bay', item: 'Engine Oil' },
-  'oil filter': { section: 'Engine Bay', item: 'Oil Filter' },
-  'air filter': { section: 'Engine Bay', item: 'Air Filter' },
-  'cabin filter': { section: 'Engine Bay', item: 'Cabin Air Filter' },
-  'coolant': { section: 'Engine Bay', item: 'Coolant Level' },
-  'brake fluid': { section: 'Engine Bay', item: 'Brake Fluid Level' },
-  'transmission fluid': { section: 'Engine Bay', item: 'Transmission Fluid Level' },
-  'battery terminals': { section: 'Engine Bay', item: 'Battery Terminals' },
-  'belts': { section: 'Engine Bay', item: 'Belts' },
-  'hoses': { section: 'Engine Bay', item: 'Hoses' },
-
-  // Brakes
-  'front brakes': { section: 'Brakes', item: 'Front Brake Pads' },
-  'rear brakes': { section: 'Brakes', item: 'Rear Brake Pads' },
-  'rotors': { section: 'Brakes', item: 'Brake Rotors' },
-  'brake lines': { section: 'Brakes', item: 'Brake Lines' },
-  'brake fluid condition': { section: 'Brakes', item: 'Brake Fluid Condition' },
-
-  // Tires
-  'tread depth': { section: 'Tires', item: 'Tire Tread Depth' },
-  'tire pressure': { section: 'Tires', item: 'Tire Pressure' },
-  'spare tire': { section: 'Tires', item: 'Spare Tire' },
-  'wheels': { section: 'Tires', item: 'Wheel Condition' },
-  'valve stems': { section: 'Tires', item: 'Valve Stems' },
-
-  // Lights
-  'headlights': { section: 'Lights & Signals', item: 'Headlights' },
-  'brake lights': { section: 'Lights & Signals', item: 'Brake Lights' },
-  'reverse lights': { section: 'Lights & Signals', item: 'Reverse Lights' },
-  'turn signals': { section: 'Lights & Signals', item: 'Turn Signals' },
-  'plate light': { section: 'Lights & Signals', item: 'License Plate Light' },
-
-  // Interior
-  'horn': { section: 'Interior', item: 'Horn' },
-  'wipers': { section: 'Interior', item: 'Windshield Wipers' },
-  'washer fluid': { section: 'Interior', item: 'Washer Fluid' },
-  'heater': { section: 'Interior', item: 'Heater Operation' },
-  'ac': { section: 'Interior', item: 'AC Operation' },
-  'check engine': { section: 'Interior', item: 'Check Engine Light' },
-  'warning lights': { section: 'Interior', item: 'Warning Lights' },
-
-  // Undercarriage
-  'suspension': { section: 'Undercarriage', item: 'Suspension Components' },
-  'steering linkages': { section: 'Undercarriage', item: 'Steering Linkages' },
-  'cv boots': { section: 'Undercarriage', item: 'CV Boots' },
-  'exhaust': { section: 'Undercarriage', item: 'Exhaust System' },
-  'driveline': { section: 'Undercarriage', item: 'Driveline' },
-  'oil leaks': { section: 'Undercarriage', item: 'Oil Leaks' },
-  'trans leaks': { section: 'Undercarriage', item: 'Transmission Leaks' },
-  'diff leaks': { section: 'Undercarriage', item: 'Differential Leaks' },
-
-  // Fluids (repeats for safety)
-  'power steering fluid': { section: 'Fluids', item: 'Power Steering Fluid' },
-  'Windshield washer fluid': { section: 'Fluids', item: 'Windshield Washer Fluid' },
-
-  // Service Items
-  'reset light': { section: 'Service Items', item: 'Reset Maintenance Light' },
-  'top off fluids': { section: 'Service Items', item: 'Top Off Fluids' },
-  'inspect recalls': { section: 'Service Items', item: 'Inspect for Recalls' },
-  'oil change': { section: 'Service Items', item: 'Oil Change' },
-  'filter change': { section: 'Service Items', item: 'Oil Filter Change' },
+export const statusSynonyms: Record<string, string[]> = {
+  ok: ['ok', 'good', 'working', 'fine', 'passed', 'pass'],
+  fail: ['fail', 'failed', 'bad', 'broken', 'leaking', 'worn', 'cracked'],
+  na: ['n/a', 'not applicable', 'skip', 'na'],
 };
 
-export function resolveSynonym(raw: string): { section: string; item: string } | null {
-  const normalized = raw.toLowerCase().trim();
-  return synonymMap[normalized] || null;
-}
+export const itemSynonyms: Record<string, string[]> = {
+  'Engine Oil': ['engine oil', 'oil level'],
+  'Coolant': ['coolant', 'antifreeze'],
+  'Brake Fluid': ['brake fluid'],
+  'Transmission Fluid': ['transmission fluid'],
+  'Power Steering Fluid': ['power steering'],
+  'Windshield Washer Fluid': ['washer fluid', 'wiper fluid'],
+
+  'Front Brake Pads': ['front brake pads', 'front brakes'],
+  'Rear Brake Pads': ['rear brake pads', 'rear brakes'],
+  'Rotors': ['rotors', 'brake rotors'],
+  'Brake Lines': ['brake lines'],
+  'Brake Calipers': ['brake calipers', 'calipers'],
+
+  'Battery Terminals': ['battery terminals'],
+  'Battery Voltage': ['battery voltage'],
+  'Alternator Belt': ['alternator belt'],
+  'Starter Function': ['starter', 'starter function'],
+
+  'Tire Tread Depth': ['tire tread', 'tread depth'],
+  'Tire Pressure': ['tire pressure'],
+  'Suspension Bushings': ['suspension bushings'],
+  'Shocks/Struts': ['shocks', 'struts'],
+  'Wheel Bearings': ['wheel bearings'],
+  'Alignment (Visual)': ['alignment'],
+
+  'Headlights': ['headlights', 'head lights'],
+  'Brake Lights': ['brake lights'],
+  'Turn Signals': ['turn signals'],
+  'Interior Lights': ['interior lights'],
+  'Horn': ['horn'],
+  'Power Windows/Locks': ['power windows', 'power locks'],
+
+  'Serpentine Belt': ['serpentine belt'],
+  'Radiator Hoses': ['radiator hoses'],
+  'Heater Hoses': ['heater hoses'],
+  'Vacuum Lines': ['vacuum lines'],
+
+  'Leaks (Oil/Coolant)': ['leaks', 'oil leak', 'coolant leak'],
+  'Exhaust System': ['exhaust'],
+  'Frame Rust': ['frame rust', 'rust'],
+  'Body Damage': ['body damage'],
+  'Wiper Blades': ['wiper blades'],
+
+  'Heater Operation': ['heater'],
+  'AC Operation': ['air conditioning', 'ac'],
+  'Cabin Ventilation': ['ventilation', 'cabin air'],
+};

@@ -1,70 +1,98 @@
-// src/lib/inspection/templates/maintenance50Point.ts
+// lib/inspection/templates/maintenance50Point.ts
 
-const maintenance50Point: Record<string, string[]> = {
-  "Undercarriage": [
-    "Exhaust System",
-    "Drive Shaft",
-    "CV Boots",
-    "Suspension",
-    "Brake Lines",
-    "Fuel Lines",
-    "Transmission Mounts",
-    "Engine Mounts",
-  ],
-  "Fluids & Filters": [
-    "Engine Oil",
-    "Transmission Fluid",
-    "Coolant Level",
-    "Brake Fluid",
-    "Power Steering Fluid",
-    "Windshield Washer Fluid",
-    "Engine Air Filter",
-    "Cabin Air Filter",
-    "Fuel Filter",
-  ],
-  "Engine Bay": [
-    "Belts",
-    "Hoses",
-    "Battery Terminals",
-    "Battery Hold Down",
-    "Radiator",
-    "Cooling Fans",
-    "Oil Leaks",
-    "Coolant Leaks",
-  ],
-  "Brakes": [
-    "Front Brake Pads",
-    "Rear Brake Pads",
-    "Rotors",
-    "Brake Calipers",
-    "Parking Brake Operation",
-    "Brake Pedal Travel",
-  ],
-  "Wheels & Tires": [
-    "Tire Pressure",
-    "Tire Tread Depth",
-    "Wheel Alignment",
-    "Wheel Bearings",
-    "Rim Condition",
-  ],
-  "Exterior": [
-    "Lights (Headlights, Tail Lights)",
-    "Turn Signals",
-    "Brake Lights",
-    "Windshield",
-    "Wipers",
-    "Washer Nozzles",
-    "Body Condition",
-  ],
-  "Interior": [
-    "Horn Operation",
-    "Climate Controls",
-    "Heater Function",
-    "AC Function",
-    "Instrument Cluster",
-    "Warning Lights",
-    "Seatbelts",
-    "Mirrors",
+import { InspectionTemplate } from '@lib/inspection/types';
+
+const maintenance50Point: InspectionTemplate = {
+  name: '50-Point Maintenance Inspection',
+  sections: [
+    {
+      title: 'Fluids',
+      items: [
+        'Engine Oil',
+        'Coolant',
+        'Brake Fluid',
+        'Transmission Fluid',
+        'Power Steering Fluid',
+        'Windshield Washer Fluid',
+      ],
+    },
+    {
+      title: 'Filters',
+      items: [
+        'Engine Air Filter',
+        'Cabin Air Filter',
+        'Fuel Filter',
+        'Oil Filter',
+      ],
+    },
+    {
+      title: 'Brakes',
+      items: [
+        'Front Brake Pads',
+        'Rear Brake Pads',
+        'Rotors',
+        'Brake Lines',
+        'Brake Calipers',
+      ],
+    },
+    {
+      title: 'Tires & Suspension',
+      items: [
+        'Tire Tread Depth',
+        'Tire Pressure',
+        'Suspension Bushings',
+        'Shocks/Struts',
+        'Wheel Bearings',
+        'Alignment (Visual)',
+      ],
+    },
+    {
+      title: 'Battery & Charging',
+      items: [
+        'Battery Terminals',
+        'Battery Voltage',
+        'Alternator Belt',
+        'Starter Function',
+      ],
+    },
+    {
+      title: 'Lighting & Electrical',
+      items: [
+        'Headlights',
+        'Brake Lights',
+        'Turn Signals',
+        'Interior Lights',
+        'Horn',
+        'Power Windows/Locks',
+      ],
+    },
+    {
+      title: 'Belts & Hoses',
+      items: [
+        'Serpentine Belt',
+        'Radiator Hoses',
+        'Heater Hoses',
+        'Vacuum Lines',
+      ],
+    },
+    {
+      title: 'Underbody & Exterior',
+      items: [
+        'Leaks (Oil/Coolant)',
+        'Exhaust System',
+        'Frame Rust',
+        'Body Damage',
+        'Wiper Blades',
+      ],
+    },
+    {
+      title: 'HVAC System',
+      items: [
+        'Heater Operation',
+        'AC Operation',
+        'Cabin Ventilation',
+      ],
+    },
   ],
 };
 

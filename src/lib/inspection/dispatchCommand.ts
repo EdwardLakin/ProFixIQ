@@ -1,49 +1,37 @@
-// src/lib/inspection/dispatchCommand.ts
+import { InspectionCommand } from '@lib/inspection/types';
+import { statusSynonyms, itemSynonyms } from '@lib/inspection/synonyms';
 
-import { InspectionState, InspectionAction } from '@lib/inspection/types';
-import { saveInspectionState } from '@lib/inspection/inspectionState';
+export default async function dispatchCommand(text: string): Promise<InspectionCommand | null> {
+  const lower = text.toLowerCase();
 
-export function dispatchInspectionAction(
-  state: InspectionState,
-  action: InspectionAction
-): InspectionState {
-  const updated = { ...state };
-
-  switch (action.type) {
-    case 'setStatus': {
-      const item = updated.sections?.[action.section]?.[action.item];
-      if (!item) return state;
-      item.status = action.status;
-      if (action.note) {
-        item.notes.push(action.note);
-      }
+  // Try to find a status keyword
+  let status: InspectionCommand['status'] | null = null;
+  for (const key in statusSynonyms) {
+    if (statusSynonyms[key].some((s) => lower.includes(s))) {
+      status = key as InspectionCommand['status'];
       break;
     }
-
-    case 'addNote': {
-      const item = updated.sections?.[action.section]?.[action.item];
-      if (!item) return state;
-      item.notes.push(action.note);
-      break;
-    }
-
-    case 'setMeasurement': {
-      const item = updated.sections?.[action.section]?.[action.item];
-      if (!item) return state;
-      item.measurement = {
-        value: action.value,
-        unit: action.unit,
-      };
-      break;
-    }
-
-    case 'pause':
-    case 'stop':
-      // These are handled externally in the UI (not in state)
-      break;
   }
 
-  updated.updatedAt = new Date().toISOString();
-  saveInspectionState(updated);
-  return updated;
+  if (!status) return null;
+
+  // Try to find a matching item
+  let item: string | null = null;
+  for (const knownItem in itemSynonyms) {
+    if (itemSynonyms[knownItem].some((syn) => lower.includes(syn))) {
+      item = knownItem;
+      break;
+    }
+  }
+
+  if (!item) return null;
+
+  // Optional: extract notes
+  const notes = lower;
+
+  return {
+    item,
+    status,
+    notes,
+  };
 }

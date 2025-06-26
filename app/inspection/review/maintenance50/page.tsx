@@ -4,7 +4,6 @@ import { useRouter } from 'next/navigation';
 import Button from '@components/ui/Button';
 import HomeButton from '@components/ui/HomeButton';
 import PreviousButton from '@components/ui/PreviousPageButton';
-import '@styles/globals.css';
 
 export default function Maintenance50Start() {
   const router = useRouter();
