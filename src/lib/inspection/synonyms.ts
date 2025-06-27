@@ -52,3 +52,14 @@ export const itemSynonyms: Record<string, string[]> = {
   'AC Operation': ['air conditioning', 'ac'],
   'Cabin Ventilation': ['ventilation', 'cabin air'],
 };
+
+export function resolveSynonym(input: string): { section: string; item: string } | null {
+  for (const section in itemSynonyms) {
+    for (const synonym of itemSynonyms[section]) {
+      if (input.toLowerCase().includes(synonym.toLowerCase())) {
+        return { section, item: synonym };
+      }
+    }
+  }
+  return null;
+}

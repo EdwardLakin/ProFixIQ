@@ -1,73 +1,42 @@
-// Status options
-export type InspectionStatus = 'ok' | 'fail' | 'na';
+export type CommandType = 'ok' | 'fail' | 'na' | 'add' | 'recommend' | 'measurement' | 'pause';
 
-// Single line item in a section
-export interface InspectionItem {
-  name: string;
-  status?: InspectionStatus;
-  notes?: string;
-  photo?: string;
+export interface InspectionCommandBase {
+  type: CommandType;
+  section?: string;
+  item?: string;
 }
 
-// A section of the inspection
-export interface InspectionSection {
-  title: string;
-  items: InspectionItem[];
+export interface AddCommand extends InspectionCommandBase {
+  type: 'add';
+  note2?: string;
 }
 
-// Template structure for the inspection (used in templates)
-export interface InspectionTemplate {
-  templateName: string;
-  sections: {
-    title: string;
-    items: {
-      name: string;
-    }[];
-  }[];
+export interface RecommendCommand extends InspectionCommandBase {
+  type: 'recommend';
+  note?: string;
 }
 
-// Active inspection session (used in useInspectionSession and live editing)
-export interface InspectionSession {
-  templateName: string;
-  date: string;
-  sections: InspectionSection[];
-  started: boolean;
-  completed: boolean;
-  currentSectionIndex: number;
+export interface MeasurementCommand extends InspectionCommandBase {
+  type: 'measurement';
+  value: number;
+  unit?: string;
 }
 
-// Summary output after inspection (used for PDF/email/quote)
-export interface InspectionSummaryItem {
-  section: string;
-  item: string;
-  status: InspectionStatus;
-  notes?: string;
+export interface StatusCommand extends InspectionCommandBase {
+  type: 'ok' | 'fail' | 'na';
 }
+
+export interface PauseCommand extends InspectionCommandBase {
+  type: 'pause';
+}
+
+export type InspectionCommand =
+  | AddCommand
+  | RecommendCommand
+  | MeasurementCommand
+  | StatusCommand
+  | PauseCommand;
 
 export interface InspectionSummary {
-  templateName: string;
-  date: string;
-  items: InspectionSummaryItem[];
+  items: InspectionCommand[];
 }
-
-// Voice command format
-export type InspectionCommandType = 'add' | 'recommend' | 'measurement' | 'na';
-
-export interface InspectionCommand {
-  type: InspectionCommandType;
-  item: string;
-  section: string;
-  value?: string;
-  repairSuggestion?: string;
-  laborHours?: number;
-}
-
-// Default session object (for init/reset)
-export const defaultSession: InspectionSession = {
-  templateName: '',
-  date: '',
-  started: false,
-  completed: false,
-  currentSectionIndex: 0,
-  sections: [],
-};

@@ -3,42 +3,59 @@ import { useEffect, useRef, useState } from 'react';
 declare global {
   interface Window {
     webkitSpeechRecognition: any;
+    SpeechRecognition: any;
   }
 }
 
 export default function useVoiceInput() {
   const [isListening, setIsListening] = useState(false);
-  const session = useRef<SpeechRecognition | null>(null);
+  const [transcript, setTranscript] = useState('');
+  const session = useRef<any>(null);
 
-  const startListening = () => {
-    if (typeof window === 'undefined' || !('webkitSpeechRecognition' in window)) {
-      console.warn('Speech recognition not supported in this browser.');
-      return;
+  const initRecognition = () => {
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      console.error('Speech recognition not supported.');
+      return null;
     }
 
-    const recognition = new window.webkitSpeechRecognition();
+    const recognition = new SpeechRecognition();
     recognition.continuous = true;
-    recognition.interimResults = false;
+    recognition.interimResults = true;
     recognition.lang = 'en-US';
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
-      const transcript = Array.from(event.results)
+      const text = Array.from(event.results)
         .map((result) => result[0].transcript)
         .join('');
-      console.log('Voice input:', transcript);
-      // TODO: pass transcript to inspection handler
+      setTranscript(text);
     };
 
-    recognition.onerror = (event: Event) => {
+    recognition.onerror = (event: any) => {
       console.error('Speech recognition error:', event);
     };
 
-    recognition.start();
-    session.current = recognition;
-    setIsListening(true);
+    return recognition;
   };
 
-  const stopListening = () => {
+  const startListening = () => {
+    if (!session.current) {
+      const recognition = initRecognition();
+      if (!recognition) return;
+      session.current = recognition;
+    }
+
+    try {
+      session.current.start();
+      setIsListening(true);
+    } catch (err) {
+      console.warn('Already started:', err);
+    }
+  };
+
+  const pauseListening = () => {
     if (session.current) {
       session.current.stop();
       setIsListening(false);
@@ -47,14 +64,15 @@ export default function useVoiceInput() {
 
   useEffect(() => {
     return () => {
-      stopListening();
+      pauseListening();
     };
   }, []);
 
   return {
     isListening,
+    transcript,
     startListening,
-    stopListening,
+    pauseListening,
     session,
   };
 }

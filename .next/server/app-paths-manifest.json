@@ -1,10 +1,6 @@
 {
-  "/_not-found/page": "app/_not-found/page.js",
-  "/ai/dtc/page": "app/ai/dtc/page.js",
+  "/page": "app/page.js",
   "/inspection/page": "app/inspection/page.js",
   "/inspection/maintenance50/page": "app/inspection/maintenance50/page.js",
-  "/inspection/summary/page": "app/inspection/summary/page.js",
-  "/page": "app/page.js",
-  "/work-orders/page": "app/work-orders/page.js",
-  "/sign-in/page": "app/sign-in/page.js"
+  "/inspection/summary/page": "app/inspection/summary/page.js"
 }

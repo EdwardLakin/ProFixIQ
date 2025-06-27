@@ -1,20 +1,17 @@
-import type { InspectionCommand } from '@lib/inspection/types';
-import { resolveSynonym } from '@lib/inspection/synonyms';
+import { InspectionCommand } from '../types';
+import { resolveSynonym } from '../synonyms';
 
-export function parseAddCommand(input: string): InspectionCommand | null {
+export default function parseAddCommand(input: string): InspectionCommand | null {
   if (!input.toLowerCase().startsWith('add')) return null;
-
-  const remainder = input.slice(3).trim(); // remove "add"
+  const remainder = input.slice(3).trim();
   const match = resolveSynonym(remainder);
-
   if (match) {
     return {
       type: 'add',
       section: match.section,
       item: match.item,
-      note2: remainder.toLowerCase() !== match.item.toLowerCase() ? remainder : '',
+      note2: match.item.toLowerCase() !== remainder.toLowerCase() ? remainder : '',
     };
   }
-
   return null;
 }

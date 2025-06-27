@@ -1,20 +1,17 @@
-import { InspectionCommand } from '@lib/inspection/types';
-import { resolveSynonym } from '@lib/inspection/synonyms';
+import { InspectionCommand } from '../types';
+import { resolveSynonym } from '../synonyms';
 
-export function parseRecommendCommand(input: string): InspectionCommand | null {
-  if (!input.startsWith('recommend ')) return null;
-
-  const remainder = input.slice(10).trim(); // Remove "recommend "
+export default function parseRecommendCommand(input: string): InspectionCommand | null {
+  if (!input.toLowerCase().startsWith('recommend')) return null;
+  const remainder = input.slice(9).trim();
   const match = resolveSynonym(remainder);
-
   if (match) {
     return {
       type: 'recommend',
       section: match.section,
       item: match.item,
-      note: remainder !== match.item.toLowerCase() ? remainder : undefined,
+      note: match.item.toLowerCase() !== remainder.toLowerCase() ? remainder : '',
     };
   }
-
   return null;
 }
