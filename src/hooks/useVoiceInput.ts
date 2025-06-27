@@ -11,7 +11,10 @@ export default function useVoiceInput() {
   const session = useRef<SpeechRecognition | null>(null);
 
   const startListening = () => {
-    if (typeof window === 'undefined' || !('webkitSpeechRecognition' in window)) return;
+    if (typeof window === 'undefined' || !('webkitSpeechRecognition' in window)) {
+      console.warn('Speech recognition not supported in this browser.');
+      return;
+    }
 
     const recognition = new window.webkitSpeechRecognition();
     recognition.continuous = true;
@@ -20,13 +23,13 @@ export default function useVoiceInput() {
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
       const transcript = Array.from(event.results)
-        .map(result => result[0].transcript)
+        .map((result) => result[0].transcript)
         .join('');
       console.log('Voice input:', transcript);
-      // You can call a handler here to process voice command
+      // TODO: pass transcript to inspection handler
     };
 
-    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+    recognition.onerror = (event: Event) => {
       console.error('Speech recognition error:', event);
     };
 
@@ -36,8 +39,10 @@ export default function useVoiceInput() {
   };
 
   const stopListening = () => {
-    session.current?.stop();
-    setIsListening(false);
+    if (session.current) {
+      session.current.stop();
+      setIsListening(false);
+    }
   };
 
   useEffect(() => {

@@ -1,61 +1,73 @@
-// supabase/functions/send-workorder-email/index.ts
+/// <reference types="https://deno.land/x/supabase@1.0.3/functions/types.ts" />
 
-import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
-import { renderToBuffer } from 'npm:@react-pdf/renderer'
-import { WorkOrderPDFDoc } from '../../shared/WorkOrderPDF.tsx'
-import sgMail from 'npm:@sendgrid/mail'
-
-// @ts-ignore (Deno workaround)
-sgMail.setApiKey(Deno.env.get('SENDGRID_API_KEY')!)
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+import { corsHeaders } from "../_shared/cors.ts";
+import { generateInspectionPDF } from "../_shared/pdf.ts";
 
 serve(async (req) => {
-  try {
-    const {
-      vehicleId,
-      workOrderId,
-      lines,
-      summary,
-      customerInfo,
-      vehicleInfo,
-    } = await req.json()
-
-    if (!customerInfo?.email) {
-      return new Response(JSON.stringify({ error: 'Missing customer email' }), {
-        status: 400,
-      })
-    }
-
-    const pdfBuffer = await renderToBuffer(
-      WorkOrderPDFDoc({
-        vehicleId,
-        workOrderId,
-        lines,
-        summary,
-        vehicleInfo,
-        customerInfo,
-      })
-    )
-
-    await sgMail.send({
-      to: customerInfo.email,
-      from: 'noreply@profixiq.com',
-      subject: `Work Order #${workOrderId} Summary`,
-      text: `Hi ${customerInfo.name || 'Customer'}, your repair summary is attached.`,
-      attachments: [
-        {
-          content: pdfBuffer.toString('base64'),
-          filename: `WorkOrder_${workOrderId}.pdf`,
-          type: 'application/pdf',
-          disposition: 'attachment',
-        },
-      ],
-    })
-
-    return new Response(JSON.stringify({ success: true }), { status: 200 })
-  } catch (err) {
-    console.error(err)
-    return new Response(JSON.stringify({ error: 'Failed to send email' }), {
-      status: 500,
-    })
+  if (req.method !== "POST") {
+    return new Response("Method Not Allowed", { status: 405, headers: corsHeaders });
   }
-})
+
+  const { summary, customerEmail, workOrderId } = await req.json();
+
+  if (!summary || !customerEmail || !workOrderId) {
+    return new Response("Missing summary, customer email, or work order ID", {
+      status: 400,
+      headers: corsHeaders,
+    });
+  }
+
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+  );
+
+  // 1. Generate PDF
+  const pdfBuffer = await generateInspectionPDF(summary);
+
+  // 2. Upload to Supabase Storage
+  const filename = `inspection-${workOrderId}-${Date.now()}.pdf`;
+  const { error: uploadError } = await supabase.storage
+    .from("inspection-pdfs")
+    .upload(filename, pdfBuffer, {
+      contentType: "application/pdf",
+      upsert: true,
+    });
+
+  if (uploadError) {
+    return new Response(`PDF upload failed: ${uploadError.message}`, {
+      status: 500,
+      headers: corsHeaders,
+    });
+  }
+
+  // 3. Email the customer
+  const emailRes = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/send-email`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      email: customerEmail,
+      subject: "Your Inspection Report",
+      html: `<p>Attached is your vehicle inspection report.</p>`,
+      attachment: {
+        filename,
+        bucket: "inspection-pdfs",
+      },
+    }),
+  });
+
+  if (!emailRes.ok) {
+    const error = await emailRes.text();
+    return new Response(`Email failed: ${error}`, { status: 500, headers: corsHeaders });
+  }
+
+  return new Response("Inspection PDF sent to customer.", {
+    status: 200,
+    headers: corsHeaders,
+  });
+});
