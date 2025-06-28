@@ -1,37 +1,43 @@
-import { InspectionCommand } from '@lib/inspection/types';
-import { statusSynonyms, itemSynonyms } from '@lib/inspection/synonyms';
+// File: src/lib/inspection/dispatchCommand.ts
 
-export default async function dispatchCommand(text: string): Promise<InspectionCommand | null> {
-  const lower = text.toLowerCase();
+import { InspectionCommand, InspectionItem, InspectionSection } from './types';
+import { resolveSynonym } from './synonyms';
 
-  // Try to find a status keyword
-  let status: InspectionCommand['status'] | null = null;
-  for (const key in statusSynonyms) {
-    if (statusSynonyms[key].some((s) => lower.includes(s))) {
-      status = key as InspectionCommand['status'];
-      break;
-    }
-  }
+export function dispatchCommand(
+  command: InspectionCommand,
+  sections: InspectionSection[]
+): InspectionSection[] {
+  const sectionName = resolveSynonym(command.section || '');
+  const itemName = resolveSynonym(command.item || '');
 
-  if (!status) return null;
+  const updatedSections = sections.map((section) => {
+    if (resolveSynonym(section.section) !== sectionName) return section;
 
-  // Try to find a matching item
-  let item: string | null = null;
-  for (const knownItem in itemSynonyms) {
-    if (itemSynonyms[knownItem].some((syn) => lower.includes(syn))) {
-      item = knownItem;
-      break;
-    }
-  }
+    const updatedItems = section.items.map((item) => {
+      if (resolveSynonym(item.item) !== itemName) return item;
 
-  if (!item) return null;
+      switch (command.type) {
+        case 'ok':
+        case 'fail':
+        case 'na':
+          return { ...item, status: command.type };
 
-  // Optional: extract notes
-  const notes = lower;
+        case 'add':
+          return { ...item, note2: command.note2 };
 
-  return {
-    item,
-    status,
-    notes,
-  };
+        case 'recommend':
+          return { ...item, note: command.note };
+
+        case 'measurement':
+          return { ...item, value: command.value, unit: command.unit };
+
+        default:
+          return item;
+      }
+    });
+
+    return { ...section, items: updatedItems };
+  });
+
+  return updatedSections;
 }

@@ -1,23 +1,46 @@
-import { InspectionCommand, InspectionSession } from '@lib/inspection/types';
+// File: src/lib/inspection/handleInspectionCommand.ts
+
+import { InspectionCommand, InspectionSession } from './types';
+import { resolveSynonym } from './synonyms';
 
 export default function handleInspectionCommand(
-  inspection: InspectionSession,
+  session: InspectionSession,
   command: InspectionCommand
 ): InspectionSession {
-  const updated = { ...inspection };
+  const sectionName = resolveSynonym(command.section || '');
+  const itemName = resolveSynonym(command.item || '');
 
-  for (const section of updated.sections) {
-    for (const item of section.items) {
-      if (item.name.toLowerCase() === command.item.toLowerCase()) {
-        item.status = command.status;
-        if (command.notes) {
-          item.notes = command.notes;
-        }
-        return updated;
+  const updatedSections = session.sections.map((section) => {
+    if (resolveSynonym(section.section) !== sectionName) return section;
+
+    const updatedItems = section.items.map((item) => {
+      if (resolveSynonym(item.item) !== itemName) return item;
+
+      switch (command.type) {
+        case 'ok':
+        case 'fail':
+        case 'na':
+          return { ...item, status: command.type };
+
+        case 'add':
+          return { ...item, note2: command.note2 };
+
+        case 'recommend':
+          return { ...item, note: command.note };
+
+        case 'measurement':
+          return { ...item, value: command.value, unit: command.unit };
+
+        default:
+          return item;
       }
-    }
-  }
+    });
 
-  // If no exact match found, return original
-  return inspection;
+    return { ...section, items: updatedItems };
+  });
+
+  return {
+    ...session,
+    sections: updatedSections,
+  };
 }

@@ -1,17 +1,21 @@
-import { InspectionCommand } from '../types';
-import { resolveSynonym } from '../synonyms';
+// src/lib/inspection/parsers/parseRecommendCommand.ts
+import type { InspectionSession } from '@lib/inspection/types';
+import { updateInspectionItemStatus } from '@lib/inspection/inspectionState';
 
-export default function parseRecommendCommand(input: string): InspectionCommand | null {
-  if (!input.toLowerCase().startsWith('recommend')) return null;
-  const remainder = input.slice(9).trim();
-  const match = resolveSynonym(remainder);
-  if (match) {
-    return {
-      type: 'recommend',
-      section: match.section,
-      item: match.item,
-      note: match.item.toLowerCase() !== remainder.toLowerCase() ? remainder : '',
-    };
-  }
-  return null;
+export function parseRecommendCommand(
+  input: string,
+  session: InspectionSession
+): InspectionSession | null {
+  const recommendPattern = /recommend(?:ed)?(?:\s+)?(?:\sitem)?\s(.+?)(?:\s(\d+(?:\.\d+)?)(?:hrs|hours|minutes|min))?/i;
+  const match = input.match(recommendPattern);
+  if (!match) return null;
+
+  const itemTitle = match[1].trim().toLowerCase();
+  const labor = match[2] ? `${match[2]} hrs` : undefined;
+
+  const updatedSession = updateInspectionItemStatus(session, 'Recommendations', itemTitle, 'fail', labor ? `Recommended repair, labor: ${labor}` : 'Recommended repair');
+
+  return updatedSession;
 }
+
+export default parseRecommendCommand;

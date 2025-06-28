@@ -1,10 +1,20 @@
-import { InspectionCommand } from '../types';
+import { InspectionSession } from '@lib/inspection/types';
+import type { InspectionSession as Session } from '@lib/inspection/types';
 
-export default function parsePauseCommand(input: string): InspectionCommand | null {
-  const lower = input.trim().toLowerCase();
-  const matches = ['pause', 'pause inspection', 'stop', 'stop inspection', 'hold'];
-  if (matches.includes(lower)) {
-    return { type: 'pause' };
-  }
-  return null;
+export default function parsePauseCommand(
+  input: string,
+  session: Session
+): Session | null {
+  const normalized = input.toLowerCase();
+  const shouldPause =
+    normalized.includes('pause') ||
+    normalized.includes('stop listening') ||
+    normalized.includes('hold');
+
+  if (!shouldPause) return null;
+
+  return {
+    ...session,
+    isPaused: true,
+  };
 }

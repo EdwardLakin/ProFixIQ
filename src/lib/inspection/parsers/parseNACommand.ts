@@ -1,18 +1,24 @@
-import { InspectionCommand } from '../types';
-import { resolveSynonym } from '../synonyms';
+import { InspectionSession } from '@lib/inspection/types';
+import { updateInspectionItemStatus } from '@lib/inspection/inspectionState';
 
-export default function parseNACommand(input: string): InspectionCommand | null {
-  const lower = input.toLowerCase();
-  if (!lower.startsWith('mark') || (!lower.includes('n/a') && !lower.includes('not applicable'))) return null;
-  const parts = lower.replace('mark ', '').split(' ');
-  const keywordIndex = parts.findIndex(word => ['n/a', 'na', 'not'].includes(word));
-  if (keywordIndex === -1) return null;
-  const name = parts.slice(0, keywordIndex).join(' ');
-  const match = resolveSynonym(name);
+export default function parseStatusCommand(
+  input: string,
+  session: InspectionSession
+): InspectionSession | null {
+  const match = input.match(/\b(ok|fail|na)\b/i);
   if (!match) return null;
-  return {
-    type: 'na',
-    section: match.section,
-    item: match.item,
-  };
+
+  const [_, status] = match;
+  const parts = input.split(/\s+/);
+  if (parts.length < 2) return null;
+
+  const section = parts[0];
+  const item = parts.slice(1).join(' ');
+
+  return updateInspectionItemStatus(
+    session,
+    section,
+    item,
+    status.toLowerCase() as 'ok' | 'fail' | 'na'
+  );
 }

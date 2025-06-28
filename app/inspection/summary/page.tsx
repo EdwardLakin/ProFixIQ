@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import useInspectionSession from '@lib/inspection/useInspectionSession';
-import { InspectionStatus } from '@lib/inspection/types';
+import { InspectionStatus }from '@lib/inspection/types';
 import HomeButton from '@components/ui/HomeButton';
 
 export default function SummaryPage() {

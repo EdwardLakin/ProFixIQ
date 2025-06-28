@@ -1,5 +1,5 @@
 import { PDFDocument } from 'pdf-lib';
-import { InspectionSummary } from './summary';
+import { InspectionSummary }from './summary';
 import { rgb } from 'pdf-lib';
 
 export async function generateInspectionPDF(summary: InspectionSummary) {
@@ -31,10 +31,11 @@ export async function generateInspectionPDF(summary: InspectionSummary) {
     drawText(`Status: ${item.status}`, margin + 20, y);
     y -= 15;
 
-    if (item.notes && item.notes.length > 0) {
-      drawText(`Notes: ${item.notes}`, margin + 20, y);
-      y -= 15;
-    }
+    if (item.note2 || item.note2r) {
+  const combinedNotes = [item.note2, item.note2r].filter(Boolean).join(' | ');
+  drawText(`Notes: ${combinedNotes}`, margin + 20, y);
+  y += 15;
+}
 
     y -= 10;
 

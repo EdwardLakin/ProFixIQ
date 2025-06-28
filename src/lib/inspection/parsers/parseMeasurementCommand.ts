@@ -1,21 +1,17 @@
-import { InspectionCommand } from '../types';
-import { resolveSynonym } from '../synonyms';
+// File: src/lib/inspection/parsers/parseMeasurementCommand.ts
 
-export default function parseMeasurementCommand(input: string): InspectionCommand | null {
-  const parts = input.trim().toLowerCase().split(' ');
-  if (parts.length < 3) return null;
-  const unit = parts.pop()!;
-  const valueStr = parts.pop()!;
-  const name = parts.join(' ');
-  const value = parseFloat(valueStr);
-  if (isNaN(value)) return null;
-  const match = resolveSynonym(name);
+import { InspectionSession } from '@lib/inspection/types';
+import { updateInspectionItemStatus } from '@lib/inspection/inspectionState';
+
+export default function parseMeasurementCommand(
+  input: string,
+  session: InspectionSession
+): InspectionSession | null {
+  const match = input.match(/([a-z\s]+)\s([\d.]+(?:mm|psi|in|cm)?)/i);
   if (!match) return null;
-  return {
-    type: 'measurement',
-    section: match.section,
-    item: match.item,
-    value,
-    unit,
-  };
+
+  const [_, item, measurement] = match;
+  const section = 'Measurements'; // Can infer based on context
+
+  return updateInspectionItemStatus(session, section.trim(), item.trim(), 'ok', measurement);
 }
