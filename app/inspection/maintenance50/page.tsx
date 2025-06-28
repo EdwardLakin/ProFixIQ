@@ -5,7 +5,7 @@ import HomeButton from '@components/ui/HomeButton';
 import useInspectionSession from '@lib/inspection/useInspectionSession';
 import handleInspectionCommand from '@lib/inspection/handleInspectionCommand';
 import inspectionTemplate from '@lib/inspection/templates/maintenance50Point';
-import dispatchCommand from '@lib/inspection/dispatchCommand';
+import { dispatchCommand } from '@lib/inspection/dispatchCommand';
 import SectionDisplay from '@components/inspection/SectionDisplay';
 import { useRouter } from 'next/navigation';
 

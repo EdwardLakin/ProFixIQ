@@ -21,10 +21,35 @@
       "static/chunks/main-app.js",
       "static/chunks/app/inspection/maintenance50/page.js"
     ],
-    "/inspection/summary/page": [
+    "/work-orders/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/inspection/summary/page.js"
+      "static/chunks/app/work-orders/page.js"
+    ],
+    "/work-orders/create/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/work-orders/create/page.js"
+    ],
+    "/work-orders/customer/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/work-orders/customer/page.js"
+    ],
+    "/work-orders/quote-review/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/work-orders/quote-review/page.js"
+    ],
+    "/api/quote/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/quote/route.js"
+    ],
+    "/_not-found/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/_not-found/page.js"
     ]
   }
 }

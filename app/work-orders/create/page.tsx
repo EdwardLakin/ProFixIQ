@@ -1,10 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import PreviousPageButton from '@components/ui/PreviousPageButton';
 import { createClient } from '@supabase/supabase-js';
-import Header from '@components/ui/Header';
-import Card from '@components/ui/Card';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -13,68 +12,70 @@ const supabase = createClient(
 
 export default function CreateWorkOrderPage() {
   const router = useRouter();
-  const [customerName, setCustomerName] = useState('');
-  const [vehicleInfo, setVehicleInfo] = useState('');
+
+  const [customer, setCustomer] = useState({
+    name: '',
+    address: '',
+    city: '',
+    province: '',
+    postal: '',
+    phone: '',
+    email: '',
+  });
+
+  const [vehicle, setVehicle] = useState({
+    year: '',
+    make: '',
+    model: '',
+    vin: '',
+  });
+
   const [inspectionType, setInspectionType] = useState('');
-  const [concerns, setConcerns] = useState(['']);
+  const [concerns, setConcerns] = useState([{ description: '', labor: '', price: '' }]);
   const [loading, setLoading] = useState(false);
 
-  const handleAddConcern = () => setConcerns([...concerns, '']);
-  const handleConcernChange = (index: number, value: string) => {
+  const handleConcernChange = (
+    index: number,
+    field: string,
+    value: string
+  ) => {
     const updated = [...concerns];
-    updated[index] = value;
+    updated[index][field as keyof typeof updated[0]] = value;
     setConcerns(updated);
+  };
+
+  const handleAddConcern = () => {
+    setConcerns([...concerns, { description: '', labor: '', price: '' }]);
   };
 
   const handleSubmit = async () => {
     setLoading(true);
 
-    const {
-      data: user,
-      error: userError,
-    } = await supabase.auth.getUser();
+    const { name, address, city, province, postal, phone, email } = customer;
+    const { year, make, model, vin } = vehicle;
 
-    if (userError || !user.user?.id) {
-      alert('You must be signed in to create a work order.');
-      setLoading(false);
-      return;
-    }
+    const { error: lineError } = await supabase.from('work_order_lines').insert(
+      concerns.map(line => ({
+        customer_name: name,
+        address,
+        city,
+        province,
+        postal,
+        phone,
+        email,
+        year,
+        make,
+        model,
+        vin,
+        inspection_type: inspectionType,
+        description: line.description,
+        labor: line.labor,
+        price: line.price,
+      }))
+    );
 
-    const { data: workOrder, error } = await supabase
-      .from('work_orders')
-      .insert([
-        {
-          customer_name: customerName,
-          vehicle_info: vehicleInfo,
-          inspection_type: inspectionType,
-          user_id: user.user.id,
-        },
-      ])
-      .select()
-      .single();
-
-    if (error || !workOrder) {
-      alert('Error creating work order');
-      setLoading(false);
-      return;
-    }
-
-    const lineInserts = concerns
-      .filter((line) => line.trim() !== '')
-      .map((description) => ({
-        work_order_id: workOrder.id,
-        description,
-        user_id: user.user.id,
-      }));
-
-    if (lineInserts.length > 0) {
-      const { error: lineError } = await supabase
-        .from('work_order_lines')
-        .insert(lineInserts);
-
-      if (lineError) {
-        alert('Error saving work order lines');
-      }
+    if (lineError) {
+      alert('Error saving work order lines');
     }
 
     setLoading(false);
@@ -82,67 +83,97 @@ export default function CreateWorkOrderPage() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto p-6">
-      <Header title="Create Work Order" subtitle="Start a new repair or inspection job" center />
-      
-      <Card>
-        <div className="space-y-4">
+    <div className="max-w-3xl mx-auto px-6 pt-6">
+      <PreviousPageButton to="/work-orders" />
+
+      <div className="bg-black border border-orange-500 rounded-lg p-6 mb-6 text-center">
+        <h1 className="text-5xl font-black font-blackops text-orange-400">Create Work Order</h1>
+        <p className="text-white mt-2">Start a new repair or inspection</p>
+      </div>
+
+      <div className="bg-black border border-orange-500 rounded-lg p-6 mb-6">
+        <h2 className="text-2xl font-black font-blackops text-orange-400 text-center mb-2">Customer Info</h2>
+        <p className="text-white text-center mb-4">ProFixIQ</p>
+        {['name', 'address', 'city', 'province', 'postal', 'phone', 'email'].map(field => (
           <input
+            key={field}
             type="text"
-            placeholder="Customer Name"
-            className="w-full p-2 rounded bg-black/20 text-white"
-            value={customerName}
-            onChange={(e) => setCustomerName(e.target.value)}
+            placeholder={field[0].toUpperCase() + field.slice(1)}
+            className="w-full p-2 mb-2 rounded bg-black/20 text-white"
+            value={customer[field as keyof typeof customer]}
+            onChange={e => setCustomer({ ...customer, [field]: e.target.value })}
           />
+        ))}
+      </div>
 
+      <div className="bg-black border border-orange-500 rounded-lg p-6 mb-6">
+        <h2 className="text-2xl font-black font-blackops text-orange-400 text-center mb-2">Vehicle Info</h2>
+        <p className="text-white text-center mb-4">ProFixIQ</p>
+        {['year', 'make', 'model', 'vin'].map(field => (
           <input
+            key={field}
             type="text"
-            placeholder="Vehicle Info"
-            className="w-full p-2 rounded bg-black/20 text-white"
-            value={vehicleInfo}
-            onChange={(e) => setVehicleInfo(e.target.value)}
+            placeholder={field.toUpperCase()}
+            className="w-full p-2 mb-2 rounded bg-black/20 text-white"
+            value={vehicle[field as keyof typeof vehicle]}
+            onChange={e => setVehicle({ ...vehicle, [field]: e.target.value })}
           />
+        ))}
+      </div>
 
-          <select
-            className="w-full p-2 rounded bg-black/20 text-white"
-            value={inspectionType}
-            onChange={(e) => setInspectionType(e.target.value)}
-          >
-            <option value="">Select Inspection</option>
-            <option value="Full">Full Inspection</option>
-            <option value="Basic">Basic Check</option>
-            <option value="Brakes">Brake Only</option>
-          </select>
+      <div className="bg-black border border-orange-500 rounded-lg p-6 mb-6">
+        <h2 className="text-2xl font-black font-blackops text-orange-400 text-center mb-2">Select Inspection</h2>
+        <p className="text-white text-center mb-4">ProFixIQ</p>
+        <select
+          className="w-full p-2 mb-4 rounded bg-black/20 text-white"
+          value={inspectionType}
+          onChange={e => setInspectionType(e.target.value)}
+        >
+          <option value="">Select an Inspection</option>
+          <option value="maintenance50">Maintenance 50 Point</option>
+          <option value="brake">Brake Inspection</option>
+          <option value="diagnostic">Diagnostic</option>
+        </select>
+      </div>
 
-          <div className="space-y-2">
-            {concerns.map((concern, idx) => (
-              <input
-                key={idx}
-                type="text"
-                placeholder={`Concern #${idx + 1}`}
-                className="w-full p-2 rounded bg-black/20 text-white"
-                value={concern}
-                onChange={(e) => handleConcernChange(idx, e.target.value)}
-              />
-            ))}
-
-            <button
-              onClick={handleAddConcern}
-              className="text-sm text-orange-400 underline"
-            >
-              + Add Concern
-            </button>
+      <div className="bg-black border border-orange-500 rounded-lg p-6 mb-6">
+        <h2 className="text-2xl font-black font-blackops text-orange-400 text-center mb-2">Concerns</h2>
+        <p className="text-white text-center mb-4">ProFixIQ</p>
+        {concerns.map((line, idx) => (
+          <div key={idx} className="flex space-x-2 mb-2">
+            <input
+              type="text"
+              placeholder="Description"
+              className="w-1/3 p-2 rounded bg-black/20 text-white"
+              value={line.description}
+              onChange={e => handleConcernChange(idx, 'description', e.target.value)}
+            />
+            <input
+              type="text"
+              placeholder="Labor"
+              className="w-1/3 p-2 rounded bg-black/20 text-white"
+              value={line.labor}
+              onChange={e => handleConcernChange(idx, 'labor', e.target.value)}
+            />
+            <input
+              type="text"
+              placeholder="Price"
+              className="w-1/3 p-2 rounded bg-black/20 text-white"
+              value={line.price}
+              onChange={e => handleConcernChange(idx, 'price', e.target.value)}
+            />
           </div>
+        ))}
+        <button onClick={handleAddConcern} className="text-sm text-orange-400 underline mb-4">+ Add Concern</button>
+      </div>
 
-          <button
-            onClick={handleSubmit}
-            disabled={loading}
-            className="mt-4 w-full p-2 bg-orange-500 text-white rounded font-bold"
-          >
-            {loading ? 'Submitting...' : 'Create Work Order'}
-          </button>
-        </div>
-      </Card>
+      <button
+        onClick={handleSubmit}
+        disabled={loading}
+        className="mt-6 w-full p-3 bg-orange-500 text-white rounded font-bold"
+      >
+        {loading ? 'Submitting...' : 'Create Work Order'}
+      </button>
     </div>
   );
 }

@@ -1,6 +1,8 @@
 {
-  "/page": "app/page.js",
-  "/inspection/page": "app/inspection/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
   "/inspection/maintenance50/page": "app/inspection/maintenance50/page.js",
-  "/inspection/summary/page": "app/inspection/summary/page.js"
+  "/work-orders/customer/page": "app/work-orders/customer/page.js",
+  "/work-orders/quote-review/page": "app/work-orders/quote-review/page.js",
+  "/page": "app/page.js",
+  "/inspection/page": "app/inspection/page.js"
 }
