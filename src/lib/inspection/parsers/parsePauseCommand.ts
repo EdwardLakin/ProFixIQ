@@ -1,10 +1,11 @@
-import { InspectionSession } from '@lib/inspection/types';
-import type { InspectionSession as Session } from '@lib/inspection/types';
+// File: src/lib/inspection/parsers/parsePauseCommand.ts
+
+import type { InspectionSession } from '@lib/inspection/types';
 
 export default function parsePauseCommand(
   input: string,
-  session: Session
-): Session | null {
+  session: InspectionSession
+): InspectionSession | null {
   const normalized = input.toLowerCase();
   const shouldPause =
     normalized.includes('pause') ||

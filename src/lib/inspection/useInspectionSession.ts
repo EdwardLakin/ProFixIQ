@@ -1,66 +1,41 @@
-// src/lib/inspection/useInspectionSession.ts
-import { useEffect, useState } from 'react';
-import { InspectionSession } from './types';
-import { defaultInspectionSession } from './inspectionState';
+import { useEffect, useRef, useState } from 'react';
+import { startVoiceRecognition, stopVoiceRecognition } from './useInspectionVoice';
 import { processCommand } from './processCommand';
-import { startVoiceRecognition } from './useInspectionVoice';
+import type { InspectionSession } from './types';
 
-export default function useInspectionSession() {
-  const [session, setSession] = useState<InspectionSession>(defaultInspectionSession);
+const MAX_RETRIES = 3;
+
+export default function useInspectionSession(session: InspectionSession, setSession: (s: InspectionSession) => void) {
   const [isListening, setIsListening] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
-  const [transcript, setTranscript] = useState('');
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const retryCount = useRef(0);
+
+  const handleResult = (input: string) => {
+  const updated = processCommand(input, session);
+  if (updated) {
+    setSession(updated);
+  }
+};
 
   const startListening = () => {
+    const recognition = startVoiceRecognition(handleResult);
+    recognitionRef.current = recognition;
     setIsListening(true);
-    setIsPaused(false);
-    startVoiceRecognition({
-      onResult: handleCommand,
-      onStop: () => setIsListening(false),
-    });
-  };
-
-  const pauseListening = () => {
-    setIsPaused(true);
-    setIsListening(false);
-  };
-
-  const resumeListening = () => {
-    setIsPaused(false);
-    setIsListening(true);
-    startVoiceRecognition({
-      onResult: handleCommand,
-      onStop: () => setIsListening(false),
-    });
   };
 
   const stopListening = () => {
+    stopVoiceRecognition(recognitionRef.current);
     setIsListening(false);
-    setIsPaused(false);
   };
 
-  const handleCommand = (input: string) => {
-    setTranscript(input);
-    if (!session) return;
-    const updated = processCommand(session, input);
-    if (updated) {
-      setSession({ ...updated });
-    }
-  };
-
-  useEffect(() => {
-    setSession(defaultInspectionSession);
-  }, []);
+  const pauseListening = () => stopListening();
+  const resumeListening = () => startListening();
 
   return {
-    session,
-    setSession,
     isListening,
-    isPaused,
-    transcript,
     startListening,
+    stopListening,
     pauseListening,
     resumeListening,
-    stopListening,
   };
 }

@@ -1,6 +1,6 @@
-// File: src/lib/inspection/handleInspectionCommand.ts
+// src/lib/inspection/handleInspectionCommand.ts
 
-import { InspectionCommand, InspectionSession } from './types';
+import type { InspectionCommand, InspectionSession } from './types';
 import { resolveSynonym } from './synonyms';
 
 export default function handleInspectionCommand(
@@ -10,10 +10,10 @@ export default function handleInspectionCommand(
   const sectionName = resolveSynonym(command.section || '');
   const itemName = resolveSynonym(command.item || '');
 
-  const updatedSections = session.sections.map((section) => {
+  const updatedSections = session.sections.map(section => {
     if (resolveSynonym(section.section) !== sectionName) return section;
 
-    const updatedItems = section.items.map((item) => {
+    const updatedItems = section.items.map(item => {
       if (resolveSynonym(item.item) !== itemName) return item;
 
       switch (command.type) {

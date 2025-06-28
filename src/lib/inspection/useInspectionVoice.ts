@@ -1,31 +1,28 @@
-export function startVoiceRecognition({
-  onResult,
-  onStop,
-}: {
-  onResult: (transcript: string) => void;
-  onStop?: () => void;
-}) {
-  const SpeechRecognition = window.SpeechRecognition || (window as any).webkitSpeechRecognition;
-  if (!SpeechRecognition) {
-    console.error('SpeechRecognition not supported');
-    return;
-  }
-
+export function startVoiceRecognition(onResult: (transcript: string) => void): SpeechRecognition {
+  const SpeechRecognition =
+    (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
   const recognition = new SpeechRecognition();
+
   recognition.continuous = true;
   recognition.interimResults = false;
+  recognition.lang = 'en-US';
 
   recognition.onresult = (event: SpeechRecognitionEvent) => {
-    const transcript = Array.from(event.results)
-      .map((result) => result[0].transcript)
-      .join('')
-      .trim();
-    if (transcript && onResult) onResult(transcript);
+    const lastResult = event.results[event.results.length - 1];
+    const transcript = lastResult[0].transcript.trim();
+    onResult(transcript);
   };
 
-  recognition.onend = () => {
-    if (onStop) onStop();
+  recognition.onerror = (event: any) => {
+    console.error('Speech recognition error:', event?.error);
   };
 
   recognition.start();
+  return recognition;
+}
+
+export function stopVoiceRecognition(instance: SpeechRecognition | null) {
+  if (instance) {
+    instance.stop();
+  }
 }
