@@ -1,70 +1,81 @@
-import { useEffect, useState } from "react";
-import { InspectionSession, InspectionStatus, InspectionTemplate } from "@lib/inspection/types";
-import { defaultInspectionSession } from "@lib/inspection/inspectionState";
+import { useState } from 'react';
+import {
+  InspectionItem,
+  InspectionSection,
+  InspectionSession,
+  InspectionStatus,
+  InspectionTemplate,
+} from './types';
 
-export default function useInspectionSession(template: InspectionTemplate) {
-  const [session, setSession] = useState<InspectionSession>({
-    ...defaultInspectionSession,
-    sections: template.sections,
-    status: "not_started" as InspectionStatus,
-  });
+export default function useInspectionSession(template?: InspectionTemplate) {
+ const initialSession: InspectionSession = {
+  templateName: template?.templateName || '',
+  vehicleId: '',
+  customerId: '',
+  location: '',
+  started: false,
+  isListening: false,
+  isPaused: false,
+  completed: false,
+  currentSectionIndex: 0,
+  transcript: '',
+  status: 'not_started',
+  sections: template?.sections?.map((section, sIndex) => ({
+    section: section.section,
+    id: section.id || `section-${sIndex}`,
+    items: section.items.map((item) => ({
+      item: item.item,
+      status: 'ok',
+      notes: '',
+      value: undefined,
+      unit: '',
+      photoUrls: [],
+      recommend: [],
+    })),
+  })) || [],
+};
 
-  const [isListening, setIsListening] = useState(false);
-  const [transcript, setTranscript] = useState("");
-
-  useEffect(() => {
-    setSession((prev) => ({
-      ...prev,
-      sections: template.sections,
-    }));
-  }, [template]);
+  const [session, setSession] = useState<InspectionSession>(initialSession);
 
   const updateItem = (
     sectionIndex: number,
     itemIndex: number,
-    updates: Partial<InspectionSession["sections"][number]["items"][number]>
+    updatedItem: Partial<InspectionItem>
   ) => {
-    const updatedSections = [...session.sections];
-    const item = updatedSections[sectionIndex].items[itemIndex];
-    updatedSections[sectionIndex].items[itemIndex] = { ...item, ...updates };
+    setSession((prev) => {
+      const updatedSections = [...prev.sections];
+      const section = updatedSections[sectionIndex];
+      if (!section) return prev;
 
-    setSession((prev) => ({
-      ...prev,
-      sections: updatedSections,
-    }));
-  };
+      const updatedItems = [...section.items];
+      updatedItems[itemIndex] = {
+        ...updatedItems[itemIndex],
+        ...updatedItem,
+      };
 
-  const addPhotoToItem = (sectionIndex: number, itemIndex: number, url: string) => {
-    const updatedSections = [...session.sections];
-    const item = updatedSections[sectionIndex].items[itemIndex];
-    const updatedPhotos = item.photoUrls ? [...item.photoUrls, url] : [url];
-    updatedSections[sectionIndex].items[itemIndex] = { ...item, photoUrls: updatedPhotos };
+      updatedSections[sectionIndex] = {
+        ...section,
+        items: updatedItems,
+      };
 
-    setSession((prev) => ({
-      ...prev,
-      sections: updatedSections,
-    }));
-  };
-
-  const resetSession = () => {
-    setSession({
-      ...defaultInspectionSession,
-      sections: template.sections,
-      status: "not_started",
+      return {
+        ...prev,
+        sections: updatedSections,
+      };
     });
-    setTranscript("");
-    setIsListening(false);
+  };
+
+  const updateSessionStatus = (newStatus: InspectionStatus) => {
+    setSession((prev) => ({
+      ...prev,
+      status: newStatus,
+    }));
   };
 
   return {
     session,
     setSession,
-    isListening,
-    setIsListening,
-    transcript,
-    setTranscript,
     updateItem,
-    addPhotoToItem,
-    resetSession,
+    updateSessionStatus,
   };
 }

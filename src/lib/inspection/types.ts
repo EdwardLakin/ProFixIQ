@@ -73,6 +73,8 @@ export interface Inspection {
 export interface InspectionSession {
   vehicleId?: string;
   customerId?: string;
+  templateId?: string;           // ✅ Needed for Supabase
+  location?: string;             // ✅ Needed for Supabase
   templateName: string;
   sections: InspectionSection[];
   currentSectionIndex: number;

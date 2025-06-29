@@ -1,50 +1,50 @@
-import { PDFDocument } from 'pdf-lib';
-import { InspectionSummary }from './summary';
-import { rgb } from 'pdf-lib';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { InspectionSession } from './types';
 
-export async function generateInspectionPDF(summary: InspectionSummary) {
+export async function generateInspectionPDF(session: InspectionSession): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.create();
-  let page = pdfDoc.addPage();
+  const page = pdfDoc.addPage();
   const { width, height } = page.getSize();
+
+  const fontSize = 12;
   const margin = 50;
+  const lineHeight = 20;
+
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   let y = height - margin;
 
-  const drawText = (text: string, x: number, y: number) => {
-    page.drawText(text, {
-      x,
-      y,
-      size: 12,
-      color: rgb(0, 0, 0),
-    });
+  const drawText = (text: string) => {
+    page.drawText(text, { x: margin, y, size: fontSize, font, color: rgb(0, 0, 0) });
+    y -= lineHeight;
   };
 
-  drawText(`Inspection Summary - ${summary.templateName}`, margin, y);
-  y -= 25;
+  drawText(`Inspection Summary - ${session.templateName}`);
+  drawText(`Status: ${session.status ?? 'unknown'}`);
+  drawText(`Vehicle ID: ${session.vehicleId ?? 'N/A'}`);
+  drawText(`Customer ID: ${session.customerId ?? 'N/A'}`);
+  drawText(`Location: ${session.location ?? 'N/A'}`);
+  drawText(`Started: ${session.started ? 'Yes' : 'No'}`);
+  drawText(`Completed: ${session.completed ? 'Yes' : 'No'}`);
+  drawText(`Transcript: ${session.transcript ?? 'None'}`);
+  y -= lineHeight;
 
-  for (const item of summary.items) {
-    drawText(`Section: ${item.section}`, margin, y);
-    y -= 15;
+  session.sections.forEach((section, sectionIndex) => {
+    drawText(`Section ${sectionIndex + 1}: ${section.section}`);
 
-    drawText(`Item: ${item.item}`, margin + 20, y);
-    y -= 15;
+    section.items.forEach((item, itemIndex) => {
+      drawText(`  - Item: ${item.item}`);
+      drawText(`    Status: ${item.status ?? 'N/A'}`);
+      if (item.value !== undefined) drawText(`    Value: ${item.value}`);
+      if (item.unit) drawText(`    Unit: ${item.unit}`);
+      if (item.note) drawText(`    Notes: ${item.note}`);
+      if (item.recommend && item.recommend.length > 0)
+        drawText(`    Recommend: ${item.recommend.join(', ')}`);
+      if (item.photoUrls && item.photoUrls.length > 0)
+        drawText(`    Photos: ${item.photoUrls.join(', ')}`);
+    });
 
-    drawText(`Status: ${item.status}`, margin + 20, y);
-    y -= 15;
+    y -= lineHeight / 2;
+  });
 
-    if (item.note2 || item.note2r) {
-  const combinedNotes = [item.note2, item.note2r].filter(Boolean).join(' | ');
-  drawText(`Notes: ${combinedNotes}`, margin + 20, y);
-  y += 15;
-}
-
-    y -= 10;
-
-    if (y < margin + 50) {
-      y = height - margin;
-      page = pdfDoc.addPage(); // ✅ changed const to let so this works
-    }
-  }
-
-  const pdfBytes = await pdfDoc.save();
-  return pdfBytes;
+  return await pdfDoc.save();
 }

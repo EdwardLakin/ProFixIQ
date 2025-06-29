@@ -1,85 +1,61 @@
-// app/inspection/review/page.tsx
+'use client';
 
-"use client";
+import React from 'react';
+import useInspectionSession from '@lib/inspection/useInspectionSession';
+import HomeButton from '@components/ui/HomeButton';
+import { useRouter } from 'next/navigation';
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-
-const mockInspectionData = [
-  {
-    section: "Tires",
-    items: [
-      { name: "Left Front Tire", status: "Pass", notes: "Tread 6mm, 80 psi" },
-      { name: "Right Front Tire", status: "Pass", notes: "Tread 7mm, 82 psi" },
-    ],
-  },
-  {
-    section: "Brakes",
-    items: [
-      { name: "Front Pads", status: "Pass", notes: "8mm" },
-      { name: "Rotors", status: "Recommend", notes: "38.88mm" },
-    ],
-  },
-  {
-    section: "Driveshaft",
-    items: [
-      { name: "U-Joints", status: "Fail", notes: "#3 U-joint worn" },
-    ],
-  },
-];
-
-export default function ReviewInspectionPage() {
-  const [inspectionData, setInspectionData] = useState(mockInspectionData);
+const ReviewPage = () => {
   const router = useRouter();
-
-  const handleMarkNA = (sectionIndex: number) => {
-    const updated = [...inspectionData];
-    updated[sectionIndex].items = updated[sectionIndex].items.map((item) => ({
-      ...item,
-      status: "N/A",
-      notes: "Marked N/A",
-    }));
-    setInspectionData(updated);
-  };
+  const { session } = useInspectionSession();
 
   const handleSubmit = () => {
-    console.log("Submitted inspection:", inspectionData);
-    router.push("/work-orders"); // or wherever you return
+    router.push('/inspection/summary');
   };
 
   return (
-    <div className="min-h-screen bg-black text-white px-6 py-10 font-blackopsone">
-      <div className="max-w-3xl mx-auto bg-white/5 backdrop-blur-lg p-6 rounded-xl border border-white/10">
-        <h1 className="text-4xl text-orange-400 mb-6 text-center">Review Inspection</h1>
-
-        {inspectionData.map((section, idx) => (
-          <div key={section.section} className="mb-6">
-            <div className="flex justify-between items-center mb-2">
-              <h2 className="text-2xl text-white">{section.section}</h2>
-              <button
-                onClick={() => handleMarkNA(idx)}
-                className="text-sm border border-yellow-400 px-3 py-1 rounded hover:bg-yellow-400 hover:text-black transition"
-              >
-                Mark Section N/A
-              </button>
-            </div>
+    <div className="min-h-screen bg-black bg-opacity-80 text-white px-4 py-6">
+      <HomeButton />
+      <h1 className="text-3xl font-bold text-center mb-6 font-blackops">Review Inspection</h1>
+      <div className="bg-white bg-opacity-5 rounded-lg p-4 max-w-3xl mx-auto space-y-6">
+        {session.sections.map((section, sectionIndex) => (
+          <div key={sectionIndex}>
+            <h2 className="text-xl font-semibold text-orange-400 mb-2">
+              Section {sectionIndex + 1}: {section.section}
+            </h2>
             <ul className="space-y-2">
-              {section.items.map((item, itemIdx) => (
-                <li key={itemIdx} className="bg-white/10 p-3 rounded text-sm">
-                  <strong>{item.name}</strong> – <span className="italic">{item.status}</span>: {item.notes}
+              {section.items.map((item, itemIndex) => (
+                <li key={itemIndex} className="border border-white border-opacity-20 rounded p-2">
+                  <p className="font-bold">{item.item}</p>
+                  <p>Status: {item.status ?? 'N/A'}</p>
+                  {item.value && <p>Value: {item.value} {item.unit}</p>}
+                  {item.note && <p>Notes: {item.note}</p>}
+                  {item.recommend?.length ? (
+                    <p>Recommend: {item.recommend.join(', ')}</p>
+                  ) : null}
+                  {item.photoUrls?.length ? (
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {item.photoUrls.map((url, i) => (
+                        <img key={i} src={url} alt="Photo" className="w-24 h-24 rounded object-cover" />
+                      ))}
+                    </div>
+                  ) : null}
                 </li>
               ))}
             </ul>
           </div>
         ))}
-
+      </div>
+      <div className="flex justify-center mt-8">
         <button
           onClick={handleSubmit}
-          className="w-full mt-6 bg-orange-500 hover:bg-orange-600 text-black py-3 rounded-lg text-xl font-bold"
+          className="bg-orange-500 hover:bg-orange-600 text-white font-blackops px-6 py-2 rounded"
         >
-          Submit Inspection
+          Submit & Generate Summary
         </button>
       </div>
     </div>
   );
-}
+};
+
+export default ReviewPage;
