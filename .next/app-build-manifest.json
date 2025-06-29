@@ -11,16 +11,6 @@
       "static/chunks/main-app.js",
       "static/chunks/app/page.js"
     ],
-    "/inspection/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/inspection/page.js"
-    ],
-    "/inspection/maintenance50/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/inspection/maintenance50/page.js"
-    ],
     "/work-orders/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
@@ -36,20 +26,35 @@
       "static/chunks/main-app.js",
       "static/chunks/app/work-orders/customer/page.js"
     ],
-    "/work-orders/quote-review/page": [
+    "/inspection/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/work-orders/quote-review/page.js"
+      "static/chunks/app/inspection/page.js"
     ],
-    "/api/quote/route": [
+    "/inspection/maintenance50/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/api/quote/route.js"
+      "static/chunks/app/inspection/maintenance50/page.js"
     ],
-    "/_not-found/page": [
+    "/ai/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/_not-found/page.js"
+      "static/chunks/app/ai/page.js"
+    ],
+    "/ai/photo/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/ai/photo/page.js"
+    ],
+    "/ai/dtc/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/ai/dtc/page.js"
+    ],
+    "/api/diagnose/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/diagnose/route.js"
     ]
   }
 }

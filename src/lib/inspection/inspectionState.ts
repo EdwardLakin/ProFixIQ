@@ -1,8 +1,9 @@
-// src/lib/inspection/inspectionState.ts
+// lib/inspection/inspectionState.ts
 import type {
   InspectionSession,
   InspectionSection,
   InspectionItem,
+  InspectionStatus,
 } from '@lib/inspection/types';
 
 export const defaultInspectionSession: InspectionSession = {
@@ -10,6 +11,12 @@ export const defaultInspectionSession: InspectionSession = {
   customerId: '',
   templateName: '',
   sections: [],
+  currentSectionIndex: 0,
+  started: false,
+  completed: false,
+  isPaused: false,
+  isListening: false,
+  transcript: '',
   status: 'in_progress',
 };
 
@@ -24,6 +31,12 @@ export function initializeInspectionSession(
     customerId,
     templateName,
     sections,
+    currentSectionIndex: 0,
+    started: false,
+    completed: false,
+    isPaused: false,
+    isListening: false,
+    transcript: '',
     status: 'in_progress',
   };
 }
@@ -33,18 +46,19 @@ export function updateInspectionItemStatus(
   sectionLabel: string,
   itemLabel: string,
   status: 'ok' | 'fail' | 'na',
-  notes?: string
+  notes?: string,
+  photoUrls?: string[]
 ): InspectionSession {
   const updatedSections = session.sections.map((section) => {
     if (section.section !== sectionLabel) return section;
 
     const updatedItems = section.items.map((item) => {
       if (item.item !== itemLabel) return item;
-
       return {
         ...item,
         status,
-        notes: notes ?? '',
+        note: notes ?? item.note,
+        photoUrls: photoUrls ?? item.photoUrls,
       };
     });
 
@@ -63,6 +77,7 @@ export function updateInspectionItemStatus(
 export function completeInspection(session: InspectionSession): InspectionSession {
   return {
     ...session,
-    status: 'completed',
+    completed: true,
+    status: 'completed' as InspectionStatus,
   };
 }

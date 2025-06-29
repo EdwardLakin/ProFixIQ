@@ -1,41 +1,70 @@
-import { useEffect, useRef, useState } from 'react';
-import { startVoiceRecognition, stopVoiceRecognition } from './useInspectionVoice';
-import { processCommand } from './processCommand';
-import type { InspectionSession } from './types';
+import { useEffect, useState } from "react";
+import { InspectionSession, InspectionStatus, InspectionTemplate } from "@lib/inspection/types";
+import { defaultInspectionSession } from "@lib/inspection/inspectionState";
 
-const MAX_RETRIES = 3;
+export default function useInspectionSession(template: InspectionTemplate) {
+  const [session, setSession] = useState<InspectionSession>({
+    ...defaultInspectionSession,
+    sections: template.sections,
+    status: "not_started" as InspectionStatus,
+  });
 
-export default function useInspectionSession(session: InspectionSession, setSession: (s: InspectionSession) => void) {
   const [isListening, setIsListening] = useState(false);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
-  const retryCount = useRef(0);
+  const [transcript, setTranscript] = useState("");
 
-  const handleResult = (input: string) => {
-  const updated = processCommand(input, session);
-  if (updated) {
-    setSession(updated);
-  }
-};
+  useEffect(() => {
+    setSession((prev) => ({
+      ...prev,
+      sections: template.sections,
+    }));
+  }, [template]);
 
-  const startListening = () => {
-    const recognition = startVoiceRecognition(handleResult);
-    recognitionRef.current = recognition;
-    setIsListening(true);
+  const updateItem = (
+    sectionIndex: number,
+    itemIndex: number,
+    updates: Partial<InspectionSession["sections"][number]["items"][number]>
+  ) => {
+    const updatedSections = [...session.sections];
+    const item = updatedSections[sectionIndex].items[itemIndex];
+    updatedSections[sectionIndex].items[itemIndex] = { ...item, ...updates };
+
+    setSession((prev) => ({
+      ...prev,
+      sections: updatedSections,
+    }));
   };
 
-  const stopListening = () => {
-    stopVoiceRecognition(recognitionRef.current);
+  const addPhotoToItem = (sectionIndex: number, itemIndex: number, url: string) => {
+    const updatedSections = [...session.sections];
+    const item = updatedSections[sectionIndex].items[itemIndex];
+    const updatedPhotos = item.photoUrls ? [...item.photoUrls, url] : [url];
+    updatedSections[sectionIndex].items[itemIndex] = { ...item, photoUrls: updatedPhotos };
+
+    setSession((prev) => ({
+      ...prev,
+      sections: updatedSections,
+    }));
+  };
+
+  const resetSession = () => {
+    setSession({
+      ...defaultInspectionSession,
+      sections: template.sections,
+      status: "not_started",
+    });
+    setTranscript("");
     setIsListening(false);
   };
 
-  const pauseListening = () => stopListening();
-  const resumeListening = () => startListening();
-
   return {
+    session,
+    setSession,
     isListening,
-    startListening,
-    stopListening,
-    pauseListening,
-    resumeListening,
+    setIsListening,
+    transcript,
+    setTranscript,
+    updateItem,
+    addPhotoToItem,
+    resetSession,
   };
 }

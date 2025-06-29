@@ -1,4 +1,6 @@
 export type CommandType = 'ok' | 'fail' | 'na' | 'add' | 'recommend' | 'measurement' | 'status' | 'pause';
+export type InspectionStatus = 'not_started' | 'in_progress' | 'paused' | 'completed';
+export type InspectionItemStatus = 'ok' | 'fail' | 'na' | 'recommend';
 
 export interface InspectionCommandBase {
   type: CommandType;
@@ -8,7 +10,7 @@ export interface InspectionCommandBase {
 
 export interface AddCommand extends InspectionCommandBase {
   type: 'add';
-  note2: string;
+  note: string;
 }
 
 export interface RecommendCommand extends InspectionCommandBase {
@@ -23,7 +25,7 @@ export interface MeasurementCommand extends InspectionCommandBase {
 }
 
 export interface StatusCommand extends InspectionCommandBase {
-  type: 'ok' | 'fail' | 'na';
+  type: 'ok' | 'fail' | 'na' | 'recommend';
 }
 
 export interface PauseCommand extends InspectionCommandBase {
@@ -39,17 +41,19 @@ export type InspectionCommand =
 
 export interface InspectionItem {
   item: string;
-  status?: 'ok' | 'fail' | 'na';
-  note2?: string;
+  status?: InspectionItemStatus;
   note?: string;
   value?: number;
   unit?: string;
   photo?: string;
+  photoUrls?: string[];
+  recommend?: string[];
 }
 
 export interface InspectionSection {
   section: string;
   items: InspectionItem[];
+  id: string;
 }
 
 export interface InspectionTemplate {
@@ -57,15 +61,28 @@ export interface InspectionTemplate {
   sections: InspectionSection[];
 }
 
+export interface Inspection {
+  templateName: string;
+  sections: InspectionSection[];
+  started: boolean;
+  completed: boolean;
+  currentSectionIndex: number;
+  status?: 'started';
+}
+
 export interface InspectionSession {
   vehicleId?: string;
   customerId?: string;
-  templateName?: string;
+  templateName: string;
   sections: InspectionSection[];
-  status?: 'in_progress' | 'paused' | 'completed';
+  currentSectionIndex: number;
+  started: boolean;
+  completed: boolean;
   isPaused?: boolean;
+  isListening?: boolean;
+  transcript?: string;
+  status?: InspectionStatus;
 }
-
 // OUTPUT TYPE FOR SUMMARY
 export interface InspectionSummary {
   templateName: string;
@@ -73,9 +90,20 @@ export interface InspectionSummary {
   items: {
     section: string;
     item: string;
-    status?: string;
-    notes?: string[];
+    status?: 'complete';
+    note?: string[];
+    recommend?: string[];
   }[];
+}
+
+export interface SummaryItem {
+  section: string;
+  item: string;
+  status: InspectionItemStatus;
+  note?: string[];
+  photo?: string;
+  photoUrls?: string[];
+  recommend?: string[];
 }
 
 export type ParsedCommand =

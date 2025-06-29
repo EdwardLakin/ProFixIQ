@@ -2,6 +2,7 @@
 
 import type { InspectionCommand, InspectionSession } from './types';
 import { resolveSynonym } from './synonyms';
+import type { RecommendCommand } from '@lib/inspection/types';
 
 export default function handleInspectionCommand(
   session: InspectionSession,
@@ -23,10 +24,13 @@ export default function handleInspectionCommand(
           return { ...item, status: command.type };
 
         case 'add':
-          return { ...item, note2: command.note2 };
-
-        case 'recommend':
           return { ...item, note: command.note };
+
+        case 'recommend': {
+          const { note } = command as RecommendCommand;
+          return { ...item, note };
+          }
+
 
         case 'measurement':
           return { ...item, value: command.value, unit: command.unit };

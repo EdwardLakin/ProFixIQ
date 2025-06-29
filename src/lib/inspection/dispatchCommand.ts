@@ -2,6 +2,7 @@
 
 import { InspectionCommand, InspectionItem, InspectionSection } from './types';
 import { resolveSynonym } from './synonyms';
+import type { RecommendCommand } from './types';
 
 export function dispatchCommand(
   command: InspectionCommand,
@@ -23,10 +24,12 @@ export function dispatchCommand(
           return { ...item, status: command.type };
 
         case 'add':
-          return { ...item, note2: command.note2 };
-
-        case 'recommend':
           return { ...item, note: command.note };
+
+        case 'recommend': {
+          const { note } = command as RecommendCommand;
+          return { ...item, note };
+        }
 
         case 'measurement':
           return { ...item, value: command.value, unit: command.unit };

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import HomeButton from '@components/ui/HomeButton';
 import useInspectionSession from '@lib/inspection/useInspectionSession';
 import handleInspectionCommand from '@lib/inspection/handleInspectionCommand';
@@ -10,170 +10,84 @@ import SectionDisplay from '@components/inspection/SectionDisplay';
 import { useRouter } from 'next/navigation';
 
 export default function MaintenanceInspectionPage() {
+  const router = useRouter();
+
   const {
-    inspection,
-    updateInspection,
-    isListening,
+    session,
+    updateSession,
     startListening,
     stopListening,
-  } = useInspectionSession();
-
-  const router = useRouter();
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const pendingPhotoItem = useRef<string | null>(null);
+    pauseListening,
+    transcript,
+    isListening,
+  } = useInspectionSession(inspectionTemplate);
 
   useEffect(() => {
-    updateInspection({
-      templateName: 'Maintenance 50 Point',
-      date: new Date().toISOString(),
-      sections: inspectionTemplate.sections,
-      started: true,
-      completed: false,
-      currentSectionIndex: 0,
-    });
-    startListening();
-  }, []);
-
-  const handleStart = async () => {
-    const command = await dispatchCommand('Start Inspection');
-    if (command) {
-      const updated = handleInspectionCommand(inspection, command);
-      updateInspection(updated);
+    if (!session?.inspection) return;
+    const firstSection = session.inspection.sections[0];
+    if (firstSection) {
+      const command = {
+        type: 'navigate',
+        sectionId: firstSection.id,
+      } as const;
+      const updated = dispatchCommand(command, session);
+      if (updated) updateSession(updated);
     }
+  }, [session]);
+
+  const handleCommand = (command: any) => {
+    const updated = handleInspectionCommand(command, session);
+    if (updated) updateSession(updated);
   };
-
-  const handlePause = () => {
-    if (isListening) stopListening();
-  };
-
-  const handleStatusChange = (itemName: string, status: 'ok' | 'fail' | 'na') => {
-    const updated = { ...inspection };
-    const items = updated.sections[updated.currentSectionIndex].items;
-    const item = items.find((i) => i.name === itemName);
-    if (item) item.status = status;
-    updateInspection(updated);
-  };
-
-  const handleNoteChange = (itemName: string, note: string) => {
-    const updated = { ...inspection };
-    const items = updated.sections[updated.currentSectionIndex].items;
-    const item = items.find((i) => i.name === itemName);
-    if (item) item.notes = note;
-    updateInspection(updated);
-  };
-
-  const handleAddPhoto = (itemName: string) => {
-    pendingPhotoItem.current = itemName;
-    fileInputRef.current?.click();
-  };
-
-  const handlePhotoSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    const reader = new FileReader();
-
-    reader.onloadend = () => {
-      const updated = { ...inspection };
-      const items = updated.sections[updated.currentSectionIndex].items;
-      const item = items.find((i) => i.name === pendingPhotoItem.current);
-      if (item) item.photo = reader.result as string;
-      updateInspection(updated);
-    };
-
-    if (file) reader.readAsDataURL(file);
-  };
-
-  const handleFinish = () => {
-    stopListening();
-    updateInspection({ ...inspection, completed: true });
-    router.push('/inspection/summary');
-  };
-
-  const isLastSection =
-    inspection.currentSectionIndex === inspection.sections.length - 1;
 
   return (
-    <div className="min-h-screen bg-black text-white px-4 py-6">
-      <div className="max-w-4xl mx-auto">
-        <HomeButton />
-        <h1 className="text-4xl font-black text-orange-400 font-display mb-4 text-center">
-          Maintenance 50-Point Inspection
-        </h1>
+    <div className="min-h-screen bg-gradient-to-b from-[#0f0f0f] to-[#1a1a1a] text-white px-4 py-6 font-['Black_Ops_One']">
+      <HomeButton />
+      <h1 className="text-4xl text-center mb-4">Maintenance 50 Point Inspection</h1>
 
-        <div className="flex justify-center gap-4 mb-6">
-          <button
-            onClick={handleStart}
-            className="bg-green-700 text-white px-6 py-2 rounded-md"
-          >
-            Start Listening
-          </button>
-          <button
-            onClick={handlePause}
-            className="bg-yellow-600 text-white px-6 py-2 rounded-md"
-          >
-            Pause
-          </button>
-        </div>
+      <div className="flex justify-center space-x-4 mb-6">
+        <button
+          onClick={startListening}
+          className="bg-orange-600 px-4 py-2 rounded shadow hover:bg-orange-700"
+        >
+          Start Listening
+        </button>
+        <button
+          onClick={pauseListening}
+          className="bg-yellow-600 px-4 py-2 rounded shadow hover:bg-yellow-700"
+        >
+          Pause
+        </button>
+        <button
+          onClick={stopListening}
+          className="bg-red-600 px-4 py-2 rounded shadow hover:bg-red-700"
+        >
+          Stop
+        </button>
+      </div>
 
-        {inspection.sections.length > 0 && (
-          <>
-            <SectionDisplay
-              section={inspection.sections[inspection.currentSectionIndex]}
-              onStatusChange={handleStatusChange}
-              onNoteChange={handleNoteChange}
-              onAddPhoto={handleAddPhoto}
-            />
+      <div className="text-center text-sm mb-6 italic text-gray-300">
+        {isListening ? 'Listening...' : 'Not Listening'}
+        <br />
+        <span className="text-orange-400">{transcript}</span>
+      </div>
 
-            {isLastSection && (
-              <button
-                onClick={handleFinish}
-                className="bg-orange-600 text-white px-6 py-2 rounded-md mt-6"
-              >
-                Finish Inspection
-              </button>
-            )}
-
-            {!isLastSection && (
-              <div className="flex justify-between mt-6">
-                <button
-                  onClick={() =>
-                    updateInspection({
-                      ...inspection,
-                      currentSectionIndex: Math.max(0, inspection.currentSectionIndex - 1),
-                    })
-                  }
-                  className="bg-gray-700 px-4 py-2 rounded text-white disabled:opacity-50"
-                  disabled={inspection.currentSectionIndex === 0}
-                >
-                  ← Previous
-                </button>
-
-                <button
-                  onClick={() =>
-                    updateInspection({
-                      ...inspection,
-                      currentSectionIndex: Math.min(
-                        inspection.sections.length - 1,
-                        inspection.currentSectionIndex + 1
-                      ),
-                    })
-                  }
-                  className="bg-gray-700 px-4 py-2 rounded text-white disabled:opacity-50"
-                  disabled={inspection.currentSectionIndex >= inspection.sections.length - 1}
-                >
-                  Next →
-                </button>
-              </div>
-            )}
-          </>
-        )}
-
-        <input
-          type="file"
-          accept="image/*"
-          className="hidden"
-          ref={fileInputRef}
-          onChange={handlePhotoSelected}
+      {session?.inspection?.sections?.map((section) => (
+        <SectionDisplay
+          key={section.id}
+          section={section}
+          session={session}
+          updateSession={updateSession}
         />
+      ))}
+
+      <div className="flex justify-center mt-8">
+        <button
+          onClick={() => router.push('/inspection/summary')}
+          className="bg-green-700 hover:bg-green-800 text-white px-6 py-3 rounded text-lg shadow"
+        >
+          Finish Inspection
+        </button>
       </div>
     </div>
   );
