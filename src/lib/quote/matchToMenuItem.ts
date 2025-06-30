@@ -1,38 +1,43 @@
-import { QuoteLineItem } from "./types";
+import { InspectionItem, QuoteLine } from '@lib/inspection/types';
+import { quoteMenu } from './quoteMenu';
 
-// Basic smart matcher using keywords — upgradeable later to vector or AI matching
-export function matchToMenuItem(name: string, notes: string): QuoteLineItem | null {
-  const lowerText = (name + " " + notes).toLowerCase();
+/**
+ * Matches an inspection item name to a predefined quote entry.
+ * Returns a fully structured QuoteLine or null if no match is found.
+ */
+export function matchToMenuItem(itemName: string, item: InspectionItem): QuoteLine | null {
+  const lowerItem = itemName.toLowerCase();
 
-  if (lowerText.includes("brake") && lowerText.includes("2mm")) {
-    return {
-      description: "Front Brake Pad Replacement",
-      part: { name: "Front Brake Pads", price: 79.99 },
-      laborHours: 1.5,
-      price: 189.99,
-      type: "repair",
-    };
+  for (const entry of quoteMenu) {
+    const match = entry.triggerPhrases.find((phrase) =>
+      lowerItem.includes(phrase.toLowerCase())
+    );
+
+    if (match) {
+      const totalPartsCost = entry.parts.reduce((sum, part) => sum + part.cost, 0);
+      const laborCost = (entry.laborHours || 0) * 100; // $100/hr default
+      const totalCost = totalPartsCost + laborCost;
+
+      return {
+        id: crypto.randomUUID(),
+        inspectionItemId: crypto.randomUUID(),
+        item: itemName,
+        description: entry.notes || '',
+        status: item.status,
+        notes: item.note,
+        value: item.value?.toString(),
+        laborTime: entry.laborHours,
+        laborRate: 100,
+        parts: entry.parts.map((part) => ({
+          name: part.name,
+          price: part.cost,
+          type: 'economy', // default/fallback if your parts don't specify type
+        })),
+        totalCost,
+        editable: true,
+      };
+    }
   }
 
-  if (lowerText.includes("battery") && lowerText.includes("low")) {
-    return {
-      description: "Battery Replacement",
-      part: { name: "12V Battery", price: 139.99 },
-      laborHours: 0.5,
-      price: 89.99,
-      type: "repair",
-    };
-  }
-
-  if (lowerText.includes("air filter")) {
-    return {
-      description: "Air Filter Replacement",
-      part: { name: "Engine Air Filter", price: 24.99 },
-      laborHours: 0.3,
-      price: 29.99,
-      type: "maintenance",
-    };
-  }
-
-  return null; // Fallback — show for tech review
+  return null;
 }

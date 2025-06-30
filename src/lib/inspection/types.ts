@@ -84,7 +84,28 @@ export interface InspectionSession {
   isListening?: boolean;
   transcript?: string;
   status?: InspectionStatus;
+  workOrderId?: string;
+  quote?: [];
 }
+export interface QuoteLine {
+  id: string;
+  inspectionItemId?: string;
+  item: string;
+  description?: string;
+  status?: InspectionItemStatus; // 'ok' | 'fail' | 'na' | 'recommend'
+  value?: string;
+  notes?: string;
+  laborTime?: number; // in hours
+  laborRate?: number; // shop-configured or default
+  parts?: {
+    name: string;
+    price: number;
+    type: 'economy' | 'premium' | 'oem';
+  }[];
+  totalCost?: number;
+  editable?: boolean; // to support override in quote review
+}
+
 // OUTPUT TYPE FOR SUMMARY
 export interface InspectionSummary {
   templateName: string;

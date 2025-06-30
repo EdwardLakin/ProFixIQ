@@ -7,7 +7,7 @@ export interface QuoteMenuItem {
     cost: number;
   }[];
   laborHours: number;
-  category: "diagnose" | "repair" | "maintenance";
+  category: 'diagnose' | 'repair' | 'maintenance';
   notes?: string;
 }
 
@@ -15,15 +15,16 @@ export const quoteMenu: QuoteMenuItem[] = [
   {
     triggerPhrases: [
       "front brakes worn",
-      "brake pads low",
+      "brakes pads low",
       "brakes squealing",
-      "pads at 2mm",
+      "brake pad thin",
       "brake pad fail",
+      "brake pads 2mm",
     ],
     parts: [
       {
         name: "Front Brake Pads",
-        sku: "FORD-BRKPADS-F",
+        sku: "FORD-BRKPAD5-F",
         supplier: "Ford OEM",
         cost: 85,
       },
@@ -48,7 +49,7 @@ export const quoteMenu: QuoteMenuItem[] = [
     triggerPhrases: [
       "oil change",
       "needs an oil change",
-      "routine oil service",
+      "engine oil service",
     ],
     parts: [
       {
@@ -65,5 +66,5 @@ export const quoteMenu: QuoteMenuItem[] = [
     laborHours: 0.3,
     category: "maintenance",
     notes: "Includes oil, filter, and disposal.",
-  },
+  }
 ];

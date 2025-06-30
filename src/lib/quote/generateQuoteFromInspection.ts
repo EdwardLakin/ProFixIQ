@@ -1,36 +1,36 @@
-import { matchToMenuItem } from "./matchToMenuItem";
-import { QuoteLineItem, InspectionResultItem } from "./types";
+import { matchToMenuItem } from './matchToMenuItem';
+import { QuoteLine, InspectionItem } from '@lib/inspection/types';
 
-export function generateQuoteFromInspection(results: InspectionResultItem[]): {
+/**
+ * Generate a summary and quote lines from inspection items
+ */
+export function generateQuoteFromInspection(results: InspectionItem[]): {
   summary: string;
-  quote: QuoteLineItem[];
+  quote: QuoteLine[];
 } {
-  const failed = results.filter((r) => r.status === "fail");
-  const recommended = results.filter((r) => r.status === "recommend");
+  const failed = results.filter((r) => r.status === 'fail');
+  const recommended = results.filter((r) => r.status === 'recommend');
 
   const summary = [
-    `Completed Vehicle Inspection.`,
-    failed.length ? `⚠️ Failed Items:` : null,
-    ...failed.map((item) => `- ${item.name}: ${item.notes || "Requires attention"}`),
-    recommended.length ? `🛠️ Recommended Items:` : null,
-    ...recommended.map((item) => `- ${item.name}: ${item.notes || "Suggested repair"}`),
+    'Completed Vehicle Inspection.',
+    failed.length > 0 ? `⚠️ Failed Items:\n` : null,
+    ...failed.map(
+      (item) => `- ${item.item}: ${item.note || ''} *Requires attention*`
+    ),
+    recommended.length > 0 ? `\n🟠 Recommended Items:\n` : null,
+    ...recommended.map(
+      (item) => `- ${item.item}: ${item.note || ''} *Suggested repair*`
+    ),
   ]
     .filter(Boolean)
-    .join("\n");
+    .join('\n');
 
-  const quote: QuoteLineItem[] = [];
+  const quote: QuoteLine[] = [];
 
   for (const item of [...failed, ...recommended]) {
-    const matched = matchToMenuItem(item.name, item.notes || "");
-
+    const matched = matchToMenuItem(item.item, item);
     if (matched) {
-      quote.push({
-        part: matched.part,
-        laborHours: matched.laborHours,
-        description: matched.description,
-        price: matched.price,
-        type: item.status === "fail" ? "repair" : "recommend",
-      });
+      quote.push(matched);
     }
   }
 
