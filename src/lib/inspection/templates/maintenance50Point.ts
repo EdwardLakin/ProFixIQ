@@ -1,13 +1,14 @@
 import { InspectionTemplate, InspectionItemStatus } from '@lib/inspection/types';
 
 const maintenance50Point: InspectionTemplate = {
-  templateName: 'Maintenance 50 Point',
+  templateId: 'maintenance_50', // ✅ required
+  templateName: 'Maintenance 50 Point', // ✅ required
   sections: [
     {
       id: 'under_hood',
       section: 'Under Hood',
       items: [
-        { item: 'Engine Oil', status: 'ok' },
+        { item: 'Engine Oil', status: 'ok' as InspectionItemStatus },
         { item: 'Coolant Level', status: 'ok' },
         { item: 'Transmission Fluid', status: 'ok' },
         { item: 'Brake Fluid', status: 'ok' },
@@ -22,9 +23,7 @@ const maintenance50Point: InspectionTemplate = {
       section: 'Battery & Electrical',
       items: [
         { item: 'Battery Terminals', status: 'ok' },
-        { item: 'Battery Voltage', status: 'ok' },
         { item: 'Headlights', status: 'ok' },
-        { item: 'Brake Lights', status: 'ok' },
         { item: 'Turn Signals', status: 'ok' },
         { item: 'Interior Lights', status: 'ok' },
         { item: 'Horn Operation', status: 'ok' },
@@ -55,7 +54,7 @@ const maintenance50Point: InspectionTemplate = {
         { item: 'Parking Brake Operation', status: 'ok' },
         { item: 'Tire Tread Depth (Front)', status: 'ok' },
         { item: 'Tire Tread Depth (Rear)', status: 'ok' },
-        { item: 'Tire Pressure (All)', status: 'ok' },
+        { item: 'Tire Pressure (ALL)', status: 'ok' },
       ],
     },
     {
@@ -64,9 +63,8 @@ const maintenance50Point: InspectionTemplate = {
       items: [
         { item: 'Seat Belts', status: 'ok' },
         { item: 'Wipers/Washers', status: 'ok' },
-        { item: 'Climate Control Operation', status: 'ok' },
         { item: 'Defrost Operation', status: 'ok' },
-        { item: 'Instrument Panel Lights', status: 'ok' },
+        { item: 'AC Operation', status: 'ok' },
         { item: 'Warning Lights', status: 'ok' },
       ],
     },
