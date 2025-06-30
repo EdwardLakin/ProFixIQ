@@ -1,32 +1,17 @@
-import { InspectionSession, InspectionItem, InspectionItemStatus } from '@lib/inspection/types';
+// app/inspection/summary.ts
 
-export interface SummaryItem {
-  section: string;
-  item: string;
-  status?: InspectionItemStatus;
-  note?: string;
-  photo?: string;
-  photoUrls?: string[];
-  recommend?: string[];
-}
+import { InspectionSession, InspectionItem, InspectionSection, SummaryItem, InspectionItemStatus } from '@lib/inspection/types';
 
-export interface InspectionSummary {
-  failed: SummaryItem[];
-  recommended: SummaryItem[];
-  na: SummaryItem[];
-  ok: SummaryItem[];
-}
-
-export function generateInspectionSummary(session: InspectionSession): InspectionSummary {
-  const summary: InspectionSummary = {
-    failed: [],
-    recommended: [],
-    na: [],
-    ok: [],
+export function generateInspectionSummary(session: InspectionSession) {
+  const summary = {
+    ok: [] as SummaryItem[],
+    fail: [] as SummaryItem[],
+    recommended: [] as SummaryItem[],
+    na: [] as SummaryItem[],
   };
 
-  session.sections.forEach((section) => {
-    section.items.forEach((item: InspectionItem) => {
+  session.sections.forEach((section: InspectionSection, sectionIndex: number) => {
+    section.items.forEach((item: InspectionItem, itemIndex: number) => {
       const { item: name, status, note, photo, photoUrls, recommend } = item;
       if (!status) return;
 
@@ -34,17 +19,16 @@ export function generateInspectionSummary(session: InspectionSession): Inspectio
         section: section.section,
         item: name,
         status,
-        note,
-        photo,
-        photoUrls,
+        note: Array.isArray(note) ? note : note ? [note] : [],
+        photo: photo || photoUrls?.[0],
         recommend,
       };
 
-      switch (status) {
+      switch (status.toLowerCase()) {
         case 'fail':
-          summary.failed.push(summaryItem);
+          summary.fail.push(summaryItem);
           break;
-        case 'recommend':
+        case 'recommended':
           summary.recommended.push(summaryItem);
           break;
         case 'na':

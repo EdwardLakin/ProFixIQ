@@ -1,5 +1,5 @@
 export type CommandType = 'ok' | 'fail' | 'na' | 'add' | 'recommend' | 'measurement' | 'status' | 'pause';
-export type InspectionStatus = 'not_started' | 'in_progress' | 'paused' | 'completed';
+export type InspectionStatus = 'not_started' | 'in_progress' | 'paused' | 'completed' | 'ready_for_review';
 export type InspectionItemStatus = 'ok' | 'fail' | 'na' | 'recommend';
 
 export interface InspectionCommandBase {
@@ -58,6 +58,7 @@ export interface InspectionSection {
 
 export interface InspectionTemplate {
   templateName: string;
+  templateId: string;
   sections: InspectionSection[];
 }
 
@@ -71,21 +72,35 @@ export interface Inspection {
 }
 
 export interface InspectionSession {
-  vehicleId?: string;
-  customerId?: string;
-  templateId?: string;           // ✅ Needed for Supabase
-  location?: string;             // ✅ Needed for Supabase
+  vehicleId: string;
+  customerId: string;
+  workOrderId: string;
+  templateId: string;
   templateName: string;
   sections: InspectionSection[];
   currentSectionIndex: number;
+  currentItemIndex: number;
   started: boolean;
   completed: boolean;
-  isPaused?: boolean;
-  isListening?: boolean;
-  transcript?: string;
-  status?: InspectionStatus;
-  workOrderId?: string;
-  quote?: [];
+  isListening: boolean;
+  isPaused: boolean;
+  transcript: string;
+  location: string;
+  status: InspectionStatus;
+  quote: {
+    notes: string;
+    laborTime: number;
+    laborRate: number;
+    price: number;
+    parts: {
+      name: string;
+      price: number;
+      type: 'economy' | 'premium' | 'oem' | 'other';
+    }[];
+    type: string;
+    totalCost: number;
+    editable: boolean;
+  }[];
 }
 export interface QuoteLine {
   id: string;

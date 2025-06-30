@@ -26,7 +26,7 @@ export default function Maintenance50Start() {
         <HomeButton />
       </div>
       <div className="absolute top-4 right-4">
-        <PreviousButton to="/inspection/menu" />
+        <PreviousButton />
       </div>
     </div>
   );
