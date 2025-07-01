@@ -1,18 +1,17 @@
-// components/inspection/QuickJumpMenu.tsx
-
+// src/components/inspection/QuickJumpMenu.tsx
 import { useEffect, useState } from 'react';
 
 interface QuickJumpMenuProps {
-  sections: string[];
+  currentItem: string;
   onJump: (index: number) => void;
 }
 
-export default function QuickJumpMenu({ sections, onJump }: QuickJumpMenuProps) {
+export default function QuickJumpMenu({ currentItem, onJump }: QuickJumpMenuProps) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'j') setOpen((prev) => !prev); // Press 'j' to toggle
+      if (e.key === 'j') setOpen((prev) => !prev);
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
@@ -27,8 +26,8 @@ export default function QuickJumpMenu({ sections, onJump }: QuickJumpMenuProps) 
         Jump
       </button>
       {open && (
-        <div className="mt-2 bg-gray-800 text-white rounded shadow p-2 space-y-1 max-h-64 overflow-y-auto">
-          {sections.map((label, index) => (
+        <div className="mt-2 bg-gray-800 text-white rounded shadow p-2 space-y-1 max-h-[300px] overflow-y-auto">
+          {Array.from({ length: 50 }).map((_, index) => (
             <button
               key={index}
               onClick={() => {
@@ -37,7 +36,7 @@ export default function QuickJumpMenu({ sections, onJump }: QuickJumpMenuProps) 
               }}
               className="block w-full text-left px-2 py-1 hover:bg-gray-700"
             >
-              {label}
+              Item {index + 1}
             </button>
           ))}
         </div>

@@ -3,6 +3,7 @@
 interface ResumeReminderProps {
   isPaused: boolean;
   onResume: () => void;
+  onClose: () => void;
 }
 
 const ResumeReminder = ({ isPaused, onResume }: ResumeReminderProps) => {
