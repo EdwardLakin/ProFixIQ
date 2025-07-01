@@ -1,83 +1,77 @@
-// lib/inspection/inspectionState.ts
-import type {
-  InspectionSession,
+import {
   InspectionSection,
-  InspectionItem,
+  InspectionSession,
   InspectionStatus,
-} from '@lib/inspection/types';
+} from '@lib/inspection/types'
 
 export const defaultInspectionSession: InspectionSession = {
   vehicleId: '',
   customerId: '',
   templateName: '',
+  templateId: '',
+  workOrderId: '',
   sections: [],
   currentSectionIndex: 0,
+  currentItemIndex: 0,
   started: false,
   completed: false,
   isPaused: false,
   isListening: false,
   transcript: '',
+  location: '',
+  lastUpdated: '',
   status: 'in_progress',
-};
+  quote: {
+    laborTime: 0,
+    laborRate: 0,
+    price: 0,
+    parts: [],
+    totalCost: 0,
+    type: 'economy',
+    editable: true,
+  },
+}
 
-export function initializeInspectionSession(
-  vehicleId: string,
-  customerId: string,
-  templateName: string,
+export function initializeInspectionSession({
+  vehicleId,
+  customerId,
+  templateName,
+  templateId,
+  location,
+  sections,
+}: {
+  vehicleId: string
+  customerId: string
+  templateName: string
+  templateId: string
+  location: string
   sections: InspectionSection[]
-): InspectionSession {
+}): InspectionSession {
   return {
     vehicleId,
     customerId,
     templateName,
+    templateId,
+    workOrderId: '',
     sections,
     currentSectionIndex: 0,
+    currentItemIndex: 0,
     started: false,
     completed: false,
     isPaused: false,
     isListening: false,
     transcript: '',
+    location,
+    lastUpdated: Date.now().toString(),
     status: 'in_progress',
-  };
-}
-
-export function updateInspectionItemStatus(
-  session: InspectionSession,
-  sectionLabel: string,
-  itemLabel: string,
-  status: 'ok' | 'fail' | 'na',
-  notes?: string,
-  photoUrls?: string[]
-): InspectionSession {
-  const updatedSections = session.sections.map((section) => {
-    if (section.section !== sectionLabel) return section;
-
-    const updatedItems = section.items.map((item) => {
-      if (item.item !== itemLabel) return item;
-      return {
-        ...item,
-        status,
-        note: notes ?? item.note,
-        photoUrls: photoUrls ?? item.photoUrls,
-      };
-    });
-
-    return {
-      ...section,
-      items: updatedItems,
-    };
-  });
-
-  return {
-    ...session,
-    sections: updatedSections,
-  };
-}
-
-export function completeInspection(session: InspectionSession): InspectionSession {
-  return {
-    ...session,
-    completed: true,
-    status: 'completed' as InspectionStatus,
-  };
+    quote: {
+      laborTime: 0,
+      laborRate: 0,
+      price: 0,
+      parts: [],
+      totalCost: 0,
+      type: 'economy',
+      editable: true,
+    },
+  }
 }

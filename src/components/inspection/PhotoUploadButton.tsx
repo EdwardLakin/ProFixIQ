@@ -1,52 +1,47 @@
-'use client';
+'use client'
 
-import React, { useRef } from 'react';
-import { CameraIcon } from '@heroicons/react/24/outline';
+import { useRef } from 'react'
 
 interface PhotoUploadButtonProps {
-  sectionIndex: number;
-  itemIndex: number;
-  onUpload: (urls: string[]) => void;
+  onUpload: (url: string) => void
 }
 
-export default function PhotoUploadButton({
-  sectionIndex,
-  itemIndex,
-  onUpload,
-}: PhotoUploadButtonProps) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
+export default function PhotoUploadButton({ onUpload }: PhotoUploadButtonProps) {
+  const inputRef = useRef<HTMLInputElement>(null)
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) return;
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
 
-    // Simulate upload and get URL(s)
-    const urls: string[] = [];
-    for (const file of Array.from(files)) {
-      const url = URL.createObjectURL(file); // Replace with real upload later
-      urls.push(url);
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      if (reader.result && typeof reader.result === 'string') {
+        onUpload(reader.result)
+      }
     }
+    reader.readAsDataURL(file)
+  }
 
-    onUpload(urls);
-  };
+  const triggerFileInput = () => {
+    inputRef.current?.click()
+  }
 
   return (
-    <div className="mt-2">
+    <>
+      <button
+        type="button"
+        onClick={triggerFileInput}
+        className="bg-orange-600 text-white font-bold py-1 px-3 rounded shadow"
+      >
+        + Add Photo
+      </button>
       <input
         type="file"
         accept="image/*"
-        multiple
-        ref={fileInputRef}
+        ref={inputRef}
         onChange={handleFileChange}
         className="hidden"
       />
-      <button
-        onClick={() => fileInputRef.current?.click()}
-        className="flex items-center gap-1 px-3 py-1 rounded-full bg-blue-700 text-white text-sm hover:bg-blue-800 transition"
-      >
-        <CameraIcon className="w-4 h-4" />
-        Add Photo
-      </button>
-    </div>
-  );
+    </>
+  )
 }

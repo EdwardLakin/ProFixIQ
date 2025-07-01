@@ -1,74 +1,42 @@
-// src/components/inspection/SectionDisplay.tsx
+'use client'
 
-import SectionWrapper from './SectionWrapper';
-import SectionHeader from './ SectionHeader';
-import StatusButtons from './StatusButtons';
-import PhotoUploadButton from './PhotoUploadButton';
-import PhotoPreview from './PhotoPreview';
-import SmartHighlight from './SmartHighlight';
-import { InspectionSection, InspectionItem } from '@lib/inspection/types';
+import { InspectionSection } from '@lib/inspection/types'
+import InspectionItemCard from './InspectionItemCard'
 
 interface SectionDisplayProps {
-  section: InspectionSection;
-  sectionIndex: number;
-  currentItemIndex: number;
-  currentSectionIndex: number;
-  onUpdateItem: (
-    sectionIndex: number,
-    itemIndex: number,
-    update: Partial<InspectionItem>
-  ) => void;
+  section: InspectionSection
+  sectionIndex: number
+  showNotes?: boolean
+  onUpdateStatus: (sectionIndex: number, itemIndex: number, status: string) => void
+  onUpdateNote: (sectionIndex: number, itemIndex: number, note: string) => void
+  onUpload: (photoUrl: string, sectionIndex: number, itemIndex: number) => void
 }
 
 export default function SectionDisplay({
   section,
   sectionIndex,
-  currentItemIndex,
-  currentSectionIndex,
-  onUpdateItem,
+  showNotes = false,
+  onUpdateStatus,
+  onUpdateNote,
+  onUpload,
 }: SectionDisplayProps) {
   return (
-    <SectionWrapper title={section.title}>
-      <SectionHeader title={section.title} isCollapsed={false} onToggle={() => {}} />
-
-      {section.items.map((item, itemIndex) => {
-        const itemId = `item-${sectionIndex}-${itemIndex}`;
-        const isCurrent = currentSectionIndex === sectionIndex && currentItemIndex === itemIndex;
-
-        return (
-          <div
-            key={itemId}
-            id={itemId}
-            className="mb-4 p-4 rounded-xl bg-black/20 backdrop-blur-md shadow-md border border-white/10"
-          >
-            <SmartHighlight active={isCurrent}>
-              <div className="text-lg font-semibold mb-2">{item.item}</div>
-            </SmartHighlight>
-
-            <StatusButtons
-              sectionIndex={sectionIndex}
-              itemIndex={itemIndex}
-              value={item.status}
-              onChange={(status) => onUpdateItem(sectionIndex, itemIndex, { status })}
-            />
-
-            {(item.status === 'fail' || item.status === 'recommend') && (
-              <>
-                <PhotoUploadButton
-                  sectionIndex={sectionIndex}
-                  itemIndex={itemIndex}
-                  onUpload={(photoUrl) => {
-                  const updatedPhotos = [...(item.photoUrls ?? []), ...(Array.isArray(photoUrl) ? photoUrl : [photoUrl])];
-                  onUpdateItem(sectionIndex, itemIndex, { photoUrls: updatedPhotos });
-                }}
-              />
-
-                <PhotoPreview photoUrls={item.photoUrls || []} />
-              </>
-            )}
-          </div>
-        );
-      })}
-    </SectionWrapper>
-  );
+    <div className="mb-8">
+      <h2 className="text-xl font-bold text-center text-white mb-4">{section.title}</h2>
+      <div className="space-y-4">
+        {section.items.map((item, itemIndex) => (
+          <InspectionItemCard
+            key={item.item + itemIndex}
+            item={item}
+            sectionIndex={sectionIndex}
+            itemIndex={itemIndex}
+            showNotes={showNotes}
+            onUpdateStatus={onUpdateStatus}
+            onUpdateNote={onUpdateNote}
+            onUpload={onUpload}
+          />
+        ))}
+      </div>
+    </div>
+  )
 }
