@@ -73,6 +73,7 @@ export interface Inspection {
 }
 
 export interface InspectionSession {
+  id: string;
   vehicleId: string;
   customerId: string;
   workOrderId: string;
@@ -89,20 +90,7 @@ export interface InspectionSession {
   lastUpdated?: number;
   location: string;
   status: InspectionStatus;
-  quote: {
-    notes: string;
-    laborTime: number;
-    laborRate: number;
-    price: number;
-    parts: {
-      name: string;
-      price: number;
-      type: 'economy' | 'premium' | 'oem' | 'other';
-    }[];
-    type: string;
-    totalCost: number;
-    editable: boolean;
-  }[];
+  quote: QuoteLine[];
 }
 export interface QuoteLine {
   id: string;

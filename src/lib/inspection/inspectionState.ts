@@ -1,77 +1,66 @@
-import {
-  InspectionSection,
-  InspectionSession,
-  InspectionStatus,
-} from '@lib/inspection/types'
+import { InspectionSession, InspectionItemStatus, QuoteLine } from '@lib/inspection/types'
 
-export const defaultInspectionSession: InspectionSession = {
-  vehicleId: '',
-  customerId: '',
-  templateName: '',
-  templateId: '',
-  workOrderId: '',
-  sections: [],
-  currentSectionIndex: 0,
-  currentItemIndex: 0,
-  started: false,
-  completed: false,
-  isPaused: false,
-  isListening: false,
-  transcript: '',
-  location: '',
-  lastUpdated: '',
-  status: 'in_progress',
-  quote: {
-    laborTime: 0,
-    laborRate: 0,
-    price: 0,
-    parts: [],
-    totalCost: 0,
-    type: 'economy',
-    editable: true,
-  },
+export function updateItemStatus(
+  session: InspectionSession,
+  sectionIndex: number,
+  itemIndex: number,
+  status: InspectionItemStatus
+): InspectionSession {
+  const updated = { ...session }
+  updated.sections = [...session.sections]
+  const section = { ...updated.sections[sectionIndex] }
+  const item = { ...section.items[itemIndex], status }
+
+  // Reset photoUrls and note if status changes
+  if (status !== 'fail' && status !== 'recommend') {
+    item.photoUrls = []
+    item.note = ''
+  }
+
+  section.items = [...section.items]
+  section.items[itemIndex] = item
+  updated.sections[sectionIndex] = section
+  return updated
 }
 
-export function initializeInspectionSession({
-  vehicleId,
-  customerId,
-  templateName,
-  templateId,
-  location,
-  sections,
-}: {
-  vehicleId: string
-  customerId: string
-  templateName: string
-  templateId: string
-  location: string
-  sections: InspectionSection[]
-}): InspectionSession {
-  return {
-    vehicleId,
-    customerId,
-    templateName,
-    templateId,
-    workOrderId: '',
-    sections,
-    currentSectionIndex: 0,
-    currentItemIndex: 0,
-    started: false,
-    completed: false,
-    isPaused: false,
-    isListening: false,
-    transcript: '',
-    location,
-    lastUpdated: Date.now().toString(),
-    status: 'in_progress',
-    quote: {
-      laborTime: 0,
-      laborRate: 0,
-      price: 0,
-      parts: [],
-      totalCost: 0,
-      type: 'economy',
-      editable: true,
-    },
-  }
+export function updateItemNote(
+  session: InspectionSession,
+  sectionIndex: number,
+  itemIndex: number,
+  note: string
+): InspectionSession {
+  const updated = { ...session }
+  updated.sections = [...session.sections]
+  const section = { ...updated.sections[sectionIndex] }
+  const item = { ...section.items[itemIndex], note }
+  section.items = [...section.items]
+  section.items[itemIndex] = item
+  updated.sections[sectionIndex] = section
+  return updated
+}
+
+export function addPhotoUrl(
+  session: InspectionSession,
+  sectionIndex: number,
+  itemIndex: number,
+  photoUrl: string
+): InspectionSession {
+  const updated = { ...session }
+  updated.sections = [...session.sections]
+  const section = { ...updated.sections[sectionIndex] }
+  const item = { ...section.items[itemIndex] }
+
+  item.photoUrls = [...(item.photoUrls || []), photoUrl]
+
+  section.items = [...section.items]
+  section.items[itemIndex] = item
+  updated.sections[sectionIndex] = section
+  return updated
+}
+
+export function updateQuoteLines(
+  session: InspectionSession,
+  quoteLines: QuoteLine[]
+): InspectionSession {
+  return { ...session, quote: quoteLines }
 }
