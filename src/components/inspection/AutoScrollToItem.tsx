@@ -1,21 +1,16 @@
-// components/inspection/AutoScrollToItem.tsx
-
+// src/components/inspection/AutoScroll.tsx
 import { useEffect, useRef } from 'react';
 
-interface AutoScrollToItemProps {
-  trigger: boolean;
-}
-
-const AutoScrollToItem = ({ trigger }: AutoScrollToItemProps) => {
-  const ref = useRef<HTMLDivElement>(null);
+const useAutoScroll = (dependency: any) => {
+  const ref = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (trigger && ref.current) {
+    if (ref.current) {
       ref.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-  }, [trigger]);
+  }, [dependency]);
 
-  return <div ref={ref} className="h-0 w-0" />;
+  return ref;
 };
 
-export default AutoScrollToItem;
+export default useAutoScroll;

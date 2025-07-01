@@ -1,46 +1,33 @@
 // src/components/inspection/QuickJumpMenu.tsx
-import { useEffect, useState } from 'react';
+import React from 'react';
+import { InspectionSession } from '@lib/inspection/types';
 
 interface QuickJumpMenuProps {
-  currentItem: string;
-  onJump: (index: number) => void;
+  session: InspectionSession;
+  onJump: (sectionIndex: number, itemIndex: number) => void;
 }
 
-export default function QuickJumpMenu({ currentItem, onJump }: QuickJumpMenuProps) {
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'j') setOpen((prev) => !prev);
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
-
+const QuickJumpMenu: React.FC<QuickJumpMenuProps> = ({ session, onJump }) => {
   return (
-    <div className="fixed bottom-4 right-4 z-50">
-      <button
-        onClick={() => setOpen(!open)}
-        className="bg-orange-600 text-white px-3 py-2 rounded shadow"
-      >
-        Jump
-      </button>
-      {open && (
-        <div className="mt-2 bg-gray-800 text-white rounded shadow p-2 space-y-1 max-h-[300px] overflow-y-auto">
-          {Array.from({ length: 50 }).map((_, index) => (
-            <button
-              key={index}
-              onClick={() => {
-                onJump(index);
-                setOpen(false);
-              }}
-              className="block w-full text-left px-2 py-1 hover:bg-gray-700"
-            >
-              Item {index + 1}
-            </button>
-          ))}
+    <div className="flex flex-wrap gap-2 p-4 justify-center bg-gray-800 rounded-lg">
+      {session.sections.map((section, sectionIndex) => (
+        <div key={sectionIndex} className="text-sm">
+          <div className="font-bold text-white mb-1">{section.title}</div>
+          <div className="flex flex-wrap gap-1">
+            {section.items.map((item, itemIndex) => (
+              <button
+                key={itemIndex}
+                className="bg-gray-700 text-white px-2 py-1 rounded hover:bg-orange-600"
+                onClick={() => onJump(sectionIndex, itemIndex)}
+              >
+                {item.item}
+              </button>
+            ))}
+          </div>
         </div>
-      )}
+      ))}
     </div>
   );
-}
+};
+
+export default QuickJumpMenu;

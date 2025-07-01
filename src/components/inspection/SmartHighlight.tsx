@@ -1,29 +1,25 @@
 // src/components/inspection/SmartHighlight.tsx
-
-import { useEffect, useRef } from 'react';
+import React from 'react';
+import { InspectionItem } from '@lib/inspection/types';
 
 interface SmartHighlightProps {
-  active: boolean;
-  children: React.ReactNode;
+  item: InspectionItem;
+  index: number;
+  highlightedIndex: number;
 }
 
-export default function SmartHighlight({ active, children }: SmartHighlightProps) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (active && ref.current) {
-      ref.current.classList.add('ring-2', 'ring-orange-400');
-      ref.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      const timeout = setTimeout(() => {
-        ref.current?.classList.remove('ring-2', 'ring-orange-400');
-      }, 1500);
-      return () => clearTimeout(timeout);
-    }
-  }, [active]);
+const SmartHighlight: React.FC<SmartHighlightProps> = ({ item, index, highlightedIndex }) => {
+  const isHighlighted = index === highlightedIndex;
 
   return (
-    <div ref={ref} className="transition-all duration-300">
-      {children}
+    <div
+      className={`p-2 text-sm rounded-md ${
+        isHighlighted ? 'bg-blue-700 text-white shadow-md' : 'text-gray-300'
+      }`}
+    >
+      {item.item}
     </div>
   );
-}
+};
+
+export default SmartHighlight;

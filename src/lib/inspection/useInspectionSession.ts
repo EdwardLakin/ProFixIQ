@@ -40,15 +40,13 @@ export default function useInspectionSession(template?: InspectionTemplate) {
     setSession((s) => ({ ...s, sections: updatedSections }));
   };
 
-  const updateItem = ({
-    sectionIndex,
-    itemIndex,
-    updates,
-  }: {
-    sectionIndex: number;
-    itemIndex: number;
-    updates: Partial<InspectionItem>;
-  }) => {
+  const updateItem = (currentSectionIndex: number, currentItemIndex: number, p0: { photoUrls: string[]; }, {
+  sectionIndex, itemIndex, updates,
+}: {
+  sectionIndex: number;
+  itemIndex: number;
+  updates: Partial<InspectionItem>;
+}) => {
     const updatedSections = [...session.sections];
     const updatedItems = [...updatedSections[sectionIndex].items];
     updatedItems[itemIndex] = { ...updatedItems[itemIndex], ...updates };
