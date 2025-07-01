@@ -19,6 +19,7 @@
     "typescript": "5.4.5"
   },
   "dependencies": {
+    "@heroicons/react": "^2.2.0",
     "@react-pdf/renderer": "^2.3.0",
     "@sendgrid/mail": "^8.1.5",
     "@supabase/auth-helpers-nextjs": "^0.10.0",

@@ -1,26 +1,29 @@
-// components/inspection/SmartHighlight.tsx
+// src/components/inspection/SmartHighlight.tsx
 
 import { useEffect, useRef } from 'react';
 
 interface SmartHighlightProps {
-  trigger: boolean;
+  active: boolean;
   children: React.ReactNode;
 }
 
-const SmartHighlight: React.FC<SmartHighlightProps> = ({ trigger, children }) => {
+export default function SmartHighlight({ active, children }: SmartHighlightProps) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (trigger && ref.current) {
-      ref.current.classList.add('bg-yellow-400/20', 'transition');
+    if (active && ref.current) {
+      ref.current.classList.add('ring-2', 'ring-orange-400');
+      ref.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
       const timeout = setTimeout(() => {
-        ref.current?.classList.remove('bg-yellow-400/20');
-      }, 800);
+        ref.current?.classList.remove('ring-2', 'ring-orange-400');
+      }, 1500);
       return () => clearTimeout(timeout);
     }
-  }, [trigger]);
+  }, [active]);
 
-  return <div ref={ref}>{children}</div>;
-};
-
-export default SmartHighlight;
+  return (
+    <div ref={ref} className="transition-all duration-300">
+      {children}
+    </div>
+  );
+}

@@ -1,41 +1,46 @@
 // src/components/inspection/StatusButtons.tsx
-import React from 'react';
-import { InspectionItemStatus } from '@lib/inspection/types';
+
+import { CheckCircleIcon, XCircleIcon, ExclamationTriangleIcon, MinusCircleIcon } from '@heroicons/react/24/outline';
 
 interface StatusButtonsProps {
-  currentStatus?: InspectionItemStatus;
-  onStatusChange: (status: InspectionItemStatus) => void;
+  sectionIndex: number;
+  itemIndex: number;
+  value?: string;
+  onChange: (status: 'ok' | 'fail' | 'na' | 'recommend') => void;
 }
 
-const StatusButtons: React.FC<StatusButtonsProps> = ({ currentStatus, onStatusChange }) => {
+export default function StatusButtons({
+  sectionIndex,
+  itemIndex,
+  value,
+  onChange,
+}: StatusButtonsProps) {
+  const statusOptions: {
+    key: 'ok' | 'fail' | 'na' | 'recommend';
+    label: string;
+    Icon: React.ComponentType<any>;
+    color: string;
+  }[] = [
+    { key: 'ok', label: 'OK', Icon: CheckCircleIcon, color: 'text-green-400' },
+    { key: 'fail', label: 'Fail', Icon: XCircleIcon, color: 'text-red-500' },
+    { key: 'recommend', label: 'Recommend', Icon: ExclamationTriangleIcon, color: 'text-yellow-400' },
+    { key: 'na', label: 'N/A', Icon: MinusCircleIcon, color: 'text-gray-400' },
+  ];
+
   return (
-    <div className="flex gap-2 flex-wrap">
-      <button
-        onClick={() => onStatusChange('ok')}
-        className={`px-3 py-1 rounded text-white ${currentStatus === 'ok' ? 'bg-green-600' : 'bg-green-800'}`}
-      >
-        ✅ OK
-      </button>
-      <button
-        onClick={() => onStatusChange('fail')}
-        className={`px-3 py-1 rounded text-white ${currentStatus === 'fail' ? 'bg-red-600' : 'bg-red-800'}`}
-      >
-        ❌ Fail
-      </button>
-      <button
-        onClick={() => onStatusChange('recommend')}
-        className={`px-3 py-1 rounded text-white ${currentStatus === 'recommend' ? 'bg-yellow-600' : 'bg-yellow-800'}`}
-      >
-        ⚠️ Recommend
-      </button>
-      <button
-        onClick={() => onStatusChange('na')}
-        className={`px-3 py-1 rounded text-white ${currentStatus === 'na' ? 'bg-gray-600' : 'bg-gray-800'}`}
-      >
-        ⛔ N/A
-      </button>
+    <div className="flex justify-start gap-2 flex-wrap mt-2">
+      {statusOptions.map(({ key, label, Icon, color }) => (
+        <button
+          key={key}
+          onClick={() => onChange(key)}
+          className={`flex items-center gap-1 border px-2 py-1 rounded text-sm ${
+            value === key ? `bg-white/10 border-white ${color}` : 'border-gray-700 text-white hover:bg-white/5'
+          }`}
+        >
+          <Icon className={`w-4 h-4 ${color}`} />
+          {label}
+        </button>
+      ))}
     </div>
   );
-};
-
-export default StatusButtons;
+}

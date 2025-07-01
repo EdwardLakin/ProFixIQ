@@ -1,66 +1,70 @@
-'use client';
+// src/components/inspection/SectionDisplay.tsx
 
-import { InspectionSection } from '@lib/inspection/types';
 import SectionWrapper from './SectionWrapper';
-import SectionHeader from './SectionHeader';
+import SectionHeader from './ SectionHeader';
 import StatusButtons from './StatusButtons';
 import PhotoUploadButton from './PhotoUploadButton';
-import SmartHighlight from './SmartHighlight';
-import AutoScrollToItem from './AutoScrollToItem';
 import PhotoPreview from './PhotoPreview';
+import SmartHighlight from './SmartHighlight';
+import { InspectionSection, InspectionItem } from '@lib/inspection/types';
 
-interface Props {
+interface SectionDisplayProps {
   section: InspectionSection;
   sectionIndex: number;
   currentItemIndex: number;
-  onUpdateItem: (sectionIndex: number, itemIndex: number, updates: any) => void;
+  currentSectionIndex: number;
+  onUpdateItem: (
+    sectionIndex: number,
+    itemIndex: number,
+    update: Partial<InspectionItem>
+  ) => void;
 }
 
 export default function SectionDisplay({
   section,
   sectionIndex,
   currentItemIndex,
+  currentSectionIndex,
   onUpdateItem,
-}: Props) {
+}: SectionDisplayProps) {
   return (
-    <SectionWrapper>
-      <SectionHeader title={section.title} />
+    <SectionWrapper title={section.title}>
+      <SectionHeader title={section.title} isCollapsed={false} onToggle={() => {}} />
 
       {section.items.map((item, itemIndex) => {
         const itemId = `item-${sectionIndex}-${itemIndex}`;
-        const isCurrent = currentItemIndex === itemIndex;
+        const isCurrent = currentSectionIndex === sectionIndex && currentItemIndex === itemIndex;
 
         return (
-          <div key={itemId} id={itemId} className="mb-4 p-4 rounded-xl bg-black/20 backdrop-blur-md shadow-md">
-            <AutoScrollToItem trigger={isCurrent} />
-            <SmartHighlight active={isCurrent} />
-            <div className="font-bold text-lg mb-2">{item.item}</div>
-            <div className="mb-2">
-              <StatusButtons
-                sectionIndex={sectionIndex}
-                itemIndex={itemIndex}
-                item={item}
-                onUpdateItem={onUpdateItem}
-              />
-            </div>
+          <div
+            key={itemId}
+            id={itemId}
+            className="mb-4 p-4 rounded-xl bg-black/20 backdrop-blur-md shadow-md border border-white/10"
+          >
+            <SmartHighlight active={isCurrent}>
+              <div className="text-lg font-semibold mb-2">{item.item}</div>
+            </SmartHighlight>
+
+            <StatusButtons
+              sectionIndex={sectionIndex}
+              itemIndex={itemIndex}
+              value={item.status}
+              onChange={(status) => onUpdateItem(sectionIndex, itemIndex, { status })}
+            />
+
             {(item.status === 'fail' || item.status === 'recommend') && (
-              <div className="mt-2">
+              <>
                 <PhotoUploadButton
                   sectionIndex={sectionIndex}
                   itemIndex={itemIndex}
-                  onUpload={(url) =>
-                    onUpdateItem(sectionIndex, itemIndex, {
-                      photoUrls: [...(item.photoUrls || []), url],
-                    })
-                  }
-                />
-                <PhotoPreview photoUrls={item.photoUrls} />
-              </div>
-            )}
-            {item.note && (
-              <div className="mt-2 text-sm text-gray-300">
-                <strong>Note:</strong> {item.note}
-              </div>
+                  onUpload={(photoUrl) => {
+                  const updatedPhotos = [...(item.photoUrls ?? []), ...(Array.isArray(photoUrl) ? photoUrl : [photoUrl])];
+                  onUpdateItem(sectionIndex, itemIndex, { photoUrls: updatedPhotos });
+                }}
+              />
+
+                <PhotoPreview photoUrls={item.photoUrls || []} />
+              </>
             )}
           </div>
         );
