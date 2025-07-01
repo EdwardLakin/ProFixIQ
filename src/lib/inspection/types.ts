@@ -54,6 +54,7 @@ export interface InspectionSection {
   section: string;
   items: InspectionItem[];
   id: string;
+  title: string;
 }
 
 export interface InspectionTemplate {
