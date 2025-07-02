@@ -1,22 +1,19 @@
-// src/components/inspection/ProgressTracker.tsx
+// components/inspection/ProgressTracker.tsx
+
 import React from 'react';
 
-interface ProgressTrackerProps {
-  currentSection: number;
-  totalSections: number;
-  currentItem: number;
-  totalItems: number;
+export interface ProgressTrackerProps {
+  currentSectionIndex: number;
+  currentItemIndex: number;
 }
 
 const ProgressTracker: React.FC<ProgressTrackerProps> = ({
-  currentSection,
-  totalSections,
-  currentItem,
-  totalItems,
+  currentSectionIndex,
+  currentItemIndex,
 }) => {
   return (
-    <div className="text-center text-sm text-gray-400 mb-2">
-      Section {currentSection + 1} of {totalSections} • Item {currentItem + 1} of {totalItems}
+    <div className="text-sm text-orange-400 text-center mb-2">
+      Section {currentSectionIndex + 1} • Item {currentItemIndex + 1}
     </div>
   );
 };

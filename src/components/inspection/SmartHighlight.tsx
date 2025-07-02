@@ -1,25 +1,19 @@
-// src/components/inspection/SmartHighlight.tsx
+// components/inspection/SmartHighlight.tsx
+
 import React from 'react';
-import { InspectionItem } from '@lib/inspection/types';
 
 interface SmartHighlightProps {
-  item: InspectionItem;
-  index: number;
-  highlightedIndex: number;
+  sectionIndex: number;
+  itemIndex: number;
 }
 
-const SmartHighlight: React.FC<SmartHighlightProps> = ({ item, index, highlightedIndex }) => {
-  const isHighlighted = index === highlightedIndex;
-
+export default function SmartHighlight({
+  sectionIndex,
+  itemIndex,
+}: SmartHighlightProps) {
   return (
-    <div
-      className={`p-2 text-sm rounded-md ${
-        isHighlighted ? 'bg-blue-700 text-white shadow-md' : 'text-gray-300'
-      }`}
-    >
-      {item.item}
+    <div className="text-xs text-gray-400 mb-1 ml-1">
+      Section {sectionIndex + 1} • Item {itemIndex + 1}
     </div>
   );
-};
-
-export default SmartHighlight;
+}

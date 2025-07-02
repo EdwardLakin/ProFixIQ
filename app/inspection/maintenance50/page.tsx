@@ -1,100 +1,119 @@
-'use client'
+'use client';
 
-import { useEffect } from 'react'
-import PreviousPageButton from '@components/ui/PreviousPageButton'
-import SectionHeader from '@components/inspection/ SectionHeader'
-import SmartHighlight from '@components/inspection/SmartHighlight'
-import StatusButtons from '@components/inspection/StatusButtons'
-import InspectionItemCard from '@components/inspection/InspectionItemCard'
-import PhotoUploadButton from '@components/inspection/PhotoUploadButton'
-import PhotoThumbnail from '@components/inspection/PhotoThumbnail'
-import Legend from '@components/inspection/Legend'
-import ProgressTracker from '@components/inspection/ProgressTracker'
-import StartListeningButton from '@components/inspection/StartListeningButton'
-import PauseResume from '@components/inspection/PauseResume'
-import AutoScrollToItem from '@components/inspection/AutoScrollToItem'
-import useInspectionSession from '@lib/inspection/useInspectionSession'
-import maintenance50Point from '@lib/inspection/templates/maintenance50Point'
+import { useEffect } from 'react';
+import SmartHighlight from '@components/inspection/SmartHighlight';
+import StatusButtons from '@components/inspection/StatusButtons';
+import StatusLegend from '@components/inspection/StatusLegend';
+import SectionHeader from '@components/inspection/ SectionHeader';
+import AutoScrollToItem from '@components/inspection/AutoScrollToItem';
+import StartListeningButton from '@components/inspection/StartListeningButton';
+import PauseResumeButton from '@components/inspection/PauseResume';
+import ProgressTracker from '@components/inspection/ProgressTracker';
+import PreviousPageButton from '@components/ui/PreviousPageButton';
+import PhotoUploadButton from '@components/inspection/PhotoUploadButton';
+import SectionWrapper from '@components/inspection/SectionWrapper';
+import useInspectionSession from '@lib/inspection/useInspectionSession';
+import { saveInspectionSession } from '@lib/inspection/save';
+import maintenance50Point from '@lib/inspection/templates/maintenance50Point';
+import { TemplateContext } from 'next/dist/shared/lib/app-router-context.shared-runtime';
+import { NoSuchModelError } from 'ai';
 
-export default function MaintenanceInspectionPage() {
+export default function Maintenance50Page() {
   const {
     session,
     updateItem,
     startSession,
-    finishSession,
     pauseSession,
     resumeSession,
-  } = useInspectionSession()
+    finishSession,
+  } = useInspectionSession(maintenance50Point, 'Maintenance 50 Point' );
 
-  const currentSection = session.sections[session.currentSectionIndex]
-  const currentItem = currentSection.items[session.currentItemIndex]
+  const { status, sections, currentSectionIndex, currentItemIndex } = session;
 
   useEffect(() => {
-    if (session.status === 'not_started') {
-      startSession(maintenance50Point)
+    if (!status || status === 'not_started') {
+      startSession();
     }
-  }, [session.status, startSession])
+  }, [startSession, status]);
 
-  useEffect(() => {
-    AutoScrollToItem(session.currentItemIndex)
-  }, [session.currentItemIndex])
-
-  const handleStatusChange = (status: 'ok' | 'fail' | 'recommend' | 'na') => {
-    updateItem(session.currentSectionIndex, session.currentItemIndex, { status })
-  }
-
-  const handlePhotoUpload = (photoUrl: string) => {
-    const existing = currentItem?.photoUrls || []
-    updateItem(session.currentSectionIndex, session.currentItemIndex, {
-      photoUrls: [...existing, photoUrl],
-    })
-  }
-
-  const handleNoteChange = (note: string) => {
-    updateItem(session.currentSectionIndex, session.currentItemIndex, { note })
-  }
+  const handleSave = async () => {
+    const result = await saveInspectionSession(session);
+    console.log('Save result:', result);
+  };
 
   return (
-    <div className="min-h-screen Dbg-black text-white px-4 py-6">
-      <PreviousPageButton />
-      <div className="flex justify-between items-center mb-4">
-        <StartListeningButton onStart={() => {}} />
-        <PauseResume
-          isPaused={session.isPaused}
-          onPause={pauseSession}
-          onResume={resumeSession}
-        />
-      </div>
+    <div className="min-h-screen px-4 py-6 bg-black text-white">
+      <PreviousPageButton to ="/inspection" />
+      <h1 className="text-3xl font-black text-center mb-2 font-blackops">
+        Maintenance 50 Point Inspection
+      </h1>
+
+      <StatusLegend />
+      <StartListeningButton
+        onStart={startSession}
+        isPaused={session.isPaused}
+        onPause={pauseSession}
+        onResume={resumeSession}
+      />
+
       <ProgressTracker
-        current={session.currentItemIndex}
-        total={currentSection.items.length}
+       currentSectionIndex={currentSectionIndex}
+        currentItemIndex={currentItemIndex} 
       />
-      <Legend />
-      <SectionHeader
-        title={currentSection.title}
-        isCollapsed={false}
-        onToggle={() => {}}
-      />
-      <SmartHighlight
-        item={currentItem}
-        sectionIndex={session.currentSectionIndex}
-      />
-      <InspectionItemCard
-        item={currentItem}
-        sectionIndex={session.currentSectionIndex}
-        itemIndex={session.currentItemIndex}
-        onUpdateStatus={handleStatusChange}
-        onUpdateNote={handleNoteChange}
-        onUploadPhoto={handlePhotoUpload}
-      />
-      {currentItem?.photoUrls?.length > 0 && (
-        <div className="flex flex-wrap gap-2 mt-4">
-          {currentItem.photoUrls.map((url, index) => (
-            <PhotoThumbnail key={index} url={url} />
-          ))}
-        </div>
-      )}
-      <PhotoUploadButton onUpload={handlePhotoUpload} />
+
+      {sections.map((section, sectionIndex) => (
+        <SectionWrapper key={sectionIndex} title={section.title}>
+          <SectionHeader
+            title={section.title}
+            isCollapsed={false}
+            onToggle={() => {}}
+          />
+          {section.items.map((item, index) => (
+            <div key={index} className="mb-6">
+              <SmartHighlight
+                sectionIndex={sectionIndex}
+                itemIndex={index}
+              />
+              
+            <StatusButtons
+              item={item}
+              index={index}
+              onUpdateStatus={(status) =>
+                updateItem(sectionIndex, index, { status })
+              }
+            />
+            {['fail', 'recommend'].includes(item.status || '') && (
+                <PhotoUploadButton
+                  onUpload={(url) =>
+                    updateItem(
+                      sectionIndex,
+                      index, 
+                      {
+                        photoUrls: [...(item.photoUrls || []), url],
+                    })
+                  }
+                />
+            )}
+          </div>
+      ))}
+     <AutoScrollToItem />
+    </SectionWrapper>
+      ))}
+
+      <div className="flex justify-center mt-8 gap-4">
+        <button
+          onClick={handleSave}
+          className="px-6 py-2 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded"
+        >
+          Save Progress
+        </button>
+        <button
+          onClick={() => finishSession()}
+          className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded"
+        >
+          Finish Inspection
+        </button>
+      </div>
     </div>
-  )
+  );
 }

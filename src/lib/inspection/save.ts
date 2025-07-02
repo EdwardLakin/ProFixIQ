@@ -1,24 +1,30 @@
-import { supabase } from '@lib/supabaseClient';
-import { InspectionSession } from './types';
-import { Database } from '@custom-types/supabase'; // Adjust if your type path is different
+// lib/inspection/save.ts
+import { createClient } from '@supabase/supabase-js';
+import { InspectionSession } from '@lib/inspection/types';
 
-type InspectionInsert = Database['public']['Tables']['inspections']['Insert'];
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
-export async function saveInspection(session: InspectionSession) {
-  const payload: InspectionInsert = {
-    user_id: session.customerId ?? 'unknown',
-    vehicle: session.vehicleId ?? null,
-    template: session.templateName,
-    result: session as any, // Cast if `result` column is JSONB
+export async function saveInspectionSession(session: InspectionSession) {
+  const payload = {
+    user_id: session.customerId || '', // Replace with real user logic if available
+    vehicle_id: session.vehicleId,
+    quote_id: null, // or session.quoteId if managed
+    template_id: session.templateId,
+    template_name: session.templateName,
+    result: JSON.stringify(session.sections),
+    quote: JSON.stringify(session.quote),
+    status: session.status,
+    transcript: session.transcript || '',
+    work_order_id: session.workOrderId || null,
   };
 
-  const { data, error } = await supabase
-    .from('inspections')
-    .insert(payload);
+  const { error } = await supabase.from('inspections').upsert(payload);
 
   if (error) {
-    console.error('Error saving inspection session:', error.message);
+    console.error('Failed to save inspection session:', error.message);
+    throw new Error(error.message);
   }
-
-  return { data, error };
 }

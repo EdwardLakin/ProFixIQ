@@ -1,19 +1,43 @@
-// src/components/inspection/StartListeningButton.tsx
-import React from 'react';
+// components/inspection/StartListeningButton.tsx
 
-interface StartListeningButtonProps {
+type StartListeningButtonProps = {
   onStart: () => void;
-}
-
-const StartListeningButton: React.FC<StartListeningButtonProps> = ({ onStart }) => {
-  return (
-    <button
-      onClick={onStart}
-      className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded text-xl mb-4 shadow-md"
-    >
-      🎤 Start Listening
-    </button>
-  );
+  isPaused: boolean;
+  onPause: () => void;
+  onResume: () => void;
 };
 
-export default StartListeningButton;
+export default function StartListeningButton({
+  onStart,
+  isPaused,
+  onPause,
+  onResume,
+}: StartListeningButtonProps) {
+  return (
+    <div className="flex flex-col items-center gap-2 mb-4">
+      <button
+        onClick={onStart}
+        className="bg-orange-600 text-white px-6 py-2 rounded font-blackops text-lg"
+      >
+        Start Listening
+      </button>
+      <div className="flex gap-4">
+        {!isPaused ? (
+          <button
+            onClick={onPause}
+            className="bg-red-600 text-white px-4 py-1 rounded text-sm"
+          >
+            Pause
+          </button>
+        ) : (
+          <button
+            onClick={onResume}
+            className="bg-green-600 text-white px-4 py-1 rounded text-sm"
+          >
+            Resume
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
