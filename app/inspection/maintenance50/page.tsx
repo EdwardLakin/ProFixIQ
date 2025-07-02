@@ -26,7 +26,7 @@ export default function Maintenance50Page() {
     pauseSession,
     resumeSession,
     finishSession,
-  } = useInspectionSession(maintenance50Point, 'Maintenance 50 Point' );
+  } = useInspectionSession(maintenance50Point );
 
   const { status, sections, currentSectionIndex, currentItemIndex } = session;
 

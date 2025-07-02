@@ -1,29 +1,31 @@
 import { useState } from 'react';
 import {
+  InspectionItem,
   InspectionSession,
   InspectionTemplate,
-  InspectionItem,
+  InspectionStatus,
+  QuoteLine,
 } from '@lib/inspection/types';
 
-export default function useInspectionSession(
-  template: InspectionTemplate,
-  templateName: string
-) {
+export default function useInspectionSession(template: InspectionTemplate) {
   const [session, setSession] = useState<InspectionSession>({
-    templateId: template.templateId,
-    templateName,
-    vehicleId: '',
-    customerId: '',
-    workOrderId: '',
-    location: '',
-    status: 'not_started',
-    isListening: false,
-    isPaused: false,
-    transcript: '',
-    currentSectionIndex: 0,
-    currentItemIndex: 0,
-    sections: template.sections,
-    quote: [],
+    id: '', // or generate a unique id
+  vehicleId: '',
+  customerId: '',
+  workOrderId: '',
+  templateId: template.templateId,
+  templateName: template.templateName,
+  sections: template.sections,
+  currentSectionIndex: 0,
+  currentItemIndex: 0,
+  started: false,
+  completed: false,
+  isListening: false,
+  isPaused: false,
+  transcript: '',
+  location: '',
+  status: 'not_started',
+  quote: [],
   });
 
   const updateInspection = (updates: Partial<InspectionSession>) => {
@@ -73,7 +75,9 @@ export default function useInspectionSession(
     setSession(prev => ({
       ...prev,
       status: 'in_progress',
-      started: true,
+      currentSectionIndex: 0,
+      currentItemIndex: 0,
+      transcript: '',
     }));
   };
 
