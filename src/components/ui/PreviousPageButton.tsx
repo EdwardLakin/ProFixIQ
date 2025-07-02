@@ -2,19 +2,17 @@
 
 import { useRouter } from 'next/navigation';
 
-interface PreviousPageButtonProps {
-  to: string;
-}
-
-export default function PreviousPageButton({ to }: PreviousPageButtonProps) {
+const PreviousPageButton = () => {
   const router = useRouter();
 
   return (
     <button
-      onClick={() => router.push(to)}
-      className="text-orange-400 hover:underline mb-4 block"
+      onClick={() => router.back()}
+      className="text-white bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-md shadow-md transition-colors"
     >
-      ← Back
+      ⬅ Previous Page
     </button>
   );
-}
+};
+
+export default PreviousPageButton;
