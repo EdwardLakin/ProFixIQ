@@ -1,18 +1,28 @@
-// components/inspection/PhotoThumbnail.tsx
+'use client';
+
+import React from 'react';
 
 interface PhotoThumbnailProps {
   url: string;
-  alt?: string;
+  onRemove?: () => void;
 }
 
-const PhotoThumbnail: React.FC<PhotoThumbnailProps> = ({ url, alt }) => {
+const PhotoThumbnail: React.FC<PhotoThumbnailProps> = ({ url, onRemove }) => {
   return (
-    <div className="mt-2">
+    <div className="relative w-24 h-24 m-1 rounded overflow-hidden border border-gray-600 shadow">
       <img
         src={url}
-        alt={alt || 'Inspection photo'}
-        className="w-24 h-24 object-cover rounded shadow-md border border-gray-700"
+        alt="Inspection"
+        className="object-cover w-full h-full rounded"
       />
+      {onRemove && (
+        <button
+          onClick={onRemove}
+          className="absolute top-0 right-0 bg-red-600 text-white rounded-bl px-1 text-xs hover:bg-red-700"
+        >
+          ✕
+        </button>
+      )}
     </div>
   );
 };

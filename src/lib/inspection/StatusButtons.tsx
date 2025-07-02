@@ -13,19 +13,18 @@ export default function StatusButtons({
   index,
   onUpdateStatus,
 }: StatusButtonsProps) {
-  const base =
-    'px-3 py-1 rounded font-bold text-white mr-2 mb-2 transition duration-200';
+  const base = 'px-3 py-1 rounded font-bold text-white mr-2 mb-2 transition duration-200';
 
   const getStyle = (key: InspectionItemStatus) => {
     const status = item.status;
     return `${base} ${
-      status === key
+      key === status
         ? key === 'fail'
           ? 'bg-red-600'
-          : key === 'ok'
-          ? 'bg-green-600'
           : key === 'recommend'
           ? 'bg-yellow-600 text-black'
+          : key === 'ok'
+          ? 'bg-green-600'
           : 'bg-gray-600'
         : 'bg-gray-400'
     }`;
@@ -39,10 +38,7 @@ export default function StatusButtons({
       <button className={getStyle('fail')} onClick={() => onUpdateStatus('fail')}>
         FAIL
       </button>
-      <button
-        className={getStyle('recommend')}
-        onClick={() => onUpdateStatus('recommend')}
-      >
+      <button className={getStyle('recommend')} onClick={() => onUpdateStatus('recommend')}>
         Recommend
       </button>
       <button className={getStyle('na')} onClick={() => onUpdateStatus('na')}>

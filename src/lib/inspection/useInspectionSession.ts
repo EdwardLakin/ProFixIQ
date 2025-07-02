@@ -22,6 +22,8 @@ export default function useInspectionSession(template: InspectionTemplate) {
   completed: false,
   isListening: false,
   isPaused: false,
+  setIsListening: () => {},
+  addQuoteLine: () => { },
   transcript: '',
   location: '',
   status: 'not_started',
@@ -104,14 +106,23 @@ export default function useInspectionSession(template: InspectionTemplate) {
     }));
   };
 
+  const [isListening, setIsListening] = useState(false);
+
+  const addQuoteLine = (line: QuoteLine) => {
+  setSession((prev) => ({
+    ...prev,
+    quote: [...(prev.quote || []), line],
+  }));
+};
   return {
     session,
     updateInspection,
-    updateItem,
-    updateSection,
     startSession,
     finishSession,
-    pauseSession,
-    resumeSession,
+    updateItem,
+    updateSection,
+    isListening,
+    setIsListening,
+    addQuoteLine
   };
 }

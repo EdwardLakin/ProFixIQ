@@ -35,7 +35,7 @@ export default function CreateWorkOrderPage() {
 
   return (
     <div className="min-h-screen bg-black text-white p-6">
-      <PreviousPageButton />
+      <PreviousPageButton to ="/inspection" />
       <h1 className="text-3xl font-black text-center mb-4">Create Work Order</h1>
       <p className="text-center text-sm text-gray-400 mb-8">
         {template ? `Linked to template: ${template}` : 'No inspection linked'}

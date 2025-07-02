@@ -86,6 +86,8 @@ export interface InspectionSession {
   completed: boolean;
   isListening: boolean;
   isPaused: boolean;
+  setIsListening: (listening: boolean) => void;
+  addQuoteLine: (line: QuoteLine) => void;
   transcript: string;
   lastUpdated?: number;
   location: string;
