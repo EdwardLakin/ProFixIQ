@@ -10,7 +10,7 @@ import {
 } from '@lib/inspection/types';
 import { matchToMenuItem } from '@lib/quote/matchToMenuItem';
 
-export default function useInspectionSession(initialSession?: InspectionSession) {
+export default function useInspectionSession(initialSession?: Partial<InspectionSession>) {
   const [session, setSession] = useState<InspectionSession>(() => ({
     id: '',
     vehicleId: '',
@@ -18,19 +18,20 @@ export default function useInspectionSession(initialSession?: InspectionSession)
     workOrderId: '',
     templateId: '',
     templateName: '',
+    location: '',
     sections: [],
     currentSectionIndex: 0,
     currentItemIndex: 0,
+    transcript: '',
+    status: 'not_started',
     started: false,
     completed: false,
+    quote: [],
     isListening: false,
     isPaused: false,
-    transcript: '',
-    location: '',
-    quote: [],
-    status: 'not_started',
+    updateItem: () => {}, // add a placeholder so type matches
     lastUpdated: new Date().toISOString(),
-    ...(initialSession || {}),
+    ...initialSession,
   }));
 
   const updateInspection = (updates: Partial<InspectionSession>) => {
@@ -63,20 +64,18 @@ export default function useInspectionSession(initialSession?: InspectionSession)
   ) => {
     setSession((prev) => {
       const newSections = [...prev.sections];
-      const section = { ...newSections[sectionIndex] };
+      const section = newSections[sectionIndex];
       const items = [...section.items];
       const item = { ...items[itemIndex], ...updates };
+
       items[itemIndex] = item;
       section.items = items;
       newSections[sectionIndex] = section;
 
-      // Add QuoteLine if failed or recommended
-      let newQuote = [...prev.quote];
-      if (updates.status === 'fail' || updates.status === 'recommend') {
-        const matched = matchToMenuItem(item.item, item);
-        if (matched) {
-          newQuote.push(matched);
-        }
+      const newQuote = [...prev.quote];
+      const matched = matchToMenuItem(item.item, item);
+      if (matched) {
+        newQuote.push(matched);
       }
 
       return {
@@ -96,11 +95,19 @@ export default function useInspectionSession(initialSession?: InspectionSession)
     }));
   };
 
-  const startSession = (MaintenanceInspectionTemplate: InspectionTemplate) => {
+  const startSession = (template: InspectionTemplate) => {
     setSession((prev) => ({
       ...prev,
+      templateId: template.templateId,
+      templateName: template.templateName,
+      sections: template.sections,
+      currentSectionIndex: 0,
+      currentItemIndex: 0,
+      transcript: '',
       started: true,
+      completed: false,
       status: 'in_progress',
+      isPaused: false,
       lastUpdated: new Date().toISOString(),
     }));
   };
@@ -128,6 +135,7 @@ export default function useInspectionSession(initialSession?: InspectionSession)
       ...prev,
       completed: true,
       status: 'completed',
+      isPaused: false,
       lastUpdated: new Date().toISOString(),
     }));
   };

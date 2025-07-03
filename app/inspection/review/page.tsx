@@ -11,7 +11,7 @@ export default function ReviewPage() {
 
   // If you're just reviewing the session and not starting a new one,
   // pass `null as any` or restructure the hook to not require a template here.
-  const { session } = useInspectionSession( null as any );
+  const { session } = useInspectionSession({ initialSession: null as any });
 
   const handleSubmit = () => {
     router.push('/inspection/summary');

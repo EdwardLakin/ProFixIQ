@@ -41,6 +41,8 @@ export type InspectionCommand =
   | PauseCommand;
 
 export interface InspectionItem {
+  notes: string;
+  name: string | undefined;
   item: string;
   status?: InspectionItemStatus;
   note?: string;
@@ -79,6 +81,7 @@ export interface QuoteLine {
   }[];
   totalCost?: number;
   editable?: boolean;
+  source?: 'inspection' | 'manual' | 'ai';
 }
 
 export interface QuoteLineItem {

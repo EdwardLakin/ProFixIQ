@@ -12,7 +12,7 @@ const StartListeningButton = () => {
     isListening,
     setIsListening,
     addQuoteLine,
-  } = useInspectionSession(maintenance50Point);
+  } = useInspectionSession({ initialSession: maintenance50Point });
 
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const [transcript, setTranscript] = useState('');

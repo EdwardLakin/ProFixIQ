@@ -20,3 +20,5 @@ export function SaveInspectionButton() {
     </button>
   );
 }
+
+export { saveInspectionSession };
