@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { interpretInspectionVoice } from '@/lib/inspection/aiInterpreter';
+import { interpretInspectionVoice }from '@lib/inspection/aiInterpreter';
 
 export async function POST(req: Request) {
   try {

@@ -1,24 +1,25 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import useInspectionSession from '@lib/inspection/useInspectionSession';
-import { matchToMenuItem } from '@lib/quote/matchToMenuItem';
-import { saveInspectionSession } from '@lib/inspection/save';
-import PauseResumeButton from '@lib/inspection/PauseResume';
+import MaintenanceInspectionTemplate from '@lib/inspection/templates/maintenance50Point';
+import { matchToMenuItem } from '@lib/quote/matchToMenuItem'
 import ProgressTracker from '@lib/inspection/ProgressTracker';
-import SectionHeader  from '@components/inspection/SectionHeader';
+import SectionHeader from '@components/inspection/SectionHeader';
 import SmartHighlight from '@lib/inspection/SmartHighlight';
 import StatusButtons from '@lib/inspection/StatusButtons';
 import PhotoUploadButton from '@lib/inspection/PhotoUploadButton';
 import StartListeningButton from '@lib/inspection/StartListeningButton';
+import PauseResumeButton from '@lib/inspection/PauseResume';
 import PreviousPageButton from '@components/ui/PreviousPageButton';
-
+import { saveInspectionSession } from '@lib/inspection/save';
+import { SaveInspectionButton } from '@components/inspection/SaveInspectionButton';
 export default function Maintenance50Page() {
   const {
     session,
-    updateItem,
     updateInspection,
+    updateItem,
     startSession,
     finishSession,
     pauseSession,
@@ -28,86 +29,98 @@ export default function Maintenance50Page() {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const currentSection = session.sections[session.currentSectionIndex];
-  const currentItem = currentSection.items[session.currentItemIndex];
+  useEffect(() => {
+    if (session.sections.length === 0) {
+      startSession(MaintenanceInspectionTemplate);
+    }
+  }, []);
+
+  const currentSection =
+    session.sections?.[session.currentSectionIndex] ?? null;
+
+  const currentItem =
+    currentSection?.items?.[session.currentItemIndex] ?? null;
+
+  if (!currentSection || !currentItem) {
+    return <div className="text-center text-white mt-10">Loading inspection...</div>;
+  }
 
   useEffect(() => {
     if (containerRef.current) {
-      const current = containerRef.current.querySelector('[data-current="true"]');
-      current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const currentEl = containerRef.current.querySelector('[data-current="true"]');
+      currentEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, [session.currentItemIndex, session.currentSectionIndex]);
 
   const handleFinish = async () => {
-    const updatedQuotes = session.sections.flatMap((section) =>
-      section.items
-        .map((item) => matchToMenuItem(item.item, item))
-        .filter((q): q is NonNullable<typeof q> => !!q)
-    );
+    const updatedQuotes = session.sections
+      .flatMap((section) =>
+        section.items
+          .map((item) => matchToMenuItem(item.item, item))
+          .filter((q) => q !== null)
+      );
 
     updateInspection({
       quote: updatedQuotes,
       status: 'ready_for_review',
     });
 
-    await saveInspectionSession({ ...session, quote: updatedQuotes });
-    router.push('/inspection/summary');
+    finishSession();
+    router.push('/inspection/review');
   };
 
   return (
-    <div className="min-h-screen bg-black text-white px-4 py-2 relative">
+    <div className="min-h-screen bg-black text-white p-4">
       <PreviousPageButton to ="/inspection" />
-      <div className="text-center mt-4 mb-2">
-        <h1 className="text-3xl font-black text-orange-400 font-blackops">Maintenance 50-Point Inspection</h1>
-      </div>
-      <div className="flex flex-col items-center">
-        <StartListeningButton />
+      <h1 className="text-center text-3xl font-black mb-4 text-orange-400 font-['Black_Ops_One']">
+        Maintenance 50 Point Inspection
+      </h1>
+
+      <div className="flex justify-between items-center mb-2">
         <PauseResumeButton isPaused={session.isPaused} onPause={pauseSession} onResume={resumeSession} />
-        <ProgressTracker session={session} />
-        <div className="text-sm text-white mb-2 mt-1">
-          <p>✅ OK &nbsp; ❌ Fail &nbsp; ⚠️ Recommend &nbsp; ⛔ N/A</p>
-        </div>
-        <SmartHighlight session={session} />
-        <div ref={containerRef} className="w-full max-w-xl mt-4 space-y-6">
-          <SectionHeader title={currentSection.title || currentItem.item} />
-          <div data-current="true" className="border border-gray-600 p-4 rounded-lg bg-gray-900 shadow-md">
-            <p className="text-lg font-semibold mb-2">{currentItem.item}</p>
-            <StatusButtons
-              item={currentItem}
-              sectionIndex={session.currentSectionIndex}
-              itemIndex={session.currentItemIndex}
-              onStatusChange={(status) =>
-              updateItem(session.currentSectionIndex, session.currentItemIndex, { status })
-            }
-          />
-            {(currentItem.status === 'fail' || currentItem.status === 'recommend') && (
-              <PhotoUploadButton
-                sectionIndex={session.currentSectionIndex}
-                itemIndex={session.currentItemIndex}
-                onUpload={(url) => {
-                  const existing = currentItem.photoUrls || [];
-                  updateItem(session.currentSectionIndex, session.currentItemIndex, {
-                    photoUrls: [...existing, url],
-                  });
-                }}
-              />
-            )}
-          </div>
-        </div>
-        <div className="flex gap-4 mt-6">
-          <button
-            onClick={() => saveInspectionSession(session)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-blackops"
-          >
-            Save Progress
-          </button>
-          <button
-            onClick={handleFinish}
-            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-blackops"
-          >
-            Finish Inspection
-          </button>
-        </div>
+        <StartListeningButton />
+      </div>
+
+      <div className="text-xs text-gray-400 text-center mb-2">
+        ✅ OK &nbsp;&nbsp; ❌ Fail &nbsp;&nbsp; ⚠️ Recommend &nbsp;&nbsp; ⛔ N/A
+      </div>
+
+      <ProgressTracker session={session} />
+
+      <div ref={containerRef}>
+        <SectionHeader title={currentSection.title} />
+        <SmartHighlight item={currentItem} />
+        <StatusButtons
+          item={currentItem}
+          sectionIndex={session.currentSectionIndex}
+          itemIndex={session.currentItemIndex}
+          onStatusChange={(status) =>
+            updateItem(session.currentSectionIndex, session.currentItemIndex, {
+              status,
+            })
+          }
+        />
+        
+        <PhotoUploadButton
+          sectionIndex={session.currentSectionIndex}
+          itemIndex={session.currentItemIndex}
+          onUpload={(photoUrl) => {
+            const updatedPhotos = [...(currentItem.photoUrls || []), photoUrl];
+            updateItem(session.currentSectionIndex, session.currentItemIndex, {
+              photoUrls: updatedPhotos,
+            });
+          }}
+        />
+      </div>
+
+      <div className="mt-8 space-y-4 text-center">
+        <SaveInspectionButton />
+        <button
+          onClick={handleFinish}
+          className="bg-orange-500 hover:bg-orange-600 text-white py-2 px-6 rounded shadow font-bold font-['Black_Ops_One']"
+        >
+          Finish Inspection
+        </button>
       </div>
     </div>
   );

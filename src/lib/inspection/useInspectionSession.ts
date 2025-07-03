@@ -5,6 +5,7 @@ import {
   InspectionItem,
   InspectionSection,
   InspectionSession,
+  InspectionTemplate,
   QuoteLine,
 } from '@lib/inspection/types';
 import { matchToMenuItem } from '@lib/quote/matchToMenuItem';
@@ -95,7 +96,7 @@ export default function useInspectionSession(initialSession?: InspectionSession)
     }));
   };
 
-  const startSession = () => {
+  const startSession = (MaintenanceInspectionTemplate: InspectionTemplate) => {
     setSession((prev) => ({
       ...prev,
       started: true,

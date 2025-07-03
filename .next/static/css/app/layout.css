@@ -630,6 +630,9 @@ video {
 .mt-8 {
   margin-top: 2rem;
 }
+.mt-10 {
+  margin-top: 2.5rem;
+}
 .block {
   display: block;
 }
@@ -1333,6 +1336,9 @@ video {
 }
 .font-sans {
   font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+}
+.font-\[\'Black_Ops_One\'\] {
+  font-family: 'Black Ops One';
 }
 .text-2xl {
   font-size: 1.5rem;

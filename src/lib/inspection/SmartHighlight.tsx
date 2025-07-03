@@ -1,15 +1,13 @@
-import { InspectionSession } from '@lib/inspection/types';
+import { InspectionItem } from '@lib/inspection/types';
 
-interface SmartHighlightProps {
-  session: InspectionSession;
+export interface SmartHighlightProps {
+  item: InspectionItem;
 }
 
-const SmartHighlight = ({ session }: SmartHighlightProps) => {
+export default function SmartHighlight({ item }: SmartHighlightProps) {
   return (
-    <div className="text-xs text-green-300 text-center mb-2">
-      {session.transcript ? `🔊 "${session.transcript}" interpreted` : ''}
+    <div className="text-lg text-white font-bold mb-4 text-center">
+      {item.item}
     </div>
   );
-};
-
-export default SmartHighlight;
+}

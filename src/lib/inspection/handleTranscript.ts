@@ -1,22 +1,34 @@
-import { interpretInspectionVoice } from './aiInterpreter';
 import { InspectionSession } from './types';
 
 export async function handleTranscript(
   transcript: string,
-  session: InspectionSession,
-  updateInspection: (updated: InspectionSession) => void
-): Promise<void> {
-  if (!transcript.trim()) return;
-
+  session: InspectionSession
+): Promise<InspectionSession | null> {
   try {
-    const result = await interpretInspectionVoice(transcript, session);
+    const response = await fetch('/api/ai/interpret', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ input: transcript, session }),
+    });
 
-    if (result) {
-      updateInspection(result);
-    } else {
-      console.warn('AI did not return a valid session update.');
+    if (!response.ok) {
+      console.error('AI API error:', await response.text());
+      return null;
     }
-  } catch (err) {
-    console.error('Failed to handle transcript:', err);
+
+    const result = await response.json();
+
+    // Ensure returned result is valid
+    if (!result || typeof result !== 'object') {
+      console.warn('Invalid AI result:', result);
+      return null;
+    }
+
+    return result as InspectionSession;
+  } catch (error) {
+    console.error('Error handling transcript:', error);
+    return null;
   }
 }
