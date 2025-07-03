@@ -1,47 +1,47 @@
-'use client'
+'use client';
 
-import { useRef } from 'react'
+import React from 'react';
 
 interface PhotoUploadButtonProps {
-  onUpload: (url: string) => void
+  sectionIndex: number;
+  itemIndex: number;
+  url?: string;
+  onUpload: (url: string) => void;
 }
 
-export default function PhotoUploadButton({ onUpload }: PhotoUploadButtonProps) {
-  const inputRef = useRef<HTMLInputElement>(null)
+export default function PhotoUploadButton({
+  sectionIndex,
+  itemIndex,
+  url,
+  onUpload,
+}: PhotoUploadButtonProps) {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-
-    const reader = new FileReader()
-    reader.onloadend = () => {
-      if (reader.result && typeof reader.result === 'string') {
-        onUpload(reader.result)
-      }
-    }
-    reader.readAsDataURL(file)
-  }
-
-  const triggerFileInput = () => {
-    inputRef.current?.click()
-  }
+    // Simulate upload and generate a URL (replace with actual upload logic)
+    const simulatedUrl = URL.createObjectURL(file);
+    onUpload(simulatedUrl);
+  };
 
   return (
-    <>
-      <button
-        type="button"
-        onClick={triggerFileInput}
-        className="bg-orange-600 text-white font-bold py-1 px-3 rounded shadow"
-      >
-        + Add Photo
-      </button>
+    <div className="mt-2">
+      <label className="text-xs text-white font-bold block mb-1">
+        Photo
+      </label>
+      {url && (
+        <img src={url} alt="Uploaded" className="mb-2 rounded shadow w-32 h-auto" />
+      )}
       <input
         type="file"
         accept="image/*"
-        ref={inputRef}
         onChange={handleFileChange}
-        className="hidden"
+        className="block text-sm text-gray-300 file:mr-4 file:py-1 file:px-2
+          file:rounded-full file:border-0
+          file:text-sm file:font-semibold
+          file:bg-orange-700 file:text-white
+          hover:file:bg-orange-600"
       />
-    </>
-  )
+    </div>
+  );
 }

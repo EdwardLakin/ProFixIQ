@@ -1,19 +1,15 @@
-// components/inspection/SmartHighlight.tsx
-
-import React from 'react';
+import { InspectionSession } from '@lib/inspection/types';
 
 interface SmartHighlightProps {
-  sectionIndex: number;
-  itemIndex: number;
+  session: InspectionSession;
 }
 
-export default function SmartHighlight({
-  sectionIndex,
-  itemIndex,
-}: SmartHighlightProps) {
+const SmartHighlight = ({ session }: SmartHighlightProps) => {
   return (
-    <div className="text-xs text-gray-400 mb-1 ml-1">
-      Section {sectionIndex + 1} • Item {itemIndex + 1}
+    <div className="text-xs text-green-300 text-center mb-2">
+      {session.transcript ? `🔊 "${session.transcript}" interpreted` : ''}
     </div>
   );
-}
+};
+
+export default SmartHighlight;

@@ -1,17 +1,22 @@
-// src/components/inspection/ResumeReminder.tsx
+'use client';
+
 import React from 'react';
+import useInspectionSession from '@lib/inspection/useInspectionSession';
 
-interface ResumeReminderProps {
-  onResume: () => void;
-}
+const ResumeReminder = () => {
+  const { isPaused, resumeSession } = useInspectionSession();
 
-const ResumeReminder: React.FC<ResumeReminderProps> = ({ onResume }) => {
+  if (!isPaused) return null;
+
   return (
-    <div
-      className="bg-yellow-200 text-yellow-900 px-4 py-2 rounded text-center cursor-pointer shadow-lg"
-      onClick={onResume}
-    >
-      Inspection paused – tap to resume
+    <div className="bg-yellow-900 border border-yellow-500 text-yellow-300 p-3 rounded-md shadow-md mb-4">
+      <p className="text-sm mb-2">Inspection paused – tap to resume.</p>
+      <button
+        onClick={resumeSession}
+        className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-1 px-4 rounded"
+      >
+        Resume
+      </button>
     </div>
   );
 };

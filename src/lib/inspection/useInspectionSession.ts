@@ -1,40 +1,58 @@
+'use client';
+
 import { useState } from 'react';
 import {
   InspectionItem,
+  InspectionSection,
   InspectionSession,
-  InspectionTemplate,
-  InspectionStatus,
   QuoteLine,
 } from '@lib/inspection/types';
+import { matchToMenuItem } from '@lib/quote/matchToMenuItem';
 
-export default function useInspectionSession(template: InspectionTemplate) {
-  const [session, setSession] = useState<InspectionSession>({
-    id: '', // or generate a unique id
-  vehicleId: '',
-  customerId: '',
-  workOrderId: '',
-  templateId: template.templateId,
-  templateName: template.templateName,
-  sections: template.sections,
-  currentSectionIndex: 0,
-  currentItemIndex: 0,
-  started: false,
-  completed: false,
-  isListening: false,
-  isPaused: false,
-  setIsListening: () => {},
-  addQuoteLine: () => { },
-  transcript: '',
-  location: '',
-  status: 'not_started',
-  quote: [],
-  });
+export default function useInspectionSession(initialSession?: InspectionSession) {
+  const [session, setSession] = useState<InspectionSession>(() => ({
+    id: '',
+    vehicleId: '',
+    customerId: '',
+    workOrderId: '',
+    templateId: '',
+    templateName: '',
+    sections: [],
+    currentSectionIndex: 0,
+    currentItemIndex: 0,
+    started: false,
+    completed: false,
+    isListening: false,
+    isPaused: false,
+    transcript: '',
+    location: '',
+    quote: [],
+    status: 'not_started',
+    lastUpdated: new Date().toISOString(),
+    ...(initialSession || {}),
+  }));
 
   const updateInspection = (updates: Partial<InspectionSession>) => {
-    setSession(prev => ({
+    setSession((prev) => ({
       ...prev,
       ...updates,
+      lastUpdated: new Date().toISOString(),
     }));
+  };
+
+  const updateSection = (sectionIndex: number, updates: Partial<InspectionSection>) => {
+    setSession((prev) => {
+      const newSections = [...prev.sections];
+      newSections[sectionIndex] = {
+        ...newSections[sectionIndex],
+        ...updates,
+      };
+      return {
+        ...prev,
+        sections: newSections,
+        lastUpdated: new Date().toISOString(),
+      };
+    });
   };
 
   const updateItem = (
@@ -42,87 +60,87 @@ export default function useInspectionSession(template: InspectionTemplate) {
     itemIndex: number,
     updates: Partial<InspectionItem>
   ) => {
-    const updatedSections = [...session.sections];
-    const updatedItems = [...updatedSections[sectionIndex].items];
-    updatedItems[itemIndex] = {
-      ...updatedItems[itemIndex],
-      ...updates,
-    };
-    updatedSections[sectionIndex] = {
-      ...updatedSections[sectionIndex],
-      items: updatedItems,
-    };
-    setSession(prev => ({
-      ...prev,
-      sections: updatedSections,
-    }));
+    setSession((prev) => {
+      const newSections = [...prev.sections];
+      const section = { ...newSections[sectionIndex] };
+      const items = [...section.items];
+      const item = { ...items[itemIndex], ...updates };
+      items[itemIndex] = item;
+      section.items = items;
+      newSections[sectionIndex] = section;
+
+      // Add QuoteLine if failed or recommended
+      let newQuote = [...prev.quote];
+      if (updates.status === 'fail' || updates.status === 'recommend') {
+        const matched = matchToMenuItem(item.item, item);
+        if (matched) {
+          newQuote.push(matched);
+        }
+      }
+
+      return {
+        ...prev,
+        sections: newSections,
+        quote: newQuote,
+        lastUpdated: new Date().toISOString(),
+      };
+    });
   };
 
-  const updateSection = (
-    sectionIndex: number,
-    updates: Partial<InspectionSession['sections'][number]>
-  ) => {
-    const updatedSections = [...session.sections];
-    updatedSections[sectionIndex] = {
-      ...updatedSections[sectionIndex],
-      ...updates,
-    };
-    setSession(prev => ({
+  const addQuoteLine = (line: QuoteLine) => {
+    setSession((prev) => ({
       ...prev,
-      sections: updatedSections,
+      quote: [...prev.quote, line],
+      lastUpdated: new Date().toISOString(),
     }));
   };
 
   const startSession = () => {
-    setSession(prev => ({
+    setSession((prev) => ({
       ...prev,
+      started: true,
       status: 'in_progress',
-      currentSectionIndex: 0,
-      currentItemIndex: 0,
-      transcript: '',
-    }));
-  };
-
-  const finishSession = () => {
-    setSession(prev => ({
-      ...prev,
-      status: 'completed',
+      lastUpdated: new Date().toISOString(),
     }));
   };
 
   const pauseSession = () => {
-    setSession(prev => ({
+    setSession((prev) => ({
       ...prev,
       isPaused: true,
-      isListening: false,
+      status: 'paused',
+      lastUpdated: new Date().toISOString(),
     }));
   };
 
   const resumeSession = () => {
-    setSession(prev => ({
+    setSession((prev) => ({
       ...prev,
       isPaused: false,
-      isListening: true,
+      status: 'in_progress',
+      lastUpdated: new Date().toISOString(),
     }));
   };
 
-  const [isListening, setIsListening] = useState(false);
+  const finishSession = () => {
+    setSession((prev) => ({
+      ...prev,
+      completed: true,
+      status: 'completed',
+      lastUpdated: new Date().toISOString(),
+    }));
+  };
 
-  const addQuoteLine = (line: QuoteLine) => {
-  setSession((prev) => ({
-    ...prev,
-    quote: [...(prev.quote || []), line],
-  }));
-};
   return {
     session,
     updateInspection,
-    startSession,
-    finishSession,
-    updateItem,
     updateSection,
-    isListening,
-    setIsListening,
-    addQuoteLine
+    updateItem,
+    addQuoteLine,
+    startSession,
+    pauseSession,
+    resumeSession,
+    finishSession,
+    isPaused: session.isPaused,
   };
 }

@@ -1,19 +1,19 @@
-// components/inspection/ProgressTracker.tsx
+import { InspectionSession } from '@lib/inspection/types';
 
-import React from 'react';
-
-export interface ProgressTrackerProps {
-  currentSectionIndex: number;
-  currentItemIndex: number;
+interface ProgressTrackerProps {
+  session: InspectionSession;
 }
 
-const ProgressTracker: React.FC<ProgressTrackerProps> = ({
-  currentSectionIndex,
-  currentItemIndex,
-}) => {
+const ProgressTracker = ({ session }: ProgressTrackerProps) => {
+  const totalSections = session.sections.length;
+  const currentSection = session.currentSectionIndex + 1;
+  const currentItem = session.currentItemIndex + 1;
+  const totalItems =
+    session.sections[session.currentSectionIndex]?.items.length || 0;
+
   return (
-    <div className="text-sm text-orange-400 text-center mb-2">
-      Section {currentSectionIndex + 1} • Item {currentItemIndex + 1}
+    <div className="text-xs text-gray-400 text-center mb-2">
+      Section {currentSection} of {totalSections} • Item {currentItem} of {totalItems}
     </div>
   );
 };

@@ -25,7 +25,8 @@ export interface MeasurementCommand extends InspectionCommandBase {
 }
 
 export interface StatusCommand extends InspectionCommandBase {
-  type: 'ok' | 'fail' | 'na' | 'recommend';
+  type: 'status';
+  status: InspectionItemStatus;
 }
 
 export interface PauseCommand extends InspectionCommandBase {
@@ -45,16 +46,14 @@ export interface InspectionItem {
   note?: string;
   value?: number;
   unit?: string;
-  photo?: string;
   photoUrls?: string[];
   recommend?: string[];
 }
 
 export interface InspectionSection {
   section: string;
-  items: InspectionItem[];
-  id: string;
   title: string;
+  items: InspectionItem[];
 }
 
 export interface InspectionTemplate {
@@ -63,13 +62,23 @@ export interface InspectionTemplate {
   sections: InspectionSection[];
 }
 
-export interface Inspection {
-  templateName: string;
-  sections: InspectionSection[];
-  started: boolean;
-  completed: boolean;
-  currentSectionIndex: number;
-  status?: 'started';
+export interface QuoteLine {
+  id: string;
+  inspectionItem?: string;
+  item: string;
+  description?: string;
+  status?: InspectionItemStatus;
+  value?: number;
+  notes?: string;
+  laborTime?: number;
+  laborRate?: number;
+  parts?: {
+    name: string;
+    price: number;
+    type: 'economy' | 'premium' | 'oem';
+  }[];
+  totalCost?: number;
+  editable?: boolean;
 }
 
 export interface InspectionSession {
@@ -86,60 +95,39 @@ export interface InspectionSession {
   completed: boolean;
   isListening: boolean;
   isPaused: boolean;
-  setIsListening: (listening: boolean) => void;
-  addQuoteLine: (line: QuoteLine) => void;
   transcript: string;
-  lastUpdated?: number;
   location: string;
   status: InspectionStatus;
   quote: QuoteLine[];
-}
-export interface QuoteLine {
-  id: string;
-  inspectionItemId?: string;
-  item: string;
-  description?: string;
-  status?: InspectionItemStatus; // 'ok' | 'fail' | 'na' | 'recommend'
-  value?: string;
-  notes?: string;
-  laborTime?: number; // in hours
-  laborRate?: number; // shop-configured or default
-  parts?: {
-    name: string;
-    price: number;
-    type: 'economy' | 'premium' | 'oem';
-  }[];
-  totalCost?: number;
-  editable?: boolean; // to support override in quote review
-}
-
-// OUTPUT TYPE FOR SUMMARY
-export interface InspectionSummary {
-  templateName: string;
-  date: string;
-  items: {
-    section: string;
-    item: string;
-    status?: 'complete';
-    note?: string[];
-    recommend?: string[];
-  }[];
+  lastUpdated: string;
+  onStart?: () => void;
+  onPause?: () => void;
+  onResume?: () => void;
 }
 
 export interface SummaryItem {
   section: string;
   item: string;
-  status: InspectionItemStatus;
-  note?: string[];
-  photo?: string;
+  status?: InspectionItemStatus;
+  note?: string;
   photoUrls?: string[];
   recommend?: string[];
 }
 
-export type ParsedCommand =
-  | { type: 'add'; description: string; labor?: number }
-  | { type: 'recommend'; description: string }
-  | { type: 'measurement'; item: string; location?: string; value: string }
-  | { type: 'na'; item: string }
-  | { type: 'status'; item: string; status: 'ok' | 'fail' | 'na' }
-  | { type: 'pause' };
+export interface InspectionSummary {
+  templateName: string;
+  date: string;
+  items: SummaryItem[];
+}
+
+export interface ParsedCommand {
+  type: CommandType;
+  item?: string;
+  status?: InspectionItemStatus;
+  note?: string;
+  value?: number;
+  unit?: string;
+  location?: string;
+  description?: string;
+  labor?: number;
+}

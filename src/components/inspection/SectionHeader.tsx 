@@ -1,18 +1,18 @@
-// components/inspection/SectionHeader.tsx
-
+'use client';
 import React from 'react';
+import { useInspectionSession } from '@lib/inspection/useInspectionSession';
 
-interface SectionHeaderProps {
-  title: string;
-  index: number;
-  total: number;
-}
+const SectionHeader = () => {
+  const { session } = useInspectionSession();
+  const currentSection = session?.sections?.[session.currentSectionIndex];
 
-const SectionHeader: React.FC<SectionHeaderProps> = ({ title, index, total }) => {
+  if (!currentSection) return null;
+
   return (
-    <div className="w-full sticky top-0 z-10 bg-black bg-opacity-80 px-4 py-2 text-center text-lg font-black text-white border-b border-gray-600">
-      <div>{`Section ${index + 1} of ${total}`}</div>
-      <div className="text-orange-400 text-xl mt-1">{title}</div>
+    <div className="text-center mb-4">
+      <h2 className="text-2xl text-orange-400 font-black uppercase tracking-widest">
+        {currentSection.title || currentSection.name}
+      </h2>
     </div>
   );
 };

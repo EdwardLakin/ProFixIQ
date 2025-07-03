@@ -1,24 +1,41 @@
-// src/components/inspection/PauseResume.tsx
-import React from 'react';
+'use client';
 
-interface PauseResumeProps {
+import { useEffect } from 'react';
+import useInspectionSession from '@lib/inspection/useInspectionSession';
+
+interface PauseResumeButtonProps {
   isPaused: boolean;
-  onToggle: () => void;
+  onPause: () => void;
+  onResume: () => void;
 }
 
-const PauseResume: React.FC<PauseResumeProps> = ({ isPaused, onToggle }) => {
+const PauseResumeButton = ({ isPaused, onPause, onResume }: PauseResumeButtonProps) => {
+  const { session } = useInspectionSession();
+
+  useEffect(() => {
+    // Example side effect when pause/resume toggles
+    console.log('Inspection status:', session.status);
+  }, [session.status]);
+
   return (
-    <button
-      onClick={onToggle}
-      className={`px-4 py-2 rounded font-bold transition duration-200 ${
-        isPaused
-          ? 'bg-yellow-500 text-black hover:bg-yellow-600'
-          : 'bg-blue-600 text-white hover:bg-blue-700'
-      }`}
-    >
-      {isPaused ? 'Resume Listening' : 'Pause Listening'}
-    </button>
+    <div className="text-center mt-2">
+      {isPaused ? (
+        <button
+          onClick={onResume}
+          className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
+        >
+          Resume
+        </button>
+      ) : (
+        <button
+          onClick={onPause}
+          className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded"
+        >
+          Pause
+        </button>
+      )}
+    </div>
   );
 };
 
-export default PauseResume;
+export default PauseResumeButton;
