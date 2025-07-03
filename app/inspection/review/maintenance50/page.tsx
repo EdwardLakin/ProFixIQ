@@ -1,9 +1,10 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import Button from '@components/ui/Button';
+import { Button } from '@components/ui/Button';
 import HomeButton from '@components/ui/HomeButton';
 import PreviousButton from '@components/ui/PreviousPageButton';
+import PreviousPageButton from '@components/ui/PreviousPageButton';
 
 export default function Maintenance50Start() {
   const router = useRouter();
@@ -26,7 +27,7 @@ export default function Maintenance50Start() {
         <HomeButton />
       </div>
       <div className="absolute top-4 right-4">
-        <PreviousButton />
+        <PreviousPageButton to={''} />
       </div>
     </div>
   );

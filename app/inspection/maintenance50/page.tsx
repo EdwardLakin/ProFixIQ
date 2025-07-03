@@ -7,7 +7,7 @@ import { matchToMenuItem } from '@lib/quote/matchToMenuItem';
 import { saveInspectionSession } from '@lib/inspection/save';
 import PauseResumeButton from '@lib/inspection/PauseResume';
 import ProgressTracker from '@lib/inspection/ProgressTracker';
-import SectionHeader from '@lib/inspection/SectionDisplay';
+import SectionHeader  from '@components/inspection/SectionHeader';
 import SmartHighlight from '@lib/inspection/SmartHighlight';
 import StatusButtons from '@lib/inspection/StatusButtons';
 import PhotoUploadButton from '@lib/inspection/PhotoUploadButton';
@@ -69,16 +69,17 @@ export default function Maintenance50Page() {
         </div>
         <SmartHighlight session={session} />
         <div ref={containerRef} className="w-full max-w-xl mt-4 space-y-6">
-          <SectionHeader title={currentSection.title} />
+          <SectionHeader title={currentSection.title || currentItem.item} />
           <div data-current="true" className="border border-gray-600 p-4 rounded-lg bg-gray-900 shadow-md">
             <p className="text-lg font-semibold mb-2">{currentItem.item}</p>
             <StatusButtons
+              item={currentItem}
               sectionIndex={session.currentSectionIndex}
               itemIndex={session.currentItemIndex}
               onStatusChange={(status) =>
-                updateItem(session.currentSectionIndex, session.currentItemIndex, { status })
-              }
-            />
+              updateItem(session.currentSectionIndex, session.currentItemIndex, { status })
+            }
+          />
             {(currentItem.status === 'fail' || currentItem.status === 'recommend') && (
               <PhotoUploadButton
                 sectionIndex={session.currentSectionIndex}

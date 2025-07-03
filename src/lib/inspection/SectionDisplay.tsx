@@ -4,6 +4,7 @@ import { InspectionSection } from '@lib/inspection/types';
 import InspectionItemCard from './InspectionItemCard';
 
 interface SectionDisplayProps {
+  title: string;
   section: InspectionSection;
   sectionIndex: number;
   showNotes: boolean;

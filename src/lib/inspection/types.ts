@@ -81,6 +81,15 @@ export interface QuoteLine {
   editable?: boolean;
 }
 
+export interface QuoteLineItem {
+  name: string;
+  notes?: string;
+  status: 'fail' | 'recommend' | 'ok' | 'na';
+  laborHours?: number;
+  partName?: string;
+  partPrice?: number;
+}
+
 export interface InspectionSession {
   id: string;
   vehicleId: string;

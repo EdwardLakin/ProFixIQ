@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import QuoteViewer from "@components/QuoteViewer";
-import { QuoteLineItem } from "@lib/types";
+import { QuoteLineItem }from "@lib/inspection/types";
 
 export default function QuoteReviewPage() {
   const [quote, setQuote] = useState<QuoteLineItem[]>([]);
