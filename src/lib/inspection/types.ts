@@ -109,6 +109,11 @@ export interface InspectionSession {
   status: InspectionStatus;
   quote: QuoteLine[];
   lastUpdated: string;
+  updateItem: (
+    sectionIndex: number,
+    itemIndex: number,
+    updated: Partial<InspectionItem>
+  ) => void;
   onStart?: () => void;
   onPause?: () => void;
   onResume?: () => void;

@@ -1,62 +1,59 @@
-// app/inspection/page.tsx
-
 'use client';
 
 import { useRouter } from 'next/navigation';
 import HomeButton from '@components/ui/HomeButton';
-import Link from 'next/link';
-
-const inspections = [
-  {
-    name: 'Maintenance 50 Point',
-    path: '/inspection/maintenance50',
-    templateId: 'maintenance50',
-  },
-  { name: 'Coming Soon 1', path: '#' },
-  { name: 'Coming Soon 2', path: '#' },
-  { name: 'Coming Soon 3', path: '#' },
-  { name: 'Coming Soon 4', path: '#' },
-  { name: 'Coming Soon 5', path: '#' },
-];
 
 export default function InspectionMenuPage() {
   const router = useRouter();
 
   return (
-    <div className="min-h-screen bg-black text-white px-4 py-8 flex flex-col items-center justify-start">
+    <div className="min-h-screen bg-black text-white px-4 py-10 relative">
       <HomeButton />
-
-      <h1 className="text-4xl font-black text-orange-500 mt-4 mb-8 text-center">
+      <h1 className="text-4xl text-center text-orange-500 font-blackops drop-shadow mb-6">
         Choose an Inspection
       </h1>
-
-      <div className="flex flex-col gap-6 w-full max-w-md">
-        {inspections.map((inspection, index) => (
-          <div key={index} className="flex flex-col gap-2">
-            <Link
-              href={inspection.path}
-              className="text-center text-lg font-bold px-6 py-4 rounded-md bg-orange-500 hover:bg-orange-600 transition"
-            >
-              {inspection.name}
-            </Link>
-
-            {inspection.templateId && (
-              <Link
-                href={`/work-orders/create?pageFrom=inspection&template=${inspection.templateId}`}
-                className="text-sm text-center px-4 py-2 rounded bg-slate-600 hover:bg-slate-700 transition"
-              >
-                Add to Work Order
-              </Link>
-            )}
-          </div>
-        ))}
-
-        <Link
-          href="/inspection/saved"
-          className="mt-4 text-center text-white underline text-sm hover:text-orange-400"
+      <div className="space-y-6 max-w-xl mx-auto">
+        <button
+          onClick={() => router.push('/inspection/maintenance50')}
+          className="w-full py-5 px-6 border-4 border-orange-500 text-orange-500 text-2xl font-bold uppercase rounded-xl hover:bg-orange-500 hover:text-black transition"
         >
-          View Saved Inspections
-        </Link>
+          Maintenance 50-Point
+        </button>
+
+        <button
+          onClick={() => router.push('/inspection/cvip')}
+          className="w-full py-5 px-6 border-4 border-blue-500 text-blue-500 text-2xl font-bold uppercase rounded-xl hover:bg-blue-500 hover:text-black transition"
+        >
+          CVIP Inspection
+        </button>
+
+        <button
+          onClick={() => router.push('/inspection/brake')}
+          className="w-full py-5 px-6 border-4 border-red-500 text-red-500 text-2xl font-bold uppercase rounded-xl hover:bg-red-500 hover:text-black transition"
+        >
+          Brake Inspection
+        </button>
+
+        <button
+          onClick={() => router.push('/inspection/custom')}
+          className="w-full py-5 px-6 border-4 border-green-500 text-green-500 text-2xl font-bold uppercase rounded-xl hover:bg-green-500 hover:text-black transition"
+        >
+          Custom Inspection
+        </button>
+
+        <button
+          onClick={() => router.push('/inspection/saved')}
+          className="w-full py-5 px-6 border-4 border-yellow-400 text-yellow-400 text-2xl font-bold uppercase rounded-xl hover:bg-yellow-400 hover:text-black transition"
+        >
+          Saved Inspections
+        </button>
+
+        <button
+          onClick={() => router.push('/inspection/summary')}
+          className="w-full py-5 px-6 border-4 border-purple-500 text-purple-500 text-2xl font-bold uppercase rounded-xl hover:bg-purple-500 hover:text-black transition"
+        >
+          Review Summary
+        </button>
       </div>
     </div>
   );
