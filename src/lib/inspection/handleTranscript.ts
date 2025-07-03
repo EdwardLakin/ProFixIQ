@@ -1,36 +1,22 @@
-import { interpretCommand }from '@components/inspection/interpretCommand';
-import { InspectionSession, QuoteLine } from '@lib/inspection/types';
+import { interpretInspectionVoice } from './aiInterpreter';
+import { InspectionSession } from './types';
 
-interface HandleTranscriptParams {
-  transcript: string;
-  session: InspectionSession;
-  updateItem: InspectionSession['updateItem'];
-  addQuoteLine: (line: QuoteLine) => void;
-}
+export async function handleTranscript(
+  transcript: string,
+  session: InspectionSession,
+  updateInspection: (updated: InspectionSession) => void
+): Promise<void> {
+  if (!transcript.trim()) return;
 
-export async function handleTranscript({
-  transcript,
-  session,
-  updateItem,
-  addQuoteLine,
-}: HandleTranscriptParams): Promise<InspectionSession> {
-  const result = await interpretCommand(transcript, session);
-  if (!result) return session;
+  try {
+    const result = await interpretInspectionVoice(transcript, session);
 
-  result.actions.forEach((action: any) => {
-    switch (action.type) {
-      case 'updateItem':
-        updateItem(
-          action.payload.sectionIndex,
-          action.payload.itemIndex,
-          action.payload.updated
-        );
-        break;
-      case 'addQuoteLine':
-        addQuoteLine(action.payload);
-        break;
+    if (result) {
+      updateInspection(result);
+    } else {
+      console.warn('AI did not return a valid session update.');
     }
-  });
-
-  return result.session;
+  } catch (err) {
+    console.error('Failed to handle transcript:', err);
+  }
 }

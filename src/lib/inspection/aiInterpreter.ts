@@ -1,49 +1,35 @@
-import { OpenAI } from 'openai'; // or your custom GPT client
-import { InspectionCommand } from '@lib/inspection/types';
+import { OpenAI } from 'openai';
+import { InspectionSession } from './types';
 
-const systemPrompt = `
-You are an automotive repair AI. Interpret inspection input like "brakes 2mm fail" or "recommend cabin filter" and return a structured object:
-{
-  type: 'add' | 'recommend' | 'measurement' | 'na',
-  section: string,
-  item: string,
-  note?: string,
-  value?: number,
-  unit?: string,
-  repairLine?: string,
-  partSuggestion?: string,
-  laborHours?: number
-}
-Use proper automotive terminology, detect measurements, and extract actionable repair info.
-`;
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 export async function interpretInspectionVoice(
-  input: string
-): Promise<InspectionCommand & {
-  repairLine?: string;
-  partSuggestion?: string;
-  laborHours?: number;
-}> {
-  const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-  });
-
-  const completion = await openai.chat.completions.create({
-    model: 'gpt-4',
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: input },
-    ],
-    temperature: 0.2,
-  });
-
-  const raw = completion.choices[0].message.content;
-
+  input: string,
+  session: InspectionSession
+): Promise<InspectionSession | null> {
   try {
-    const result = JSON.parse(raw || '{}');
-    return result;
-  } catch (e) {
-    console.error('Failed to parse AI response:', raw);
-    throw new Error('AI returned unparseable data');
+    const prompt = `
+You are an inspection AI assistant. Based on the input command, return a modified version of the inspection session with any updated items.
+
+Input: "${input}"
+Current session (JSON): ${JSON.stringify(session)}
+
+Only return valid session JSON.
+`;
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4',
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const content = response.choices[0].message.content;
+    const parsed = JSON.parse(content || '{}');
+
+    return parsed as InspectionSession;
+  } catch (error) {
+    console.error('interpretInspectionVoice error:', error);
+    return null;
   }
 }
