@@ -1,90 +1,280 @@
 import { InspectionTemplate } from '@lib/inspection/types';
 
-const maintenance50Point: InspectionTemplate = {
-  templateId: 'maintenance_50',
+export const MaintenanceInspectionTemplate: InspectionTemplate = {
   templateName: 'Maintenance 50 Point',
+  templateId: 'maintenance50',
   sections: [
     {
-      id: 'under_hood',
       section: 'Under Hood',
       title: 'Under Hood',
       items: [
-        { item: 'Engine Oil', status: 'ok' },
-        { item: 'Coolant Level', status: 'ok' },
-        { item: 'Transmission Fluid', status: 'ok' },
-        { item: 'Brake Fluid', status: 'ok' },
-        { item: 'Power Steering Fluid', status: 'ok' },
-        { item: 'Windshield Washer Fluid', status: 'ok' },
-        { item: 'Belts Condition', status: 'ok' },
-        { item: 'Hoses Condition', status: 'ok' },
-      ],
+        {
+          name: 'Engine Oil', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Coolant Level', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Transmission Fluid', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Brake Fluid', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Power Steering Fluid', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Windshield Washer Fluid', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Battery Condition', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Drive Belts', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        }
+      ]
     },
     {
-      id: 'battery_electrical',
-      section: 'Battery & Electrical',
-      title: 'Battery & Electrical',
-      items: [
-        { item: 'Battery Terminal', status: 'ok' },
-        { item: 'Headlights', status: 'ok' },
-        { item: 'Tail Lights', status: 'ok' },
-        { item: 'Interior Lights', status: 'ok' },
-        { item: 'Horn Operation', status: 'ok' },
-      ],
-    },
-    {
-      id: 'under_vehicle',
       section: 'Under Vehicle',
       title: 'Under Vehicle',
       items: [
-        { item: 'Oil Leaks', status: 'ok' },
-        { item: 'Coolant Leaks', status: 'ok' },
-        { item: 'Transmission Leaks', status: 'ok' },
-        { item: 'Exhaust System', status: 'ok' },
-        { item: 'Brake Lines', status: 'ok' },
-        { item: 'Fuel Lines', status: 'ok' },
-        { item: 'Suspension Components', status: 'ok' },
-        { item: 'Steering Components', status: 'ok' },
-      ],
+        {
+          name: 'Oil Leaks', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Transmission Leaks', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Coolant Leaks', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Brake Lines', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Fuel Lines', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Exhaust System', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Suspension Components', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Ball Joints', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Shocks / Struts', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        }
+      ]
     },
     {
-      id: 'brakes_tires',
-      section: 'Brakes & Tires',
-      title: 'Brakes & Tires',
+      section: 'Tires & Brakes',
+      title: 'Tires & Brakes',
       items: [
-        { item: 'Front Brake Pads', status: 'ok' },
-        { item: 'Rear Brake Pads', status: 'ok' },
-        { item: 'Front Rotors', status: 'ok' },
-        { item: 'Rear Rotors', status: 'ok' },
-        { item: 'Parking Brake Operation', status: 'ok' },
-        { item: 'Tire Tread Depth (Front)', status: 'ok' },
-        { item: 'Tire Tread Depth (Rear)', status: 'ok' },
-        { item: 'Tire Pressure (ALL)', status: 'ok' },
-      ],
+        {
+          name: 'Tire Pressure (LF)', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Tire Pressure (RF)', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Tire Pressure (LR)', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Tire Pressure (RR)', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Tread Depth (LF)', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Tread Depth (RF)', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Tread Depth (LR)', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Tread Depth (RR)', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Brake Pads (Front)', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Brake Pads (Rear)', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Brake Rotors (Front)', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Brake Rotors (Rear)', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        }
+      ]
     },
     {
-      id: 'interior',
-      section: 'Interior',
-      title: 'Interior',
+      section: 'Interior & Exterior',
+      title: 'Interior & Exterior',
       items: [
-        { item: 'Seat Belts', status: 'ok' },
-        { item: 'Wipers/Washers', status: 'ok' },
-        { item: 'Defrost Operation', status: 'ok' },
-        { item: 'AC Operation', status: 'ok' },
-        { item: 'Warning Lights', status: 'ok' },
-      ],
+        {
+          name: 'All Exterior Lights', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'All Interior Lights', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Wiper Blades', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Washer Operation', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Horn', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'HVAC Operation', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        }
+      ]
     },
     {
-      id: 'final_checks',
+      section: 'Road Test',
+      title: 'Road Test',
+      items: [
+        {
+          name: 'Engine Performance', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Transmission Operation', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Steering Feel', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Brake Feel', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Suspension Feel', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Noise or Vibration', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        }
+      ]
+    },
+    {
       section: 'Final Checks',
       title: 'Final Checks',
       items: [
-        { item: 'Road Test Drive Completed', status: 'ok' },
-        { item: 'No Issues Observed', status: 'ok' },
-        { item: 'Reset Maintenance Light', status: 'ok' },
-        { item: 'Work Completed Sticker Applied', status: 'ok' },
-      ],
-    },
-  ],
+        {
+          name: 'Check Engine Light', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'TPMS Light', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Fluid Top-Off Needed', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Reset Oil Life Monitor', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Inspection Sticker Valid', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        },
+        {
+          name: 'Battery Terminals Cleaned', status: 'ok', note: '', value: null,
+          notes: '',
+          item: ''
+        }
+      ]
+    }
+  ]
 };
-
-export default maintenance50Point;
+export default MaintenanceInspectionTemplate;

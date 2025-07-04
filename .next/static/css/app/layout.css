@@ -836,6 +836,11 @@ video {
   margin-right: calc(0.5rem * var(--tw-space-x-reverse));
   margin-left: calc(0.5rem * calc(1 - var(--tw-space-x-reverse)));
 }
+.space-x-4 > :not([hidden]) ~ :not([hidden]) {
+  --tw-space-x-reverse: 0;
+  margin-right: calc(1rem * var(--tw-space-x-reverse));
+  margin-left: calc(1rem * calc(1 - var(--tw-space-x-reverse)));
+}
 .space-y-1 > :not([hidden]) ~ :not([hidden]) {
   --tw-space-y-reverse: 0;
   margin-top: calc(0.25rem * calc(1 - var(--tw-space-y-reverse)));
@@ -860,11 +865,6 @@ video {
   --tw-space-y-reverse: 0;
   margin-top: calc(1.5rem * calc(1 - var(--tw-space-y-reverse)));
   margin-bottom: calc(1.5rem * var(--tw-space-y-reverse));
-}
-.space-x-4 > :not([hidden]) ~ :not([hidden]) {
-  --tw-space-x-reverse: 0;
-  margin-right: calc(1rem * var(--tw-space-x-reverse));
-  margin-left: calc(1rem * calc(1 - var(--tw-space-x-reverse)));
 }
 .space-y-8 > :not([hidden]) ~ :not([hidden]) {
   --tw-space-y-reverse: 0;
@@ -1157,9 +1157,9 @@ video {
 .bg-red-950\/30 {
   background-color: rgb(69 10 10 / 0.3);
 }
-.bg-slate-600 {
+.bg-slate-500 {
   --tw-bg-opacity: 1;
-  background-color: rgb(71 85 105 / var(--tw-bg-opacity, 1));
+  background-color: rgb(100 116 139 / var(--tw-bg-opacity, 1));
 }
 .bg-surface {
   --tw-bg-opacity: 1;
@@ -1197,10 +1197,6 @@ video {
 .bg-yellow-900 {
   --tw-bg-opacity: 1;
   background-color: rgb(113 63 18 / var(--tw-bg-opacity, 1));
-}
-.bg-slate-500 {
-  --tw-bg-opacity: 1;
-  background-color: rgb(100 116 139 / var(--tw-bg-opacity, 1));
 }
 .bg-opacity-5 {
   --tw-bg-opacity: 0.05;
@@ -1912,9 +1908,9 @@ html {
   background-color: rgb(185 28 28 / var(--tw-bg-opacity, 1));
 }
 
-.hover\:bg-slate-700:hover {
+.hover\:bg-slate-600:hover {
   --tw-bg-opacity: 1;
-  background-color: rgb(51 65 85 / var(--tw-bg-opacity, 1));
+  background-color: rgb(71 85 105 / var(--tw-bg-opacity, 1));
 }
 
 .hover\:bg-white\/20:hover {
@@ -1929,11 +1925,6 @@ html {
 .hover\:bg-yellow-700:hover {
   --tw-bg-opacity: 1;
   background-color: rgb(161 98 7 / var(--tw-bg-opacity, 1));
-}
-
-.hover\:bg-slate-600:hover {
-  --tw-bg-opacity: 1;
-  background-color: rgb(71 85 105 / var(--tw-bg-opacity, 1));
 }
 
 .hover\:text-black:hover {

@@ -40,13 +40,34 @@ export type InspectionCommand =
   | StatusCommand
   | PauseCommand;
 
+  export interface CustomerInfo {
+  first_name: string;
+  last_name: string;
+  phone: string;
+  email: string;
+  address: string;
+  city: string;
+  province: string;
+  postal_code: string;
+}
+
+export interface VehicleInfo {
+  year: string;
+  make: string;
+  model: string;
+  vin: string;
+  license_plate: string;
+  mileage: string;
+  color?: string;
+}
+
 export interface InspectionItem {
   notes: string;
   name: string | undefined;
   item: string;
   status?: InspectionItemStatus;
   note?: string;
-  value?: number;
+  value?: string | number | null;
   unit?: string;
   photoUrls?: string[];
   recommend?: string[];
@@ -70,7 +91,7 @@ export interface QuoteLine {
   item: string;
   description?: string;
   status?: InspectionItemStatus;
-  value?: number;
+  value?: number | string | null;
   notes?: string;
   laborTime?: number;
   laborRate?: number;
@@ -94,6 +115,25 @@ export interface QuoteLineItem {
 }
 
 export interface InspectionSession {
+  customer: {
+  first_name: string;
+  last_name: string;
+  phone: string;
+  email: string;
+  address: string;
+  city: string;
+  province: string;
+  postal_code: string;
+  }
+  vehicle: {
+  year: string;
+  make: string;
+  model: string;
+  vin: string;
+  license_plate: string;
+  mileage: string;
+  color?: string;
+  }
   id: string;
   vehicleId: string;
   customerId: string;
@@ -142,7 +182,7 @@ export interface ParsedCommand {
   item?: string;
   status?: InspectionItemStatus;
   note?: string;
-  value?: number;
+  value?: number | string | null;
   unit?: string;
   location?: string;
   description?: string;
