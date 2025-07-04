@@ -12,27 +12,48 @@ import { matchToMenuItem } from '@lib/quote/matchToMenuItem';
 
 export default function useInspectionSession(initialSession?: Partial<InspectionSession>) {
   const [session, setSession] = useState<InspectionSession>(() => ({
-    id: '',
-    vehicleId: '',
-    customerId: '',
-    workOrderId: '',
-    templateId: '',
-    templateName: '',
-    location: '',
-    sections: [],
-    currentSectionIndex: 0,
-    currentItemIndex: 0,
-    transcript: '',
-    status: 'not_started',
-    started: false,
-    completed: false,
-    quote: [],
-    isListening: false,
-    isPaused: false,
-    updateItem: () => {}, // add a placeholder so type matches
-    lastUpdated: new Date().toISOString(),
-    ...initialSession,
-  }));
+  id: '',
+  vehicleId: '',
+  customerId: '',
+  workOrderId: '',
+  templateId: '',
+  templateName: '',
+  location: '',
+  currentSectionIndex: 0,
+  currentItemIndex: 0,
+  transcript: '',
+  status: 'not_started',
+  started: false,
+  completed: false,
+  isListening: false,
+  isPaused: false,
+  quote: [],
+  lastUpdated: new Date().toISOString(),
+  customer: {
+    first_name: '',
+    last_name: '',
+    phone: '',
+    email: '',
+    address: '',
+    city: '',
+    province: '',
+    postal_code: ''
+  },
+  vehicle: {
+    year: '',
+    make: '',
+    model: '',
+    vin: '',
+    license_plate: '',
+    mileage: '',
+    color: ''
+  },
+  sections: [],
+updateItem: () => {},
+onStart: () => {},
+onPause: () => {},
+onResume: () => {},
+}));
 
   const updateInspection = (updates: Partial<InspectionSession>) => {
     setSession((prev) => ({
@@ -112,6 +133,12 @@ export default function useInspectionSession(initialSession?: Partial<Inspection
     }));
   };
 
+  const setIsListening = (value: boolean) => {
+  setSession((prev) => ({
+    ...prev,
+    isListening: value,
+  }));
+};
   const pauseSession = () => {
     setSession((prev) => ({
       ...prev,
@@ -150,6 +177,7 @@ export default function useInspectionSession(initialSession?: Partial<Inspection
     pauseSession,
     resumeSession,
     finishSession,
+    setIsListening,
     isPaused: session.isPaused,
   };
 }

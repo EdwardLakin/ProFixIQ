@@ -6,7 +6,7 @@ interface StatusButtonsProps {
   item: InspectionItem;
   sectionIndex: number;
   itemIndex: number;
-  onStatusChange: (status: InspectionItemStatus) => void;
+  updateItem: (sectionIndex: number, itemIndex: number, updates: Partial<InspectionItem>) => void;
 }
 
 export default function StatusButtons({

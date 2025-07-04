@@ -1,23 +1,14 @@
-'use client';
-
-import React from 'react';
+import { InspectionItem } from '@lib/inspection/types';
 
 interface SmartHighlightProps {
-  itemName?: string;
-  transcript?: string;
+  item: InspectionItem;
 }
 
-export default function SmartHighlight({ itemName, transcript }: SmartHighlightProps) {
-  if (!itemName || !transcript) return null;
-
-  const lowerTranscript = transcript.toLowerCase();
-  const lowerName = itemName.toLowerCase();
-
-  if (!lowerTranscript.includes(lowerName)) return null;
-
+export default function SmartHighlight({ item }: SmartHighlightProps) {
+  // Example rendering
   return (
-    <p className="text-green-400 text-sm mt-1 text-center">
-      ✅ Voice match: <strong>{itemName}</strong>
-    </p>
+    <div className="text-sm italic text-gray-400">
+      {item?.notes && `AI suggestion: ${item.notes}`}
+    </div>
   );
 }

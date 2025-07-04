@@ -2,18 +2,16 @@
 
 import React, { useEffect, useRef } from 'react';
 import useInspectionSession from '@lib/inspection/useInspectionSession';
+import maintenanceInspectionTemplate  from '@lib/inspection/templates/maintenance50Point';
 import PreviousPageButton from '@components/ui/PreviousPageButton';
 import SectionHeader from '@components/inspection/SectionHeader';
-import StatusButtons from '@lib/inspection/StatusButtons';
 import SmartHighlight from '@lib/inspection/SmartHighlight';
+import StatusButtons from '@lib/inspection/StatusButtons';
 import StartListeningButton from '@lib/inspection/StartListeningButton';
 import PauseResumeButton from '@lib/inspection/PauseResume';
-import PhotoUploadButton from '@lib/inspection/PhotoUploadButton';
 import ProgressTracker from '@lib/inspection/ProgressTracker';
-import Legend from '@lib/inspection/Legend';
-import { SaveInspectionButton } from '@components/inspection/SaveInspectionButton';
-import FinishInspectionButton from '@components/inspection/FinishInspectionButton';
-import maintenanceTemplate from '@lib/inspection/templates/maintenance50Point';
+import { saveInspectionSession } from '@lib/inspection/save';
+import PhotoUploadButton from '@lib/inspection/PhotoUploadButton';
 
 export default function Maintenance50InspectionPage() {
   const {
@@ -28,7 +26,7 @@ export default function Maintenance50InspectionPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    startSession(maintenanceTemplate);
+    startSession(maintenanceInspectionTemplate);
   }, []);
 
   useEffect(() => {
@@ -38,128 +36,101 @@ export default function Maintenance50InspectionPage() {
   }, [session.currentItemIndex, session.currentSectionIndex]);
 
   const section = session.sections[session.currentSectionIndex];
-  const item = section?.items[session.currentItemIndex];
+  const totalSections = session.sections.length;
+
+  const handleFinish = async () => {
+    await saveInspectionSession(session);
+    // Redirect to review or summary screen later
+  };
 
   return (
     <div className="min-h-screen px-4 pb-20 pt-4 text-white max-w-3xl mx-auto">
-      <PreviousPageButton to ="/inspection" />
-      <h1 className="text-2xl text-center font-black mb-4">Maintenance 50-Point Inspection</h1>
+      <PreviousPageButton to="/inspection" />
+      <h1 className="text-2xl text-center font-bold mb-2">Maintenance 50-Point Inspection</h1>
 
-      {/* Vehicle + Customer Info */}
-      <div className="bg-black bg-opacity-20 rounded-xl p-4 mb-6">
-        <h2 className="text-lg font-bold text-orange-400 mb-2">Customer Info</h2>
-        <p>{session.customer?.first_name} {session.customer?.last_name}</p>
-        <p>{session.customer?.phone} • {session.customer?.email}</p>
-        <p>{session.customer?.address}, {session.customer?.city}, {session.customer?.province} {session.customer?.postal_code}</p>
-        <h2 className="text-lg font-bold text-orange-400 mt-4 mb-2">Vehicle Info</h2>
-        <p>{session.vehicle?.year} {session.vehicle?.make} {session.vehicle?.model}</p>
-        <p>VIN: {session.vehicle?.vin} • Plate: {session.vehicle?.license_plate}</p>
-        <p>Mileage: {session.vehicle?.mileage} • Color: {session.vehicle?.color}</p>
+      <div className="bg-black bg-opacity-20 p-4 mb-4 rounded-lg">
+        <h2 className="text-md font-bold mb-2">Customer Info</h2>
+        <p>{session.customer.first_name} {session.customer.last_name}</p>
+        <p>{session.customer.phone}, {session.customer.email}</p>
+        <p>{session.customer.address}, {session.customer.city}, {session.customer.province} {session.customer.postal_code}</p>
       </div>
 
-      <div className="bg-black bg-opacity-20 rounded-xl p-4 mb-6">
-  <h2 className="text-lg font-bold text-orange-400 mb-2">Customer Info</h2>
-  <div className="grid grid-cols-2 gap-3">
-    <input className="input" placeholder="First Name" value={session.customer?.first_name || ''} 
-      onChange={(e) => updateInspection({ customer: { ...session.customer, first_name: e.target.value } })} />
-    <input className="input" placeholder="Last Name" value={session.customer?.last_name || ''} 
-      onChange={(e) => updateInspection({ customer: { ...session.customer, last_name: e.target.value } })} />
-    <input className="input col-span-2" placeholder="Phone" value={session.customer?.phone || ''} 
-      onChange={(e) => updateInspection({ customer: { ...session.customer, phone: e.target.value } })} />
-    <input className="input col-span-2" placeholder="Email" value={session.customer?.email || ''} 
-      onChange={(e) => updateInspection({ customer: { ...session.customer, email: e.target.value } })} />
-    <input className="input col-span-2" placeholder="Address" value={session.customer?.address || ''} 
-      onChange={(e) => updateInspection({ customer: { ...session.customer, address: e.target.value } })} />
-    <input className="input" placeholder="City" value={session.customer?.city || ''} 
-      onChange={(e) => updateInspection({ customer: { ...session.customer, city: e.target.value } })} />
-    <input className="input" placeholder="Province" value={session.customer?.province || ''} 
-      onChange={(e) => updateInspection({ customer: { ...session.customer, province: e.target.value } })} />
-    <input className="input col-span-2" placeholder="Postal Code" value={session.customer?.postal_code || ''} 
-      onChange={(e) => updateInspection({ customer: { ...session.customer, postal_code: e.target.value } })} />
-  </div>
+      <div className="bg-black bg-opacity-20 p-4 mb-4 rounded-lg">
+        <h2 className="text-md font-bold mb-2">Vehicle Info</h2>
+        <p>{session.vehicle.year} {session.vehicle.make} {session.vehicle.model}</p>
+        <p>VIN: {session.vehicle.vin}</p>
+        <p>License Plate: {session.vehicle.license_plate}</p>
+        <p>Mileage: {session.vehicle.mileage}</p>
+        <p>Color: {session.vehicle.color}</p>
+      </div>
 
-  <h2 className="text-lg font-bold text-orange-400 mt-6 mb-2">Vehicle Info</h2>
-  <div className="grid grid-cols-2 gap-3">
-    <input className="input" placeholder="Year" value={session.vehicle?.year || ''} 
-      onChange={(e) => updateInspection({ vehicle: { ...session.vehicle, year: e.target.value } })} />
-    <input className="input" placeholder="Make" value={session.vehicle?.make || ''} 
-      onChange={(e) => updateInspection({ vehicle: { ...session.vehicle, make: e.target.value } })} />
-    <input className="input col-span-2" placeholder="Model" value={session.vehicle?.model || ''} 
-      onChange={(e) => updateInspection({ vehicle: { ...session.vehicle, model: e.target.value } })} />
-    <input className="input col-span-2" placeholder="VIN" value={session.vehicle?.vin || ''} 
-      onChange={(e) => updateInspection({ vehicle: { ...session.vehicle, vin: e.target.value } })} />
-    <input className="input col-span-2" placeholder="License Plate" value={session.vehicle?.license_plate || ''} 
-      onChange={(e) => updateInspection({ vehicle: { ...session.vehicle, license_plate: e.target.value } })} />
-    <input className="input" placeholder="Mileage" value={session.vehicle?.mileage || ''} 
-      onChange={(e) => updateInspection({ vehicle: { ...session.vehicle, mileage: e.target.value } })} />
-    <input className="input" placeholder="Color" value={session.vehicle?.color || ''} 
-      onChange={(e) => updateInspection({ vehicle: { ...session.vehicle, color: e.target.value } })} />
-  </div>
-</div>
-
-      {/* Inspection Controls */}
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-2">
+        <PauseResumeButton isPaused={session.isPaused} onPause={pauseSession} onResume={resumeSession} />
+        <ProgressTracker
+          currentSection={session.currentSectionIndex}
+          currentItem={session.currentItemIndex}
+          totalSections={totalSections}
+          totalItems={section.items.length}
+        />
         <StartListeningButton />
-        <PauseResumeButton
-          isPaused={session.isPaused}
-          onPause={pauseSession}
-          onResume={resumeSession}
-        />
       </div>
-      <Legend />
-      <ProgressTracker
-        currentItem={session.currentItemIndex}
-        currentSection={session.currentSectionIndex}
-        totalSections={session.sections.length}
-        totalItems={session.sections[session.currentSectionIndex]?.items.length || 0}
-      />
+
       <SectionHeader
-  title={session.sections[session.currentSectionIndex]?.title || 'Section'}
-  section={session.currentSectionIndex}
-/>
-      
-      <div ref={scrollRef} className="p-4 mb-6 rounded-xl bg-black bg-opacity-20 border border-gray-700 shadow-md">
-        <h3 className="font-bold text-lg mb-1">{item?.name}</h3>
-        <SmartHighlight itemName={item?.name || ''} transcript={session.transcript} />
+        title={section.title}
+        section={session.currentSectionIndex}
+      />
 
-        <StatusButtons
-          item={item}
-          sectionIndex={session.currentSectionIndex}
-          itemIndex={session.currentItemIndex}
-          onStatusChange={(status) =>
-            updateItem(session.currentSectionIndex, session.currentItemIndex, { status })
-          }
-        />
-
-        {['fail', 'recommend'].includes(item?.status || '') && (
+      {section.items.map((item, itemIndex) => (
+        <div
+          key={itemIndex}
+          ref={itemIndex === session.currentItemIndex ? scrollRef : null}
+          className="mb-6 border border-gray-700 rounded-lg p-4 bg-black bg-opacity-20"
+        >
+          <SmartHighlight item={item} />
+          <StatusButtons
+            item={item}
+            sectionIndex={session.currentSectionIndex}
+            itemIndex={itemIndex}
+            updateItem={updateItem}
+          />
           <PhotoUploadButton
             sectionIndex={session.currentSectionIndex}
-            itemIndex={session.currentItemIndex}
-            onUpload={(photoUrl) => {
-              const currentPhotos = item?.photoUrls || [];
-              updateItem(session.currentSectionIndex, session.currentItemIndex, {
-                photoUrls: [...currentPhotos, photoUrl],
-              });
-            }}
+            itemIndex={itemIndex}
+            onUpload={(photoUrl: string) =>
+              updateItem(session.currentSectionIndex, itemIndex, {
+                photoUrls: [...(item.photoUrls || []), photoUrl],
+              })
+            }
           />
-        )}
+          <div className="mt-2">
+            <textarea
+              value={item.notes || ''}
+              onChange={(e) =>
+                updateItem(session.currentSectionIndex, itemIndex, {
+                  notes: e.target.value,
+                })
+              }
+              className="w-full p-2 rounded-md text-black"
+              placeholder="Enter notes..."
+            />
+          </div>
+        </div>
+      ))}
 
-        <textarea
-          className="w-full mt-3 p-2 bg-black bg-opacity-30 border border-gray-700 rounded-md text-white"
-          rows={2}
-          placeholder="Notes"
-          value={item?.notes || ''}
-          onChange={(e) =>
-            updateItem(session.currentSectionIndex, session.currentItemIndex, {
-              notes: e.target.value,
-            })
-          }
-        />
-      </div>
+      <div className="flex justify-between mt-8 space-x-4">
+        <button
+          className="bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded"
+          onClick={handleFinish}
+        >
+          Finish Inspection
+        </button>
 
-      <div className="flex justify-between gap-4">
-        <SaveInspectionButton />
-        <FinishInspectionButton />
+        <button
+          className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded"
+          onClick={() => saveInspectionSession(session)}
+        >
+          Save Inspection
+        </button>
       </div>
     </div>
   );
