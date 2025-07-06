@@ -1,47 +1,46 @@
-// app/inspection/summary.ts
+import { InspectionSession, InspectionSection, InspectionItem } from '@lib/inspection/types';
 
-import { InspectionSession, InspectionItem, InspectionSection, SummaryItem, InspectionItemStatus } from '@lib/inspection/types';
+export function generateInspectionSummary(session: InspectionSession): string {
+  const failedItems: string[] = [];
+  const recommendedItems: string[] = [];
+  const measurements: string[] = [];
+  const okItems: string[] = [];
 
-export function generateInspectionSummary(session: InspectionSession) {
-  const summary = {
-    ok: [] as SummaryItem[],
-    fail: [] as SummaryItem[],
-    recommended: [] as SummaryItem[],
-    na: [] as SummaryItem[],
-  };
+  for (const section of session.sections || []) {
+    for (const item of section.items || []) {
+      const label = `${item.name}${item.value ? ` (${item.value}${item.unit || ''})` : ''}`;
 
-  session.sections.forEach((section: InspectionSection, sectionIndex: number) => {
-    section.items.forEach((item: InspectionItem, itemIndex: number) => {
-      const { item: name, status, note, photo, photoUrls, recommend } = item;
-      if (!status) return;
-
-      const summaryItem: SummaryItem = {
-        section: section.section,
-        item: name,
-        status,
-        note: Array.isArray(note) ? note : note ? [note] : [],
-        photo: photo || photoUrls?.[0],
-        recommend,
-      };
-
-      switch (status.toLowerCase()) {
-        case 'fail':
-          summary.fail.push(summaryItem);
-          break;
-        case 'recommended':
-          summary.recommended.push(summaryItem);
-          break;
-        case 'na':
-          summary.na.push(summaryItem);
-          break;
-        case 'ok':
-          summary.ok.push(summaryItem);
-          break;
-        default:
-          break;
+      if (item.status === 'fail') {
+        failedItems.push(label);
+      } else if (item.status === 'recommend') {
+        recommendedItems.push(label);
+      } else if (item.status === 'ok') {
+        okItems.push(item.name);
       }
-    });
-  });
 
-  return summary;
+      if (item.value && item.unit) {
+        measurements.push(`${item.name}: ${item.value}${item.unit}`);
+      }
+    }
+  }
+
+  let summary = `Inspection completed.\n\n`;
+
+  if (failedItems.length > 0) {
+    summary += `❌ Failed Items:\n- ${failedItems.join('\n- ')}\n\n`;
+  }
+
+  if (recommendedItems.length > 0) {
+    summary += `🔧 Recommended Items:\n- ${recommendedItems.join('\n- ')}\n\n`;
+  }
+
+  if (measurements.length > 0) {
+    summary += `📏 Measurements:\n- ${measurements.join('\n- ')}\n\n`;
+  }
+
+  if (okItems.length > 0) {
+    summary += `✅ Remaining items marked OK:\n- ${okItems.join('\n- ')}`;
+  }
+
+  return summary.trim();
 }

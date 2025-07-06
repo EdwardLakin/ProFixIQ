@@ -2,114 +2,129 @@
 
 import { useRouter } from 'next/navigation';
 import useInspectionSession from '@lib/inspection/useInspectionSession';
-import { InspectionStatus } from '@lib/inspection/types';
+import {
+  type InspectionItem,
+  type InspectionSection,
+} from '@lib/inspection/types';
+import { generateInspectionPDF } from '@lib/inspection/pdf';
 import HomeButton from '@components/ui/HomeButton';
 import PreviousPageButton from '@components/ui/PreviousPageButton';
 
 export default function SummaryPage() {
-  const { inspection, updateInspection } = useInspectionSession();
+  const { session, updateItem } = useInspectionSession();
   const router = useRouter();
 
-  const handleStatusChange = (
+  const handleFieldChange = (
     sectionIndex: number,
     itemIndex: number,
-    status: InspectionStatus
+    field: keyof InspectionItem,
+    value: string
   ) => {
-    const updated = { ...inspection };
-    updated.sections[sectionIndex].items[itemIndex].status = status;
-    updateInspection(updated);
+    updateItem(sectionIndex, itemIndex, { [field]: value });
   };
 
-  const handleNoteChange = (
-    sectionIndex: number,
-    itemIndex: number,
-    note: string
-  ) => {
-    const updated = { ...inspection };
-    updated.sections[sectionIndex].items[itemIndex].notes = note;
-    updateInspection(updated);
-  };
-
-  const handleSubmit = () => {
-    console.log('Final inspection:', inspection);
-
-    // 🔧 Placeholder for PDF/export/email logic
-    // generatePDF(inspection); emailCustomer(); attachToWorkOrder();
-
-    router.push('/workorders');
+  const handleSubmit = async () => {
+    const pdfBlob = await generateInspectionPDF(session);
+    const blob = new Blob([pdfBlob], { type: 'application/pdf' });
+    const link = document.createElement('a');
+    link.href = window.URL.createObjectURL(blob);
+    link.download = 'inspection_summary.pdf';
+    link.click();
   };
 
   return (
-    <div className="min-h-screen bg-black text-white px-4 py-6">
-      <div className="max-w-4xl mx-auto">
-        <div className="flex justify-between items-center mb-6">
-          <HomeButton />
-          <PreviousPageButton />
-        </div>
-
-        <h1 className="text-4xl font-black text-orange-400 font-display mb-4 text-center">
-          Inspection Summary
-        </h1>
-
-        {inspection.sections.map((section, sectionIndex) => (
-          <div key={sectionIndex} className="mb-6">
-            <h2 className="text-2xl text-orange-500 font-semibold mb-2">{section.title}</h2>
-
-            <div className="bg-white/10 p-4 rounded-md mb-4 border border-white/10">
-              {section.items.map((item, itemIndex) => (
-                <div key={itemIndex} className="mb-6">
-                  <div className="flex justify-between items-center">
-                    <p className="font-semibold">{item.name}</p>
-                    <div className="space-x-2">
-                      {(['ok', 'fail', 'na'] as const).map((status) => (
-                        <button
-                          key={status}
-                          onClick={() => handleStatusChange(sectionIndex, itemIndex, status)}
-                          className={`px-3 py-1 rounded ${
-                            item.status === status
-                              ? status === 'ok'
-                                ? 'bg-green-600 text-white'
-                                : status === 'fail'
-                                ? 'bg-red-600 text-white'
-                                : 'bg-yellow-500 text-white'
-                              : 'bg-gray-700 text-gray-300'
-                          }`}
-                        >
-                          {status.toUpperCase()}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <textarea
-                    placeholder="Notes..."
-                    className="mt-2 w-full bg-black/50 text-white p-2 rounded border border-gray-700"
-                    value={item.notes || ''}
-                    onChange={(e) =>
-                      handleNoteChange(sectionIndex, itemIndex, e.target.value)
-                    }
-                  />
-
-                  {item.photo && (
-                    <img
-                      src={item.photo}
-                      alt="Uploaded"
-                      className="mt-2 max-h-32 rounded border border-white/20"
-                    />
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-
-        <button
-          onClick={handleSubmit}
-          className="w-full bg-green-600 text-white py-3 rounded-md font-bold text-lg mt-8"
-        >
-          Submit Inspection
-        </button>
+    <div className="p-4">
+      <div className="flex justify-between mb-4">
+         <PreviousPageButton to="/inspection/menu" />       
+        <HomeButton />
       </div>
+
+      {session.sections.map((section: InspectionSection, sectionIndex: number) => (
+        <div key={sectionIndex} className="mb-6 border rounded-md">
+          <div className="bg-gray-200 px-4 py-2 text-left font-bold">
+            {section.title}
+          </div>
+
+          <div className="p-4 space-y-6">
+            {section.items.map((item: InspectionItem, itemIndex: number) => (
+              <div key={itemIndex} className="border-b pb-4 space-y-2">
+                <div className="font-semibold">{item.name}</div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                  <label className="flex flex-col">
+                    Status
+                    <select
+                      className="border rounded p-1"
+                      value={item.status}
+                      onChange={(e) =>
+                        handleFieldChange(sectionIndex, itemIndex, 'status', e.target.value)
+                      }
+                    >
+                      <option value="ok">OK</option>
+                      <option value="fail">Fail</option>
+                      <option value="na">N/A</option>
+                      <option value="recommend">Recommend</option>
+                    </select>
+                  </label>
+
+                  <label className="flex flex-col">
+                    Note
+                    <input
+                      className="border rounded p-1"
+                      value={item.notes || ''}
+                      onChange={(e) =>
+                        handleFieldChange(sectionIndex, itemIndex, 'notes', e.target.value)
+                      }
+                    />
+                  </label>
+
+                  <label className="flex flex-col">
+                    Value
+                    <input
+                      className="border rounded p-1"
+                      value={item.value || ''}
+                      onChange={(e) =>
+                        handleFieldChange(sectionIndex, itemIndex, 'value', e.target.value)
+                      }
+                    />
+                  </label>
+
+                  <label className="flex flex-col">
+                    Unit
+                    <input
+                      className="border rounded p-1"
+                      value={item.unit || ''}
+                      onChange={(e) =>
+                        handleFieldChange(sectionIndex, itemIndex, 'unit', e.target.value)
+                      }
+                    />
+                  </label>
+                </div>
+
+                {Array.isArray(item.photoUrls) && item.photoUrls.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {item.photoUrls.map((url, i) => (
+                      <img
+                        key={i}
+                        src={url}
+                        alt="Uploaded"
+                        className="max-h-32 rounded border border-white/20"
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      <button
+        onClick={handleSubmit}
+        className="w-full bg-green-600 text-white py-3 rounded-md font-bold text-lg mt-8"
+      >
+        Submit Inspection
+      </button>
     </div>
   );
 }

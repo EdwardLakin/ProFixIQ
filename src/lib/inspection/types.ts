@@ -79,6 +79,24 @@ export interface InspectionSection {
   notes?: string;
 }
 
+export interface InspectionState {
+  customer?: {
+    name: string;
+    phone?: string;
+  };
+  vehicle?: {
+    year?: string;
+    make?: string;
+    model?: string;
+    vin?: string;
+    unitNumber?: string;
+    mileage?: string;
+  };
+  sections: InspectionSection[];
+  completed?: boolean;
+  updatedAt?: string;
+}
+
 export interface InspectionTemplate {
   templateName: string;
   templateId: string;

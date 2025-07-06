@@ -36,7 +36,7 @@ export async function generateInspectionPDF(session: InspectionSession): Promise
       drawText(`    Status: ${item.status ?? 'N/A'}`);
       if (item.value !== undefined) drawText(`    Value: ${item.value}`);
       if (item.unit) drawText(`    Unit: ${item.unit}`);
-      if (item.note) drawText(`    Notes: ${item.note}`);
+      if (item.notes) drawText(`    Notes: ${item.notes}`);
       if (item.recommend && item.recommend.length > 0)
         drawText(`    Recommend: ${item.recommend.join(', ')}`);
       if (item.photoUrls && item.photoUrls.length > 0)
