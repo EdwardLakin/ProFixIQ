@@ -9,11 +9,15 @@ interface PauseResumeButtonProps {
   onResume: () => void;
 }
 
-const PauseResumeButton = ({ isPaused, onPause, onResume }: PauseResumeButtonProps) => {
+const PauseResumeButton = ({
+  isPaused,
+  onPause,
+  onResume,
+}: PauseResumeButtonProps) => {
   const { session } = useInspectionSession();
 
   useEffect(() => {
-    // Example side effect when pause/resume toggles
+    // Optional: log status when toggled
     console.log('Inspection status:', session.status);
   }, [session.status]);
 

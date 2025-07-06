@@ -1,15 +1,21 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { ArrowLeftIcon } from '@heroicons/react/24/solid';
 
-export default function HomeButton() {
+interface HomeButtonProps {
+  className?: string;
+}
+
+export default function HomeButton({ className }: HomeButtonProps) {
   const router = useRouter();
 
   return (
     <button
       onClick={() => router.push('/')}
-      className="fixed top-4 left-4 bg-orange-500 hover:bg-orange-600 text-black font-blackops px-4 py-2 rounded-lg shadow-lg z-50"
+      className={`text-orange-400 hover:text-orange-200 transition flex items-center gap-1 ${className}`}
     >
+      <ArrowLeftIcon className="w-5 h-5" />
       Home
     </button>
   );

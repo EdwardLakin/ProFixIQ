@@ -10,7 +10,7 @@ import {
 } from '@lib/inspection/types';
 import { matchToMenuItem } from '@lib/quote/matchToMenuItem';
 
-export default function useInspectionSession(initialSession?: Partial<InspectionSession>) {
+export default function useInspectionSession(p0: boolean, initialSession?: Partial<InspectionSession>, p1?: { title: string; items: { name: string; status: string; notes: string; }[]; }, p2?: { title: string; items: ({ name: string; status: string; notes: string; unit?: undefined; value?: undefined; } | { name: string; status: string; unit: string; value: string; notes: string; })[]; }, p3?: { title: string; items: ({ name: string; status: string; unit: string; value: string; notes: string; } | { name: string; status: string; notes: string; unit?: undefined; value?: undefined; })[]; }, p4?: { title: string; items: { name: string; status: string; unit: string; value: string; notes: string; }[]; }, p5?: { title: string; items: { name: string; status: string; notes: string; }[]; }, p6?: { title: string; items: { name: string; status: string; notes: string; }[]; }, p7?: { title: string; items: { name: string; status: string; notes: string; }[]; }) {
   const [session, setSession] = useState<InspectionSession>(() => ({
   id: '',
   vehicleId: '',
@@ -63,50 +63,48 @@ onResume: () => {},
     }));
   };
 
-  const updateSection = (sectionIndex: number, updates: Partial<InspectionSection>) => {
-    setSession((prev) => {
-      const newSections = [...prev.sections];
-      newSections[sectionIndex] = {
-        ...newSections[sectionIndex],
-        ...updates,
-      };
-      return {
-        ...prev,
-        sections: newSections,
-        lastUpdated: new Date().toISOString(),
-      };
-    });
-  };
+ const updateSection = (sectionIndex: number, updates: Partial<InspectionSection>) => {
+  setSession((prev) => {
+    const newSections = [...prev.sections];
+    const updatedSection = {
+      ...newSections[sectionIndex],
+      ...updates,
+    };
+    newSections[sectionIndex] = updatedSection;
+
+    return {
+      ...prev,
+      sections: newSections,
+      lastUpdated: new Date().toISOString(),
+    };
+  });
+}; 
 
   const updateItem = (
-    sectionIndex: number,
-    itemIndex: number,
-    updates: Partial<InspectionItem>
-  ) => {
-    setSession((prev) => {
-      const newSections = [...prev.sections];
-      const section = newSections[sectionIndex];
-      const items = [...section.items];
-      const item = { ...items[itemIndex], ...updates };
+  sectionIndex: number,
+  itemIndex: number,
+  updates: Partial<InspectionItem>
+) => {
+  setSession((prev) => {
+    const newSections = [...prev.sections];
+    const newItems = [...newSections[sectionIndex].items];
+    const updatedItem = {
+      ...newItems[itemIndex],
+      ...updates,
+    };
+    newItems[itemIndex] = updatedItem;
+    newSections[sectionIndex] = {
+      ...newSections[sectionIndex],
+      items: newItems,
+    };
 
-      items[itemIndex] = item;
-      section.items = items;
-      newSections[sectionIndex] = section;
-
-      const newQuote = [...prev.quote];
-      const matched = matchToMenuItem(item.item, item);
-      if (matched) {
-        newQuote.push(matched);
-      }
-
-      return {
-        ...prev,
-        sections: newSections,
-        quote: newQuote,
-        lastUpdated: new Date().toISOString(),
-      };
-    });
-  };
+    return {
+      ...prev,
+      sections: newSections,
+      lastUpdated: new Date().toISOString(),
+    };
+  });
+};
 
   const addQuoteLine = (line: QuoteLine) => {
     setSession((prev) => ({
@@ -168,16 +166,22 @@ onResume: () => {},
   };
 
   return {
-    session,
-    updateInspection,
-    updateSection,
-    updateItem,
-    addQuoteLine,
-    startSession,
-    pauseSession,
-    resumeSession,
-    finishSession,
-    setIsListening,
-    isPaused: session.isPaused,
-  };
+  session,
+  updateInspection,
+  updateSection,
+  updateItem,
+  addQuoteLine,
+  startSession,
+  pauseSession,
+  resumeSession,
+  finishSession,
+  setIsListening,
+  isPaused: session.isPaused,
+  onPause: () => {
+    setSession((prev) => ({ ...prev, isPaused: true, status: 'paused' }));
+  },
+  onResume: () => {
+    setSession((prev) => ({ ...prev, isPaused: false, status: 'in_progress' }));
+  },
+};
 }

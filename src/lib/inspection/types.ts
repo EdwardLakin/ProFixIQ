@@ -1,6 +1,6 @@
-export type CommandType = 'ok' | 'fail' | 'na' | 'add' | 'recommend' | 'measurement' | 'status' | 'pause';
+export type CommandType = '' | 'ok' | 'fail' | 'na' | 'add' | 'recommend' | 'measurement' | 'status' | 'pause';
 export type InspectionStatus = 'not_started' | 'in_progress' | 'paused' | 'completed' | 'ready_for_review';
-export type InspectionItemStatus = 'ok' | 'fail' | 'na' | 'recommend';
+export type InspectionItemStatus = '' |'ok' | 'fail' | 'na' | 'recommend';
 
 export interface InspectionCommandBase {
   type: CommandType;
@@ -62,11 +62,10 @@ export interface VehicleInfo {
 }
 
 export interface InspectionItem {
-  notes: string;
-  name: string | undefined;
+  name: string;
   item: string;
   status?: InspectionItemStatus;
-  note?: string;
+  notes?: string;
   value?: string | number | null;
   unit?: string;
   photoUrls?: string[];
@@ -74,9 +73,10 @@ export interface InspectionItem {
 }
 
 export interface InspectionSection {
-  section: string;
   title: string;
   items: InspectionItem[];
+  status?: InspectionItemStatus;
+  notes?: string;
 }
 
 export interface InspectionTemplate {
@@ -115,7 +115,7 @@ export interface QuoteLineItem {
 }
 
 export interface InspectionSession {
-  customer: {
+  customer?: {
   first_name: string;
   last_name: string;
   phone: string;
