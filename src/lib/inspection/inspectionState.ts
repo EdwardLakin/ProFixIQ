@@ -14,13 +14,29 @@ export function updateItemStatus(
   // Reset photoUrls and note if status changes
   if (status !== 'fail' && status !== 'recommend') {
     item.photoUrls = []
-    item.note = ''
+    item.notes = ''
   }
 
   section.items = [...section.items]
   section.items[itemIndex] = item
   updated.sections[sectionIndex] = section
   return updated
+}
+export function updateItemValue(
+  session: InspectionSession,
+  sectionIndex: number,
+  itemIndex: number,
+  value: number | string
+): InspectionSession {
+  const updated = { ...session };
+  const sections = [...updated.sections];
+  const section = { ...sections[sectionIndex] };
+  const item = { ...section.items[itemIndex], value };
+
+  section.items[itemIndex] = item;
+  sections[sectionIndex] = section;
+
+  return { ...updated, sections };
 }
 
 export function updateItemNote(

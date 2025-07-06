@@ -1,24 +1,21 @@
 import { InspectionSession } from '@lib/inspection/types';
-import { updateInspectionItemStatus } from '@lib/inspection/inspectionState';
+import { updateItemStatus } from '@lib/inspection/inspectionState';
 
-export default function parseStatusCommand(
+export default function parseNaCommand(
   input: string,
   session: InspectionSession
 ): InspectionSession | null {
-  const match = input.match(/\b(ok|fail|na)\b/i);
+  const match = input.match(/na\s+(.+)/i);
   if (!match) return null;
 
-  const [_, status] = match;
-  const parts = input.split(/\s+/);
-  if (parts.length < 2) return null;
+  const item = match[1].trim();
+  if (!item) return null;
 
-  const section = parts[0];
-  const item = parts.slice(1).join(' ');
+  const sectionIndex = session.currentSectionIndex;
+  const section = session.sections[sectionIndex];
+  const itemIndex = section.items.findIndex(i => i.item?.toLowerCase() === item.toLowerCase());
 
-  return updateInspectionItemStatus(
-    session,
-    section,
-    item,
-    status.toLowerCase() as 'ok' | 'fail' | 'na'
-  );
+  if (itemIndex === -1) return null;
+
+  return updateItemStatus(session, sectionIndex, itemIndex, 'na');
 }

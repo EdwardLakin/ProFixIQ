@@ -22,6 +22,7 @@ import { useEffect, useRef, useState } from 'react';
 export default function Maintenance50InspectionPage() {
   const searchParams = useSearchParams();
   const [unit, setUnit] = useState<'metric' | 'imperial'>('metric');
+  const [isListening, setIsListening] = useState(false);
 
   const {
     session,
@@ -33,6 +34,7 @@ export default function Maintenance50InspectionPage() {
     isPaused,
     resumeSession,
     pauseSession,
+    addQuoteLine,
   } = useInspectionSession(false, {
     templateName: 'Maintenance 50-Point Inspection',
     status: 'not_started',
@@ -202,8 +204,13 @@ export default function Maintenance50InspectionPage() {
     <div className="text-white max-w-3xl mx-auto">
       <PreviousPageButton to="/inspection" />
       <h1 className="text-2xl font-bold text-center mb-4">Maintenance 50-Point Inspection</h1>
+      
+        <StartListeningButton
+          isListening={isListening}
+          setIsListening={setIsListening}
+/>
 
-      <StartListeningButton />
+
       <PauseResumeButton isPaused={isPaused} onPause={pauseSession} onResume={resumeSession} />
       <ProgressTracker
         currentItem={session.currentItemIndex}

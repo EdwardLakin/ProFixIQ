@@ -1,20 +1,22 @@
-// src/lib/inspection/parsers/parseStatusCommand.ts
-
 import { InspectionSession } from '@lib/inspection/types';
-import { updateInspectionItemStatus } from '@lib/inspection/inspectionState';
+import { updateItemStatus } from '@lib/inspection/inspectionState';
 
-export function parseStatusCommand(input: string, session: InspectionSession): InspectionSession | null {
-  const match = input.match(/\b(ok|fail|na)\b/i);
+export default function parseStatusCommand(
+  input: string,
+  session: InspectionSession
+): InspectionSession | null {
+  const match = input.match(/(ok|fail|na)\s+(.+)/i);
   if (!match) return null;
 
-  const [_, status] = match;
-  const parts = input.trim().split(/\s+/);
-  const rest = parts.filter(p => p.toLowerCase() !== status.toLowerCase());
+  const status = match[1].toLowerCase() as 'ok' | 'fail' | 'na';
+  const item = match[2].trim();
+  if (!item) return null;
 
-  if (rest.length < 2) return null;
+  const sectionIndex = session.currentSectionIndex;
+  const section = session.sections[sectionIndex];
+  const itemIndex = section.items.findIndex(i => i.item?.toLowerCase() === item.toLowerCase());
 
-  const section = rest[0];
-  const item = rest.slice(1).join(' ');
+  if (itemIndex === -1) return null;
 
-  return updateInspectionItemStatus(session, section, item, status.toLowerCase() as 'ok' | 'fail' | 'na', '');
+  return updateItemStatus(session, sectionIndex, itemIndex, status);
 }

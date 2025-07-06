@@ -1,17 +1,22 @@
-// File: src/lib/inspection/parsers/parseMeasurementCommand.ts
-
 import { InspectionSession } from '@lib/inspection/types';
-import { updateInspectionItemStatus } from '@lib/inspection/inspectionState';
+import { updateItemValue } from '@lib/inspection/inspectionState';
 
 export default function parseMeasurementCommand(
   input: string,
   session: InspectionSession
 ): InspectionSession | null {
-  const match = input.match(/([a-z\s]+)\s([\d.]+(?:mm|psi|in|cm)?)/i);
+  const match = input.match(/measure\s+(.*)/i);
   if (!match) return null;
 
-  const [_, item, measurement] = match;
-  const section = 'Measurements'; // Can infer based on context
+  const [, rest] = match;
+  const parts = rest.trim().split(/\s+/);
+  if (parts.length < 2) return null;
 
-  return updateInspectionItemStatus(session, section.trim(), item.trim(), 'ok', measurement);
+  const item = parts.slice(0, -1).join(' ');
+  const value = parts.at(-1) ?? '';
+
+  const sectionIndex = session.currentSectionIndex;
+  const itemIndex = session.currentItemIndex;
+
+  return updateItemValue(session, sectionIndex, itemIndex, value);
 }

@@ -1,21 +1,21 @@
-// src/lib/inspection/parsers/parseRecommendCommand.ts
-import type { InspectionSession } from '@lib/inspection/types';
-import { updateInspectionItemStatus } from '@lib/inspection/inspectionState';
+import { InspectionSession } from '@lib/inspection/types';
+import { updateItemStatus } from '@lib/inspection/inspectionState';
 
-export function parseRecommendCommand(
+export default function parseRecommendCommand(
   input: string,
   session: InspectionSession
 ): InspectionSession | null {
-  const recommendPattern = /recommend(?:ed)?(?:\s+)?(?:\sitem)?\s(.+?)(?:\s(\d+(?:\.\d+)?)(?:hrs|hours|minutes|min))?/i;
-  const match = input.match(recommendPattern);
+  const match = input.match(/recommend\s+(.+)/i);
   if (!match) return null;
 
-  const itemTitle = match[1].trim().toLowerCase();
-  const labor = match[2] ? `${match[2]} hrs` : undefined;
+  const item = match[1].trim();
+  if (!item) return null;
 
-  const updatedSession = updateInspectionItemStatus(session, 'Recommendations', itemTitle, 'fail', labor ? `Recommended repair, labor: ${labor}` : 'Recommended repair');
+  const sectionIndex = session.currentSectionIndex;
+  const section = session.sections[sectionIndex];
+  const itemIndex = section.items.findIndex(i => i.item.toLowerCase() === item.toLowerCase());
 
-  return updatedSession;
+  if (itemIndex === -1) return null;
+
+  return updateItemStatus(session, sectionIndex, itemIndex, 'recommend');
 }
-
-export default parseRecommendCommand;
