@@ -24,7 +24,6 @@ export default function Maintenance50InspectionPage() {
   const [unit, setUnit] = useState<'metric' | 'imperial'>('metric');
   const [isListening, setIsListening] = useState(false);
 
-  useEffect(() => {
   const customer = {
     first_name: searchParams.get('first_name') || '',
     last_name: searchParams.get('last_name') || '',
@@ -42,9 +41,21 @@ export default function Maintenance50InspectionPage() {
     color: searchParams.get('color') || '',
   };
 
-  localStorage.setItem('inspectionCustomer', JSON.stringify(customer));
-  localStorage.setItem('inspectionVehicle', JSON.stringify(vehicle));
-}, [searchParams]);
+  // ✅ Fix: Restore from localStorage if available
+  useEffect(() => {
+    const storedCustomer = localStorage.getItem('inspectionCustomer');
+    const storedVehicle = localStorage.getItem('inspectionVehicle');
+    if (storedCustomer && storedVehicle) {
+      const parsedCustomer = JSON.parse(storedCustomer);
+      const parsedVehicle = JSON.parse(storedVehicle);
+      updateInspection({ customer: parsedCustomer, vehicle: parsedVehicle });
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('inspectionCustomer', JSON.stringify(customer));
+    localStorage.setItem('inspectionVehicle', JSON.stringify(vehicle));
+  }, [searchParams]);
 
   const {
     session,
