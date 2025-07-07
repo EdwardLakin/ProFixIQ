@@ -82,7 +82,7 @@ export default function SummaryPage() {
                     Status
                     <select
                       className="border rounded p-1"
-                      value={item?.status}
+                      value={item?.status ?? ''}
                       onChange={(e) =>
                         handleFieldChange(sectionIndex, itemIndex, 'status', e.target.value)
                       }

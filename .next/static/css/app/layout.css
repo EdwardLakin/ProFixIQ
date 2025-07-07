@@ -526,9 +526,6 @@ video {
 .bottom-24 {
   bottom: 6rem;
 }
-.left-4 {
-  left: 1rem;
-}
 .right-0 {
   right: 0px;
 }
@@ -966,10 +963,6 @@ video {
   --tw-border-opacity: 1;
   border-color: rgb(239 68 68 / var(--tw-border-opacity, 1));
 }
-.border-white {
-  --tw-border-opacity: 1;
-  border-color: rgb(255 255 255 / var(--tw-border-opacity, 1));
-}
 .border-white\/10 {
   border-color: rgb(255 255 255 / 0.1);
 }
@@ -986,9 +979,6 @@ video {
 }
 .border-t-transparent {
   border-top-color: transparent;
-}
-.border-opacity-20 {
-  --tw-border-opacity: 0.2;
 }
 .bg-accent {
   --tw-bg-opacity: 1;

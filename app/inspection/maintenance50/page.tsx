@@ -90,14 +90,38 @@ export default function Maintenance50InspectionPage() {
     status: '',
     notes: '',
     items: [
-      { name: 'Front Left Tire Pressure', status: '', unit: 'psi', value: '', notes: '', item: 'LF', photoUrls: [], recommend: [] },
-      { name: 'Front Right Tire Pressure', status: '', unit: 'psi', value: '', notes: '', item: 'RF', photoUrls: [], recommend: [] },
-      { name: 'Front Left Rotor', status: '', unit: 'mm', value: '', notes: '', item: 'LF', photoUrls: [], recommend: [] },
-      { name: 'Front Right Rotor', status: '', unit: 'mm', value: '', notes: '', item: 'RF', photoUrls: [], recommend: [] },
-      { name: 'Front Left Pad', status: '', unit: 'mm', value: '', notes: '', item: 'LF', photoUrls: [], recommend: [] },
-      { name: 'Front Right Pad', status: '', unit: 'mm', value: '', notes: '', item: 'RF', photoUrls: [], recommend: [] },
-      { name: 'Front Left Push Rod Travel', status: '', unit: 'mm', value: '', notes: '', item: 'LF', photoUrls: [], recommend: [] },
-      { name: 'Front Right Push Rod Travel', status: '', unit: 'mm', value: '', notes: '', item: 'RF', photoUrls: [], recommend: [] },
+      {
+        name: 'Front Left Tire Pressure', status: '', unit: 'psi', value: '', notes: '', item: 'LF', photoUrls: [], recommend: [],
+    
+      },
+      {
+        name: 'Front Right Tire Pressure', status: '', unit: 'psi', value: '', notes: '', item: 'RF', photoUrls: [], recommend: [],
+      
+      },
+      {
+        name: 'Front Left Rotor', status: '', unit: 'mm', value: '', notes: '', item: 'LF', photoUrls: [], recommend: [],
+    
+      },
+      {
+        name: 'Front Right Rotor', status: '', unit: 'mm', value: '', notes: '', item: 'RF', photoUrls: [], recommend: [],
+        
+      },
+      {
+        name: 'Front Left Pad', status: '', unit: 'mm', value: '', notes: '', item: 'LF', photoUrls: [], recommend: [],
+        
+      },
+      {
+        name: 'Front Right Pad', status: '', unit: 'mm', value: '', notes: '', item: 'RF', photoUrls: [], recommend: [],
+      
+      },
+      {
+        name: 'Front Left Push Rod Travel', status: '', unit: 'mm', value: '', notes: '', item: 'LF', photoUrls: [], recommend: [],
+      
+      },
+      {
+        name: 'Front Right Push Rod Travel', status: '', unit: 'mm', value: '', notes: '', item: 'RF', photoUrls: [], recommend: [],
+    
+      },
     ]
   },
   {
@@ -105,14 +129,38 @@ export default function Maintenance50InspectionPage() {
     status: '',
     notes: '',
     items: [
-      { name: 'Rear Left Tire Pressure', status: '', unit: 'psi', value: '', notes: '', item: 'LR', photoUrls: [], recommend: [] },
-      { name: 'Rear Right Tire Pressure', status: '', unit: 'psi', value: '', notes: '', item: 'RR', photoUrls: [], recommend: [] },
-      { name: 'Rear Left Rotor', status: '', unit: 'mm', value: '', notes: '', item: 'LR', photoUrls: [], recommend: [] },
-      { name: 'Rear Right Rotor', status: '', unit: 'mm', value: '', notes: '', item: 'RR', photoUrls: [], recommend: [] },
-      { name: 'Rear Left Pad', status: '', unit: 'mm', value: '', notes: '', item: 'LR', photoUrls: [], recommend: [] },
-      { name: 'Rear Right Pad', status: '', unit: 'mm', value: '', notes: '', item: 'RR', photoUrls: [], recommend: [] },
-      { name: 'Rear Left Push Rod Travel', status: '', unit: 'mm', value: '', notes: '', item: 'LR', photoUrls: [], recommend: [] },
-      { name: 'Rear Right Push Rod Travel', status: '', unit: 'mm', value: '', notes: '', item: 'RR', photoUrls: [], recommend: [] },
+      {
+        name: 'Rear Left Tire Pressure', status: '', unit: 'psi', value: '', notes: '', item: 'LR', photoUrls: [], recommend: [],
+  
+      },
+      {
+        name: 'Rear Right Tire Pressure', status: '', unit: 'psi', value: '', notes: '', item: 'RR', photoUrls: [], recommend: [],
+    
+      },
+      {
+        name: 'Rear Left Rotor', status: '', unit: 'mm', value: '', notes: '', item: 'LR', photoUrls: [], recommend: [],
+    
+      },
+      {
+        name: 'Rear Right Rotor', status: '', unit: 'mm', value: '', notes: '', item: 'RR', photoUrls: [], recommend: [],
+    
+      },
+      {
+        name: 'Rear Left Pad', status: '', unit: 'mm', value: '', notes: '', item: 'LR', photoUrls: [], recommend: [],
+    
+      },
+      {
+        name: 'Rear Right Pad', status: '', unit: 'mm', value: '', notes: '', item: 'RR', photoUrls: [], recommend: [],
+      
+      },
+      {
+        name: 'Rear Left Push Rod Travel', status: '', unit: 'mm', value: '', notes: '', item: 'LR', photoUrls: [], recommend: [],
+    
+      },
+      {
+        name: 'Rear Right Push Rod Travel', status: '', unit: 'mm', value: '', notes: '', item: 'RR', photoUrls: [], recommend: [],
+        
+      },
     ]
   },
   {
@@ -120,11 +168,26 @@ export default function Maintenance50InspectionPage() {
     status: '',
     notes: '',
     items: [
-      { name: 'Park Brake Lining Left', status: '', unit: 'mm', value: '', notes: '', item: 'Left', photoUrls: [], recommend: [] },
-      { name: 'Park Brake Lining Right', status: '', unit: 'mm', value: '', notes: '', item: 'Right', photoUrls: [], recommend: [] },
-      { name: 'Park Brake Lining Trans', status: '', unit: 'mm', value: '', notes: '', item: 'Trans', photoUrls: [], recommend: [] },
-      { name: 'Wheel Torque Inner', status: '', unit: 'ft lbs', value: '', notes: '', item: 'Inner', photoUrls: [], recommend: [] },
-      { name: 'Wheel Torque Outer', status: '', unit: 'ft lbs', value: '', notes: '', item: 'Outer', photoUrls: [], recommend: [] },
+      {
+        name: 'Park Brake Lining Left', status: '', unit: 'mm', value: '', notes: '', item: 'Left', photoUrls: [], recommend: [],
+    
+      },
+      {
+        name: 'Park Brake Lining Right', status: '', unit: 'mm', value: '', notes: '', item: 'Right', photoUrls: [], recommend: [],
+      
+      },
+      {
+        name: 'Park Brake Lining Trans', status: '', unit: 'mm', value: '', notes: '', item: 'Trans', photoUrls: [], recommend: [],
+      
+      },
+      {
+        name: 'Wheel Torque Inner', status: '', unit: 'ft lbs', value: '', notes: '', item: 'Inner', photoUrls: [], recommend: [],
+      
+      },
+      {
+        name: 'Wheel Torque Outer', status: '', unit: 'ft lbs', value: '', notes: '', item: 'Outer', photoUrls: [], recommend: [],
+      
+      },
     ]
   },
   {
@@ -132,11 +195,26 @@ export default function Maintenance50InspectionPage() {
   status: '',
   notes: '',
   items: [
-    { name: 'Engine Oil', status: '', unit: 'L', value: '', notes: '', item: 'Engine Oil', photoUrls: [], recommend: [] },
-    { name: 'Coolant', status: '', unit: 'L', value: '', notes: '', item: 'Coolant', photoUrls: [], recommend: [] },
-    { name: 'Transmission Fluid', status: '', unit: 'L', value: '', notes: '', item: 'Transmission', photoUrls: [], recommend: [] },
-    { name: 'Power Steering Fluid', status: '', unit: 'L', value: '', notes: '', item: 'Steering', photoUrls: [], recommend: [] },
-    { name: 'Windshield Washer Fluid', status: '', unit: 'L', value: '', notes: '', item: 'Washer', photoUrls: [], recommend: [] },
+    {
+      name: 'Engine Oil', status: '', unit: 'L', value: '', notes: '', item: 'Engine Oil', photoUrls: [], recommend: [],
+
+    },
+    {
+      name: 'Coolant', status: '', unit: 'L', value: '', notes: '', item: 'Coolant', photoUrls: [], recommend: [],
+    
+    },
+    {
+      name: 'Transmission Fluid', status: '', unit: 'L', value: '', notes: '', item: 'Transmission', photoUrls: [], recommend: [],
+    
+    },
+    {
+      name: 'Power Steering Fluid', status: '', unit: 'L', value: '', notes: '', item: 'Steering', photoUrls: [], recommend: [],
+    
+    },
+    {
+      name: 'Windshield Washer Fluid', status: '', unit: 'L', value: '', notes: '', item: 'Washer', photoUrls: [], recommend: [],
+
+    },
   ]
 },
 {
@@ -144,10 +222,22 @@ export default function Maintenance50InspectionPage() {
   status: '',
   notes: '',
   items: [
-    { name: 'Serpentine Belt', status: '', notes: '', item: 'Serpentine', photoUrls: [], recommend: [] },
-    { name: 'Timing Belt/Chain', status: '', notes: '', item: 'Timing', photoUrls: [], recommend: [] },
-    { name: 'Coolant Hoses', status: '', notes: '', item: 'Coolant Hoses', photoUrls: [], recommend: [] },
-    { name: 'Vacuum Hoses', status: '', notes: '', item: 'Vacuum', photoUrls: [], recommend: [] },
+    {
+      name: 'Serpentine Belt', status: '', notes: '', item: 'Serpentine', photoUrls: [], recommend: [],
+  
+    },
+    {
+      name: 'Timing Belt/Chain', status: '', notes: '', item: 'Timing', photoUrls: [], recommend: [],
+    
+    },
+    {
+      name: 'Coolant Hoses', status: '', notes: '', item: 'Coolant Hoses', photoUrls: [], recommend: [],
+      
+    },
+    {
+      name: 'Vacuum Hoses', status: '', notes: '', item: 'Vacuum', photoUrls: [], recommend: [],
+    
+    },
   ]
 },
 {
@@ -155,9 +245,18 @@ export default function Maintenance50InspectionPage() {
   status: '',
   notes: '',
   items: [
-    { name: 'Battery Condition', status: '', notes: '', item: 'Battery', photoUrls: [], recommend: [] },
-    { name: 'Charging System Output', status: '', unit: 'V', value: '', notes: '', item: 'Charging', photoUrls: [], recommend: [] },
-    { name: 'Battery Terminals & Cables', status: '', notes: '', item: 'Terminals', photoUrls: [], recommend: [] },
+    {
+      name: 'Battery Condition', status: '', notes: '', item: 'Battery', photoUrls: [], recommend: [],
+      
+    },
+    {
+      name: 'Charging System Output', status: '', unit: 'V', value: '', notes: '', item: 'Charging', photoUrls: [], recommend: [],
+    
+    },
+    {
+      name: 'Battery Terminals & Cables', status: '', notes: '', item: 'Terminals', photoUrls: [], recommend: [],
+    
+    },
   ]
 },
 {
@@ -165,11 +264,26 @@ export default function Maintenance50InspectionPage() {
   status: '',
   notes: '',
   items: [
-    { name: 'Front Brake Pads', status: '', unit: 'mm', value: '', notes: '', item: 'Front Pads', photoUrls: [], recommend: [] },
-    { name: 'Front Rotors', status: '', unit: 'mm', value: '', notes: '', item: 'Front Rotors', photoUrls: [], recommend: [] },
-    { name: 'Rear Brake Pads', status: '', unit: 'mm', value: '', notes: '', item: 'Rear Pads', photoUrls: [], recommend: [] },
-    { name: 'Rear Rotors', status: '', unit: 'mm', value: '', notes: '', item: 'Rear Rotors', photoUrls: [], recommend: [] },
-    { name: 'Brake Lines', status: '', notes: '', item: 'Brake Lines', photoUrls: [], recommend: [] },
+    {
+      name: 'Front Brake Pads', status: '', unit: 'mm', value: '', notes: '', item: 'Front Pads', photoUrls: [], recommend: [],
+    
+    },
+    {
+      name: 'Front Rotors', status: '', unit: 'mm', value: '', notes: '', item: 'Front Rotors', photoUrls: [], recommend: [],
+    
+    },
+    {
+      name: 'Rear Brake Pads', status: '', unit: 'mm', value: '', notes: '', item: 'Rear Pads', photoUrls: [], recommend: [],
+      
+    },
+    {
+      name: 'Rear Rotors', status: '', unit: 'mm', value: '', notes: '', item: 'Rear Rotors', photoUrls: [], recommend: [],
+      
+    },
+    {
+      name: 'Brake Lines', status: '', notes: '', item: 'Brake Lines', photoUrls: [], recommend: [],
+      
+    },
   ]
 },
 {
@@ -177,10 +291,22 @@ export default function Maintenance50InspectionPage() {
   status: '',
   notes: '',
   items: [
-    { name: 'LF Tread Depth', status: '', unit: 'mm', value: '', notes: '', item: 'LF', photoUrls: [], recommend: [] },
-    { name: 'LR Tread Depth', status: '', unit: 'mm', value: '', notes: '', item: 'LR', photoUrls: [], recommend: [] },
-    { name: 'RF Tread Depth', status: '', unit: 'mm', value: '', notes: '', item: 'RF', photoUrls: [], recommend: [] },
-    { name: 'RR Tread Depth', status: '', unit: 'mm', value: '', notes: '', item: 'RR', photoUrls: [], recommend: [] },
+    {
+      name: 'LF Tread Depth', status: '', unit: 'mm', value: '', notes: '', item: 'LF', photoUrls: [], recommend: [],
+    
+    },
+    {
+      name: 'LR Tread Depth', status: '', unit: 'mm', value: '', notes: '', item: 'LR', photoUrls: [], recommend: [],
+      
+    },
+    {
+      name: 'RF Tread Depth', status: '', unit: 'mm', value: '', notes: '', item: 'RF', photoUrls: [], recommend: [],
+      
+    },
+    {
+      name: 'RR Tread Depth', status: '', unit: 'mm', value: '', notes: '', item: 'RR', photoUrls: [], recommend: [],
+      
+    },
   ]
 },
 {
@@ -188,11 +314,26 @@ export default function Maintenance50InspectionPage() {
   status: '',
   notes: '',
   items: [
-    { name: 'Headlights', status: '', notes: '', item: 'Headlights', photoUrls: [], recommend: [] },
-    { name: 'Brake Lights', status: '', notes: '', item: 'Brake Lights', photoUrls: [], recommend: [] },
-    { name: 'Turn Signals', status: '', notes: '', item: 'Turn Signals', photoUrls: [], recommend: [] },
-    { name: 'Reverse Lights', status: '', notes: '', item: 'Reverse Lights', photoUrls: [], recommend: [] },
-    { name: 'Wipers/Washers', status: '', notes: '', item: 'Wipers', photoUrls: [], recommend: [] },
+    {
+      name: 'Headlights', status: '', notes: '', item: 'Headlights', photoUrls: [], recommend: [],
+  
+    },
+    {
+      name: 'Brake Lights', status: '', notes: '', item: 'Brake Lights', photoUrls: [], recommend: [],
+    
+    },
+    {
+      name: 'Turn Signals', status: '', notes: '', item: 'Turn Signals', photoUrls: [], recommend: [],
+    
+    },
+    {
+      name: 'Reverse Lights', status: '', notes: '', item: 'Reverse Lights', photoUrls: [], recommend: [],
+      
+    },
+    {
+      name: 'Wipers/Washers', status: '', notes: '', item: 'Wipers', photoUrls: [], recommend: [],
+      
+    },
   ]
 },
 {
@@ -200,12 +341,30 @@ export default function Maintenance50InspectionPage() {
   status: '',
   notes: '',
   items: [
-    { name: 'Front Shocks/Struts', status: '', notes: '', item: 'Front Shocks', photoUrls: [], recommend: [] },
-    { name: 'Rear Shocks/Struts', status: '', notes: '', item: 'Rear Shocks', photoUrls: [], recommend: [] },
-    { name: 'Ball Joints', status: '', notes: '', item: 'Ball Joints', photoUrls: [], recommend: [] },
-    { name: 'Tie Rod Ends', status: '', notes: '', item: 'Tie Rods', photoUrls: [], recommend: [] },
-    { name: 'Control Arms/Bushings', status: '', notes: '', item: 'Control Arms', photoUrls: [], recommend: [] },
-    { name: 'Wheel Bearings', status: '', notes: '', item: 'Bearings', photoUrls: [], recommend: [] },
+    {
+      name: 'Front Shocks/Struts', status: '', notes: '', item: 'Front Shocks', photoUrls: [], recommend: [],
+      
+    },
+    {
+      name: 'Rear Shocks/Struts', status: '', notes: '', item: 'Rear Shocks', photoUrls: [], recommend: [],
+      
+    },
+    {
+      name: 'Ball Joints', status: '', notes: '', item: 'Ball Joints', photoUrls: [], recommend: [],
+      
+    },
+    {
+      name: 'Tie Rod Ends', status: '', notes: '', item: 'Tie Rods', photoUrls: [], recommend: [],
+      
+    },
+    {
+      name: 'Control Arms/Bushings', status: '', notes: '', item: 'Control Arms', photoUrls: [], recommend: [],
+    
+    },
+    {
+      name: 'Wheel Bearings', status: '', notes: '', item: 'Bearings', photoUrls: [], recommend: [],
+      
+    },
   ]
 },
 {
@@ -213,12 +372,29 @@ export default function Maintenance50InspectionPage() {
   status: '',
   notes: '',
   items: [
-    { name: 'Cabin Air Filter', status: '', notes: '', item: 'Cabin Filter', photoUrls: [], recommend: [] },
-    { name: 'Engine Air Filter', status: '', notes: '', item: 'Engine Filter', photoUrls: [], recommend: [] },
-    { name: 'Drive Axles/Boots', status: '', notes: '', item: 'Axles', photoUrls: [], recommend: [] },
-    { name: 'Exhaust System', status: '', notes: '', item: 'Exhaust', photoUrls: [], recommend: [] },
-    { name: 'Underbody Rust', status: '', notes: '', item: 'Rust', photoUrls: [], recommend: [] },
-    { name: 'Fluid Leaks', status: '', notes: '', item: 'Leaks', photoUrls: [], recommend: [] },
+    {
+      name: 'Cabin Air Filter', status: '', notes: '', item: 'Cabin Filter', photoUrls: [], recommend: [],
+    
+    },
+    {
+      name: 'Engine Air Filter', status: '', notes: '', item: 'Engine Filter', photoUrls: [], recommend: [],
+    },
+    {
+      name: 'Drive Axles/Boots', status: '', notes: '', item: 'Axles', photoUrls: [], recommend: [],
+      
+    },
+    {
+      name: 'Exhaust System', status: '', notes: '', item: 'Exhaust', photoUrls: [], recommend: [],
+      
+    },
+    {
+      name: 'Underbody Rust', status: '', notes: '', item: 'Rust', photoUrls: [], recommend: [],
+    
+    },
+    {
+      name: 'Fluid Leaks', status: '', notes: '', item: 'Leaks', photoUrls: [], recommend: [],
+      
+    },
   ]
 }
     ]
@@ -384,8 +560,8 @@ export default function Maintenance50InspectionPage() {
 
 <SmartHighlight
   item={
-    session.sections?.[session.currentSectionIndex]?.items?.[session.currentItemIndex]
-  }
+    session.sections?.[session.currentSectionIndex]?.items?.[session.currentItemIndex]}
+    session={session}
   
   onCommand={(cmd) =>
     handleTranscript({

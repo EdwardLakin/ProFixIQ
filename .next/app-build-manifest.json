@@ -11,30 +11,15 @@
       "static/chunks/main-app.js",
       "static/chunks/app/page.js"
     ],
-    "/ai/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/ai/page.js"
-    ],
-    "/ai/photo/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/ai/photo/page.js"
-    ],
-    "/ai/dtc/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/ai/dtc/page.js"
-    ],
-    "/ai/chat/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/ai/chat/page.js"
-    ],
     "/inspection/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/inspection/page.js"
+    ],
+    "/inspection/customer-vehicle/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/inspection/customer-vehicle/page.js"
     ],
     "/inspection/maintenance50/page": [
       "static/chunks/webpack.js",
