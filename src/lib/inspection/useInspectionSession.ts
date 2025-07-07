@@ -55,13 +55,16 @@ onPause: () => {},
 onResume: () => {},
 }));
 
-  const updateInspection = (updates: Partial<InspectionSession>) => {
-    setSession((prev) => ({
-      ...prev,
-      ...updates,
-      lastUpdated: new Date().toISOString(),
-    }));
-  };
+  const updateInspection = (
+  sectionIndex: number,
+  updates: Partial<InspectionSession>
+) => {
+  setSession((prev) => ({
+    ...prev,
+    ...updates,
+    lastUpdated: new Date().toISOString(),
+  }));
+};
 
  const updateSection = (sectionIndex: number, updates: Partial<InspectionSection>) => {
   setSession((prev) => {
