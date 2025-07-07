@@ -29,7 +29,7 @@ export async function generateInspectionPDF(session: InspectionSession): Promise
   y -= lineHeight;
 
   session.sections.forEach((section, sectionIndex) => {
-    drawText(`Section ${sectionIndex + 1}: ${section.section}`);
+    drawText(`Section ${sectionIndex + 1}: ${section.title}`);
 
     section.items.forEach((item, itemIndex) => {
       drawText(`  - Item: ${item.item}`);

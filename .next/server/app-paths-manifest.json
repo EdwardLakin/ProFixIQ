@@ -1,5 +1,7 @@
 {
-  "/inspection/maintenance50/page": "app/inspection/maintenance50/page.js",
+  "/page": "app/page.js",
+  "/ai/page": "app/ai/page.js",
+  "/ai/chat/page": "app/ai/chat/page.js",
   "/inspection/page": "app/inspection/page.js",
-  "/page": "app/page.js"
+  "/inspection/maintenance50/page": "app/inspection/maintenance50/page.js"
 }

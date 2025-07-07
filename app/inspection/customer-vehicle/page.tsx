@@ -23,25 +23,27 @@ export default function CustomerVehicleFormPage() {
     color: '',
   });
 
-  const handleStart = () => {
-    const query = new URLSearchParams({
-      ...customer,
-      ...vehicle,
-    }).toString();
-
-    router.push(`/inspection/menu?${query}`);
-  };
-
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement>,
     group: 'customer' | 'vehicle'
   ) => {
     const { name, value } = e.target;
     if (group === 'customer') {
-      setCustomer(prev => ({ ...prev, [name]: value }));
+      setCustomer((prev) => ({ ...prev, [name]: value }));
     } else {
-      setVehicle(prev => ({ ...prev, [name]: value }));
+      setVehicle((prev) => ({ ...prev, [name]: value }));
     }
+  };
+
+  const handleStart = () => {
+    const query = new URLSearchParams(
+      Object.entries({ ...customer, ...vehicle }).reduce((acc, [key, value]) => {
+        acc[key] = value.toString() || '';
+        return acc;
+      }, {} as Record<string, string>)
+    ).toString();
+
+    router.push(`/inspection/menu?${query}`);
   };
 
   return (
@@ -53,13 +55,13 @@ export default function CustomerVehicleFormPage() {
       {/* Customer Info */}
       <div className="bg-zinc-900 rounded-lg p-4 mb-6 shadow">
         <h2 className="text-xl font-semibold mb-2 text-orange-400">Customer Info</h2>
-        <div className="grid grid-cols-1 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <input
             type="text"
             name="first_name"
             placeholder="First Name"
             value={customer.first_name}
-            onChange={e => handleChange(e, 'customer')}
+            onChange={(e) => handleChange(e, 'customer')}
             className="bg-zinc-800 text-white p-2 rounded"
           />
           <input
@@ -67,7 +69,7 @@ export default function CustomerVehicleFormPage() {
             name="last_name"
             placeholder="Last Name"
             value={customer.last_name}
-            onChange={e => handleChange(e, 'customer')}
+            onChange={(e) => handleChange(e, 'customer')}
             className="bg-zinc-800 text-white p-2 rounded"
           />
           <input
@@ -75,7 +77,7 @@ export default function CustomerVehicleFormPage() {
             name="phone"
             placeholder="Phone"
             value={customer.phone}
-            onChange={e => handleChange(e, 'customer')}
+            onChange={(e) => handleChange(e, 'customer')}
             className="bg-zinc-800 text-white p-2 rounded"
           />
           <input
@@ -83,7 +85,7 @@ export default function CustomerVehicleFormPage() {
             name="email"
             placeholder="Email"
             value={customer.email}
-            onChange={e => handleChange(e, 'customer')}
+            onChange={(e) => handleChange(e, 'customer')}
             className="bg-zinc-800 text-white p-2 rounded"
           />
         </div>
@@ -92,13 +94,13 @@ export default function CustomerVehicleFormPage() {
       {/* Vehicle Info */}
       <div className="bg-zinc-900 rounded-lg p-4 mb-6 shadow">
         <h2 className="text-xl font-semibold mb-2 text-orange-400">Vehicle Info</h2>
-        <div className="grid grid-cols-1 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <input
             type="text"
             name="year"
             placeholder="Year"
             value={vehicle.year}
-            onChange={e => handleChange(e, 'vehicle')}
+            onChange={(e) => handleChange(e, 'vehicle')}
             className="bg-zinc-800 text-white p-2 rounded"
           />
           <input
@@ -106,7 +108,7 @@ export default function CustomerVehicleFormPage() {
             name="make"
             placeholder="Make"
             value={vehicle.make}
-            onChange={e => handleChange(e, 'vehicle')}
+            onChange={(e) => handleChange(e, 'vehicle')}
             className="bg-zinc-800 text-white p-2 rounded"
           />
           <input
@@ -114,7 +116,7 @@ export default function CustomerVehicleFormPage() {
             name="model"
             placeholder="Model"
             value={vehicle.model}
-            onChange={e => handleChange(e, 'vehicle')}
+            onChange={(e) => handleChange(e, 'vehicle')}
             className="bg-zinc-800 text-white p-2 rounded"
           />
           <input
@@ -122,7 +124,7 @@ export default function CustomerVehicleFormPage() {
             name="vin"
             placeholder="VIN"
             value={vehicle.vin}
-            onChange={e => handleChange(e, 'vehicle')}
+            onChange={(e) => handleChange(e, 'vehicle')}
             className="bg-zinc-800 text-white p-2 rounded"
           />
           <input
@@ -130,7 +132,7 @@ export default function CustomerVehicleFormPage() {
             name="license_plate"
             placeholder="License Plate"
             value={vehicle.license_plate}
-            onChange={e => handleChange(e, 'vehicle')}
+            onChange={(e) => handleChange(e, 'vehicle')}
             className="bg-zinc-800 text-white p-2 rounded"
           />
           <input
@@ -138,7 +140,7 @@ export default function CustomerVehicleFormPage() {
             name="mileage"
             placeholder="Mileage"
             value={vehicle.mileage}
-            onChange={e => handleChange(e, 'vehicle')}
+            onChange={(e) => handleChange(e, 'vehicle')}
             className="bg-zinc-800 text-white p-2 rounded"
           />
           <input
@@ -146,7 +148,7 @@ export default function CustomerVehicleFormPage() {
             name="color"
             placeholder="Color"
             value={vehicle.color}
-            onChange={e => handleChange(e, 'vehicle')}
+            onChange={(e) => handleChange(e, 'vehicle')}
             className="bg-zinc-800 text-white p-2 rounded"
           />
         </div>
@@ -154,7 +156,7 @@ export default function CustomerVehicleFormPage() {
 
       <button
         onClick={handleStart}
-        className="bg-orange-500 hover:bg-orange-600 text-white text-lg font-bold w-full py-3 rounded"
+        className="bg-orange-500 hover:bg-orange-600 text-white text-lg font-bold py-2 px-4 rounded w-full"
       >
         Start Inspection
       </button>

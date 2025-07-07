@@ -5,17 +5,25 @@ type UpdateItemFn = (sectionIndex: number, itemIndex: number, updates: any) => v
 type UpdateSectionFn = (sectionIndex: number, updates: any) => void;
 type FinishSessionFn = () => void;
 
-export default async function handleTranscript(
-  command: string,
-  session: InspectionSession,
-  updateInspection: UpdateInspectionFn,
-  updateItem: UpdateItemFn,
-  updateSection: UpdateSectionFn,
-  finishSession: FinishSessionFn
-) {
+type HandleTranscriptArgs = {
+  command: string;
+  session: InspectionSession;
+  updateInspection: UpdateInspectionFn;
+  updateItem: UpdateItemFn;
+  updateSection: UpdateSectionFn;
+  finishSession: FinishSessionFn;
+};
+
+export default async function handleTranscript({
+  command,
+  session,
+  updateInspection,
+  updateItem,
+  updateSection,
+  finishSession,
+}: HandleTranscriptArgs) {
   if (!command?.trim()) return;
 
-  // Still allow hardcoded local override
   if (command.toLowerCase().includes('finish inspection')) {
     finishSession();
     return;
@@ -55,14 +63,19 @@ export default async function handleTranscript(
         if (parsed.notes) updateItem(sectionIndex, itemIndex, { notes: parsed.notes });
         break;
       case 'complete_item':
+        updateItem(sectionIndex, itemIndex, { status: 'ok' });
+        break;
       case 'skip_item':
-        updateInspection({ ...session, currentItemIndex: itemIndex + 1 });
+        updateItem(sectionIndex, itemIndex, { status: 'n/a' });
         break;
       case 'complete_inspection':
         finishSession();
         break;
+      default:
+        console.warn('Unhandled command from AI:', parsed);
+        break;
     }
   } catch (error) {
-    console.error('handleTranscript AI error:', error);
+    console.error('Transcript handling failed:', error);
   }
 }

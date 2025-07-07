@@ -55,7 +55,7 @@ export default function SummaryPage() {
                     Status
                     <select
                       className="border rounded p-1"
-                      value={item.status}
+                      value={item?.status}
                       onChange={(e) =>
                         handleFieldChange(sectionIndex, itemIndex, 'status', e.target.value)
                       }
@@ -71,7 +71,7 @@ export default function SummaryPage() {
                     Note
                     <input
                       className="border rounded p-1"
-                      value={item.notes || ''}
+                      value={item?.notes || ''}
                       onChange={(e) =>
                         handleFieldChange(sectionIndex, itemIndex, 'notes', e.target.value)
                       }
@@ -82,7 +82,7 @@ export default function SummaryPage() {
                     Value
                     <input
                       className="border rounded p-1"
-                      value={item.value || ''}
+                      value={item?.value || ''}
                       onChange={(e) =>
                         handleFieldChange(sectionIndex, itemIndex, 'value', e.target.value)
                       }
@@ -93,7 +93,7 @@ export default function SummaryPage() {
                     Unit
                     <input
                       className="border rounded p-1"
-                      value={item.unit || ''}
+                      value={item?.unit || ''}
                       onChange={(e) =>
                         handleFieldChange(sectionIndex, itemIndex, 'unit', e.target.value)
                       }
@@ -101,9 +101,9 @@ export default function SummaryPage() {
                   </label>
                 </div>
 
-                {Array.isArray(item.photoUrls) && item.photoUrls.length > 0 && (
+                {Array.isArray(item?.photoUrls) && item?.photoUrls.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {item.photoUrls.map((url, i) => (
+                    {item?.photoUrls.map((url, i) => (
                       <img
                         key={i}
                         src={url}

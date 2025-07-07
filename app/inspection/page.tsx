@@ -44,7 +44,7 @@ export default function InspectionMenu() {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <button
           className="bg-zinc-900 border border-orange-500 rounded-lg p-4 shadow hover:scale-105 transition-all"
-          onClick={() => router.push('/inspection/maintenance50')}
+          onClick={() => router.push('/customer-vehicle?template=maintenance50')}
         >
           <h2 className="text-xl font-bold text-orange-400 mb-2">Maintenance 50 Point</h2>
           <p className="text-sm text-zinc-300">Comprehensive vehicle health check</p>

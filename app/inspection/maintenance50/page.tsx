@@ -35,7 +35,8 @@ export default function Maintenance50InspectionPage() {
     resumeSession,
     pauseSession,
     addQuoteLine,
-  } = useInspectionSession(false, {
+  } = useInspectionSession(
+     {
     templateName: 'Maintenance 50-Point Inspection',
     status: 'not_started',
     isPaused: false,
@@ -292,7 +293,7 @@ export default function Maintenance50InspectionPage() {
               {item.unit && (
                 <input
                   type="text"
-                  value={item.value?.toString() || ''}
+                  value={item?.value?.toString() || ''}
                   onChange={(e) =>
                     updateItem(sectionIndex, itemIndex, {
                       value: e.target.value,
@@ -305,7 +306,7 @@ export default function Maintenance50InspectionPage() {
 
               <textarea
                 placeholder="Notes"
-                value={item.notes}
+                value={item?.notes || ''}
                 onChange={(e) =>
                   updateItem(sectionIndex, itemIndex, {
                     notes: e.target.value,
@@ -350,7 +351,7 @@ export default function Maintenance50InspectionPage() {
 
           <textarea
             placeholder="Section Notes"
-            value={section.notes}
+            value={section?.notes || ''}
             onChange={(e) =>
               updateSection(sectionIndex, { notes: e.target.value })
             }
@@ -359,12 +360,11 @@ export default function Maintenance50InspectionPage() {
         </div>
       ))}
 
-      <SmartHighlight
+<SmartHighlight
   item={
-    session.sections[session.currentSectionIndex]?.items[
-      session.currentItemIndex
-    ]
+    session.sections?.[session.currentSectionIndex]?.items?.[session.currentItemIndex]
   }
+  
   onCommand={(cmd) =>
     handleTranscript({
       command: cmd,
@@ -375,7 +375,16 @@ export default function Maintenance50InspectionPage() {
       finishSession,
     })
   }
-  interpreter={interpretCommand}
+  interpreter={(transcript) =>
+    handleTranscript({
+      command: transcript,
+      session,
+      updateInspection,
+      updateItem,
+      updateSection,
+      finishSession,
+    })
+  }
 />
       <div className="mt-6 flex justify-between">
         <button
