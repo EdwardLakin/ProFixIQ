@@ -18,6 +18,30 @@ export async function generateInspectionPDF(session: InspectionSession): Promise
     y -= lineHeight;
   };
 
+  drawText('Customer Info:');
+  drawText(`Name: ${session.customer?.first_name ?? ''} ${session.customer?.last_name ?? ''}`);
+  drawText(`Phone: ${session.customer?.phone ?? ''}`);
+  drawText(`Email: ${session.customer?.email ?? ''}`);
+  drawText(''); // spacer
+
+  drawText(`Customer Name: ${session.customer?.first_name ?? ''} ${session.customer?.last_name ?? ''}`);
+  drawText(`Phone: ${session.customer?.phone ?? ''}`);
+  drawText(`Email: ${session.customer?.email ?? ''}`);
+  drawText(`Vehicle: ${session.vehicle.year} ${session.vehicle.make} ${session.vehicle.model}`);
+  drawText(`VIN: ${session.vehicle.vin}`);
+  drawText(`License Plate: ${session.vehicle.license_plate}`);
+  drawText(`Mileage: ${session.vehicle.mileage}`);
+  drawText(`Color: ${session.vehicle.color}`);
+  drawText(''); // empty line before summary
+
+  drawText('Vehicle Info:');
+  drawText(`Year/Make/Model: ${session.vehicle?.year ?? ''} ${session.vehicle?.make ?? ''} ${session.vehicle?.model ?? ''}`);
+  drawText(`VIN: ${session.vehicle?.vin ?? ''}`);
+  drawText(`License Plate: ${session.vehicle?.license_plate ?? ''}`);
+  drawText(`Mileage: ${session.vehicle?.mileage ?? ''}`);
+  drawText(`Color: ${session.vehicle?.color ?? ''}`);
+  drawText(''); // spacer
+
   drawText(`Inspection Summary - ${session.templateName}`);
   drawText(`Status: ${session.status ?? 'unknown'}`);
   drawText(`Vehicle ID: ${session.vehicleId ?? 'N/A'}`);

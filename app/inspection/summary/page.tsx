@@ -24,12 +24,25 @@ export default function SummaryPage() {
   };
 
   const handleSubmit = async () => {
-    const pdfBlob = await generateInspectionPDF(session);
-    const blob = new Blob([pdfBlob], { type: 'application/pdf' });
-    const link = document.createElement('a');
-    link.href = window.URL.createObjectURL(blob);
-    link.download = 'inspection_summary.pdf';
-    link.click();
+    try {
+      const pdfBlob = await generateInspectionPDF(session);
+      const blob = new Blob([pdfBlob], { type: 'application/pdf' });
+
+      const link = document.createElement('a');
+      link.href = window.URL.createObjectURL(blob);
+      link.download = 'inspection_summary.pdf';
+      link.click();
+
+      // Clean up after save
+      localStorage.removeItem('inspectionCustomer');
+      localStorage.removeItem('inspectionVehicle');
+
+      alert('Inspection submitted and PDF downloaded.');
+      router.push('/inspection/menu');
+    } catch (error) {
+      console.error('Submission error:', error);
+      alert('Failed to submit inspection.');
+    }
   };
 
   return (
@@ -38,6 +51,20 @@ export default function SummaryPage() {
          <PreviousPageButton to="/inspection/menu" />       
         <HomeButton />
       </div>
+
+      <div className="bg-zinc-800 text-white p-4 rounded mb-6">
+  <h2 className="text-xl font-bold mb-2">Customer Info</h2>
+  <p>Name: {session.customer?.first_name} {session.customer?.last_name}</p>
+  <p>Phone: {session.customer?.phone}</p>
+  <p>Email: {session.customer?.email}</p>
+
+  <h2 className="text-xl font-bold mt-4 mb-2">Vehicle Info</h2>
+  <p>Year/Make/Model: {session.vehicle?.year} {session.vehicle?.make} {session.vehicle?.model}</p>
+  <p>VIN: {session.vehicle?.vin}</p>
+  <p>License Plate: {session.vehicle?.license_plate}</p>
+  <p>Mileage: {session.vehicle?.mileage}</p>
+  <p>Color: {session.vehicle?.color}</p>
+</div>
 
       {session.sections.map((section: InspectionSection, sectionIndex: number) => (
         <div key={sectionIndex} className="mb-6 border rounded-md">

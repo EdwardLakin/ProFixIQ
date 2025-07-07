@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Button } from '@components/ui/Button';
 
 export default function CustomerVehicleFormPage() {
   const router = useRouter();
@@ -154,12 +155,41 @@ export default function CustomerVehicleFormPage() {
         </div>
       </div>
 
-      <button
-        onClick={handleStart}
-        className="bg-orange-500 hover:bg-orange-600 text-white text-lg font-bold py-2 px-4 rounded w-full"
-      >
-        Start Inspection
-      </button>
+      <Button
+  type="button"
+  onClick={async () => {
+    const query = new URLSearchParams({
+      ...customer,
+      ...vehicle,
+    }).toString();
+
+    const requiredCustomerFields = ['first_name', 'last_name', 'phone', 'email'];
+    const requiredVehicleFields = ['make', 'model', 'year', 'vin'];
+
+    const missingFields = requiredCustomerFields.filter(field => !customer[field as keyof typeof customer])
+    .concat(requiredVehicleFields.filter(field => !vehicle[field as keyof typeof vehicle]));
+
+    if (missingFields.length > 0) {
+    alert(`Please fill in all required fields: ${missingFields.join(', ')}`);
+    return;
+  }
+
+    await fetch('/api/inspection/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        customer,
+        vehicle,
+        inspectionType: 'maintenance50',
+      }),
+    });
+
+    router.push(`/inspection/maintenance50?${query}`);
+  }}
+  className="bg-orange-500 hover:bg-orange-600 text-white text-lg font-bold px-6 py-3 rounded"
+>
+  Start Inspection
+</Button>
     </div>
   );
 }

@@ -24,6 +24,28 @@ export default function Maintenance50InspectionPage() {
   const [unit, setUnit] = useState<'metric' | 'imperial'>('metric');
   const [isListening, setIsListening] = useState(false);
 
+  useEffect(() => {
+  const customer = {
+    first_name: searchParams.get('first_name') || '',
+    last_name: searchParams.get('last_name') || '',
+    phone: searchParams.get('phone') || '',
+    email: searchParams.get('email') || '',
+  };
+
+  const vehicle = {
+    year: searchParams.get('year') || '',
+    make: searchParams.get('make') || '',
+    model: searchParams.get('model') || '',
+    vin: searchParams.get('vin') || '',
+    license_plate: searchParams.get('license_plate') || '',
+    mileage: searchParams.get('mileage') || '',
+    color: searchParams.get('color') || '',
+  };
+
+  localStorage.setItem('inspectionCustomer', JSON.stringify(customer));
+  localStorage.setItem('inspectionVehicle', JSON.stringify(vehicle));
+}, [searchParams]);
+
   const {
     session,
     updateInspection,
