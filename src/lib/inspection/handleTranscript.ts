@@ -1,18 +1,20 @@
-import { InspectionSession } from '@lib/inspection/types';
+import { InspectionSession, ParsedCommand } from '@lib/inspection/types';
+import interpretCommand from '@components/inspection/interpretCommand';
+import { Command } from '@lib/inspection/types';
 
 type UpdateInspectionFn = (updates: Partial<InspectionSession>) => void;
 type UpdateItemFn = (sectionIndex: number, itemIndex: number, updates: any) => void;
 type UpdateSectionFn = (sectionIndex: number, updates: any) => void;
 type FinishSessionFn = () => void;
 
-type HandleTranscriptArgs = {
+interface HandleTranscriptArgs {
   command: string;
   session: InspectionSession;
   updateInspection: UpdateInspectionFn;
   updateItem: UpdateItemFn;
   updateSection: UpdateSectionFn;
   finishSession: FinishSessionFn;
-};
+}
 
 export default async function handleTranscript({
   command,
@@ -21,61 +23,72 @@ export default async function handleTranscript({
   updateItem,
   updateSection,
   finishSession,
-}: HandleTranscriptArgs) {
-  if (!command?.trim()) return;
-
-  if (command.toLowerCase().includes('finish inspection')) {
-    finishSession();
-    return;
-  }
+}: HandleTranscriptArgs): Promise<void> {
+  if (!command.trim()) return;
 
   try {
-    const res = await fetch('/api/ai/interpret', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ transcript: command }),
-    });
+    const parsed = await interpretCommand(command);
 
-    if (!res.ok || !res.body) throw new Error('No response from AI interpreter.');
+    for (const cmd of parsed) {
+      const sectionIndex = session.sections.findIndex((s) =>
+        s.title.toLowerCase().includes(cmd.section?.toLowerCase() || '')
+      );
 
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder('utf-8');
-    let fullText = '';
+      const itemIndex =
+        sectionIndex >= 0
+          ? session.sections[sectionIndex].items.findIndex((i) =>
+              i.name.toLowerCase().includes(cmd.item?.toLowerCase() || '')
+            )
+          : -1;
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      fullText += decoder.decode(value, { stream: true });
-    }
+      if (sectionIndex === -1 || itemIndex === -1) {
+        console.warn('Could not locate section/item for command:', cmd);
+        continue;
+      }
 
-    const parsed = JSON.parse(fullText.trim());
-    const sectionIndex = session.currentSectionIndex;
-    const itemIndex = session.currentItemIndex;
+      switch (cmd.command) {
+        case 'update_status':
+          updateItem(sectionIndex, itemIndex, { status: cmd.status });
+          break;
 
-    switch (parsed.command) {
-      case 'update_status':
-        if (parsed.status) updateItem(sectionIndex, itemIndex, { status: parsed.status });
-        break;
-      case 'update_value':
-        if (parsed.value) updateItem(sectionIndex, itemIndex, { value: parsed.value });
-        break;
-      case 'add_note':
-        if (parsed.notes) updateItem(sectionIndex, itemIndex, { notes: parsed.notes });
-        break;
-      case 'complete_item':
-        updateItem(sectionIndex, itemIndex, { status: 'ok' });
-        break;
-      case 'skip_item':
-        updateItem(sectionIndex, itemIndex, { status: 'n/a' });
-        break;
-      case 'complete_inspection':
-        finishSession();
-        break;
-      default:
-        console.warn('Unhandled command from AI:', parsed);
-        break;
+        case 'update_value':
+          updateItem(sectionIndex, itemIndex, {
+            value: cmd.value,
+            unit: session.sections[sectionIndex].items[itemIndex].unit || '',
+          });
+          break;
+
+        case 'add_note':
+          const prevNotes = session.sections[sectionIndex].items[itemIndex].notes || '';
+          updateItem(sectionIndex, itemIndex, {
+            notes: [prevNotes, cmd.notes].filter(Boolean).join('\n'),
+          });
+          break;
+
+        case 'recommend':
+          const prevRecs = session.sections[sectionIndex].items[itemIndex].recommend || [];
+          updateItem(sectionIndex, itemIndex, {
+            recommend: [...prevRecs, cmd.notes],
+          });
+          break;
+
+        case 'complete_item':
+          updateSection(sectionIndex, { status: 'ok' });
+          break;
+
+        case 'skip_item':
+          updateSection(sectionIndex, { status: 'na' });
+          break;
+
+        case 'complete_inspection':
+          finishSession();
+          break;
+
+        default:
+          console.warn('Unknown command:', cmd);
+      }
     }
   } catch (error) {
-    console.error('Transcript handling failed:', error);
+    console.error('Error in handleTranscript:', error);
   }
 }

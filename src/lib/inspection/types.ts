@@ -195,14 +195,51 @@ export interface InspectionSummary {
   items: SummaryItem[];
 }
 
-export interface ParsedCommand {
-  type: CommandType;
+export type ParsedCommand = {
+  command:
+    | 'recommend'
+    | 'update_status'
+    | 'update_value'
+    | 'add_note'
+    | 'complete_item'
+    | 'skip_item'
+    | 'complete_inspection';
+  section?: string;
   item?: string;
-  status?: InspectionItemStatus;
-  note?: string;
-  value?: number | string | null;
-  unit?: string;
-  location?: string;
-  description?: string;
-  labor?: number;
-}
+  status?: 'ok' | 'fail' | 'na';
+  value?: string;
+  notes?: string;
+};
+
+   export type Command =
+  | {
+      type: 'status';
+      sectionIndex: number;
+      itemIndex: number;
+      status: 'ok' | 'fail' | 'na';
+    }
+  | {
+      type: 'measurement';
+      sectionIndex: number;
+      itemIndex: number;
+      value: string;
+      unit: string;
+    }
+  | {
+      type: 'add';
+      sectionIndex: number;
+      itemIndex: number;
+      note: string;
+    }
+  | {
+      type: 'recommend';
+      sectionIndex: number;
+      itemIndex: number;
+      note?: string;
+    }
+  | {
+      type: 'complete';
+    }
+  | {
+      type: 'pause';
+    };

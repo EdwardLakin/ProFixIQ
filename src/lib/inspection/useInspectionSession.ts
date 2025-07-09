@@ -55,10 +55,8 @@ onPause: () => {},
 onResume: () => {},
 }));
 
-  const updateInspection = (
-  sectionIndex: number,
-  updates: Partial<InspectionSession>
-) => {
+  // Update entire inspection session (or patch part of it)
+const updateInspection = (updates: Partial<InspectionSession>) => {
   setSession((prev) => ({
     ...prev,
     ...updates,
@@ -66,7 +64,11 @@ onResume: () => {},
   }));
 };
 
- const updateSection = (sectionIndex: number, updates: Partial<InspectionSection>) => {
+// Update a single section in the session
+const updateSection = (
+  sectionIndex: number,
+  updates: Partial<InspectionSection>
+) => {
   setSession((prev) => {
     const newSections = [...prev.sections];
     const updatedSection = {
@@ -81,9 +83,10 @@ onResume: () => {},
       lastUpdated: new Date().toISOString(),
     };
   });
-}; 
+};
 
-  const updateItem = (
+// Update a single item within a section
+const updateItem = (
   sectionIndex: number,
   itemIndex: number,
   updates: Partial<InspectionItem>
@@ -96,6 +99,7 @@ onResume: () => {},
       ...updates,
     };
     newItems[itemIndex] = updatedItem;
+
     newSections[sectionIndex] = {
       ...newSections[sectionIndex],
       items: newItems,
@@ -117,22 +121,20 @@ onResume: () => {},
     }));
   };
 
-  const startSession = (template: InspectionTemplate) => {
-    setSession((prev) => ({
-      ...prev,
-      templateId: template.templateId,
-      templateName: template.templateName,
-      sections: template.sections,
-      currentSectionIndex: 0,
-      currentItemIndex: 0,
-      transcript: '',
-      started: true,
-      completed: false,
-      status: 'in_progress',
-      isPaused: false,
-      lastUpdated: new Date().toISOString(),
-    }));
-  };
+  const startSession = (sessionData: Partial<InspectionSession>) => {
+  setSession((prev) => ({
+    ...prev,
+    ...sessionData,
+    currentSectionIndex: 0,
+    currentItemIndex: 0,
+    transcript: '',
+    started: true,
+    completed: false,
+    status: 'in_progress',
+    isPaused: false,
+    lastUpdated: new Date().toISOString(),
+  }));
+};
 
   const setIsListening = (value: boolean) => {
   setSession((prev) => ({

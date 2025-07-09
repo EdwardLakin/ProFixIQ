@@ -7,8 +7,13 @@ export function SaveInspectionButton() {
   const { session } = useInspectionSession();
 
   const handleSave = async () => {
-    await saveInspectionSession(session);
-    alert('Inspection saved');
+    try {
+      await saveInspectionSession(session);
+      alert('Inspection saved');
+    } catch (error) {
+      console.error('Save error:', error);
+      alert('Failed to save inspection.');
+    }
   };
 
   return (
@@ -20,5 +25,3 @@ export function SaveInspectionButton() {
     </button>
   );
 }
-
-export { saveInspectionSession };

@@ -1,39 +1,50 @@
+// src/lib/inspection/PhotoUploadButton.tsx
 'use client';
 
 import React, { useState } from 'react';
+import PhotoThumbnail from '@components/inspection/PhotoThumbnail';
 
 interface PhotoUploadButtonProps {
-  sectionIndex: number;
-  itemIndex: number;
-  onUpload: (url: string) => void;
+  photoUrls: string[];
+  onChange: (urls: string[]) => void;
 }
 
-export default function PhotoUploadButton({
-  sectionIndex,
-  itemIndex,
-  onUpload,
-}: PhotoUploadButtonProps) {
-  const [url, setUrl] = useState<string | null>(null);
+export default function PhotoUploadButton({ photoUrls, onChange }: PhotoUploadButtonProps) {
+  const [urls, setUrls] = useState<string[]>(photoUrls || []);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
 
-    // Simulate upload and generate a URL (replace with actual upload logic if needed)
-    const simulatedUrl = URL.createObjectURL(file);
-    setUrl(simulatedUrl);
-    onUpload(simulatedUrl);
+    const newUrls = files.map((file) => URL.createObjectURL(file));
+    const updatedUrls = [...urls, ...newUrls];
+
+    setUrls(updatedUrls);
+    onChange(updatedUrls);
+  };
+
+  const handleRemove = (index: number) => {
+    const updated = urls.filter((_, i) => i !== index);
+    setUrls(updated);
+    onChange(updated);
   };
 
   return (
     <div className="mt-2">
-      <label className="text-xs text-white font-bold block mb-1">Photo</label>
-      {url && <img src={url} alt="Uploaded" className="mb-2 max-w-xs rounded" />}
+      <label className="text-xs text-white font-bold block mb-1">Upload Photos</label>
+
+      <div className="flex flex-wrap">
+        {urls.map((url, i) => (
+          <PhotoThumbnail key={i} url={url} onRemove={() => handleRemove(i)} />
+        ))}
+      </div>
+
       <input
         type="file"
+        multiple
         accept="image/*"
         onChange={handleFileChange}
-        className="block text-sm text-gray-300 file:rounded-full file:border-0
+        className="block mt-2 text-sm text-gray-300 file:rounded-full file:border-0
                    file:text-sm file:font-semibold file:bg-orange-700 file:text-white
                    hover:file:bg-orange-600"
       />
