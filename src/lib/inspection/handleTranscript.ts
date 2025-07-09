@@ -1,6 +1,8 @@
+// src/lib/inspection/handleTranscript.ts
+
 import { InspectionSession, ParsedCommand } from '@lib/inspection/types';
-import interpretCommand from '@components/inspection/interpretCommand';
-import { Command } from '@lib/inspection/types';
+import interpretCommand from '@components/inspection/interpretCommand'; // Only needed if you call it here (optional)
+import { Command } from '@lib/inspection/types'; // Useful if you ever pass Command instead of ParsedCommand
 
 type UpdateInspectionFn = (updates: Partial<InspectionSession>) => void;
 type UpdateItemFn = (sectionIndex: number, itemIndex: number, updates: any) => void;
@@ -8,12 +10,14 @@ type UpdateSectionFn = (sectionIndex: number, updates: any) => void;
 type FinishSessionFn = () => void;
 
 interface HandleTranscriptArgs {
-  command: string;
+  command: ParsedCommand;
   session: InspectionSession;
   updateInspection: UpdateInspectionFn;
   updateItem: UpdateItemFn;
   updateSection: UpdateSectionFn;
   finishSession: FinishSessionFn;
+  sectionIndex: number;
+  itemIndex: number;
 }
 
 export default async function handleTranscript({
@@ -23,72 +27,52 @@ export default async function handleTranscript({
   updateItem,
   updateSection,
   finishSession,
+  sectionIndex,
+  itemIndex,
 }: HandleTranscriptArgs): Promise<void> {
-  if (!command.trim()) return;
+  if (!command.command) return;
 
   try {
-    const parsed = await interpretCommand(command);
+    switch (command.command) {
+      case 'update_status':
+        if (command.status) {
+          updateItem(sectionIndex, itemIndex, { status: command.status });
+        }
+        break;
 
-    for (const cmd of parsed) {
-      const sectionIndex = session.sections.findIndex((s) =>
-        s.title.toLowerCase().includes(cmd.section?.toLowerCase() || '')
-      );
+      case 'recommend':
+        const prevRecs = session.sections[sectionIndex].items[itemIndex].recommend || [];
+        updateItem(sectionIndex, itemIndex, {
+          recommend: [...prevRecs, command.notes ?? ''],
+        });
+        break;
 
-      const itemIndex =
-        sectionIndex >= 0
-          ? session.sections[sectionIndex].items.findIndex((i) =>
-              i.name.toLowerCase().includes(cmd.item?.toLowerCase() || '')
-            )
-          : -1;
+      case 'add_note':
+        const prevNotes = session.sections[sectionIndex].items[itemIndex].notes || '';
+        updateItem(sectionIndex, itemIndex, {
+          notes: [prevNotes, command.notes].filter(Boolean).join('\n'),
+        });
+        break;
 
-      if (sectionIndex === -1 || itemIndex === -1) {
-        console.warn('Could not locate section/item for command:', cmd);
-        continue;
-      }
+      case 'update_value':
+        updateItem(sectionIndex, itemIndex, {
+          value: command.value,
+          unit: session.sections[sectionIndex].items[itemIndex].unit || '',
+        });
+        break;
 
-      switch (cmd.command) {
-        case 'update_status':
-          updateItem(sectionIndex, itemIndex, { status: cmd.status });
-          break;
+      case 'complete_inspection':
+        finishSession();
+        break;
 
-        case 'update_value':
-          updateItem(sectionIndex, itemIndex, {
-            value: cmd.value,
-            unit: session.sections[sectionIndex].items[itemIndex].unit || '',
-          });
-          break;
+      case 'skip_item':
+        updateInspection({ currentItemIndex: itemIndex + 1 });
+        break;
 
-        case 'add_note':
-          const prevNotes = session.sections[sectionIndex].items[itemIndex].notes || '';
-          updateItem(sectionIndex, itemIndex, {
-            notes: [prevNotes, cmd.notes].filter(Boolean).join('\n'),
-          });
-          break;
-
-        case 'recommend':
-          const prevRecs = session.sections[sectionIndex].items[itemIndex].recommend || [];
-          updateItem(sectionIndex, itemIndex, {
-            recommend: [...prevRecs, cmd.notes],
-          });
-          break;
-
-        case 'complete_item':
-          updateSection(sectionIndex, { status: 'ok' });
-          break;
-
-        case 'skip_item':
-          updateSection(sectionIndex, { status: 'na' });
-          break;
-
-        case 'complete_inspection':
-          finishSession();
-          break;
-
-        default:
-          console.warn('Unknown command:', cmd);
-      }
+      default:
+        console.warn('Unhandled command:', command);
     }
-  } catch (error) {
-    console.error('Error in handleTranscript:', error);
+  } catch (err) {
+    console.error('Error handling command:', command, err);
   }
 }

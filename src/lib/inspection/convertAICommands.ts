@@ -51,7 +51,7 @@ export function convertParsedCommands(
           type: 'add',
           sectionIndex,
           itemIndex,
-          notes: cmd.notes!,
+          note: cmd.notes!,
         });
         break;
 

@@ -1,4 +1,4 @@
-import { InspectionItem, InspectionSession } from '@lib/inspection/types';
+import { InspectionItem, InspectionSession, ParsedCommand } from '@lib/inspection/types';
 
 export interface SmartHighlightProps {
   item: InspectionItem;
@@ -13,6 +13,7 @@ export interface SmartHighlightProps {
   updateInspection: (updates: Partial<InspectionSession>) => void;
   updateSection: (sectionIndex: number, updates: Partial<any>) => void;
   finishSession: () => void;
-  onCommand: (command: string) => void;
-  interpreter: (transcript: string) => Promise<void>;
+  onCommand: (command: ParsedCommand) => void;
+  interpreter: (transcript: string) => Promise<ParsedCommand[]>;
+  transcript: string;
 }

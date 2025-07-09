@@ -810,8 +810,8 @@ export default function Maintenance50InspectionPage() {
       <p>Mileage: {session.vehicle?.mileage} | Color: {session.vehicle?.color}</p>
     </div>
 
-  <SmartHighlight
-  item={session.sections[session.currentSectionIndex]?.items[session.currentItemIndex]}
+    <SmartHighlight
+  item={session.sections[session.currentSectionIndex].items[session.currentItemIndex]}
   sectionIndex={session.currentSectionIndex}
   itemIndex={session.currentItemIndex}
   session={session}
@@ -819,23 +819,9 @@ export default function Maintenance50InspectionPage() {
   updateInspection={updateInspection}
   updateSection={updateSection}
   finishSession={finishSession}
-  onCommand={(cmd) =>
+  onCommand={(cmd: ParsedCommand) =>
     handleTranscript({
       command: cmd,
-      session,
-      updateInspection,
-      updateItem,
-      updateSection,
-      finishSession,  
-      sectionIndex: session.currentSectionIndex,
-      itemIndex: session.currentItemIndex,
-    })
-  }
-    interpreter={async (transcript) => {
-  const parsed = await interpreter(transcript);
-  for (const command of parsed) {
-    await handleTranscript({
-      command,
       session,
       updateInspection,
       updateItem,
@@ -843,9 +829,25 @@ export default function Maintenance50InspectionPage() {
       finishSession,
       sectionIndex: session.currentSectionIndex,
       itemIndex: session.currentItemIndex,
-    });
+    })
   }
-}}
+  interpreter={async (transcript: string) => {
+    return await interpretCommand(transcript);
+    const parsed = await interpretCommand(transcript);
+    for (const command of parsed) {
+      await handleTranscript({
+        command,
+        session,
+        updateInspection,
+        updateItem,
+        updateSection,
+        finishSession,
+        sectionIndex: session.currentSectionIndex,
+        itemIndex: session.currentItemIndex,
+      });
+    }
+  }}
+  transcript={session.transcript ?? ''}
 />
 
     {/* Render your inspection sections + items below this if needed */}
@@ -1049,15 +1051,11 @@ export default function Maintenance50InspectionPage() {
 
               {(item.status === 'fail' || item.status === 'recommend') && (
                 <PhotoUploadButton
-                  sectionIndex={sectionIndex}
-                  itemIndex={itemIndex}
-                  onUpload={(url: string) => {
-                const prev = session.sections[sectionIndex].items[itemIndex].photoUrls || [];
-                updateItem(sectionIndex, itemIndex, {
-                photoUrls: [...prev, url],
-              });
-            }}
-          />
+                  photoUrls={item.photoUrls || []}
+                  onChange={(urls: string[]) => {
+                  updateItem(sectionIndex, itemIndex, { photoUrls: urls });
+                }}
+              />
       )}
 
               {item.notes && (
@@ -1079,7 +1077,6 @@ export default function Maintenance50InspectionPage() {
   );
 })}
 
-    <SmartHighlight transcript={transcript} parsedCommands={parsedCommands} />
 
 <div className="flex justify-between items-center mt-8 gap-4">
   <SaveInspectionButton />
