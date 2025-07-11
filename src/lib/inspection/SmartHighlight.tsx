@@ -1,11 +1,25 @@
 'use client';
 
 import React from 'react';
-import { SmartHighlightProps } from './SmartHighlightProps';
-import PhotoUploadButton from './PhotoUploadButton';
+import { ParsedCommand, InspectionItem, InspectionSession } from '@lib/inspection/types';
+import PhotoUploadButton from '@lib/inspection/PhotoUploadButton';
 import PhotoThumbnail from '@components/inspection/PhotoThumbnail';
 
-export default function SmartHighlight({
+interface SmartHighlightProps {
+  item: InspectionItem;
+  sectionIndex: number;
+  itemIndex: number;
+  session: InspectionSession;
+  updateItem: (sectionIndex: number, itemIndex: number, updates: Partial<InspectionItem>) => void;
+  updateInspection: (updates: Partial<InspectionSession>) => void;
+  updateSection: (sectionIndex: number, updates: any) => void;
+  finishSession: () => void;
+  onCommand: (cmd: ParsedCommand) => Promise<void>;
+  interpreter: (transcript: string) => Promise<void>;
+  transcript: string;
+}
+
+const SmartHighlight: React.FC<SmartHighlightProps> = ({
   item,
   sectionIndex,
   itemIndex,
@@ -16,14 +30,14 @@ export default function SmartHighlight({
   finishSession,
   onCommand,
   interpreter,
-}: SmartHighlightProps) {
+  transcript,
+}) => {
   const isSelected = (val: string) => item.status === val;
   const isWheelTorque = item.name?.toLowerCase().includes('wheel torque');
 
   return (
-    <div className="bg-zinc-900 p-4 rounded mb-6 border border-orange-600">
-      <h2 className="text-lg font-bold text-orange-400 mb-4">Current Item</h2>
-      <h3 className="text-white text-xl mb-2">{item.name}</h3>
+    <div className="bg-zinc-800 p-4 rounded mb-6 border border-orange-500">
+      <h3 className="text-lg font-semibold text-white mb-2">{item.name}</h3>
 
       {isWheelTorque ? (
         <div className="flex items-center space-x-2 mb-3">
@@ -80,30 +94,21 @@ export default function SmartHighlight({
       )}
 
       {(item.status === 'fail' || item.status === 'recommend') && (
-        <>
-          <PhotoUploadButton
-            photoUrls={item.photoUrls || []}
-            onChange={(urls: string[]) =>
-              updateItem(sectionIndex, itemIndex, { photoUrls: urls })
-            }
-          />
-
-          {item.photoUrls && item.photoUrls.length > 0 && (
-            <div className="flex flex-wrap mt-2 gap-2">
-              {item.photoUrls.map((url, i) => (
-                <PhotoThumbnail
-                  key={i}
-                  url={url}
-                  onRemove={() => {
-                    const updated = item.photoUrls!.filter((_, index) => index !== i);
-                    updateItem(sectionIndex, itemIndex, { photoUrls: updated });
-                  }}
-                />
-              ))}
-            </div>
-          )}
-        </>
+        <PhotoUploadButton
+          photoUrls={item.photoUrls || []}
+          onChange={(urls: string[]) => {
+            updateItem(sectionIndex, itemIndex, { photoUrls: urls });
+          }}
+        />
       )}
+
+      {(item.photoUrls?.length ?? 0) > 0 && (
+  <div className="flex flex-wrap gap-2 mt-2">
+    {(item.photoUrls ?? []).map((url, i) => (
+      <PhotoThumbnail key={i} url={url} />
+    ))}
+  </div>
+)}
 
       {item.notes && (
         <p className="text-sm text-gray-400 mt-2 whitespace-pre-wrap">
@@ -116,6 +121,12 @@ export default function SmartHighlight({
           <strong>Recommended:</strong> {item.recommend?.join(', ')}
         </p>
       )}
+
+      <p className="text-xs text-gray-500 mt-2 italic">
+        {transcript && <>Last voice command: "{transcript}"</>}
+      </p>
     </div>
   );
-}
+};
+
+export default SmartHighlight;

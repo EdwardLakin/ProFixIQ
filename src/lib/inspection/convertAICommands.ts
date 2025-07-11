@@ -1,83 +1,78 @@
-// src/lib/inspection/convertAICommands.ts
-
-import { ParsedCommand, Command, InspectionSession } from './types';
+import { ParsedCommand, Command } from '@lib/inspection/types';
 
 export function convertParsedCommands(
-  commands: ParsedCommand[],
-  session: InspectionSession
+  parsed: ParsedCommand[],
+  session: any
 ): Command[] {
-  const results: Command[] = [];
+  return parsed.map((cmd: ParsedCommand): Command => {
+    const sectionIndex = cmd.sectionIndex ?? session.currentSectionIndex;
+    const itemIndex = cmd.itemIndex ?? session.currentItemIndex;
 
-  for (const cmd of commands) {
-    const { command } = cmd;
-
-    if (command === 'complete_inspection') {
-      results.push({ type: 'complete' });
-      continue;
-    }
-
-    const sectionIndex = session.sections.findIndex(
-      (s) => s.title.toLowerCase() === cmd.section?.toLowerCase()
-    );
-    if (sectionIndex === -1) continue;
-
-    const itemIndex = session.sections[sectionIndex].items.findIndex(
-      (i) => i.name.toLowerCase() === cmd.item?.toLowerCase()
-    );
-    if (itemIndex === -1) continue;
-
-    switch (command) {
-      case 'update_status':
-        results.push({
-          type: 'status',
-          sectionIndex,
-          itemIndex,
+    switch (cmd.command) {
+      case 'update_status': {
+        const c = cmd as Extract<ParsedCommand, { command: 'update_status' }>;
+        return {
+          type: 'update_status',
           status: cmd.status!,
-        });
-        break;
-
-      case 'update_value':
-        results.push({
-          type: 'measurement',
           sectionIndex,
           itemIndex,
-          value: cmd.value!,
-          unit: session.sections[sectionIndex].items[itemIndex].unit || '',
-        });
-        break;
+        };
+      }
 
-      case 'add_note':
-        results.push({
-          type: 'add',
+      case 'update_value': {
+        const c = cmd as Extract<ParsedCommand, { command: 'update_value' }>;
+        return {
+          type: 'update_value',
+          value: cmd.value ?? '',
+          unit: cmd.unit ?? '',
           sectionIndex,
           itemIndex,
-          note: cmd.notes!,
-        });
-        break;
+        };
+      }
 
-      case 'recommend':
-        results.push({
+      case 'add_note': {
+        const c = cmd as Extract<ParsedCommand, { command: 'add_note' }>;
+        return {
+          type: 'add_note',
+          notes: cmd.notes ?? '',
+          sectionIndex,
+          itemIndex,
+        };
+      }
+
+      case 'recommend': {
+        const c = cmd as Extract<ParsedCommand, { command: 'recommend' }>;
+        return {
           type: 'recommend',
+          recommendation: cmd.recommend ?? '',
           sectionIndex,
           itemIndex,
-          note: cmd.notes || 'Recommended',
-        });
-        break;
+        };
+      }
 
       case 'complete_item':
-      case 'skip_item':
-        results.push({
-          type: 'status',
+        return {
+          type: 'complete',
           sectionIndex,
           itemIndex,
-          status: 'ok',
-        });
-        break;
+        };
+
+      case 'skip_item':
+        return {
+          type: 'skip',
+          sectionIndex,
+          itemIndex,
+        };
+
+      case 'pause_inspection':
+        return { type: 'pause' };
+
+      case 'finish_inspection':
+        return { type: 'complete' };
 
       default:
-        break;
+        console.warn('Unknown ParsedCommand:', cmd);
+        return { type: 'pause' };
     }
-  }
-
-  return results;
+  });
 }

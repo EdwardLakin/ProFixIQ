@@ -5,25 +5,22 @@ import { useEffect } from 'react';
 interface StartListeningButtonProps {
   isListening: boolean;
   setIsListening: (value: boolean) => void;
-  startSession?: () => void;
+  onStart: () => void;
 }
 
 export default function StartListeningButton({
   isListening,
   setIsListening,
-  startSession,
+  onStart,
 }: StartListeningButtonProps) {
   const handleStart = () => {
     setIsListening(true);
-    if (startSession) {
-      startSession();
-    }
+    onStart(); // Trigger the actual startListening logic from parent
   };
 
   useEffect(() => {
     if (isListening) {
       console.log('Voice recognition is active.');
-      // Add voice recognition startup logic here if needed
     }
   }, [isListening]);
 

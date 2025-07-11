@@ -1,13 +1,21 @@
 // src/lib/inspection/handleTranscript.ts
 
-import { InspectionSession, ParsedCommand } from '@lib/inspection/types';
-import interpretCommand from '@components/inspection/interpretCommand'; // Only needed if you call it here (optional)
-import { Command } from '@lib/inspection/types'; // Useful if you ever pass Command instead of ParsedCommand
+import {
+  ParsedCommand,
+  InspectionSession,
+  InspectionItemStatus,
+} from '@lib/inspection/types';
 
 type UpdateInspectionFn = (updates: Partial<InspectionSession>) => void;
-type UpdateItemFn = (sectionIndex: number, itemIndex: number, updates: any) => void;
-type UpdateSectionFn = (sectionIndex: number, updates: any) => void;
-type FinishSessionFn = () => void;
+type UpdateItemFn = (
+  sectionIndex: number,
+  itemIndex: number,
+  updates: Partial<InspectionSession['sections'][number]['items'][number]>
+) => void;
+type UpdateSectionFn = (
+  sectionIndex: number,
+  updates: Partial<InspectionSession['sections'][number]>
+) => void;
 
 interface HandleTranscriptArgs {
   command: ParsedCommand;
@@ -15,64 +23,70 @@ interface HandleTranscriptArgs {
   updateInspection: UpdateInspectionFn;
   updateItem: UpdateItemFn;
   updateSection: UpdateSectionFn;
-  finishSession: FinishSessionFn;
-  sectionIndex: number;
-  itemIndex: number;
+  finishSession: () => void;
 }
 
-export default async function handleTranscript({
+export async function handleTranscriptFn({
   command,
   session,
   updateInspection,
   updateItem,
   updateSection,
   finishSession,
-  sectionIndex,
-  itemIndex,
 }: HandleTranscriptArgs): Promise<void> {
-  if (!command.command) return;
+  const { section, item, status, value, notes } = command;
 
-  try {
-    switch (command.command) {
-      case 'update_status':
-        if (command.status) {
-          updateItem(sectionIndex, itemIndex, { status: command.status });
-        }
-        break;
+  // Locate matching section + item index based on names
+  const sectionIndex = session.sections.findIndex((sec) =>
+    sec.title.toLowerCase().includes(section?.toLowerCase() || '')
+  );
 
-      case 'recommend':
-        const prevRecs = session.sections[sectionIndex].items[itemIndex].recommend || [];
-        updateItem(sectionIndex, itemIndex, {
-          recommend: [...prevRecs, command.notes ?? ''],
-        });
-        break;
+  const itemIndex =
+    sectionIndex >= 0
+      ? session.sections[sectionIndex].items.findIndex((it) =>
+          it.name.toLowerCase().includes(item?.toLowerCase() || '')
+        )
+      : -1;
 
-      case 'add_note':
-        const prevNotes = session.sections[sectionIndex].items[itemIndex].notes || '';
-        updateItem(sectionIndex, itemIndex, {
-          notes: [prevNotes, command.notes].filter(Boolean).join('\n'),
-        });
-        break;
+  if (sectionIndex === -1 || itemIndex === -1) {
+    console.warn('Could not match section/item from transcript:', {
+      section,
+      item,
+    });
+    return;
+  }
 
-      case 'update_value':
-        updateItem(sectionIndex, itemIndex, {
-          value: command.value,
-          unit: session.sections[sectionIndex].items[itemIndex].unit || '',
-        });
-        break;
+  const itemUpdates: Partial<InspectionSession['sections'][number]['items'][number]> = {};
 
-      case 'complete_inspection':
-        finishSession();
-        break;
+  switch (command.command) {
+    case 'update_status':
+      if (status) itemUpdates.status = status as InspectionItemStatus;
+      break;
 
-      case 'skip_item':
-        updateInspection({ currentItemIndex: itemIndex + 1 });
-        break;
+    case 'update_value':
+      if (value) itemUpdates.value = value;
+      break;
 
-      default:
-        console.warn('Unhandled command:', command);
-    }
-  } catch (err) {
-    console.error('Error handling command:', command, err);
+    case 'add_note':
+      if (notes) itemUpdates.notes = notes;
+      break;
+
+    case 'recommend':
+      if (notes) {
+        itemUpdates.recommend = [notes];
+      }
+      break;
+
+    case 'complete_item':
+    case 'skip_item':
+      // Add logic if needed later
+      break;
+
+    default:
+      break;
+  }
+
+  if (Object.keys(itemUpdates).length > 0) {
+    updateItem(sectionIndex, itemIndex, itemUpdates);
   }
 }

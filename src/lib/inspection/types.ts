@@ -195,51 +195,70 @@ export interface InspectionSummary {
   items: SummaryItem[];
 }
 
+export interface InspectionSessionWithIndex extends InspectionSession {
+  currentSectionIndex: number;
+  currentItemIndex: number;
+}
 export type ParsedCommand = {
   command:
-    | 'recommend'
     | 'update_status'
     | 'update_value'
     | 'add_note'
+    | 'recommend'
     | 'complete_item'
     | 'skip_item'
-    | 'complete_inspection';
+    | 'pause_inspection'
+    | 'finish_inspection';
   section?: string;
   item?: string;
   status?: 'ok' | 'fail' | 'na';
   value?: string;
+  unit?: string; // ✅ ADD THIS
   notes?: string;
+  recommend?: string; // ✅ Must match
+  sectionIndex?: number;
+  itemIndex?: number;
 };
 
-   export type Command =
+export type Command =
   | {
-      type: 'status';
+      type: 'update_status';
+      status: 'ok' | 'fail' | 'na';
       sectionIndex: number;
       itemIndex: number;
-      status: 'ok' | 'fail' | 'na';
     }
   | {
-      type: 'measurement';
-      sectionIndex: number;
-      itemIndex: number;
+      type: 'update_value';
       value: string;
       unit: string;
-    }
-  | {
-      type: 'add';
       sectionIndex: number;
       itemIndex: number;
-      note: string;
+    }
+  | {
+      type: 'add_note';
+      notes: string;
+      sectionIndex: number;
+      itemIndex: number;
     }
   | {
       type: 'recommend';
+      recommendation: string;
       sectionIndex: number;
       itemIndex: number;
-      note?: string;
     }
   | {
       type: 'complete';
+      sectionIndex: number;
+      itemIndex: number;
+    }
+  | {
+      type: 'skip';
+      sectionIndex: number;
+      itemIndex: number;
     }
   | {
       type: 'pause';
+    }
+  | {
+      type: 'complete';
     };

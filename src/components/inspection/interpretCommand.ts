@@ -1,31 +1,32 @@
-// src/components/inspection/interpretCommand.ts
+// src/lib/inspection/interpretCommand.ts
 
 import { ParsedCommand } from '@lib/inspection/types';
 
-export default async function interpretCommand(transcript: string): Promise<ParsedCommand[]> {
+export const interpretCommand = async (transcript: string): Promise<ParsedCommand[]> => {
   try {
     const response = await fetch('/api/ai/interpret', {
       method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({ transcript }),
     });
 
     if (!response.ok) {
-      console.error('Interpret API failed:', response.statusText);
+      console.error('Interpretation request failed');
       return [];
     }
 
-    const resultText = await response.text();
+    const data = await response.json();
 
-    // Extract and clean JSON object from response
-    const jsonStart = resultText.indexOf('{');
-    const jsonEnd = resultText.lastIndexOf('}');
-    const jsonString = resultText.substring(jsonStart, jsonEnd + 1);
+    if (!Array.isArray(data)) {
+      console.warn('Unexpected AI response format:', data);
+      return [];
+    }
 
-    const parsed = JSON.parse(jsonString);
-
-    return Array.isArray(parsed) ? parsed : [parsed];
+    return data as ParsedCommand[];
   } catch (error) {
-    console.error('AI interpretation error:', error);
+    console.error('Interpretation error:', error);
     return [];
   }
-}
+};

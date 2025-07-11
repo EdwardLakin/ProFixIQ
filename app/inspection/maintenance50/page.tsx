@@ -1,18 +1,19 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 import PauseResumeButton from '@lib/inspection/PauseResume';
 import PhotoUploadButton from '@lib/inspection/PhotoUploadButton';
 import StartListeningButton from '@lib/inspection/StartListeningButton';
 import ProgressTracker from '@lib/inspection/ProgressTracker';
-import SmartHighlight from '@lib/inspection/SmartHighlight';
 import useInspectionSession from '@lib/inspection/useInspectionSession';
 import { saveInspectionSession } from '@lib/inspection/save';
-import handleTranscript from '@lib/inspection/handleTranscript';
-import interpretCommand from '@components/inspection/interpretCommand';
+import { handleTranscriptFn } from '@lib/inspection/handleTranscript';
+import { interpretCommand }from '@components/inspection/interpretCommand';
 import { convertParsedCommands } from '@lib/inspection/convertAICommands';
+import { Command } from '@lib/inspection/types';
+
 import {
   ParsedCommand,
   InspectionItemStatus,
@@ -22,6 +23,10 @@ import {
 import { SaveInspectionButton } from '@components/inspection/SaveInspectionButton';
 import FinishInspectionButton from '@components/inspection/FinishInspectionButton';
 import PreviousPageButton from '@components/ui/PreviousPageButton';
+import { v4 as uuidv4 } from 'uuid';
+import { clearModuleContext } from 'next/dist/server/lib/render-server';
+
+const id = uuidv4();
 
 export default function Maintenance50InspectionPage() {
   const searchParams = useSearchParams();
@@ -30,73 +35,6 @@ export default function Maintenance50InspectionPage() {
   const [transcript, setTranscript] = useState('');
   const [parsedCommands, setParsedCommands] = useState<ParsedCommand[]>([]);
   const [isPaused, setIsPaused] = useState(false);
-
-  const startListening = () => {
-    const recognition = new (window as any).webkitSpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
-
-    recognition.onresult = async (event: any) => {
-      const latestTranscript = Array.from(event.results)
-        .map((result: any) => result[0].transcript)
-        .join('');
-      setTranscript(latestTranscript);
-
-      try {
-        const rawCommands = await interpretCommand(latestTranscript);
-        const converted = convertParsedCommands(rawCommands, session);
-        setParsedCommands(rawCommands); // optional for debugging
-
-        for (const cmd of converted) {
-          switch (cmd.type) {
-            case 'status':
-              updateItem(cmd.sectionIndex, cmd.itemIndex, { status: cmd.status });
-              break;
-
-            case 'recommend':
-              updateItem(cmd.sectionIndex, cmd.itemIndex, {
-                recommend: [
-                  ...(session.sections[cmd.sectionIndex].items[cmd.itemIndex].recommend || []),
-                  cmd.note ?? '',
-                ],
-              });
-              break;
-
-            case 'add':
-              const prevNotes =
-                session.sections[cmd.sectionIndex].items[cmd.itemIndex].notes || '';
-              updateItem(cmd.sectionIndex, cmd.itemIndex, {
-                notes: [prevNotes, cmd.note].filter(Boolean).join('\n'),
-              });
-              break;
-
-            case 'measurement':
-              updateItem(cmd.sectionIndex, cmd.itemIndex, {
-                value: cmd.value,
-                unit: cmd.unit,
-              });
-              break;
-
-            case 'pause':
-              updateInspection({ isPaused: true });
-              break;
-
-            case 'complete':
-              finishSession();
-              break;
-
-            default:
-              console.warn('Unknown AI command:', cmd);
-          }
-        }
-      } catch (error) {
-        console.error('Error handling transcript:', error);
-      }
-    };
-
-    recognition.start();
-  };
 
   const customer = {
     first_name: searchParams.get('first_name') || '',
@@ -765,239 +703,215 @@ export default function Maintenance50InspectionPage() {
     updateSection,
   } = useInspectionSession(initialSession);
 
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+
+const handleTranscript = async (transcript: string) => {
+  setTranscript(transcript);
+
+  const rawCommands: ParsedCommand[] = await interpretCommand(transcript);
+  const converted: Command[] = convertParsedCommands(rawCommands, session);
+
+  for (const cmd of rawCommands) {
+  await handleTranscriptFn({
+    command: cmd,
+    session,
+    updateInspection,
+    updateItem,
+    updateSection,
+    finishSession,
+  });
+}
+const startListening = () => {
+  const recognition = new (window as any).webkitSpeechRecognition();
+  recognition.continuous = true;
+  recognition.interimResults = false;
+  recognition.lang = 'en-US';
+
+  recognition.onresult = (event: SpeechRecognitionEvent) => {
+    const lastResult = event.results[event.results.length - 1];
+    const transcript = lastResult[0].transcript.trim();
+    handleTranscript(transcript);
+  };
+
+  recognition.onerror = (event: any) => {
+    console.error('Speech recognition error:', event?.error);
+  };
+
+  recognitionRef.current = recognition;
+  recognition.start();
+  setIsListening(true);
+};
+
+const stopListening = () => {
+  if (recognitionRef.current) {
+    recognitionRef.current.stop();
+    recognitionRef.current = null;
+  }
+  setIsListening(false);
+};
+
   useEffect(() => {
   startSession(initialSession);
 }, [initialSession]);
 
   return (
-  <div className="text-white max-w-3xl mx-auto">
-    <PreviousPageButton to="/inspection" />
+    <div className="text-white max-w-3xl mx-auto">
+  <PreviousPageButton to="/inspection" />
 
-    <h1 className="text-2xl font-bold text-center mb-4">
-      Maintenance 50-Point Inspection
-    </h1>
+  <h1 className="text-2xl font-bold text-center mb-4">
+    Maintenance 50-Point Inspection
+  </h1>
 
-    <StartListeningButton
-      isListening={isListening}
-      setIsListening={setIsListening}
-    />
+  <StartListeningButton
+    isListening={isListening}
+    setIsListening={setIsListening}
+    onStart={startListening}
+  />
 
-    <PauseResumeButton
-      isPaused={session.isPaused}
-      onPause={pauseSession}
-      onResume={resumeSession}
-    />
+  <PauseResumeButton
+    isPaused={isPaused}
+    isListening={isListening}
+    setIsListening={setIsListening}
+    onPause={() => {
+      setIsPaused(true);
+      stopListening();
+    }}
+    onResume={() => {
+      setIsPaused(false);
+      startListening();
+    }}
+    recognitionInstance={recognitionRef.current}
+    setRecognitionRef={(instance) => (recognitionRef.current = instance)}
+  />
 
-    <ProgressTracker
-      currentItem={session.currentItemIndex}
-      currentSection={session.currentSectionIndex}
-      totalSections={session.sections.length}
-      totalItems={
-        session.sections[session.currentSectionIndex]?.items.length || 0
-      }
-    />
-
-    <div className="bg-zinc-900 p-4 rounded mb-4">
-      <h2 className="text-lg font-semibold text-orange-400 mb-2">Customer Info</h2>
-      <p>{session.customer?.first_name} {session.customer?.last_name}</p>
-      <p>{session.customer?.phone} | {session.customer?.email}</p>
-    </div>
-
-    <div className="bg-zinc-900 p-4 rounded mb-6">
-      <h2 className="text-lg font-semibold text-orange-400 mb-2">Vehicle Info</h2>
-      <p>{session.vehicle?.year} {session.vehicle?.make} {session.vehicle?.model}</p>
-      <p>VIN: {session.vehicle?.vin} | Plate: {session.vehicle?.license_plate}</p>
-      <p>Mileage: {session.vehicle?.mileage} | Color: {session.vehicle?.color}</p>
-    </div>
-
-    <SmartHighlight
-  item={session.sections[session.currentSectionIndex].items[session.currentItemIndex]}
-  sectionIndex={session.currentSectionIndex}
-  itemIndex={session.currentItemIndex}
-  session={session}
-  updateItem={updateItem}
-  updateInspection={updateInspection}
-  updateSection={updateSection}
-  finishSession={finishSession}
-  onCommand={(cmd: ParsedCommand) =>
-    handleTranscript({
-      command: cmd,
-      session,
-      updateInspection,
-      updateItem,
-      updateSection,
-      finishSession,
-      sectionIndex: session.currentSectionIndex,
-      itemIndex: session.currentItemIndex,
-    })
-  }
-  interpreter={async (transcript: string) => {
-    return await interpretCommand(transcript);
-    const parsed = await interpretCommand(transcript);
-    for (const command of parsed) {
-      await handleTranscript({
-        command,
-        session,
-        updateInspection,
-        updateItem,
-        updateSection,
-        finishSession,
-        sectionIndex: session.currentSectionIndex,
-        itemIndex: session.currentItemIndex,
-      });
+  <ProgressTracker
+    currentItem={session.currentItemIndex}
+    currentSection={session.currentSectionIndex}
+    totalSections={session.sections.length}
+    totalItems={
+      session.sections[session.currentSectionIndex]?.items.length || 0
     }
-  }}
-  transcript={session.transcript ?? ''}
-/>
+  />
 
-    {/* Render your inspection sections + items below this if needed */}
-   {session.sections.map((section, sectionIndex) => {
-  const isMeasurementOnly = ['Axle 1', 'Axle 2'].includes(section.title);
-  const leftItems = section.items.filter((item) =>
-    item.name?.toLowerCase().includes('left')
-  );
-  const rightItems = section.items.filter((item) =>
-    item.name?.toLowerCase().includes('right')
-  );
-  const centerItems = section.items.filter(
-    (item) =>
-      !item.name?.toLowerCase().includes('left') &&
-      !item.name?.toLowerCase().includes('right')
-  );
+  <div className="bg-zinc-900 p-4 rounded mb-4">
+    <h2 className="text-lg font-semibold text-orange-400 mb-2">Customer Info</h2>
+    <p>{session.customer?.first_name} {session.customer?.last_name}</p>
+    <p>{session.customer?.phone} | {session.customer?.email}</p>
+  </div>
 
-  return (
-    <div key={sectionIndex} className="mb-8">
-      <h2 className="text-xl font-bold mb-2 text-orange-400">{section.title}</h2>
+  <div className="bg-zinc-900 p-4 rounded mb-6">
+    <h2 className="text-lg font-semibold text-orange-400 mb-2">Vehicle Info</h2>
+    <p>{session.vehicle?.year} {session.vehicle?.make} {session.vehicle?.model}</p>
+    <p>VIN: {session.vehicle?.vin} | Plate: {session.vehicle?.license_plate}</p>
+    <p>Mileage: {session.vehicle?.mileage} | Color: {session.vehicle?.color}</p>
+  </div>
 
-      {isMeasurementOnly ? (
-        <>
-          <div className="flex flex-wrap gap-4">
-            <div className="flex-1 min-w-[45%]">
-              {leftItems.map((item, itemIndex) => (
-                <div
-                  key={itemIndex}
-                  className="bg-zinc-800 p-4 rounded mb-4 border border-zinc-700"
-                >
-                  <h3 className="text-lg font-semibold text-white mb-2">
-                    {item.name}
-                  </h3>
-                  <div className="flex items-center space-x-2 mb-3">
-                    <input
-                      type="number"
-                      value={item.value ?? ''}
-                      onChange={(e) =>
-                        updateItem(sectionIndex, itemIndex, {
-                          value: parseFloat(e.target.value),
-                          unit: item.unit || 'mm',
-                        })
-                      }
-                      className="px-2 py-1 bg-zinc-700 text-white rounded w-24"
-                      placeholder="Value"
-                    />
-                    <input
-                      type="text"
-                      value={item.unit ?? ''}
-                      onChange={(e) =>
-                        updateItem(sectionIndex, itemIndex, {
-                          unit: e.target.value,
-                        })
-                      }
-                      className="px-2 py-1 bg-zinc-700 text-white rounded w-20"
-                      placeholder="Unit"
-                    />
+  {session.sections.map((section, sectionIndex) => {
+    const isMeasurementOnly = ['Axle 1', 'Axle 2'].includes(section.title);
+    const leftItems = section.items.filter((item) =>
+      item.name?.toLowerCase().includes('left')
+    );
+    const rightItems = section.items.filter((item) =>
+      item.name?.toLowerCase().includes('right')
+    );
+    const centerItems = section.items.filter(
+      (item) =>
+        !item.name?.toLowerCase().includes('left') &&
+        !item.name?.toLowerCase().includes('right')
+    );
+
+    return (
+      <div key={sectionIndex} className="mb-8">
+        <h2 className="text-xl font-bold mb-2 text-orange-400">{section.title}</h2>
+
+        {isMeasurementOnly ? (
+          <>
+            <div className="flex flex-wrap gap-4">
+              <div className="flex-1 min-w-[45%]">
+                {leftItems.map((item, itemIndex) => (
+                  <div
+                    key={itemIndex}
+                    className="bg-zinc-800 p-4 rounded mb-4 border border-zinc-700"
+                  >
+                    <h3 className="text-lg font-semibold text-white mb-2">
+                      {item.name}
+                    </h3>
+                    <div className="flex items-center space-x-2 mb-3">
+                      <input
+                        type="number"
+                        value={item.value ?? ''}
+                        onChange={(e) =>
+                          updateItem(sectionIndex, itemIndex, {
+                            value: parseFloat(e.target.value),
+                            unit: item.unit || 'mm',
+                          })
+                        }
+                        className="px-2 py-1 bg-zinc-700 text-white rounded w-24"
+                        placeholder="Value"
+                      />
+                      <input
+                        type="text"
+                        value={item.unit ?? ''}
+                        onChange={(e) =>
+                          updateItem(sectionIndex, itemIndex, {
+                            unit: e.target.value,
+                          })
+                        }
+                        className="px-2 py-1 bg-zinc-700 text-white rounded w-20"
+                        placeholder="Unit"
+                      />
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
 
-            <div className="flex-1 min-w-[45%]">
-              {rightItems.map((item, itemIndex) => (
-                <div
-                  key={itemIndex}
-                  className="bg-zinc-800 p-4 rounded mb-4 border border-zinc-700"
-                >
-                  <h3 className="text-lg font-semibold text-white mb-2">
-                    {item.name}
-                  </h3>
-                  <div className="flex items-center space-x-2 mb-3">
-                    <input
-                      type="number"
-                      value={item.value ?? ''}
-                      onChange={(e) =>
-                        updateItem(sectionIndex, itemIndex, {
-                          value: parseFloat(e.target.value),
-                          unit: item.unit || 'mm',
-                        })
-                      }
-                      className="px-2 py-1 bg-zinc-700 text-white rounded w-24"
-                      placeholder="Value"
-                    />
-                    <input
-                      type="text"
-                      value={item.unit ?? ''}
-                      onChange={(e) =>
-                        updateItem(sectionIndex, itemIndex, {
-                          unit: e.target.value,
-                        })
-                      }
-                      className="px-2 py-1 bg-zinc-700 text-white rounded w-20"
-                      placeholder="Unit"
-                    />
+              <div className="flex-1 min-w-[45%]">
+                {rightItems.map((item, itemIndex) => (
+                  <div
+                    key={itemIndex}
+                    className="bg-zinc-800 p-4 rounded mb-4 border border-zinc-700"
+                  >
+                    <h3 className="text-lg font-semibold text-white mb-2">
+                      {item.name}
+                    </h3>
+                    <div className="flex items-center space-x-2 mb-3">
+                      <input
+                        type="number"
+                        value={item.value ?? ''}
+                        onChange={(e) =>
+                          updateItem(sectionIndex, itemIndex, {
+                            value: parseFloat(e.target.value),
+                            unit: item.unit || 'mm',
+                          })
+                        }
+                        className="px-2 py-1 bg-zinc-700 text-white rounded w-24"
+                        placeholder="Value"
+                      />
+                      <input
+                        type="text"
+                        value={item.unit ?? ''}
+                        onChange={(e) =>
+                          updateItem(sectionIndex, itemIndex, {
+                            unit: e.target.value,
+                          })
+                        }
+                        className="px-2 py-1 bg-zinc-700 text-white rounded w-20"
+                        placeholder="Unit"
+                      />
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {centerItems.map((item, itemIndex) => (
-            <div
-              key={itemIndex}
-              className="bg-zinc-800 p-4 rounded mb-4 border border-zinc-700"
-            >
-              <h3 className="text-lg font-semibold text-white mb-2">{item.name}</h3>
-              <div className="flex items-center space-x-2 mb-3">
-                <input
-                  type="number"
-                  value={item.value ?? ''}
-                  onChange={(e) =>
-                    updateItem(sectionIndex, itemIndex, {
-                      value: parseFloat(e.target.value),
-                      unit: item.unit || 'mm',
-                    })
-                  }
-                  className="px-2 py-1 bg-zinc-700 text-white rounded w-24"
-                  placeholder="Value"
-                />
-                <input
-                  type="text"
-                  value={item.unit ?? ''}
-                  onChange={(e) =>
-                    updateItem(sectionIndex, itemIndex, {
-                      unit: e.target.value,
-                    })
-                  }
-                  className="px-2 py-1 bg-zinc-700 text-white rounded w-20"
-                  placeholder="Unit"
-                />
+                ))}
               </div>
             </div>
-          ))}
-        </>
-      ) : (
-        section.items.map((item, itemIndex) => {
-          const isSelected = (val: string) => item.status === val;
-          const isWheelTorque = item.name?.toLowerCase().includes('wheel torque');
 
-          return (
-            <div
-              key={itemIndex}
-              className="bg-zinc-800 p-4 rounded mb-4 border border-zinc-700"
-            >
-              <h3 className="text-lg font-semibold text-white mb-2">
-                {item.name}
-              </h3>
-
-              {isWheelTorque ? (
+            {centerItems.map((item, itemIndex) => (
+              <div
+                key={itemIndex}
+                className="bg-zinc-800 p-4 rounded mb-4 border border-zinc-700"
+              >
+                <h3 className="text-lg font-semibold text-white mb-2">
+                  {item.name}
+                </h3>
                 <div className="flex items-center space-x-2 mb-3">
                   <input
                     type="number"
@@ -1005,10 +919,10 @@ export default function Maintenance50InspectionPage() {
                     onChange={(e) =>
                       updateItem(sectionIndex, itemIndex, {
                         value: parseFloat(e.target.value),
-                        unit: item.unit || 'ft lbs',
+                        unit: item.unit || 'mm',
                       })
                     }
-                    className="px-2 py-1 bg-zinc-700 text-white rounded w-32"
+                    className="px-2 py-1 bg-zinc-700 text-white rounded w-24"
                     placeholder="Value"
                   />
                   <input
@@ -1023,66 +937,109 @@ export default function Maintenance50InspectionPage() {
                     placeholder="Unit"
                   />
                 </div>
-              ) : (
-                <div className="flex flex-wrap gap-2 mb-3">
-                  {['ok', 'fail', 'na', 'recommend'].map((val) => (
-                    <button
-                      key={val}
-                      className={`px-3 py-1 rounded ${
-                        isSelected(val)
-                          ? val === 'ok'
-                            ? 'bg-green-600 text-white'
-                            : val === 'fail'
-                            ? 'bg-red-600 text-white'
-                            : val === 'na'
-                            ? 'bg-yellow-500 text-white'
-                            : 'bg-blue-500 text-white'
-                          : 'bg-zinc-700 text-gray-300'
-                      }`}
-                      onClick={() =>
-                        updateItem(sectionIndex, itemIndex, { status: val as InspectionItemStatus })
+              </div>
+            ))}
+          </>
+        ) : (
+          section.items.map((item, itemIndex) => {
+            const isSelected = (val: string) => item.status === val;
+            const isWheelTorque = item.name?.toLowerCase().includes('wheel torque');
+
+            return (
+              <div
+                key={itemIndex}
+                className="bg-zinc-800 p-4 rounded mb-4 border border-zinc-700"
+              >
+                <h3 className="text-lg font-semibold text-white mb-2">
+                  {item.name}
+                </h3>
+
+                {isWheelTorque ? (
+                  <div className="flex items-center space-x-2 mb-3">
+                    <input
+                      type="number"
+                      value={item.value ?? ''}
+                      onChange={(e) =>
+                        updateItem(sectionIndex, itemIndex, {
+                          value: parseFloat(e.target.value),
+                          unit: item.unit || 'ft lbs',
+                        })
                       }
-                    >
-                      {val.toUpperCase()}
-                    </button>
-                  ))}
-                </div>
-              )}
+                      className="px-2 py-1 bg-zinc-700 text-white rounded w-32"
+                      placeholder="Value"
+                    />
+                    <input
+                      type="text"
+                      value={item.unit ?? ''}
+                      onChange={(e) =>
+                        updateItem(sectionIndex, itemIndex, {
+                          unit: e.target.value,
+                        })
+                      }
+                      className="px-2 py-1 bg-zinc-700 text-white rounded w-20"
+                      placeholder="Unit"
+                    />
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {['ok', 'fail', 'na', 'recommend'].map((val) => (
+                      <button
+                        key={val}
+                        className={`px-3 py-1 rounded ${
+                          isSelected(val)
+                            ? val === 'ok'
+                              ? 'bg-green-600 text-white'
+                              : val === 'fail'
+                              ? 'bg-red-600 text-white'
+                              : val === 'na'
+                              ? 'bg-yellow-500 text-white'
+                              : 'bg-blue-500 text-white'
+                            : 'bg-zinc-700 text-gray-300'
+                        }`}
+                        onClick={() =>
+                          updateItem(sectionIndex, itemIndex, {
+                            status: val as InspectionItemStatus,
+                          })
+                        }
+                      >
+                        {val.toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
-              {(item.status === 'fail' || item.status === 'recommend') && (
-                <PhotoUploadButton
-                  photoUrls={item.photoUrls || []}
-                  onChange={(urls: string[]) => {
-                  updateItem(sectionIndex, itemIndex, { photoUrls: urls });
-                }}
-              />
-      )}
+                {(item.status === 'fail' || item.status === 'recommend') && (
+                  <PhotoUploadButton
+                    photoUrls={item.photoUrls || []}
+                    onChange={(urls: string[]) => {
+                      updateItem(sectionIndex, itemIndex, { photoUrls: urls });
+                    }}
+                  />
+                )}
 
-              {item.notes && (
-                <p className="text-sm text-gray-400 mt-2 whitespace-pre-wrap">
-                  <strong>Notes:</strong> {item.notes}
-                </p>
-              )}
+                {item.notes && (
+                  <p className="text-sm text-gray-400 mt-2 whitespace-pre-wrap">
+                    <strong>Notes:</strong> {item.notes}
+                  </p>
+                )}
 
-              {(item.recommend?.length ?? 0) > 0 && (
-                <p className="text-sm text-yellow-400 mt-2">
-                <strong>Recommended:</strong> {item.recommend?.join(', ')}
-              </p>
-            )}
-            </div>
-          );
-        })
-      )}
-    </div>
-  );
-})}
+                {(item.recommend?.length ?? 0) > 0 && (
+                  <p className="text-sm text-yellow-400 mt-2">
+                    <strong>Recommended:</strong> {item.recommend?.join(', ')}
+                  </p>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+    );
+  })}
 
-
-<div className="flex justify-between items-center mt-8 gap-4">
-  <SaveInspectionButton />
-  <FinishInspectionButton />
+  <div className="flex justify-between items-center mt-8 gap-4">
+    <SaveInspectionButton />
+    <FinishInspectionButton />
+  </div>
 </div>
-
-   </div>
-);
-}
+  );
+}}

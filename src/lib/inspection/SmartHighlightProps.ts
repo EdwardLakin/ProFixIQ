@@ -14,6 +14,6 @@ export interface SmartHighlightProps {
   updateSection: (sectionIndex: number, updates: Partial<any>) => void;
   finishSession: () => void;
   onCommand: (command: ParsedCommand) => void;
-  interpreter: (transcript: string) => Promise<ParsedCommand[]>;
+  interpreter: (transcript: string) => Promise<void>;
   transcript: string;
 }

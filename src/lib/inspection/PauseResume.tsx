@@ -1,38 +1,55 @@
 'use client';
 
-import { useEffect } from 'react';
-import useInspectionSession from '@lib/inspection/useInspectionSession';
+import { stopVoiceRecognition, startVoiceRecognition } from '@lib/inspection/voiceControl';
 
 interface PauseResumeButtonProps {
   isPaused: boolean;
   onPause: () => void;
   onResume: () => void;
+  isListening: boolean;
+  setIsListening: (val: boolean) => void;
+  recognitionInstance: SpeechRecognition | null;
+  onTranscript?: (text: string) => void;
+  setRecognitionRef: (instance: SpeechRecognition | null) => void;
 }
 
 const PauseResumeButton = ({
   isPaused,
   onPause,
   onResume,
+  isListening,
+  setIsListening,
+  recognitionInstance,
+  onTranscript,
+  setRecognitionRef,
 }: PauseResumeButtonProps) => {
-  const { session } = useInspectionSession();
+  const handlePause = () => {
+    stopVoiceRecognition(recognitionInstance);
+    onPause();
+    setIsListening(false);
+  };
 
-  useEffect(() => {
-    // Optional: log status when toggled
-    console.log('Inspection status:', session.status);
-  }, [session.status]);
+  const handleResume = () => {
+    const newInstance = startVoiceRecognition((text: string) => {
+      onTranscript?.(text);
+    });
+    setRecognitionRef(newInstance);
+    onResume();
+    setIsListening(true);
+  };
 
   return (
     <div className="text-center mt-2">
       {isPaused ? (
         <button
-          onClick={onResume}
+          onClick={handleResume}
           className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
         >
           Resume
         </button>
       ) : (
         <button
-          onClick={onPause}
+          onClick={handlePause}
           className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded"
         >
           Pause
