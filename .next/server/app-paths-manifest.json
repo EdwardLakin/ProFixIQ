@@ -1,6 +1,5 @@
 {
-  "/api/ai/interpret/route": "app/api/ai/interpret/route.js",
   "/_not-found/page": "app/_not-found/page.js",
-  "/inspection/customer-vehicle/page": "app/inspection/customer-vehicle/page.js",
-  "/inspection/maintenance50/page": "app/inspection/maintenance50/page.js"
+  "/inspection/page": "app/inspection/page.js",
+  "/inspection/customer-vehicle/page": "app/inspection/customer-vehicle/page.js"
 }

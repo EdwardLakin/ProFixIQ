@@ -55,7 +55,6 @@ export default function CustomerVehicleFormPage() {
       body: JSON.stringify({
         customer,
         vehicle,
-        template: inspectionType,
       }),
     });
 
