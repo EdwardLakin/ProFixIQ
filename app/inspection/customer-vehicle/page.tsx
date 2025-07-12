@@ -37,36 +37,46 @@ export default function CustomerVehicleFormPage() {
     }
   };
 
-  const handleStart = async () => {
-    const query = new URLSearchParams({
-      ...customer,
-      ...vehicle,
-    });
+ const handleStart = async () => {
+  if (
+    !customer.first_name ||
+    !customer.last_name ||
+    !vehicle.make ||
+    !vehicle.model
+  ) {
+    alert('Please fill in all required fields.');
+    return;
+  }
 
-    if (
-      !customer.first_name ||
-      !customer.last_name ||
-      !vehicle.make ||
-      !vehicle.model
-    ) {
-      alert('Please fill in all required fields.');
-      return;
-    }
-
-    // Save session to DB
-    await fetch('/api/inspection/save', {
+  try {
+    const res = await fetch('/api/inspection/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ customer, vehicle }),
+      body: JSON.stringify({
+        customer,
+        vehicle,
+        template: inspectionType,
+      }),
     });
 
-    // Save to localStorage
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.error || 'Save failed');
+    }
+
+    // Save locally for inspection usage
     localStorage.setItem('inspectionCustomer', JSON.stringify(customer));
     localStorage.setItem('inspectionVehicle', JSON.stringify(vehicle));
 
-    // Navigate with query string
-    router.push(`/inspection/${inspectionType}?${query.toString()}`);
-  };
+    // Navigate to inspection page with inspectionId
+    alert('Customer and vehicle saved. Starting inspection...');
+    router.push(`/inspection/${inspectionType}?id=${data.inspectionId}`);
+  } catch (err) {
+    console.error('Failed to start inspection:', err);
+    alert('Something went wrong while starting the inspection.');
+  }
+};
 
   return (
     <div className="p-4 space-y-4">
