@@ -15,29 +15,49 @@ export async function generateInspectionPDF(session: InspectionSession): Promise
 
   let y = height - margin;
 
-  const drawText = (text: string = '') => {
+  const drawText = (text: string = '', options: { bold?: boolean } = {}) => {
     if (y < margin) {
-      page.drawText('...continued...', { x: margin, y, size: fontSize, font, color: rgb(1, 0, 0) });
+      page.drawText('...continued on next page...', {
+        x: margin,
+        y,
+        size: fontSize,
+        font,
+        color: rgb(1, 0, 0),
+      });
       y = height - margin;
     }
-    page.drawText(text, { x: margin, y, size: fontSize, font, color: rgb(0, 0, 0) });
+
+    page.drawText(text, {
+      x: margin,
+      y,
+      size: fontSize,
+      font,
+      color: options.bold ? rgb(0, 0, 0.8) : rgb(0, 0, 0),
+    });
+
     y -= lineHeight;
   };
 
+  const drawMultiline = (label: string, content: string) => {
+    const lines = content.split('\n');
+    drawText(`${label}:`);
+    lines.forEach(line => drawText(`    ${line}`));
+  };
+
   // --- HEADER ---
-  drawText('Inspection Summary');
-  drawText(`Template: ${session.templateName}`);
+  drawText('Inspection Summary', { bold: true });
+  drawText(`Template: ${session.templateName ?? 'N/A'}`);
   drawText('');
 
   // --- CUSTOMER INFO ---
-  drawText('Customer Info:');
+  drawText('Customer Info:', { bold: true });
   drawText(`Name: ${session.customer?.first_name ?? ''} ${session.customer?.last_name ?? ''}`);
   drawText(`Phone: ${session.customer?.phone ?? ''}`);
   drawText(`Email: ${session.customer?.email ?? ''}`);
   drawText('');
 
   // --- VEHICLE INFO ---
-  drawText('Vehicle Info:');
+  drawText('Vehicle Info:', { bold: true });
   drawText(`Year/Make/Model: ${session.vehicle?.year ?? ''} ${session.vehicle?.make ?? ''} ${session.vehicle?.model ?? ''}`);
   drawText(`VIN: ${session.vehicle?.vin ?? ''}`);
   drawText(`License Plate: ${session.vehicle?.license_plate ?? ''}`);
@@ -45,7 +65,8 @@ export async function generateInspectionPDF(session: InspectionSession): Promise
   drawText(`Color: ${session.vehicle?.color ?? ''}`);
   drawText('');
 
-  // --- INSPECTION INFO ---
+  // --- INSPECTION METADATA ---
+  drawText('Inspection Metadata:', { bold: true });
   drawText(`Status: ${session.status ?? 'N/A'}`);
   drawText(`Vehicle ID: ${session.vehicleId ?? 'N/A'}`);
   drawText(`Customer ID: ${session.customerId ?? 'N/A'}`);
@@ -54,20 +75,18 @@ export async function generateInspectionPDF(session: InspectionSession): Promise
   drawText(`Completed: ${session.completed ? 'Yes' : 'No'}`);
   drawText('');
 
-  // --- SECTIONS AND ITEMS ---
+  // --- INSPECTION SECTIONS & ITEMS ---
   session.sections.forEach((section, sectionIndex) => {
-    drawText(`Section ${sectionIndex + 1}: ${section.title}`);
+    drawText(`Section ${sectionIndex + 1}: ${section.title}`, { bold: true });
 
     section.items.forEach((item, itemIndex) => {
-      drawText(`  - Item: ${item.name}`);
+      drawText(`  • ${item.name}`);
       drawText(`    Status: ${item.status ?? 'N/A'}`);
       if (item.value) drawText(`    Value: ${item.value}`);
       if (item.unit) drawText(`    Unit: ${item.unit}`);
-      if (item.notes) drawText(`    Notes: ${item.notes}`);
-      if (item.recommend?.length)
-        drawText(`    Recommend: ${item.recommend.join(', ')}`);
-      if (item.photoUrls?.length)
-        drawText(`    Photos: ${item.photoUrls.join(', ')}`);
+      if (item.notes) drawMultiline('    Notes', item.notes);
+      if (item.recommend?.length) drawText(`    Recommend: ${item.recommend.join(', ')}`);
+      if (item.photoUrls?.length) drawText(`    Photos: ${item.photoUrls.join(', ')}`);
     });
 
     drawText('');

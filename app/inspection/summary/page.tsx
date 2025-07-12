@@ -11,8 +11,8 @@ import HomeButton from '@components/ui/HomeButton';
 import PreviousPageButton from '@components/ui/PreviousPageButton';
 
 export default function SummaryPage() {
-  const { session, updateItem } = useInspectionSession();
   const router = useRouter();
+  const { session, updateItem } = useInspectionSession();
 
   const handleFieldChange = (
     sectionIndex: number,
@@ -33,7 +33,7 @@ export default function SummaryPage() {
       link.download = 'inspection_summary.pdf';
       link.click();
 
-      // Clean up after save
+      // Clean up local storage
       localStorage.removeItem('inspectionCustomer');
       localStorage.removeItem('inspectionVehicle');
 
@@ -48,30 +48,29 @@ export default function SummaryPage() {
   return (
     <div className="p-4">
       <div className="flex justify-between mb-4">
-         <PreviousPageButton to="/inspection/menu" />       
+        <PreviousPageButton to="/inspection/menu" />
         <HomeButton />
       </div>
 
+      {/* Customer & Vehicle Info */}
       <div className="bg-zinc-800 text-white p-4 rounded mb-6">
-  <h2 className="text-xl font-bold mb-2">Customer Info</h2>
-  <p>Name: {session.customer?.first_name} {session.customer?.last_name}</p>
-  <p>Phone: {session.customer?.phone}</p>
-  <p>Email: {session.customer?.email}</p>
+        <h2 className="text-xl font-bold mb-2">Customer Info</h2>
+        <p>Name: {session.customer?.first_name} {session.customer?.last_name}</p>
+        <p>Phone: {session.customer?.phone}</p>
+        <p>Email: {session.customer?.email}</p>
 
-  <h2 className="text-xl font-bold mt-4 mb-2">Vehicle Info</h2>
-  <p>Year/Make/Model: {session.vehicle?.year} {session.vehicle?.make} {session.vehicle?.model}</p>
-  <p>VIN: {session.vehicle?.vin}</p>
-  <p>License Plate: {session.vehicle?.license_plate}</p>
-  <p>Mileage: {session.vehicle?.mileage}</p>
-  <p>Color: {session.vehicle?.color}</p>
-</div>
+        <h2 className="text-xl font-bold mt-4 mb-2">Vehicle Info</h2>
+        <p>Year/Make/Model: {session.vehicle?.year} {session.vehicle?.make} {session.vehicle?.model}</p>
+        <p>VIN: {session.vehicle?.vin}</p>
+        <p>License Plate: {session.vehicle?.license_plate}</p>
+        <p>Mileage: {session.vehicle?.mileage}</p>
+        <p>Color: {session.vehicle?.color}</p>
+      </div>
 
+      {/* Sections and Items */}
       {session.sections.map((section: InspectionSection, sectionIndex: number) => (
         <div key={sectionIndex} className="mb-6 border rounded-md">
-          <div className="bg-gray-200 px-4 py-2 text-left font-bold">
-            {section.title}
-          </div>
-
+          <div className="bg-gray-200 px-4 py-2 font-bold">{section.title}</div>
           <div className="p-4 space-y-6">
             {section.items.map((item: InspectionItem, itemIndex: number) => (
               <div key={itemIndex} className="border-b pb-4 space-y-2">
@@ -87,6 +86,7 @@ export default function SummaryPage() {
                         handleFieldChange(sectionIndex, itemIndex, 'status', e.target.value)
                       }
                     >
+                      <option value="">Select</option>
                       <option value="ok">OK</option>
                       <option value="fail">Fail</option>
                       <option value="na">N/A</option>
@@ -128,9 +128,9 @@ export default function SummaryPage() {
                   </label>
                 </div>
 
-                {Array.isArray(item?.photoUrls) && item?.photoUrls.length > 0 && (
+                {Array.isArray(item?.photoUrls) && item.photoUrls.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {item?.photoUrls.map((url, i) => (
+                    {item.photoUrls.map((url, i) => (
                       <img
                         key={i}
                         src={url}

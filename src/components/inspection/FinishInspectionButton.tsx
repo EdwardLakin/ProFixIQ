@@ -1,21 +1,23 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { Button } from '@components/ui/Button';
-import useInspectionSession from '@lib/inspection/useInspectionSession';
+import { Button }from '@components/ui/Button';
+import  useInspectionSession  from '@lib/inspection/useInspectionSession';
 import { saveInspectionSession } from '@lib/inspection/save';
 import { generateInspectionSummary } from '@lib/inspection/summary';
 
 export default function FinishInspectionButton() {
   const router = useRouter();
-  const { session, finishSession } = useInspectionSession(false);
+  const { session, finishSession } = useInspectionSession();
 
   const handleFinish = async () => {
     finishSession(); // Mark session as complete
-    const summary = generateInspectionSummary(session);
-    console.log(summary); // Optional: for PDF/email/logging
 
-    await saveInspectionSession(session); // Save to Supabase
+    const summary = generateInspectionSummary(session); // Generate editable summary
+    console.log(summary); // Optional: for debugging
+
+    await saveInspectionSession(session); // Save full session to DB
+
     router.push('/app/inspection/summary'); // Navigate to summary screen
   };
 

@@ -122,9 +122,15 @@ const updateItem = (
   };
 
   const startSession = (sessionData: Partial<InspectionSession>) => {
-  setSession((prev) => ({
-    ...prev,
+  console.log('Starting session with:', sessionData.sections?.length, 'sections');
+
+  const newSession: InspectionSession = {
+    ...session,
     ...sessionData,
+    sections:
+      sessionData.sections && sessionData.sections.length > 0
+        ? sessionData.sections
+        : session.sections,
     currentSectionIndex: 0,
     currentItemIndex: 0,
     transcript: '',
@@ -133,7 +139,15 @@ const updateItem = (
     status: 'in_progress',
     isPaused: false,
     lastUpdated: new Date().toISOString(),
-  }));
+
+    // These fallback functions are required to satisfy the InspectionSession type
+    updateItem: session.updateItem,
+    onStart: session.onStart,
+    onPause: session.onPause,
+    onResume: session.onResume,
+  };
+
+  setSession(newSession);
 };
 
   const setIsListening = (value: boolean) => {

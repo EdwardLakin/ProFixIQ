@@ -36,6 +36,8 @@ export default function Maintenance50InspectionPage() {
   const [parsedCommands, setParsedCommands] = useState<ParsedCommand[]>([]);
   const [isPaused, setIsPaused] = useState(false);
 
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+
   const customer = {
     first_name: searchParams.get('first_name') || '',
     last_name: searchParams.get('last_name') || '',
@@ -54,6 +56,7 @@ export default function Maintenance50InspectionPage() {
   };
 
   const initialSession = useMemo(() => ({
+    id: uuidv4(),
     templateName: 'Maintenance 50-Point Inspection',
     status: 'not_started' as InspectionStatus,
     isPaused: false,
@@ -85,10 +88,30 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
+            name: 'Front Left Tire Tread Depth',
+            status: '' as InspectionItemStatus,
+            value: '',
+            unit: 'mm',
+            notes: '',
+            item: 'LF',
+            photoUrls: [],
+            recommend: [],
+          },
+          {
             name: 'Front Right Tire Pressure',
             status: '' as InspectionItemStatus,
             unit: 'psi',
             value: '',
+            notes: '',
+            item: 'RF',
+            photoUrls: [],
+            recommend: [],
+          },
+          {
+            name: 'Front Right Tire Tread Depth',
+            status: '' as InspectionItemStatus,
+            value: '',
+            unit: 'mm',
             notes: '',
             item: 'RF',
             photoUrls: [],
@@ -172,10 +195,30 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
+            name: 'Rear Left Tire Tread Depth',
+            status: '' as InspectionItemStatus,
+            value: '',
+            unit: 'mm',
+            notes: '',
+            item: 'LR',
+            photoUrls: [],
+            recommend: [],
+          },
+          {
             name: 'Rear Right Tire Pressure',
             status: '' as InspectionItemStatus,
             unit: 'psi',
             value: '',
+            notes: '',
+            item: 'RR',
+            photoUrls: [],
+            recommend: [],
+          },
+          {
+            name: 'Rear Right Tire Tread Depth',
+            status: '' as InspectionItemStatus,
+            value: '',
+            unit: 'mm',
             notes: '',
             item: 'RR',
             photoUrls: [],
@@ -703,215 +746,128 @@ export default function Maintenance50InspectionPage() {
     updateSection,
   } = useInspectionSession(initialSession);
 
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
-
-const handleTranscript = async (transcript: string) => {
-  setTranscript(transcript);
-
-  const rawCommands: ParsedCommand[] = await interpretCommand(transcript);
-  const converted: Command[] = convertParsedCommands(rawCommands, session);
-
-  for (const cmd of rawCommands) {
-  await handleTranscriptFn({
-    command: cmd,
-    session,
-    updateInspection,
-    updateItem,
-    updateSection,
-    finishSession,
-  });
-}
-const startListening = () => {
-  const recognition = new (window as any).webkitSpeechRecognition();
-  recognition.continuous = true;
-  recognition.interimResults = false;
-  recognition.lang = 'en-US';
-
-  recognition.onresult = (event: SpeechRecognitionEvent) => {
-    const lastResult = event.results[event.results.length - 1];
-    const transcript = lastResult[0].transcript.trim();
-    handleTranscript(transcript);
-  };
-
-  recognition.onerror = (event: any) => {
-    console.error('Speech recognition error:', event?.error);
-  };
-
-  recognitionRef.current = recognition;
-  recognition.start();
-  setIsListening(true);
-};
-
-const stopListening = () => {
-  if (recognitionRef.current) {
-    recognitionRef.current.stop();
-    recognitionRef.current = null;
-  }
-  setIsListening(false);
-};
-
   useEffect(() => {
-  startSession(initialSession);
-}, [initialSession]);
+    startSession(initialSession);
+  }, [initialSession]);
+
+  if (!session || !session.sections || session.sections.length === 0) {
+    console.warn('Session not loaded or missing sections:', session);
+    return <div className="text-white p-4">Loading inspection...</div>;
+  }
+
+  const handleTranscript = async (transcript: string) => {
+    setTranscript(transcript);
+    const rawCommands: ParsedCommand[] = await interpretCommand(transcript);
+    const converted: Command[] = convertParsedCommands(rawCommands, session);
+    for (const cmd of rawCommands) {
+      await handleTranscriptFn({
+        command: cmd,
+        session,
+        updateInspection,
+        updateItem,
+        updateSection,
+        finishSession,
+      });
+    }
+  };
+
+  const startListening = () => {
+    const recognition = new (window as any).webkitSpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
+
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      const lastResult = event.results[event.results.length - 1];
+      const transcript = lastResult[0].transcript.trim();
+      handleTranscript(transcript);
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error('Speech recognition error:', event?.error);
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setIsListening(true);
+  };
+
+  const stopListening = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
+    setIsListening(false);
+  };
+
+return (
+  <div className="px-4">
+    <h1 className="text-2xl font-bold text-center mb-4">
+      Maintenance 50-Point Inspection
+    </h1>
+
+    <StartListeningButton
+      isListening={isListening}
+      setIsListening={setIsListening}
+      onStart={startListening}
+    />
+
+    <PauseResumeButton
+      isPaused={isPaused}
+      isListening={isListening}
+      setIsListening={setIsListening}
+      onPause={() => {
+        setIsPaused(true);
+        stopListening();
+      }}
+      onResume={() => {
+        setIsPaused(false);
+        startListening();
+      }}
+      recognitionInstance={recognitionRef.current}
+      setRecognitionRef={(instance) => (recognitionRef.current = instance)}
+    />
+
+      <ProgressTracker
+  currentItem={session.currentItemIndex}
+  currentSection={session.currentSectionIndex}
+  totalSections={session.sections.length}
+  totalItems={session.sections[session.currentSectionIndex]?.items.length || 0}
+/>
+
+<div className="bg-zinc-900 p-4 rounded mb-4">
+  <h2 className="text-lg font-semibold text-orange-400 mb-2">Customer Info</h2>
+  <p>{session.customer?.first_name} {session.customer?.last_name}</p>
+  <p>{session.customer?.phone} | {session.customer?.email}</p>
+</div>
+
+<div className="bg-zinc-900 p-4 rounded mb-6">
+  <h2 className="text-lg font-semibold text-orange-400 mb-2">Vehicle Info</h2>
+  <p>{session.vehicle?.year} {session.vehicle?.make} {session.vehicle?.model}</p>
+  <p>VIN: {session.vehicle?.vin} | Plate: {session.vehicle?.license_plate}</p>
+  <p>Mileage: {session.vehicle?.mileage} | Color: {session.vehicle?.color}</p>
+</div>
+
+{session.sections.map((section, sectionIndex) => {
+  const isAxle = ['axle 1', 'axle 2'].includes(section.title.toLowerCase());
+  const leftItems = section.items.filter((item) =>
+    item.name.toLowerCase().includes('left')
+  );
+  const rightItems = section.items.filter((item) =>
+    item.name.toLowerCase().includes('right')
+  );
 
   return (
-    <div className="text-white max-w-3xl mx-auto">
-  <PreviousPageButton to="/inspection" />
+    <div key={sectionIndex} className="mb-8">
+      <h2 className="text-xl font-bold mb-2 text-orange-400">{section.title}</h2>
 
-  <h1 className="text-2xl font-bold text-center mb-4">
-    Maintenance 50-Point Inspection
-  </h1>
-
-  <StartListeningButton
-    isListening={isListening}
-    setIsListening={setIsListening}
-    onStart={startListening}
-  />
-
-  <PauseResumeButton
-    isPaused={isPaused}
-    isListening={isListening}
-    setIsListening={setIsListening}
-    onPause={() => {
-      setIsPaused(true);
-      stopListening();
-    }}
-    onResume={() => {
-      setIsPaused(false);
-      startListening();
-    }}
-    recognitionInstance={recognitionRef.current}
-    setRecognitionRef={(instance) => (recognitionRef.current = instance)}
-  />
-
-  <ProgressTracker
-    currentItem={session.currentItemIndex}
-    currentSection={session.currentSectionIndex}
-    totalSections={session.sections.length}
-    totalItems={
-      session.sections[session.currentSectionIndex]?.items.length || 0
-    }
-  />
-
-  <div className="bg-zinc-900 p-4 rounded mb-4">
-    <h2 className="text-lg font-semibold text-orange-400 mb-2">Customer Info</h2>
-    <p>{session.customer?.first_name} {session.customer?.last_name}</p>
-    <p>{session.customer?.phone} | {session.customer?.email}</p>
-  </div>
-
-  <div className="bg-zinc-900 p-4 rounded mb-6">
-    <h2 className="text-lg font-semibold text-orange-400 mb-2">Vehicle Info</h2>
-    <p>{session.vehicle?.year} {session.vehicle?.make} {session.vehicle?.model}</p>
-    <p>VIN: {session.vehicle?.vin} | Plate: {session.vehicle?.license_plate}</p>
-    <p>Mileage: {session.vehicle?.mileage} | Color: {session.vehicle?.color}</p>
-  </div>
-
-  {session.sections.map((section, sectionIndex) => {
-    const isMeasurementOnly = ['Axle 1', 'Axle 2'].includes(section.title);
-    const leftItems = section.items.filter((item) =>
-      item.name?.toLowerCase().includes('left')
-    );
-    const rightItems = section.items.filter((item) =>
-      item.name?.toLowerCase().includes('right')
-    );
-    const centerItems = section.items.filter(
-      (item) =>
-        !item.name?.toLowerCase().includes('left') &&
-        !item.name?.toLowerCase().includes('right')
-    );
-
-    return (
-      <div key={sectionIndex} className="mb-8">
-        <h2 className="text-xl font-bold mb-2 text-orange-400">{section.title}</h2>
-
-        {isMeasurementOnly ? (
-          <>
-            <div className="flex flex-wrap gap-4">
-              <div className="flex-1 min-w-[45%]">
-                {leftItems.map((item, itemIndex) => (
-                  <div
-                    key={itemIndex}
-                    className="bg-zinc-800 p-4 rounded mb-4 border border-zinc-700"
-                  >
-                    <h3 className="text-lg font-semibold text-white mb-2">
-                      {item.name}
-                    </h3>
-                    <div className="flex items-center space-x-2 mb-3">
-                      <input
-                        type="number"
-                        value={item.value ?? ''}
-                        onChange={(e) =>
-                          updateItem(sectionIndex, itemIndex, {
-                            value: parseFloat(e.target.value),
-                            unit: item.unit || 'mm',
-                          })
-                        }
-                        className="px-2 py-1 bg-zinc-700 text-white rounded w-24"
-                        placeholder="Value"
-                      />
-                      <input
-                        type="text"
-                        value={item.unit ?? ''}
-                        onChange={(e) =>
-                          updateItem(sectionIndex, itemIndex, {
-                            unit: e.target.value,
-                          })
-                        }
-                        className="px-2 py-1 bg-zinc-700 text-white rounded w-20"
-                        placeholder="Unit"
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex-1 min-w-[45%]">
-                {rightItems.map((item, itemIndex) => (
-                  <div
-                    key={itemIndex}
-                    className="bg-zinc-800 p-4 rounded mb-4 border border-zinc-700"
-                  >
-                    <h3 className="text-lg font-semibold text-white mb-2">
-                      {item.name}
-                    </h3>
-                    <div className="flex items-center space-x-2 mb-3">
-                      <input
-                        type="number"
-                        value={item.value ?? ''}
-                        onChange={(e) =>
-                          updateItem(sectionIndex, itemIndex, {
-                            value: parseFloat(e.target.value),
-                            unit: item.unit || 'mm',
-                          })
-                        }
-                        className="px-2 py-1 bg-zinc-700 text-white rounded w-24"
-                        placeholder="Value"
-                      />
-                      <input
-                        type="text"
-                        value={item.unit ?? ''}
-                        onChange={(e) =>
-                          updateItem(sectionIndex, itemIndex, {
-                            unit: e.target.value,
-                          })
-                        }
-                        className="px-2 py-1 bg-zinc-700 text-white rounded w-20"
-                        placeholder="Unit"
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {centerItems.map((item, itemIndex) => (
-              <div
-                key={itemIndex}
-                className="bg-zinc-800 p-4 rounded mb-4 border border-zinc-700"
-              >
-                <h3 className="text-lg font-semibold text-white mb-2">
-                  {item.name}
-                </h3>
+      {isAxle ? (
+        <div className="flex flex-wrap gap-4">
+          {/* Left Side */}
+          <div className="w-full md:w-1/2 pr-2">
+            {leftItems.map((item, itemIndex) => (
+              <div key={itemIndex} className="bg-zinc-800 p-4 rounded mb-4 border border-zinc-700">
+                <h3 className="text-lg font-semibold text-white mb-2">{item.name}</h3>
                 <div className="flex items-center space-x-2 mb-3">
                   <input
                     type="number"
@@ -937,109 +893,170 @@ const stopListening = () => {
                     placeholder="Unit"
                   />
                 </div>
+                <textarea
+                  value={item.notes ?? ''}
+                  onChange={(e) =>
+                    updateItem(sectionIndex, itemIndex, {
+                      notes: e.target.value,
+                    })
+                  }
+                  className="w-full mt-2 p-2 bg-zinc-700 text-white rounded"
+                  rows={2}
+                  placeholder="Add notes..."
+                />
               </div>
             ))}
-          </>
-        ) : (
-          section.items.map((item, itemIndex) => {
-            const isSelected = (val: string) => item.status === val;
-            const isWheelTorque = item.name?.toLowerCase().includes('wheel torque');
+          </div>
 
-            return (
-              <div
-                key={itemIndex}
-                className="bg-zinc-800 p-4 rounded mb-4 border border-zinc-700"
-              >
-                <h3 className="text-lg font-semibold text-white mb-2">
-                  {item.name}
-                </h3>
-
-                {isWheelTorque ? (
-                  <div className="flex items-center space-x-2 mb-3">
-                    <input
-                      type="number"
-                      value={item.value ?? ''}
-                      onChange={(e) =>
-                        updateItem(sectionIndex, itemIndex, {
-                          value: parseFloat(e.target.value),
-                          unit: item.unit || 'ft lbs',
-                        })
-                      }
-                      className="px-2 py-1 bg-zinc-700 text-white rounded w-32"
-                      placeholder="Value"
-                    />
-                    <input
-                      type="text"
-                      value={item.unit ?? ''}
-                      onChange={(e) =>
-                        updateItem(sectionIndex, itemIndex, {
-                          unit: e.target.value,
-                        })
-                      }
-                      className="px-2 py-1 bg-zinc-700 text-white rounded w-20"
-                      placeholder="Unit"
-                    />
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    {['ok', 'fail', 'na', 'recommend'].map((val) => (
-                      <button
-                        key={val}
-                        className={`px-3 py-1 rounded ${
-                          isSelected(val)
-                            ? val === 'ok'
-                              ? 'bg-green-600 text-white'
-                              : val === 'fail'
-                              ? 'bg-red-600 text-white'
-                              : val === 'na'
-                              ? 'bg-yellow-500 text-white'
-                              : 'bg-blue-500 text-white'
-                            : 'bg-zinc-700 text-gray-300'
-                        }`}
-                        onClick={() =>
-                          updateItem(sectionIndex, itemIndex, {
-                            status: val as InspectionItemStatus,
-                          })
-                        }
-                      >
-                        {val.toUpperCase()}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {(item.status === 'fail' || item.status === 'recommend') && (
-                  <PhotoUploadButton
-                    photoUrls={item.photoUrls || []}
-                    onChange={(urls: string[]) => {
-                      updateItem(sectionIndex, itemIndex, { photoUrls: urls });
-                    }}
+          {/* Right Side */}
+          <div className="w-full md:w-1/2 pl-2">
+            {rightItems.map((item, itemIndex) => (
+              <div key={itemIndex} className="bg-zinc-800 p-4 rounded mb-4 border border-zinc-700">
+                <h3 className="text-lg font-semibold text-white mb-2">{item.name}</h3>
+                <div className="flex items-center space-x-2 mb-3">
+                  <input
+                    type="number"
+                    value={item.value ?? ''}
+                    onChange={(e) =>
+                      updateItem(sectionIndex, itemIndex, {
+                        value: parseFloat(e.target.value),
+                        unit: item.unit || 'mm',
+                      })
+                    }
+                    className="px-2 py-1 bg-zinc-700 text-white rounded w-24"
+                    placeholder="Value"
                   />
-                )}
-
-                {item.notes && (
-                  <p className="text-sm text-gray-400 mt-2 whitespace-pre-wrap">
-                    <strong>Notes:</strong> {item.notes}
-                  </p>
-                )}
-
-                {(item.recommend?.length ?? 0) > 0 && (
-                  <p className="text-sm text-yellow-400 mt-2">
-                    <strong>Recommended:</strong> {item.recommend?.join(', ')}
-                  </p>
-                )}
+                  <input
+                    type="text"
+                    value={item.unit ?? ''}
+                    onChange={(e) =>
+                      updateItem(sectionIndex, itemIndex, {
+                        unit: e.target.value,
+                      })
+                    }
+                    className="px-2 py-1 bg-zinc-700 text-white rounded w-20"
+                    placeholder="Unit"
+                  />
+                </div>
+                <textarea
+                  value={item.notes ?? ''}
+                  onChange={(e) =>
+                    updateItem(sectionIndex, itemIndex, {
+                      notes: e.target.value,
+                    })
+                  }
+                  className="w-full mt-2 p-2 bg-zinc-700 text-white rounded"
+                  rows={2}
+                  placeholder="Add notes..."
+                />
               </div>
-            );
-          })
-        )}
-      </div>
-    );
-  })}
+            ))}
+          </div>
+        </div>
+      ) : (
+        section.items.map((item, itemIndex) => {
+          const isSelected = (val: string) => item.status === val;
+          const isWheelTorque = item.name?.toLowerCase().includes('wheel torque');
 
-  <div className="flex justify-between items-center mt-8 gap-4">
-    <SaveInspectionButton />
-    <FinishInspectionButton />
-  </div>
-</div>
+          return (
+            <div
+              key={itemIndex}
+              className="bg-zinc-800 p-4 rounded mb-4 border border-zinc-700"
+            >
+              <h3 className="text-lg font-semibold text-white mb-2">{item.name}</h3>
+
+              {isWheelTorque ? (
+                <div className="flex items-center space-x-2 mb-3">
+                  <input
+                    type="number"
+                    value={item.value ?? ''}
+                    onChange={(e) =>
+                      updateItem(sectionIndex, itemIndex, {
+                        value: parseFloat(e.target.value),
+                        unit: item.unit || 'ft lbs',
+                      })
+                    }
+                    className="px-2 py-1 bg-zinc-700 text-white rounded w-32"
+                    placeholder="Value"
+                  />
+                  <input
+                    type="text"
+                    value={item.unit ?? ''}
+                    onChange={(e) =>
+                      updateItem(sectionIndex, itemIndex, {
+                        unit: e.target.value,
+                      })
+                    }
+                    className="px-2 py-1 bg-zinc-700 text-white rounded w-20"
+                    placeholder="Unit"
+                  />
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {['ok', 'fail', 'na', 'recommend'].map((val) => (
+                    <button
+                      key={val}
+                      className={`px-3 py-1 rounded ${
+                        isSelected(val)
+                          ? val === 'ok'
+                            ? 'bg-green-600 text-white'
+                            : val === 'fail'
+                            ? 'bg-red-600 text-white'
+                            : val === 'na'
+                            ? 'bg-yellow-500 text-white'
+                            : 'bg-blue-500 text-white'
+                          : 'bg-zinc-700 text-gray-300'
+                      }`}
+                      onClick={() =>
+                        updateItem(sectionIndex, itemIndex, {
+                          status: val as InspectionItemStatus,
+                        })
+                      }
+                    >
+                      {val.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {(item.status === 'fail' || item.status === 'recommend') && (
+                <PhotoUploadButton
+                  photoUrls={item.photoUrls || []}
+                  onChange={(urls: string[]) => {
+                    updateItem(sectionIndex, itemIndex, { photoUrls: urls });
+                  }}
+                />
+              )}
+
+              <textarea
+                value={item.notes ?? ''}
+                onChange={(e) =>
+                  updateItem(sectionIndex, itemIndex, {
+                    notes: e.target.value,
+                  })
+                }
+                className="w-full mt-2 p-2 bg-zinc-700 text-white rounded"
+                rows={2}
+                placeholder="Add notes..."
+              />
+
+              {(item.recommend?.length ?? 0) > 0 && (
+                <p className="text-sm text-yellow-400 mt-2">
+                  <strong>Recommended:</strong> {item.recommend?.join(', ')}
+                </p>
+              )}
+            </div>
+          );
+        })
+      )}
+    </div>
   );
-}}
+})}
+
+<div className="flex justify-between items-center mt-8 gap-4">
+  <SaveInspectionButton />
+  <FinishInspectionButton />
+</div>
+</div>
+);
+}

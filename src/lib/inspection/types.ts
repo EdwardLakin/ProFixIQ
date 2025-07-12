@@ -70,6 +70,7 @@ export interface InspectionItem {
   unit?: string;
   photoUrls?: string[];
   recommend?: string[];
+  axle?: string;
 }
 
 export interface InspectionSection {
