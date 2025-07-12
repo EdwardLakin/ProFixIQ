@@ -18,11 +18,38 @@
       "assets": [],
       "env": {
         "__NEXT_BUILD_ID": "development",
-        "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY": "CG65sgHzn6ZUVvivHXVdBfIYyynHqsNS7i2vZA/P+ho="
+        "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY": "hzU4xWdKy+5H0XuFYfc++qgJwbdKHE9hJBF9suDhsqM="
       }
     }
   },
-  "functions": {},
+  "functions": {
+    "/api/ai/interpret/route": {
+      "files": [
+        "server/server-reference-manifest.js",
+        "server/app/api/ai/interpret/route_client-reference-manifest.js",
+        "server/middleware-build-manifest.js",
+        "server/middleware-react-loadable-manifest.js",
+        "server/next-font-manifest.js",
+        "server/interception-route-rewrite-manifest.js",
+        "server/edge-runtime-webpack.js",
+        "server/app/api/ai/interpret/route.js"
+      ],
+      "name": "app/api/ai/interpret/route",
+      "page": "/api/ai/interpret/route",
+      "matchers": [
+        {
+          "regexp": "^/api/ai/interpret$",
+          "originalSource": "/api/ai/interpret"
+        }
+      ],
+      "wasm": [],
+      "assets": [],
+      "env": {
+        "__NEXT_BUILD_ID": "development",
+        "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY": "hzU4xWdKy+5H0XuFYfc++qgJwbdKHE9hJBF9suDhsqM="
+      }
+    }
+  },
   "sortedMiddleware": [
     "/"
   ]

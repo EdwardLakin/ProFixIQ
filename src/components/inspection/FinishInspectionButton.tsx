@@ -11,15 +11,21 @@ export default function FinishInspectionButton() {
   const { session, finishSession } = useInspectionSession();
 
   const handleFinish = async () => {
-    finishSession(); // Mark session as complete
+  try {
+    finishSession(); // Mark session complete
 
-    const summary = generateInspectionSummary(session); // Generate editable summary
-    console.log(summary); // Optional: for debugging
+    const summary = generateInspectionSummary(session);
+    console.log(summary); // Optional: debug
 
-    await saveInspectionSession(session); // Save full session to DB
+    await saveInspectionSession(session); // Save to Supabase
 
-    router.push('/app/inspection/summary'); // Navigate to summary screen
-  };
+    // ✅ Navigate after successful save
+    router.push('/app/inspection/summary');
+  } catch (error) {
+    console.error('Failed to finish inspection:', error);
+    alert('Failed to finish inspection. Please try again.');
+  }
+};
 
   return (
     <Button

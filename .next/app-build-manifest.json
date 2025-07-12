@@ -25,6 +25,11 @@
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/inspection/maintenance50/page.js"
+    ],
+    "/api/ai/interpret/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/ai/interpret/route.js"
     ]
   }
 }

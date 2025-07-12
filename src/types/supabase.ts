@@ -123,6 +123,81 @@ export interface Database {
         };
         Relationships: [];
       };
+
+      customers: {
+        Row: {
+          id: string;
+          first_name: string;
+          last_name: string;
+          phone: string;
+          email: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          first_name: string;
+          last_name: string;
+          phone?: string;
+          email?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          first_name?: string;
+          last_name?: string;
+          phone?: string;
+          email?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+
+      vehicles: {
+        Row: {
+          id: string;
+          year: string;
+          make: string;
+          model: string;
+          vin: string;
+          license_plate: string;
+          mileage: string;
+          color: string;
+          created_at: string;
+          customer_id?: string | null;
+        };
+        Insert: {
+          id?: string;
+          year?: string;
+          make: string;
+          model: string;
+          vin?: string;
+          license_plate?: string;
+          mileage?: string;
+          color?: string;
+          created_at?: string;
+          customer_id?: string | null;
+        };
+        Update: {
+          id?: string;
+          year?: string;
+          make?: string;
+          model?: string;
+          vin?: string;
+          license_plate?: string;
+          mileage?: string;
+          color?: string;
+          created_at?: string;
+          customer_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'vehicles_customer_id_fkey';
+            columns: ['customer_id'];
+            referencedRelation: 'customers';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
     };
 
     Views: {};

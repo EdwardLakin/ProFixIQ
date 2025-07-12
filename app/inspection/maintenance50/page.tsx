@@ -857,103 +857,104 @@ return (
     item.name.toLowerCase().includes('right')
   );
 
-  return (
-    <div key={sectionIndex} className="mb-8">
-      <h2 className="text-xl font-bold mb-2 text-orange-400">{section.title}</h2>
+        return (
+  <div key={sectionIndex} className="mb-8">
+    <h2 className="text-xl font-bold mb-2 text-orange-400">{section.title}</h2>
 
-      {isAxle ? (
-        <div className="flex flex-wrap gap-4">
-          {/* Left Side */}
-          <div className="w-full md:w-1/2 pr-2">
-            {leftItems.map((item, itemIndex) => (
-              <div key={itemIndex} className="bg-zinc-800 p-4 rounded mb-4 border border-zinc-700">
-                <h3 className="text-lg font-semibold text-white mb-2">{item.name}</h3>
-                <div className="flex items-center space-x-2 mb-3">
-                  <input
-                    type="number"
-                    value={item.value ?? ''}
-                    onChange={(e) =>
-                      updateItem(sectionIndex, itemIndex, {
-                        value: parseFloat(e.target.value),
-                        unit: item.unit || 'mm',
-                      })
-                    }
-                    className="px-2 py-1 bg-zinc-700 text-white rounded w-24"
-                    placeholder="Value"
-                  />
-                  <input
-                    type="text"
-                    value={item.unit ?? ''}
-                    onChange={(e) =>
-                      updateItem(sectionIndex, itemIndex, {
-                        unit: e.target.value,
-                      })
-                    }
-                    className="px-2 py-1 bg-zinc-700 text-white rounded w-20"
-                    placeholder="Unit"
-                  />
-                </div>
-                <textarea
-                  value={item.notes ?? ''}
+    {isAxle ? (
+      <div className="flex flex-col md:flex-row gap-4">
+        {/* LEFT */}
+        <div className="w-full md:w-1/2">
+          {leftItems.map((item, idx) => (
+            <div key={idx} className="bg-zinc-800 p-4 rounded mb-4 border border-zinc-700">
+              <h3 className="text-lg font-semibold text-white mb-2">{item.name}</h3>
+              <div className="flex items-center space-x-2 mb-3">
+                <input
+                  type="number"
+                  value={item.value !== null && item.value !== undefined ? String(item.value) : ''}
                   onChange={(e) =>
-                    updateItem(sectionIndex, itemIndex, {
-                      notes: e.target.value,
+                    updateItem(sectionIndex, section.items.indexOf(item), {
+                      value: parseFloat(e.target.value),
+                      unit: item.unit || 'mm',
                     })
                   }
-                  className="w-full mt-2 p-2 bg-zinc-700 text-white rounded"
-                  rows={2}
-                  placeholder="Add notes..."
+                  className="px-2 py-1 bg-zinc-700 text-white rounded w-24"
+                  placeholder="Value"
                 />
-              </div>
-            ))}
-          </div>
-
-          {/* Right Side */}
-          <div className="w-full md:w-1/2 pl-2">
-            {rightItems.map((item, itemIndex) => (
-              <div key={itemIndex} className="bg-zinc-800 p-4 rounded mb-4 border border-zinc-700">
-                <h3 className="text-lg font-semibold text-white mb-2">{item.name}</h3>
-                <div className="flex items-center space-x-2 mb-3">
-                  <input
-                    type="number"
-                    value={item.value ?? ''}
-                    onChange={(e) =>
-                      updateItem(sectionIndex, itemIndex, {
-                        value: parseFloat(e.target.value),
-                        unit: item.unit || 'mm',
-                      })
-                    }
-                    className="px-2 py-1 bg-zinc-700 text-white rounded w-24"
-                    placeholder="Value"
-                  />
-                  <input
-                    type="text"
-                    value={item.unit ?? ''}
-                    onChange={(e) =>
-                      updateItem(sectionIndex, itemIndex, {
-                        unit: e.target.value,
-                      })
-                    }
-                    className="px-2 py-1 bg-zinc-700 text-white rounded w-20"
-                    placeholder="Unit"
-                  />
-                </div>
-                <textarea
-                  value={item.notes ?? ''}
+                <input
+                  type="text"
+                  value={item.value !== null && item.value !== undefined ? String(item.value) : ''}
                   onChange={(e) =>
-                    updateItem(sectionIndex, itemIndex, {
-                      notes: e.target.value,
+                    updateItem(sectionIndex, section.items.indexOf(item), {
+                      unit: e.target.value,
                     })
                   }
-                  className="w-full mt-2 p-2 bg-zinc-700 text-white rounded"
-                  rows={2}
-                  placeholder="Add notes..."
+                  className="px-2 py-1 bg-zinc-700 text-white rounded w-20"
+                  placeholder="Unit"
                 />
               </div>
-            ))}
-          </div>
+              <textarea
+                value={item.value !== null && item.value !== undefined ? String(item.value) : ''}
+                onChange={(e) =>
+                  updateItem(sectionIndex, section.items.indexOf(item), {
+                    notes: e.target.value,
+                  })
+                }
+                className="w-full mt-2 p-2 bg-zinc-700 text-white rounded"
+                rows={2}
+                placeholder="Add notes..."
+              />
+            </div>
+          ))}
         </div>
-      ) : (
+
+        {/* RIGHT */}
+        <div className="flex-1">
+          {rightItems.map((item, idx) => (
+            <div key={idx} className="bg-zinc-800 p-4 rounded mb-4 border border-zinc-700">
+              <h3 className="text-lg font-semibold text-white mb-2">{item.name}</h3>
+              <div className="flex items-center space-x-2 mb-3">
+                <input
+                  type="number"
+                  value={item.value !== null && item.value !== undefined ? String(item.value) : ''}
+                  onChange={(e) =>
+                    updateItem(sectionIndex, section.items.indexOf(item), {
+                      value: parseFloat(e.target.value),
+                      unit: item.unit || 'mm',
+                    })
+                  }
+                  className="px-2 py-1 bg-zinc-700 text-white rounded w-24"
+                  placeholder="Value"
+                />
+                <input
+                  type="text"
+                  value={item.value !== null && item.value !== undefined ? String(item.value) : ''}
+                  onChange={(e) =>
+                    updateItem(sectionIndex, section.items.indexOf(item), {
+                      unit: e.target.value,
+                    })
+                  }
+                  className="px-2 py-1 bg-zinc-700 text-white rounded w-20"
+                  placeholder="Unit"
+                />
+              </div>
+              <textarea
+                value={item.value !== null && item.value !== undefined ? String(item.value) : ''}
+                onChange={(e) =>
+                  updateItem(sectionIndex, section.items.indexOf(item), {
+                    notes: e.target.value,
+                  })
+                }
+                className="w-full mt-2 p-2 bg-zinc-700 text-white rounded"
+                rows={2}
+                placeholder="Add notes..."
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    ) : (
+
         section.items.map((item, itemIndex) => {
           const isSelected = (val: string) => item.status === val;
           const isWheelTorque = item.name?.toLowerCase().includes('wheel torque');
@@ -969,7 +970,7 @@ return (
                 <div className="flex items-center space-x-2 mb-3">
                   <input
                     type="number"
-                    value={item.value ?? ''}
+                    value={item.value !== null && item.value !== undefined ? String(item.value) : ''}
                     onChange={(e) =>
                       updateItem(sectionIndex, itemIndex, {
                         value: parseFloat(e.target.value),
@@ -981,7 +982,7 @@ return (
                   />
                   <input
                     type="text"
-                    value={item.unit ?? ''}
+                    value={item.value !== null && item.value !== undefined ? String(item.value) : ''}
                     onChange={(e) =>
                       updateItem(sectionIndex, itemIndex, {
                         unit: e.target.value,
