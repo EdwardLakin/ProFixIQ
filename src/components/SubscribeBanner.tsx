@@ -10,7 +10,7 @@ export default function SubscribeBanner() {
           Unlock full access to AI diagnostics and tools.
         </p>
         <Link
-          href="/subscribe"
+          href="/compare-plans"
           className="inline-block mt-3 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-semibold shadow transition-all"
         >
           View Plans

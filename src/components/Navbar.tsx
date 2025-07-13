@@ -2,41 +2,18 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import supabase from '@lib/supabaseClient';
 import SignOutButton from '@components/SignOutButton';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 export default function Navbar() {
   const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
-    const getSession = async () => {
-      const {
-        data: { session },
-        error,
-      } = await supabase.auth.getSession();
-
-      if (error) {
-        console.error('❌ Failed to fetch session:', error.message);
-      }
-
-      setUser(session?.user ?? null);
+    const getUser = async () => {
+      const { data } = await supabase.auth.getUser();
+      setUser(data.user);
     };
-
-    getSession();
-
-    // Optional: Subscribe to auth changes
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
-
-    return () => {
-      listener.subscription.unsubscribe();
-    };
+    getUser();
   }, []);
 
   return (
@@ -44,15 +21,13 @@ export default function Navbar() {
       <nav className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
         {/* Logo */}
         <Link href="/">
-          <h1 className="text-2xl font-blackops text-orange-500 tracking-wide">
-            ProFixIQ
-          </h1>
+          <h1 className="text-2xl font-blackops text-orange-500 tracking-wide">ProFixIQ</h1>
         </Link>
 
         {/* Right-side actions */}
         <div className="flex items-center gap-4">
           <Link
-            href="/subscribe"
+            href="/compare-plans"
             className="px-4 py-2 rounded-lg bg-orange-500 hover:bg-orange-600 text-white"
           >
             Plans
@@ -62,10 +37,16 @@ export default function Navbar() {
             <SignOutButton />
           ) : (
             <>
-              <Link href="/sign-in" className="text-sm text-orange-300 hover:underline">
+              <Link
+                href="/sign-in"
+                className="px-4 py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-white"
+              >
                 Sign In
               </Link>
-              <Link href="/sign-up" className="text-sm text-orange-300 hover:underline">
+              <Link
+                href="/sign-up"
+                className="px-4 py-2 rounded-lg bg-white text-black hover:bg-gray-200"
+              >
                 Sign Up
               </Link>
             </>
