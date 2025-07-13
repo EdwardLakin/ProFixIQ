@@ -2,8 +2,9 @@
 
 import HomeButton from '@components/ui/HomeButton';
 import Link from 'next/link';
+import WithAuthAndPlan from '@lib/withAuthAndPlan';
 
-export default function WorkOrdersPage() {
+function WorkOrdersPageContent() {
   return (
     <div className="min-h-screen bg-black bg-opacity-90 text-white px-4 pt-6">
       <HomeButton />
@@ -35,5 +36,13 @@ export default function WorkOrdersPage() {
         </Link>
       </div>
     </div>
+  );
+}
+
+export default function WorkOrdersPage() {
+  return (
+    <WithAuthAndPlan>
+      <WorkOrdersPageContent />
+    </WithAuthAndPlan>
   );
 }

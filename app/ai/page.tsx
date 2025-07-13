@@ -2,8 +2,9 @@
 
 import { useRouter } from 'next/navigation';
 import HomeButton from '@components/ui/HomeButton';
+import WithAuthAndPlan from '@lib/withAuthAndPlan';
 
-export default function AIDiagnosisPage() {
+function AIDiagnosisPageContent() {
   const router = useRouter();
 
   return (
@@ -54,5 +55,13 @@ export default function AIDiagnosisPage() {
         </button>
       </div>
     </div>
+  );
+}
+
+export default function AIDiagnosisPage() {
+  return (
+    <WithAuthAndPlan>
+      <AIDiagnosisPageContent />
+    </WithAuthAndPlan>
   );
 }

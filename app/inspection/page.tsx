@@ -3,12 +3,12 @@
 import { useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import HomeButton from '@components/ui/HomeButton';
+import WithAuthAndPlan from '@lib/withAuthAndPlan';
 
-export default function InspectionMenu() {
+function InspectionMenuContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  // Store customer and vehicle info from query in localStorage
   useEffect(() => {
     const query = Object.fromEntries(searchParams.entries());
 
@@ -91,5 +91,13 @@ export default function InspectionMenu() {
         </button>
       </div>
     </div>
+  );
+}
+
+export default function InspectionMenu() {
+  return (
+    <WithAuthAndPlan>
+      <InspectionMenuContent />
+    </WithAuthAndPlan>
   );
 }

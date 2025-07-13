@@ -1,60 +1,38 @@
-// app/api/stripe/checkout/route.ts
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2024-04-10' as any,
 });
 
-export async function POST(req: NextRequest) {
-  const supabase = createServerComponentClient({ cookies });
-  const { data: { user } } = await supabase.auth.getUser();
+export async function POST(req: Request) {
+  try {
+    const body = await req.json();
+    const { priceId } = body;
 
-  if (!user) {
-    return NextResponse.json({ error: 'Not signed in' }, { status: 401 });
-  }
+    if (!priceId) {
+      return NextResponse.json({ error: 'Missing priceId' }, { status: 400 });
+    }
 
-  const { priceId, isYearly } = await req.json();
-  const origin = req.headers.get('origin');
+    const customer = await stripe.customers.create();
 
-  // Fetch or create Stripe Customer ID
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('stripe_customer_id')
-    .eq('id', user.id)
-    .single();
-
-  let customerId = profile?.stripe_customer_id;
-
-  if (!customerId) {
-    const customer = await stripe.customers.create({
-      email: user.email!,
+    const session = await stripe.checkout.sessions.create({
+      mode: 'subscription',
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price: priceId,
+          quantity: 1,
+        },
+      ],
+      customer: customer.id,
+      success_url: `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard`,
+      cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL}/subscribe`,
     });
 
-    customerId = customer.id;
-
-    await supabase
-      .from('profiles')
-      .update({ stripe_customer_id: customerId })
-      .eq('id', user.id);
+    return NextResponse.json({ url: session.url });
+  } catch (err) {
+    console.error('❌ Stripe Checkout Error:', err);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
-
-  // Create Checkout Session
-  const session = await stripe.checkout.sessions.create({
-    customer: customerId,
-    payment_method_types: ['card'],
-    line_items: [
-      {
-        price: priceId,
-        quantity: 1,
-      },
-    ],
-    mode: 'subscription',
-    success_url: `${origin}/dashboard`,
-    cancel_url: `${origin}/subscribe`,
-  });
-
-  return NextResponse.json({ url: session.url });
 }
