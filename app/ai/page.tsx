@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import HomeButton from '@components/ui/HomeButton';
-import WithAuthAndPlan from '@lib/withAuthAndPlan';
+import { withAuthAndPlan } from '@lib/withAuthAndPlan';
 
 function AIDiagnosisPageContent() {
   const router = useRouter();

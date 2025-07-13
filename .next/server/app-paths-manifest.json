@@ -1,7 +1,7 @@
 {
-  "/api/stripe/checkout/route": "app/api/stripe/checkout/route.js",
   "/page": "app/page.js",
-  "/compare-plans/page": "app/compare-plans/page.js",
-  "/subscribe/page": "app/subscribe/page.js",
-  "/sign-in/page": "app/sign-in/page.js"
+  "/sign-in/page": "app/sign-in/page.js",
+  "/sign-up/page": "app/sign-up/page.js",
+  "/inspection/page": "app/inspection/page.js",
+  "/ai/page": "app/ai/page.js"
 }

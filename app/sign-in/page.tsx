@@ -2,14 +2,13 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { createClient } from '@supabase/supabase-js';
+import { useRouter } from 'next/navigation';
+import { createBrowserSupabaseClient } from '@supabase/auth-helpers-nextjs';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const supabase = createBrowserSupabaseClient();
 
 export default function SignIn() {
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -25,10 +24,19 @@ export default function SignIn() {
     if (error) {
       setError(error.message);
     } else {
-      window.location.href = '/';
+      router.push('/');
     }
 
     setLoading(false);
+  };
+
+  const handleGoogleSignIn = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+    });
+    if (error) {
+      setError(error.message);
+    }
   };
 
   return (
@@ -65,10 +73,24 @@ export default function SignIn() {
           </button>
         </form>
 
+        <button
+          onClick={handleGoogleSignIn}
+          className="w-full py-2 rounded border border-white hover:bg-white hover:text-black transition-all font-blackops text-lg"
+        >
+          Sign In with Google
+        </button>
+
         <Link
           href="/"
           className="block mt-4 text-center text-orange-400 hover:underline"
         >
+
+         <Link
+  href="/forgot-password"
+  className="block text-center text-sm text-orange-400 hover:underline"
+>
+  Forgot Password?
+</Link> 
           ← Back to Home
         </Link>
       </div>

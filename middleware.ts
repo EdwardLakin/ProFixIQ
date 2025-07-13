@@ -1,30 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
+import type { Database } from '@custom-types/supabase';
 
-export function middleware(req: NextRequest) {
-  const PUBLIC_PATHS = [
-    '/',
-    '/sign-in',
-    '/sign-up',
-    '/reset-password',
-    '/thank-you',
-    '/subscribe',
-    '/compare-plans',
-    '/onboarding/plan',
-  ];
+export async function middleware(req: NextRequest) {
+  const res = NextResponse.next();
 
-  const pathname = req.nextUrl.pathname;
+  const supabase = createMiddlewareClient<Database>({ req, res });
 
-  if (PUBLIC_PATHS.includes(pathname)) {
-    return NextResponse.next();
-  }
+  await supabase.auth.getSession(); // 👈 sets session cookie
 
-  const token = req.cookies.get('sb-access-token')?.value;
-  if (!token) {
-    console.warn('🔒 No access token, redirecting to /sign-in');
-    return NextResponse.redirect(new URL('/sign-in', req.url));
-  }
-
-  return NextResponse.next();
+  return res;
 }
 
 export const config = {

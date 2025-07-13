@@ -2,7 +2,7 @@
 
 import HomeButton from '@components/ui/HomeButton';
 import Link from 'next/link';
-import WithAuthAndPlan from '@lib/withAuthAndPlan';
+import { withAuthAndPlan } from '@lib/withAuthAndPlan';
 
 function WorkOrdersPageContent() {
   return (

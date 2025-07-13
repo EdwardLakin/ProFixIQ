@@ -6,25 +6,36 @@ import supabase from '@lib/supabaseClient';
 import SignOutButton from '@components/SignOutButton';
 
 export default function Navbar() {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<any | null | undefined>(undefined);
 
   useEffect(() => {
-    const getUser = async () => {
-      const { data } = await supabase.auth.getUser();
-      setUser(data.user);
+    const fetchSession = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      setUser(session?.user ?? null);
     };
-    getUser();
+
+    fetchSession();
+
+    const { data: subscription } = supabase.auth.onAuthStateChange(() => {
+      fetchSession();
+    });
+
+    return () => {
+      subscription.subscription.unsubscribe();
+    };
   }, []);
+
+  if (user === undefined) return null; // optional loading state
 
   return (
     <header className="w-full fixed top-0 z-50 backdrop-blur-md bg-black/30 border-b border-orange-500">
       <nav className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-        {/* Logo */}
         <Link href="/">
           <h1 className="text-2xl font-blackops text-orange-500 tracking-wide">ProFixIQ</h1>
         </Link>
 
-        {/* Right-side actions */}
         <div className="flex items-center gap-4">
           <Link
             href="/compare-plans"

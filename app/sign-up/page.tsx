@@ -3,12 +3,9 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@supabase/supabase-js';
+import { createBrowserSupabaseClient } from '@supabase/auth-helpers-nextjs';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const supabase = createBrowserSupabaseClient();
 
 export default function SignUp() {
   const router = useRouter();
@@ -22,10 +19,7 @@ export default function SignUp() {
     setLoading(true);
     setError('');
 
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-    });
+    const { error } = await supabase.auth.signUp({ email, password });
 
     if (error) {
       setError(error.message);
@@ -34,6 +28,15 @@ export default function SignUp() {
     }
 
     setLoading(false);
+  };
+
+  const handleGoogleSignUp = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+    });
+    if (error) {
+      setError(error.message);
+    }
   };
 
   return (
@@ -69,6 +72,13 @@ export default function SignUp() {
             {loading ? 'Signing Up...' : 'Sign Up'}
           </button>
         </form>
+
+        <button
+          onClick={handleGoogleSignUp}
+          className="w-full py-2 rounded border border-white hover:bg-white hover:text-black transition-all font-blackops text-lg"
+        >
+          Sign Up with Google
+        </button>
 
         <Link
           href="/"

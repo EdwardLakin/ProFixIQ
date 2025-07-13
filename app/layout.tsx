@@ -1,5 +1,6 @@
 import './globals.css';
 import type { Metadata } from 'next';
+import Providers from './providers'; // 👈 new file
 
 export const metadata: Metadata = {
   title: 'ProFixIQ',
@@ -14,7 +15,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="font-header bg-background text-white">
-        {children}
+        <Providers>{children}</Providers> {/* Wrap children in provider */}
       </body>
     </html>
   );

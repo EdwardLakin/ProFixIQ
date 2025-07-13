@@ -6,7 +6,9 @@ import type { Database } from '@custom-types/supabase';
 import { redirect } from 'next/navigation';
 
 export async function getUserSession() {
-  const supabase = createServerComponentClient<Database>({ cookies });
+  const supabase = createServerComponentClient<Database>({
+    cookies: () => cookies(), // ✅ correct usage
+  });
 
   const {
     data: { session },
