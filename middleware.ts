@@ -1,18 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createSupabaseServerClient } from '@lib/supabaseServer';
-import type { Database } from '@types/supabase';
+import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
+import type { Database } from '@custom-types/supabase';
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
-  const supabase = createSupabaseServerClient(req, res);
+  const supabase = createMiddlewareClient<Database>({ req, res });
 
   const PUBLIC_PATHS = [
     '/',
     '/sign-in',
     '/sign-up',
-    '/api',
-    '/thank-you',
     '/reset-password',
+    '/thank-you',
+    '/subscribe',
+    '/onboarding',
+    '/api',
   ];
 
   const pathname = req.nextUrl.pathname;
@@ -23,17 +25,17 @@ export async function middleware(req: NextRequest) {
   }
 
   try {
+    // 🔒 Check user session
     const {
       data: { session },
     } = await supabase.auth.getSession();
 
-    console.log('✅ SESSION:', session);
-    console.log('✅ USER:', session?.user);
-
     if (!session || !session.user) {
+      console.warn('🔒 No session found – redirecting to /sign-in');
       return NextResponse.redirect(new URL('/sign-in', req.url));
     }
 
+    // 🔍 Fetch user's plan from profiles table
     const {
       data: profile,
       error,
@@ -44,31 +46,34 @@ export async function middleware(req: NextRequest) {
       .single();
 
     if (error || !profile) {
-      console.error('❌ Middleware profile error:', error);
+      console.error('❌ Failed to fetch profile:', error);
       return NextResponse.redirect(new URL('/sign-in', req.url));
     }
 
     const plan = profile.plan;
+
+    // 🚫 Restrict access based on plan
     const restrictedProRoutes = ['/quote', '/inspections'];
-    const restrictedEliteRoutes = ['/quote', '/settings/shop'];
+    const restrictedProPlusRoutes = ['/quote', '/settings/shop'];
 
     if (plan === 'diy' && restrictedProRoutes.some((path) => pathname.startsWith(path))) {
       return NextResponse.redirect(new URL('/upgrade', req.url));
     }
 
-    if (plan === 'pro' && restrictedEliteRoutes.some((path) => pathname.startsWith(path))) {
+    if (plan === 'pro' && restrictedProPlusRoutes.some((path) => pathname.startsWith(path))) {
       return NextResponse.redirect(new URL('/upgrade', req.url));
     }
 
+    // ✅ Allow access if authorized
     return res;
   } catch (err) {
-    console.error('❌ Middleware error:', err);
+    console.error('❌ Middleware crash:', err);
     return NextResponse.redirect(new URL('/sign-in', req.url));
   }
 }
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico).*)',
+    '/((?!_next|favicon.ico|sign-in|sign-up|reset-password|thank-you|api|subscribe|onboarding|.*\\..*).*)',
   ],
 };

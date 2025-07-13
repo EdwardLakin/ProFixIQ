@@ -16,15 +16,15 @@
       "static/chunks/main-app.js",
       "static/chunks/app/inspection/page.js"
     ],
-    "/inspection/customer-vehicle/page": [
+    "/sign-in/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/inspection/customer-vehicle/page.js"
+      "static/chunks/app/sign-in/page.js"
     ],
-    "/_not-found/page": [
+    "/sign-up/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/_not-found/page.js"
+      "static/chunks/app/sign-up/page.js"
     ]
   }
 }

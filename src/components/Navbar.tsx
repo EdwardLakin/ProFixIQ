@@ -14,11 +14,29 @@ export default function Navbar() {
   const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
-    const getUser = async () => {
-      const { data } = await supabase.auth.getUser();
-      setUser(data.user);
+    const getSession = async () => {
+      const {
+        data: { session },
+        error,
+      } = await supabase.auth.getSession();
+
+      if (error) {
+        console.error('❌ Failed to fetch session:', error.message);
+      }
+
+      setUser(session?.user ?? null);
     };
-    getUser();
+
+    getSession();
+
+    // Optional: Subscribe to auth changes
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => {
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
   return (
@@ -40,7 +58,18 @@ export default function Navbar() {
             Plans
           </Link>
 
-          {user && <SignOutButton />}
+          {user ? (
+            <SignOutButton />
+          ) : (
+            <>
+              <Link href="/sign-in" className="text-sm text-orange-300 hover:underline">
+                Sign In
+              </Link>
+              <Link href="/sign-up" className="text-sm text-orange-300 hover:underline">
+                Sign Up
+              </Link>
+            </>
+          )}
         </div>
       </nav>
     </header>

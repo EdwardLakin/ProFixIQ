@@ -7,11 +7,16 @@
  * or disable the default devtool with "devtool: false".
  * If you are looking for production-ready output files, see mode: "production" (https://webpack.js.org/configuration/mode/).
  */
-self["webpackHotUpdate_N_E"]("webpack",{},
+self["webpackHotUpdate_N_E"]("edge-runtime-webpack",{},
 /******/ function(__webpack_require__) { // webpackRuntimeModules
+/******/ /* webpack/runtime/amd options */
+/******/ (() => {
+/******/ 	__webpack_require__.amdO = {};
+/******/ })();
+/******/ 
 /******/ /* webpack/runtime/getFullHash */
 /******/ (() => {
-/******/ 	__webpack_require__.h = () => ("01ea4e6ec7c49ae1")
+/******/ 	__webpack_require__.h = () => ("dbb8f57b807aa157")
 /******/ })();
 /******/ 
 /******/ }

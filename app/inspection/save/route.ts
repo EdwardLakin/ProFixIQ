@@ -5,7 +5,23 @@ import type { Database } from '@custom-types/supabase';
 
 export async function POST(req: Request) {
   const supabase = createRouteHandlerClient<Database>({ cookies });
-  const { customer, vehicle } = await req.json();
+
+  let customer, vehicle;
+
+  // Safely parse JSON body
+  try {
+    const body = await req.json();
+    customer = body.customer;
+    vehicle = body.vehicle;
+  } catch (err) {
+    console.error('❌ Invalid JSON body:', err);
+    return NextResponse.json({ error: 'Invalid JSON format' }, { status: 400 });
+  }
+
+  // Validate expected structure
+  if (!customer || !vehicle) {
+    return NextResponse.json({ error: 'Missing customer or vehicle data' }, { status: 400 });
+  }
 
   // Get logged-in user
   const {
@@ -14,8 +30,9 @@ export async function POST(req: Request) {
   } = await supabase.auth.getUser();
 
   if (userError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  console.error('❌ No user session found');
+  return NextResponse.json({ error: 'Unauthorized - No user logged in' }, { status: 401 });
+}
 
   // Insert customer
   const { data: customerData, error: customerError } = await supabase
@@ -54,16 +71,21 @@ export async function POST(req: Request) {
   }
 
   // Insert empty inspection with linked vehicle UUID
-  const { error: inspectionError } = await supabase.from('inspections').insert({
-    user_id: user.id,
-    template: 'maintenance50',
-    result: {},
-    vehicle: vehicleData.id, // ✅ Must be UUID
-  });
+  const { data: inspectionData, error: inspectionError } = await supabase
+    .from('inspections')
+    .insert({
+      user_id: user.id,
+      template: 'maintenance50',
+      result: {},
+      vehicle: vehicleData.id, // UUID from vehicles table
+    })
+    .select()
+    .single();
 
-  if (inspectionError) {
+  if (inspectionError || !inspectionData) {
     return NextResponse.json({ error: inspectionError.message }, { status: 500 });
   }
 
-  return NextResponse.json({ success: true });
+  // ✅ Success
+  return NextResponse.json({ success: true, inspectionId: inspectionData.id });
 }

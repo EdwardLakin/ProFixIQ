@@ -1,11 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import supabase from '@lib/supabaseClient';
+import Link from 'next/link';
+import { createClient } from '@supabase/supabase-js';
 
-export default function SignInPage() {
-  const router = useRouter();
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+export default function SignIn() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -16,77 +20,58 @@ export default function SignInPage() {
     setLoading(true);
     setError('');
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
       setError(error.message);
-      setLoading(false);
     } else {
-      router.push('/');
+      window.location.href = '/';
     }
-  };
 
-  const handleGoogleLogin = async () => {
-    setLoading(true);
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-    });
-    if (error) {
-      setError(error.message);
-      setLoading(false);
-    }
+    setLoading(false);
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-black text-white">
-      <form onSubmit={handleSignIn} className="bg-white bg-opacity-5 p-8 rounded-xl shadow-xl w-full max-w-md">
-        <h2 className="text-3xl font-black text-center mb-6 font-blackops">Welcome Back</h2>
+    <div className="min-h-screen flex flex-col items-center justify-center px-4 bg-background">
+      <div className="max-w-md w-full space-y-6 border border-orange-500 p-8 rounded-xl backdrop-blur-md bg-black/30">
+        <h1 className="text-4xl text-center font-blackops text-orange-500">Sign In</h1>
 
-        <label className="block mb-4">
-          <span className="text-sm text-gray-300">Email</span>
+        <form onSubmit={handleSignIn} className="space-y-4">
           <input
             type="email"
-            required
+            placeholder="Email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full mt-1 p-2 rounded bg-gray-800 text-white border border-gray-600"
+            onChange={e => setEmail(e.target.value)}
+            className="input"
+            required
           />
-        </label>
-
-        <label className="block mb-6">
-          <span className="text-sm text-gray-300">Password</span>
           <input
             type="password"
-            required
+            placeholder="Password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full mt-1 p-2 rounded bg-gray-800 text-white border border-gray-600"
+            onChange={e => setPassword(e.target.value)}
+            className="input"
+            required
           />
-        </label>
 
-        {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
+          {error && <p className="text-red-500 text-sm text-center">{error}</p>}
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full py-2 font-blackops bg-orange-500 hover:bg-orange-600 transition rounded text-black"
+          <button
+            type="submit"
+            className="w-full py-2 rounded bg-orange-500 hover:bg-orange-600 font-blackops text-lg transition-all"
+            disabled={loading}
+          >
+            {loading ? 'Signing In...' : 'Sign In'}
+          </button>
+        </form>
+
+        <Link
+          href="/"
+          className="block mt-4 text-center text-orange-400 hover:underline"
         >
-          {loading ? 'Signing in...' : 'Sign In'}
-        </button>
-
-        <div className="my-4 text-center text-sm text-gray-400">or</div>
-
-        <button
-          type="button"
-          onClick={handleGoogleLogin}
-          className="w-full py-2 font-blackops bg-white text-black hover:bg-gray-200 rounded"
-        >
-          Continue with Google
-        </button>
-      </form>
+          ← Back to Home
+        </Link>
+      </div>
     </div>
   );
 }

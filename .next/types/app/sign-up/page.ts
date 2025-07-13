@@ -1,8 +1,8 @@
-// File: /workspaces/ProFixIQ/app/inspection/customer-vehicle/page.tsx
-import * as entry from '../../../../../app/inspection/customer-vehicle/page.js'
+// File: /workspaces/ProFixIQ/app/sign-up/page.tsx
+import * as entry from '../../../../app/sign-up/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 
-type TEntry = typeof import('../../../../../app/inspection/customer-vehicle/page.js')
+type TEntry = typeof import('../../../../app/sign-up/page.js')
 
 type SegmentParams<T extends Object = any> = T extends Record<string, any>
   ? { [K in keyof T]: T[K] extends string ? string | string[] | undefined : never }
