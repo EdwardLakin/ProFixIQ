@@ -80,19 +80,21 @@ export default function SignIn() {
           Sign In with Google
         </button>
 
-        <Link
-          href="/"
-          className="block mt-4 text-center text-orange-400 hover:underline"
-        >
+        <div className="mt-4 space-y-1">
+          <Link
+            href="/forgot-password"
+            className="block text-center text-sm text-orange-400 hover:underline"
+          >
+            Forgot Password?
+          </Link>
 
-         <Link
-  href="/forgot-password"
-  className="block text-center text-sm text-orange-400 hover:underline"
->
-  Forgot Password?
-</Link> 
-          ← Back to Home
-        </Link>
+          <Link
+            href="/"
+            className="block text-center text-orange-400 hover:underline"
+          >
+            ← Back to Home
+          </Link>
+        </div>
       </div>
     </div>
   );

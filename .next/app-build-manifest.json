@@ -11,20 +11,15 @@
       "static/chunks/main-app.js",
       "static/chunks/app/page.js"
     ],
-    "/sign-in/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/sign-in/page.js"
-    ],
     "/inspection/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/inspection/page.js"
     ],
-    "/forgot-password/page": [
+    "/sign-in/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/forgot-password/page.js"
+      "static/chunks/app/sign-in/page.js"
     ],
     "/_not-found/page": [
       "static/chunks/webpack.js",
