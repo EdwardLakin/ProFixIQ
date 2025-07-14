@@ -1,5 +1,4 @@
 
-
 export interface User {
   id: string;
   email: string;
@@ -24,15 +23,19 @@ export type JobStatus = 'awaiting' | 'in_progress' | 'on_hold' | 'completed';
 export type JobLine = {
   id: string;
   status: JobStatus;
-  complaint?: string | null;
-  vehicle_year?: number | null;
-  vehicle_make?: string | null;
-  vehicle_model?: string | null;
-  assigned_tech_full_name?: string | null;
+  complaint: string | null;
+  vehicle?: {
+    year?: number;
+    make?: string;
+    model?: string;
+  };
+  assigned_to?: {
+    full_name?: string;
+  };
   punched_in_at?: string | null;
   punched_out_at?: string | null;
   hold_reason?: string | null;
-  work_order_id?: string | null;
+  created_at: string;
 };
 
 // Extend your Database type to support Supabase relationships

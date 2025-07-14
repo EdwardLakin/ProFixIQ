@@ -1,7 +1,7 @@
 import { createServerClient } from '@lib/supabaseServerClient'
 import type { Database } from '../../types/supabase'
 
-export async function handleWorkOrderCommand(command: any): Promise<string> {
+export async function handleWorkOrderCommand(command: any, line: { id: string; work_order_id: string | null; vehicle_id: string | null; complaint: string | null; cause: string | null; correction: string | null; status: "ready" | "active" | "paused" | "on_hold" | "completed" | "queued" | "awaiting" | "in_progress"; assigned_to: string | null; labor_time?: number | null; parts_needed?: string[] | null; parts_received?: string[] | null; created_at: string; updated_at: string; punched_in_at: string | null; punched_out_at: string | null; hold_reason: string | null; assigned_tech_id: string | null }, setLine: unknown): Promise<string> {
   const supabase = createServerClient()
 
   switch (command.type) {

@@ -17,7 +17,8 @@
       "@components/*": ["src/components/*"],
       "@hooks/*": ["src/hooks/*"],
       "@lib/*": ["src/lib/*"],
-      "@custom-types/*": ["src/types/*"]
+      "@custom-types/*": ["src/types/*"],
+      "@/types/*": ["src/types/*"],   // <== Add this line
     },
     "types": [],
     "esModuleInterop": true,

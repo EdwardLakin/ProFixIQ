@@ -69,10 +69,12 @@ export default function useVoiceInput() {
   }, []);
 
   return {
-    isListening,
-    transcript,
-    startListening,
-    pauseListening,
-    session,
-  };
+  isListening,
+  setIsListening,      // ✅ Add this
+  transcript,
+  setTranscript,       // ✅ Add this
+  startListening,
+  pauseListening,
+  session,
+};
 }
