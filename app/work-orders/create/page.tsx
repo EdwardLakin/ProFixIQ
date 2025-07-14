@@ -4,7 +4,6 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import PreviousPageButton from '@components/ui/PreviousPageButton';
-import '@/styles/globals.css';
 import supabase from '@lib/supabaseClient';
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';

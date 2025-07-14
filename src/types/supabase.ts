@@ -17,13 +17,18 @@ export interface Database {
           complaint: string | null;
           cause: string | null;
           correction: string | null;
-          status: 'ready' | 'active' | 'paused' | 'on_hold' | 'completed';
+          status: 'ready' | 'active' | 'paused' | 'on_hold' | 'completed' | 'queued' | 'awaiting' | 'in_progress';
           assigned_to: string | null;
           labor_time?: number | null;
           parts_needed?: string[] | null;
           parts_received?: string[] | null;
           created_at: string;
           updated_at: string;
+          punched_in_at: string | null;
+          punched_out_at: string | null;
+          hold_reason: string | null;
+          assigned_tech_id: string | null;
+    
         };
         Insert: {
           id?: string;
@@ -32,13 +37,18 @@ export interface Database {
           complaint?: string | null;
           cause?: string | null;
           correction?: string | null;
-          status?: 'ready' | 'active' | 'paused' | 'on_hold' | 'completed';
+          status?: 'ready' | 'active' | 'paused' | 'on_hold' | 'completed' | 'queued' | 'awaiting' | 'in_progress';
           assigned_to?: string | null;
           labor_time?: number | null;
           parts_needed?: string[] | null;
           parts_received?: string[] | null;
           created_at?: string;
           updated_at?: string;
+          punched_in_at: string | null;
+          punched_out_at: string | null;
+          hold_reason: string | null;
+          assigned_tech_id: string | null;
+    
         };
         Update: {
           id?: string;
@@ -47,13 +57,17 @@ export interface Database {
           complaint?: string | null;
           cause?: string | null;
           correction?: string | null;
-          status?: 'ready' | 'active' | 'paused' | 'on_hold' | 'completed';
+          status?: 'ready' | 'active' | 'paused' | 'on_hold' | 'completed' | 'queued' | 'awaiting' | 'in_progress';
           assigned_to?: string | null;
           labor_time?: number | null;
           parts_needed?: string[] | null;
           parts_received?: string[] | null;
           created_at?: string;
           updated_at?: string;
+          assigned_tech_id: string | null;
+          punched_in_at: string | null;
+          punched_out_at: string | null;
+          hold_reason: string | null;
         };
         Relationships: [
           {
@@ -80,16 +94,19 @@ export interface Database {
       profiles: {
         Row: {
           id: string;
+          full_name: string;
           plan: 'diy' | 'pro' | 'elite';
           created_at: string | null;
         };
         Insert: {
           id: string;
+          full_name: string;
           plan?: 'diy' | 'pro' | 'elite';
           created_at?: string | null;
         };
         Update: {
           id?: string;
+          full_name: string;
           plan?: 'diy' | 'pro' | 'elite';
           created_at?: string | null;
         };
