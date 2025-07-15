@@ -1,140 +1,134 @@
+// src/app/menu/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
-import { useUser } from '@hooks/useUser'; // ✅ FIXED import
+import { useEffect, useState } from 'react';
+import supabase from '@lib/supabaseClient';
+import { useUser } from '@hooks/useUser';
 import type { Database } from '@/types/supabase';
 
-type MenuItem = {
-  id: string;
-  name: string;
-  category: string;
-  labor_time: number;
-  parts_cost: number;
-  total_price: number;
-  user_id: string;
-  created_at?: string;
-};
+type MenuItem = Database['public']['Tables']['menu_items']['Row'];
+type InsertMenuItem = Database['public']['Tables']['menu_items']['Insert'];
 
 export default function MenuItemsPage() {
-   const supabase = createBrowserClient<Database>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-); 
-  const { user } = useUser();
-  const [items, setItems] = useState<MenuItem[]>([]);
-  const [form, setForm] = useState({
+  const { user, isLoading } = useUser();
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [form, setForm] = useState<InsertMenuItem>({
     name: '',
-    labor_time: '',
-    parts_cost: '',
-    total_price: '',
     category: '',
+    total_price: 0,
+    user_id: '',
   });
 
   const fetchItems = async () => {
+    if (!user?.id) return;
+
     const { data, error } = await supabase
       .from('menu_items')
       .select('*')
-      .eq('user_id', user?.id);
+      .eq('user_id', user.id);
 
-    if (!error && data) setItems(data as MenuItem[]);
-  };
-
-  const handleCreate = async () => {
-    const { name, labor_time, parts_cost, total_price } = form;
-
-    if (!name || !total_price) return alert('Name and Total Price are required');
-
-    const newItem = {
-      ...form,
-      labor_time: labor_time ? parseFloat(labor_time) : 0,
-      parts_cost: parts_cost ? parseFloat(parts_cost) : 0,
-      total_price: total_price ? parseFloat(total_price) : 0,
-      user_id: user?.id,
-    };
-
-    const { error } = await supabase.from('menu_items').insert([newItem]);
-
-    if (!error) {
-      setForm({
-        name: '',
-        labor_time: '',
-        parts_cost: '',
-        total_price: '',
-        category: '',
-      });
-      fetchItems();
+    if (error) {
+      console.error('Failed to fetch menu items:', error);
     } else {
-      console.error('Insert failed', error);
-      alert('Failed to save item.');
+      setMenuItems(data ?? []);
     }
   };
 
   useEffect(() => {
-    if (user?.id) fetchItems();
+    if (user?.id) {
+      fetchItems();
+
+      const channel = supabase
+        .channel('menu-items-sync')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'menu_items' },
+          fetchItems
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
   }, [user]);
 
-  return (
-    <div className="p-4 max-w-2xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold">Menu Pricing</h1>
+  const handleSubmit = async () => {
+    if (!form.name || !form.total_price || !user?.id) return;
 
-      <div className="grid grid-cols-2 gap-4">
+    const newItem = {
+      ...form,
+      user_id: user.id,
+    };
+
+    const { error } = await supabase.from('menu_items').insert([newItem]);
+
+    if (error) {
+      console.error('Insert failed:', error);
+    } else {
+      setForm({ name: '', category: '', total_price: 0, user_id: user.id });
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    const { error } = await supabase.from('menu_items').delete().eq('id', id);
+    if (error) console.error('Delete failed:', error);
+  };
+
+  if (isLoading) return <div>Loading...</div>;
+
+  return (
+    <div className="p-4">
+      <h1 className="text-xl font-bold mb-4">Menu Items</h1>
+
+      <div className="flex flex-col gap-2 mb-4">
         <input
-          placeholder="Job Name"
-          className="border p-2 rounded"
+          placeholder="Name"
           value={form.name}
           onChange={(e) => setForm({ ...form, name: e.target.value })}
+          className="border px-2 py-1"
         />
         <input
-          placeholder="Category (e.g. Brakes, Oil)"
-          className="border p-2 rounded"
-          value={form.category}
+          placeholder="Category"
+          value={form.category || ''}
           onChange={(e) => setForm({ ...form, category: e.target.value })}
+          className="border px-2 py-1"
         />
         <input
-          placeholder="Labor Time (hrs)"
+          placeholder="Total Price"
           type="number"
-          className="border p-2 rounded"
-          value={form.labor_time}
-          onChange={(e) => setForm({ ...form, labor_time: e.target.value })}
-        />
-        <input
-          placeholder="Parts Cost ($)"
-          type="number"
-          className="border p-2 rounded"
-          value={form.parts_cost}
-          onChange={(e) => setForm({ ...form, parts_cost: e.target.value })}
-        />
-        <input
-          placeholder="Total Price ($)"
-          type="number"
-          className="border p-2 rounded col-span-2"
           value={form.total_price}
-          onChange={(e) => setForm({ ...form, total_price: e.target.value })}
+          onChange={(e) =>
+            setForm({ ...form, total_price: parseFloat(e.target.value) || 0 })
+          }
+          className="border px-2 py-1"
         />
+        <button
+          onClick={handleSubmit}
+          className="bg-black text-white px-4 py-2 rounded"
+        >
+          Add Menu Item
+        </button>
       </div>
 
-      <button
-        onClick={handleCreate}
-        className="bg-blue-600 text-white px-4 py-2 rounded"
-      >
-        Add Menu Item
-      </button>
-
-      <div className="pt-6">
-        <h2 className="text-xl font-semibold mb-2">Existing Items</h2>
-        {items.length === 0 && <p className="text-gray-500">No menu items yet.</p>}
-        {items.map((item) => (
-          <div key={item.id} className="border p-3 rounded mb-3 bg-white dark:bg-gray-900">
-            <strong>{item.name}</strong> — ${item.total_price.toFixed(2)} ({item.labor_time} hrs)
-            <div className="text-sm text-gray-600">
-              Category: {item.category || '—'}<br />
-              Parts: ${item.parts_cost.toFixed(2)}<br />
-              Created: {item.created_at ? new Date(item.created_at).toLocaleDateString() : '—'}
-            </div>
-          </div>
+      <ul className="space-y-2">
+        {menuItems.map((item) => (
+          <li
+            key={item.id}
+            className="border p-2 rounded flex justify-between items-center"
+          >
+            <span>
+              <strong>{item.name}</strong> — ${item.total_price}
+            </span>
+            <button
+              onClick={() => handleDelete(item.id)}
+              className="text-red-500"
+            >
+              Delete
+            </button>
+          </li>
         ))}
-      </div>
+      </ul>
     </div>
   );
 }

@@ -90,6 +90,12 @@ export interface Database {
             columns: ['vehicle_id'];
             referencedRelation: 'vehicles';
             referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'profiles_shop_id_fkey',
+            columns: ['shop_id'],
+            referencedRelation: 'shop',
+            referencedColumns: ['id']
           }
         ];
       };
@@ -131,7 +137,7 @@ export interface Database {
           id: string;
           vehicle_id: string | null;
           inspection_id: string | null;
-          status: 'open' | 'in_progress' | 'paused' | 'completed' | 'cancelled';
+          status: 'open' | 'in_progress' | 'paused' | 'completed' | 'cancelled' | 'queued';
           location?: string | null;
           created_at: string;
         };
@@ -139,7 +145,7 @@ export interface Database {
           id?: string;
           vehicle_id?: string | null;
           inspection_id?: string | null;
-          status?: 'open' | 'in_progress' | 'paused' | 'completed' | 'cancelled';
+          status?: 'open' | 'in_progress' | 'paused' | 'completed' | 'cancelled' | 'queued';
           location?: string | null;
           created_at?: string;
         };
@@ -147,7 +153,7 @@ export interface Database {
           id?: string;
           vehicle_id?: string | null;
           inspection_id?: string | null;
-          status?: 'open' | 'in_progress' | 'paused' | 'completed' | 'cancelled';
+          status?: 'open' | 'in_progress' | 'paused' | 'completed' | 'cancelled' | 'queued';
           location?: string | null;
           created_at?: string;
         };
@@ -163,6 +169,12 @@ export interface Database {
             columns: ['inspection_id'];
             referencedRelation: 'inspections';
             referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'profiles_shop_id_fkey',
+            columns: ['shop_id'],
+            referencedRelation: 'shop',
+            referencedColumns: ['id']
           }
         ];
       }
@@ -173,20 +185,30 @@ export interface Database {
           full_name: string;
           plan: 'diy' | 'pro' | 'elite';
           created_at: string | null;
+          shop_id?: string | null;
         };
         Insert: {
           id: string;
           full_name: string;
           plan?: 'diy' | 'pro' | 'elite';
           created_at?: string | null;
+          shop_id?: string | null;
         };
         Update: {
           id?: string;
           full_name: string;
           plan?: 'diy' | 'pro' | 'elite';
           created_at?: string | null;
+          shop_id?: string | null;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: 'profiles_shop_id_fkey';
+            columns: ['shop_id'];
+            referencedRelation: 'shop';
+            referencedColumns: ['id'];
+          }
+        ];
       };
 
       inspections: {
@@ -214,7 +236,14 @@ export interface Database {
           vehicle?: string | null;
           created_at?: string;
         };
-        Relationships: [];
+        Relationships: [
+        {
+          foreignKeyName: 'profiles_shop_id_fkey',
+          columns: ['shop_id'],
+          referencedRelation: 'shop',
+          referencedColumns: ['id']
+        }
+        ];
       };
 
       customers: {
@@ -242,8 +271,35 @@ export interface Database {
           email?: string;
           created_at?: string;
         };
-        Relationships: [];
+        Relationships: [
+        {
+          foreignKeyName: 'profiles_shop_id_fkey',
+          columns: ['shop_id'],
+          referencedRelation: 'shop',
+          referencedColumns: ['id']
+        }
+        ];
       };
+
+      shop: {
+        Row: {
+          id: string;
+          name: string;
+          created_at: string;
+    // Add any other fields you use
+        };
+          Insert: {
+          id?: string;
+          name: string;
+          created_at?: string;
+        };
+          Update: {
+          id?: string;
+          name?: string;
+          created_at?: string;
+        };
+          Relationships: [];
+        }
 
       vehicles: {
         Row: {
@@ -288,6 +344,12 @@ export interface Database {
             columns: ['customer_id'];
             referencedRelation: 'customers';
             referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'profiles_shop_id_fkey',
+            columns: ['shop_id'],
+            referencedRelation: 'shop',
+            referencedColumns: ['id']
           }
         ];
       };

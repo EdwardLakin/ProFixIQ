@@ -1,17 +1,5 @@
 {
-  "node": {
-    "001876b4e9bad0a9a712719da20759dd9829e4cef9": {
-      "workers": {
-        "app/inspection/page": {
-          "moduleId": "(rsc)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2Fworkspaces%2FProFixIQ%2Fsrc%2Flib%2FgetUserSession.ts%22%2C%5B%7B%22id%22%3A%22001876b4e9bad0a9a712719da20759dd9829e4cef9%22%2C%22exportedName%22%3A%22getUserSession%22%7D%5D%5D%5D&__client_imported__=!",
-          "async": false
-        }
-      },
-      "layer": {
-        "app/inspection/page": "rsc"
-      }
-    }
-  },
+  "node": {},
   "edge": {},
-  "encryptionKey": "HuH8/8eZSBDkMy+V4gg82R5cfYUP/h6nAwvwHLNMsyE="
+  "encryptionKey": "JPrHBsH+qPAaRuEJJh+BNKwiLMqfHbnSZkiqdbjPYiQ="
 }

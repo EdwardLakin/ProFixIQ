@@ -1,8 +1,19 @@
+// src/hooks/useUser.ts
+'use client';
+
 import { useEffect, useState } from 'react';
 import supabase from '@lib/supabaseClient';
+import type { Database } from '@/types/supabase';
+
+type Profile = Database['public']['Tables']['profiles']['Row'];
+type Shop = Database['public']['Tables']['shop']['Row'];
+
+type UserWithShop = Profile & {
+  shop?: Shop | null;
+};
 
 export function useUser() {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<UserWithShop | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -10,10 +21,10 @@ export function useUser() {
       setIsLoading(true);
 
       const {
-        data: { user },
+        data: { user: authUser },
       } = await supabase.auth.getUser();
 
-      if (!user) {
+      if (!authUser) {
         setUser(null);
         setIsLoading(false);
         return;
@@ -22,14 +33,14 @@ export function useUser() {
       const { data, error } = await supabase
         .from('profiles')
         .select('*, shop(*)')
-        .eq('id', user.id)
+        .eq('id', authUser.id)
         .single();
 
       if (error) {
-        console.error('❌ Failed to fetch user profile:', error);
+        console.error('Failed to fetch user profile:', error);
         setUser(null);
       } else {
-        setUser(data);
+        setUser(data as UserWithShop);
       }
 
       setIsLoading(false);
