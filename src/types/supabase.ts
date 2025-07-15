@@ -18,6 +18,7 @@ export interface Database {
           cause: string | null;
           correction: string | null;
           status: 'ready' | 'active' | 'paused' | 'on_hold' | 'completed' | 'queued' | 'awaiting' | 'in_progress';
+          job_type?: 'diagnosis' | 'inspection-fail' | 'maintenance' | 'repair';
           assigned_to: string | null;
           labor_time?: number | null;
           parts_needed?: string[] | null;
@@ -38,6 +39,7 @@ export interface Database {
           cause?: string | null;
           correction?: string | null;
           status?: 'ready' | 'active' | 'paused' | 'on_hold' | 'completed' | 'queued' | 'awaiting' | 'in_progress';
+          job_type?: 'diagnosis' | 'inspection-fail' | 'maintenance' | 'repair';
           assigned_to?: string | null;
           labor_time?: number | null;
           parts_needed?: string[] | null;
@@ -58,6 +60,7 @@ export interface Database {
           cause?: string | null;
           correction?: string | null;
           status?: 'ready' | 'active' | 'paused' | 'on_hold' | 'completed' | 'queued' | 'awaiting' | 'in_progress';
+          job_type?: 'diagnosis' | 'inspection-fail' | 'maintenance' | 'repair';
           assigned_to?: string | null;
           labor_time?: number | null;
           parts_needed?: string[] | null;
