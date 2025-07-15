@@ -11,6 +11,7 @@ import { handleWorkOrderCommand } from '@lib/work-orders/handleWorkOrderCommand'
 import StartListeningButton from '@lib/inspection/StartListeningButton';
 import PauseResumeButton from '@lib/inspection/PauseResume';
 import useVoiceInput from '@hooks/useVoiceInput';
+import DtcSuggestionPopup from '@components/workorders/DtcSuggestionPopup';
 
 type WorkOrderLine = Database['public']['Tables']['work_order_lines']['Row'];
 type Vehicle = Database['public']['Tables']['vehicles']['Row'];
@@ -171,6 +172,22 @@ export default function WorkOrderDetailPage() {
               </p>
             )}
           </div>
+          {line?.job_type === 'diagnosis' &&
+            line.punched_in_at &&
+            !line.cause &&
+            !line.correction &&
+            !line.labor_time &&
+            vehicle && (
+              <DtcSuggestionPopup
+                jobId={line.id}
+                vehicle={{
+                  id: vehicle.id,
+                  year: vehicle.year,
+                  make: vehicle.make,
+                  model: vehicle.model,
+                }}
+              />
+            )}
         </>
       )}
     </div>
