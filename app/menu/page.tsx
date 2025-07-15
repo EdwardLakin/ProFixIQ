@@ -1,40 +1,73 @@
-"use client";
+'use client';
 
-import { useState, useEffect } from "react";
-import { createBrowserClient } from "@supabase/ssr";
-import { useUser } from "@/hooks/useUser";
+import { useState, useEffect } from 'react';
+import { createBrowserClient } from '@supabase/ssr';
+import { useUser } from '@hooks/useUser'; // ✅ FIXED import
+import type { Database } from '@/types/supabase';
+
+type MenuItem = {
+  id: string;
+  name: string;
+  category: string;
+  labor_time: number;
+  parts_cost: number;
+  total_price: number;
+  user_id: string;
+  created_at?: string;
+};
 
 export default function MenuItemsPage() {
-  const supabase = createBrowserClient();
+   const supabase = createBrowserClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+); 
   const { user } = useUser();
-  const [items, setItems] = useState<any[]>([]);
+  const [items, setItems] = useState<MenuItem[]>([]);
   const [form, setForm] = useState({
-    name: "",
-    labor_time: "",
-    parts_cost: "",
-    total_price: "",
-    category: "",
+    name: '',
+    labor_time: '',
+    parts_cost: '',
+    total_price: '',
+    category: '',
   });
 
   const fetchItems = async () => {
     const { data, error } = await supabase
-      .from("menu_items")
-      .select("*")
-      .eq("user_id", user?.id);
-    if (!error) setItems(data || []);
+      .from('menu_items')
+      .select('*')
+      .eq('user_id', user?.id);
+
+    if (!error && data) setItems(data as MenuItem[]);
   };
 
   const handleCreate = async () => {
-    if (!form.name || !form.total_price) return alert("Fill required fields");
-    await supabase.from("menu_items").insert([{ ...form, user_id: user?.id }]);
-    setForm({
-      name: "",
-      labor_time: "",
-      parts_cost: "",
-      total_price: "",
-      category: "",
-    });
-    fetchItems();
+    const { name, labor_time, parts_cost, total_price } = form;
+
+    if (!name || !total_price) return alert('Name and Total Price are required');
+
+    const newItem = {
+      ...form,
+      labor_time: labor_time ? parseFloat(labor_time) : 0,
+      parts_cost: parts_cost ? parseFloat(parts_cost) : 0,
+      total_price: total_price ? parseFloat(total_price) : 0,
+      user_id: user?.id,
+    };
+
+    const { error } = await supabase.from('menu_items').insert([newItem]);
+
+    if (!error) {
+      setForm({
+        name: '',
+        labor_time: '',
+        parts_cost: '',
+        total_price: '',
+        category: '',
+      });
+      fetchItems();
+    } else {
+      console.error('Insert failed', error);
+      alert('Failed to save item.');
+    }
   };
 
   useEffect(() => {
@@ -42,10 +75,10 @@ export default function MenuItemsPage() {
   }, [user]);
 
   return (
-    <div className="p-4 max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">Menu Pricing</h1>
+    <div className="p-4 max-w-2xl mx-auto space-y-6">
+      <h1 className="text-2xl font-bold">Menu Pricing</h1>
 
-      <div className="grid grid-cols-2 gap-4 mb-4">
+      <div className="grid grid-cols-2 gap-4">
         <input
           placeholder="Job Name"
           className="border p-2 rounded"
@@ -53,7 +86,7 @@ export default function MenuItemsPage() {
           onChange={(e) => setForm({ ...form, name: e.target.value })}
         />
         <input
-          placeholder="Category (Brakes, Oil Change...)"
+          placeholder="Category (e.g. Brakes, Oil)"
           className="border p-2 rounded"
           value={form.category}
           onChange={(e) => setForm({ ...form, category: e.target.value })}
@@ -88,18 +121,20 @@ export default function MenuItemsPage() {
         Add Menu Item
       </button>
 
-      <h2 className="text-xl font-semibold mt-6 mb-2">Existing Items</h2>
-      {items.length === 0 && <p>No menu items yet.</p>}
-      {items.map((item) => (
-        <div key={item.id} className="border p-3 rounded mb-2">
-          <strong>{item.name}</strong> – ${item.total_price} ({item.labor_time}{" "}
-          hrs)
-          <br />
-          <span className="text-sm text-gray-600">
-            Category: {item.category}
-          </span>
-        </div>
-      ))}
+      <div className="pt-6">
+        <h2 className="text-xl font-semibold mb-2">Existing Items</h2>
+        {items.length === 0 && <p className="text-gray-500">No menu items yet.</p>}
+        {items.map((item) => (
+          <div key={item.id} className="border p-3 rounded mb-3 bg-white dark:bg-gray-900">
+            <strong>{item.name}</strong> — ${item.total_price.toFixed(2)} ({item.labor_time} hrs)
+            <div className="text-sm text-gray-600">
+              Category: {item.category || '—'}<br />
+              Parts: ${item.parts_cost.toFixed(2)}<br />
+              Created: {item.created_at ? new Date(item.created_at).toLocaleDateString() : '—'}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

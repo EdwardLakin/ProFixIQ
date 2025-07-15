@@ -93,6 +93,38 @@ export interface Database {
           }
         ];
       };
+
+      menu_items: {
+        Row: {
+          id: string;
+          name: string;
+          category: string;
+          labor_time: number | null;
+          parts_cost: number | null;
+          total_price: number;
+          user_id: string;
+          created_at?: string;
+        };
+        Insert: {
+          name: string;
+          category?: string;
+          labor_time?: number | null;
+          parts_cost?: number | null;
+          total_price: number;
+          user_id: string;
+          created_at?: string;
+        };
+        Update: {
+          name?: string;
+          category?: string;
+          labor_time?: number | null;
+          parts_cost?: number | null;
+          total_price?: number;
+          user_id?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      }
       
       work_orders: {
         Row: {
