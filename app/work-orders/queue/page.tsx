@@ -1,42 +1,23 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getQueuedJobsForTech } from '@lib/tech/getQueuedJobsForTech';
-import type { JobLine } from '@lib/types';
+import { getQueuedJobsForTech } from '@lib/work-orders/getQueuedJobsForTech';
+import type { JobLine, JobStatus } from '@lib/types';
 import JobQueueCard from '@components/JobQueueCard';
 import Link from 'next/link';
 
-const STATUSES: JobLine['status'][] = ['awaiting', 'in_progress', 'on_hold', 'completed'];
+const STATUSES: JobStatus[] = ['awaiting', 'in_progress', 'on_hold', 'completed'];
 
 export default function JobQueuePage() {
   const [jobs, setJobs] = useState<JobLine[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeStatus, setActiveStatus] = useState<JobLine['status']>('awaiting');
+  const [activeStatus, setActiveStatus] = useState<JobStatus>('awaiting');
 
   useEffect(() => {
     const fetchJobs = async () => {
       setLoading(true);
-      const rawData = await getQueuedJobsForTech();
-
-      const mapped = (rawData || []).map((job): JobLine => ({
-        id: job.id,
-        status: mapStatus(job.status),
-        complaint: job.complaint ?? null,
-        vehicle: {
-          year: job.vehicle?.year ?? undefined,
-          make: job.vehicle?.make ?? '',
-          model: job.vehicle?.model ?? '',
-        },
-        assigned_to: {
-          full_name: job.assigned_to?.full_name ?? '',
-        },
-        punched_in_at: job.punched_in_at ?? null,
-        punched_out_at: job.punched_out_at ?? null,
-        hold_reason: job.hold_reason ?? null,
-        created_at: job.created_at ?? '',
-      }));
-
-      setJobs(mapped);
+      const data = await getQueuedJobsForTech();
+      setJobs(data || []);
       setLoading(false);
     };
 
@@ -47,18 +28,20 @@ export default function JobQueuePage() {
 
   return (
     <div className="p-6">
+      <h1 className="text-2xl font-black mb-4">Job Queue</h1>
+
       <div className="flex space-x-2 mb-4">
         {STATUSES.map((status) => (
           <button
             key={status}
             onClick={() => setActiveStatus(status)}
-            className={`px-3 py-1 rounded-full text-sm font-semibold ${
+            className={`px-3 py-1 rounded-full text-sm font-semibold border ${
               activeStatus === status
                 ? 'bg-orange-500 text-white border-orange-500'
                 : 'bg-white text-black border-gray-300 dark:bg-gray-800 dark:text-white dark:border-gray-600'
-            } border`}
+            }`}
           >
-            {status.replaceAll('_', ' ')}
+            {status.replace('_', ' ')}
           </button>
         ))}
       </div>
@@ -67,12 +50,16 @@ export default function JobQueuePage() {
         <p className="text-muted">Loading jobs...</p>
       ) : filteredJobs.length === 0 ? (
         <p className="text-muted">
-          No {activeStatus.replaceAll('_', ' ')} jobs.
+          No {activeStatus.replace('_', ' ')} jobs.
         </p>
       ) : (
         <div className="space-y-4">
           {filteredJobs.map((job) => (
-            <Link href={`/work-orders/${job.id}`} key={job.id} className="block hover:shadow-md transition">
+            <Link
+              key={job.id}
+              href={`/work-orders/${job.id}`}
+              className="block hover:shadow-md transition"
+            >
               <JobQueueCard job={job} />
             </Link>
           ))}
@@ -80,12 +67,4 @@ export default function JobQueuePage() {
       )}
     </div>
   );
-}
-
-function mapStatus(input: string): JobLine['status'] {
-  const normalized = input.toLowerCase();
-  if (['awaiting', 'in_progress', 'on_hold', 'completed'].includes(normalized)) {
-    return normalized as JobLine['status'];
-  }
-  return 'awaiting'; // fallback
 }

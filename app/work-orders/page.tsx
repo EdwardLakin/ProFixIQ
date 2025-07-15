@@ -1,48 +1,29 @@
 'use client';
 
-import HomeButton from '@components/ui/HomeButton';
 import Link from 'next/link';
-import { withAuthAndPlan } from '@lib/withAuthAndPlan';
 
-function WorkOrdersPageContent() {
+export default function WorkOrderMenuPage() {
   return (
-    <div className="min-h-screen bg-black bg-opacity-90 text-white px-4 pt-6">
-      <HomeButton />
-
-      <h1 className="text-4xl font-black text-center text-orange-400 mb-6">
-        Work Orders
+    <div className="min-h-screen p-6 flex flex-col items-center justify-start">
+      <h1 className="text-3xl font-blackops text-orange-400 mb-8 text-center">
+        Work Order Menu
       </h1>
-      <p className="text-lg text-center text-neutral-300 mb-10">
-        Select an option to begin
-      </p>
 
-      <div className="grid grid-cols-1 gap-6 max-w-2xl mx-auto">
-        <Link href="/work-orders/create">
-          <button className="w-full py-6 text-xl font-bold border border-orange-400 text-orange-400 hover:bg-orange-500 hover:text-black transition-all duration-200 rounded-md">
-            Create Work Order
-          </button>
+      <div className="grid gap-6 w-full max-w-md">
+        <Link
+          href="/work-orders/create"
+          className="block text-center border border-orange-500 text-orange-400 px-6 py-4 rounded-md hover:bg-orange-500 hover:text-black font-semibold transition"
+        >
+          Create New Work Order
         </Link>
 
-        <Link href="/work-orders/customer">
-          <button className="w-full py-6 text-xl font-bold border border-blue-400 text-blue-400 hover:bg-blue-500 hover:text-black transition-all duration-200 rounded-md">
-            Customer Work Order
-          </button>
-        </Link>
-
-        <Link href="/work-orders/quote-review">
-          <button className="w-full py-6 text-xl font-bold border border-green-400 text-green-400 hover:bg-green-500 hover:text-black transition-all duration-200 rounded-md">
-            Quote Review
-          </button>
+        <Link
+          href="/work-orders/queue"
+          className="block text-center border border-orange-500 text-orange-400 px-6 py-4 rounded-md hover:bg-orange-500 hover:text-black font-semibold transition"
+        >
+          View Job Queue
         </Link>
       </div>
     </div>
-  );
-}
-
-export default function WorkOrdersPage() {
-  return (
-    <WithAuthAndPlan>
-      <WorkOrdersPageContent />
-    </WithAuthAndPlan>
   );
 }
