@@ -1,12 +1,11 @@
 // src/lib/tech/getQueuedJobsForTech.ts
 
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import type { Database } from '@/types/supabase';
 import type { JobLine } from '@lib/types';
 
 export async function getQueuedJobsForTech(): Promise<JobLine[] | null> {
-  const supabase = createServerComponentClient<Database>({ cookies });
+  const supabase = createClientComponentClient<Database>();
 
   const {
     data: { user },
