@@ -1,28 +1,19 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
 import { v4 as uuidv4 } from 'uuid';
 import PreviousPageButton from '@components/ui/PreviousPageButton';
-import { insertPrioritizedJobs } from '../insertPrioritizedJobs';
-
-type JobInput = {
-  complaint: string;
-  job_type: 'diagnosis' | 'inspection-fail' | 'maintenance' | 'repair';
-  cause?: string;
-};
+import supabase from '@lib/supabaseClient';
+import { useSearchParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
 export default function CreateWorkOrderPage() {
   const searchParams = useSearchParams();
-  const template = searchParams.get('template');
+  const template = searchParams.get('template'); // inspectionId
   const pageFrom = searchParams.get('pageFrom');
-
-  const router = useRouter();
+  const vehicleId = searchParams.get('vehicleId');
 
   const [workOrderId, setWorkOrderId] = useState<string>('');
-  const [vehicleId, setVehicleId] = useState<string>(''); // Set this via input or link
-  const [jobs, setJobs] = useState<JobInput[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [statusMsg, setStatusMsg] = useState<string>('');
 
   useEffect(() => {
     const id = uuidv4();
@@ -33,93 +24,48 @@ export default function CreateWorkOrderPage() {
     }
   }, [template, pageFrom]);
 
-  const addJob = () => {
-    setJobs((prev) => [...prev, { complaint: '', job_type: 'repair' }]);
-  };
+  useEffect(() => {
+    const createInspectionJobs = async () => {
+      if (template && workOrderId && vehicleId) {
+        const res = await fetch('/api/work-orders/from-inspection', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            inspectionId: template,
+            workOrderId,
+            vehicleId,
+          }),
+        });
 
-  const updateJob = (index: number, key: keyof JobInput, value: any) => {
-    const newJobs = [...jobs];
-    newJobs[index][key] = value;
-    setJobs(newJobs);
-  };
+        if (res.ok) {
+          setStatusMsg('Inspection jobs added to work order.');
+        } else {
+          setStatusMsg('Failed to add jobs from inspection.');
+        }
+      }
+    };
 
-  const handleSubmit = async () => {
-    if (!vehicleId || !workOrderId || jobs.length === 0) return;
-
-    setLoading(true);
-
-    const { error } = await insertPrioritizedJobs(workOrderId, vehicleId, jobs);
-
-    if (error) {
-      console.error('Failed to insert jobs:', error);
-    } else {
-      router.push(`/work-orders/${workOrderId}`);
-    }
-
-    setLoading(false);
-  };
+    createInspectionJobs();
+  }, [template, workOrderId, vehicleId]);
 
   return (
     <div className="min-h-screen bg-black text-white p-6">
       <PreviousPageButton to="/inspection" />
       <h1 className="text-3xl font-black text-center mb-4">Create Work Order</h1>
-      <p className="text-center text-sm text-gray-400 mb-8">
-        {template ? `Linked to template: ${template}` : 'No inspection linked'}
+
+      <p className="text-center text-sm text-gray-400 mb-4">
+        {template ? `Linked to inspection: ${template}` : 'No inspection linked'}
       </p>
 
-      <div className="space-y-4">
-        {jobs.map((job, index) => (
-          <div key={index} className="bg-gray-800 p-4 rounded shadow space-y-2">
-            <div>
-              <label className="block text-sm">Complaint</label>
-              <input
-                type="text"
-                value={job.complaint}
-                onChange={(e) => updateJob(index, 'complaint', e.target.value)}
-                className="w-full px-3 py-1 rounded bg-gray-900 text-white"
-              />
-            </div>
-            <div>
-              <label className="block text-sm">Job Type</label>
-              <select
-                value={job.job_type}
-                onChange={(e) =>
-                  updateJob(index, 'job_type', e.target.value as JobInput['job_type'])
-                }
-                className="w-full px-3 py-1 rounded bg-gray-900 text-white"
-              >
-                <option value="diagnosis">Diagnosis</option>
-                <option value="inspection-fail">Inspection Fail</option>
-                <option value="maintenance">Maintenance</option>
-                <option value="repair">Repair</option>
-              </select>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="flex justify-center mt-6">
-        <button
-          onClick={addJob}
-          className="bg-orange-600 hover:bg-orange-700 px-4 py-2 rounded font-semibold"
-        >
-          + Add Job
-        </button>
-      </div>
-
-      <div className="text-sm text-center text-orange-400 mt-12">
+      <div className="text-sm text-orange-400 text-center mb-4">
         Work Order ID: {workOrderId}
       </div>
 
-      <div className="flex justify-center mt-4">
-        <button
-          onClick={handleSubmit}
-          disabled={loading}
-          className="bg-green-600 hover:bg-green-700 px-6 py-2 rounded text-white font-bold"
-        >
-          {loading ? 'Creating...' : 'Create Work Order'}
-        </button>
-      </div>
+      {statusMsg && (
+        <div className="text-center text-green-400 mt-4">
+          {statusMsg}
+        </div>
+      )}
     </div>
   );
 }

@@ -52,6 +52,8 @@ export type InspectionCommand =
 }
 
 export interface VehicleInfo {
+  id?: string;
+  vehicle_id?: string;
   year: string;
   make: string;
   model: string;
@@ -145,6 +147,7 @@ export interface InspectionSession {
   postal_code: string;
   }
   vehicle: {
+  id?: null;
   year: string;
   make: string;
   model: string;

@@ -1,18 +1,27 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import useInspectionSession from '@lib/inspection/useInspectionSession';
+import { generateInspectionPDF } from '@lib/inspection/pdf';
 import {
   type InspectionItem,
   type InspectionSection,
 } from '@lib/inspection/types';
-import { generateInspectionPDF } from '@lib/inspection/pdf';
 import HomeButton from '@components/ui/HomeButton';
 import PreviousPageButton from '@components/ui/PreviousPageButton';
+import supabase from '@lib/supabaseClient';
+import { v4 as uuidv4 } from 'uuid';
 
 export default function SummaryPage() {
   const router = useRouter();
   const { session, updateItem } = useInspectionSession();
+  const searchParams = useSearchParams();
+  const inspectionId = searchParams.get('inspectionId');
+  const workOrderIdFromUrl = searchParams.get('workOrderId');
+
+  const [workOrderId, setWorkOrderId] = useState<string | null>(workOrderIdFromUrl || null);
+  const [isAddingToWorkOrder, setIsAddingToWorkOrder] = useState(false);
 
   const handleFieldChange = (
     sectionIndex: number,
@@ -21,6 +30,57 @@ export default function SummaryPage() {
     value: string
   ) => {
     updateItem(sectionIndex, itemIndex, { [field]: value });
+  };
+
+  const hasFailedItems = session.sections.some(section =>
+    section.items.some(item => item.status === 'fail' || item.status === 'recommend')
+  );
+
+  const createWorkOrderIfNoneExists = async () => {
+    if (workOrderId) return workOrderId;
+
+    const newId = uuidv4();
+    const { error } = await supabase.from('work_orders').insert([
+      {
+        id: newId,
+        vehicle_id: session.vehicle?.id ?? null,
+        inspection_id: inspectionId ?? null,
+        created_at: new Date().toISOString(),
+        status: 'queued',
+        location: session.location ?? 'unspecified',
+      },
+    ]as any);
+
+    if (!error) {
+      setWorkOrderId(newId);
+      return newId;
+    } else {
+      console.error('Error creating work order:', error);
+      return null;
+    }
+  };
+
+  const handleAddToWorkOrder = async () => {
+    setIsAddingToWorkOrder(true);
+    const id = await createWorkOrderIfNoneExists();
+    if (!id || !inspectionId) return;
+
+    const response = await fetch('/api/work-orders/from-inspection', {
+      method: 'POST',
+      body: JSON.stringify({
+        inspectionId,
+        workOrderId: id,
+        vehicleId: session.vehicle?.id,
+      }),
+    });
+
+    if (response.ok) {
+      alert('Jobs added to work order successfully!');
+    } else {
+      alert('Failed to add jobs to work order.');
+    }
+
+    setIsAddingToWorkOrder(false);
   };
 
   const handleSubmit = async () => {
@@ -33,7 +93,6 @@ export default function SummaryPage() {
       link.download = 'inspection_summary.pdf';
       link.click();
 
-      // Clean up local storage
       localStorage.removeItem('inspectionCustomer');
       localStorage.removeItem('inspectionVehicle');
 
@@ -146,9 +205,19 @@ export default function SummaryPage() {
         </div>
       ))}
 
+      {hasFailedItems && (
+        <button
+          onClick={handleAddToWorkOrder}
+          disabled={isAddingToWorkOrder}
+          className="w-full bg-orange-600 text-white py-3 rounded-md font-bold text-lg mt-4"
+        >
+          {isAddingToWorkOrder ? 'Adding to Work Order...' : 'Add to Work Order'}
+        </button>
+      )}
+
       <button
         onClick={handleSubmit}
-        className="w-full bg-green-600 text-white py-3 rounded-md font-bold text-lg mt-8"
+        className="w-full bg-green-600 text-white py-3 rounded-md font-bold text-lg mt-4"
       >
         Submit Inspection
       </button>

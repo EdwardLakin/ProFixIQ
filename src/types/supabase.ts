@@ -93,6 +93,47 @@ export interface Database {
           }
         ];
       };
+      
+      work_orders: {
+        Row: {
+          id: string;
+          vehicle_id: string | null;
+          inspection_id: string | null;
+          status: 'open' | 'in_progress' | 'paused' | 'completed' | 'cancelled';
+          location?: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          vehicle_id?: string | null;
+          inspection_id?: string | null;
+          status?: 'open' | 'in_progress' | 'paused' | 'completed' | 'cancelled';
+          location?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          vehicle_id?: string | null;
+          inspection_id?: string | null;
+          status?: 'open' | 'in_progress' | 'paused' | 'completed' | 'cancelled';
+          location?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'work_orders_vehicle_id_fkey';
+            columns: ['vehicle_id'];
+            referencedRelation: 'vehicles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'work_orders_inspection_id_fkey';
+            columns: ['inspection_id'];
+            referencedRelation: 'inspections';
+            referencedColumns: ['id'];
+          }
+        ];
+      }
 
       profiles: {
         Row: {
@@ -219,6 +260,7 @@ export interface Database {
         ];
       };
     };
+    
 
     Views: {};
     Functions: {};
