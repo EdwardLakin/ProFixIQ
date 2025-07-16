@@ -15,20 +15,25 @@ export default function SignUp() {
   const [loading, setLoading] = useState(false);
 
   const handleSignUp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
+  e.preventDefault();
+  setLoading(true);
+  setError('');
 
-    const { error } = await supabase.auth.signUp({ email, password });
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
 
-    if (error) {
-      setError(error.message);
-    } else {
-      router.push('/onboarding/plan');
-    }
+  if (error) {
+    setError(error.message);
+  } else {
+    // Wait a bit for the auth cookie to be set
+    setTimeout(() => {
+      const params = new URLSearchParams(window.location.search);
+      const redirect = params.get('redirectedFrom') || '/';
+      router.push(redirect);
+    }, 500); // 500ms delay ensures cookie is set
+  }
 
-    setLoading(false);
-  };
+  setLoading(false);
+};
 
   const handleGoogleSignUp = async () => {
     const { error } = await supabase.auth.signInWithOAuth({

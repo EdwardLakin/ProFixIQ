@@ -17,17 +17,9 @@ export default function Navbar() {
     };
 
     fetchSession();
-
-    const { data: subscription } = supabase.auth.onAuthStateChange(() => {
-      fetchSession();
-    });
-
-    return () => {
-      subscription.subscription.unsubscribe();
-    };
   }, []);
 
-  if (user === undefined) return null; // optional loading state
+  if (user === undefined) return null;
 
   return (
     <header className="w-full fixed top-0 z-50 backdrop-blur-md bg-black/30 border-b border-orange-500">

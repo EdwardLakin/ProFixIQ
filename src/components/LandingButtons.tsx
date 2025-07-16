@@ -1,6 +1,10 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+
+const supabase = createClientComponentClient();
 
 const features = [
   { label: 'AI Diagnosis', route: '/ai' },
@@ -13,13 +17,33 @@ const features = [
 
 export default function LandingButtons() {
   const router = useRouter();
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      setIsAuthenticated(!!session);
+    };
+
+    checkAuth();
+  }, []);
+
+  const handleClick = (route: string) => {
+    if (isAuthenticated) {
+      router.push(route);
+    } else {
+      router.push(`/sign-in?redirectedFrom=${route}`);
+    }
+  };
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 px-6 sm:px-12 lg:px-24 mt-12">
       {features.map(({ label, route }) => (
         <button
           key={label}
-          onClick={() => router.push(route)}
+          onClick={() => handleClick(route)}
           className="rounded-2xl border border-orange-500 bg-black/30 backdrop-blur-md shadow-card hover:shadow-glow text-white px-6 py-8 transition-all duration-300 hover:scale-105"
         >
           <h3 className="text-2xl font-header text-white mb-3">{label}</h3>
@@ -36,7 +60,7 @@ function getDescription(label: string) {
       return 'Chat, Visual, and DTC Code Support';
     case 'Work Orders':
       return 'Create, Track, and Manage Repair Jobs';
-    case 'Inspections':
+    case 'Inspection':
       return 'Start an Inspection';
     case 'Tools & Specs':
       return 'Torque, Fluids, Sizes, Tools';

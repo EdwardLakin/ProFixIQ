@@ -2,13 +2,14 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { createBrowserSupabaseClient } from '@supabase/auth-helpers-nextjs';
-
-const supabase = createBrowserSupabaseClient();
+import { useRouter, useSearchParams } from 'next/navigation';
+import supabase from '@lib/supabaseClient';
 
 export default function SignIn() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get('redirectedFrom') || '/';
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -23,9 +24,13 @@ export default function SignIn() {
 
     if (error) {
       setError(error.message);
-    } else {
-      router.push('/');
+      setLoading(false);
+      return;
     }
+
+    setTimeout(() => {
+      window.location.href = redirectTo;
+    }, 300);
 
     setLoading(false);
   };
@@ -34,6 +39,7 @@ export default function SignIn() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
     });
+
     if (error) {
       setError(error.message);
     }
@@ -81,17 +87,10 @@ export default function SignIn() {
         </button>
 
         <div className="mt-4 space-y-1">
-          <Link
-            href="/forgot-password"
-            className="block text-center text-sm text-orange-400 hover:underline"
-          >
+          <Link href="/forgot-password" className="block text-center text-sm text-orange-400 hover:underline">
             Forgot Password?
           </Link>
-
-          <Link
-            href="/"
-            className="block text-center text-orange-400 hover:underline"
-          >
+          <Link href="/" className="block text-center text-orange-400 hover:underline">
             ← Back to Home
           </Link>
         </div>
