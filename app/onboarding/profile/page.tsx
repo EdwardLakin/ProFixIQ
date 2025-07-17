@@ -9,59 +9,39 @@ export default function ProfileSetupPage() {
   const supabase = createClientComponentClient<Database>();
   const router = useRouter();
 
-  const [loading, setLoading] = useState(true);
-  const [fullName, setFullName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [role, setRole] = useState<'owner' | 'admin' | 'manager' | 'mechanic' | null>(null);
-  const [shopId, setShopId] = useState<string | null>(null);
-  const [shopName, setShopName] = useState('');
-  const [businessName, setBusinessName] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  // Prefill form on load
-  useEffect(() => {
-    const loadProfile = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+  // Auth
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
-      if (!user) return;
-
-      const { data } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single();
-
-      if (data) {
-        setFullName(data.full_name || '');
-        setPhone(data.phone || '');
-        setRole((data.role as 'owner' | 'admin' | 'manager' | 'mechanic') || null);
-        setShopId(data.shop_id || null);
-        setShopName(data.shop_name || '');
-        setBusinessName(data.business_name || '');
-
-        // Auto-redirect if already complete
-        if (data.role && data.shop_name) {
-          router.push('/app');
-          return;
-        }
-      }
-
-      setLoading(false);
-    };
-
-    loadProfile();
-  }, [supabase, router]);
+  // Profile
+const [fullName, setFullName] = useState('');
+const [phone, setPhone] = useState('');
+const [role, setRole] = useState<'owner' | 'admin' | 'manager' | 'mechanic' | null>(null);
+const [shopId, setShopId] = useState<string | null>(null);
+const [shopName, setShopName] = useState('');
+const [businessName, setBusinessName] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoading(true);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    // Step 1: Sign Up
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      email,
+      password,
+    });
 
-    if (!user || !role) return;
+    if (signUpError || !signUpData.user) {
+      alert('Sign-up failed: ' + signUpError?.message);
+      setLoading(false);
+      return;
+    }
 
+    const user = signUpData.user;
+
+    // Step 2: Save Profile
     const payload: Database['public']['Tables']['profiles']['Insert'] = {
       id: user.id,
       full_name: fullName,
@@ -70,32 +50,44 @@ export default function ProfileSetupPage() {
       shop_id: shopId,
       shop_name: shopName,
       business_name: businessName,
+      plan: 'free',
     };
 
-    const { error } = await supabase
+    const { error: profileError } = await supabase
       .from('profiles')
       .upsert(payload, { onConflict: 'id' });
 
-    if (error) {
-      console.error('Profile update failed:', error);
+    if (profileError) {
+      alert('Profile update failed: ' + profileError.message);
+      setLoading(false);
       return;
     }
 
     router.push('/app');
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        <p>Loading...</p>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-8">
-      <h1 className="text-3xl font-blackops text-orange-500 mb-6">Complete Your Profile</h1>
+      <h1 className="text-3xl font-blackops text-orange-500 mb-6">Create Free Account</h1>
       <form onSubmit={handleSubmit} className="w-full max-w-md space-y-4">
+        <input
+          type="email"
+          placeholder="Email"
+          className="w-full p-3 rounded bg-neutral-800 text-white"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+        />
+
+        <input
+          type="password"
+          placeholder="Password"
+          className="w-full p-3 rounded bg-neutral-800 text-white"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+        />
+
         <input
           type="text"
           placeholder="Full Name"
@@ -150,9 +142,10 @@ export default function ProfileSetupPage() {
 
         <button
           type="submit"
+          disabled={loading}
           className="w-full p-3 bg-orange-500 hover:bg-orange-600 rounded text-white font-bold"
         >
-          Save & Continue
+          {loading ? 'Creating Account...' : 'Save & Continue'}
         </button>
       </form>
     </div>

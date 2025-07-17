@@ -16,20 +16,20 @@
       "static/chunks/main-app.js",
       "static/chunks/app/sign-in/page.js"
     ],
-    "/reset-password/page": [
+    "/compare-plans/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/reset-password/page.js"
+      "static/chunks/app/compare-plans/page.js"
     ],
-    "/forgot-password/page": [
+    "/subscribe/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/forgot-password/page.js"
+      "static/chunks/app/subscribe/page.js"
     ],
-    "/api/send-reset/route": [
+    "/onboarding/profile/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/api/send-reset/route.js"
+      "static/chunks/app/onboarding/profile/page.js"
     ]
   }
 }

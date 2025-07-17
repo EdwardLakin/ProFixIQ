@@ -2,16 +2,14 @@
 
 import { useRouter } from 'next/navigation';
 import HomeButton from '@components/ui/HomeButton';
-import { withAuthAndPlan } from '@lib/withAuthAndPlan';
 
-function AIDiagnosisPageContent() {
+export default function AIDiagnosisPage() {
   const router = useRouter();
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-10">
       <HomeButton />
 
-      {/* Heading */}
       <h1 className="text-7xl mb-2 text-center font-blackops text-orange-500 drop-shadow">
         AI Diagnosis
       </h1>
@@ -19,9 +17,7 @@ function AIDiagnosisPageContent() {
         Select a diagnostic method below to begin:
       </p>
 
-      {/* Diagnostic Options */}
       <div className="space-y-6 mt-8">
-        {/* Analyze Image */}
         <button
           onClick={() => router.push('/ai/photo')}
           className="w-full py-5 px-6 border-4 border-blue-400 text-blue-400 font-bold text-lg rounded transition-all hover:scale-105"
@@ -32,7 +28,6 @@ function AIDiagnosisPageContent() {
           </p>
         </button>
 
-        {/* DTC Code Lookup */}
         <button
           onClick={() => router.push('/ai/dtc')}
           className="w-full py-5 px-6 border-4 border-yellow-400 text-yellow-400 font-bold text-lg rounded transition-all hover:scale-105"
@@ -43,7 +38,6 @@ function AIDiagnosisPageContent() {
           </p>
         </button>
 
-        {/* TechBot */}
         <button
           onClick={() => router.push('/ai/chat')}
           className="w-full py-5 px-6 border-4 border-green-400 text-green-400 font-bold text-lg rounded transition-all hover:scale-105"
@@ -55,13 +49,5 @@ function AIDiagnosisPageContent() {
         </button>
       </div>
     </div>
-  );
-}
-
-export default function AIDiagnosisPage() {
-  return (
-    <WithAuthAndPlan>
-      <AIDiagnosisPageContent />
-    </WithAuthAndPlan>
   );
 }

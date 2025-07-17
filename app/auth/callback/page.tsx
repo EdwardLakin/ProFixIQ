@@ -24,24 +24,30 @@ export default function AuthCallback() {
 
       const { user } = session;
 
-      // Check if user exists in profiles table
-      const { data: existingProfile, error: fetchError } = await supabase
+      // Check if profile exists
+      const { data: profile, error: fetchError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', user.id)
         .single();
 
       if (fetchError && fetchError.code !== 'PGRST116') {
-        console.error('Fetch profile error:', fetchError.message);
+        console.error('Error fetching profile:', fetchError.message);
         return;
       }
 
-      if (!existingProfile) {
-        // First-time user — insert into profiles
+      if (!profile) {
+        // First-time login: create basic profile row
         const { error: insertError } = await supabase.from('profiles').insert({
           id: user.id,
           email: user.email,
-          full_name: user.user_metadata?.full_name || user.email,
+          full_name: user.user_metadata?.full_name || '',
+          role: null,
+          phone: null,
+          plan: 'free',
+          shop_id: null,
+          shop_name: null,
+          business_name: null,
         });
 
         if (insertError) {
@@ -49,12 +55,18 @@ export default function AuthCallback() {
           return;
         }
 
-        // Redirect to onboarding if just signed up
-        router.push('/onboarding');
-      } else {
-        // Already exists — go to home or dashboard
-        router.push('/');
+        router.push('/onboarding/profile');
+        return;
       }
+
+      // If profile exists but is incomplete, redirect to onboarding
+      if (!profile.role || !profile.shop_name) {
+        router.push('/onboarding/profile');
+        return;
+      }
+
+      // Profile complete — go to app
+      router.push('/app');
     };
 
     handleAuth();

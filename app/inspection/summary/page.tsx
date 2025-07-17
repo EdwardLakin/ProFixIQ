@@ -10,7 +10,7 @@ import {
 } from '@lib/inspection/types';
 import HomeButton from '@components/ui/HomeButton';
 import PreviousPageButton from '@components/ui/PreviousPageButton';
-import supabase from '@lib/supabaseClient';
+import  supabase  from '@lib/supabaseClient';
 import { v4 as uuidv4 } from 'uuid';
 
 export default function SummaryPage() {

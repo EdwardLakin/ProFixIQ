@@ -1,7 +1,6 @@
-// app/inspection/page.tsx (Server Component)
-import { withAuthAndPlan } from '@lib/withAuthAndPlan';
+// app/inspection/page.tsx
 import InspectionMenuClient from './InspectionMenuClient';
 
-export default async function InspectionMenuPage() {
-  return await withAuthAndPlan({ children: <InspectionMenuClient /> });
+export default function InspectionMenuPage() {
+  return <InspectionMenuClient />;
 }

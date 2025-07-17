@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import supabase from '@lib/supabaseClient';
+import supabase from '@lib/supabaseClient'; // Ensure this file exports a valid client
 import SignOutButton from '@components/SignOutButton';
 
 export default function Navbar() {
@@ -10,24 +10,31 @@ export default function Navbar() {
 
   useEffect(() => {
     const fetchSession = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      setUser(session?.user ?? null);
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        setUser(session?.user ?? null);
+      } catch (err) {
+        console.error('Error fetching session:', err);
+        setUser(null);
+      }
     };
 
     fetchSession();
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
     });
 
     return () => {
-      listener.subscription.unsubscribe();
+      subscription.unsubscribe();
     };
   }, []);
 
-  if (user === undefined) return null; // Optional loading fallback
+  if (user === undefined) return null;
 
   return (
     <header className="w-full fixed top-0 z-50 backdrop-blur-md bg-black/30 border-b border-orange-500">
