@@ -1,97 +1,96 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { createBrowserSupabaseClient } from '@supabase/auth-helpers-nextjs';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import type { Database } from '@/types/supabase';
 
-const supabase = createBrowserSupabaseClient();
-
-export default function SignUp() {
+export default function SignUpPage() {
+  const supabase = createClientComponentClient<Database>();
   const router = useRouter();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
 
   const handleSignUp = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setLoading(true);
-  setError('');
+    e.preventDefault();
+    setError('');
 
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        // Optional: Redirect to callback immediately
+        emailRedirectTo: `${location.origin}/auth/callback`,
+      },
+    });
 
-  if (error) {
-    setError(error.message);
-  } else {
-    // Wait a bit for the auth cookie to be set
-    setTimeout(() => {
-      const params = new URLSearchParams(window.location.search);
-      const redirect = params.get('redirectedFrom') || '/';
-      router.push(redirect);
-    }, 500); // 500ms delay ensures cookie is set
-  }
-
-  setLoading(false);
-};
+    if (error) {
+      setError(error.message);
+    } else {
+      router.push('/onboarding');
+    }
+  };
 
   const handleGoogleSignUp = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
+      options: {
+        redirectTo: `${location.origin}/auth/callback`,
+      },
     });
+
     if (error) {
       setError(error.message);
     }
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 bg-background">
-      <div className="max-w-md w-full space-y-6 border border-orange-500 p-8 rounded-xl backdrop-blur-md bg-black/30">
-        <h1 className="text-4xl text-center font-blackops text-orange-500">Sign Up</h1>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-black text-white px-4 font-blackops">
+      <h1 className="text-3xl mb-6 text-orange-500">Create Account</h1>
 
-        <form onSubmit={handleSignUp} className="space-y-4">
-          <input
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            className="input"
-            required
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            className="input"
-            required
-          />
-
-          {error && <p className="text-red-500 text-sm text-center">{error}</p>}
-
-          <button
-            type="submit"
-            className="w-full py-2 rounded bg-orange-500 hover:bg-orange-600 font-blackops text-lg transition-all"
-            disabled={loading}
-          >
-            {loading ? 'Signing Up...' : 'Sign Up'}
-          </button>
-        </form>
-
+      <form onSubmit={handleSignUp} className="w-full max-w-md space-y-4">
+        <input
+          type="email"
+          required
+          placeholder="Email"
+          className="w-full p-2 rounded bg-gray-900 text-white border border-orange-500"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <input
+          type="password"
+          required
+          placeholder="Password"
+          className="w-full p-2 rounded bg-gray-900 text-white border border-orange-500"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
         <button
-          onClick={handleGoogleSignUp}
-          className="w-full py-2 rounded border border-white hover:bg-white hover:text-black transition-all font-blackops text-lg"
+          type="submit"
+          className="w-full bg-orange-500 hover:bg-orange-600 text-black font-bold py-2 px-4 rounded"
         >
-          Sign Up with Google
+          Sign Up
         </button>
+        {error && <p className="text-red-500 text-sm">{error}</p>}
+      </form>
 
-        <Link
-          href="/"
-          className="block mt-4 text-center text-orange-400 hover:underline"
-        >
-          ← Back to Home
-        </Link>
-      </div>
+      <hr className="my-6 w-full max-w-md border-t border-gray-700" />
+
+      <button
+        onClick={handleGoogleSignUp}
+        className="w-full max-w-md bg-white text-black font-bold py-2 px-4 rounded hover:bg-gray-200"
+      >
+        Sign up with Google
+      </button>
+
+      <button
+        onClick={() => router.push('/sign-in')}
+        className="mt-6 text-orange-400 underline"
+      >
+        Already have an account? Sign In
+      </button>
     </div>
   );
 }

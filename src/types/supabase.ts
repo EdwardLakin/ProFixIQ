@@ -179,28 +179,41 @@ export interface Database {
         ];
       }
 
-      profiles: {
-        Row: {
-          id: string;
-          full_name: string;
-          plan: 'diy' | 'pro' | 'elite';
-          created_at: string | null;
-          shop_id?: string | null;
-        };
-        Insert: {
-          id: string;
-          full_name: string;
-          plan?: 'diy' | 'pro' | 'elite';
-          created_at?: string | null;
-          shop_id?: string | null;
-        };
-        Update: {
-          id?: string;
-          full_name: string;
-          plan?: 'diy' | 'pro' | 'elite';
-          created_at?: string | null;
-          shop_id?: string | null;
-        };
+        profiles: {
+          Row: {
+            id: string;
+            full_name: string;
+            plan?: 'free' | 'diy' | 'pro' | 'pro_plus';
+            created_at?: string | null;
+            shop_id?: string | null;
+            business_name: string | null;
+            phone: string | null;
+            role: 'owner' | 'admin' | 'manager' | 'mechanic';
+            shop_name: string | null;
+          };
+          Insert: {
+            id: string;
+            full_name: string;
+            plan?: 'free' | 'diy' | 'pro' | 'pro_plus';
+            created_at?: string | null;
+            shop_id?: string | null;
+            business_name: string | null;
+            phone: string | null;
+            role: 'owner' | 'admin' | 'manager' | 'mechanic';
+            shop_name: string | null;
+          };
+          Update: {
+            id?: string;
+            full_name?: string;
+            plan?: 'free' | 'diy' | 'pro' | 'pro_plus';
+            created_at?: string | null;
+            shop_id?: string | null;
+            business_name?: string | null;
+            phone?: string | null;
+            role?: 'owner' | 'admin' | 'manager' | 'mechanic';
+            shop_name?: string | null;
+          };
+       
         Relationships: [
           {
             foreignKeyName: 'profiles_shop_id_fkey';
@@ -286,17 +299,20 @@ export interface Database {
           id: string;
           name: string;
           created_at: string;
+          role: 'owner' | 'admin' | 'manager' | 'mechanic';
     // Add any other fields you use
         };
           Insert: {
           id?: string;
           name: string;
           created_at?: string;
+          role: 'owner' | 'admin' | 'manager' | 'mechanic';
         };
           Update: {
           id?: string;
           name?: string;
           created_at?: string;
+          role: 'owner' | 'admin' | 'manager' | 'mechanic';
         };
           Relationships: [];
         }

@@ -1,52 +1,64 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
+import type { Database } from '@/types/supabase';
 
-export function middleware(request: NextRequest) {
-  const token = request.cookies.get('sb-access-token')?.value;
+export async function middleware(req: NextRequest) {
+  const res = NextResponse.next();
+  const supabase = createMiddlewareClient<Database>({ req, res });
 
-  // Always allow these paths (no auth required)
-  const openPaths = [
-    '/sign-in',
-    '/sign-up',
-    '/_next',         // next.js internals
-    '/favicon.ico',   // browser tab icon
-    '/api',           // API routes
-    '/fonts',
-    '/images',
-  ];
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
 
-  // If the pathname starts with any open path → allow it
-  for (const path of openPaths) {
-    if (request.nextUrl.pathname.startsWith(path)) {
-      return NextResponse.next();
-    }
-  }
+  const pathname = req.nextUrl.pathname;
 
-  // Require auth for these paths
-  const protectedPaths = [
-    '/work-orders',
-    '/inspection',
-    '/create-work-order',
-    '/job-queue',
-    '/summary',
-  ];
+  const isPublic =
+    pathname.startsWith('/_next') ||
+    pathname.startsWith('/api') ||
+    pathname === '/sign-in' ||
+    pathname === '/sign-up' ||
+    pathname === '/reset-password' ||
+    pathname === '/favicon.ico' ||
+    pathname === '/';
 
-  const isProtected = protectedPaths.some(path =>
-    request.nextUrl.pathname.startsWith(path)
-  );
-
-  // Redirect unauthenticated users
-  if (isProtected && !token) {
-    const signInUrl = new URL('/sign-in', request.url);
-    signInUrl.searchParams.set('redirectedFrom', request.nextUrl.pathname);
+  if (!session && !isPublic) {
+    const signInUrl = req.nextUrl.clone();
+    signInUrl.pathname = '/sign-in';
     return NextResponse.redirect(signInUrl);
   }
 
-  // All good
-  return NextResponse.next();
+  if (!session || isPublic) {
+    return res;
+  }
+
+  // Get user profile
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('plan, role, shop_name')
+    .eq('id', session.user.id)
+    .single();
+
+  const hasPlan = !!profile?.plan;
+  const hasProfile = !!profile?.role && !!profile?.shop_name;
+
+  // If no plan, force to plan selection
+  if (!hasPlan && !pathname.startsWith('/onboarding/plan')) {
+    const redirectUrl = req.nextUrl.clone();
+    redirectUrl.pathname = '/onboarding/plan';
+    return NextResponse.redirect(redirectUrl);
+  }
+
+  // If plan exists but profile incomplete, go to profile setup
+  if (hasPlan && !hasProfile && !pathname.startsWith('/onboarding/profile')) {
+    const redirectUrl = req.nextUrl.clone();
+    redirectUrl.pathname = '/onboarding/profile';
+    return NextResponse.redirect(redirectUrl);
+  }
+
+  return res;
 }
 
-// ✅ Apply to all routes except static files (e.g., .js, .png, .css)
 export const config = {
-  matcher: ['/((?!.*\\.).*)'],
+  matcher: ['/app/:path*', '/onboarding/:path*'],
 };

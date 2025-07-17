@@ -1,43 +1,37 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
-import supabase from '@lib/supabaseClient';
+import { useRouter } from 'next/navigation';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import type { Database } from '@/types/supabase';
 
-export default function SignIn() {
+export default function SignInPage() {
+  const supabase = createClientComponentClient<Database>();
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const redirectTo = searchParams.get('redirectedFrom') || '/';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
 
     const { error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
       setError(error.message);
-      setLoading(false);
-      return;
+    } else {
+      router.push('/');
     }
-
-    setTimeout(() => {
-      window.location.href = redirectTo;
-    }, 300);
-
-    setLoading(false);
   };
 
   const handleGoogleSignIn = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
+      options: {
+        redirectTo: `${location.origin}/auth/callback`,
+      },
     });
 
     if (error) {
@@ -46,55 +40,56 @@ export default function SignIn() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 bg-background">
-      <div className="max-w-md w-full space-y-6 border border-orange-500 p-8 rounded-xl backdrop-blur-md bg-black/30">
-        <h1 className="text-4xl text-center font-blackops text-orange-500">Sign In</h1>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-black text-white px-4 font-blackops">
+      <h1 className="text-3xl mb-6 text-orange-500">Sign In</h1>
 
-        <form onSubmit={handleSignIn} className="space-y-4">
-          <input
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            className="input"
-            required
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            className="input"
-            required
-          />
-
-          {error && <p className="text-red-500 text-sm text-center">{error}</p>}
-
-          <button
-            type="submit"
-            className="w-full py-2 rounded bg-orange-500 hover:bg-orange-600 font-blackops text-lg transition-all"
-            disabled={loading}
-          >
-            {loading ? 'Signing In...' : 'Sign In'}
-          </button>
-        </form>
-
+      <form onSubmit={handleSignIn} className="w-full max-w-md space-y-4">
+        <input
+          type="email"
+          required
+          placeholder="Email"
+          className="w-full p-2 rounded bg-gray-900 text-white border border-orange-500"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <input
+          type="password"
+          required
+          placeholder="Password"
+          className="w-full p-2 rounded bg-gray-900 text-white border border-orange-500"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
         <button
-          onClick={handleGoogleSignIn}
-          className="w-full py-2 rounded border border-white hover:bg-white hover:text-black transition-all font-blackops text-lg"
+          type="submit"
+          className="w-full bg-orange-500 hover:bg-orange-600 text-black font-bold py-2 px-4 rounded"
         >
-          Sign In with Google
+          Sign In
         </button>
+        {error && <p className="text-red-500 text-sm">{error}</p>}
+      </form>
 
-        <div className="mt-4 space-y-1">
-          <Link href="/forgot-password" className="block text-center text-sm text-orange-400 hover:underline">
-            Forgot Password?
-          </Link>
-          <Link href="/" className="block text-center text-orange-400 hover:underline">
-            ← Back to Home
-          </Link>
-        </div>
-      </div>
+      <p className="mt-4 text-sm text-orange-400">
+        <a href="/forgot-password" className="underline hover:text-orange-300">
+          Forgot Password?
+        </a>
+      </p>
+
+      <hr className="my-6 w-full max-w-md border-t border-gray-700" />
+
+      <button
+        onClick={handleGoogleSignIn}
+        className="w-full max-w-md bg-white text-black font-bold py-2 px-4 rounded hover:bg-gray-200"
+      >
+        Sign in with Google
+      </button>
+
+      <button
+        onClick={() => router.push('/')}
+        className="mt-6 text-orange-400 underline"
+      >
+        Back to Home
+      </button>
     </div>
   );
 }

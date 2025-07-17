@@ -2,6 +2,9 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import type { Database } from '@/types/supabase';
 
 const PRICE_IDS = {
   diy: {
@@ -19,13 +22,23 @@ const PRICE_IDS = {
 };
 
 export default function PlanSelectionPage() {
+  const supabase = createClientComponentClient<Database>();
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [isYearly, setIsYearly] = useState(false);
+  const router = useRouter();
+
+  const saveSelectedPlan = async (plan: 'free' | 'diy' | 'pro' | 'pro_plus') => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    await supabase.from('profiles').update({ plan }).eq('id', user.id);
+  };
 
   const handleCheckout = async (plan: string) => {
     setSelectedPlan(plan);
     setLoading(true);
+
+    await saveSelectedPlan(plan as 'free' | 'diy' | 'pro' | 'pro_plus');
 
     const priceId = PRICE_IDS[plan as keyof typeof PRICE_IDS][isYearly ? 'yearly' : 'monthly'];
 
@@ -140,8 +153,15 @@ export default function PlanSelectionPage() {
         {plans.map((plan) => (
           <button
             key={plan.key}
-            onClick={() => plan.key !== 'free' && handleCheckout(plan.key)}
-            disabled={loading || plan.key === 'free'}
+            onClick={async () => {
+              if (plan.key === 'free') {
+                await saveSelectedPlan('free');
+                router.push('/onboarding/profile');
+              } else {
+                handleCheckout(plan.key);
+              }
+            }}
+            disabled={loading}
             className={`border border-orange-500 p-8 rounded-2xl bg-neutral-900 hover:bg-neutral-800 transition-all shadow-xl text-left h-full flex flex-col justify-between ${
               selectedPlan === plan.key ? 'ring-4 ring-orange-500' : ''
             }`}
