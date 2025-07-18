@@ -2,5 +2,6 @@
   "/page": "app/page.js",
   "/compare-plans/page": "app/compare-plans/page.js",
   "/subscribe/page": "app/subscribe/page.js",
-  "/onboarding/profile/page": "app/onboarding/profile/page.js"
+  "/onboarding/profile/page": "app/onboarding/profile/page.js",
+  "/sign-in/page": "app/sign-in/page.js"
 }

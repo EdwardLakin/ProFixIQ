@@ -25,8 +25,8 @@ export interface Database {
           parts_received?: string[] | null;
           created_at: string;
           updated_at: string;
-          punched_in_at: string | null;
-          punched_out_at: string | null;
+          punched_in_at: string;
+          punched_out_at: string;
           hold_reason: string | null;
           assigned_tech_id: string | null;
     
@@ -178,6 +178,53 @@ export interface Database {
           }
         ];
       }
+
+        parts_requests: {
+  Row: {
+    id: string;
+    job_id: string;
+    part_name: string;
+    quantity: number;
+    notes: string | null;
+    created_at: string;
+    requested_by?: string;
+    photo_urls: string[];
+    workOrderId: string;
+    urgency: string | null;
+  };
+  Insert: {
+    id?: string;
+    job_id: string;
+    part_name: string;
+    quantity: number;
+    notes?: string | null;
+    created_at?: string;
+    requested_by?: string;
+    photo_urls: string[];
+    work_order_id?: string;
+    urgency: string | null;
+  };
+  Update: {
+    id?: string;
+    job_id?: string;
+    part_name?: string;
+    quantity?: number;
+    notes?: string | null;
+    created_at?: string;
+    requested_by?: string;
+    photo_urls: string[];
+    workOrderId: string;
+    urgency: string | null;
+  };
+  Relationships: [
+    {
+      foreignKeyName: 'parts_requests_job_id_fkey';
+      columns: ['job_id'];
+      referencedRelation: 'work_order_lines';
+      referencedColumns: ['id'];
+    }
+  ];
+};
 
         profiles: {
           Row: {
