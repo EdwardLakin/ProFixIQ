@@ -24,7 +24,8 @@ export function middleware(req: NextRequest) {
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api') ||
     pathname.startsWith('/auth') ||
-    pathname.startsWith('/fonts'); // ✅ Allow font folder
+    pathname.startsWith('/fonts') ||        // ✅ Allow Next.js fonts folder
+    pathname.startsWith('/BlackOpsOne-Regular.ttf'); // ✅ Allow direct font file
 
   if (isPublic) {
     return NextResponse.next();

@@ -11,7 +11,8 @@
 
 /* === Custom global styles === */
 body {
-  @apply bg-background text-white font-rubik antialiased;
+  font-family: 'Black Ops One', sans-serif;
+  @apply bg-background text-white antialiased;
 }
 
 /* Smooth font rendering on all devices */
