@@ -140,6 +140,7 @@ export interface Database {
           status: 'open' | 'in_progress' | 'paused' | 'completed' | 'cancelled' | 'queued';
           location?: string | null;
           created_at: string;
+          quote_sent_at?: string;
         };
         Insert: {
           id?: string;
@@ -148,6 +149,7 @@ export interface Database {
           status?: 'open' | 'in_progress' | 'paused' | 'completed' | 'cancelled' | 'queued';
           location?: string | null;
           created_at?: string;
+          quote_sent_at?: string;
         };
         Update: {
           id?: string;
@@ -156,6 +158,7 @@ export interface Database {
           status?: 'open' | 'in_progress' | 'paused' | 'completed' | 'cancelled' | 'queued';
           location?: string | null;
           created_at?: string;
+          quote_sent_at?: string;
         };
         Relationships: [
           {
