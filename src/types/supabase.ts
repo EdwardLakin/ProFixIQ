@@ -274,6 +274,92 @@ export interface Database {
         ];
       };
 
+      tech_shifts: {
+  Row: {
+    id: string;
+    tech_id: string;
+    start_time: string; // ISO date string
+    ended_time: string | null;
+    break_start: string | null;
+    break_end: string | null;
+    lunch_start: string | null;
+    lunch_end: string | null;
+    status: 'not_started' | 'punched_in' | 'on_break' | 'on_lunch' | 'punched_out' | 'ended' | 'active';
+    created_at: string;
+  };
+  Insert: {
+    id?: string;
+    tech_id: string;
+    start_time: string;
+    ended_time?: string | null;
+    break_start?: string | null;
+    lunch_start?: string | null;
+    status:  'not_started' | 'punched_in' | 'on_break' | 'on_lunch' | 'punched_out' | 'ended' | 'active';
+    created_at?: string;
+  };
+  Update: {
+    start_time?: string | null;
+    end_time?: string | null;
+    break_start?: string | null;
+    break_end?: string | null;
+    lunch_start?: string | null;
+    lunch_end?: string | null;
+    status?:  'not_started' | 'punched_in' | 'on_break' | 'on_lunch' | 'punched_out' | 'ended' | 'active';
+  };
+  Relationships: [
+    {
+      foreignKeyName: 'tech_shifts_tech_id_fkey';
+      columns: ['tech_id'];
+      referencedRelation: 'profiles';
+      referencedColumns: ['id'];
+    }
+  ];
+};
+
+punch_events: {
+  Row: {
+    id: string;
+    created_at: string;
+    tech_id: string;
+    shift_id: string;
+    type: 'start' | 'break_start' | 'break_end' | 'lunch_start' | 'lunch_end' | 'end';
+    timestamp: string;
+    notes: string | null;
+  };
+  Insert: {
+    id?: string;
+    created_at?: string;
+    tech_id: string;
+    shift_id: string;
+    type: 'start' | 'break_start' | 'break_end' | 'lunch_start' | 'lunch_end' | 'end';
+    timestamp?: string;
+    notes?: string | null;
+  };
+  Update: {
+    id?: string;
+    created_at?: string;
+    tech_id?: string;
+    shift_id?: string;
+    type?: 'start' | 'break_start' | 'break_end' | 'lunch_start' | 'lunch_end' | 'end';
+    timestamp?: string;
+    notes?: string | null;
+  };
+  Relationships: [
+    {
+      foreignKeyName: 'punch_events_shift_id_fkey';
+      columns: ['shift_id'];
+      referencedRelation: 'tech_shifts';
+      referencedColumns: ['id'];
+    },
+    {
+      foreignKeyName: 'punch_events_tech_id_fkey';
+      columns: ['tech_id'];
+      referencedRelation: 'profiles';
+      referencedColumns: ['id'];
+    }
+  ];
+};
+
       inspections: {
         Row: {
           id: string;
