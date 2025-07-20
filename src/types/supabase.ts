@@ -238,7 +238,7 @@ export interface Database {
             shop_id?: string | null;
             business_name: string | null;
             phone: string | null;
-            role: 'owner' | 'admin' | 'manager' | 'mechanic' | null;
+            role: 'owner' | 'admin' | 'manager' | 'mechanic' | 'advisor' | null;
             shop_name: string | null;
           };
           Insert: {
@@ -249,7 +249,7 @@ export interface Database {
             shop_id?: string | null;
             business_name: string | null;
             phone: string | null;
-            role: 'owner' | 'admin' | 'manager' | 'mechanic' | null ;
+            role: 'owner' | 'admin' | 'manager' | 'mechanic' | 'advisor' | null ;
             shop_name: string | null;
           };
           Update: {
@@ -260,7 +260,7 @@ export interface Database {
             shop_id?: string | null;
             business_name?: string | null;
             phone?: string | null;
-            role?: 'owner' | 'admin' | 'manager' | 'mechanic' | null;
+            role?: 'owner' | 'admin' | 'manager' | 'mechanic' | 'advisor' | null;
             shop_name?: string | null;
           };
        
@@ -435,20 +435,20 @@ punch_events: {
           id: string;
           name: string;
           created_at: string;
-          role: 'owner' | 'admin' | 'manager' | 'mechanic' | null;
+          role: 'owner' | 'admin' | 'manager' | 'mechanic' | 'advisor' | null;
     // Add any other fields you use
         };
           Insert: {
           id?: string;
           name: string;
           created_at?: string;
-          role: 'owner' | 'admin' | 'manager' | 'mechanic' | null;
+          role: 'owner' | 'admin' | 'manager' | 'mechanic' | 'advisor' | null;
         };
           Update: {
           id?: string;
           name?: string;
           created_at?: string;
-          role: 'owner' | 'admin' | 'manager' | 'mechanic' | null;
+          role: 'owner' | 'admin' | 'manager' | 'mechanic' | 'advisor' | null;
         };
           Relationships: [];
         }

@@ -21,7 +21,6 @@ export default function SignUpPage() {
       email,
       password,
       options: {
-        // Optional: Redirect to callback immediately
         emailRedirectTo: `${location.origin}/auth/callback`,
       },
     });

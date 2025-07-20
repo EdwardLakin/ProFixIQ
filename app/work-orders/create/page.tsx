@@ -62,7 +62,7 @@ export default function CreateWorkOrderPage() {
 
     // If inspectionId exists, generate job lines
     if (inspectionId) {
-      await insertPrioritizedJobsFromInspection(newId, inspectionId, vehicleId);
+      await insertPrioritizedJobsFromInspection(newId, inspectionId, vehicleId,);
     }
 
     router.push(`/work-orders/view/${newId}`);

@@ -17,14 +17,53 @@ export default function SignInPage() {
     e.preventDefault();
     setError('');
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
-    if (error) {
-      setError(error.message);
-    } else {
-      router.push('/');
+    if (signInError) {
+      setError(signInError.message);
+      return;
     }
-  };
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      setError('User not found after sign-in.');
+      return;
+    }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (!profile || !profile.role) {
+      setError('User profile not found.');
+      return;
+    }
+
+    const role = profile.role ?? '';
+
+    // Store role in cookie
+    document.cookie = `role=${role}; path=/`;
+
+    // Redirect based on role
+    if (role === 'owner') {
+  router.push('/dashboard/owner');
+} else if (role === 'admin') {
+  router.push('/dashboard/admin');
+} else if (role === 'manager') {
+  router.push('/dashboard/manager');
+} else if (role === 'advisor') {
+  router.push('/dashboard/advisor');
+} else if (role === 'mechanic') {
+  router.push('/dashboard/tech');
+}
 
   const handleGoogleSignIn = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
@@ -92,4 +131,4 @@ export default function SignInPage() {
       </button>
     </div>
   );
-}
+}}
