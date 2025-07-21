@@ -197,6 +197,7 @@ export interface Database {
     urgency: 'low' | 'medium' | 'high' ;
     viewed_at: string | null;
     fulfilled_at: string | null;
+    archived: boolean;
   };
   Insert: {
     id?: string;
@@ -211,6 +212,7 @@ export interface Database {
     urgency: 'low' | 'medium' | 'high' ;
     viewed_at: string | null;
     fulfilled_at: string | null;
+    archived: boolean;
   };
   Update: {
     id?: string;
@@ -225,6 +227,7 @@ export interface Database {
     urgency: 'low' | 'medium' | 'high' ;
     viewed_at: string | null;
     fulfilled_at: string | null;
+    archived: boolean;
   };
   Relationships: [
     {
