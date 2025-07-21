@@ -8,6 +8,7 @@ import RoleNavAdmin from '@components/nav/RoleNavAdmin';
 import RoleNavTech from '@components/nav/RoleNavTech';
 import RoleNavAdvisor from '@components/nav/RoleNavAdvisor';
 import RoleNavOwner from '@components/nav/RoleNavOwner';
+import RoleNavParts from '@components/nav/RoleNavParts';
 
 export default function DynamicRoleSidebar() {
   const supabase = createClientComponentClient<Database>();
@@ -18,7 +19,7 @@ export default function DynamicRoleSidebar() {
       const {
         data: { session },
       } = await supabase.auth.getSession();
-      if (!session?.user) return;
+      if (!session?.user?.id) return;
 
       const { data: profile } = await supabase
         .from('profiles')
@@ -26,9 +27,7 @@ export default function DynamicRoleSidebar() {
         .eq('id', session.user.id)
         .single();
 
-      if (profile?.role) {
-        setRole(profile.role);
-      }
+      if (profile?.role) setRole(profile.role);
     };
 
     fetchRole();
@@ -36,10 +35,19 @@ export default function DynamicRoleSidebar() {
 
   if (!role) return null;
 
-  if (role === 'admin' || role === 'manager') return <RoleNavAdmin />;
-  if (role === 'mechanic') return <RoleNavTech />;
-  if (role === 'advisor') return <RoleNavAdvisor />;
-  if (role === 'owner') return <RoleNavOwner />;
-
-  return null;
+  switch (role) {
+    case 'admin':
+    case 'manager':
+      return <RoleNavAdmin />;
+    case 'mechanic':
+      return <RoleNavTech />;
+    case 'advisor':
+      return <RoleNavAdvisor />;
+    case 'owner':
+      return <RoleNavOwner />;
+    case 'parts':
+      return <RoleNavParts />;
+    default:
+      return null;
+  }
 }

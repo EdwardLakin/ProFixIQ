@@ -11,6 +11,7 @@ import RoleNavAdmin from '@components/nav/RoleNavAdmin';
 import RoleNavAdvisor from '@components/nav/RoleNavAdvisor';
 import RoleNavOwner from '@components/nav/RoleNavOwner';
 import type { Database } from '@/types/supabase';
+import RoleNavManager from '@components/nav/RoleNavManager';
 
 export default function Navbar() {
   const supabase = createClientComponentClient<Database>();

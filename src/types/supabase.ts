@@ -29,6 +29,7 @@ export interface Database {
           punched_out_at: string;
           hold_reason: string | null;
           assigned_tech_id: string | null;
+
     
         };
         Insert: {
@@ -193,7 +194,9 @@ export interface Database {
     requested_by?: string;
     photo_urls: string[];
     workOrderId: string;
-    urgency: string | null;
+    urgency: 'low' | 'medium' | 'high' ;
+    viewed_at: string | null;
+    fulfilled_at: string | null;
   };
   Insert: {
     id?: string;
@@ -205,7 +208,9 @@ export interface Database {
     requested_by?: string;
     photo_urls: string[];
     work_order_id?: string;
-    urgency: string | null;
+    urgency: 'low' | 'medium' | 'high' ;
+    viewed_at: string | null;
+    fulfilled_at: string | null;
   };
   Update: {
     id?: string;
@@ -217,7 +222,9 @@ export interface Database {
     requested_by?: string;
     photo_urls: string[];
     workOrderId: string;
-    urgency: string | null;
+    urgency: 'low' | 'medium' | 'high' ;
+    viewed_at: string | null;
+    fulfilled_at: string | null;
   };
   Relationships: [
     {
@@ -229,38 +236,162 @@ export interface Database {
   ];
 };
 
+        parts: {
+        Row: {
+          id: string;
+          name: string;
+          description: string | null;
+          price: number | null;
+          cost: number | null;
+          part_number: string | null;
+          category: string | null;
+          created_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          description?: string | null;
+          price?: number | null;
+          cost?: number | null;
+          part_number?: string | null;
+          category?: string | null;
+          created_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          description?: string | null;
+          price?: number | null;
+          cost?: number | null;
+          part_number?: string | null;
+          category?: string | null;
+          created_at?: string | null;
+        };
+        Relationships: [];
+      };
+
+      parts_request_messages: {
+  Row: {
+    id: string;
+    request_id: string;
+    sender_id: string | null;
+    message: string;
+    created_at: string;
+  };
+  Insert: {
+    id: string;
+    request_id: string;
+    sender_id?: string | null;
+    message: string;
+    created_at?: string;
+  };
+};
+
+        // 1. conversations table
+conversations: {
+  Row: {
+    id: string;
+    created_by: string;
+    context_type: string | null;
+    context_id: string | null;
+    created_at: string;
+  };
+  Insert: {
+    id: string;
+    created_by: string;
+    context_type?: string | null;
+    context_id?: string | null;
+    created_at?: string;
+  };
+  Update: {
+    context_type?: string | null;
+    context_id?: string | null;
+    created_at?: string;
+  };
+};
+
+// 2. conversation_participants table
+conversation_participants: {
+  Row: {
+    id: string;
+    conversation_id: string;
+    user_id: string;
+    role: string | null;
+    added_at: string;
+  };
+  Insert: {
+    id: string;
+    conversation_id: string;
+    user_id: string;
+    role?: string | null;
+    added_at?: string;
+  };
+  Update: {
+    role?: string | null;
+    added_at?: string;
+  };
+};
+
+// 3. messages table
+messages: {
+  Row: {
+    id: string;
+    conversation_id: string;
+    sender_id: string;
+    content: string;
+    sent_at: string;
+    read_by: string[] | null;
+  };
+  Insert: {
+    id: string;
+    conversation_id: string;
+    sender_id: string;
+    content: string;
+    sent_at?: string;
+    read_by?: string[] | null;
+  };
+  Update: {
+    content?: string;
+    sent_at?: string;
+    read_by?: string[] | null;
+  };
+};
+    
         profiles: {
           Row: {
             id: string;
             full_name: string | null;
+            email: string | null;
             plan?: 'free' | 'diy' | 'pro' | 'pro_plus';
             created_at?: string | null;
             shop_id?: string | null;
             business_name: string | null;
             phone: string | null;
-            role: 'owner' | 'admin' | 'manager' | 'mechanic' | 'advisor' | null;
+            role: 'owner' | 'admin' | 'manager' | 'mechanic' | 'advisor' | 'parts' | null;
             shop_name: string | null;
           };
           Insert: {
             id: string;
             full_name: string | null;
+            email: string | null;
             plan?: 'free' | 'diy' | 'pro' | 'pro_plus';
             created_at?: string | null;
             shop_id?: string | null;
             business_name: string | null;
             phone: string | null;
-            role: 'owner' | 'admin' | 'manager' | 'mechanic' | 'advisor' | null ;
+            role: 'owner' | 'admin' | 'manager' | 'mechanic' | 'advisor' | 'parts' | null ;
             shop_name: string | null;
           };
           Update: {
             id?: string;
             full_name?: string | null;
+            email: string | null;
             plan?: 'free' | 'diy' | 'pro' | 'pro_plus';
             created_at?: string | null;
             shop_id?: string | null;
             business_name?: string | null;
             phone?: string | null;
-            role?: 'owner' | 'admin' | 'manager' | 'mechanic' | 'advisor' | null;
+            role?: 'owner' | 'admin' | 'manager' | 'mechanic' | 'advisor' | 'parts' | null;
             shop_name?: string | null;
           };
        
@@ -435,20 +566,20 @@ punch_events: {
           id: string;
           name: string;
           created_at: string;
-          role: 'owner' | 'admin' | 'manager' | 'mechanic' | 'advisor' | null;
+          role: 'owner' | 'admin' | 'manager' | 'mechanic' | 'advisor' | 'parts' | null;
     // Add any other fields you use
         };
           Insert: {
           id?: string;
           name: string;
           created_at?: string;
-          role: 'owner' | 'admin' | 'manager' | 'mechanic' | 'advisor' | null;
+          role: 'owner' | 'admin' | 'manager' | 'mechanic' | 'advisor' | 'parts' | null;
         };
           Update: {
           id?: string;
           name?: string;
           created_at?: string;
-          role: 'owner' | 'admin' | 'manager' | 'mechanic' | 'advisor' | null;
+          role: 'owner' | 'admin' | 'manager' | 'mechanic' | 'advisor' | 'parts' | null;
         };
           Relationships: [];
         }

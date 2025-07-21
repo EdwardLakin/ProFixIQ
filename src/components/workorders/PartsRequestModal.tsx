@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import supabase from '@lib/supabaseClient';
 import type { Database } from '@/types/supabase';
 import { toast } from 'sonner';
+import { stringFromBase64URL } from '@supabase/ssr';
 
 type PartsRequest = Database['public']['Tables']['parts_requests']['Insert'];
 
@@ -36,7 +37,7 @@ export default function PartsRequestModal({
   useEffect(() => {
     if (existingRequest) {
       setPartsNeeded(existingRequest.part_name || '');
-      setUrgency((existingRequest.urgency as 'low' | 'medium' | 'high') || 'medium');
+      setUrgency((existingRequest.urgency as 'low' | 'medium' | 'high'));
       setNotes(existingRequest.notes || '');
       setQuantity(existingRequest.quantity || 1);
       setPhotoUrls(existingRequest.photo_urls || []);
@@ -67,6 +68,8 @@ export default function PartsRequestModal({
       notes,
       requested_by,
       photo_urls: photoUrls,
+      viewed_at: null,
+      fulfilled_at: null
     };
 
     const { error } = existingRequest
