@@ -17,7 +17,6 @@ export default function ChatWindow({ conversationId, userId }: ChatWindowProps) 
   const [newMessage, setNewMessage] = useState('');
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  // Initial fetch
   useEffect(() => {
     const fetchInitialMessages = async () => {
       const msgs = await getMessages(conversationId);
@@ -26,7 +25,6 @@ export default function ChatWindow({ conversationId, userId }: ChatWindowProps) 
     fetchInitialMessages();
   }, [conversationId]);
 
-  // Realtime updates
   useEffect(() => {
     const channel = supabase
       .channel(`messages-${conversationId}`)
@@ -49,18 +47,20 @@ export default function ChatWindow({ conversationId, userId }: ChatWindowProps) 
     };
   }, [conversationId]);
 
-  // Send message
   const handleSend = async () => {
-  if (!newMessage.trim()) return;
-  try {
-    await sendMessage({ conversationId, senderId: userId, content: newMessage });
-    setNewMessage('');
-  } catch (error) {
-    console.error('Error sending message:', error);
-  }
-};
+    if (!newMessage.trim()) return;
+    try {
+      await sendMessage({
+        conversationId,
+        senderId: userId,
+        content: newMessage,
+      });
+      setNewMessage('');
+    } catch (error) {
+      console.error('Error sending message:', error);
+    }
+  };
 
-  // Auto-scroll
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
