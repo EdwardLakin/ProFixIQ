@@ -26,6 +26,11 @@
       "static/chunks/main-app.js",
       "static/chunks/app/api/stripe/checkout/route.js"
     ],
+    "/onboarding/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/onboarding/page.js"
+    ],
     "/(auth)/auth/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",

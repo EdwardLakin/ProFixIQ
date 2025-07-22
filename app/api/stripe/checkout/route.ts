@@ -24,8 +24,8 @@ export async function POST(req: Request) {
           quantity: 1,
         },
       ],
-      success_url: `${process.env.NEXT_PUBLIC_SITE_URL}/onboarding`,
-      cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL}/subscribe`,
+      success_url: `https://ominous-halibut-r4x7gg57grgjc55qr-3000.app.github.dev//onboarding?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `https://ominous-halibut-r4x7gg57grgjc55qr-3000.app.github.dev//subscribe`,
     });
 
     return NextResponse.json({ url: session.url });

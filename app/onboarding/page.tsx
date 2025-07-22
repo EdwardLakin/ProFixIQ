@@ -19,6 +19,7 @@ export default function OnboardingPage() {
 
   const [userId, setUserId] = useState<string | null>(null);
   const [shopId, setShopId] = useState<string | null>(null);
+  const [user, setUser] = useState<any>(null);
 
   // ✅ Link Stripe customer to user using session_id (if available)
   useEffect(() => {
@@ -30,6 +31,7 @@ export default function OnboardingPage() {
 
       if (user) {
         setUserId(user.id);
+        setUser(user);
 
         if (sessionId) {
           await fetch('/api/stripe/link-user', {
@@ -47,71 +49,93 @@ export default function OnboardingPage() {
   }, [supabase, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
+  e.preventDefault();
+  setError('');
+  setLoading(true);
 
-    if (!userId) {
-      setError('User not found.');
-      setLoading(false);
-      return;
-    }
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-    // Optional: Create a shop record if you're using multi-tenant structure
-    const { data: newShop, error: shopError } = await supabase
-      .from('shops')
-      .insert([{ name: shopName || businessName }])
-      .select()
-      .single();
+  if (!user) {
+    setError('User not found.');
+    setLoading(false);
+    return;
+  }
 
-    if (shopError) {
-      setError('Failed to create shop.');
-      setLoading(false);
-      return;
-    }
+  const email = user.email;
 
-    const newShopId = newShop.id;
-    setShopId(newShopId);
+  // Optional: Create a shop record
+  const { data: newShop, error: shopError } = await supabase
+    .from('shops')
+    .insert([{ name: shopName || businessName }])
+    .select()
+    .single();
 
-    const { error: updateError } = await supabase
-      .from('profiles')
-      .update({
-        full_name: fullName,
-        phone,
-        role,
-        business_name: businessName,
-        shop_name: shopName || businessName,
-        shop_id: newShopId,
-      })
-      .eq('id', userId);
+  if (shopError) {
+    setError('Failed to create shop.');
+    setLoading(false);
+    return;
+  }
 
-    if (updateError) {
-      setError(updateError.message);
-      setLoading(false);
-      return;
-    }
+  const newShopId = newShop.id;
+  setShopId(newShopId);
 
-    // Redirect based on role
-    switch (role) {
-      case 'owner':
-        router.push('/dashboard/owner');
-        break;
-      case 'admin':
-        router.push('/dashboard/admin');
-        break;
-      case 'manager':
-        router.push('/dashboard/manager');
-        break;
-      case 'advisor':
-        router.push('/dashboard/advisor');
-        break;
-      case 'mechanic':
-        router.push('/dashboard/tech');
-        break;
-      default:
-        router.push('/');
-    }
-  };
+  const { error: updateError } = await supabase
+    .from('profiles')
+    .update({
+      full_name: fullName,
+      phone,
+      role,
+      business_name: businessName,
+      shop_name: shopName || businessName,
+      shop_id: newShopId,
+    })
+    .eq('id', user.id);
+
+  if (updateError) {
+    setError(updateError.message);
+    setLoading(false);
+    return;
+  }
+
+  // ✅ Send welcome email
+  try {
+    await fetch('/api/send-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        subject: 'Welcome to ProFixIQ!',
+        html: `<p>Hi ${fullName},</p><p>Thanks for signing up with ProFixIQ. Your shop is now active!</p>`,
+      }),
+    });
+  } catch (err) {
+    console.error('Email failed:', err);
+    // Not fatal, so continue
+  }
+
+  // Redirect by role
+  switch (role) {
+    case 'owner':
+      router.push('/dashboard/owner');
+      break;
+    case 'admin':
+      router.push('/dashboard/admin');
+      break;
+    case 'manager':
+      router.push('/dashboard/manager');
+      break;
+    case 'advisor':
+      router.push('/dashboard/advisor');
+      break;
+    case 'mechanic':
+      router.push('/dashboard/tech');
+      break;
+    default:
+      router.push('/');
+  }
+};
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-black text-white px-4 font-blackops">

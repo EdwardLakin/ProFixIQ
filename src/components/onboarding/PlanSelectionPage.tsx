@@ -6,18 +6,21 @@ import { useRouter } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import type { Database } from '@/types/supabase';
 
-const PRICE_IDS = {
+const PRICE_IDS: Record<string, { monthly: string; yearly?: string }> = {
+  free: {
+    monthly: 'price_1RnWn2lGrq4FFVFx7O7o6YhW', // no yearly price
+  },
   diy: {
-    monthly: 'price_1RkIKMITYwJQigUIxJhU8DIQ',
-    yearly: 'price_1RkIO6ITYwJQigUIJCE2PsZX',
+    monthly: 'price_1RnWlfGrq4FFVFxUfA36GyT',
+    yearly: 'price_1RnWm7lGrq4FFVFxRHlK4i0',
   },
   pro: {
-    monthly: 'price_1RkIL8ITYwJQigUIJ7G1nc4u',
-    yearly: 'price_1RkIMyITYwJQigUIFZekjN68',
+    monthly: 'price_1RnWo7lGrq4FFVFxFR0mJTx',
+    yearly: 'price_1RnWoMlGrq4FFVFx0PQBLXFM',
   },
   pro_plus: {
-    monthly: 'price_1RkIIcITYwJQigUITIPXJzpU',
-    yearly: 'price_1RkINaITYwJQigUIH6KZAoBm',
+    monthly: 'price_1RnWqEIGrq4FFVFxra6VzTiP',
+    yearly: 'price_1RnWqUlGrq4FFVFx9RlFCsVe',
   },
 };
 
@@ -40,7 +43,8 @@ export default function PlanSelectionPage() {
 
     await saveSelectedPlan(plan as 'free' | 'diy' | 'pro' | 'pro_plus');
 
-    const priceId = PRICE_IDS[plan as keyof typeof PRICE_IDS][isYearly ? 'yearly' : 'monthly'];
+    const priceConfig = PRICE_IDS[plan as keyof typeof PRICE_IDS];
+const priceId = isYearly && priceConfig.yearly ? priceConfig.yearly : priceConfig.monthly;
 
     const res = await fetch('/api/stripe/checkout', {
       method: 'POST',
@@ -117,7 +121,6 @@ export default function PlanSelectionPage() {
 
   return (
     <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 relative">
-      {/* Home button */}
       <Link
         href="/"
         className="absolute top-4 right-4 bg-orange-500 hover:bg-orange-600 text-white py-1 px-3 rounded text-sm"
@@ -127,7 +130,6 @@ export default function PlanSelectionPage() {
 
       <h1 className="text-4xl font-blackops text-orange-500 mb-4">Choose Your Plan</h1>
 
-      {/* Billing toggle */}
       <div className="flex items-center gap-4 mb-8">
         <span className="text-sm text-gray-300">Billing:</span>
         <button
@@ -148,7 +150,6 @@ export default function PlanSelectionPage() {
         </button>
       </div>
 
-      {/* Plan cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8 w-full max-w-7xl">
         {plans.map((plan) => (
           <button
