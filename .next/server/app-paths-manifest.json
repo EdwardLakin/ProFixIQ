@@ -3,5 +3,6 @@
   "/page": "app/page.js",
   "/compare-plans/page": "app/compare-plans/page.js",
   "/subscribe/page": "app/subscribe/page.js",
+  "/onboarding/page": "app/onboarding/page.js",
   "/(auth)/auth/page": "app/(auth)/auth/page.js"
 }
