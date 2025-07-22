@@ -20,22 +20,30 @@ export default function OnboardingPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [shopId, setShopId] = useState<string | null>(null);
 
+  // ✅ Link Stripe customer to user using session_id (if available)
   useEffect(() => {
-    const getUser = async () => {
+    const linkStripeCustomer = async () => {
       const {
         data: { user },
-        error,
       } = await supabase.auth.getUser();
+      const sessionId = new URLSearchParams(window.location.search).get('session_id');
 
-      if (error || !user) {
+      if (user) {
+        setUserId(user.id);
+
+        if (sessionId) {
+          await fetch('/api/stripe/link-user', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sessionId, userId: user.id }),
+          });
+        }
+      } else {
         router.push('/auth');
-        return;
       }
-
-      setUserId(user.id);
     };
 
-    getUser();
+    linkStripeCustomer();
   }, [supabase, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -84,12 +92,25 @@ export default function OnboardingPage() {
     }
 
     // Redirect based on role
-    if (role === 'owner') router.push('/dashboard/owner');
-    else if (role === 'admin') router.push('/dashboard/admin');
-    else if (role === 'manager') router.push('/dashboard/manager');
-    else if (role === 'advisor') router.push('/dashboard/advisor');
-    else if (role === 'mechanic') router.push('/dashboard/tech');
-    else router.push('/');
+    switch (role) {
+      case 'owner':
+        router.push('/dashboard/owner');
+        break;
+      case 'admin':
+        router.push('/dashboard/admin');
+        break;
+      case 'manager':
+        router.push('/dashboard/manager');
+        break;
+      case 'advisor':
+        router.push('/dashboard/advisor');
+        break;
+      case 'mechanic':
+        router.push('/dashboard/tech');
+        break;
+      default:
+        router.push('/');
+    }
   };
 
   return (

@@ -1,4 +1,4 @@
-// pages/api/stripe/checkout/route.ts
+// app/api/stripe/checkout/route.ts
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 
@@ -9,23 +9,15 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { priceId, userId } = body;
+    const { priceId } = body;
 
-    if (!priceId || !userId) {
-      return NextResponse.json({ error: 'Missing priceId or userId' }, { status: 400 });
+    if (!priceId) {
+      return NextResponse.json({ error: 'Missing priceId' }, { status: 400 });
     }
-
-    const customer = await stripe.customers.create({
-      metadata: { supabaseUserId: userId },
-    });
 
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       payment_method_types: ['card'],
-      customer: customer.id,
-      metadata: {
-        supabaseUserId: userId,
-      },
       line_items: [
         {
           price: priceId,
