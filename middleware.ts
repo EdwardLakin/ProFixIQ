@@ -8,14 +8,11 @@ export function middleware(req: NextRequest) {
 
   const PUBLIC_PATHS = [
     '/',
-    '/sign-in',
-    '/sign-up',
+    '/auth',
     '/reset-password',
     '/compare-plans',
     '/subscribe',
-    '/onboarding/plan',
-    '/onboarding/profile',
-    '/onboarding/shop',
+    '/onboarding',
     '/favicon.ico',
     '/logo.svg',
   ];
@@ -28,9 +25,7 @@ export function middleware(req: NextRequest) {
     pathname.startsWith('/fonts') ||
     pathname.startsWith('/BlackOpsOne-Regular.ttf');
 
-  // Allow public routes
   if (isPublic) {
-    // Redirect logged-in users away from "/" if role is known
     if (pathname === '/' && token && role) {
       let dashboardPath = '/dashboard';
 
@@ -58,9 +53,8 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // If private and not authenticated
   if (!token) {
-    const signInUrl = new URL('/sign-in', req.url);
+    const signInUrl = new URL('/auth', req.url);
     signInUrl.searchParams.set('redirect', pathname);
     return NextResponse.redirect(signInUrl);
   }

@@ -5,76 +5,71 @@ import { useRouter } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import type { Database } from '@/types/supabase';
 
-export default function AuthCallback() {
-  const supabase = createClientComponentClient<Database>();
+export default function AuthCallbackPage() {
   const router = useRouter();
+  const supabase = createClientComponentClient<Database>();
 
   useEffect(() => {
-    const handleAuth = async () => {
+    const checkProfile = async () => {
       const {
-        data: { session },
+        data: { user },
         error: sessionError,
-      } = await supabase.auth.getSession();
+      } = await supabase.auth.getUser();
 
-      if (sessionError || !session?.user) {
-        console.error('Error getting session:', sessionError?.message);
-        router.push('/sign-in');
+      if (sessionError || !user) {
+        console.error('Session error:', sessionError?.message);
+        router.push('/auth');
         return;
       }
 
-      const { user } = session;
-
-      // Check if profile exists
-      const { data: profile, error: fetchError } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('*')
+        .select('role, full_name, phone')
         .eq('id', user.id)
         .single();
 
-      if (fetchError && fetchError.code !== 'PGRST116') {
-        console.error('Error fetching profile:', fetchError.message);
+      if (profileError) {
+        console.error('Profile error:', profileError.message);
+        router.push('/onboarding');
         return;
       }
 
-      if (!profile) {
-        // First-time login: create basic profile row
-        const { error: insertError } = await supabase.from('profiles').insert({
-          id: user.id,
-          email: user.email,
-          full_name: user.user_metadata?.full_name || '',
-          role: null,
-          phone: null,
-          plan: 'free',
-          shop_id: null,
-          shop_name: null,
-          business_name: null,
-        });
+      const { role, full_name, phone } = profile;
 
-        if (insertError) {
-          console.error('Insert profile error:', insertError.message);
-          return;
-        }
-
-        router.push('/onboarding/profile');
+      // Incomplete profile → send to onboarding
+      if (!role || !full_name || !phone) {
+        router.push('/onboarding');
         return;
       }
 
-      // If profile exists but is incomplete, redirect to onboarding
-      if (!profile.role || !profile.shop_name) {
-        router.push('/onboarding/profile');
-        return;
+      // Redirect based on role
+      switch (role) {
+        case 'owner':
+          router.push('/dashboard/owner');
+          break;
+        case 'admin':
+          router.push('/dashboard/admin');
+          break;
+        case 'manager':
+          router.push('/dashboard/manager');
+          break;
+        case 'advisor':
+          router.push('/dashboard/advisor');
+          break;
+        case 'mechanic':
+          router.push('/dashboard/tech');
+          break;
+        default:
+          router.push('/');
       }
-
-      // Profile complete — go to app
-      router.push('/app');
     };
 
-    handleAuth();
-  }, [supabase, router]);
+    checkProfile();
+  }, [router, supabase]);
 
   return (
-    <div className="min-h-screen bg-black text-white flex items-center justify-center font-blackops text-orange-500 text-xl">
-      Signing you in...
+    <div className="min-h-screen flex items-center justify-center bg-black text-white font-blackops">
+      <p className="text-orange-400">Signing you in...</p>
     </div>
   );
 }
