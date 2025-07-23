@@ -16,25 +16,10 @@
       "static/chunks/main-app.js",
       "static/chunks/app/(auth)/auth/page.js"
     ],
-    "/compare-plans/page": [
+    "/_not-found/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/compare-plans/page.js"
-    ],
-    "/subscribe/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/subscribe/page.js"
-    ],
-    "/api/stripe/checkout/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/stripe/checkout/route.js"
-    ],
-    "/onboarding/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/onboarding/page.js"
+      "static/chunks/app/_not-found/page.js"
     ]
   }
 }
