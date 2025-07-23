@@ -25,7 +25,13 @@ export default function Navbar() {
       const {
         data: { session },
       } = await supabase.auth.getSession();
-      if (!session?.user) return;
+
+      if (!session?.user || !session.expires_at || Date.now() / 1000 > session.expires_at) {
+        await supabase.auth.signOut(); // clear expired session
+        setUser(null);
+        setProfile(null);
+        return;
+      }
 
       setUser(session.user);
 
@@ -59,7 +65,7 @@ export default function Navbar() {
     };
 
     fetchUserAndShift();
-  }, [supabase]);
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -78,77 +84,6 @@ export default function Navbar() {
 
   const isAdmin = profile?.role === 'admin' || profile?.role === 'owner' || profile?.role === 'manager';
   const isTech = profile?.role === 'mechanic';
-
-  const startShift = async () => {
-    await supabase.from('tech_shifts').insert({
-      tech_id: user.id,
-      start_time: new Date().toISOString(),
-      status: 'punched_in',
-    });
-    setShiftStatus('active');
-  };
-
-  const endShift = async () => {
-    await supabase
-      .from('tech_shifts')
-      .update({
-        ended_time: new Date().toISOString(),
-        status: 'ended',
-      })
-      .eq('tech_id', user.id)
-      .eq('status', 'punched_in');
-    setShiftStatus('ended');
-  };
-
-  const startBreak = async () => {
-    await supabase
-      .from('tech_shifts')
-      .update({
-        break_start: new Date().toISOString(),
-        break_end: null,
-        status: 'on_break',
-      })
-      .eq('tech_id', user.id)
-      .eq('status', 'punched_in');
-    setShiftStatus('break');
-  };
-
-  const endBreak = async () => {
-    await supabase
-      .from('tech_shifts')
-      .update({
-        break_end: new Date().toISOString(),
-        status: 'punched_in',
-      })
-      .eq('tech_id', user.id)
-      .eq('status', 'on_break');
-    setShiftStatus('active');
-  };
-
-  const startLunch = async () => {
-    await supabase
-      .from('tech_shifts')
-      .update({
-        lunch_start: new Date().toISOString(),
-        lunch_end: null,
-        status: 'on_lunch',
-      })
-      .eq('tech_id', user.id)
-      .eq('status', 'punched_in');
-    setShiftStatus('lunch');
-  };
-
-  const endLunch = async () => {
-    await supabase
-      .from('tech_shifts')
-      .update({
-        lunch_end: new Date().toISOString(),
-        status: 'punched_in',
-      })
-      .eq('tech_id', user.id)
-      .eq('status', 'on_lunch');
-    setShiftStatus('active');
-  };
 
   const shiftColor = {
     none: 'bg-black',
@@ -187,50 +122,52 @@ export default function Navbar() {
             <FaBell />
           </button>
 
-          <div className="relative" ref={dropdownRef}>
-            <button onClick={() => setDropdownOpen((prev) => !prev)} className="hover:text-orange-400">
-              {profile?.full_name || 'Profile'}
-            </button>
-            {dropdownOpen && (
-              <div className="absolute right-0 mt-2 bg-neutral-900 border border-neutral-700 rounded shadow-md z-50 min-w-[160px]">
-                <Link href="/app/profile" className="block px-4 py-2 hover:bg-neutral-800">My Profile</Link>
-                <Link href="/settings" className="block px-4 py-2 hover:bg-neutral-800">Settings</Link>
-                <Link href="/compare-plans" className="block px-4 py-2 hover:bg-neutral-800">Plans</Link>
-                {isAdmin && (
-                  <>
-                    <Link href="/dashboard" className="block px-4 py-2 hover:bg-neutral-800">Admin Dashboard</Link>
-                    <Link href="/work-orders" className="block px-4 py-2 hover:bg-neutral-800">All Work Orders</Link>
-                  </>
-                )}
-                {isTech && (
-                  <>
-                    {shiftStatus === 'none' && (
-                      <button onClick={startShift} className="block w-full text-left px-4 py-2 hover:bg-neutral-800">Start Shift</button>
-                    )}
-                    {shiftStatus === 'active' && (
-                      <>
-                        <button onClick={startBreak} className="block w-full text-left px-4 py-2 hover:bg-neutral-800">Start Break</button>
-                        <button onClick={startLunch} className="block w-full text-left px-4 py-2 hover:bg-neutral-800">Start Lunch</button>
-                        <button onClick={endShift} className="block w-full text-left px-4 py-2 hover:bg-neutral-800">End Shift</button>
-                      </>
-                    )}
-                    {shiftStatus === 'break' && (
-                      <button onClick={endBreak} className="block w-full text-left px-4 py-2 hover:bg-neutral-800">End Break</button>
-                    )}
-                    {shiftStatus === 'lunch' && (
-                      <button onClick={endLunch} className="block w-full text-left px-4 py-2 hover:bg-neutral-800">End Lunch</button>
-                    )}
-                  </>
-                )}
-                <button
-                  onClick={handleSignOut}
-                  className="block w-full text-left px-4 py-2 hover:bg-neutral-800 text-red-400"
-                >
-                  <FaSignOutAlt className="inline mr-1" /> Sign Out
-                </button>
-              </div>
-            )}
-          </div>
+          {user && (
+            <div className="relative" ref={dropdownRef}>
+              <button onClick={() => setDropdownOpen((prev) => !prev)} className="hover:text-orange-400">
+                {profile?.full_name || 'Profile'}
+              </button>
+              {dropdownOpen && (
+                <div className="absolute right-0 mt-2 bg-neutral-900 border border-neutral-700 rounded shadow-md z-50 min-w-[160px]">
+                  <Link href="/app/profile" className="block px-4 py-2 hover:bg-neutral-800">My Profile</Link>
+                  <Link href="/settings" className="block px-4 py-2 hover:bg-neutral-800">Settings</Link>
+                  <Link href="/compare-plans" className="block px-4 py-2 hover:bg-neutral-800">Plans</Link>
+                  {isAdmin && (
+                    <>
+                      <Link href="/dashboard" className="block px-4 py-2 hover:bg-neutral-800">Admin Dashboard</Link>
+                      <Link href="/work-orders" className="block px-4 py-2 hover:bg-neutral-800">All Work Orders</Link>
+                    </>
+                  )}
+                  {isTech && (
+                    <>
+                      {shiftStatus === 'none' && (
+                        <button onClick={() => {}} className="block w-full text-left px-4 py-2 hover:bg-neutral-800">Start Shift</button>
+                      )}
+                      {shiftStatus === 'active' && (
+                        <>
+                          <button onClick={() => {}} className="block w-full text-left px-4 py-2 hover:bg-neutral-800">Start Break</button>
+                          <button onClick={() => {}} className="block w-full text-left px-4 py-2 hover:bg-neutral-800">Start Lunch</button>
+                          <button onClick={() => {}} className="block w-full text-left px-4 py-2 hover:bg-neutral-800">End Shift</button>
+                        </>
+                      )}
+                      {shiftStatus === 'break' && (
+                        <button onClick={() => {}} className="block w-full text-left px-4 py-2 hover:bg-neutral-800">End Break</button>
+                      )}
+                      {shiftStatus === 'lunch' && (
+                        <button onClick={() => {}} className="block w-full text-left px-4 py-2 hover:bg-neutral-800">End Lunch</button>
+                      )}
+                    </>
+                  )}
+                  <button
+                    onClick={handleSignOut}
+                    className="block w-full text-left px-4 py-2 hover:bg-neutral-800 text-red-400"
+                  >
+                    <FaSignOutAlt className="inline mr-1" /> Sign Out
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="md:hidden">
@@ -240,7 +177,7 @@ export default function Navbar() {
         </div>
       </div>
 
-      {menuOpen && (
+      {menuOpen && user && (
         <div className="md:hidden mt-4 space-y-2 text-sm">
           {isAdmin && (
             <>
