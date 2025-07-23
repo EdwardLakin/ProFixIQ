@@ -68,11 +68,13 @@ export default function LandingHero() {
 
   return (
     <section className="relative overflow-hidden bg-black text-white pt-20 pb-32 px-6 sm:px-12 lg:px-24">
+      {/* Particle Background */}
       <canvas
         ref={canvasRef}
         className="absolute top-0 left-0 w-full h-full opacity-20 pointer-events-none z-0"
       />
 
+      {/* Hero Content */}
       <div className="relative z-10 max-w-4xl mx-auto text-center">
         <h1 className="text-4xl md:text-5xl lg:text-6xl font-blackops text-orange-500 mb-4">
           Welcome to ProFixIQ

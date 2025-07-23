@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { fetchPlans } from './actions';
 import { PRICE_IDS } from '@lib/stripe/constants';
 
 type Plan = {
@@ -17,21 +16,34 @@ export default function PlanComparison() {
 
   useEffect(() => {
     const loadPlans = async () => {
-      const planData = await fetchPlans();
+      const res = await fetch('/api/plans');
+      const planData = await res.json();
       setPlans(planData);
     };
-
     loadPlans();
   }, []);
 
   const filteredPlans = plans.filter((plan) =>
     billingCycle === 'monthly'
-      ? plan.id === PRICE_IDS.freeMonthly || plan.id === PRICE_IDS.proMonthly || plan.id === PRICE_IDS.proPlusMonthly
-      : plan.id === PRICE_IDS.proYearly || plan.id === PRICE_IDS.proPlusYearly
+      ? [PRICE_IDS.free.monthly, PRICE_IDS.pro.monthly, PRICE_IDS.pro_plus.monthly].includes(plan.id)
+      : [PRICE_IDS.pro.yearly, PRICE_IDS.pro_plus.yearly].includes(plan.id)
   );
 
-  const formatPrice = (amount: number) => {
-    return `$${(amount / 100).toFixed(0)}`;
+  const formatPrice = (amount: number) => `$${(amount / 100).toFixed(0)}`;
+
+  const handleCheckout = async (priceId: string) => {
+    const res = await fetch('/api/stripe/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ priceId }),
+    });
+
+    const { url } = await res.json();
+    if (url) {
+      window.location.href = url;
+    } else {
+      alert('Checkout failed');
+    }
   };
 
   return (
@@ -76,12 +88,12 @@ export default function PlanComparison() {
                 <li>✅ Parts & Inventory</li>
                 {plan.nickname.includes('Pro+') && <li>✅ Team Collaboration Tools</li>}
               </ul>
-              <form action="/api/stripe/checkout" method="POST">
-                <input type="hidden" name="priceId" value={plan.id} />
-                <button className="w-full py-2 bg-orange-500 hover:bg-orange-600 text-black rounded">
-                  Choose Plan
-                </button>
-              </form>
+              <button
+                onClick={() => handleCheckout(plan.id)}
+                className="w-full py-2 bg-orange-500 hover:bg-orange-600 text-black rounded"
+              >
+                Choose Plan
+              </button>
             </div>
           ))}
         </div>

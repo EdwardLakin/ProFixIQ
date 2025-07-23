@@ -1,5 +1,17 @@
 {
-  "node": {},
+  "node": {
+    "009b6fc066b65b2902bb3ea64de6cd4294655b0f78": {
+      "workers": {
+        "app/page": {
+          "moduleId": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2Fworkspaces%2FProFixIQ%2Fapp%2Flanding%2Factions.ts%22%2C%5B%7B%22id%22%3A%22009b6fc066b65b2902bb3ea64de6cd4294655b0f78%22%2C%22exportedName%22%3A%22fetchPlans%22%7D%5D%5D%5D&__client_imported__=true!",
+          "async": false
+        }
+      },
+      "layer": {
+        "app/page": "action-browser"
+      }
+    }
+  },
   "edge": {},
-  "encryptionKey": "P5Z1A3SgV5v7npow1GFxZwoNDUvMvs+MZBh7O9fbpFw="
+  "encryptionKey": "kVB9MSOVa9yApI7/tOLiR7lrbRY3qHL/PJbkSaHpa2o="
 }
