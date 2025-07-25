@@ -7,3 +7,4 @@ supabase/secrets.ts
 node_modules/
 node_modules/
 sendgrid.env
+.next
