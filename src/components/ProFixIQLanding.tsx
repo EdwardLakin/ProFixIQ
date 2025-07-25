@@ -24,15 +24,15 @@ export default function ProFixLanding() {
 
       <main className="relative z-10 pt-24 max-w-7xl mx-auto px-4">
         <LandingHero />
-        <SubscribeBanner />
+       
 
-        <section id="features">
-          <LandingButtons />
-        </section>
+        
+         
+        
 
-        <section id="plans">
-          <PlanComparison />
-        </section>
+        
+          
+      
 
         <section id="faq">
           <Chatbot />

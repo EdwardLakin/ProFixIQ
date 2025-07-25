@@ -13,16 +13,13 @@ export default function OnboardingPage() {
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState('owner');
 
-  // User address
   const [userStreet, setUserStreet] = useState('');
   const [userCity, setUserCity] = useState('');
   const [userProvince, setUserProvince] = useState('');
   const [userPostal, setUserPostal] = useState('');
 
-  // Shop fields
   const [businessName, setBusinessName] = useState('');
   const [shopName, setShopName] = useState('');
-
   const [shopStreet, setShopStreet] = useState('');
   const [shopCity, setShopCity] = useState('');
   const [shopProvince, setShopProvince] = useState('');
@@ -30,8 +27,6 @@ export default function OnboardingPage() {
 
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-
-  const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
     const linkStripeCustomer = async () => {
@@ -41,8 +36,6 @@ export default function OnboardingPage() {
       const sessionId = new URLSearchParams(window.location.search).get('session_id');
 
       if (user) {
-        setUserId(user.id);
-
         if (sessionId) {
           await fetch('/api/stripe/link-user', {
             method: 'POST',
@@ -118,6 +111,12 @@ export default function OnboardingPage() {
       setLoading(false);
       return;
     }
+
+    await fetch('/api/set-role-cookie', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role }),
+    });
 
     try {
       await fetch('/api/send-email', {

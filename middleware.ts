@@ -1,10 +1,18 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
+import type { Database } from '@/types/supabase';
 
-export function middleware(req: NextRequest) {
-  const { pathname } = req.nextUrl;
-  const token = req.cookies.get('sb-access-token')?.value;
-  const role = req.cookies.get('role')?.value;
+export async function middleware(req: NextRequest) {
+  const res = NextResponse.next();
+
+  const supabase = createMiddlewareClient<Database>({ req, res });
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  const pathname = req.nextUrl.pathname;
 
   const PUBLIC_PATHS = [
     '/',
@@ -21,14 +29,20 @@ export function middleware(req: NextRequest) {
     PUBLIC_PATHS.includes(pathname) ||
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api') ||
-    pathname.startsWith('/auth') ||
     pathname.startsWith('/fonts') ||
     pathname.startsWith('/BlackOpsOne-Regular.ttf');
 
   if (isPublic) {
-    if (pathname === '/' && token && role) {
-      let dashboardPath = '/dashboard';
+    if (pathname === '/' && session?.user) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', session.user.id)
+        .single();
 
+      const role = profile?.role;
+
+      let dashboardPath = '/dashboard';
       switch (role) {
         case 'mechanic':
           dashboardPath = '/dashboard/tech';
@@ -50,14 +64,18 @@ export function middleware(req: NextRequest) {
       return NextResponse.redirect(new URL(dashboardPath, req.url));
     }
 
-    return NextResponse.next();
+    return res;
   }
 
-  if (!token) {
+  if (!session) {
     const signInUrl = new URL('/auth', req.url);
     signInUrl.searchParams.set('redirect', pathname);
     return NextResponse.redirect(signInUrl);
   }
 
-  return NextResponse.next();
+  return res;
 }
+
+export const config = {
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+};

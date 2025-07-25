@@ -101,72 +101,56 @@ export default function Navbar() {
         </Link>
 
         <div className="hidden md:flex space-x-4 items-center">
-          {isAdmin && (
+          {user ? (
             <>
-              <Link href="/work-orders/create" className="hover:text-orange-400">Create Work Order</Link>
-              <Link href="/work-orders/queue" className="hover:text-orange-400">Job Queue</Link>
-            </>
-          )}
-          {isTech && (
-            <>
-              <Link href="/work-orders/queue" className="hover:text-orange-400">Queued Jobs</Link>
-              <Link href="/inspections" className="hover:text-orange-400">Inspections</Link>
-            </>
-          )}
-
-          <button title="Quick Access" className="hover:text-orange-400" onClick={() => alert('Quick Access coming soon')}>
-            <FaSearch />
-          </button>
-
-          <button className="hover:text-orange-400" onClick={() => alert('Notifications coming soon')}>
-            <FaBell />
-          </button>
-
-          {user && (
-            <div className="relative" ref={dropdownRef}>
-              <button onClick={() => setDropdownOpen((prev) => !prev)} className="hover:text-orange-400">
-                {profile?.full_name || 'Profile'}
-              </button>
-              {dropdownOpen && (
-                <div className="absolute right-0 mt-2 bg-neutral-900 border border-neutral-700 rounded shadow-md z-50 min-w-[160px]">
-                  <Link href="/app/profile" className="block px-4 py-2 hover:bg-neutral-800">My Profile</Link>
-                  <Link href="/settings" className="block px-4 py-2 hover:bg-neutral-800">Settings</Link>
-                  <Link href="/compare-plans" className="block px-4 py-2 hover:bg-neutral-800">Plans</Link>
-                  {isAdmin && (
-                    <>
-                      <Link href="/dashboard" className="block px-4 py-2 hover:bg-neutral-800">Admin Dashboard</Link>
-                      <Link href="/work-orders" className="block px-4 py-2 hover:bg-neutral-800">All Work Orders</Link>
-                    </>
-                  )}
-                  {isTech && (
-                    <>
-                      {shiftStatus === 'none' && (
-                        <button onClick={() => {}} className="block w-full text-left px-4 py-2 hover:bg-neutral-800">Start Shift</button>
-                      )}
-                      {shiftStatus === 'active' && (
-                        <>
-                          <button onClick={() => {}} className="block w-full text-left px-4 py-2 hover:bg-neutral-800">Start Break</button>
-                          <button onClick={() => {}} className="block w-full text-left px-4 py-2 hover:bg-neutral-800">Start Lunch</button>
-                          <button onClick={() => {}} className="block w-full text-left px-4 py-2 hover:bg-neutral-800">End Shift</button>
-                        </>
-                      )}
-                      {shiftStatus === 'break' && (
-                        <button onClick={() => {}} className="block w-full text-left px-4 py-2 hover:bg-neutral-800">End Break</button>
-                      )}
-                      {shiftStatus === 'lunch' && (
-                        <button onClick={() => {}} className="block w-full text-left px-4 py-2 hover:bg-neutral-800">End Lunch</button>
-                      )}
-                    </>
-                  )}
-                  <button
-                    onClick={handleSignOut}
-                    className="block w-full text-left px-4 py-2 hover:bg-neutral-800 text-red-400"
-                  >
-                    <FaSignOutAlt className="inline mr-1" /> Sign Out
-                  </button>
-                </div>
+              {isAdmin && (
+                <>
+                  <Link href="/work-orders/create" className="hover:text-orange-400">Create Work Order</Link>
+                  <Link href="/work-orders/queue" className="hover:text-orange-400">Job Queue</Link>
+                </>
               )}
-            </div>
+              {isTech && (
+                <>
+                  <Link href="/work-orders/queue" className="hover:text-orange-400">Queued Jobs</Link>
+                  <Link href="/inspections" className="hover:text-orange-400">Inspections</Link>
+                </>
+              )}
+
+              <button title="Quick Access" className="hover:text-orange-400" onClick={() => alert('Quick Access coming soon')}>
+                <FaSearch />
+              </button>
+
+              <button className="hover:text-orange-400" onClick={() => alert('Notifications coming soon')}>
+                <FaBell />
+              </button>
+
+              <div className="relative" ref={dropdownRef}>
+                <button onClick={() => setDropdownOpen((prev) => !prev)} className="hover:text-orange-400">
+                  {profile?.full_name || 'Profile'}
+                </button>
+                {dropdownOpen && (
+                  <div className="absolute right-0 mt-2 bg-neutral-900 border border-neutral-700 rounded shadow-md z-50 min-w-[160px]">
+                    <Link href="/app/profile" className="block px-4 py-2 hover:bg-neutral-800">My Profile</Link>
+                    <Link href="/settings" className="block px-4 py-2 hover:bg-neutral-800">Settings</Link>
+                    <Link href="/compare-plans" className="block px-4 py-2 hover:bg-neutral-800">Plans</Link>
+                    {isAdmin && (
+                      <>
+                        <Link href="/dashboard" className="block px-4 py-2 hover:bg-neutral-800">Admin Dashboard</Link>
+                        <Link href="/work-orders" className="block px-4 py-2 hover:bg-neutral-800">All Work Orders</Link>
+                      </>
+                    )}
+                    <button
+                      onClick={handleSignOut}
+                      className="block w-full text-left px-4 py-2 hover:bg-neutral-800 text-red-400"
+                    >
+                      <FaSignOutAlt className="inline mr-1" /> Sign Out
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <Link href="/sign-in" className="hover:text-orange-400 font-bold text-white">Sign In</Link>
           )}
         </div>
 
@@ -177,29 +161,35 @@ export default function Navbar() {
         </div>
       </div>
 
-      {menuOpen && user && (
+      {menuOpen && (
         <div className="md:hidden mt-4 space-y-2 text-sm">
-          {isAdmin && (
+          {user ? (
             <>
-              <Link href="/work-orders/create" className="block px-4 py-2 hover:bg-neutral-800">Create Work Order</Link>
-              <Link href="/work-orders/queue" className="block px-4 py-2 hover:bg-neutral-800">Job Queue</Link>
+              {isAdmin && (
+                <>
+                  <Link href="/work-orders/create" className="block px-4 py-2 hover:bg-neutral-800">Create Work Order</Link>
+                  <Link href="/work-orders/queue" className="block px-4 py-2 hover:bg-neutral-800">Job Queue</Link>
+                </>
+              )}
+              {isTech && (
+                <>
+                  <Link href="/work-orders/queue" className="block px-4 py-2 hover:bg-neutral-800">Queued Jobs</Link>
+                  <Link href="/inspections" className="block px-4 py-2 hover:bg-neutral-800">Inspections</Link>
+                </>
+              )}
+              <Link href="/app/profile" className="block px-4 py-2 hover:bg-neutral-800">My Profile</Link>
+              <Link href="/settings" className="block px-4 py-2 hover:bg-neutral-800">Settings</Link>
+              <Link href="/compare-plans" className="block px-4 py-2 hover:bg-neutral-800">Plans</Link>
+              <button
+                onClick={handleSignOut}
+                className="block w-full text-left px-4 py-2 hover:bg-neutral-800 text-red-400"
+              >
+                <FaSignOutAlt className="inline mr-1" /> Sign Out
+              </button>
             </>
+          ) : (
+            <Link href="/sign-in" className="block px-4 py-2 hover:bg-neutral-800 text-orange-400">Sign In</Link>
           )}
-          {isTech && (
-            <>
-              <Link href="/work-orders/queue" className="block px-4 py-2 hover:bg-neutral-800">Queued Jobs</Link>
-              <Link href="/inspections" className="block px-4 py-2 hover:bg-neutral-800">Inspections</Link>
-            </>
-          )}
-          <Link href="/app/profile" className="block px-4 py-2 hover:bg-neutral-800">My Profile</Link>
-          <Link href="/settings" className="block px-4 py-2 hover:bg-neutral-800">Settings</Link>
-          <Link href="/compare-plans" className="block px-4 py-2 hover:bg-neutral-800">Plans</Link>
-          <button
-            onClick={handleSignOut}
-            className="block w-full text-left px-4 py-2 hover:bg-neutral-800 text-red-400"
-          >
-            <FaSignOutAlt className="inline mr-1" /> Sign Out
-          </button>
         </div>
       )}
     </nav>

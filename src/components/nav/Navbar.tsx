@@ -10,8 +10,8 @@ import RoleNavTech from '@components/nav/RoleNavTech';
 import RoleNavAdmin from '@components/nav/RoleNavAdmin';
 import RoleNavAdvisor from '@components/nav/RoleNavAdvisor';
 import RoleNavOwner from '@components/nav/RoleNavOwner';
-import type { Database } from '@/types/supabase';
 import RoleNavManager from '@components/nav/RoleNavManager';
+import type { Database } from '@/types/supabase';
 
 export default function Navbar() {
   const supabase = createClientComponentClient<Database>();
@@ -70,30 +70,30 @@ export default function Navbar() {
 
   const shiftColor = {
     not_started: 'bg-black',
-  active: 'bg-green-700',
-  on_break: 'bg-yellow-600',
-  on_lunch: 'bg-orange-600',
-  ended: 'bg-neutral-800',
-  punched_in: 'bg-green-700',
-  punched_out: 'bg-neutral-800',
+    active: 'bg-green-700',
+    on_break: 'bg-yellow-600',
+    on_lunch: 'bg-orange-600',
+    ended: 'bg-neutral-800',
+    punched_in: 'bg-green-700',
+    punched_out: 'bg-neutral-800',
   }[shiftStatus];
 
   const renderRoleLinks = () => {
-  switch (profile?.role) {
-    case 'mechanic':
-      return <RoleNavTech />;
-    case 'advisor':
-      return <RoleNavAdvisor />;
-    case 'manager':
-      return <RoleNavManager />;
-    case 'admin':
-      return <RoleNavAdmin />;
-    case 'owner':
-      return <RoleNavOwner />;
-    default:
-      return null;
-  }
-};
+    switch (profile?.role) {
+      case 'mechanic':
+        return <RoleNavTech />;
+      case 'advisor':
+        return <RoleNavAdvisor />;
+      case 'manager':
+        return <RoleNavManager />;
+      case 'admin':
+        return <RoleNavAdmin />;
+      case 'owner':
+        return <RoleNavOwner />;
+      default:
+        return null;
+    }
+  };
 
   return (
     <nav className={clsx('text-white p-4 font-blackops border-b border-neutral-800', shiftColor)}>
@@ -101,33 +101,37 @@ export default function Navbar() {
         <Link href="/" className="text-xl text-orange-500 font-blackops">🔧 ProFixIQ</Link>
 
         <div className="hidden md:flex items-center gap-4">
-          {renderRoleLinks()}
-
-          <button title="Quick Access" className="hover:text-orange-400" onClick={() => alert('Quick Access coming soon')}>
-            <FaSearch />
-          </button>
-          <button className="hover:text-orange-400" onClick={() => alert('Notifications coming soon')}>
-            <FaBell />
-          </button>
-
-          <div className="relative" ref={dropdownRef}>
-            <button onClick={() => setDropdownOpen(prev => !prev)} className="hover:text-orange-400">
-              {profile?.full_name || 'Profile'}
-            </button>
-            {dropdownOpen && (
-              <div className="absolute right-0 mt-2 bg-neutral-900 border border-neutral-700 rounded shadow-md z-50 min-w-[160px]">
-                <Link href="/app/profile" className="block px-4 py-2 hover:bg-neutral-800">My Profile</Link>
-                <Link href="/settings" className="block px-4 py-2 hover:bg-neutral-800">Settings</Link>
-                <Link href="/compare-plans" className="block px-4 py-2 hover:bg-neutral-800">Plans</Link>
-                <button
-                  onClick={handleSignOut}
-                  className="block w-full text-left px-4 py-2 hover:bg-neutral-800 text-red-400"
-                >
-                  <FaSignOutAlt className="inline mr-1" /> Sign Out
+          {user ? (
+            <>
+              {renderRoleLinks()}
+              <button title="Quick Access" className="hover:text-orange-400" onClick={() => alert('Quick Access coming soon')}>
+                <FaSearch />
+              </button>
+              <button className="hover:text-orange-400" onClick={() => alert('Notifications coming soon')}>
+                <FaBell />
+              </button>
+              <div className="relative" ref={dropdownRef}>
+                <button onClick={() => setDropdownOpen(prev => !prev)} className="hover:text-orange-400">
+                  {profile?.full_name || 'Profile'}
                 </button>
+                {dropdownOpen && (
+                  <div className="absolute right-0 mt-2 bg-neutral-900 border border-neutral-700 rounded shadow-md z-50 min-w-[160px]">
+                    <Link href="/app/profile" className="block px-4 py-2 hover:bg-neutral-800">My Profile</Link>
+                    <Link href="/settings" className="block px-4 py-2 hover:bg-neutral-800">Settings</Link>
+                    <Link href="/compare-plans" className="block px-4 py-2 hover:bg-neutral-800">Plans</Link>
+                    <button
+                      onClick={handleSignOut}
+                      className="block w-full text-left px-4 py-2 hover:bg-neutral-800 text-red-400"
+                    >
+                      <FaSignOutAlt className="inline mr-1" /> Sign Out
+                    </button>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </>
+          ) : (
+            <Link href="/sign-in" className="hover:text-orange-400 font-bold text-white">Sign In</Link>
+          )}
         </div>
 
         <div className="md:hidden">
@@ -139,13 +143,19 @@ export default function Navbar() {
 
       {menuOpen && (
         <div className="md:hidden mt-4 space-y-2 text-sm">
-          {renderRoleLinks()}
-          <button
-            onClick={handleSignOut}
-            className="block w-full text-left px-4 py-2 hover:bg-neutral-800 text-red-400"
-          >
-            <FaSignOutAlt className="inline mr-1" /> Sign Out
-          </button>
+          {user ? (
+            <>
+              {renderRoleLinks()}
+              <button
+                onClick={handleSignOut}
+                className="block w-full text-left px-4 py-2 hover:bg-neutral-800 text-red-400"
+              >
+                <FaSignOutAlt className="inline mr-1" /> Sign Out
+              </button>
+            </>
+          ) : (
+            <Link href="/sign-in" className="block px-4 py-2 hover:bg-neutral-800 text-orange-400">Sign In</Link>
+          )}
         </div>
       )}
     </nav>
