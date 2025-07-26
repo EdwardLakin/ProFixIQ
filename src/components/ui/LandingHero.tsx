@@ -1,21 +1,21 @@
-
-
-'use client';
+    'use client';
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import Head from 'next/head';
 import { FaChevronDown } from 'react-icons/fa';
-import { PRICE_IDS } from '@lib/stripe/constants'; // Reuse constants
+import { PRICE_IDS } from '@lib/stripe/constants';
 import { useRouter } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import type { Database } from '@/types/supabase';
+
+type PlanKey = 'free' | 'diy' | 'pro' | 'pro_plus';
 
 export default function LandingHero() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [fadeIn, setFadeIn] = useState(false);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
-  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<PlanKey | null>(null);
   const [isYearly, setIsYearly] = useState(false);
   const [loading, setLoading] = useState(false);
   const supabase = createClientComponentClient<Database>();
@@ -77,24 +77,28 @@ export default function LandingHero() {
     setExpandedIndex(index === expandedIndex ? null : index);
   };
 
-  const saveSelectedPlan = async (plan: string) => {
+  const saveSelectedPlan = async (plan: PlanKey) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     await supabase.from('profiles').update({ plan }).eq('id', user.id);
   };
 
-  const handleCheckout = async (plan: string) => {
+  const handleCheckout = async (plan: PlanKey) => {
     setSelectedPlan(plan);
     setLoading(true);
-    await saveSelectedPlan(plan as 'free' | 'diy' | 'pro' | 'pro_plus');
-    const price = isYearly && PRICE_IDS[plan]?.yearly ? PRICE_IDS[plan].yearly : PRICE_IDS[plan].monthly;
+    await saveSelectedPlan(plan);
+
+    const priceId = isYearly ? PRICE_IDS[plan].yearly : PRICE_IDS[plan].monthly;
+
     const res = await fetch('/api/stripe/checkout', {
       method: 'POST',
-      body: JSON.stringify({ priceId: price }),
+      body: JSON.stringify({ priceId }),
     });
+
     const { url } = await res.json();
     if (url) window.location.href = url;
     else alert('Failed to redirect');
+
     setLoading(false);
   };
 
@@ -152,7 +156,7 @@ export default function LandingHero() {
       Repair Smarter. Diagnose Faster.
     </p>
     <h1
-      className="font-blackops text-[6.5rem] sm:text-[7.5rem] leading-[1.1] text-transparent bg-gradient-to-r from-[#ff6a00] to-[#ffd700] bg-clip-text drop-shadow-[0_0_35px_rgba(255,106,0,0.6)] mb-4"
+      className="font-blackops text-[7.5rem] sm:text-[8.5rem] leading-[1.1] text-transparent bg-gradient-to-r from-[#ff6a00] to-[#ffd700] bg-clip-text drop-shadow-[0_0_35px_rgba(255,106,0,0.6)] mb-4"
     >
       ProFixIQ
     </h1>
@@ -294,7 +298,7 @@ export default function LandingHero() {
                     await saveSelectedPlan('free');
                     router.push('/onboarding/profile');
                   } else {
-                    handleCheckout(plan.key);
+                    handleCheckout(plan.key as PlanKey);
                   }
                 }}
                 className={`border border-orange-500 p-6 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-left transition-all ${

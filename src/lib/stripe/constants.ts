@@ -2,6 +2,7 @@
 export const PRICE_IDS = {
   free: {
     monthly: 'price_1RnWn2lGrq4FFVFx7O7o6YhW',
+    yearly: '',
   },
   diy: {
     monthly: 'price_1RnWlfGrq4FFVFxUfA36GyT',
