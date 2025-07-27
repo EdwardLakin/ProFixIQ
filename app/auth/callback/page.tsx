@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import type { Database } from '@/types/supabase';
@@ -8,36 +8,47 @@ import type { Database } from '@/types/supabase';
 export default function AuthCallbackPage() {
   const router = useRouter();
   const supabase = createClientComponentClient<Database>();
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const checkProfile = async () => {
-      const {
+      setLoading(true);
+
+      let {
         data: { user },
-        error: sessionError,
+        error: userError,
       } = await supabase.auth.getUser();
 
-      if (sessionError || !user) {
-        console.error('Session error:', sessionError?.message);
-        router.push('/auth');
-        return;
+      // Retry with getSession() if getUser() failed
+      if (!user || userError) {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        user = session?.user ?? null;
+
+        if (!user) {
+          console.error('User session not found.');
+          router.push('/auth');
+          return;
+        }
       }
 
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('role, full_name, phone')
+        .select('role, full_name, phone, shop_id')
         .eq('id', user.id)
         .single();
 
-      if (profileError) {
-        console.error('Profile error:', profileError.message);
+      if (profileError || !profile) {
+        console.error('Profile error:', profileError?.message);
         router.push('/onboarding');
         return;
       }
 
-      const { role, full_name, phone } = profile;
+      const { role, full_name, phone, shop_id } = profile;
 
       // Incomplete profile → send to onboarding
-      if (!role || !full_name || !phone) {
+      if (!role || !full_name || !phone || !shop_id) {
         router.push('/onboarding');
         return;
       }
@@ -69,7 +80,10 @@ export default function AuthCallbackPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-black text-white font-blackops">
-      <p className="text-orange-400">Signing you in...</p>
+      <div className="flex flex-col items-center">
+        <p className="text-orange-400 text-lg mb-2">Signing you in...</p>
+        <div className="w-6 h-6 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
+      </div>
     </div>
   );
 }

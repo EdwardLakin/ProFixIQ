@@ -27,6 +27,10 @@ export default function OnboardingPage() {
 
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
 
   useEffect(() => {
     const linkStripeCustomer = async () => {
@@ -36,6 +40,7 @@ export default function OnboardingPage() {
       const sessionId = new URLSearchParams(window.location.search).get('session_id');
 
       if (user) {
+        setUserEmail(user.email ?? null);
         if (sessionId) {
           await fetch('/api/stripe/link-user', {
             method: 'POST',
@@ -67,23 +72,37 @@ export default function OnboardingPage() {
     }
 
     const email = user.email;
+    setUserEmail(email ?? null);
+
+    if (!businessName || !shopStreet || !shopCity || !shopProvince || !shopPostal) {
+      setError('Please complete all required shop fields.');
+      setLoading(false);
+      return;
+    }
 
     const { data: newShop, error: shopError } = await supabase
       .from('shops')
       .insert([
         {
-          name: shopName || businessName,
-          street: shopStreet,
+          id: crypto.randomUUID(),
+          business_name: businessName,
+          shop_name: shopName || businessName,
+          plan: 'diy',
+          created_at: new Date().toISOString(),
+          owner_id: user.id,
+          uuid: user.id,
+          address: shopStreet,
           city: shopCity,
           province: shopProvince,
-          postal: shopPostal,
+          postal_code: shopPostal,
         },
       ])
       .select()
-      .single();
+      .maybeSingle();
 
-    if (shopError) {
-      setError('Failed to create shop.');
+    if (shopError || !newShop) {
+      console.error('Shop creation error:', shopError?.message || shopError);
+      setError('Failed to create shop. Please try again.');
       setLoading(false);
       return;
     }
@@ -99,15 +118,16 @@ export default function OnboardingPage() {
         shop_id: newShopId,
         business_name: businessName,
         shop_name: shopName || businessName,
-        street: userStreet,
+        address: userStreet,
         city: userCity,
         province: userProvince,
-        postal: userPostal,
+        postal_code: userPostal,
       })
       .eq('id', user.id);
 
     if (updateError) {
-      setError(updateError.message);
+      console.error('Profile update error:', updateError.message);
+      setError('Failed to update profile.');
       setLoading(false);
       return;
     }
@@ -125,32 +145,27 @@ export default function OnboardingPage() {
         body: JSON.stringify({
           email,
           subject: 'Welcome to ProFixIQ!',
-          html: `<p>Hi ${fullName},</p><p>Your shop ${shopName || businessName} is now set up.</p>`,
+          html: `<p>Hi ${fullName},</p><p>Your shop <strong>${shopName || businessName}</strong> is now set up.</p>`,
         }),
       });
+      setEmailSent(true);
     } catch (err) {
       console.error('Email send failed:', err);
     }
 
-    switch (role) {
-      case 'owner':
-        router.push('/dashboard/owner');
-        break;
-      case 'admin':
-        router.push('/dashboard/admin');
-        break;
-      case 'manager':
-        router.push('/dashboard/manager');
-        break;
-      case 'advisor':
-        router.push('/dashboard/advisor');
-        break;
-      case 'mechanic':
-        router.push('/dashboard/tech');
-        break;
-      default:
-        router.push('/');
-    }
+    setSuccess(true);
+    setLoading(false);
+
+    setTimeout(() => {
+      const redirectMap: Record<string, string> = {
+        owner: '/dashboard/owner',
+        admin: '/dashboard/admin',
+        manager: '/dashboard/manager',
+        advisor: '/dashboard/advisor',
+        mechanic: '/dashboard/tech',
+      };
+      router.push(redirectMap[role] || '/');
+    }, 2000);
   };
 
   return (
@@ -191,6 +206,39 @@ export default function OnboardingPage() {
         </button>
 
         {error && <p className="text-red-500 text-sm">{error}</p>}
+
+        {success && (
+          <p className="text-green-400 text-md mt-4">
+            🎉 Onboarding complete! Redirecting you to your dashboard...
+          </p>
+        )}
+
+        {emailSent && !success && userEmail && (
+          <button
+            type="button"
+            onClick={async () => {
+              setResending(true);
+              try {
+                await fetch('/api/send-email', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    email: userEmail,
+                    subject: 'Welcome to ProFixIQ!',
+                    html: `<p>Hi ${fullName},</p><p>Your shop <strong>${shopName || businessName}</strong> is now set up.</p>`,
+                  }),
+                });
+              } catch (err) {
+                console.error('Resend failed:', err);
+              }
+              setResending(false);
+            }}
+            className="text-sm text-orange-400 underline mt-2"
+            disabled={resending}
+          >
+            {resending ? 'Resending...' : 'Resend Welcome Email'}
+          </button>
+        )}
       </form>
     </div>
   );
