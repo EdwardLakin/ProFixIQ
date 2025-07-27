@@ -1,5 +1,13 @@
-import { InspectionItem, QuoteLine } from '@lib/inspection/types';
+import { InspectionItem } from '@lib/inspection/types';
 import { quoteMenu } from './quoteMenu';
+
+export interface QuoteLine {
+  description: string;
+  hours: number;
+  rate: number;
+  total: number;
+  job_type: string;
+}
 
 export function matchToMenuItem(itemName: string, item: InspectionItem): QuoteLine | null {
   const lowerItem = itemName.toLowerCase();
@@ -10,27 +18,14 @@ export function matchToMenuItem(itemName: string, item: InspectionItem): QuoteLi
     );
 
     if (match) {
-      const totalPartsCost = entry.parts.reduce((sum, part) => sum + part.cost, 0);
-      const laborCost = (entry.laborHours || 0) * 100;
-      const totalCost = totalPartsCost + laborCost;
-
+      const labor = entry.laborHours ?? 0;
+      const rate = 120;
       return {
-        id: crypto.randomUUID(),
-        inspectionItem: crypto.randomUUID(),
-        item: itemName,
-        description: '',
-        status: item.status || 'ok',
-        value: typeof item.value === 'string' ? parseFloat(item.value) : item.value ?? 0,
-        notes: '',
-        laborTime: entry.laborHours,
-        laborRate: 100,
-        parts: entry.parts.map((part) => ({
-          name: part.name,
-          price: part.cost,
-          type: 'economy', // or part.type || 'economy' if supported
-        })),
-        totalCost,
-        editable: true,
+        description: itemName,
+        hours: labor,
+        rate,
+        total: parseFloat((labor * rate).toFixed(2)),
+        job_type: 'repair',
       };
     }
   }

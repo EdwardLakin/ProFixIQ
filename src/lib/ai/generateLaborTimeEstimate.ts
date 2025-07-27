@@ -1,10 +1,10 @@
-// lib/ai/generateLaborTimeEstimate.ts
 import OpenAI from 'openai';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
 });
 
+// Runs only on the server
 export async function generateLaborTimeEstimate(
   complaint: string,
   jobType: string
@@ -24,6 +24,26 @@ export async function generateLaborTimeEstimate(
     return isNaN(parsed) ? null : parsed;
   } catch (err) {
     console.error('Failed to generate labor time:', err);
+    return null;
+  }
+}
+
+// Safe to call from client
+export async function estimateLabor(
+  complaint: string,
+  jobType: string
+): Promise<number | null> {
+  try {
+    const res = await fetch('/api/ai/estimate-labor', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ complaint, jobType }),
+    });
+
+    const data = await res.json();
+    return data.hours ?? null;
+  } catch (err) {
+    console.error('Error estimating labor (client):', err);
     return null;
   }
 }

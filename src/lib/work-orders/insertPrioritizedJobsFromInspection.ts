@@ -1,6 +1,8 @@
+// lib/work-orders/insertPrioritizedJobsFromInspection.ts
+
 import supabase from '@lib/supabaseClient';
 import { Database } from '@/types/supabase';
-import { generateLaborTimeEstimate } from '@lib/ai/generateLaborTimeEstimate';
+import { estimateLabor } from '@lib/ai/generateLaborTimeEstimate'; // ✅ Secure client-side call
 
 type Inspection = Database['public']['Tables']['inspections']['Row'];
 type WorkOrderLineInsert = Database['public']['Tables']['work_order_lines']['Insert'];
@@ -46,7 +48,7 @@ export default async function insertPrioritizedJobsFromInspection(
       else if (item.status === 'fail') jobType = 'inspection-fail';
       else if (maintenanceKeywords.some(k => name.includes(k))) jobType = 'maintenance';
 
-      const laborTime = await generateLaborTimeEstimate(item.name, jobType);
+      const laborTime = await estimateLabor(item.name, jobType); // ✅ Secure AI call
 
       const complaintParts = [item.name];
       if (item.value) complaintParts.push(`(${item.value}${item.unit || ''})`);
@@ -110,7 +112,7 @@ export default async function insertPrioritizedJobsFromInspection(
           urgency: 'medium',
           notes: 'Auto-generated from inspection',
           photo_urls: [],
-          requested_by: userId, // ✅ Use real user ID
+          requested_by: userId,
           created_at: new Date().toISOString(),
           viewed_at: null,
           fulfilled_at: null,
