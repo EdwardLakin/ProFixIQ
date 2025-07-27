@@ -90,6 +90,48 @@ export default function WorkOrderDetailPage() {
     }
   }, [transcript, line]);
 
+  useEffect(() => {
+    const generateLaborTime = async () => {
+      if (
+        line &&
+        (line.job_type === 'diagnosis' || line.job_type === 'repair') &&
+        !line.labor_time &&
+        line.complaint &&
+        vehicle
+      ) {
+        try {
+          const res = await fetch('/api/ai/estimate-labor', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              complaint: line.complaint,
+              jobType: line.job_type,
+            }),
+          });
+
+          const { hours } = await res.json();
+
+          if (hours && !isNaN(hours)) {
+            const { error: updateError } = await supabase
+              .from('work_order_lines')
+              .update({ labor_time: hours })
+              .eq('id', line.id);
+
+            if (!updateError) {
+              setLine((prev) => prev ? { ...prev, labor_time: hours } : prev);
+            } else {
+              console.error('Failed to update labor_time in DB:', updateError.message);
+            }
+          }
+        } catch (err) {
+          console.error('AI labor estimate error:', err);
+        }
+      }
+    };
+
+    generateLaborTime();
+  }, [line, vehicle]);
+
   const getPunchDuration = () => {
     if (line?.punched_in_at && line?.punched_out_at) {
       return formatDistance(new Date(line.punched_out_at), new Date(line.punched_in_at));
@@ -151,6 +193,7 @@ export default function WorkOrderDetailPage() {
               <p><strong>Duration:</strong> {getPunchDuration()}</p>
             )}
             <p><strong>Hold Reason:</strong> {line.hold_reason || '—'}</p>
+            <p><strong>Labor Time (hrs):</strong> {line.labor_time ?? '—'}</p>
             <p><strong>Created:</strong> {line.created_at ? format(new Date(line.created_at), 'PPpp') : '—'}</p>
           </div>
 
@@ -172,6 +215,7 @@ export default function WorkOrderDetailPage() {
               </p>
             )}
           </div>
+
           {line?.job_type === 'diagnosis' &&
             line.punched_in_at &&
             !line.cause &&

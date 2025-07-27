@@ -5,9 +5,13 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
 });
 
-export async function generateLaborTimeEstimate(complaint: string, jobType: string): Promise<number | null> {
+export async function generateLaborTimeEstimate(
+  complaint: string,
+  jobType: string
+): Promise<number | null> {
   try {
     const prompt = `Estimate labor time in hours (number only) for the following automotive job:\n\nJob Type: ${jobType}\nComplaint: ${complaint}\n\nResponse:`;
+
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [{ role: 'user', content: prompt }],

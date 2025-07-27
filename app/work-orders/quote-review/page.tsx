@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from "react";
 import QuoteViewer from "@components/QuoteViewer";
-import { QuoteLineItem }from "@lib/inspection/types";
+import { QuoteLineItem } from "@lib/inspection/types";
 
 export default function QuoteReviewPage() {
   const [quote, setQuote] = useState<QuoteLineItem[]>([]);
   const [summary, setSummary] = useState("");
   const [loading, setLoading] = useState(true);
 
-  // Mocked inspection results (replace with real data or context)
+  // Replace this with actual inspection result data
   const inspectionResults = [
     { status: "fail", name: "front brakes", notes: "2mm pad thickness" },
     { status: "recommend", name: "air filter", notes: "" },
@@ -17,14 +17,21 @@ export default function QuoteReviewPage() {
 
   useEffect(() => {
     const fetchQuote = async () => {
-      const res = await fetch("/api/quote", {
-        method: "POST",
-        body: JSON.stringify({ results: inspectionResults }),
-      });
-      const data = await res.json();
-      setSummary(data.summary);
-      setQuote(data.quote);
-      setLoading(false);
+      try {
+        const res = await fetch("/api/quote", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ results: inspectionResults }),
+        });
+
+        const data = await res.json();
+        setSummary(data.summary);
+        setQuote(data.quote);
+      } catch (err) {
+        console.error("Failed to fetch quote:", err);
+      } finally {
+        setLoading(false);
+      }
     };
 
     fetchQuote();

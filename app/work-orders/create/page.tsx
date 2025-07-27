@@ -46,6 +46,17 @@ export default function CreateWorkOrderPage() {
 
     const newId = uuidv4();
 
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      setError('Could not fetch user.');
+      setLoading(false);
+      return;
+    }
+
     const { error: insertError } = await supabase.from('work_orders').insert({
       id: newId,
       vehicle_id: vehicleId,
@@ -60,9 +71,8 @@ export default function CreateWorkOrderPage() {
       return;
     }
 
-    // If inspectionId exists, generate job lines
     if (inspectionId) {
-      await insertPrioritizedJobsFromInspection(newId, inspectionId, vehicleId,);
+      await insertPrioritizedJobsFromInspection(newId, inspectionId, user.id, vehicleId);
     }
 
     router.push(`/work-orders/view/${newId}`);

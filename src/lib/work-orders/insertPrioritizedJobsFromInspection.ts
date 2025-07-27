@@ -112,6 +112,9 @@ export default async function insertPrioritizedJobsFromInspection(
           photo_urls: [],
           requested_by: userId, // ✅ Use real user ID
           created_at: new Date().toISOString(),
+          viewed_at: null,
+          fulfilled_at: null,
+          archived: false
         });
       }
     }
