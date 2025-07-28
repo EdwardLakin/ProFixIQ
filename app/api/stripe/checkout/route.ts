@@ -9,23 +9,27 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { priceId } = body;
+    const { priceId, email } = body;
 
-    if (!priceId) {
-      return NextResponse.json({ error: 'Missing priceId' }, { status: 400 });
+    if (!priceId || !email) {
+      return NextResponse.json({ error: 'Missing priceId or email' }, { status: 400 });
     }
 
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       payment_method_types: ['card'],
+      customer_email: email,
       line_items: [
         {
           price: priceId,
           quantity: 1,
         },
       ],
-      success_url: `https://ominous-halibut-r4x7gg57grgjc55qr-3000.app.github.dev//onboarding?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `https://ominous-halibut-r4x7gg57grgjc55qr-3000.app.github.dev//subscribe`,
+      metadata: {
+        email,
+      },
+      success_url: `${process.env.NEXT_PUBLIC_SITE_URL}/onboarding?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL}/subscribe`,
     });
 
     return NextResponse.json({ url: session.url });
