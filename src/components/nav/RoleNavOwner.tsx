@@ -43,8 +43,17 @@ export default function RoleNavOwner() {
         <h2 className="text-orange-500 font-bold mb-2">Management</h2>
         <div className="space-y-1">
           <Link href="/menu" className="block hover:text-orange-400">Menu Items</Link>
-          <Link href="/admin/create-tech" className="block hover:text-orange-400">Create Technician</Link>
+          <Link href="/owner/create-user" className="block hover:text-orange-400">Create Technician</Link>
           <Link href="/dashboard/owner" className="block hover:text-orange-400">Owner Dashboard</Link>
+        </div>
+      </div>
+
+      <div>
+        <h2 className="text-orange-500 font-bold mb-2">Management</h2>
+        <div className="space-y-1">
+          <Link href="/inspection" className="block hover:text-orange-400">Menu Items</Link>
+          <Link href="/maintenance50" className="block hover:text-orange-400">Menu Items</Link>
+          
         </div>
       </div>
 

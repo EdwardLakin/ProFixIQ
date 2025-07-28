@@ -151,14 +151,6 @@ export default function CreateUserPage() {
           <option value="admin">Admin</option>
           <option value="owner">Owner</option>
         </select>
-        <select value={data.plan} onChange={(e) => setData({ ...data, plan: e.target.value as Plan })}
-          className="w-full p-2 rounded bg-gray-800 border border-orange-500"
-        >
-          <option value="free">Free</option>
-          <option value="diy">DIY</option>
-          <option value="pro">Pro</option>
-          <option value="pro_plus">Pro Plus</option>
-        </select>
 
         <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-black font-bold py-2 px-4 rounded">
           Create User
