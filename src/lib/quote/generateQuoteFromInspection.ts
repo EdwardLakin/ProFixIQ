@@ -16,8 +16,19 @@ export interface QuoteLine {
 export async function generateQuoteFromInspection(
   results: InspectionItem[]
 ): Promise<{ summary: string; quote: QuoteLine[] }> {
-  const failed = results.filter((r) => r.status === 'fail');
-  const recommended = results.filter((r) => r.status === 'recommend');
+  const failed: InspectionItem[] = [];
+  const recommended: InspectionItem[] = [];
+
+  for (const item of results) {
+    const status = item.status === 'fail' || item.status === 'recommend' ? item.status : 'ok';
+
+    if (status === 'fail') {
+      failed.push({ ...item, status });
+    } else if (status === 'recommend') {
+      recommended.push({ ...item, status });
+    }
+    // items defaulting to 'ok' are ignored in quote generation
+  }
 
   const summary = [
     'Completed Vehicle Inspection.',

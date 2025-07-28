@@ -1,34 +1,56 @@
+import { QuoteLine } from './generateQuoteFromInspection';
 import { InspectionItem } from '@lib/inspection/types';
-import { quoteMenu } from './quoteMenu';
 
-export interface QuoteLine {
-  description: string;
-  hours: number;
-  rate: number;
-  total: number;
-  job_type: string;
-}
+/**
+ * Match common inspection items to menu quote templates
+ */
+export function matchToMenuItem(
+  name: string,
+  item: InspectionItem
+): QuoteLine | null {
+  const normalized = name.toLowerCase();
 
-export function matchToMenuItem(itemName: string, item: InspectionItem): QuoteLine | null {
-  const lowerItem = itemName.toLowerCase();
+  const defaultRate = 120;
 
-  for (const entry of quoteMenu) {
-    const match = entry.triggerPhrases.find((phrase) =>
-      lowerItem.includes(phrase.toLowerCase())
-    );
-
-    if (match) {
-      const labor = entry.laborHours ?? 0;
-      const rate = 120;
-      return {
-        description: itemName,
-        hours: labor,
-        rate,
-        total: parseFloat((labor * rate).toFixed(2)),
-        job_type: 'repair',
-      };
-    }
+  if (normalized.includes('brake') || normalized.includes('pad')) {
+    return {
+      description: 'Brake Pad Replacement',
+      hours: 1.2,
+      rate: defaultRate,
+      total: parseFloat((1.2 * defaultRate).toFixed(2)),
+      job_type: 'repair',
+    };
   }
 
-  return null;
+  if (normalized.includes('battery')) {
+    return {
+      description: 'Battery Replacement',
+      hours: 0.5,
+      rate: defaultRate,
+      total: parseFloat((0.5 * defaultRate).toFixed(2)),
+      job_type: 'repair',
+    };
+  }
+
+  if (normalized.includes('oil') && normalized.includes('change')) {
+    return {
+      description: 'Oil Change Service',
+      hours: 0.7,
+      rate: defaultRate,
+      total: parseFloat((0.7 * defaultRate).toFixed(2)),
+      job_type: 'maintenance',
+    };
+  }
+
+  if (normalized.includes('filter') || normalized.includes('air')) {
+    return {
+      description: 'Filter Replacement',
+      hours: 0.4,
+      rate: defaultRate,
+      total: parseFloat((0.4 * defaultRate).toFixed(2)),
+      job_type: 'maintenance',
+    };
+  }
+
+  return null; // Fallback to AI generation
 }

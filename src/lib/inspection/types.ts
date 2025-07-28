@@ -128,11 +128,16 @@ export interface QuoteLine {
 
 export interface QuoteLineItem {
   name: string;
+  description?: string;
   notes?: string;
-  status: 'fail' | 'recommend' | 'ok' | 'na';
+  status: 'fail' | 'recommend' | 'ok' | 'na' ;
   laborHours?: number;
-  partName?: string;
-  partPrice?: number;
+  price: number;
+  part: {
+    name: string;
+    price: number;
+  };
+  photoUrls?: string[];
 }
 
 export interface InspectionSession {
@@ -266,3 +271,5 @@ export type Command =
   | {
       type: 'complete';
     };
+
+    export type InspectionSummaryItem = SummaryItem;

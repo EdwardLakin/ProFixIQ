@@ -1,48 +1,42 @@
-import { NextResponse } from 'next/server';
-import { supabase } from '@lib/supabaseClient';
-import { generateInspectionPDF } from '@lib/inspection/pdf';
-import { InspectionSummaryItem } from '@lib/inspection/summary';
-import { writeFileSync } from 'fs';
-import { join } from 'path';
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@lib/supabaseServerClient';
+import { extractSummaryFromSession } from '@lib/inspection/summary';
+import { generateInspectionSummary } from '@lib/inspection/generateInspectionSummary';
+import { generateQuoteFromInspection } from '@lib/inspection/generateQuoteFromInspection';
+import { generateQuotePdf } from '@lib/inspection/generateQuotePdf';
+import { sendEmail } from '@lib/email/sendEmail';
 
-export async function POST(req: Request) {
-  const body = await req.json();
-  const summary: InspectionSummaryItem[] = body.summary;
-  const workOrderId: string | undefined = body.workOrderId;
+export async function POST(req: NextRequest) {
+  const supabase = createClient();
+  const { inspectionSession, workOrderId, customerEmail } = await req.json();
 
-  if (!summary || !Array.isArray(summary)) {
-    return NextResponse.json({ error: 'Invalid summary' }, { status: 400 });
+  if (!inspectionSession || !workOrderId || !customerEmail) {
+    return NextResponse.json({ error: 'Missing input' }, { status: 400 });
   }
 
-  if (workOrderId) {
-    const { data, error } = await supabase
-      .from('work_order_lines')
-      .insert(
-        summary.map(item => ({
-          work_order_id: workOrderId,
-          description: `${item.section} - ${item.item}: ${item.status}`,
-          notes: item.note || '',
-          status: item.status,
-        }))
-      );
+  try {
+    const summaryItems = extractSummaryFromSession(inspectionSession);
+    const summaryText = generateInspectionSummary(inspectionSession);
+    const { quote } = await generateQuoteFromInspection(summaryItems);
+    const pdf = await generateQuotePdf(quote, workOrderId);
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+    await sendEmail({
+      to: customerEmail,
+      subject: `Inspection Summary & Quote — Work Order ${workOrderId}`,
+      text: summaryText,
+      attachments: [
+        {
+          filename: `Inspection_Summary_${workOrderId}.pdf`,
+          content: pdf.toString('base64'),
+          type: 'application/pdf',
+          disposition: 'attachment',
+        },
+      ],
+    });
 
-    return NextResponse.json({ attachedToWorkOrder: true, workOrderId });
+    return NextResponse.json({ success: true });
+  } catch (e: any) {
+    console.error('[INSPECTION SUBMIT ERROR]', e);
+    return NextResponse.json({ error: e.message }, { status: 500 });
   }
-
-  // For standalone: generate and save PDF
-  const pdfBuffer = await generateInspectionPDF(summary);
-
-  const filename = `inspection-${Date.now()}.pdf`;
-  const filepath = join(process.cwd(), 'public', filename);
-
-  writeFileSync(filepath, pdfBuffer);
-
-  return NextResponse.json({
-    attachedToWorkOrder: false,
-    pdfUrl: `/${filename}`,
-  });
 }

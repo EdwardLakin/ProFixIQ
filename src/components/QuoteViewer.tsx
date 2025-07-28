@@ -1,6 +1,6 @@
-"use client";
+'use client';
 
-import { QuoteLineItem } from "@lib/quote/types";
+import type { QuoteLineItem } from '@lib/inspection/generateQuoteFromInspection';
 
 interface QuoteViewerProps {
   summary: string;
@@ -36,6 +36,11 @@ export default function QuoteViewer({ summary, quote }: QuoteViewerProps) {
                 <p className="text-sm text-white/70">
                   Labor: {item.laborHours.toFixed(1)} hrs — ${item.price.toFixed(2)}
                 </p>
+                {item.photoUrls?.length > 0 && (
+                  <p className="text-sm text-white/60">
+                    Photos: {item.photoUrls.length} attached
+                  </p>
+                )}
               </div>
               <p className="text-right font-bold text-white mt-2 sm:mt-0">
                 Total: ${(item.price + item.part.price).toFixed(2)}
