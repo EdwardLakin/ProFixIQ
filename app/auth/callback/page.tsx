@@ -1,45 +1,47 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import type { Database } from '@/types/supabase';
 
 export default function AuthCallbackPage() {
   const router = useRouter();
   const supabase = createClientComponentClient<Database>();
-  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const handleCallback = async () => {
+    const handleAuthRedirect = async () => {
       setLoading(true);
 
-      // Get the 'code' from the query string
-      const authCode = searchParams.get('code');
-      if (!authCode) {
-        console.error('Missing auth code in URL.');
-        router.push('/auth');
-        return;
+      const url = new URL(window.location.href);
+      const code = url.searchParams.get('code');
+
+      // 1. Exchange code for session
+      if (code) {
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+        if (exchangeError) {
+          console.error('Session exchange error:', exchangeError.message);
+          setLoading(false);
+          router.push('/'); // fallback to landing
+          return;
+        }
       }
 
-      // Exchange the code for a session
-      const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(authCode);
-      if (exchangeError) {
-        console.error('Session exchange failed:', exchangeError.message);
-        router.push('/auth');
-        return;
-      }
+      // 2. Get session + user
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
 
-      // Fetch the user
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) {
-        console.error('User fetch failed:', userError?.message);
-        router.push('/auth');
+        console.error('User fetch error:', userError?.message);
+        setLoading(false);
+        router.push('/onboarding'); // redirect to onboarding as fallback
         return;
       }
 
-      // Check for existing profile
+      // 3. Check profile
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('role, full_name, phone, shop_id')
@@ -47,42 +49,33 @@ export default function AuthCallbackPage() {
         .single();
 
       if (profileError || !profile) {
+        console.warn('Profile not found — redirecting to onboarding.');
         router.push('/onboarding');
         return;
       }
 
       const { role, full_name, phone, shop_id } = profile;
 
-      // Incomplete → Onboarding
+      // 4. If profile is incomplete → onboarding
       if (!role || !full_name || !phone || !shop_id) {
         router.push('/onboarding');
         return;
       }
 
-      // Redirect to dashboard by role
-      switch (role) {
-        case 'owner':
-          router.push('/dashboard/owner');
-          break;
-        case 'admin':
-          router.push('/dashboard/admin');
-          break;
-        case 'manager':
-          router.push('/dashboard/manager');
-          break;
-        case 'advisor':
-          router.push('/dashboard/advisor');
-          break;
-        case 'mechanic':
-          router.push('/dashboard/tech');
-          break;
-        default:
-          router.push('/');
-      }
+      // 5. Redirect based on role
+      const redirectMap: Record<string, string> = {
+        owner: '/dashboard/owner',
+        admin: '/dashboard/admin',
+        manager: '/dashboard/manager',
+        advisor: '/dashboard/advisor',
+        mechanic: '/dashboard/tech',
+      };
+
+      router.push(redirectMap[role] || '/');
     };
 
-    handleCallback();
-  }, [router, supabase, searchParams]);
+    handleAuthRedirect();
+  }, [router, supabase]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-black text-white font-blackops">

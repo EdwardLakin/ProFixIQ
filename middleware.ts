@@ -6,6 +6,7 @@ import type { Database } from '@/types/supabase';
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
   const supabase = createMiddlewareClient<Database>({ req, res });
+
   const {
     data: { session },
   } = await supabase.auth.getSession();
@@ -14,8 +15,6 @@ export async function middleware(req: NextRequest) {
 
   const PUBLIC_PATHS = [
     '/',
-    '/auth',
-    '/reset-password',
     '/compare-plans',
     '/subscribe',
     '/onboarding',
@@ -31,7 +30,7 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith('/BlackOpsOne-Regular.ttf');
 
   if (isPublic) {
-    // Handle root path redirection
+    // 🟠 Redirect logged-in user from landing page to dashboard
     if (pathname === '/' && session?.user) {
       const { data: profile } = await supabase
         .from('profiles')
@@ -39,10 +38,7 @@ export async function middleware(req: NextRequest) {
         .eq('id', session.user.id)
         .single();
 
-      if (!profile) {
-        // 👇 No profile? Stay on landing page
-        return res;
-      }
+      if (!profile) return res;
 
       const role = profile.role;
       let dashboardPath = '/dashboard';
@@ -68,15 +64,15 @@ export async function middleware(req: NextRequest) {
       return NextResponse.redirect(new URL(dashboardPath, req.url));
     }
 
-    return res; // Allow access to public path
+    return res;
   }
 
-  // ⛔ If path is protected and no session, redirect to landing (not /auth)
+  // 🔴 If user not signed in → redirect to landing
   if (!session) {
     return NextResponse.redirect(new URL('/', req.url));
   }
 
-  // ✅ Session exists — ensure profile exists
+  // ✅ If signed in, make sure profile exists
   const { data: profile } = await supabase
     .from('profiles')
     .select('id')
@@ -84,7 +80,8 @@ export async function middleware(req: NextRequest) {
     .single();
 
   if (!profile) {
-    return NextResponse.redirect(new URL('/', req.url)); // Go to landing if profile missing
+    // If no profile, redirect to onboarding
+    return NextResponse.redirect(new URL('/onboarding', req.url));
   }
 
   return res;
