@@ -3,7 +3,6 @@
 import { useEffect, useState, useRef } from 'react';
 import supabase from '@lib/supabaseClient';
 import { Database } from '@/types/supabase';
-import { getMessages, sendMessage } from '@lib/chat/helpers';
 
 type Message = Database['public']['Tables']['messages']['Row'];
 
@@ -19,8 +18,17 @@ export default function ChatWindow({ conversationId, userId }: ChatWindowProps) 
 
   useEffect(() => {
     const fetchInitialMessages = async () => {
-      const msgs = await getMessages(conversationId);
-      setMessages(msgs);
+      try {
+        const res = await fetch('/api/chat/get-messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ conversationId }),
+        });
+        const data = await res.json();
+        setMessages(data);
+      } catch (err) {
+        console.error('Fetch error:', err);
+      }
     };
     fetchInitialMessages();
   }, [conversationId]);
@@ -49,11 +57,12 @@ export default function ChatWindow({ conversationId, userId }: ChatWindowProps) 
 
   const handleSend = async () => {
     if (!newMessage.trim()) return;
+
     try {
-      await sendMessage({
-        conversationId,
-        senderId: userId,
-        content: newMessage,
+      await fetch('/api/chat/send-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationId, senderId: userId, content: newMessage }),
       });
       setNewMessage('');
     } catch (error) {
@@ -78,7 +87,9 @@ export default function ChatWindow({ conversationId, userId }: ChatWindowProps) 
             }`}
           >
             <p className="text-sm">{msg.content}</p>
-            <p className="text-xs text-gray-400">{new Date(msg.sent_at).toLocaleTimeString()}</p>
+            <p className="text-xs text-gray-400">
+              {new Date(msg.sent_at).toLocaleTimeString()}
+            </p>
           </div>
         ))}
         <div ref={bottomRef} />
