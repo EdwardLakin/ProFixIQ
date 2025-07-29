@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import supabase from '@lib/supabaseClient';
 import { v4 as uuidv4 } from 'uuid';
 import type { Database } from '@/types/supabase';
-import insertPrioritizedJobsFromInspection from '@lib/work-orders/insertPrioritizedJobsFromInspection';
+import { insertPrioritizedJobsFromInspection } from '@lib/work-orders/insertPrioritizedJobsFromInspection';
 
 type Vehicle = Database['public']['Tables']['vehicles']['Row'];
 type Customer = Database['public']['Tables']['customers']['Row'];

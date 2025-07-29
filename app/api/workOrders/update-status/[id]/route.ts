@@ -1,5 +1,6 @@
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+// app/api/workOrders/update-status/[id]/route.ts
+
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
@@ -9,9 +10,9 @@ const supabase = createClient(
 
 export async function GET(
   request: NextRequest,
-  context: { params: { id: string } }
+  { params }: { params: { id: string } }
 ) {
-  const { id } = context.params;
+  const { id } = params;
 
   const { data, error } = await supabase
     .from('work_orders')

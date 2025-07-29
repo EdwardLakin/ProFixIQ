@@ -203,7 +203,7 @@ export default function WorkOrderDetailPage() {
   }
 
   // 2. Generate PDF
-  const pdfBytes = await generateQuotePDF(jobs, line.vehicle_id);
+  const pdfBytes = await generateQuotePDF(jobs, jobs[0]?.vehicle_id ?? '');
 
   // 3. Upload to Supabase
   const fileName = `quote-${line.work_order_id}.pdf`;
