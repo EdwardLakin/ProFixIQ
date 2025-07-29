@@ -8,7 +8,7 @@ type Inspection = Database['public']['Tables']['inspections']['Row'];
 type WorkOrderLineInsert = Database['public']['Tables']['work_order_lines']['Insert'];
 type PartsRequestInsert = Database['public']['Tables']['parts_requests']['Insert'];
 
-export default async function insertPrioritizedJobsFromInspection(
+export async function insertPrioritizedJobsFromInspection(
   inspectionId: string,
   workOrderId: string,
   vehicleId: string,

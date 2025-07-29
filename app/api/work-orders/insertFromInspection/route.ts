@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { insertPrioritizedJobsFromInspection } from '@lib/work-orders/insertPrioritizedJobsFromInspection';
+import { insertPrioritizedJobsFromInspection }from '@lib/work-orders/insertPrioritizedJobsFromInspection';
+import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'; // ✅ Corrected
+import { cookies } from 'next/headers';
+import { Database } from '@/types/supabase';
 
 export async function POST(req: NextRequest) {
   try {
@@ -9,7 +12,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    await insertPrioritizedJobsFromInspection(inspectionId, workOrderId, vehicleId);
+    const supabase = createServerComponentClient<Database>({ cookies });
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    await insertPrioritizedJobsFromInspection(
+      inspectionId,
+      workOrderId,
+      vehicleId,
+      user.id // ✅ Now works
+    );
 
     return NextResponse.json({ success: true });
   } catch (error) {
