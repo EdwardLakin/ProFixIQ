@@ -53,7 +53,8 @@ export default function PhotoDiagnosisPage() {
     <div className="max-w-2xl mx-auto px-4 py-6 text-white">
       <div className="flex justify-between mb-4">
         <HomeButton />
-        <PreviousPageButton to="/ai" label="← Back to AI Menu" />
+        {/* ✅ Removed invalid prop `label` */}
+        <PreviousPageButton to="/ai" />
       </div>
 
       <h1 className="text-4xl font-blackops text-orange-500 text-center mb-6">

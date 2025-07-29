@@ -48,8 +48,13 @@ export default function DtcDecoder() {
   };
 
   const handleVehicleChange = (field: "year" | "make" | "model", value: string) => {
-    updateVehicle({ ...vehicleInfo, [field]: value });
-  };
+  updateVehicle({
+    year: vehicleInfo?.year || "",
+    make: vehicleInfo?.make || "",
+    model: vehicleInfo?.model || "",
+    [field]: value,
+  });
+};
 
   return (
     <div className="min-h-screen bg-black text-white px-4 py-8">
