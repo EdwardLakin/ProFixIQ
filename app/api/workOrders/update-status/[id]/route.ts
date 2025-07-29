@@ -1,6 +1,7 @@
 // app/api/workOrders/update-status/[id]/route.ts
-export const runtime = 'nodejs';
+// app/api/workOrders/update-status/[id]/route.ts
 
+export const runtime = 'nodejs';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
@@ -10,11 +11,13 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
-  const { id } = params;
+export async function GET(request: NextRequest) {
+  const url = new URL(request.url);
+  const id = url.pathname.split('/').pop();
+
+  if (!id) {
+    return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
+  }
 
   const { data, error } = await supabase
     .from('work_orders')
