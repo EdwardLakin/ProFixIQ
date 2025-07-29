@@ -1,42 +1,50 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@lib/supabaseServerClient';
-import { extractSummaryFromSession } from '@lib/inspection/summary';
+import { generateQuoteFromInspection } from '@lib/quote/generateQuoteFromInspection';
+import { generateQuotePDF } from '@lib/work-orders/generateQuotePdf';
+import { sendQuoteEmail } from '@lib/email/sendQuoteEmail';
 import { generateInspectionSummary } from '@lib/inspection/generateInspectionSummary';
-import { generateQuoteFromInspection } from '@lib/inspection/generateQuoteFromInspection';
-import { generateQuotePdf } from '@lib/inspection/generateQuotePdf';
-import { sendEmail } from '@lib/email/sendEmail';
+import type { InspectionSession } from '@lib/inspection/types';
 
 export async function POST(req: NextRequest) {
-  const supabase = createClient();
-  const { inspectionSession, workOrderId, customerEmail } = await req.json();
+  const body = await req.json();
+  const {
+    inspectionSession,
+    workOrderId,
+    customerEmail,
+  }: {
+    inspectionSession: InspectionSession;
+    workOrderId: string;
+    customerEmail: string;
+  } = body;
 
   if (!inspectionSession || !workOrderId || !customerEmail) {
     return NextResponse.json({ error: 'Missing input' }, { status: 400 });
   }
 
   try {
-    const summaryItems = extractSummaryFromSession(inspectionSession);
-    const summaryText = generateInspectionSummary(inspectionSession);
-    const { quote } = await generateQuoteFromInspection(summaryItems);
-    const pdf = await generateQuotePdf(quote, workOrderId);
+    // ✅ Generate structured summary (summaryText, date, items, etc.)
+    const summary = generateInspectionSummary(inspectionSession);
 
-    await sendEmail({
+    // ✅ Flatten raw inspection items for quote generation
+    const allItems = inspectionSession.sections.flatMap((section) => section.items);
+
+    // ✅ Generate quote from inspection items
+    const { quote, summary: quoteSummary } = await generateQuoteFromInspection(allItems);
+
+    // ✅ Generate PDF using quote lines and summary text
+    const pdfBuffer = await generateQuotePDF(quote, summary);
+    const pdfBase64 = Buffer.from(pdfBuffer).toString('base64');
+
+    // ✅ Send email with PDF
+    await sendQuoteEmail({
       to: customerEmail,
-      subject: `Inspection Summary & Quote — Work Order ${workOrderId}`,
-      text: summaryText,
-      attachments: [
-        {
-          filename: `Inspection_Summary_${workOrderId}.pdf`,
-          content: pdf.toString('base64'),
-          type: 'application/pdf',
-          disposition: 'attachment',
-        },
-      ],
+      workOrderId,
+      pdfBuffer: pdfBase64,
     });
 
     return NextResponse.json({ success: true });
-  } catch (e: any) {
-    console.error('[INSPECTION SUBMIT ERROR]', e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (error) {
+    console.error('Error generating and sending quote:', error);
+    return NextResponse.json({ error: 'Failed to generate and send quote' }, { status: 500 });
   }
 }

@@ -1,93 +1,43 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
-import { QuoteLine } from '@lib/quote/generateQuoteFromInspection';
+import type { QuoteLine } from '@lib/quote/generateQuoteFromInspection';
+import type { InspectionSummary } from '@lib/inspection/types';
 
-/**
- * Generate a PDF for quote and summary
- * @param quote - array of quote line items
- * @param workOrderId - ID of the associated work order
- * @param summary - inspection summary string
- */
 export async function generateQuotePDF(
   quote: QuoteLine[],
-  workOrderId: string,
-  summary: string
+  summary: InspectionSummary
 ): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.create();
-  const page = pdfDoc.addPage([600, 800]);
+  const page = pdfDoc.addPage();
+  const { width, height } = page.getSize();
+
+  const fontSize = 12;
+  const margin = 50;
+  let y = height - margin;
+
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const { height } = page.getSize();
 
-  let y = height - 40;
-
-  // Header
-  page.drawText(`Inspection Quote Summary`, {
-    x: 50,
-    y,
-    size: 18,
-    font,
-    color: rgb(0, 0, 0),
-  });
-
-  y -= 25;
-  page.drawText(`Work Order ID: ${workOrderId}`, {
-    x: 50,
-    y,
-    size: 12,
-    font,
-    color: rgb(0.2, 0.2, 0.2),
-  });
-
-  y -= 30;
-
-  // Summary Text
-  const summaryLines = summary.split('\n');
-  for (const line of summaryLines) {
-    if (y < 50) {
-      y = height - 40;
-      pdfDoc.addPage([600, 800]);
+  const drawLine = (text: string) => {
+    if (y < margin) {
+      y = height - margin;
+      pdfDoc.addPage();
     }
-    page.drawText(line, {
-      x: 50,
-      y,
-      size: 10,
-      font,
-      color: rgb(0.1, 0.1, 0.1),
-    });
-    y -= 16;
-  }
+    page.drawText(text, { x: margin, y, size: fontSize, font, color: rgb(0, 0, 0) });
+    y -= fontSize + 4;
+  };
 
-  y -= 20;
+  drawLine(`Inspection Summary:`);
+  drawLine(`Template: ${summary.templateName}`);
+  drawLine(`Date: ${summary.date}`);
+  drawLine('');
+  summary.summaryText.split('\n').forEach(drawLine);
 
-  // Quote Items
-  page.drawText('Quote Details:', {
-    x: 50,
-    y,
-    size: 14,
-    font,
-    color: rgb(0, 0, 0),
+  drawLine('');
+  drawLine(`Quote Summary:`);
+  quote.forEach((line) => {
+    drawLine(
+      `${line.description} - ${line.hours} hrs @ $${line.rate}/hr = $${line.total.toFixed(2)}`
+    );
   });
-
-  y -= 20;
-
-  for (const job of quote) {
-    const text = `• ${job.description} — ${job.job_type} — ${job.hours} hrs @ $${job.rate}/hr — Total: $${job.total.toFixed(
-      2
-    )}`;
-
-    if (y < 50) {
-      y = height - 40;
-      pdfDoc.addPage([600, 800]);
-    }
-
-    page.drawText(text, {
-      x: 50,
-      y,
-      size: 11,
-      font,
-      color: rgb(0.15, 0.15, 0.15),
-    });
-    y -= 18;
-  }
 
   return await pdfDoc.save();
 }

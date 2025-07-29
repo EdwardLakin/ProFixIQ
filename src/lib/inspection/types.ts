@@ -95,7 +95,7 @@ export interface InspectionState {
     unitNumber?: string;
     mileage?: string;
   };
-  sections: InspectionSection[];
+  sections: InspectionSection[] 
   completed?: boolean;
   updatedAt?: string;
 }
@@ -127,6 +127,9 @@ export interface QuoteLine {
 }
 
 export interface QuoteLineItem {
+  item: any;
+  partPrice: any;
+  partName: string;
   name: string;
   description?: string;
   notes?: string;
@@ -202,6 +205,7 @@ export interface InspectionSummary {
   templateName: string;
   date: string;
   items: SummaryItem[];
+  summaryText: string;
 }
 
 export interface InspectionSessionWithIndex extends InspectionSession {
@@ -272,4 +276,5 @@ export type Command =
       type: 'complete';
     };
 
-    export type InspectionSummaryItem = SummaryItem;
+    export type InspectionSummaryItem = InspectionItem
+
