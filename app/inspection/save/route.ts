@@ -82,9 +82,9 @@ export async function POST(req: Request) {
     .select()
     .single();
 
-  if (inspectionError || !inspectionData) {
-    return NextResponse.json({ error: inspectionError.message }, { status: 500 });
-  }
+  if (inspectionError !== null || !inspectionData) {
+  return NextResponse.json({ error: inspectionError?.message }, { status: 500 });
+}
 
   // ✅ Success
   return NextResponse.json({ success: true, inspectionId: inspectionData.id });
