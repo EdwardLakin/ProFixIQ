@@ -357,6 +357,38 @@ export interface Database {
   ];
 }
 
+vin_decodes: {
+  Row: {
+    id: string;
+    vin: string;
+    user_id: string;
+    year: string | null;
+    make: string | null;
+    model: string | null;
+    trim: string | null;
+    engine: string | null;
+    created_at: string;
+  };
+  Insert: {
+    vin: string;
+    user_id: string;
+    year?: string | null;
+    make?: string | null;
+    model?: string | null;
+    trim?: string | null;
+    engine?: string | null;
+  };
+  Update: Partial<{
+    vin: string;
+    user_id: string;
+    year: string | null;
+    make: string | null;
+    model: string | null;
+    trim: string | null;
+    engine: string | null;
+  }>;
+};
+
         // 1. conversations table
 conversations: {
   Row: {
@@ -707,31 +739,6 @@ punch_events: {
         ];
       };
     };
-
-    vin_decodes: {
-  Row: {
-    vin: string;
-    user_id: string;
-    year: string;
-    make: string;
-    model: string;
-    trim: string;
-    engine: string;
-  };
-  Insert: {
-    vin: string;
-    user_id: string;
-    year?: string;
-    make?: string;
-    model?: string;
-    trim?: string;
-    engine?: string;
-  };
-  Update: {
-    [key: string]: any;
-  };
-  Relationships: []; // optional, unless you're enforcing FK to profiles
-};
   
 
     Views: {};
