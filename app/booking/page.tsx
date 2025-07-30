@@ -3,8 +3,17 @@
 import { useState } from 'react';
 import { parseWorkOrderCommand } from '@lib/work-orders/commandProcessor';
 import { handleWorkOrderCommand } from '@lib/work-orders/handleWorkOrderCommand';
+import { createBrowserClient } from '@supabase/ssr';
+import { useUser } from '@hooks/useUser';
+import type { Database } from '@/types/supabase';
+
+const supabase = createBrowserClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 export default function BookingPage() {
+  const { user } = useUser();
   const [input, setInput] = useState('');
   const [output, setOutput] = useState<string | null>(null);
 
@@ -16,7 +25,12 @@ export default function BookingPage() {
       return;
     }
 
-    const result = await handleWorkOrderCommand(parsed);
+    if (!user) {
+      setOutput('User not authenticated.');
+      return;
+    }
+
+    const result = await handleWorkOrderCommand(parsed, supabase, user);
     setOutput(result);
   };
 
