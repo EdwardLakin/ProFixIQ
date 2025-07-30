@@ -1,10 +1,10 @@
-import { createServerClient } from '@supabase/auth-helpers-nextjs/server';
+import { createPagesServerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import type { Database } from '@/types/supabase';
 
 export async function POST(req: Request) {
-  const supabase = createServerClient<Database>({ cookies });
+  const supabase = createPagesServerClient<Database>({ cookies: cookies });
 
   const { vin, user_id } = await req.json();
 

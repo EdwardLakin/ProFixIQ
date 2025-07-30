@@ -3,10 +3,13 @@
 import { useEffect, useState } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import { Database } from '@/types/supabase'
-import JobQueueCard from '@/src/components/JobQueueCard'
+import JobQueueCard from '@components/JobQueueCard'
 import { format } from 'date-fns'
 
-const supabase = createBrowserClient<Database>()
+const supabase = createBrowserClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 export default function ManagerJobDashboard() {
   const [jobs, setJobs] = useState<any[]>([])
@@ -33,11 +36,11 @@ export default function ManagerJobDashboard() {
   }
 
   function groupJobsByStatus(jobs: any[]) {
-    const groups = {
-      awaiting: [] as any[],
-      in_progress: [] as any[],
-      on_hold: [] as any[],
-      completed: [] as any[],
+    const groups: Record<string, any[]> = {
+      awaiting: [],
+      in_progress: [],
+      on_hold: [],
+      completed: [],
     }
 
     for (const job of jobs) {

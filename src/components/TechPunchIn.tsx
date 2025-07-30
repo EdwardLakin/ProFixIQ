@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import Button from './ui/Button';
+import { Button } from '@components/ui/Button';
 
 export default function TechPunchIn() {
   const [isPunchedIn, setIsPunchedIn] = useState(false);

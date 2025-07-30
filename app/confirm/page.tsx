@@ -1,35 +1,61 @@
-// app/confirm/page.tsx
 'use client';
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import createClient from '@lib/supabaseClient';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import type { Database } from '@/types/supabase';
 
 export default function ConfirmPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = createClientComponentClient<Database>();
 
   useEffect(() => {
-    const checkSession = async () => {
+    const checkSessionAndRedirect = async () => {
       const {
         data: { session },
       } = await supabase.auth.getSession();
 
-      if (session) {
-        router.push('/'); // or /dashboard if you prefer
-      } else {
-        // Optionally ask them to sign in again
-        router.push('/sign-in');
+      if (!session?.user) return;
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', session.user.id)
+        .single();
+
+      switch (profile?.role) {
+        case 'owner':
+          router.push('/dashboard/owner');
+          break;
+        case 'admin':
+          router.push('/dashboard/admin');
+          break;
+        case 'advisor':
+          router.push('/dashboard/advisor');
+          break;
+        case 'manager':
+          router.push('/dashboard/manager');
+          break;
+        case 'parts':
+          router.push('/dashboard/parts');
+          break;
+        case 'mechanic':
+        case 'tech':
+          router.push('/dashboard/tech');
+          break;
+        default:
+          router.push('/dashboard');
+          break;
       }
     };
 
-    checkSession();
-  }, [router]);
+    checkSessionAndRedirect();
+  }, [router, supabase]);
 
   return (
-    <div className="text-center py-20">
-      <h1 className="text-2xl font-bold">Confirming your email...</h1>
-      <p className="text-sm text-neutral-400">Please wait while we redirect you.</p>
+    <div className="p-10 text-white text-center">
+      <h1 className="text-2xl font-bold mb-4">Confirming your account...</h1>
+      <p>You’ll be redirected based on your role.</p>
     </div>
   );
 }

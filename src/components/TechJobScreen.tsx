@@ -1,15 +1,27 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import useUser from '@hooks/useUser';
+import { useUser } from '@hooks/useUser';
 import { createBrowserClient } from '@supabase/ssr';
-import { Database } from '@custom-types/supabase';
+import { Database } from '@/types/supabase';
 import JobQueueCard from './JobQueueCard';
-import Button from '@components/ui/Button';
+import { Button } from '@components/ui/Button';
 
-type JobLine = Database['public']['Tables']['work_order_lines']['Row'];
+type JobLine = Database['public']['Tables']['work_order_lines']['Row'] & {
+  vehicle?: {
+    year?: number | null;
+    make?: string | null;
+    model?: string | null;
+  };
+  assigned_to?: {
+    full_name?: string | null;
+  };
+};
 
-const supabase = createBrowserClient<Database>();
+const supabase = createBrowserClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 export default function TechJobScreen() {
   const { user } = useUser();
@@ -17,7 +29,6 @@ export default function TechJobScreen() {
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Fetch jobs assigned to tech or available
   useEffect(() => {
     if (!user) return;
 
@@ -25,11 +36,11 @@ export default function TechJobScreen() {
       setLoading(true);
 
       const { data, error } = await supabase
-        .from('work_order_lines')
-        .select('*')
-        .or(`assigned_to.eq.${user.id},assigned_to.is.null`)
-        .in('status', ['ready', 'on_hold', 'active']) // Only current queue
-        .order('created_at');
+  .from('work_order_lines')
+  .select('*, vehicle (year, make, model), assigned_to (full_name)')
+  .or(`assigned_to.eq.${user.id},assigned_to.is.null`)
+  .in('status', ['awaiting', 'in_progress', 'on_hold'])
+  .order('created_at');
 
       if (!error && data) {
         setJobLines(data);
@@ -55,7 +66,7 @@ export default function TechJobScreen() {
 
     await supabase
       .from('work_order_lines')
-      .update({ status: 'active', assigned_to: user?.id })
+      .update({ status: 'in_progress', assigned_to: user?.id })
       .eq('id', job.id);
   };
 
@@ -64,7 +75,7 @@ export default function TechJobScreen() {
 
     await supabase
       .from('work_order_lines')
-      .update({ status: 'paused' })
+      .update({ status: 'awaiting' })
       .eq('id', job.id);
   };
 
@@ -79,7 +90,7 @@ export default function TechJobScreen() {
   );
 
   const activeJob = jobLines.find(j => j.id === activeJobId);
-  const readyJobs = jobLines.filter(j => j.status === 'ready' && j.id !== activeJobId);
+  const readyJobs = jobLines.filter(j => j.status === 'awaiting' && j.id !== activeJobId);
   const onHoldJobs = jobLines.filter(j => j.status === 'on_hold');
 
   return (
@@ -95,8 +106,8 @@ export default function TechJobScreen() {
         </div>
       ) : (
         <div>
-          <h2 className="text-lg font-semibold">Ready Jobs</h2>
-          {readyJobs.length > 0 ? readyJobs.map(renderJobCard) : <p>No available jobs.</p>}
+          <h2 className="text-lg font-semibold">Available Jobs</h2>
+          {readyJobs.length > 0 ? readyJobs.map(renderJobCard) : <p>No jobs available.</p>}
         </div>
       )}
 
