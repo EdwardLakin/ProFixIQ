@@ -5,11 +5,12 @@ import { Database } from '@/types/supabase';
 
 export default async function ChatPage() {
   const supabase = createServerComponentClient<Database>({ cookies });
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) return <div>Unauthorized</div>;
 
-  return <ChatLayout userId={user.id} />;
+  return <ChatLayout />;
 }
