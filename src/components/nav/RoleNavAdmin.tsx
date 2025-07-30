@@ -6,21 +6,26 @@ import { usePathname } from 'next/navigation';
 import clsx from 'clsx';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import type { Database } from '@/types/supabase';
+import ShiftTracker from '@components/punch/ShiftTracker';
 
 export default function RoleNavAdmin() {
   const supabase = createClientComponentClient<Database>();
   const [role, setRole] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const pathname = usePathname();
 
   useEffect(() => {
     const fetchRole = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user?.id) return;
+      const uid = session?.user?.id;
+      if (!uid) return;
+
+      setUserId(uid);
 
       const { data: profile } = await supabase
         .from('profiles')
         .select('role')
-        .eq('id', session.user.id)
+        .eq('id', uid)
         .single();
 
       setRole(profile?.role ?? null);
@@ -62,6 +67,14 @@ export default function RoleNavAdmin() {
           </Link>
         </div>
       </div>
+
+      {/* ✅ Add punch system here */}
+      {userId && (
+        <div className="mt-6 border-t border-gray-800 pt-4">
+          <p className="uppercase text-sm text-orange-400 mb-2">Shift Tracker</p>
+          <ShiftTracker userId={userId} />
+        </div>
+      )}
     </nav>
   );
 }

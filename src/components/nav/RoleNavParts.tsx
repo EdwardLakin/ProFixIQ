@@ -1,19 +1,22 @@
-// components/sidebar/RoleNavParts.tsx
 'use client';
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import type { Database } from '@/types/supabase';
+import ShiftTracker from '@components/punch/ShiftTracker';
 
 export default function RoleNavParts() {
   const supabase = createClientComponentClient<Database>();
   const [role, setRole] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchRole = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user?.id) return;
+
+      setUserId(session.user.id);
 
       const { data: profile } = await supabase
         .from('profiles')
@@ -40,6 +43,13 @@ export default function RoleNavParts() {
           <Link href="/parts/warranties" className="block hover:text-orange-400">Warranties</Link>
         </div>
       </div>
+
+      {userId && (
+        <div className="mt-6 border-t border-gray-800 pt-4">
+          <h2 className="text-orange-500 font-bold mb-2">Shift Tracker</h2>
+          <ShiftTracker userId={userId} />
+        </div>
+      )}
     </nav>
   );
 }

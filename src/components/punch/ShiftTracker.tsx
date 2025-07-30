@@ -7,16 +7,15 @@ import { formatDistanceToNow } from 'date-fns';
 
 const supabase = createClientComponentClient<Database>();
 
-export default function TechShiftTracker({ userId }: { userId: string }) {
+export default function ShiftTracker({ userId }: { userId: string }) {
   const [shiftId, setShiftId] = useState<string | null>(null);
   const [startTime, setStartTime] = useState<string | null>(null);
   const [status, setStatus] = useState<'none' | 'active' | 'break' | 'lunch' | 'ended'>('none');
   const [duration, setDuration] = useState<string>('00:00');
 
-  // Load active shift
   useEffect(() => {
     const fetchShift = async () => {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('tech_shifts')
         .select('*')
         .eq('tech_id', userId)
@@ -35,7 +34,6 @@ export default function TechShiftTracker({ userId }: { userId: string }) {
     fetchShift();
   }, [userId]);
 
-  // Track shift duration
   useEffect(() => {
     if (!startTime) return;
     const interval = setInterval(() => {
@@ -55,7 +53,7 @@ export default function TechShiftTracker({ userId }: { userId: string }) {
   };
 
   const startShift = async () => {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('tech_shifts')
       .insert({
         tech_id: userId,
@@ -105,14 +103,10 @@ export default function TechShiftTracker({ userId }: { userId: string }) {
   };
 
   return (
-    <div className="text-sm mt-2 space-y-2">
-      <p>
-        <strong>Status:</strong> {status}
-      </p>
+    <div className="text-sm mt-4 space-y-2">
+      <p><strong>Status:</strong> {status}</p>
       {status === 'active' && startTime && (
-        <p>
-          <strong>Shift Duration:</strong> {duration}
-        </p>
+        <p><strong>Shift Duration:</strong> {duration}</p>
       )}
       {status === 'none' && (
         <button
@@ -123,28 +117,26 @@ export default function TechShiftTracker({ userId }: { userId: string }) {
         </button>
       )}
       {status !== 'none' && status !== 'ended' && (
-        <>
-          <div className="space-x-2">
-            <button
-              className="bg-yellow-500 text-white px-4 py-2 rounded"
-              onClick={handleBreak}
-            >
-              {status === 'break' ? 'End Break' : 'Break'}
-            </button>
-            <button
-              className="bg-orange-500 text-white px-4 py-2 rounded"
-              onClick={handleLunch}
-            >
-              {status === 'lunch' ? 'End Lunch' : 'Lunch'}
-            </button>
-            <button
-              className="bg-red-600 text-white px-4 py-2 rounded"
-              onClick={endShift}
-            >
-              End Shift
-            </button>
-          </div>
-        </>
+        <div className="space-x-2">
+          <button
+            className="bg-yellow-500 text-white px-4 py-2 rounded"
+            onClick={handleBreak}
+          >
+            {status === 'break' ? 'End Break' : 'Break'}
+          </button>
+          <button
+            className="bg-orange-500 text-white px-4 py-2 rounded"
+            onClick={handleLunch}
+          >
+            {status === 'lunch' ? 'End Lunch' : 'Lunch'}
+          </button>
+          <button
+            className="bg-red-600 text-white px-4 py-2 rounded"
+            onClick={endShift}
+          >
+            End Shift
+          </button>
+        </div>
       )}
     </div>
   );

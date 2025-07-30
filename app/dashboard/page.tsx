@@ -10,9 +10,8 @@ export default function DashboardRedirect() {
   const supabase = createClientComponentClient<Database>();
 
   useEffect(() => {
-    const redirectToRoleDashboard = async () => {
+    const redirectToDashboard = async () => {
       const { data: { user } } = await supabase.auth.getUser();
-
       if (!user) {
         router.push('/auth');
         return;
@@ -24,14 +23,12 @@ export default function DashboardRedirect() {
         .eq('id', user.id)
         .single();
 
-      if (error || !profile) {
+      if (error || !profile?.role) {
         router.push('/auth');
         return;
       }
 
-      const role = profile.role;
-
-      switch (role) {
+      switch (profile.role) {
         case 'owner':
           router.push('/dashboard/owner');
           break;
@@ -56,7 +53,7 @@ export default function DashboardRedirect() {
       }
     };
 
-    redirectToRoleDashboard();
+    redirectToDashboard();
   }, [router, supabase]);
 
   return (
@@ -64,4 +61,4 @@ export default function DashboardRedirect() {
       <p className="text-orange-500 text-xl animate-pulse">Redirecting to your dashboard...</p>
     </div>
   );
-}    
+}   

@@ -1,8 +1,12 @@
 'use client';
 
 import React from 'react';
-import Button from '@components/ui/Button';
-import { JobLine } from './JobQueue';
+import { Button } from '@components/ui/Button';
+
+export interface JobLine {
+  id: string;
+  vehicle: string;
+}
 
 interface PunchInOutButtonProps {
   activeJob: JobLine | null;

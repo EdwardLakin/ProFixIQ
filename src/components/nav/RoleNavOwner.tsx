@@ -4,15 +4,19 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import type { Database } from '@/types/supabase';
+import ShiftTracker from '@components/punch/ShiftTracker';
 
 export default function RoleNavOwner() {
   const supabase = createClientComponentClient<Database>();
   const [role, setRole] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchRole = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user?.id) return;
+
+      setUserId(session.user.id);
 
       const { data: profile } = await supabase
         .from('profiles')
@@ -49,11 +53,10 @@ export default function RoleNavOwner() {
       </div>
 
       <div>
-        <h2 className="text-orange-500 font-bold mb-2">Management</h2>
+        <h2 className="text-orange-500 font-bold mb-2">Inspections / Misc</h2>
         <div className="space-y-1">
-          <Link href="/inspection" className="block hover:text-orange-400">Menu Items</Link>
-          <Link href="/maintenance50" className="block hover:text-orange-400">Menu Items</Link>
-          
+          <Link href="/inspection" className="block hover:text-orange-400">Inspection Menu</Link>
+          <Link href="/maintenance50" className="block hover:text-orange-400">Maintenance 50</Link>
         </div>
       </div>
 
@@ -64,6 +67,13 @@ export default function RoleNavOwner() {
           <Link href="/compare-plans" className="block hover:text-orange-400">Plan & Billing</Link>
         </div>
       </div>
+
+      {userId && (
+        <div className="mt-6 border-t border-gray-800 pt-4">
+          <h2 className="text-orange-500 font-bold mb-2">Shift Tracker</h2>
+          <ShiftTracker userId={userId} />
+        </div>
+      )}
     </nav>
   );
 }

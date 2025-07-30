@@ -2,26 +2,21 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { usePathname } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import type { Database } from '@/types/supabase';
-import clsx from 'clsx';
+import ShiftTracker from '@components/punch/ShiftTracker';
 
 export default function RoleNavTech() {
   const supabase = createClientComponentClient<Database>();
   const [role, setRole] = useState<string | null>(null);
-  const pathname = usePathname();
-
-  const linkClass = (href: string) =>
-    clsx(
-      'block px-4 py-2 rounded hover:bg-orange-600',
-      pathname === href && 'bg-orange-700 text-black'
-    );
+  const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchRole = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user?.id) return;
+
+      setUserId(session.user.id);
 
       const { data: profile } = await supabase
         .from('profiles')
@@ -35,33 +30,25 @@ export default function RoleNavTech() {
     fetchRole();
   }, [supabase]);
 
-  if (role !== 'mechanic') return null;
+  if (role !== 'tech') return null;
 
   return (
-    <div className="space-y-6">
+    <nav className="w-full md:w-64 bg-neutral-900 p-4 text-white space-y-6">
       <div>
-        <p className="uppercase text-sm text-orange-400 mb-2">Jobs</p>
-        <Link href="/work-orders/queue" className={linkClass('/work-orders/queue')}>
-          Queued Jobs
-        </Link>
-        <Link href="/work-orders" className={linkClass('/work-orders')}>
-          All Work Orders
-        </Link>
+        <h2 className="text-orange-500 font-bold mb-2">Technician</h2>
+        <div className="space-y-1">
+          <Link href="/dashboard/tech" className="block hover:text-orange-400">Tech Dashboard</Link>
+          <Link href="/work-orders/queue" className="block hover:text-orange-400">My Job Queue</Link>
+          <Link href="/inspections" className="block hover:text-orange-400">My Inspections</Link>
+        </div>
       </div>
 
-      <div>
-        <p className="uppercase text-sm text-orange-400 mb-2">Inspections</p>
-        <Link href="/inspections" className={linkClass('/inspections')}>
-          My Inspections
-        </Link>
-      </div>
-
-      <div>
-        <p className="uppercase text-sm text-orange-400 mb-2">Dashboard</p>
-        <Link href="/dashboard/tech" className={linkClass('/dashboard/tech')}>
-          Tech Dashboard
-        </Link>
-      </div>
-    </div>
+      {userId && (
+        <div className="mt-6 border-t border-gray-800 pt-4">
+          <h2 className="text-orange-500 font-bold mb-2">Shift Tracker</h2>
+          <ShiftTracker userId={userId} />
+        </div>
+      )}
+    </nav>
   );
 }

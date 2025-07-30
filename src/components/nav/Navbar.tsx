@@ -11,6 +11,7 @@ import RoleNavAdmin from '@components/nav/RoleNavAdmin';
 import RoleNavAdvisor from '@components/nav/RoleNavAdvisor';
 import RoleNavOwner from '@components/nav/RoleNavOwner';
 import RoleNavManager from '@components/nav/RoleNavManager';
+import RoleNavParts from '@components/nav/RoleNavParts';
 import type { Database } from '@/types/supabase';
 
 export default function Navbar() {
@@ -32,7 +33,12 @@ export default function Navbar() {
 
       setUser(session.user);
 
-      const { data: prof } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
+      const { data: prof } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', session.user.id)
+        .single();
+
       setProfile(prof);
 
       const { data: shift } = await supabase
@@ -90,6 +96,8 @@ export default function Navbar() {
         return <RoleNavAdmin />;
       case 'owner':
         return <RoleNavOwner />;
+      case 'parts':
+        return <RoleNavParts />;
       default:
         return null;
     }
