@@ -1,14 +1,14 @@
-"use client";
+'use client';
 
-import { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
-import { RepairLine } from "@lib/parseRepairOutput";
-import WorkOrderLineEditor from "@components/WorkOrderLineEditor";
-import { saveWorkOrderLines } from "@lib/saveWorkOrderLines";
+import { useEffect, useState } from 'react';
+import { createClient } from '@supabase/supabase-js';
+import { RepairLine } from '@lib/parseRepairOutput';
+import WorkOrderLineEditor from '@components/WorkOrderLineEditor';
+import { saveWorkOrderLines } from '@lib/saveWorkOrderLines';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
 export default function LoadWorkOrderById({
@@ -28,9 +28,9 @@ export default function LoadWorkOrderById({
   useEffect(() => {
     const loadLines = async () => {
       const { data, error } = await supabase
-        .from("work_order_lines")
-        .select("*")
-        .eq("work_order_id", workOrderId);
+        .from('work_order_lines')
+        .select('*')
+        .eq('work_order_id', workOrderId);
 
       if (error) {
         console.error(error);
@@ -57,6 +57,17 @@ export default function LoadWorkOrderById({
     }
   };
 
+  const updateLine = (index: number, updatedLine: RepairLine) => {
+    const updated = [...lines];
+    updated[index] = updatedLine;
+    setLines(updated);
+  };
+
+  const deleteLine = (index: number) => {
+    const updated = lines.filter((_, i) => i !== index);
+    setLines(updated);
+  };
+
   if (isLoading)
     return <p className="p-6 text-accent">Loading work order...</p>;
 
@@ -64,7 +75,14 @@ export default function LoadWorkOrderById({
     <div className="max-w-3xl mx-auto p-6 bg-surface text-accent shadow-card rounded space-y-6">
       <h2 className="text-xl font-semibold">Edit Work Order #{workOrderId}</h2>
 
-      <WorkOrderLineEditor lines={lines} onChange={setLines} />
+      {lines.map((line, index) => (
+        <WorkOrderLineEditor
+          key={line.id || index}
+          line={line}
+          onUpdate={(updated) => updateLine(index, updated)}
+          onDelete={() => deleteLine(index)}
+        />
+      ))}
 
       <button
         onClick={handleSave}

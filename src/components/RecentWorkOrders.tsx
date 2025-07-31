@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
-import React, { useEffect, useState } from "react";
-import { useRouter } from "next/router";
-import { createBrowserClient } from "@supabase/ssr";
+import React, { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { createBrowserClient } from '@supabase/ssr';
 
 type WorkOrder = {
   id: string;
@@ -18,11 +18,15 @@ export default function RecentWorkOrders() {
 
   useEffect(() => {
     const fetchWorkOrders = async () => {
-      const supabase = createBrowserClient();
+      const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      );
+
       const { data, error } = await supabase
-        .from("work_orders")
-        .select("id, vehicle_make, vehicle_model, status, created_at")
-        .order("created_at", { ascending: false })
+        .from('work_orders')
+        .select('id, vehicle_make, vehicle_model, status, created_at')
+        .order('created_at', { ascending: false })
         .limit(3);
 
       if (!error && data) {

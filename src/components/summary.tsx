@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { generateInspectionSummary } from '@lib/inspection/summary';
-import { supabase } from '@lib/supabaseClient';
+import { extractSummaryFromSession } from '@lib/inspection/summary';
+import supabase from '@lib/supabaseClient';
 import type { InspectionSession } from '@lib/inspection/types';
 
 export default function InspectionSummaryPage() {
@@ -23,11 +23,15 @@ export default function InspectionSummaryPage() {
         console.error('Error loading inspection from Supabase:', error.message);
         return;
       }
+
       if (data && data.length > 0 && data[0].result) {
-  const result = data[0].result as unknown as InspectionSession;
-  const generated = generateInspectionSummary(result);
-  setSummary(generated);
-}  
+        const result = data[0].result as unknown as InspectionSession;
+        const items = extractSummaryFromSession(result);
+        const summaryText = items
+          .map((item) => `• ${item.section} - ${item.item} (${item.status}): ${item.note || 'No notes'}`)
+          .join('\n');
+        setSummary(summaryText);
+      }
     }
 
     loadLatestInspection();
