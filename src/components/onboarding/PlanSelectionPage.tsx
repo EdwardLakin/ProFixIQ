@@ -5,24 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import type { Database } from '@/types/supabase';
-
-const PRICE_IDS: Record<string, { monthly: string; yearly?: string }> = {
-  free: {
-    monthly: 'price_1RnWn2lGrq4FFVFx7O7o6YhW', // no yearly price
-  },
-  diy: {
-    monthly: 'price_1RnWlfGrq4FFVFxUfA36GyT',
-    yearly: 'price_1RnWm7lGrq4FFVFxRHlK4i0',
-  },
-  pro: {
-    monthly: 'price_1RnWo7lGrq4FFVFxFR0mJTx',
-    yearly: 'price_1RnWoMlGrq4FFVFx0PQBLXFM',
-  },
-  pro_plus: {
-    monthly: 'price_1RnWqEIGrq4FFVFxra6VzTiP',
-    yearly: 'price_1RnWqUlGrq4FFVFx9RlFCsVe',
-  },
-};
+import { PRICE_IDS } from '@lib/stripe/constants';
 
 export default function PlanSelectionPage() {
   const supabase = createClientComponentClient<Database>();
@@ -43,12 +26,23 @@ export default function PlanSelectionPage() {
 
     await saveSelectedPlan(plan as 'free' | 'diy' | 'pro' | 'pro_plus');
 
-    const priceConfig = PRICE_IDS[plan as keyof typeof PRICE_IDS];
-const priceId = isYearly && priceConfig.yearly ? priceConfig.yearly : priceConfig.monthly;
+    const priceId = isYearly
+      ? PRICE_IDS[plan as keyof typeof PRICE_IDS]?.yearly
+      : PRICE_IDS[plan as keyof typeof PRICE_IDS]?.monthly;
+
+    if (!priceId) {
+      alert('Invalid plan selected');
+      setLoading(false);
+      return;
+    }
 
     const res = await fetch('/api/stripe/checkout', {
       method: 'POST',
-      body: JSON.stringify({ priceId }),
+      body: JSON.stringify({
+        planKey: plan,
+        interval: isYearly ? 'yearly' : 'monthly',
+        email: (await supabase.auth.getUser()).data.user?.email,
+      }),
     });
 
     const { url } = await res.json();

@@ -48,7 +48,7 @@ export default function LandingHero() {
     const animate = () => {
       if (!ctx) return;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      for (let p of particles) {
+      for (const p of particles) {
         p.x += p.dx;
         p.y += p.dy;
         if (p.x < 0 || p.x > canvas.width) p.dx *= -1;

@@ -40,6 +40,7 @@ export async function fetchAllJobLines(): Promise<JobLine[]> {
       vehicle_make: row.vehicles?.make ?? null,
       vehicle_model: row.vehicles?.model ?? null,
       assigned_tech_full_name: row.assigned_tech?.full_name ?? null,
+      created_at: row.created_at,
     })) ?? []
   );
 }

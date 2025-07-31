@@ -1,4 +1,4 @@
-import { supabase } from '../supabaseClient';
+import supabase from '../supabaseClient';
 import { JobLine } from '@lib/types';
 
 export async function getQueuedJobsForTech(): Promise<JobLine[]> {

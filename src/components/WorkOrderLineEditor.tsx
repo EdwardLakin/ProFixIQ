@@ -1,23 +1,25 @@
-"use client";
+'use client';
 
-import { useState, useEffect } from "react";
+import { useState, useEffect } from 'react';
 
 type WorkOrderLine = {
-  id: string;
+  id?: string;
   complaint: string;
   cause?: string;
   correction?: string;
   labor_time?: number;
-  status?: "unassigned" | "assigned" | "in_progress" | "on_hold" | "completed";
-  hold_reason?: "parts" | "authorization" | "diagnosis_pending" | "other" | "";
+  status?: 'unassigned' | 'assigned' | 'in_progress' | 'on_hold' | 'completed';
+  hold_reason?: 'parts' | 'authorization' | 'diagnosis_pending' | 'other' | '';
+  tools?: string;
 };
 
 type Props = {
   line: WorkOrderLine;
   onUpdate: (line: WorkOrderLine) => void;
+  onDelete?: () => void; // ✅ optional delete handler
 };
 
-export default function WorkOrderLineEditor({ line, onUpdate }: Props) {
+export default function WorkOrderLineEditor({ line, onUpdate, onDelete }: Props) {
   const [localLine, setLocalLine] = useState<WorkOrderLine>(line);
 
   useEffect(() => {
@@ -31,9 +33,7 @@ export default function WorkOrderLineEditor({ line, onUpdate }: Props) {
       </label>
       <input
         value={localLine.complaint}
-        onChange={(e) =>
-          setLocalLine({ ...localLine, complaint: e.target.value })
-        }
+        onChange={(e) => setLocalLine({ ...localLine, complaint: e.target.value })}
         className="w-full border rounded px-2 py-1 mb-3 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
       />
 
@@ -41,7 +41,7 @@ export default function WorkOrderLineEditor({ line, onUpdate }: Props) {
         Cause
       </label>
       <input
-        value={localLine.cause || ""}
+        value={localLine.cause || ''}
         onChange={(e) => setLocalLine({ ...localLine, cause: e.target.value })}
         className="w-full border rounded px-2 py-1 mb-3 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
       />
@@ -50,10 +50,8 @@ export default function WorkOrderLineEditor({ line, onUpdate }: Props) {
         Correction
       </label>
       <input
-        value={localLine.correction || ""}
-        onChange={(e) =>
-          setLocalLine({ ...localLine, correction: e.target.value })
-        }
+        value={localLine.correction || ''}
+        onChange={(e) => setLocalLine({ ...localLine, correction: e.target.value })}
         className="w-full border rounded px-2 py-1 mb-3 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
       />
 
@@ -62,13 +60,8 @@ export default function WorkOrderLineEditor({ line, onUpdate }: Props) {
       </label>
       <input
         type="number"
-        value={localLine.labor_time ?? ""}
-        onChange={(e) =>
-          setLocalLine({
-            ...localLine,
-            labor_time: parseFloat(e.target.value),
-          })
-        }
+        value={localLine.labor_time ?? ''}
+        onChange={(e) => setLocalLine({ ...localLine, labor_time: parseFloat(e.target.value) })}
         className="w-full border rounded px-2 py-1 mb-3 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
       />
 
@@ -76,11 +69,11 @@ export default function WorkOrderLineEditor({ line, onUpdate }: Props) {
         Status
       </label>
       <select
-        value={localLine.status || "unassigned"}
+        value={localLine.status || 'unassigned'}
         onChange={(e) =>
           setLocalLine({
             ...localLine,
-            status: e.target.value as WorkOrderLine["status"],
+            status: e.target.value as WorkOrderLine['status'],
           })
         }
         className="w-full border rounded px-2 py-1 mb-3 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
@@ -92,17 +85,17 @@ export default function WorkOrderLineEditor({ line, onUpdate }: Props) {
         <option value="completed">Completed</option>
       </select>
 
-      {localLine.status === "on_hold" && (
+      {localLine.status === 'on_hold' && (
         <>
           <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-100">
             Hold Reason
           </label>
           <select
-            value={localLine.hold_reason || ""}
+            value={localLine.hold_reason || ''}
             onChange={(e) =>
               setLocalLine({
                 ...localLine,
-                hold_reason: e.target.value as WorkOrderLine["hold_reason"],
+                hold_reason: e.target.value as WorkOrderLine['hold_reason'],
               })
             }
             className="w-full border rounded px-2 py-1 mb-3 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
@@ -114,6 +107,15 @@ export default function WorkOrderLineEditor({ line, onUpdate }: Props) {
             <option value="other">Other</option>
           </select>
         </>
+      )}
+
+      {onDelete && (
+        <button
+          onClick={onDelete}
+          className="mt-2 text-sm text-red-600 hover:underline"
+        >
+          Delete Line
+        </button>
       )}
     </div>
   );

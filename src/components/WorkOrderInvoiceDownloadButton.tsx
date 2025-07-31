@@ -1,8 +1,10 @@
-"use client";
+'use client';
 
-import { PDFDownloadLink } from "@react-pdf/renderer";
-import { WorkOrderInvoicePDF } from "@components/WorkOrderInvoicePDF";
-import { RepairLine } from "@lib/parseRepairOutput";
+import { useRef, useEffect } from 'react';
+import { PDFDownloadLink } from '@react-pdf/renderer';
+import { WorkOrderInvoicePDF } from './WorkOrderInvoicePDF';
+import type { RepairLine } from '@/lib/parseRepairOutput';
+import type { ReactNode } from 'react';
 
 type Props = {
   workOrderId: string;
@@ -19,6 +21,7 @@ type Props = {
     phone?: string;
     email?: string;
   };
+  autoTrigger?: boolean;
 };
 
 export function WorkOrderInvoiceDownloadButton({
@@ -27,7 +30,20 @@ export function WorkOrderInvoiceDownloadButton({
   summary,
   vehicleInfo,
   customerInfo,
-}: Props) {
+  autoTrigger = false,
+}: Props): ReactNode {
+  const linkRef = useRef<HTMLAnchorElement>(null);
+  const fileName = `Invoice_WorkOrder_${workOrderId}.pdf`;
+
+  useEffect(() => {
+    if (autoTrigger && linkRef.current) {
+      const timeout = setTimeout(() => {
+        linkRef.current?.click();
+      }, 1000);
+      return () => clearTimeout(timeout);
+    }
+  }, [autoTrigger]);
+
   return (
     <PDFDownloadLink
       document={
@@ -39,19 +55,45 @@ export function WorkOrderInvoiceDownloadButton({
           customerInfo={customerInfo}
         />
       }
-      fileName={`Invoice_WorkOrder_${workOrderId}.pdf`}
+      fileName={fileName}
     >
-      {({ loading }) =>
-        loading ? (
-          <button className="px-4 py-2 bg-gray-400 text-white rounded">
-            Generating...
-          </button>
-        ) : (
-          <button className="px-4 py-2 bg-blue-700 text-white rounded hover:bg-blue-800">
+      {({ loading, url }) => {
+        if (loading) {
+          return (
+            <button className="px-4 py-2 bg-gray-400 text-white rounded">
+              Generating...
+            </button>
+          );
+        }
+
+        if (autoTrigger && url) {
+          return (
+            <>
+              <a
+                ref={linkRef}
+                href={url}
+                download={fileName}
+                style={{ display: 'none' }}
+              >
+                Auto Download
+              </a>
+              <button className="px-4 py-2 bg-blue-700 text-white rounded hover:bg-blue-800">
+                Download Invoice PDF
+              </button>
+            </>
+          );
+        }
+
+        return (
+          <a
+            href={url}
+            download={fileName}
+            className="px-4 py-2 bg-blue-700 text-white rounded hover:bg-blue-800"
+          >
             Download Invoice PDF
-          </button>
-        )
-      }
+          </a>
+        );
+      }}
     </PDFDownloadLink>
   );
 }

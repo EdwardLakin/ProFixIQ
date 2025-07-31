@@ -8,9 +8,14 @@ export default function VehicleSelector() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
+
     updateVehicle({
-      ...vehicleInfo,
-      [name]: value,
+      year: vehicleInfo?.year || '',
+      make: vehicleInfo?.make || '',
+      model: vehicleInfo?.model || '',
+      engine: vehicleInfo?.engine || '',
+      plate: vehicleInfo?.plate || '',
+      id: value,
     });
   };
 
@@ -40,6 +45,22 @@ export default function VehicleSelector() {
           name="model"
           placeholder="Model"
           value={vehicleInfo?.model || ''}
+          onChange={handleChange}
+          className="w-full p-3 rounded-md bg-surface border border-neutral-700"
+        />
+        <input
+          type="text"
+          name="engine"
+          placeholder="Engine"
+          value={vehicleInfo?.engine || ''}
+          onChange={handleChange}
+          className="w-full p-3 rounded-md bg-surface border border-neutral-700"
+        />
+        <input
+          type="text"
+          name="plate"
+          placeholder="Plate"
+          value={vehicleInfo?.plate || ''}
           onChange={handleChange}
           className="w-full p-3 rounded-md bg-surface border border-neutral-700"
         />

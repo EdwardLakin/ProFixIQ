@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 
 export type VehicleInfo = {
+  id: string;
   year: string;
   make: string;
   model: string;
+  engine: string;
   plate?: string;
 };
 

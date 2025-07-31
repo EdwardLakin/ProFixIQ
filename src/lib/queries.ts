@@ -1,18 +1,11 @@
-// lib/queries.ts
+// src/lib/queries.ts
 
-import { createBrowserClient } from '@supabase/ssr';
-import type { Database } from '@custom-types/supabase';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import supabase from './supabaseClient';
+import type { Database } from '@/types/supabase';
 
-// Fallback browser client (safe)
-export const supabase = createBrowserClient<Database>();
-
-// Optional wrapper to get user session in client components
+// Optional wrapper to get user session in client component
 export const getCurrentUser = async () => {
-  const {
-    data: { session },
-    error,
-  } = await supabase.auth.getSession();
+  const { data: { session }, error } = await supabase.auth.getSession();
   if (error) console.error('Session error:', error);
   return session?.user ?? null;
 };

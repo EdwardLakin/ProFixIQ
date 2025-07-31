@@ -1,8 +1,8 @@
-import { createServerClient } from '@supabase/ssr';
+// src/lib/updateLineStatus.ts
+
+import supabase from '@lib/supabaseServer';
 
 export async function updateLineStatusIfPartsReceived(lineId: string) {
-  const supabase = createServerClient();
-
   const { data: line, error } = await supabase
     .from('work_order_lines')
     .select('id, parts_required, parts_received, line_status')
@@ -14,9 +14,7 @@ export async function updateLineStatusIfPartsReceived(lineId: string) {
   const required = line.parts_required || [];
   const received = line.parts_received || [];
 
-  const allReceived = required.every((part: string) =>
-    received.includes(part)
-  );
+  const allReceived = required.every((part: string) => received.includes(part));
 
   if (allReceived && line.line_status === 'on_hold_parts') {
     await supabase

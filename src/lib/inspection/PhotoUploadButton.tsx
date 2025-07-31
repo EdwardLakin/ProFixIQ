@@ -1,7 +1,6 @@
-// src/lib/inspection/PhotoUploadButton.tsx
 'use client';
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import PhotoThumbnail from '@components/inspection/PhotoThumbnail';
 
 interface PhotoUploadButtonProps {
@@ -9,16 +8,24 @@ interface PhotoUploadButtonProps {
   onChange: (urls: string[]) => void;
 }
 
-export default function PhotoUploadButton({ photoUrls, onChange }: PhotoUploadButtonProps) {
+export default function PhotoUploadButton({
+  photoUrls,
+  onChange,
+}: PhotoUploadButtonProps) {
   const [urls, setUrls] = useState<string[]>(photoUrls || []);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
-    if (!files.length) return;
+    if (files.length === 0) return;
 
-    const newUrls = files.map((file) => URL.createObjectURL(file));
+    const newUrls: string[] = [];
+
+    for (const file of files) {
+      const url = URL.createObjectURL(file); // use a real upload if needed
+      newUrls.push(url);
+    }
+
     const updatedUrls = [...urls, ...newUrls];
-
     setUrls(updatedUrls);
     onChange(updatedUrls);
   };
@@ -32,21 +39,19 @@ export default function PhotoUploadButton({ photoUrls, onChange }: PhotoUploadBu
   return (
     <div className="mt-2">
       <label className="text-xs text-white font-bold block mb-1">Upload Photos</label>
-
       <div className="flex flex-wrap">
         {urls.map((url, i) => (
-          <PhotoThumbnail key={i} url={url} onRemove={() => handleRemove(i)} />
+          <PhotoThumbnail key={url + i} url={url} onRemove={() => handleRemove(i)} />
         ))}
       </div>
-
       <input
         type="file"
         multiple
         accept="image/*"
         onChange={handleFileChange}
         className="block mt-2 text-sm text-gray-300 file:rounded-full file:border-0
-                   file:text-sm file:font-semibold file:bg-orange-700 file:text-white
-                   hover:file:bg-orange-600"
+        file:text-sm file:font-semibold file:bg-orange-700 file:text-white
+        hover:file:bg-orange-600"
       />
     </div>
   );

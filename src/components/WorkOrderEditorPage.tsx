@@ -1,28 +1,52 @@
-"use client";
+'use client';
 
-import { useEffect, useState } from "react";
-import { useVehicleInfo } from "@hooks/useVehicleInfo";
-import  useUser from "@hooks/useUser";
-import { createBrowserClient } from "@supabase/ssr";
-import { MenuItem, WorkOrderLine } from "@lib/types";
-import WorkOrderLineForm from "@components/WorkOrderLineEditor";
+import { useEffect, useState } from 'react';
+import { createBrowserClient } from '@supabase/ssr';
+import type { Database } from '@/types/supabase';
+import useVehicleInfo from '@hooks/useVehicleInfo';
+import { useUser } from '@hooks/useUser';
+import WorkOrderLineForm from '@components/WorkOrderLineEditor';
+
+type MenuItem = {
+  id: string;
+  complaint: string;
+  cause?: string;
+  correction?: string;
+  labor_time?: number;
+  tools?: string;
+};
+
+type WorkOrderLine = {
+  id?: string;
+  complaint: string;
+  cause?: string;
+  correction?: string;
+  labor_time?: number;
+  tools?: string;
+  status?: 'unassigned' | 'assigned' | 'in_progress' | 'on_hold' | 'completed';
+  hold_reason?: 'parts' | 'authorization' | 'diagnosis_pending' | 'other' | '';
+};
 
 export default function WorkOrderEditorPage() {
-  const supabase = createBrowserClient();
-  const { vehicle } = useVehicleInfo();
+  const supabase = createBrowserClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+  const { vehicleInfo } = useVehicleInfo(); // ✅ fixed
   const { user } = useUser();
+
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [lines, setLines] = useState<WorkOrderLine[]>([]);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState('');
   const [filtered, setFiltered] = useState<MenuItem[]>([]);
 
   useEffect(() => {
     const fetchMenuItems = async () => {
-      if (user && vehicle?.id) {
+      if (user && vehicleInfo?.id) {
         const { data, error } = await supabase
-          .from("menu_items")
-          .select("*")
-          .eq("vehicle_id", vehicle.id);
+          .from('menu_items')
+          .select('*')
+          .eq('vehicle_id', vehicleInfo.id);
 
         if (!error && data) {
           setMenuItems(data);
@@ -30,15 +54,15 @@ export default function WorkOrderEditorPage() {
       }
     };
     fetchMenuItems();
-  }, [user, vehicle?.id]);
+  }, [user, vehicleInfo?.id]);
 
   useEffect(() => {
     if (query.length > 1) {
       const lowerQuery = query.toLowerCase();
       setFiltered(
         menuItems.filter((item) =>
-          item.complaint.toLowerCase().includes(lowerQuery),
-        ),
+          item.complaint.toLowerCase().includes(lowerQuery)
+        )
       );
     } else {
       setFiltered([]);
@@ -50,13 +74,13 @@ export default function WorkOrderEditorPage() {
       ...lines,
       {
         complaint: item.complaint,
-        cause: item.cause || "",
-        correction: item.correction || "",
-        labor_time: item.labor_time || "",
-        tools: item.tools || "",
+        cause: item.cause || '',
+        correction: item.correction || '',
+        labor_time: item.labor_time || 0,
+        tools: item.tools || '',
       },
     ]);
-    setQuery("");
+    setQuery('');
     setFiltered([]);
   };
 
@@ -87,7 +111,7 @@ export default function WorkOrderEditorPage() {
       )}
 
       {lines.map((line, index) => (
-        <WorkOrderLineEditor
+        <WorkOrderLineForm
           key={index}
           line={line}
           onUpdate={(updatedLine) => {

@@ -62,8 +62,14 @@ export default function InspectionItemCard({
       ) : (
         <StatusButtons
           item={item}
-          index={itemIndex}
-          onUpdateStatus={(status) =>
+          sectionIndex={sectionIndex}
+          itemIndex={itemIndex}
+          updateItem={(sectionIdx, itemIdx, updates) => {
+            if (updates.status) {
+              onUpdateStatus(sectionIdx, itemIdx, updates.status);
+            }
+          }}
+          onStatusChange={(status) =>
             onUpdateStatus(sectionIndex, itemIndex, status)
           }
         />
@@ -72,7 +78,13 @@ export default function InspectionItemCard({
       {showPhotos && (item.status === 'fail' || item.status === 'recommend') && (
         <div className="mt-4">
           <PhotoUploadButton
-            onUpload={(url) => onUpload(url, sectionIndex, itemIndex)}
+            photoUrls={item.photoUrls ?? []}
+            onChange={(urls) => {
+              const newUrl = urls[urls.length - 1];
+              if (newUrl) {
+                onUpload(newUrl, sectionIndex, itemIndex);
+              }
+            }}
           />
           {Array.isArray(item.photoUrls) && item.photoUrls.length > 0 && (
             <div className="mt-2 gap-2 overflow-x-auto flex">
@@ -89,7 +101,7 @@ export default function InspectionItemCard({
           <textarea
             className="w-full bg-transparent text-white outline-none"
             placeholder="Enter notes..."
-            value={item.note || ''}
+            value={item.notes || ''}
             onChange={(e) =>
               onUpdateNote(sectionIndex, itemIndex, e.target.value)
             }

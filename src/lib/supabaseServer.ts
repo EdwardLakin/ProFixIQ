@@ -1,7 +1,9 @@
-import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
-import type { Database } from '@custom-types/supabase';
-import type { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+import type { Database } from '@/types/supabase';
 
-export function createSupabaseServerClient(req: NextRequest, res: NextResponse) {
-  return createMiddlewareClient<Database>({ req, res });
-}
+const supabase = createClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+export default supabase;

@@ -1,14 +1,13 @@
-// app/components/VehicleSelectorModal.tsx
 'use client';
 
 import React, { useState } from 'react';
-import { useVehicleInfo } from '@hooks/useVehicleInfo';
+import useVehicleInfo from '@hooks/useVehicleInfo';
 
 const VehicleSelectorModal = () => {
   const {
     vehicleInfo,
-    setVehicleInfo,
-    clearVehicleInfo,
+    updateVehicle,
+    clearVehicle,
   } = useVehicleInfo();
 
   const [manualYear, setManualYear] = useState('');
@@ -19,11 +18,13 @@ const VehicleSelectorModal = () => {
 
   const handleManualSubmit = () => {
     if (manualYear && manualMake && manualModel) {
-      setVehicleInfo({
+      updateVehicle({
+        id: '',
         year: manualYear,
         make: manualMake,
         model: manualModel,
-        vin: '',
+        plate: '',
+        engine: '',
       });
     }
   };
@@ -34,11 +35,13 @@ const VehicleSelectorModal = () => {
       const res = await fetch(`/api/decodeVin?vin=${vin}`);
       const data = await res.json();
       if (data && data.make && data.model && data.year) {
-        setVehicleInfo({
+        updateVehicle({
+          id: '',
           year: data.year,
           make: data.make,
           model: data.model,
-          vin,
+          plate: '',
+          engine: '',
         });
       }
     } catch (err) {
@@ -110,7 +113,7 @@ const VehicleSelectorModal = () => {
 
       {vehicleInfo?.make && (
         <button
-          onClick={clearVehicleInfo}
+          onClick={clearVehicle}
           className="mt-4 text-sm text-red-500 underline w-full"
         >
           Clear Vehicle
