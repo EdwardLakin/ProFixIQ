@@ -6,11 +6,6 @@ import type { Database } from '@/types/supabase';
 import supabase from '@lib/supabaseClient';
 import PreviousPageButton from '@components/ui/PreviousPageButton';
 import { format, formatDistance } from 'date-fns';
-import { parseWorkOrderCommand } from '@lib/work-orders/commandProcessor';
-import { handleWorkOrderCommand } from '@lib/work-orders/handleWorkOrderCommand';
-import StartListeningButton from '@lib/inspection/StartListeningButton';
-import PauseResumeButton from '@lib/inspection/PauseResume';
-import useVoiceInput from '@hooks/useVoiceInput';
 import DtcSuggestionPopup from '@components/workorders/DtcSuggestionPopup';
 
 type WorkOrderLine = Database['public']['Tables']['work_order_lines']['Row'];
@@ -30,15 +25,6 @@ export default function WorkOrderDetailPage() {
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [tech, setTech] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [lastCommand, setLastCommand] = useState<string | null>(null);
-
-  const {
-    isListening,
-    setIsListening,
-    transcript,
-    setTranscript,
-    session,
-  } = useVoiceInput();
 
   const fetchData = useCallback(async () => {
     if (!id || typeof id !== 'string') return;
@@ -81,14 +67,6 @@ export default function WorkOrderDetailPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
-
-  useEffect(() => {
-    if (transcript && line) {
-      const command = parseWorkOrderCommand(transcript);
-      setLastCommand(JSON.stringify(command));
-      handleWorkOrderCommand(command, line, setLine);
-    }
-  }, [transcript, line]);
 
   useEffect(() => {
     const generateLaborTime = async () => {
@@ -143,33 +121,6 @@ export default function WorkOrderDetailPage() {
     <div className="p-6 space-y-6">
       <PreviousPageButton to="/work-orders/queue" />
 
-      <div className="flex gap-4">
-        <StartListeningButton
-          isListening={isListening}
-          setIsListening={setIsListening}
-          onStart={() => {}}
-        />
-        <PauseResumeButton
-          isPaused={!isListening}
-          onPause={() => setIsListening(false)}
-          onResume={() => setIsListening(true)}
-          isListening={isListening}
-          setIsListening={setIsListening}
-          recognitionInstance={session.current}
-          setRecognitionRef={(ref) => (session.current = ref)}
-          onTranscript={(text) => setTranscript(text)}
-        />
-        <button
-          className="bg-gray-300 dark:bg-gray-700 px-3 py-2 rounded text-sm font-medium"
-          onClick={() => {
-            setTranscript('');
-            setLastCommand(null);
-          }}
-        >
-          Clear
-        </button>
-      </div>
-
       {loading && <div className="p-6">Loading...</div>}
       {!line && !loading && (
         <div className="p-6 text-red-500">Work order not found.</div>
@@ -203,16 +154,6 @@ export default function WorkOrderDetailPage() {
               <p>{vehicle.year} {vehicle.make} {vehicle.model}</p>
             ) : (
               <p>Unknown vehicle</p>
-            )}
-          </div>
-
-          <div className="border rounded p-4 bg-white dark:bg-gray-900 shadow mt-4">
-            <h2 className="font-semibold mb-2">Voice Transcript</h2>
-            <p className="text-sm text-gray-700 dark:text-gray-300">{transcript || '—'}</p>
-            {lastCommand && (
-              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                Last Command: <code>{lastCommand}</code>
-              </p>
             )}
           </div>
 

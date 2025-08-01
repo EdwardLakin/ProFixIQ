@@ -9,6 +9,34 @@ export type Json =
 export interface Database {
   public: {
     Tables: {
+
+      vehicle_photos: {
+  Row: {
+    id: string;
+    vehicle_id: string;
+    uploaded_by: string | null;
+    url: string;
+    caption: string | null;
+    created_at: string;
+  };
+  Insert: {
+    id?: string;
+    vehicle_id: string;
+    uploaded_by?: string | null;
+    url: string;
+    caption?: string | null;
+    created_at?: string;
+  };
+  Update: {
+    id?: string;
+    vehicle_id?: string;
+    uploaded_by?: string | null;
+    url?: string;
+    caption?: string | null;
+    created_at?: string;
+  };
+};
+
       work_order_lines: {
         Row: {
           id: string;
@@ -630,6 +658,7 @@ punch_events: {
 
       customers: {
         Row: {
+          [x: string]: any;
           id: string;
           first_name: string;
           last_name: string;

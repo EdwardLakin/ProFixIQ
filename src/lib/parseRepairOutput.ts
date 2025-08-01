@@ -25,7 +25,7 @@ export function parseRepairOutput(raw: string): RepairLine[] {
     const toolsRaw = entry.match(/Tools:\s*(.*)/i)?.[1]?.trim();
     const laborRaw = entry.match(/Labor(?: Time)?:\s*(.*)/i)?.[1]?.trim();
 
-    const tools = toolsRaw ? toolsRaw.split(",").map((t) => t.trim()).join(", ") : undefined;
+    const tools = toolsRaw ? toolsRaw.split(',').map(t => t.trim()).join(', ') : undefined;
     const labor_time = laborRaw ? parseFloat(laborRaw) : undefined;
 
     if (complaint) {

@@ -1,78 +1,50 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/supabase';
 
-export async function handleWorkOrderCommand(
-  command: any,
-  supabase: SupabaseClient<Database>,
-  user: Database['public']['Tables']['profiles']['Row']
-): Promise<string> {
-  switch (command.type) {
-    case 'start_job':
-      await supabase
-        .from('work_order_lines')
-        .update({
-          status: 'in_progress',
-          punched_in_at: new Date().toISOString(),
-        })
-        .eq('id', command.jobId);
+type WorkOrderLine = Database['public']['Tables']['work_order_lines']['Row'];
 
-      return `Started job ${command.jobId}`;
+type UpdateLineFn = (line: WorkOrderLine) => void;
 
-    case 'complete_job':
-      await supabase
-        .from('work_order_lines')
-        .update({
-          status: 'completed',
-          punched_out_at: new Date().toISOString(),
-        })
-        .eq('id', command.jobId);
+type Command = {
+  action: 'set' | 'complete' | 'hold' | 'clear';
+  field?: keyof WorkOrderLine;
+  value?: string;
+};
 
-      return `Completed job ${command.jobId}`;
+export function handleWorkOrderCommand(
+  command: Command,
+  line: WorkOrderLine,
+  updateLine: UpdateLineFn
+) {
+  if (!command?.action) return;
 
-    case 'put_on_hold':
-      await supabase
-        .from('work_order_lines')
-        .update({
-          status: 'on_hold',
-          punched_out_at: new Date().toISOString(),
-          hold_reason: command.reason ?? '',
-        })
-        .eq('id', command.jobId);
+  const updated: WorkOrderLine = { ...line };
 
-      return `Put job ${command.jobId} on hold`;
-
-    case 'assign_tech': {
-      const { data: techData, error: techError } = await supabase
-        .from('profiles')
-        .select('id')
-        .ilike('full_name', `%${command.techName}%`)
-        .maybeSingle();
-
-      if (techError || !techData) {
-        return `Technician ${command.techName} not found.`;
+  switch (command.action) {
+    case 'set':
+      if (command.field && typeof command.value !== 'undefined') {
+        // @ts-expect-error: dynamic assignment is intentional
+        updated[command.field] = command.value;
       }
+      break;
 
-      await supabase
-        .from('work_order_lines')
-        .update({
-          assigned_tech_id: techData.id,
-        })
-        .eq('id', command.jobId);
+    case 'hold':
+      updated.status = 'on_hold';
+      if (command.value) {
+        updated.hold_reason = command.value as WorkOrderLine['hold_reason'];
+      }
+      break;
 
-      return `Assigned technician ${command.techName} to job ${command.jobId}`;
-    }
-
-    case 'update_complaint':
-      await supabase
-        .from('work_order_lines')
-        .update({
-          complaint: command.complaint ?? null,
-        })
-        .eq('id', command.jobId);
-
-      return `Updated complaint for job ${command.jobId}`;
+    case 'clear':
+      if (command.field) {
+        // @ts-expect-error: dynamic clear
+        updated[command.field] = null;
+      }
+      break;
 
     default:
-      return 'Command not recognized.';
+      console.warn('Unhandled command action:', command.action);
+      break;
   }
+
+  updateLine(updated);
 }
