@@ -5,6 +5,8 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import type { Database } from '@/types/supabase';
 import { useRouter } from 'next/navigation';
 
+type Profile = Database['public']['Tables']['profiles']['Row'];
+
 export default function CreateUserPage() {
   const supabase = createClientComponentClient<Database>();
   const router = useRouter();
@@ -15,7 +17,7 @@ export default function CreateUserPage() {
   const [plan, setPlan] = useState<'free' | 'diy' | 'pro' | 'pro_plus'>('free');
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
-  const [users, setUsers] = useState<any[]>([]);
+  const [users, setUsers] = useState<Profile[]>([]);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -24,7 +26,11 @@ export default function CreateUserPage() {
   }, []);
 
   const fetchUsers = async () => {
-    const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('created_at', { ascending: false });
+
     setUsers(data || []);
   };
 
@@ -45,17 +51,17 @@ export default function CreateUserPage() {
     }
 
     const { error: profileError } = await supabase.from('profiles').insert({
-  id: user.user.id,
-  full_name: fullName,
-  email,
-  role,
-  plan,
-  phone,
-  created_at: new Date().toISOString(), // optional but valid
-  shop_id: null,
-  business_name: null,
-  shop_name: null,
-});
+      id: user.user.id,
+      full_name: fullName,
+      email,
+      role,
+      plan,
+      phone,
+      created_at: new Date().toISOString(),
+      shop_id: null,
+      business_name: null,
+      shop_name: null,
+    });
 
     if (profileError) {
       setError(profileError.message);
@@ -112,7 +118,7 @@ export default function CreateUserPage() {
         />
         <select
           value={role}
-          onChange={(e) => setRole(e.target.value as any)}
+          onChange={(e) => setRole(e.target.value as typeof role)}
           className="w-full p-2 rounded bg-gray-800 border border-orange-500"
         >
           <option value="mechanic">Mechanic</option>
@@ -124,7 +130,7 @@ export default function CreateUserPage() {
 
         <select
           value={plan}
-          onChange={(e) => setPlan(e.target.value as any)}
+          onChange={(e) => setPlan(e.target.value as typeof plan)}
           className="w-full p-2 rounded bg-gray-800 border border-orange-500"
         >
           <option value="free">Free</option>
@@ -160,7 +166,9 @@ export default function CreateUserPage() {
             className="flex justify-between items-center bg-neutral-800 p-3 rounded"
           >
             <div>
-              <p className="font-bold">{user.full_name || '—'} ({user.role})</p>
+              <p className="font-bold">
+                {user.full_name || '—'} ({user.role})
+              </p>
               <p className="text-sm text-gray-400">{user.email}</p>
               <p className="text-sm text-gray-500">{user.phone || '—'}</p>
             </div>

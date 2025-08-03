@@ -6,12 +6,13 @@ import { Toaster } from 'sonner';
 import Navbar from '@components/Navbar';
 import LandingHero from '@components/ui/LandingHero';
 import PlanComparison from 'app/landing/PlanComparison';
-import LandingButtons from '@components/LandingButtons';
+
 import SubscribeBanner from '@components/SubscribeBanner';
 import Chatbot from '@components/Chatbot';
+import Section from '@components/ui/Section';
 
 export default function ProFixLanding() {
-  const [mounted, setMounted] = useState(false);
+  const [, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -24,19 +25,18 @@ export default function ProFixLanding() {
 
       <main className="relative z-10 pt-24 max-w-7xl mx-auto px-4">
         <LandingHero />
-       
 
-        
-         
-        
+        <Section id="plans">
+          <PlanComparison />
+        </Section>
 
-        
-          
-      
+        <Section>
+          <SubscribeBanner />
+        </Section>
 
-        <section id="faq">
+        <Section id="faq">
           <Chatbot />
-        </section>
+        </Section>
       </main>
     </div>
   );

@@ -1,5 +1,12 @@
-// app/api/send-email/route.ts
 import { NextResponse } from 'next/server';
+
+interface EmailRequestBody {
+  email: string;
+  subject: string;
+  templateId?: string;
+  html?: string;
+  dynamicTemplateData?: Record<string, any>;
+}
 
 export async function POST(req: Request) {
   const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
@@ -9,14 +16,21 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Missing SendGrid API Key' }, { status: 500 });
   }
 
-  const { email, subject, templateId, dynamicTemplateData, html } = await req.json();
+  let payload: EmailRequestBody;
+  try {
+    payload = await req.json();
+  } catch (err) {
+    return NextResponse.json({ error: 'Invalid JSON payload' }, { status: 400 });
+  }
+
+  const { email, subject, templateId, dynamicTemplateData, html } = payload;
 
   if (!email || !subject || (!templateId && !html)) {
     console.error('❌ Missing required email fields');
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
 
-  const body: any = {
+  const requestBody: Record<string, any> = {
     personalizations: [
       {
         to: [{ email }],
@@ -31,9 +45,9 @@ export async function POST(req: Request) {
   };
 
   if (templateId) {
-    body.template_id = templateId;
+    requestBody.template_id = templateId;
   } else {
-    body.content = [{ type: 'text/html', value: html }];
+    requestBody.content = [{ type: 'text/html', value: html }];
   }
 
   let attempt = 0;
@@ -47,7 +61,7 @@ export async function POST(req: Request) {
         Authorization: `Bearer ${SENDGRID_API_KEY}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(requestBody),
     });
 
     if (res.status === 202) {
@@ -61,7 +75,7 @@ export async function POST(req: Request) {
       status: res.status,
       headers,
       body: text,
-      payload: body,
+      payload: requestBody,
     });
 
     if (res.status === 429) {

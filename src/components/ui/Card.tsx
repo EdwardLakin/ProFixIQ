@@ -12,16 +12,17 @@ export default function Card({ children, onClick, className }: CardProps) {
     <div
       onClick={onClick}
       className={cn(
-        `cursor-pointer 
-         rounded-xl 
-         border border-orange-500 
-         bg-black/30 
-         backdrop-blur-md 
-         px-6 py-5 
-         transition-all duration-300 
-         shadow-card 
-         hover:shadow-glow 
-         hover:scale-[1.02]`,
+        `cursor-pointer
+         rounded-2xl
+         border border-orange-500
+         bg-zinc-900/80
+         backdrop-blur-md
+         px-6 py-5
+         transition-transform duration-300
+         shadow-md
+         hover:shadow-orange-500/30
+         hover:scale-[1.02]
+         hover:border-orange-400`,
         className
       )}
     >

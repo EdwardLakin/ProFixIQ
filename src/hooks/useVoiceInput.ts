@@ -1,20 +1,25 @@
+'use client';
+
 import { useEffect, useRef, useState } from 'react';
 
 declare global {
   interface Window {
-    webkitSpeechRecognition: any;
-    SpeechRecognition: any;
+    webkitSpeechRecognition: typeof SpeechRecognition;
+    SpeechRecognition: typeof SpeechRecognition;
   }
 }
+
+type SpeechRecognitionInstance = SpeechRecognition | null;
 
 export default function useVoiceInput() {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
-  const session = useRef<any>(null);
+  const session = useRef<SpeechRecognitionInstance>(null);
 
-  const initRecognition = () => {
+  const initRecognition = (): SpeechRecognitionInstance => {
     const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
+      typeof window !== 'undefined' &&
+      (window.SpeechRecognition || window.webkitSpeechRecognition);
 
     if (!SpeechRecognition) {
       console.error('Speech recognition not supported.');
@@ -33,8 +38,13 @@ export default function useVoiceInput() {
       setTranscript(text);
     };
 
-    recognition.onerror = (event: any) => {
+    recognition.onerror = (event) => {
       console.error('Speech recognition error:', event);
+      setIsListening(false);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
     };
 
     return recognition;
@@ -42,39 +52,39 @@ export default function useVoiceInput() {
 
   const startListening = () => {
     if (!session.current) {
-      const recognition = initRecognition();
-      if (!recognition) return;
-      session.current = recognition;
+      session.current = initRecognition();
     }
 
     try {
-      session.current.start();
+      session.current?.start();
       setIsListening(true);
     } catch (err) {
-      console.warn('Already started:', err);
+      console.warn('Recognition already started or failed:', err);
     }
   };
 
   const pauseListening = () => {
-    if (session.current) {
-      session.current.stop();
-      setIsListening(false);
+    try {
+      session.current?.stop();
+    } catch (err) {
+      console.warn('Failed to stop recognition:', err);
     }
+    setIsListening(false);
   };
 
   useEffect(() => {
     return () => {
-      pauseListening();
+      pauseListening(); // Ensure cleanup on unmount
     };
   }, []);
 
   return {
-  isListening,
-  setIsListening,      // ✅ Add this
-  transcript,
-  setTranscript,       // ✅ Add this
-  startListening,
-  pauseListening,
-  session,
-};
+    isListening,
+    setIsListening,
+    transcript,
+    setTranscript,
+    startListening,
+    pauseListening,
+    session,
+  };
 }

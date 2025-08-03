@@ -25,15 +25,15 @@ export default function ComparePlansPage() {
       description: 'Get started with limited AI features',
       values: [
         '5 uses/month',
-        <FaTimes className="text-red-500 mx-auto" />,
-        <FaTimes className="text-red-500 mx-auto" />,
-        <FaTimes className="text-red-500 mx-auto" />,
-        <FaTimes className="text-red-500 mx-auto" />,
-        <FaTimes className="text-red-500 mx-auto" />,
-        <FaTimes className="text-red-500 mx-auto" />,
-        <FaTimes className="text-red-500 mx-auto" />,
+        <FaTimes key="free-1" className="text-red-500 mx-auto" />,
+        <FaTimes key="free-2" className="text-red-500 mx-auto" />,
+        <FaTimes key="free-3" className="text-red-500 mx-auto" />,
+        <FaTimes key="free-4" className="text-red-500 mx-auto" />,
+        <FaTimes key="free-5" className="text-red-500 mx-auto" />,
+        <FaTimes key="free-6" className="text-red-500 mx-auto" />,
+        <FaTimes key="free-7" className="text-red-500 mx-auto" />,
         '1 user',
-        <FaTimes className="text-red-500 mx-auto" />,
+        <FaTimes key="free-8" className="text-red-500 mx-auto" />,
       ],
     },
     {
@@ -42,15 +42,15 @@ export default function ComparePlansPage() {
       description: 'Basic access for home users',
       values: [
         'Basic AI diagnosis',
-        <FaCheck className="text-green-400 mx-auto" />,
-        <FaTimes className="text-red-500 mx-auto" />,
-        <FaTimes className="text-red-500 mx-auto" />,
-        <FaTimes className="text-red-500 mx-auto" />,
-        <FaCheck className="text-green-400 mx-auto" />,
-        <FaTimes className="text-red-500 mx-auto" />,
-        <FaTimes className="text-red-500 mx-auto" />,
+        <FaCheck key="diy-1" className="text-green-400 mx-auto" />,
+        <FaTimes key="diy-2" className="text-red-500 mx-auto" />,
+        <FaTimes key="diy-3" className="text-red-500 mx-auto" />,
+        <FaTimes key="diy-4" className="text-red-500 mx-auto" />,
+        <FaCheck key="diy-5" className="text-green-400 mx-auto" />,
+        <FaTimes key="diy-6" className="text-red-500 mx-auto" />,
+        <FaTimes key="diy-7" className="text-red-500 mx-auto" />,
         '1 user',
-        <FaTimes className="text-red-500 mx-auto" />,
+        <FaTimes key="diy-8" className="text-red-500 mx-auto" />,
       ],
     },
     {
@@ -59,13 +59,13 @@ export default function ComparePlansPage() {
       description: 'Solo pros with full inspections and work orders',
       values: [
         'Unlimited AI',
-        <FaCheck className="text-green-400 mx-auto" />,
-        <FaCheck className="text-green-400 mx-auto" />,
-        <FaCheck className="text-green-400 mx-auto" />,
-        <FaCheck className="text-green-400 mx-auto" />,
-        <FaCheck className="text-green-400 mx-auto" />,
+        <FaCheck key="pro-1" className="text-green-400 mx-auto" />,
+        <FaCheck key="pro-2" className="text-green-400 mx-auto" />,
+        <FaCheck key="pro-3" className="text-green-400 mx-auto" />,
+        <FaCheck key="pro-4" className="text-green-400 mx-auto" />,
+        <FaCheck key="pro-5" className="text-green-400 mx-auto" />,
         'Limited',
-        <FaTimes className="text-red-500 mx-auto" />,
+        <FaTimes key="pro-6" className="text-red-500 mx-auto" />,
         '1 user',
         'Standard',
       ],
@@ -76,11 +76,11 @@ export default function ComparePlansPage() {
       description: 'Shops & teams with full automation',
       values: [
         'Unlimited AI',
-        <FaCheck className="text-green-400 mx-auto" />,
-        <FaCheck className="text-green-400 mx-auto" />,
-        <FaCheck className="text-green-400 mx-auto" />,
-        <FaCheck className="text-green-400 mx-auto" />,
-        <FaCheck className="text-green-400 mx-auto" />,
+        <FaCheck key="proplus-1" className="text-green-400 mx-auto" />,
+        <FaCheck key="proplus-2" className="text-green-400 mx-auto" />,
+        <FaCheck key="proplus-3" className="text-green-400 mx-auto" />,
+        <FaCheck key="proplus-4" className="text-green-400 mx-auto" />,
+        <FaCheck key="proplus-5" className="text-green-400 mx-auto" />,
         'Unlimited',
         '✔ Admin, Manager, Mechanic',
         '5 users (expandable)',
@@ -130,7 +130,7 @@ export default function ComparePlansPage() {
                   </td>
                   {plans.map((plan) => (
                     <td
-                      key={plan.name + i}
+                      key={plan.name + '-' + i}
                       className="px-4 py-3 border border-orange-500 text-center"
                     >
                       {plan.values[i]}
@@ -142,7 +142,6 @@ export default function ComparePlansPage() {
           </table>
         </div>
 
-        {/* CTA Button to Subscribe Page */}
         <div className="mt-12 text-center">
           <Link
             href="/subscribe"

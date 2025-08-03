@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { ArrowLeftIcon } from '@heroicons/react/24/solid';
+import { cn } from '@lib/utils';
 
 interface HomeButtonProps {
   className?: string;
@@ -13,10 +14,14 @@ export default function HomeButton({ className }: HomeButtonProps) {
   return (
     <button
       onClick={() => router.push('/')}
-      className={`text-orange-400 hover:text-orange-200 transition flex items-center gap-1 ${className}`}
+      className={cn(
+        'text-orange-400 hover:text-orange-300 transition-all duration-200',
+        'flex items-center gap-2 font-semibold hover:scale-105',
+        className
+      )}
     >
       <ArrowLeftIcon className="w-5 h-5" />
-      Home
+      <span>Home</span>
     </button>
   );
 }

@@ -10,8 +10,12 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className="bg-gradient-to-br from-black via-neutral-900 to-[#1a1a1a] text-white font-header">
+    <html lang="en" suppressHydrationWarning>
+      <head />
+      <body
+        id="root"
+        className="bg-gradient-to-br from-black via-neutral-900 to-[#1a1a1a] text-white font-header"
+      >
         <Providers>
           <Toaster position="top-center" />
           {children}

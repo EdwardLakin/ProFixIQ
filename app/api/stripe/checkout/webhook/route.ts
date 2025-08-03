@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/supabase';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2024-04-10' as any,
+  apiVersion: '2024-04-10' as Stripe.LatestApiVersion,
 });
 
 const supabase = createClient<Database>(

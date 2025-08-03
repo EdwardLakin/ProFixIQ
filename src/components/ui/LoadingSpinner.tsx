@@ -1,16 +1,44 @@
-export default function LoadingSpinner() {
+'use client';
+
+import React from 'react';
+import { cn } from '@lib/utils'; // If you're using Tailwind's classnames helper
+
+interface LoadingSpinnerProps {
+  size?: 'sm' | 'md' | 'lg';
+  className?: string;
+}
+
+const sizeMap = {
+  sm: 'h-4 w-4',
+  md: 'h-6 w-6',
+  lg: 'h-8 w-8',
+};
+
+export default function LoadingSpinner({ size = 'lg', className }: LoadingSpinnerProps) {
   return (
-    <div className="flex justify-center items-center">
+    <div
+      role="status"
+      aria-label="Loading"
+      className={cn('flex justify-center items-center', className)}
+    >
       <svg
-        className="animate-spin h-8 w-8 text-orange-500"
+        className={cn('animate-spin text-orange-500', sizeMap[size])}
         xmlns="http://www.w3.org/2000/svg"
         fill="none"
         viewBox="0 0 24 24"
       >
-        <path
+        <circle
           className="opacity-25"
+          cx="12"
+          cy="12"
+          r="10"
+          stroke="currentColor"
+          strokeWidth="4"
+        />
+        <path
+          className="opacity-75"
           fill="currentColor"
-          d="M12 2a1 1 0 011 1v2.07a7.001 7.001 0 014.905 4.905H20a1 1 0 110 2h-2.07a7.001 7.001 0 01-4.905 4.905V21a1 1 0 11-2 0v-2.07A7.001 7.001 0 017.095 14.93H5a1 1 0 110-2h2.07A7.001 7.001 0 0112 5.07V3a1 1 0 011-1z"
+          d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
         />
       </svg>
     </div>

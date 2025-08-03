@@ -19,22 +19,24 @@ export default function FeatureCard({
   return (
     <div
       className={cn(
-        'rounded-xl p-5 backdrop-blur-md border text-white flex flex-col gap-2 items-start text-left font-blackopsone',
+        'rounded-xl p-5 backdrop-blur-md border transition-all duration-300 shadow-md',
+        'flex flex-col gap-2 items-start text-left',
+        'font-blackopsone text-white',
         available
-          ? 'border-green-600'
-          : 'border-red-500 opacity-80',
+          ? 'border-green-600 bg-green-900/10 hover:shadow-green-600/40'
+          : 'border-red-500 bg-red-900/10 opacity-80 hover:shadow-red-600/40',
         className
       )}
     >
       <div className="flex items-center gap-2 text-lg">
         {available ? (
-          <CheckCircle2 className="text-green-500 w-5 h-5" />
+          <CheckCircle2 className="text-green-400 w-5 h-5" />
         ) : (
           <Lock className="text-red-400 w-5 h-5" />
         )}
         <span>{title}</span>
       </div>
-      <p className="text-sm text-neutral-300 font-sans">{description}</p>
+      <p className="text-sm text-neutral-300 font-sans leading-snug">{description}</p>
     </div>
   );
 }

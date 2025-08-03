@@ -12,9 +12,32 @@ const supabase = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+// --- Types ---
+interface InspectionItem {
+  name: string;
+  status?: string;
+  notes?: string;
+  value?: string;
+  unit?: string;
+  photoUrls?: string[];
+}
+
+interface InspectionResultSection {
+  title: string;
+  items: InspectionItem[];
+}
+
+interface Inspection {
+  id: string;
+  created_at: string;
+  template_name?: string;
+  status: string;
+  result: InspectionResultSection[];
+}
+
 export default function InspectionDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const [inspection, setInspection] = useState<any>(null);
+  const [inspection, setInspection] = useState<Inspection | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
@@ -26,13 +49,13 @@ export default function InspectionDetailPage() {
         .eq('id', id)
         .single();
 
-      if (error) {
+      if (error || !data) {
         console.error('Error fetching inspection:', error);
         router.push('/inspection/saved');
         return;
       }
 
-      setInspection(data);
+      setInspection(data as Inspection);
       setLoading(false);
     };
 
@@ -59,7 +82,7 @@ export default function InspectionDetailPage() {
 
   return (
     <div className="min-h-screen bg-black text-white px-4 py-6">
-      <PreviousPageButton to ="/inspection/saved" />
+      <PreviousPageButton to="/inspection/saved" />
       <h1 className="text-3xl text-orange-400 font-blackops mb-4 text-center">
         {inspection.template_name || 'Inspection Details'}
       </h1>
@@ -72,11 +95,11 @@ export default function InspectionDetailPage() {
       </p>
 
       <div className="space-y-6">
-        {inspection.result?.map((section: any, index: number) => (
+        {inspection.result?.map((section, index) => (
           <div key={index} className="border border-white/10 p-4 rounded-md bg-white/5">
             <h2 className="text-lg font-bold text-orange-300 mb-2">{section.title}</h2>
             <ul className="space-y-2">
-              {section.items?.map((item: any, i: number) => (
+              {section.items?.map((item, i) => (
                 <li key={i} className="text-sm text-white/90">
                   <span className="font-semibold text-white">{item.name}:</span>{' '}
                   {item.status || 'N/A'}
@@ -86,18 +109,18 @@ export default function InspectionDetailPage() {
                       {item.unit ? `${item.value} ${item.unit}` : item.value}
                     </span>
                   )}
-                  {item.photoUrls?.length > 0 && (
+                  {(item.photoUrls?.length ?? 0) > 0 && (
                     <div className="mt-2 flex gap-2 flex-wrap">
-                      {item.photoUrls.map((url: string, idx: number) => (
-                        <img
-                          key={idx}
-                          src={url}
-                          alt="Photo"
-                          className="w-24 h-24 object-cover rounded border border-white/20"
-                        />
-                      ))}
-                    </div>
-                  )}
+                      {item.photoUrls?.map((url, idx) => (
+                      <img
+                      key={idx}
+                      src={url}
+                      alt="Photo"
+                      className="w-24 h-24 object-cover rounded border border-white/20"
+                    />
+                  ))}
+              </div>
+              )}
                 </li>
               ))}
             </ul>

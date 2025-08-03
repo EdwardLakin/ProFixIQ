@@ -8,11 +8,12 @@ import PhotoUploadButton from '@lib/inspection/PhotoUploadButton';
 import StartListeningButton from '@lib/inspection/StartListeningButton';
 import ProgressTracker from '@lib/inspection/ProgressTracker';
 import useInspectionSession from '@lib/inspection/useInspectionSession';
-import { saveInspectionSession } from '@lib/inspection/save';
+
 import { handleTranscriptFn } from '@lib/inspection/handleTranscript';
 import { interpretCommand }from '@components/inspection/interpretCommand';
 import { convertParsedCommands } from '@lib/inspection/convertAICommands';
 import { Command } from '@lib/inspection/types';
+import type { InspectionSession } from '@lib/inspection/types'; // adjust path as needed
 
 import {
   ParsedCommand,
@@ -22,9 +23,15 @@ import {
 
 import { SaveInspectionButton } from '@components/inspection/SaveInspectionButton';
 import FinishInspectionButton from '@components/inspection/FinishInspectionButton';
-import PreviousPageButton from '@components/ui/PreviousPageButton';
+
 import { v4 as uuidv4 } from 'uuid';
-import { clearModuleContext } from 'next/dist/server/lib/render-server';
+
+
+declare global {
+  interface Window {
+    webkitSpeechRecognition: typeof SpeechRecognition;
+  }
+}
 
 const id = uuidv4();
 
@@ -39,8 +46,8 @@ export default function Maintenance50InspectionPage() {
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   const customer = {
-    first_name: searchParams.get('first_name') || '',
-    last_name: searchParams.get('last_name') || '',
+    first_item: searchParams.get('first_name') || '',
+    last_item: searchParams.get('last_name') || '',
     phone: searchParams.get('phone') || '',
     email: searchParams.get('email') || '',
   };
@@ -57,7 +64,7 @@ export default function Maintenance50InspectionPage() {
 
   const initialSession = useMemo(() => ({
     id: uuidv4(),
-    templateName: 'Maintenance 50-Point Inspection',
+    templateitem: 'Maintenance 50-Point Inspection',
     status: 'not_started' as InspectionStatus,
     isPaused: false,
     isListening: false,
@@ -78,7 +85,7 @@ export default function Maintenance50InspectionPage() {
         notes: '',
         items: [
           {
-            name: 'Front Left Tire Pressure',
+            item: 'Front Left Tire Pressure',
             status: '' as InspectionItemStatus,
             unit: 'psi',
             value: '',
@@ -88,7 +95,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Front Left Tire Tread Depth',
+            item: 'Front Left Tire Tread Depth',
             status: '' as InspectionItemStatus,
             value: '',
             unit: 'mm',
@@ -98,7 +105,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Front Right Tire Pressure',
+            item: 'Front Right Tire Pressure',
             status: '' as InspectionItemStatus,
             unit: 'psi',
             value: '',
@@ -108,7 +115,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Front Right Tire Tread Depth',
+            item: 'Front Right Tire Tread Depth',
             status: '' as InspectionItemStatus,
             value: '',
             unit: 'mm',
@@ -118,7 +125,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Front Left Rotor',
+            item: 'Front Left Rotor',
             status: '' as InspectionItemStatus,
             unit: 'mm',
             value: '',
@@ -128,7 +135,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Front Right Rotor',
+            item: 'Front Right Rotor',
             status: '' as InspectionItemStatus,
             unit: 'mm',
             value: '',
@@ -138,7 +145,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Front Left Pad',
+            item: 'Front Left Pad',
             status: '' as InspectionItemStatus,
             unit: 'mm',
             value: '',
@@ -148,7 +155,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Front Right Pad',
+            item: 'Front Right Pad',
             status: '' as InspectionItemStatus,
             unit: 'mm',
             value: '',
@@ -158,7 +165,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Front Left Push Rod Travel',
+            item: 'Front Left Push Rod Travel',
             status: '' as InspectionItemStatus,
             unit: 'mm',
             value: '',
@@ -168,7 +175,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Front Right Push Rod Travel',
+            item: 'Front Right Push Rod Travel',
             status: '' as InspectionItemStatus,
             unit: 'mm',
             value: '',
@@ -185,7 +192,7 @@ export default function Maintenance50InspectionPage() {
         notes: '',
         items: [
           {
-            name: 'Rear Left Tire Pressure',
+            item: 'Rear Left Tire Pressure',
             status: '' as InspectionItemStatus,
             unit: 'psi',
             value: '',
@@ -195,7 +202,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Rear Left Tire Tread Depth',
+            item: 'Rear Left Tire Tread Depth',
             status: '' as InspectionItemStatus,
             value: '',
             unit: 'mm',
@@ -205,7 +212,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Rear Right Tire Pressure',
+            item: 'Rear Right Tire Pressure',
             status: '' as InspectionItemStatus,
             unit: 'psi',
             value: '',
@@ -215,7 +222,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Rear Right Tire Tread Depth',
+            item: 'Rear Right Tire Tread Depth',
             status: '' as InspectionItemStatus,
             value: '',
             unit: 'mm',
@@ -225,7 +232,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Rear Left Rotor',
+            item: 'Rear Left Rotor',
             status: '' as InspectionItemStatus,
             unit: 'mm',
             value: '',
@@ -235,7 +242,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Rear Right Rotor',
+            item: 'Rear Right Rotor',
             status: '' as InspectionItemStatus,
             unit: 'mm',
             value: '',
@@ -245,7 +252,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Rear Left Pad',
+            item: 'Rear Left Pad',
             status: '' as InspectionItemStatus,
             unit: 'mm',
             value: '',
@@ -255,7 +262,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Rear Right Pad',
+            item: 'Rear Right Pad',
             status: '' as InspectionItemStatus,
             unit: 'mm',
             value: '',
@@ -265,7 +272,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Rear Left Push Rod Travel',
+            item: 'Rear Left Push Rod Travel',
             status: '' as InspectionItemStatus,
             unit: 'mm',
             value: '',
@@ -275,7 +282,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Rear Right Push Rod Travel',
+            item: 'Rear Right Push Rod Travel',
             status: '' as InspectionItemStatus,
             unit: 'mm',
             value: '',
@@ -292,7 +299,7 @@ export default function Maintenance50InspectionPage() {
         notes: '',
         items: [
           {
-            name: 'Park Brake Lining Left',
+            item: 'Park Brake Lining Left',
             status: '' as InspectionItemStatus,
             unit: 'mm',
             value: '',
@@ -302,7 +309,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Park Brake Lining Right',
+            item: 'Park Brake Lining Right',
             status: '' as InspectionItemStatus,
             unit: 'mm',
             value: '',
@@ -312,7 +319,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Park Brake Lining Trans',
+            item: 'Park Brake Lining Trans',
             status: '' as InspectionItemStatus,
             unit: 'mm',
             value: '',
@@ -322,7 +329,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Wheel Torque Inner',
+            item: 'Wheel Torque Inner',
             status: '' as InspectionItemStatus,
             unit: 'ft lbs',
             value: '',
@@ -332,7 +339,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Wheel Torque Outer',
+            item: 'Wheel Torque Outer',
             status: '' as InspectionItemStatus,
             unit: 'ft lbs',
             value: '',
@@ -349,7 +356,7 @@ export default function Maintenance50InspectionPage() {
         notes: '',
         items: [
           {
-            name: 'Engine Oil',
+            item: 'Engine Oil',
             status: '' as InspectionItemStatus,
             unit: 'L',
             value: '',
@@ -359,7 +366,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Coolant',
+            item: 'Coolant',
             status: '' as InspectionItemStatus,
             unit: 'L',
             value: '',
@@ -369,7 +376,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Transmission Fluid',
+            item: 'Transmission Fluid',
             status: '' as InspectionItemStatus,
             unit: 'L',
             value: '',
@@ -379,7 +386,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
                     {
-            name: 'Power Steering Fluid',
+            item: 'Power Steering Fluid',
             status: '' as InspectionItemStatus,
             unit: 'L',
             value: '',
@@ -389,7 +396,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Windshield Washer Fluid',
+            item: 'Windshield Washer Fluid',
             status: '' as InspectionItemStatus,
             unit: 'L',
             value: '',
@@ -406,7 +413,7 @@ export default function Maintenance50InspectionPage() {
         notes: '',
         items: [
           {
-            name: 'Serpentine Belt',
+            item: 'Serpentine Belt',
             status: '' as InspectionItemStatus,
             notes: '',
             item: 'Serpentine',
@@ -414,7 +421,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Timing Belt/Chain',
+            item: 'Timing Belt/Chain',
             status: '' as InspectionItemStatus,
             notes: '',
             item: 'Timing',
@@ -422,7 +429,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Coolant Hoses',
+            item: 'Coolant Hoses',
             status: '' as InspectionItemStatus,
             notes: '',
             item: 'Coolant Hoses',
@@ -430,7 +437,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Vacuum Hoses',
+            item: 'Vacuum Hoses',
             status: '' as InspectionItemStatus,
             notes: '',
             item: 'Vacuum',
@@ -445,7 +452,7 @@ export default function Maintenance50InspectionPage() {
         notes: '',
         items: [
           {
-            name: 'Battery Condition',
+            item: 'Battery Condition',
             status: '' as InspectionItemStatus,
             notes: '',
             item: 'Battery',
@@ -453,7 +460,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Charging System Output',
+            item: 'Charging System Output',
             status: '' as InspectionItemStatus,
             unit: 'V',
             value: '',
@@ -463,7 +470,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Battery Terminals & Cables',
+            item: 'Battery Terminals & Cables',
             status: '' as InspectionItemStatus,
             notes: '',
             item: 'Terminals',
@@ -478,7 +485,7 @@ export default function Maintenance50InspectionPage() {
         notes: '',
         items: [
           {
-            name: 'Front Brake Pads',
+            item: 'Front Brake Pads',
             status: '' as InspectionItemStatus,
             unit: 'mm',
             value: '',
@@ -488,7 +495,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Front Rotors',
+            item: 'Front Rotors',
             status: '' as InspectionItemStatus,
             unit: 'mm',
             value: '',
@@ -498,7 +505,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Rear Brake Pads',
+            item: 'Rear Brake Pads',
             status: '' as InspectionItemStatus,
             unit: 'mm',
             value: '',
@@ -508,7 +515,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Rear Rotors',
+            item: 'Rear Rotors',
             status: '' as InspectionItemStatus,
             unit: 'mm',
             value: '',
@@ -518,7 +525,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Brake Lines',
+            item: 'Brake Lines',
             status: '' as InspectionItemStatus,
             notes: '',
             item: 'Brake Lines',
@@ -533,7 +540,7 @@ export default function Maintenance50InspectionPage() {
         notes: '',
         items: [
           {
-            name: 'LF Tread Depth',
+            item: 'LF Tread Depth',
             status: '' as InspectionItemStatus,
             unit: 'mm',
             value: '',
@@ -543,7 +550,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'LR Tread Depth',
+            item: 'LR Tread Depth',
             status: '' as InspectionItemStatus,
             unit: 'mm',
             value: '',
@@ -553,7 +560,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'RF Tread Depth',
+            item: 'RF Tread Depth',
             status: '' as InspectionItemStatus,
             unit: 'mm',
             value: '',
@@ -563,7 +570,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'RR Tread Depth',
+            item: 'RR Tread Depth',
             status: '' as InspectionItemStatus,
             unit: 'mm',
             value: '',
@@ -580,7 +587,7 @@ export default function Maintenance50InspectionPage() {
         notes: '',
         items: [
           {
-            name: 'Headlights',
+            item: 'Headlights',
             status: '' as InspectionItemStatus,
             notes: '',
             item: 'Headlights',
@@ -588,7 +595,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Brake Lights',
+            item: 'Brake Lights',
             status: '' as InspectionItemStatus,
             notes: '',
             item: 'Brake Lights',
@@ -596,7 +603,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Turn Signals',
+            item: 'Turn Signals',
             status: '' as InspectionItemStatus,
             notes: '',
             item: 'Turn Signals',
@@ -604,7 +611,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Reverse Lights',
+            item: 'Reverse Lights',
             status: '' as InspectionItemStatus,
             notes: '',
             item: 'Reverse Lights',
@@ -612,7 +619,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Wipers/Washers',
+            item: 'Wipers/Washers',
             status: '' as InspectionItemStatus,
             notes: '',
             item: 'Wipers',
@@ -627,7 +634,7 @@ export default function Maintenance50InspectionPage() {
         notes: '',
         items: [
           {
-            name: 'Front Shocks/Struts',
+            item: 'Front Shocks/Struts',
             status: '' as InspectionItemStatus,
             notes: '',
             item: 'Front Shocks',
@@ -635,7 +642,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Rear Shocks/Struts',
+            item: 'Rear Shocks/Struts',
             status: '' as InspectionItemStatus,
             notes: '',
             item: 'Rear Shocks',
@@ -643,7 +650,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Ball Joints',
+            item: 'Ball Joints',
             status: '' as InspectionItemStatus,
             notes: '',
             item: 'Ball Joints',
@@ -651,7 +658,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Tie Rod Ends',
+            item: 'Tie Rod Ends',
             status: '' as InspectionItemStatus,
             notes: '',
             item: 'Tie Rods',
@@ -659,7 +666,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Control Arms/Bushings',
+            item: 'Control Arms/Bushings',
             status: '' as InspectionItemStatus,
             notes: '',
             item: 'Control Arms',
@@ -667,7 +674,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Wheel Bearings',
+            item: 'Wheel Bearings',
             status: '' as InspectionItemStatus,
             notes: '',
             item: 'Bearings',
@@ -682,7 +689,7 @@ export default function Maintenance50InspectionPage() {
         notes: '',
         items: [
           {
-            name: 'Cabin Air Filter',
+            item: 'Cabin Air Filter',
             status: '' as InspectionItemStatus,
             notes: '',
             item: 'Cabin Filter',
@@ -690,7 +697,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Engine Air Filter',
+            item: 'Engine Air Filter',
             status: '' as InspectionItemStatus,
             notes: '',
             item: 'Engine Filter',
@@ -698,7 +705,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Drive Axles/Boots',
+            item: 'Drive Axles/Boots',
             status: '' as InspectionItemStatus,
             notes: '',
             item: 'Axles',
@@ -706,7 +713,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Exhaust System',
+            item: 'Exhaust System',
             status: '' as InspectionItemStatus,
             notes: '',
             item: 'Exhaust',
@@ -714,7 +721,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Underbody Rust',
+            item: 'Underbody Rust',
             status: '' as InspectionItemStatus,
             notes: '',
             item: 'Rust',
@@ -722,7 +729,7 @@ export default function Maintenance50InspectionPage() {
             recommend: [],
           },
           {
-            name: 'Fluid Leaks',
+            item: 'Fluid Leaks',
             status: '' as InspectionItemStatus,
             notes: '',
             item: 'Leaks',
@@ -772,33 +779,35 @@ export default function Maintenance50InspectionPage() {
   };
 
   const startListening = () => {
-    const recognition = new (window as any).webkitSpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = false;
-    recognition.lang = 'en-US';
+  const SpeechRecognition =
+    typeof window !== 'undefined'
+      ? (window.SpeechRecognition || window.webkitSpeechRecognition)
+      : undefined;
 
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      const lastResult = event.results[event.results.length - 1];
-      const transcript = lastResult[0].transcript.trim();
-      handleTranscript(transcript);
-    };
+  if (!SpeechRecognition) {
+    console.error('SpeechRecognition is not supported in this browser.');
+    return;
+  }
 
-    recognition.onerror = (event: any) => {
-      console.error('Speech recognition error:', event?.error);
-    };
+  const recognition = new SpeechRecognition();
+  recognition.continuous = true;
+  recognition.interimResults = false;
+  recognition.lang = 'en-US';
 
-    recognitionRef.current = recognition;
-    recognition.start();
-    setIsListening(true);
+  recognition.onresult = (event: SpeechRecognitionEvent) => {
+    const lastResultIndex = event.results.length - 1;
+    const transcript = event.results[lastResultIndex][0].transcript;
+    handleTranscript(transcript);
   };
 
-  const stopListening = () => {
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-      recognitionRef.current = null;
-    }
-    setIsListening(false);
+  recognition.onerror = (event: SpeechRecognitionEvent) => {
+    console.error('Speech recognition error:', event.error);
   };
+
+  recognitionRef.current = recognition;
+  recognition.start();
+  setIsListening(true);
+};
 
 return (
   <div className="px-4">

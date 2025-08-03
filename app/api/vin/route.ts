@@ -3,16 +3,43 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import type { Database } from '@/types/supabase';
 
+interface VinDecodeRequestBody {
+  vin: string;
+  user_id: string;
+}
+
+interface VinDecodeResponse {
+  Results: Array<{
+    Year: string;
+    Make: string;
+    Model: string;
+    Trim: string;
+    EngineModel: string;
+  }>;
+}
+
 export async function POST(req: Request) {
   const supabase = createRouteHandlerClient<Database>({ cookies });
 
-  const { vin, user_id } = await req.json();
+  let body: VinDecodeRequestBody;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
+
+  const { vin, user_id } = body;
 
   try {
     const vinRes = await fetch(
       `https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/${vin}?format=json`
     );
-    const vinData = await vinRes.json();
+
+    if (!vinRes.ok) {
+      return NextResponse.json({ error: 'Failed to fetch from VIN API' }, { status: 502 });
+    }
+
+    const vinData: VinDecodeResponse = await vinRes.json();
     const decoded = vinData?.Results?.[0] || {};
 
     const { Year, Make, Model, Trim, EngineModel } = decoded;
@@ -28,7 +55,7 @@ export async function POST(req: Request) {
     });
 
     if (error) {
-      console.error('Supabase upsert error:', error);
+      console.error('❌ Supabase upsert error:', error);
       return NextResponse.json({ error: 'Database insert failed' }, { status: 500 });
     }
 
@@ -39,8 +66,8 @@ export async function POST(req: Request) {
       trim: Trim,
       engine: EngineModel,
     });
-  } catch (e: any) {
-    console.error('VIN decode failed:', e);
+  } catch (err) {
+    console.error('❌ VIN decode failed:', err);
     return NextResponse.json({ error: 'Failed to decode VIN' }, { status: 500 });
   }
 }

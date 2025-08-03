@@ -1,7 +1,32 @@
-// src/app/api/work-orders/from-inspection.ts
-
 import type { NextApiRequest, NextApiResponse } from 'next';
 import supabase from '@lib/supabaseClient';
+
+interface InspectionItem {
+  name: string;
+  status: string;
+  recommend?: string;
+  notes?: string;
+}
+
+interface InspectionSection {
+  items: InspectionItem[];
+}
+
+interface InspectionResult {
+  result: {
+    sections: InspectionSection[];
+  };
+}
+
+interface JobLine {
+  work_order_id: string;
+  job_type: string;
+  name: string;
+  status: string;
+  labor_time?: number;
+  notes?: string;
+  recommendation?: string;
+}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
@@ -12,38 +37,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const inspectionRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/inspections/${inspectionId}`);
-    const inspection = await inspectionRes.json();
+    if (!inspectionRes.ok) {
+      return res.status(500).json({ error: 'Failed to fetch inspection data' });
+    }
 
-    // Explicitly typed array of job lines
-    const jobsToInsert: {
-      work_order_id: string;
-      job_type: string;
-      name: string;
-      status: string;
-      labor_time?: number;
-      notes?: string;
-      recommendation?: string;
-    }[] = [];
+    const inspection: InspectionResult = await inspectionRes.json();
 
-    // Extract failed or recommended items
-    inspection.result.sections.forEach((section: any) => {
-      section.items.forEach((item: any) => {
+    const jobsToInsert: JobLine[] = [];
+
+    inspection.result.sections.forEach((section) => {
+      section.items.forEach((item) => {
         if (item.status === 'fail' || item.recommend) {
           jobsToInsert.push({
             work_order_id: workOrderId,
             job_type: 'inspection-fail',
             name: item.name,
-            recommendation: item.recommend,
-            notes: item.notes,
+            recommendation: item.recommend || undefined,
+            notes: item.notes || undefined,
             status: 'not_started',
-            labor_time: 0, // Placeholder for AI-generated labor time
+            labor_time: 0, // Placeholder; can be updated via AI
           });
         }
       });
     });
 
     if (jobsToInsert.length === 0) {
-      return res.status(200).json({ message: 'No fail/recommend items found' });
+      return res.status(200).json({ message: 'No failed or recommended items found' });
     }
 
     const { error: insertError } = await supabase

@@ -10,6 +10,39 @@ export interface Database {
   public: {
     Tables: {
 
+      inspection_templates: {
+  Row: {
+    id: string;
+    user_id: string;
+    template_name: string;
+    sections: any; // or a typed array like InspectionSection[]
+    description?: string | null;
+    tags?: string[] | null;
+    vehicle_type?: string | null;
+    is_public?: boolean;
+    created_at?: string;
+    updated_at?: string;
+  };
+  Insert: {
+    user_id: string;
+    template_name: string;
+    sections: any;
+    description?: string | null;
+    tags?: string[] | null;
+    vehicle_type?: string | null;
+    is_public?: boolean;
+  };
+  Update: Partial<{
+    template_name: string;
+    sections: any;
+    description?: string | null;
+    tags?: string[] | null;
+    vehicle_type?: string | null;
+    is_public?: boolean;
+    updated_at?: string;
+  }>;
+};
+
       vehicle_photos: {
   Row: {
     id: string;
@@ -170,6 +203,9 @@ export interface Database {
           location?: string | null;
           created_at: string;
           quote_sent_at?: string;
+          started_at?: string; // ⬅️ Add this
+    completed_at?: string; // ⬅️ Add this
+    quote?: Json | null; // ⬅️ Add thi
         };
         Insert: {
           id?: string;
@@ -179,6 +215,9 @@ export interface Database {
           location?: string | null;
           created_at?: string;
           quote_sent_at?: string;
+          started_at?: string; // ⬅️ Add this
+    completed_at?: string; // ⬅️ Add this
+    quote?: Json | null; // ⬅️ Add thi
         };
         Update: {
           id?: string;
@@ -188,6 +227,9 @@ export interface Database {
           location?: string | null;
           created_at?: string;
           quote_sent_at?: string;
+          started_at?: string; // ⬅️ Add this
+    completed_at?: string; // ⬅️ Add this
+    quote?: Json | null; // ⬅️ Add thi
         };
         Relationships: [
           {

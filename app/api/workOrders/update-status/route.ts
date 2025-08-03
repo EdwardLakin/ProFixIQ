@@ -1,46 +1,54 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+import type { Database } from '@/types/supabase'; // Make sure this exists
 
-const supabase = createClient(
+const supabase = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+type Command = 'punch-in' | 'complete';
+
+type QuoteLineItem = {
+  name: string;
+  description?: string;
+  labor_time?: number;
+  part_name?: string;
+  part_price?: number;
+  parts_cost?: number;
+  total_price?: number;
+};
+
+interface RequestBody {
+  workOrderId: string;
+  command: Command;
+  quote?: QuoteLineItem[];
+  summary?: string;
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    const body: RequestBody = await req.json();
 
-    // Destructure all possible fields from body
-    const {
-      workOrderId,
-      command,
-      quote,
-      summary,
-    }: {
-      workOrderId: string;
-      command: "punch-in" | "complete";
-      quote?: any[]; // optionally type as QuoteLineItem[]
-      summary?: string;
-    } = body;
+    const { workOrderId, command, quote, summary } = body;
 
     if (!workOrderId || !command) {
-      return NextResponse.json({ error: "Missing workOrderId or command" }, { status: 400 });
+      return NextResponse.json({ error: 'Missing workOrderId or command' }, { status: 400 });
     }
 
-    let updateFields: Record<string, any> = {};
+    let updateFields: Partial<Database['public']['Tables']['work_orders']['Update']> = {};
 
-    if (command === "punch-in") {
+    if (command === 'punch-in') {
       updateFields = {
-        status: "in_progress",
+        status: 'in_progress',
         started_at: new Date().toISOString(),
       };
-    } else if (command === "complete") {
+    } else if (command === 'complete') {
       updateFields = {
-        status: "completed",
+        status: 'completed',
         completed_at: new Date().toISOString(),
       };
 
-      // Only include quote if provided
       if (quote && summary) {
         updateFields.quote = {
           summary,
@@ -48,19 +56,19 @@ export async function POST(req: NextRequest) {
         };
       }
     } else {
-      return NextResponse.json({ error: "Unknown command" }, { status: 400 });
+      return NextResponse.json({ error: 'Unknown command' }, { status: 400 });
     }
 
     const { error } = await supabase
-      .from("work_orders")
+      .from('work_orders')
       .update(updateFields)
-      .eq("id", workOrderId);
+      .eq('id', workOrderId);
 
     if (error) throw error;
 
     return NextResponse.json({ success: true, updated: updateFields });
-  } catch (err) {
-    console.error("Work order update failed:", err);
-    return NextResponse.json({ error: "Update failed" }, { status: 500 });
+  } catch (err: any) {
+    console.error('Work order update failed:', err.message || err);
+    return NextResponse.json({ error: 'Update failed' }, { status: 500 });
   }
 }

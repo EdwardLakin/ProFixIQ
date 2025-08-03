@@ -17,34 +17,49 @@ interface QuoteViewerProps {
 }
 
 export default function QuoteViewer({ quote }: QuoteViewerProps) {
-  if (!quote || quote.length === 0) return <p>No quote items available.</p>;
+  if (!quote || quote.length === 0) {
+    return (
+      <div className="text-center text-sm text-gray-400">
+        No quote items available.
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       {quote.map((line, index) => (
         <div
           key={index}
-          className="rounded-lg bg-black/20 p-4 shadow-lg backdrop-blur-md border border-white/10"
+          className="rounded-xl bg-black/30 p-6 shadow-md border border-white/10 backdrop-blur-md transition hover:shadow-xl"
         >
-          <h3 className="text-lg font-semibold text-orange-400 capitalize">
-            {line.category}: {line.description}
+          <h3 className="text-lg font-blackopsone text-orange-400 mb-1 capitalize">
+            {line.category}
           </h3>
+          <p className="text-sm text-white/90 italic mb-2">{line.description}</p>
 
-          <ul className="mt-2 text-sm text-white/90">
-            {line.parts.map((part, i) => (
-              <li key={i}>
-                • {part.name}: ${part.price.toFixed(2)}
-              </li>
-            ))}
-          </ul>
+          {line.parts.length > 0 && (
+            <div className="text-sm text-white/80 mb-2">
+              <span className="font-semibold text-orange-300">Parts:</span>
+              <ul className="list-disc ml-5 mt-1 space-y-1">
+                {line.parts.map((part, i) => (
+                  <li key={i}>
+                    {part.name} – ${part.price.toFixed(2)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
-          <div className="mt-2 text-sm text-white/80">
-            Labor: {line.laborHours} hrs (${line.laborCost.toFixed(2)})  
-            <br />
-            Shop Supplies: ${line.shopSupplies.toFixed(2)}
+          <div className="text-sm text-white/80 space-y-1 mt-3">
+            <p>
+              <span className="font-semibold">Labor:</span> {line.laborHours} hrs – ${line.laborCost.toFixed(2)}
+            </p>
+            <p>
+              <span className="font-semibold">Shop Supplies:</span> ${line.shopSupplies.toFixed(2)}
+            </p>
           </div>
 
-          <div className="mt-3 text-md font-bold text-green-400">
+          <div className="text-md font-bold text-green-400 mt-4 border-t border-white/10 pt-3">
             Total: ${line.total.toFixed(2)}
           </div>
         </div>
