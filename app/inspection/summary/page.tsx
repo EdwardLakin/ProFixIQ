@@ -2,26 +2,69 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import useInspectionSession from '@lib/inspection/useInspectionSession';
-import { generateInspectionPDF } from '@lib/inspection/pdf';
-import {
-  type InspectionItem,
-  type InspectionSection,
-} from '@lib/inspection/types';
-import HomeButton from '@components/ui/HomeButton';
-import PreviousPageButton from '@components/ui/PreviousPageButton';
-import  supabase  from '@lib/supabaseClient';
 import { v4 as uuidv4 } from 'uuid';
+import useInspectionSession from '@hooks/useInspectionSession';
+import { generateInspectionPDF } from '@lib/inspection/pdf';
+import { generateQuoteFromInspection } from '@lib/quote/generateQuoteFromInspection';
+import supabase from '@lib/supabaseClient';
+import QuoteViewer from '@components/QuoteViewer';
+import PreviousPageButton from '@components/ui/PreviousPageButton';
+import HomeButton from '@components/ui/HomeButton';
+import type { InspectionItem, InspectionSection, QuoteLineItem } from '@lib/inspection/types';
+import type { QuoteLine } from '@lib/quote/generateQuoteFromInspection';
 
 export default function SummaryPage() {
   const router = useRouter();
-  const { session, updateItem } = useInspectionSession();
   const searchParams = useSearchParams();
   const inspectionId = searchParams.get('inspectionId');
   const workOrderIdFromUrl = searchParams.get('workOrderId');
 
+  const { session, updateItem, updateQuoteLines } = useInspectionSession();
+  const [quoteLines, setQuoteLines] = useState<QuoteLine[]>([]);
+  const [summaryText, setSummaryText] = useState('');
   const [workOrderId, setWorkOrderId] = useState<string | null>(workOrderIdFromUrl || null);
   const [isAddingToWorkOrder, setIsAddingToWorkOrder] = useState(false);
+
+  // AI quote generation on load
+  useEffect(() => {
+    const runQuote = async () => {
+      const allItems: InspectionItem[] = session.sections.flatMap((s) => s.items);
+      const { summary, quote } = await generateQuoteFromInspection(allItems);
+
+      setSummaryText(summary);
+      setQuoteLines(quote);
+      updateQuoteLines(
+  quote.map((line): QuoteLineItem => ({
+    id: crypto.randomUUID(),
+    item: line.description,
+    partPrice: 0,
+    partName: '',
+    name: line.description,
+    description: line.description,
+    notes: '',
+    status: 'fail', // default assumption; or replace with real value if available
+    laborHours: line.hours,
+    price: line.total,
+    part: {
+      name: '',
+      price: 0,
+    },
+    photoUrls: [],
+  }))
+);
+
+      if (inspectionId) {
+        await supabase
+          .from('inspections')
+          .update({ quote, summary })
+          .eq('id', inspectionId);
+      }
+    };
+
+    if (session.sections.length > 0) {
+      runQuote();
+    }
+  }, [session, inspectionId, updateQuoteLines]);
 
   const handleFieldChange = (
     sectionIndex: number,
@@ -49,7 +92,7 @@ export default function SummaryPage() {
         status: 'queued',
         location: session.location ?? 'unspecified',
       },
-    ]as any);
+    ] as any);
 
     if (!error) {
       setWorkOrderId(newId);
@@ -111,7 +154,6 @@ export default function SummaryPage() {
         <HomeButton />
       </div>
 
-      {/* Customer & Vehicle Info */}
       <div className="bg-zinc-800 text-white p-4 rounded mb-6">
         <h2 className="text-xl font-bold mb-2">Customer Info</h2>
         <p>Name: {session.customer?.first_name} {session.customer?.last_name}</p>
@@ -126,7 +168,7 @@ export default function SummaryPage() {
         <p>Color: {session.vehicle?.color}</p>
       </div>
 
-      {/* Sections and Items */}
+      {/* Editable inspection sections */}
       {session.sections.map((section: InspectionSection, sectionIndex: number) => (
         <div key={sectionIndex} className="mb-6 border rounded-md">
           <div className="bg-gray-200 px-4 py-2 font-bold">{section.title}</div>
@@ -204,6 +246,13 @@ export default function SummaryPage() {
           </div>
         </div>
       ))}
+
+      {/* Quote viewer from AI */}
+      {quoteLines.length > 0 && (
+        <div className="my-6">
+          <QuoteViewer summary={summaryText} quote={quoteLines} />
+        </div>
+      )}
 
       {hasFailedItems && (
         <button

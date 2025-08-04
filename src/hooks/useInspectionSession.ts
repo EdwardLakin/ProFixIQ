@@ -6,7 +6,114 @@ import {
   InspectionSection,
   InspectionSession,
   QuoteLine,
+  BrakeType,
 } from '@lib/inspection/types';
+
+type AxleLayoutConfig = {
+  axleCount: number;
+  brakeType: BrakeType;
+};
+
+function generateAxleSections({ axleCount, brakeType }: AxleLayoutConfig): InspectionSection[] {
+  const sections: InspectionSection[] = [];
+
+  for (let i = 1; i <= axleCount; i++) {
+    const title = `Axle ${i}`;
+
+    const items: InspectionItem[] = [
+      {
+        name: 'Left Tread Depth',
+        value: null,
+        unit: 'mm',
+        notes: '',
+        status: '',
+        photoUrls: [],
+        item: ''
+      },
+      {
+        name: 'Right Tread Depth',
+        value: null,
+        unit: 'mm',
+        notes: '',
+        status: '',
+        photoUrls: [],
+        item: ''
+      },
+      {
+        name: 'Left Tire Pressure',
+        value: null,
+        unit: 'psi',
+        notes: '',
+        status: '',
+        photoUrls: [],
+        item: ''
+      },
+      {
+        name: 'Right Tire Pressure',
+        value: null,
+        unit: 'psi',
+        notes: '',
+        status: '',
+        photoUrls: [],
+        item: ''
+      },
+      {
+        name: 'Left Lining Thickness',
+        value: null,
+        unit: 'mm',
+        notes: '',
+        status: '',
+        photoUrls: [],
+        item: ''
+      },
+      {
+        name: 'Right Lining Thickness',
+        value: null,
+        unit: 'mm',
+        notes: '',
+        status: '',
+        photoUrls: [],
+        item: ''
+      },
+      {
+        name: 'Wheel Torque',
+        value: null,
+        unit: 'ft lbs',
+        notes: '',
+        status: '',
+        photoUrls: [],
+        item: ''
+      },
+    ];
+
+    if (brakeType === 'air') {
+      items.push(
+        {
+          name: 'Left Push Rod Travel',
+          value: null,
+          unit: 'in',
+          notes: '',
+          status: '',
+          photoUrls: [],
+          item: ''
+        },
+        {
+          name: 'Right Push Rod Travel',
+          value: null,
+          unit: 'in',
+          notes: '',
+          status: '',
+          photoUrls: [],
+          item: ''
+        }
+      );
+    }
+
+    sections.push({ title, items });
+  }
+
+  return sections;
+}
 
 export default function useInspectionSession(initialSession?: Partial<InspectionSession>) {
   const [session, setSession] = useState<InspectionSession>(() => ({
@@ -54,7 +161,6 @@ export default function useInspectionSession(initialSession?: Partial<Inspection
     ...initialSession,
   }));
 
-  // Core Update Functions
   const updateInspection = (updates: Partial<InspectionSession>) => {
     setSession((prev) => ({
       ...prev,
@@ -106,15 +212,28 @@ export default function useInspectionSession(initialSession?: Partial<Inspection
     }));
   };
 
-  // Session Lifecycle Functions
-  const startSession = (sessionData: Partial<InspectionSession>) => {
+  const updateQuoteLines = (quoteLines: QuoteLine[]) => {
+  setSession((prev) => ({
+    ...prev,
+    quote: quoteLines,
+    lastUpdated: new Date().toISOString(),
+  }));
+};
+
+  const startSession = (
+    sessionData: Partial<InspectionSession> & { axleConfig?: AxleLayoutConfig }
+  ) => {
+    const { axleConfig, ...rest } = sessionData;
+
+    const newSections =
+      axleConfig?.axleCount && axleConfig?.brakeType
+        ? generateAxleSections(axleConfig)
+        : sessionData.sections || session.sections;
+
     const newSession: InspectionSession = {
       ...session,
-      ...sessionData,
-      sections:
-        sessionData.sections && sessionData.sections.length > 0
-          ? sessionData.sections
-          : session.sections,
+      ...rest,
+      sections: newSections,
       currentSectionIndex: 0,
       currentItemIndex: 0,
       transcript: '',
@@ -173,6 +292,7 @@ export default function useInspectionSession(initialSession?: Partial<Inspection
     updateSection,
     updateItem,
     addQuoteLine,
+    updateQuoteLines,
     startSession,
     pauseSession,
     resumeSession,

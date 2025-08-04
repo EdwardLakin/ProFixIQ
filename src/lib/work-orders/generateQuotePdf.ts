@@ -1,43 +1,59 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
-import type { QuoteLine } from '@lib/quote/generateQuoteFromInspection';
-import type { InspectionSummary } from '@lib/inspection/types';
+import { QuoteLineItem } from '@lib/inspection/types';
 
+/**
+ * Generate a PDF from quote lines and inspection summary.
+ * @param quoteLines List of normalized quote lines
+ * @param summary Inspection summary text
+ * @returns PDF Blob
+ */
 export async function generateQuotePDF(
-  quote: QuoteLine[],
-  summary: InspectionSummary
-): Promise<Uint8Array> {
+  quoteLines: QuoteLineItem[],
+  summary: string
+): Promise<Blob> {
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage();
-  const { width, height } = page.getSize();
-
-  const fontSize = 12;
-  const margin = 50;
-  let y = height - margin;
+  const { width, height } = page.getSize(); // width is used if you want to align elements, currently not used
 
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const fontSize = 12;
+  let y = height - 40;
 
-  const drawLine = (text: string) => {
-    if (y < margin) {
-      y = height - margin;
-      pdfDoc.addPage();
-    }
-    page.drawText(text, { x: margin, y, size: fontSize, font, color: rgb(0, 0, 0) });
-    y -= fontSize + 4;
+  const drawText = (text: string) => {
+    page.drawText(text, {
+      x: 50,
+      y,
+      size: fontSize,
+      font,
+      color: rgb(0, 0, 0),
+    });
+    y -= fontSize + 6;
   };
 
-  drawLine(`Inspection Summary:`);
-  drawLine(`Template: ${summary.templateName}`);
-  drawLine(`Date: ${summary.date}`);
-  drawLine('');
-  summary.summaryText.split('\n').forEach(drawLine);
+  drawText('Inspection Summary:');
+  const lines = summary.split('\n');
+  for (const line of lines) {
+    drawText(line);
+  }
 
-  drawLine('');
-  drawLine(`Quote Summary:`);
-  quote.forEach((line) => {
-    drawLine(
-      `${line.description} - ${line.hours} hrs @ $${line.rate}/hr = $${line.total.toFixed(2)}`
-    );
+  y -= 20;
+  drawText('Quote Items:');
+
+  quoteLines.forEach((line, idx) => {
+    drawText(`• ${line.description ?? line.name}`);
+    drawText(`   Part: ${line.part?.name} - $${line.part?.price?.toFixed(2)}`);
+    drawText(`   Labor: ${line.laborHours ?? 0} hrs - $${line.price?.toFixed(2)}`);
+    drawText(`   Status: ${line.status}`);
+    if (line.notes) {
+      drawText(`   Notes: ${line.notes}`);
+    }
+    y -= 10;
+    if (y < 60) {
+      y = height - 40;
+      pdfDoc.addPage();
+    }
   });
 
-  return await pdfDoc.save();
+  const pdfBytes = await pdfDoc.save();
+  return new Blob([pdfBytes], { type: 'application/pdf' });
 }

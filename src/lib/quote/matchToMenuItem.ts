@@ -1,8 +1,21 @@
 import { QuoteLine } from './generateQuoteFromInspection';
 import { InspectionItem } from '@lib/inspection/types';
+import { quoteMenu } from './quoteMenu';
+
+const defaultRate = 120;
 
 /**
- * Match common inspection items to menu quote templates
+ * Simple fuzzy match using Levenshtein distance-like similarity
+ */
+function isFuzzyMatch(a: string, b: string): boolean {
+  const normalize = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/gi, '');
+  const input = normalize(a);
+  const target = normalize(b);
+  return input.includes(target) || target.includes(input);
+}
+
+/**
+ * Match inspection item to predefined quote templates based on trigger phrases.
  */
 export function matchToMenuItem(
   name: string,
@@ -10,47 +23,26 @@ export function matchToMenuItem(
 ): QuoteLine | null {
   const normalized = name.toLowerCase();
 
-  const defaultRate = 120;
+  for (const menuItem of quoteMenu) {
+    for (const phrase of menuItem.triggerPhrases) {
+      if (
+        normalized.includes(phrase.toLowerCase()) ||
+        isFuzzyMatch(normalized, phrase)
+      ) {
+        const partDescription = (menuItem.parts ?? []).map((p) => p.name).join(', ');
+        const partCost = menuItem.parts.reduce((sum, p) => sum + p.cost, 0);
+        const laborCost = menuItem.laborHours * defaultRate;
 
-  if (normalized.includes('brake') || normalized.includes('pad')) {
-    return {
-      description: 'Brake Pad Replacement',
-      hours: 1.2,
-      rate: defaultRate,
-      total: parseFloat((1.2 * defaultRate).toFixed(2)),
-      job_type: 'repair',
-    };
+        return {
+          description: `${menuItem.notes || menuItem.triggerPhrases[0]}`,
+          hours: menuItem.laborHours,
+          rate: defaultRate,
+          total: parseFloat((partCost + laborCost).toFixed(2)),
+          job_type: menuItem.category,
+        };
+      }
+    }
   }
 
-  if (normalized.includes('battery')) {
-    return {
-      description: 'Battery Replacement',
-      hours: 0.5,
-      rate: defaultRate,
-      total: parseFloat((0.5 * defaultRate).toFixed(2)),
-      job_type: 'repair',
-    };
-  }
-
-  if (normalized.includes('oil') && normalized.includes('change')) {
-    return {
-      description: 'Oil Change Service',
-      hours: 0.7,
-      rate: defaultRate,
-      total: parseFloat((0.7 * defaultRate).toFixed(2)),
-      job_type: 'maintenance',
-    };
-  }
-
-  if (normalized.includes('filter') || normalized.includes('air')) {
-    return {
-      description: 'Filter Replacement',
-      hours: 0.4,
-      rate: defaultRate,
-      total: parseFloat((0.4 * defaultRate).toFixed(2)),
-      job_type: 'maintenance',
-    };
-  }
-
-  return null; // Fallback to AI generation
+  return null; // fallback to AI
 }

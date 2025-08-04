@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { Button }from '@components/ui/Button';
-import  useInspectionSession  from '@lib/inspection/useInspectionSession';
+import  useInspectionSession  from '@hooks/useInspectionSession';
 import { saveInspectionSession } from '@lib/inspection/save';
 import { generateInspectionSummary } from '@lib/inspection/generateInspectionSummary';
 

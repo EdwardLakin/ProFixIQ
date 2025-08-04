@@ -1,6 +1,7 @@
 export type CommandType = '' | 'ok' | 'fail' | 'na' | 'add' | 'recommend' | 'measurement' | 'status' | 'pause';
 export type InspectionStatus = 'not_started' | 'in_progress' | 'paused' | 'completed' | 'ready_for_review';
 export type InspectionItemStatus = '' |'ok' | 'fail' | 'na' | 'recommend';
+export type BrakeType = 'air' | 'hydraulic' | 'none';
 
 export interface InspectionCommandBase {
   type: CommandType;
@@ -61,6 +62,7 @@ export interface VehicleInfo {
   license_plate: string;
   mileage: string;
   color?: string;
+  brake_type?: 'air' | 'hydraulic' | 'none';
 }
 
 export interface InspectionItem {
@@ -127,6 +129,7 @@ export interface QuoteLine {
 }
 
 export interface QuoteLineItem {
+  id: string;
   item: any;
   partPrice: any;
   partName: string;
@@ -145,25 +148,27 @@ export interface QuoteLineItem {
 
 export interface InspectionSession {
   customer?: {
-  first_name: string;
-  last_name: string;
-  phone: string;
-  email: string;
-  address: string;
-  city: string;
-  province: string;
-  postal_code: string;
-  }
+    first_name: string;
+    last_name: string;
+    phone: string;
+    email: string;
+    address: string;
+    city: string;
+    province: string;
+    postal_code: string;
+  };
   vehicle: {
-  id?: null;
-  year: string;
-  make: string;
-  model: string;
-  vin: string;
-  license_plate: string;
-  mileage: string;
-  color?: string;
-  }
+    id?: null;
+    year: string;
+    make: string;
+    model: string;
+    vin: string;
+    license_plate: string;
+    mileage: string;
+    color?: string;
+    brakeType?: BrakeType; // ✅ Added for air/hydraulic/none
+    axles?: AxleInspection[]; // ✅ Axle-specific layout support
+  };
   id: string;
   vehicleId: string;
   customerId: string;
@@ -231,6 +236,21 @@ export type ParsedCommand = {
   recommend?: string; // ✅ Must match
   sectionIndex?: number;
   itemIndex?: number;
+};
+
+export type AxleInspection = {
+  axleLabel: string;
+  treadDepthLeft?: number;
+  treadDepthRight?: number;
+  tirePressureLeft?: number;
+  tirePressureRight?: number;
+  liningLeft?: number;
+  liningRight?: number;
+  rotorOrDrum?: string;
+  pushRodTravelLeft?: number;
+  pushRodTravelRight?: number;
+  torque?: number;
+  notes?: string;
 };
 
 export type Command =
