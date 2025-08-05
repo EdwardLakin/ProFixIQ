@@ -39,7 +39,7 @@ export async function generateQuotePDF(
   y -= 20;
   drawText('Quote Items:');
 
-  quoteLines.forEach((line, idx) => {
+  quoteLines.forEach((line, _idx) => {
     drawText(`• ${line.description ?? line.name}`);
     drawText(`   Part: ${line.part?.name} - $${line.part?.price?.toFixed(2)}`);
     drawText(`   Labor: ${line.laborHours ?? 0} hrs - $${line.price?.toFixed(2)}`);

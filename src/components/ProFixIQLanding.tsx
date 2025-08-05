@@ -5,9 +5,7 @@ import { Toaster } from 'sonner';
 
 import Navbar from '@components/Navbar';
 import LandingHero from '@components/ui/LandingHero';
-import PlanComparison from 'app/landing/PlanComparison';
 
-import SubscribeBanner from '@components/SubscribeBanner';
 import Chatbot from '@components/Chatbot';
 import Section from '@components/ui/Section';
 
@@ -25,14 +23,6 @@ export default function ProFixLanding() {
 
       <main className="relative z-10 pt-24 max-w-7xl mx-auto px-4">
         <LandingHero />
-
-        <Section id="plans">
-          <PlanComparison />
-        </Section>
-
-        <Section>
-          <SubscribeBanner />
-        </Section>
 
         <Section id="faq">
           <Chatbot />

@@ -1,52 +1,55 @@
 'use client';
 
-import React from 'react';
 import JobQueueCard from './JobQueueCard';
-import { ScrollArea } from './ui/scroll-area';
-import { Section } from './ui/section';
+import type { Database } from '@/types/supabase';
 
-export type JobStatus =
-  | 'in_progress'
-  | 'on_hold'
-  | 'awaiting_parts'
-  | 'parts_ordered'
-  | 'authorized'
-  | 'completed';
-
-export interface JobLine {
-  id: string;
-  vehicle: string;
-  complaint: string;
-  tech?: string;
-  status: JobStatus;
-  hold_reason?: string;
-  isNext?: boolean;
-  isReady?: boolean;
-  updated_at?: string;
-}
+type JobLine = Database['public']['Tables']['work_order_lines']['Row'] & {
+  assigned_to?: {
+    id?: string | null;
+    full_name?: string | null;
+  };
+};
 
 interface JobQueueProps {
   jobs: JobLine[];
+  techOptions: { id: string; full_name: string | null }[];
+  onAssignTech: (jobId: string, techId: string) => void;
+  onView: (job: JobLine) => void;
+  filterTechId?: string | null;
   title?: string;
-  onStartJob: (jobId: string) => void;
 }
 
-const JobQueue: React.FC<JobQueueProps> = ({ jobs, title = 'Job Queue', onStartJob }) => {
-  return (
-    <Section title={title}>
-      <ScrollArea className="h-[80vh]">
-        <div className="space-y-4">
-          {jobs.length === 0 ? (
-            <p className="text-sm text-gray-500 italic text-center py-8">No jobs available.</p>
-          ) : (
-            jobs.map((job) => (
-              <JobQueueCard key={job.id} job={job} onStart={() => onStartJob(job.id)} />
-            ))
-          )}
-        </div>
-      </ScrollArea>
-    </Section>
-  );
-};
+export default function JobQueue({
+  jobs,
+  techOptions,
+  onAssignTech,
+  onView,
+  filterTechId,
+  title = 'Work Order Queue',
+}: JobQueueProps) {
+  const filteredJobs = filterTechId
+    ? jobs.filter((job) => job.assigned_to?.id === filterTechId)
+    : jobs;
 
-export default JobQueue;
+  return (
+    <div className="p-4">
+      <h2 className="text-xl font-semibold mb-4 text-white">{title}</h2>
+
+      {filteredJobs.length === 0 ? (
+        <p className="text-sm text-gray-400 italic">No jobs available.</p>
+      ) : (
+        <div className="space-y-4">
+          {filteredJobs.map((job) => (
+            <JobQueueCard
+              key={job.id}
+              job={job}
+              techOptions={techOptions}
+              onAssignTech={onAssignTech}
+              onView={onView}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

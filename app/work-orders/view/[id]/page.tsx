@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { format, formatDistanceStrict } from 'date-fns';
-import supabase from '@lib/supabaseClient';
+
 import { toast } from 'sonner';
 
 import PreviousPageButton from '@components/ui/PreviousPageButton';

@@ -72,6 +72,7 @@ export interface Database {
 
       work_order_lines: {
         Row: {
+          vehicles: any;
           id: string;
           work_order_id: string | null;
           vehicle_id: string | null;
@@ -740,6 +741,24 @@ punch_events: {
           name: string;
           created_at: string;
           role: 'owner' | 'admin' | 'manager' | 'mechanic' | 'advisor' | 'parts' | null;
+          address: string | null;
+          city: string | null;
+          province: string | null;
+          postal_code: string | null;
+          phone_number: string | null;
+          email: string | null;
+          logo_url: string | null;
+          default_labor_rate: number | null;
+          default_shop_supplies_percent: number | null;
+          default_diagnostic_fee: number | null;
+          default_tax_rate: number | null;
+          require_cause_correction: boolean | null;
+          require_job_authorization: boolean | null;
+          enable_ai: boolean | null;
+          invoice_terms: string | null;
+          invoice_footer: string | null;
+          auto_email_quotes: boolean | null;
+          auto_pdf_quotes: boolean | null;
     // Add any other fields you use
         };
           Insert: {
@@ -747,12 +766,48 @@ punch_events: {
           name: string;
           created_at?: string;
           role: 'owner' | 'admin' | 'manager' | 'mechanic' | 'advisor' | 'parts' | null;
+          address: string | null;
+          city: string | null;
+          province: string | null;
+          postal_code: string | null;
+          phone_number: string | null;
+          email: string | null;
+          logo_url: string | null;
+          default_labor_rate: number | null;
+          default_shop_supplies_percent: number | null;
+          default_diagnostic_fee: number | null;
+          default_tax_rate: number | null;
+          require_cause_correction: boolean | null;
+          require_job_authorization: boolean | null;
+          enable_ai: boolean | null;
+          invoice_terms: string | null;
+          invoice_footer: string | null;
+          auto_email_quotes: boolean | null;
+          auto_pdf_quotes: boolean | null;
         };
           Update: {
           id?: string;
           name?: string;
           created_at?: string;
           role: 'owner' | 'admin' | 'manager' | 'mechanic' | 'advisor' | 'parts' | null;
+          address: string | null;
+          city: string | null;
+          province: string | null;
+          postal_code: string | null;
+          phone_number: string | null;
+          email: string | null;
+          logo_url: string | null;
+          default_labor_rate: number | null;
+          default_shop_supplies_percent: number | null;
+          default_diagnostic_fee: number | null;
+          default_tax_rate: number | null;
+          require_cause_correction: boolean | null;
+          require_job_authorization: boolean | null;
+          enable_ai: boolean | null;
+          invoice_terms: string | null;
+          invoice_footer: string | null;
+          auto_email_quotes: boolean | null;
+          auto_pdf_quotes: boolean | null;
         };
           Relationships: [];
         }

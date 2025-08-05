@@ -2,76 +2,101 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { usePathname } from 'next/navigation';
-import clsx from 'clsx';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import type { Database } from '@/types/supabase';
+import {
+  FaChartBar,
+  FaUsers,
+  FaCogs,
+  FaWrench,
+  FaChevronDown,
+  FaChevronUp,
+} from 'react-icons/fa';
 import ShiftTracker from '@components/punch/ShiftTracker';
 
 export default function RoleNavAdmin() {
   const supabase = createClientComponentClient<Database>();
-  const [role, setRole] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
-  const pathname = usePathname();
+  const [openSection, setOpenSection] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchRole = async () => {
+    const fetchUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      const uid = session?.user?.id;
-      if (!uid) return;
-
-      setUserId(uid);
-
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', uid)
-        .single();
-
-      setRole(profile?.role ?? null);
+      if (session?.user?.id) setUserId(session.user.id);
     };
-
-    fetchRole();
+    fetchUser();
   }, [supabase]);
 
-  if (!role || !['admin', 'manager', 'owner'].includes(role)) return null;
-
-  const linkClass = (href: string) =>
-    clsx(
-      'block px-4 py-2 rounded hover:bg-orange-600',
-      pathname === href && 'bg-orange-700 text-black'
-    );
+  const toggleSection = (section: string) => {
+    setOpenSection((prev) => (prev === section ? null : section));
+  };
 
   return (
     <nav className="w-full md:w-64 bg-neutral-900 p-4 text-white space-y-6">
       <div>
-        <p className="uppercase text-sm text-orange-400 mb-2">Admin Panel</p>
-        <div className="space-y-1">
-          <Link href="/dashboard/admin" className={linkClass('/dashboard/admin')}>
-            Admin Dashboard
-          </Link>
-          <Link href="/work-orders/create" className={linkClass('/work-orders/create')}>
-            Create Work Order
-          </Link>
-          <Link href="/work-orders/queue" className={linkClass('/work-orders/queue')}>
-            Job Queue
-          </Link>
-          <Link href="/work-orders" className={linkClass('/work-orders')}>
-            All Work Orders
-          </Link>
-          <Link href="/menu" className={linkClass('/menu')}>
-            Menu Items
-          </Link>
-          <Link href="/admin/create-tech" className={linkClass('/admin/create-tech')}>
-            Create Tech
-          </Link>
-        </div>
+        <button
+          onClick={() => toggleSection('reports')}
+          className="flex items-center justify-between w-full text-left font-bold text-orange-500 mb-1"
+        >
+          <span className="flex items-center gap-2"><FaChartBar /> Reports</span>
+          {openSection === 'reports' ? <FaChevronUp /> : <FaChevronDown />}
+        </button>
+        {openSection === 'reports' && (
+          <div className="pl-4 space-y-1">
+            <Link href="/dashboard/owner/reports" className="block hover:text-orange-400">View Reports</Link>
+          </div>
+        )}
       </div>
 
-      {/* ✅ Add punch system here */}
+      <div>
+        <button
+          onClick={() => toggleSection('users')}
+          className="flex items-center justify-between w-full text-left font-bold text-orange-500 mb-1"
+        >
+          <span className="flex items-center gap-2"><FaUsers /> Users</span>
+          {openSection === 'users' ? <FaChevronUp /> : <FaChevronDown />}
+        </button>
+        {openSection === 'users' && (
+          <div className="pl-4 space-y-1">
+            <Link href="/dashboard/owner/create-user" className="block hover:text-orange-400">Manage Users</Link>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <button
+          onClick={() => toggleSection('settings')}
+          className="flex items-center justify-between w-full text-left font-bold text-orange-500 mb-1"
+        >
+          <span className="flex items-center gap-2"><FaCogs /> Settings</span>
+          {openSection === 'settings' ? <FaChevronUp /> : <FaChevronDown />}
+        </button>
+        {openSection === 'settings' && (
+          <div className="pl-4 space-y-1">
+            <Link href="/dashboard/owner/settings" className="block hover:text-orange-400">Shop Settings</Link>
+            <Link href="/compare-plans" className="block hover:text-orange-400">Plan & Billing</Link>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <button
+          onClick={() => toggleSection('parts')}
+          className="flex items-center justify-between w-full text-left font-bold text-orange-500 mb-1"
+        >
+          <span className="flex items-center gap-2"><FaWrench /> Parts</span>
+          {openSection === 'parts' ? <FaChevronUp /> : <FaChevronDown />}
+        </button>
+        {openSection === 'parts' && (
+          <div className="pl-4 space-y-1">
+            <Link href="/parts" className="block hover:text-orange-400">Parts Dashboard</Link>
+          </div>
+        )}
+      </div>
+
       {userId && (
         <div className="mt-6 border-t border-gray-800 pt-4">
-          <p className="uppercase text-sm text-orange-400 mb-2">Shift Tracker</p>
+          <h2 className="text-orange-500 font-bold mb-2">Shift Tracker</h2>
           <ShiftTracker userId={userId} />
         </div>
       )}
