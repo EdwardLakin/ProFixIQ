@@ -1,6 +1,5 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
@@ -8,7 +7,6 @@ import type { Database } from '@/types/supabase';
 
 export default function OwnerDashboardPage() {
   const supabase = createClientComponentClient<Database>();
-  const router = useRouter();
   const [email, setEmail] = useState<string | null>(null);
 
   useEffect(() => {
@@ -88,6 +86,13 @@ export default function OwnerDashboardPage() {
           <div className="bg-neutral-800 hover:bg-orange-600 p-4 rounded-md shadow transition cursor-pointer">
             <h2 className="text-lg font-semibold text-white">Settings</h2>
             <p className="text-sm text-white/70">Manage shop settings</p>
+          </div>
+        </Link>
+
+        <Link href="/dashboard/owner/import-customers">
+          <div className="bg-neutral-800 hover:bg-orange-600 p-4 rounded-md shadow transition cursor-pointer">
+            <h2 className="text-lg font-semibold text-white">Customer Import</h2>
+            <p className="text-sm text-white/70">Import customers and vehicle history</p>
           </div>
         </Link>
 

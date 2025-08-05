@@ -103,12 +103,13 @@ export default function RoleNavOwner() {
         <NavSection title="Management" icon={<FaUserPlus />} sectionKey="management">
           <Link href="/dashboard/owner/create-user" className="block hover:text-orange-400">Create User</Link>
           <Link href="/dashboard/owner" className="block hover:text-orange-400">Owner Dashboard</Link>
+
         </NavSection>
 
         <NavSection title="Settings & Reports" icon={<FaRegChartBar />} sectionKey="settings">
           <Link href="/dashboard/owner/reports" className="block hover:text-orange-400">Reports</Link>
           <Link href="/dashboard/owner/settings" className="block hover:text-orange-400">Settings</Link>
-          
+          <Link href="/dashboard/owner/import-customers" className="block hover:text-orange-400">Import Customers</Link>
           <Link href="/compare-plans" className="block hover:text-orange-400">Plan & Billing</Link>
         </NavSection>
 

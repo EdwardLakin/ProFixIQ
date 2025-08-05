@@ -1,6 +1,6 @@
 'use client';
 
-import useInspectionSession from '@lib/inspection/useInspectionSession';
+import useInspectionSession from '@hooks/useInspectionSession';
 import { saveInspectionSession } from '@lib/inspection/save';
 
 export function SaveInspectionButton() {
