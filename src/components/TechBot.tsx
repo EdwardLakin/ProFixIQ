@@ -41,13 +41,15 @@ export default function TechBot() {
         throw new Error(data.error || 'Something went wrong.');
       }
 
-      setResponse(data.result);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+      } catch (err: unknown) {
+  if (err instanceof Error) {
+    setError(err.message);
+  } else {
+    setError('An unknown error occurred.');
+  }
+} finally {
+  setLoading(false);
+}
 
   return (
     <Card className="max-w-2xl mx-auto mt-6 bg-surface shadow-card border border-border space-y-4 p-6">
@@ -79,4 +81,4 @@ export default function TechBot() {
       )}
     </Card>
   );
-}
+}}

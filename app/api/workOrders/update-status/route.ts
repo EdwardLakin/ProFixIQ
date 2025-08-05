@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import type { Database } from '@/types/supabase'; // Make sure this exists
+import type { Database } from '@/types/supabase';
 
 const supabase = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -29,7 +29,6 @@ interface RequestBody {
 export async function POST(req: NextRequest) {
   try {
     const body: RequestBody = await req.json();
-
     const { workOrderId, command, quote, summary } = body;
 
     if (!workOrderId || !command) {
@@ -67,8 +66,9 @@ export async function POST(req: NextRequest) {
     if (error) throw error;
 
     return NextResponse.json({ success: true, updated: updateFields });
-  } catch (err: any) {
-    console.error('Work order update failed:', err.message || err);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('Work order update failed:', message);
     return NextResponse.json({ error: 'Update failed' }, { status: 500 });
   }
 }

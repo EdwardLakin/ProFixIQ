@@ -26,9 +26,10 @@ export async function POST(req: Request) {
     }
 
     event = stripe.webhooks.constructEvent(body, sig, endpointSecret);
-  } catch (err: any) {
-    console.error('❌ Webhook verification failed:', err.message);
-    return NextResponse.json({ error: `Webhook Error: ${err.message}` }, { status: 400 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('❌ Webhook verification failed:', message);
+    return NextResponse.json({ error: `Webhook Error: ${message}` }, { status: 400 });
   }
 
   try {
@@ -41,7 +42,6 @@ export async function POST(req: Request) {
       console.log('✅ Checkout completed');
       console.log('Metadata:', session.metadata);
 
-      // If this is an add-on purchase, increment shop.user_limit directly
       if (isAddon && shopId) {
         const { data: shop, error: fetchError } = await supabase
           .from('shops')
@@ -66,7 +66,6 @@ export async function POST(req: Request) {
         }
       }
 
-      // Update the profile to mark Stripe complete
       if (userId) {
         const { error } = await supabase
           .from('profiles')
@@ -82,8 +81,9 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ received: true });
-  } catch (err: any) {
-    console.error('❌ Webhook handler error:', err.message);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('❌ Webhook handler error:', message);
     return NextResponse.json({ error: 'Webhook handler failure' }, { status: 500 });
   }
 }

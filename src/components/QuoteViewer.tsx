@@ -52,24 +52,28 @@ export default function QuoteViewer({ summary, quote }: QuoteViewerProps) {
     normalize();
   }, [quote]);
 
-  const handleChange = (idx: number, field: keyof QuoteLineItem, value: any) => {
-    setQuoteState((prev) =>
-      prev.map((item, i) =>
-        i === idx
-          ? {
-              ...item,
-              [field]: value,
-              part:
-                field === 'partName'
-                  ? { ...item.part, name: value }
-                  : field === 'partPrice'
-                  ? { ...item.part, price: parseFloat(value) }
-                  : item.part,
-            }
-          : item
-      )
-    );
-  };
+    const handleChange = (
+  idx: number,
+  field: keyof QuoteLineItem,
+  value: string | number
+) => {
+  setQuoteState((prev) =>
+    prev.map((item, i) =>
+      i === idx
+        ? {
+            ...item,
+            [field]: value,
+            part:
+              field === 'partName'
+                ? { ...item.part, name: value as string }
+                : field === 'partPrice'
+                ? { ...item.part, price: parseFloat(value as string) }
+                : item.part,
+          }
+        : item
+    )
+  );
+};
 
   const handlePhotoUpload = (idx: number, files: FileList | null) => {
     if (!files || files.length === 0) return;

@@ -4,9 +4,10 @@ import { memo, useState } from 'react';
 import { format } from 'date-fns';
 import type { Database } from '@/types/supabase';
 
+// ✅ Job type from Supabase, extended with assigned_to shape
 type JobLine = Database['public']['Tables']['work_order_lines']['Row'] & {
   assigned_to?: {
-    id?: string | null;
+    id: string | null;
     full_name?: string | null;
   };
 };

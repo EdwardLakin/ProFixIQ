@@ -83,9 +83,13 @@ export default function CreateWorkOrderForm() {
       setVehicle({ year: '', make: '', model: '', vin: '' });
       setInspection('');
       setConcerns(['']);
-    } catch (err: any) {
-      console.error('Error creating work order:', err.message);
-      setMessage('Failed to create work order.');
+    } catch (err) {
+  if (err instanceof Error) {
+    console.error('❌ Error creating work order:', err.message);
+  } else {
+    console.error('❌ Unknown error creating work order:', err);
+  }
+  setMessage('❌ Failed to create work order.');
     } finally {
       setLoading(false);
     }

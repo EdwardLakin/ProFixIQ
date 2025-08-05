@@ -46,16 +46,21 @@ export default function LoadWorkOrderById({
   }, [workOrderId]);
 
   const handleSave = async () => {
-    try {
-      await saveWorkOrderLines(lines, userId, vehicleId, workOrderId);
-      setSaved(true);
-      setError(null);
-    } catch (err: any) {
+  try {
+    await saveWorkOrderLines(lines, userId, vehicleId, workOrderId);
+    setSaved(true);
+    setError(null);
+  } catch (err) {
+    if (err instanceof Error) {
       console.error(err);
       setError(err.message);
-      setSaved(false);
+    } else {
+      console.error('Unknown error:', err);
+      setError('An unknown error occurred.');
     }
-  };
+    setSaved(false);
+  }
+};
 
   const updateLine = (index: number, updatedLine: RepairLine) => {
     const updated = [...lines];

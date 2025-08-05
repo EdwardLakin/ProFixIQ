@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { FaSignOutAlt, FaBars, FaBell, FaSearch } from 'react-icons/fa';
 import type { Database } from '@/types/supabase';
+import type { User } from '@supabase/auth-helpers-nextjs';
 import Link from 'next/link';
 import clsx from 'clsx';
 
@@ -13,7 +14,7 @@ export default function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
 
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Database['public']['Tables']['profiles']['Row'] | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);

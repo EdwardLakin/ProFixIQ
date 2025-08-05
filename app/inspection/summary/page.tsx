@@ -12,6 +12,7 @@ import PreviousPageButton from '@components/ui/PreviousPageButton';
 import HomeButton from '@components/ui/HomeButton';
 import type { InspectionItem, InspectionSection, QuoteLineItem } from '@lib/inspection/types';
 import type { QuoteLine } from '@lib/quote/generateQuoteFromInspection';
+import type { Database } from '@/types/supabase';
 
 export default function SummaryPage() {
   const router = useRouter();
@@ -92,7 +93,7 @@ export default function SummaryPage() {
         status: 'queued',
         location: session.location ?? 'unspecified',
       },
-    ] as any);
+    ] as Database['public']['Tables']['work_orders']['Insert'][]);
 
     if (!error) {
       setWorkOrderId(newId);

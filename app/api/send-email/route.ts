@@ -5,8 +5,22 @@ interface EmailRequestBody {
   subject: string;
   templateId?: string;
   html?: string;
-  dynamicTemplateData?: Record<string, any>;
+  dynamicTemplateData?: Record<string, string | number | boolean | object | null>;
 }
+
+type SendGridRequestBody = {
+  personalizations: Array<{
+    to: Array<{ email: string }>;
+    subject: string;
+    dynamic_template_data?: EmailRequestBody['dynamicTemplateData'];
+  }>;
+  from: {
+    email: string;
+    name: string;
+  };
+  template_id?: string;
+  content?: Array<{ type: string; value: string }>;
+};
 
 export async function POST(req: Request) {
   const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
@@ -19,7 +33,7 @@ export async function POST(req: Request) {
   let payload: EmailRequestBody;
   try {
     payload = await req.json();
-  } catch (err) {
+  } catch {
     return NextResponse.json({ error: 'Invalid JSON payload' }, { status: 400 });
   }
 
@@ -30,7 +44,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
 
-  const requestBody: Record<string, any> = {
+  const requestBody: SendGridRequestBody = {
     personalizations: [
       {
         to: [{ email }],
@@ -47,7 +61,7 @@ export async function POST(req: Request) {
   if (templateId) {
     requestBody.template_id = templateId;
   } else {
-    requestBody.content = [{ type: 'text/html', value: html }];
+    requestBody.content = [{ type: 'text/html', value: html || '' }];
   }
 
   let attempt = 0;

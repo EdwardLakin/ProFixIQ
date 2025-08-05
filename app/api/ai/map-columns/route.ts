@@ -11,7 +11,9 @@ export async function POST(req: Request) {
   try {
     const mapping = await mapCsvColumns(headers);
     return NextResponse.json({ mapping });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Failed to map columns' }, { status: 500 });
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error ? err.message : 'Failed to map columns';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

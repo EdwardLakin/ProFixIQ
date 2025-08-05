@@ -11,7 +11,6 @@ import useInspectionSession from '@hooks/useInspectionSession';
 
 import { handleTranscriptFn } from '@lib/inspection/handleTranscript';
 import { interpretCommand } from '@components/inspection/interpretCommand';
-import { convertParsedCommands } from '@lib/inspection/convertAICommands';
 
 import {
   ParsedCommand,
@@ -122,15 +121,15 @@ export default function CustomInspectionPage() {
     recognition.interimResults = false;
     recognition.lang = 'en-US';
 
-    recognition.onresult = (event: any) => {
-      const last = event.results.length - 1;
-      const transcript = event.results[last][0].transcript;
-      handleTranscript(transcript);
-    };
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+  const last = event.results.length - 1;
+  const transcript = event.results[last][0].transcript;
+  handleTranscript(transcript);
+};
 
-    recognition.onerror = (event: any) => {
-      console.error('Speech recognition error:', event.error);
-    };
+    recognition.onerror = (event: Event & { error: string }) => {
+  console.error('Speech recognition error:', event.error);
+};
 
     recognitionRef.current = recognition;
     recognition.start();

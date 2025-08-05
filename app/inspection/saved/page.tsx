@@ -14,7 +14,7 @@ const supabase = createClient<Database>(
 );
 
 export default function SavedInspectionsPage() {
-  const [inspections, setInspections] = useState<any[]>([]);
+  const [inspections, setInspections] = useState<Database['public']['Tables']['inspections']['Row'][]>([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
@@ -43,7 +43,7 @@ export default function SavedInspectionsPage() {
 
   return (
     <div className="min-h-screen bg-black text-white px-4 py-6">
-      <PreviousPageButton to ="/inspection" />
+      <PreviousPageButton to="/inspection" />
       <h1 className="text-3xl text-orange-400 font-blackops mb-6 text-center">
         Saved Inspections
       </h1>
@@ -61,19 +61,16 @@ export default function SavedInspectionsPage() {
               className="p-4 bg-white/10 rounded-md hover:bg-white/20 cursor-pointer transition"
             >
               <h2 className="text-lg font-bold text-orange-300">
-                {insp.template_name || 'Unnamed Inspection'}
+                {insp.template || 'Unnamed Inspection'}
               </h2>
               <p className="text-sm text-white/80">
                 Created: {format(new Date(insp.created_at), 'PPpp')}
               </p>
-              {insp.vehicle_id && (
-                <p className="text-sm text-white/70">Vehicle: {insp.vehicle_id}</p>
-              )}
-              {insp.customer_id && (
-                <p className="text-sm text-white/70">Customer: {insp.customer_id}</p>
+              {insp.vehicle && (
+                <p className="text-sm text-white/70">Vehicle: {insp.vehicle}</p>
               )}
               <p className="text-sm text-white/70 capitalize">
-                Status: {insp.status || 'in_progress'}
+                Status: in_progress
               </p>
             </div>
           ))}

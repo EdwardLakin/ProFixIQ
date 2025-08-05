@@ -1,4 +1,3 @@
-// app/api/ai/summarize-stats/route.ts
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
 
@@ -38,8 +37,9 @@ Include insights like revenue trends, labor efficiency, job volume, profitabilit
 
     const message = response.choices[0]?.message?.content ?? '';
     return NextResponse.json({ summary: message });
-  } catch (err: any) {
-    console.error('Summary generation error:', err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Summary generation error:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

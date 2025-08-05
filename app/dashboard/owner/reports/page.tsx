@@ -29,7 +29,7 @@ export default function ReportsPage() {
   const [stats, setStats] = useState<any>(null);
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [goalRevenue, setGoalRevenue] = useState<number>(10000); // Example goal
+  const [goalRevenue, setGoalRevenue] = useState<number>(10000);
   const [filters, setFilters] = useState({ techId: '', invoiceId: '' });
 
   useEffect(() => {
@@ -52,12 +52,11 @@ export default function ReportsPage() {
       const fetchedStats = await getShopStats(shopId, range, filters);
       setStats(fetchedStats);
 
-      // AI summary
       try {
         const res = await fetch('/api/ai/summarize-stats', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ stats: fetchedStats, range }),
+          body: JSON.stringify({ stats: fetchedStats, timeRange: range }), // ✅ Fixed key here
         });
         const json = await res.json();
         setAiSummary(json.summary);
@@ -89,7 +88,8 @@ export default function ReportsPage() {
     labor: p.labor,
     expenses: p.expenses,
   })) || [];
-    return (
+
+  return (
     <div className="p-6 text-white max-w-5xl mx-auto">
       <h1 className="text-3xl font-bold mb-4 text-orange-400">Shop Performance Reports</h1>
 
