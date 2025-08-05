@@ -1,7 +1,6 @@
-import { startOfMonth, endOfMonth } from 'date-fns';
-
-import { createClient } from '@/utils/supabase/server';
 import {
+  startOfMonth,
+  endOfMonth,
   startOfWeek,
   endOfWeek,
   startOfQuarter,
@@ -14,6 +13,9 @@ import {
   format,
 } from 'date-fns';
 
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import type { Database } from '@/types/supabase';
+
 type TimeRange = 'weekly' | 'monthly' | 'quarterly' | 'yearly';
 
 interface Filters {
@@ -22,7 +24,7 @@ interface Filters {
 }
 
 export async function getShopStats(shopId: string, timeRange: TimeRange, filters: Filters = {}) {
-  const supabase = createClient();
+  const supabase = createClientComponentClient<Database>();
   const now = new Date();
   let start: Date;
   let end: Date;

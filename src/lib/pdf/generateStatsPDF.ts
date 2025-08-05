@@ -1,7 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { formatCurrency } from '@/utils/formatters';
-import { createClient } from '@/utils/supabase/server';
+import { createClient } from '@/utils/supabase/createServerClient';
 
 export async function generateStatsPDF(
   stats: any,
