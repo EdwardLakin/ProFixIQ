@@ -1,7 +1,10 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { formatCurrency } from '@/utils/formatters';
-import { createClient } from '@/utils/supabase/createServerClient';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import type { Database } from '@/types/supabase';
+
+const supabase = createClientComponentClient<Database>();
 
 export async function generateStatsPDF(
   stats: any,
@@ -9,8 +12,6 @@ export async function generateStatsPDF(
   range: string,
   chartImgData: string
 ): Promise<Blob> {
-  const supabase = createClient();
-
   // Fetch shop info for branding
   const { data: shop } = await supabase
     .from('shops')
