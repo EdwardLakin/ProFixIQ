@@ -20,7 +20,9 @@
       "@hooks/*": ["src/hooks/*"],
       "@lib/*": ["src/lib/*"],
       "@custom-types/*": ["src/types/*"],
-      "@/types/*": ["src/types/*"],   // <== Add this line
+      "@/types/*": ["src/types/*"], 
+      "@/utils/*": ["src/utils/*"], 
+      "@context/*": ["src/context/*"]
     },
     "types": [],
     "esModuleInterop": true,
