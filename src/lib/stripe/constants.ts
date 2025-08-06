@@ -1,7 +1,7 @@
 export const PRICE_IDS = {
   free: {
     monthly: 'price_1RnWn2lGrq4FFVFx7O7o6YhW',
-    yearly: '',
+    yearly: 'price_1RnWn21Grq4FFVFx7O7o6YhW',
   },
   diy: {
     monthly: 'price_1RnWlfGrq4FFVFxUfA36GyT',

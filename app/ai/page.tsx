@@ -1,52 +1,61 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { FaCamera, FaCode, FaRobot } from 'react-icons/fa';
 import HomeButton from '@components/ui/HomeButton';
 
 export default function AIDiagnosisPage() {
   const router = useRouter();
 
+  const cards = [
+    {
+      icon: <FaCamera className="text-4xl text-blue-400 mb-2" />,
+      title: 'Analyze Image',
+      description: 'Upload or capture a photo to identify visible issues using GPT-4o Vision.',
+      route: '/ai/photo',
+      color: 'blue-400',
+    },
+    {
+      icon: <FaCode className="text-4xl text-yellow-400 mb-2" />,
+      title: 'DTC Code Lookup',
+      description: 'Enter a trouble code (e.g., P0171) to get an explanation and fix.',
+      route: '/ai/dtc',
+      color: 'yellow-400',
+    },
+    {
+      icon: <FaRobot className="text-4xl text-green-400 mb-2" />,
+      title: 'TechBot Assistant',
+      description: 'Ask the AI mechanic about symptoms, repairs, or next steps using freeform chat.',
+      route: '/ai/chat',
+      color: 'green-400',
+    },
+  ];
+
   return (
-    <div className="max-w-4xl mx-auto px-4 py-10">
+    <div className="max-w-5xl mx-auto px-4 py-10 text-white">
       <HomeButton />
 
-      <h1 className="text-7xl mb-2 text-center font-blackops text-orange-500 drop-shadow">
+      <h1 className="text-6xl mb-2 text-center font-blackops text-orange-500 drop-shadow">
         AI Diagnosis
       </h1>
-      <p className="text-lg text-center text-neutral-300">
+      <p className="text-lg text-center text-neutral-300 mb-10">
         Select a diagnostic method below to begin:
       </p>
 
-      <div className="space-y-6 mt-8">
-        <button
-          onClick={() => router.push('/ai/photo')}
-          className="w-full py-5 px-6 border-4 border-blue-400 text-blue-400 font-bold text-lg rounded transition-all hover:scale-105"
-        >
-          <p className="text-2xl">Analyze Image</p>
-          <p className="text-sm font-normal text-white">
-            Upload or capture a photo to identify visible issues using GPT-4o Vision.
-          </p>
-        </button>
-
-        <button
-          onClick={() => router.push('/ai/dtc')}
-          className="w-full py-5 px-6 border-4 border-yellow-400 text-yellow-400 font-bold text-lg rounded transition-all hover:scale-105"
-        >
-          <p className="text-2xl">DTC Code Lookup</p>
-          <p className="text-sm font-normal text-white">
-            Enter a trouble code (e.g., P0171) to get an explanation and fix.
-          </p>
-        </button>
-
-        <button
-          onClick={() => router.push('/ai/chat')}
-          className="w-full py-5 px-6 border-4 border-green-400 text-green-400 font-bold text-lg rounded transition-all hover:scale-105"
-        >
-          <p className="text-2xl">TechBot Assistant</p>
-          <p className="text-sm font-normal text-white">
-            Ask the AI mechanic about symptoms, repairs, or next steps using freeform chat.
-          </p>
-        </button>
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {cards.map(({ icon, title, description, route, color }) => (
+          <button
+            key={title}
+            onClick={() => router.push(route)}
+            className={`w-full py-6 px-5 border-4 border-${color} text-${color} font-bold text-left rounded-xl bg-black bg-opacity-40 shadow-md hover:scale-[1.02] hover:shadow-lg transition-all focus:outline-none focus:ring-2 focus:ring-${color}`}
+          >
+            <div className="flex flex-col items-start space-y-2">
+              {icon}
+              <p className="text-2xl">{title}</p>
+              <p className="text-sm font-normal text-white">{description}</p>
+            </div>
+          </button>
+        ))}
       </div>
     </div>
   );

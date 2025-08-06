@@ -37,13 +37,16 @@ export default function PlanSelectionPage() {
     }
 
     const res = await fetch('/api/stripe/checkout', {
-      method: 'POST',
-      body: JSON.stringify({
-        planKey: plan,
-        interval: isYearly ? 'yearly' : 'monthly',
-        email: (await supabase.auth.getUser()).data.user?.email,
-      }),
-    });
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    planKey: plan,
+    interval: isYearly ? 'yearly' : 'monthly',
+    email: (await supabase.auth.getUser()).data.user?.email,
+  }),
+});
 
     const { url } = await res.json();
 

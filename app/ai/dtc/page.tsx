@@ -1,60 +1,74 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import useVehicleInfo from "@hooks/useVehicleInfo";
-import analyze from "@lib/analyze";
-import { Message } from "@lib/types";
-import Markdown from "react-markdown";
-import HomeButton from "@components/ui/HomeButton";
-import PreviousPageButton from "@components/ui/PreviousPageButton";
+import { useState } from 'react';
+import useVehicleInfo from '@hooks/useVehicleInfo';
+import analyze from '@lib/analyze';
+import { Message } from '@lib/types';
+import Markdown from 'react-markdown';
+import HomeButton from '@components/ui/HomeButton';
+import PreviousPageButton from '@components/ui/PreviousPageButton';
 
 export default function DtcDecoder() {
   const { vehicleInfo, updateVehicle } = useVehicleInfo();
-  const [dtcCode, setDtcCode] = useState("");
+  const [dtcCode, setDtcCode] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
-  const [followUp, setFollowUp] = useState("");
-  const [error, setError] = useState("");
+  const [followUp, setFollowUp] = useState('');
+  const [error, setError] = useState('');
 
   const handleAnalyze = async () => {
-    setError("");
+    setError('');
     if (
-      !vehicleInfo?.year ||
-      !vehicleInfo?.make ||
-      !vehicleInfo?.model ||
-      !dtcCode.match(/^P0\d{3}$/i)
+      !vehicleInfo ||
+      !vehicleInfo.year ||
+      !vehicleInfo.make ||
+      !vehicleInfo.model ||
+      !/^P0\d{3}$/i.test(dtcCode)
     ) {
-      setError("Please select a vehicle and enter a valid DTC code.");
+      setError('Please select a vehicle and enter a valid DTC code.');
       return;
     }
 
-    setLoading(true);
-    const result = await analyze(dtcCode, vehicleInfo);
-    setMessages((prev) => [...prev, { role: "assistant", content: result }]);
-    setLoading(false);
+    try {
+      setLoading(true);
+      const result = await analyze(dtcCode, vehicleInfo);
+      setMessages((prev) => [...prev, { role: 'assistant', content: result }]);
+    } catch {
+      setError('Failed to analyze DTC.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleFollowUp = async () => {
-    if (!followUp.trim()) return;
-    setLoading(true);
-    const result = await analyze(followUp, vehicleInfo, messages);
-    setMessages((prev) => [
-      ...prev,
-      { role: "user", content: followUp },
-      { role: "assistant", content: result },
-    ]);
-    setFollowUp("");
-    setLoading(false);
+    if (!followUp.trim() || !vehicleInfo) return;
+
+    try {
+      setLoading(true);
+      const result = await analyze(followUp, vehicleInfo, messages);
+      setMessages((prev) => [
+        ...prev,
+        { role: 'user', content: followUp },
+        { role: 'assistant', content: result },
+      ]);
+      setFollowUp('');
+    } catch {
+      setError('Failed to process follow-up.');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleVehicleChange = (field: "year" | "make" | "model", value: string) => {
-  updateVehicle({
-    year: vehicleInfo?.year || "",
-    make: vehicleInfo?.make || "",
-    model: vehicleInfo?.model || "",
-    [field]: value,
-  });
-};
+  const handleVehicleChange = (field: 'year' | 'make' | 'model', value: string) => {
+    updateVehicle({
+      year: vehicleInfo?.year || '',
+      make: vehicleInfo?.make || '',
+      model: vehicleInfo?.model || '',
+      [field]: value,
+      id: '',
+      engine: ''
+    });
+  };
 
   return (
     <div className="min-h-screen bg-black text-white px-4 py-8">
@@ -73,22 +87,22 @@ export default function DtcDecoder() {
           <div className="flex justify-center gap-4">
             <input
               type="text"
-              value={vehicleInfo?.year || ""}
-              onChange={(e) => handleVehicleChange("year", e.target.value)}
+              value={vehicleInfo?.year || ''}
+              onChange={(e) => handleVehicleChange('year', e.target.value)}
               className="bg-gray-900 px-4 py-2 rounded text-white text-center w-24"
               placeholder="Year"
             />
             <input
               type="text"
-              value={vehicleInfo?.make || ""}
-              onChange={(e) => handleVehicleChange("make", e.target.value)}
+              value={vehicleInfo?.make || ''}
+              onChange={(e) => handleVehicleChange('make', e.target.value)}
               className="bg-gray-900 px-4 py-2 rounded text-white text-center w-32"
               placeholder="Make"
             />
             <input
               type="text"
-              value={vehicleInfo?.model || ""}
-              onChange={(e) => handleVehicleChange("model", e.target.value)}
+              value={vehicleInfo?.model || ''}
+              onChange={(e) => handleVehicleChange('model', e.target.value)}
               className="bg-gray-900 px-4 py-2 rounded text-white text-center w-32"
               placeholder="Model"
             />
@@ -111,8 +125,9 @@ export default function DtcDecoder() {
         <button
           onClick={handleAnalyze}
           className="w-full bg-orange-600 text-white py-3 px-4 rounded font-blackOpsOne text-lg hover:bg-orange-700 transition"
+          disabled={loading}
         >
-          Analyze DTC
+          {loading ? 'Analyzing...' : 'Analyze DTC'}
         </button>
 
         {error && (
@@ -126,7 +141,7 @@ export default function DtcDecoder() {
             <div
               key={i}
               className={`p-4 rounded ${
-                msg.role === "user" ? "bg-gray-800" : "bg-gray-700"
+                msg.role === 'user' ? 'bg-gray-800' : 'bg-gray-700'
               }`}
             >
               <Markdown>{msg.content}</Markdown>
@@ -145,6 +160,7 @@ export default function DtcDecoder() {
             <button
               onClick={handleFollowUp}
               className="bg-blue-600 text-white px-4 py-2 rounded-r hover:bg-blue-700 transition"
+              disabled={loading}
             >
               Submit
             </button>
