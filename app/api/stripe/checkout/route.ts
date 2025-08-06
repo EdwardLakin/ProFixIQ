@@ -44,22 +44,22 @@ export async function POST(req: Request) {
 
   try {
     const session = await stripe.checkout.sessions.create({
-      mode: 'subscription',
-      customer_creation: 'always',
+      mode: 'subscription', // ✅ Required for subscriptions
       line_items: [
         {
           price: priceId,
           quantity: 1,
         },
       ],
+      // ✅ DO NOT set `customer_creation` here
+      success_url: `https://ominous-halibut-r4x7gg57grgjc55qr-3000.app.github.dev/signup?session_id={CHECKOUT_session_id}`,
+      cancel_url: `https://ominous-halibut-r4x7gg57grgjc55qr-3000.app.github.dev/subscribe`,
       metadata: {
         plan_key: planKey,
         interval,
         is_addon: isAddon ? 'true' : 'false',
         ...(shopId && { shop_id: shopId }),
       },
-      success_url: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/sign-up?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL}/subscribe`,
     });
 
     console.log('✅ Stripe Checkout session created:', session.id);

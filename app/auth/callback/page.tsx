@@ -16,6 +16,7 @@ export default function AuthCallbackPage() {
 
       const url = new URL(window.location.href);
       const code = url.searchParams.get('code');
+      const sessionId = url.searchParams.get('session_id'); // 🔄 retrieve from URL
 
       // 1. Exchange code for session
       if (code) {
@@ -23,7 +24,7 @@ export default function AuthCallbackPage() {
         if (exchangeError) {
           console.error('Session exchange error:', exchangeError.message);
           setLoading(false);
-          router.push('/'); // fallback to landing
+          router.push('/'); // fallback
           return;
         }
       }
@@ -37,7 +38,7 @@ export default function AuthCallbackPage() {
       if (userError || !user) {
         console.error('User fetch error:', userError?.message);
         setLoading(false);
-        router.push('/onboarding'); // redirect to onboarding as fallback
+        router.push('/onboarding' + (sessionId ? `?session_id=${sessionId}` : ''));
         return;
       }
 
@@ -50,7 +51,7 @@ export default function AuthCallbackPage() {
 
       if (profileError || !profile) {
         console.warn('Profile not found — redirecting to onboarding.');
-        router.push('/onboarding');
+        router.push('/onboarding' + (sessionId ? `?session_id=${sessionId}` : ''));
         return;
       }
 
@@ -58,7 +59,7 @@ export default function AuthCallbackPage() {
 
       // 4. If profile is incomplete → onboarding
       if (!role || !full_name || !phone || !shop_id) {
-        router.push('/onboarding');
+        router.push('/onboarding' + (sessionId ? `?session_id=${sessionId}` : ''));
         return;
       }
 

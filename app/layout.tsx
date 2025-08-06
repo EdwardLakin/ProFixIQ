@@ -1,4 +1,3 @@
-// app/layout.tsx
 import './globals.css';
 import { Inter } from 'next/font/google';
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
@@ -13,7 +12,10 @@ export const metadata = {
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const supabase = createServerComponentClient<Database>({ cookies });
+  const supabase = createServerComponentClient<Database>({
+    cookies: () => cookies(), // ✅ wrap in function to avoid sync call
+  });
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -33,7 +35,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en">
       <body className={inter.className}>
-        {/* You could also move this to a layout component if preferred */}
         {shop && (
           <div className="bg-gray-100 text-sm text-gray-800 p-2 border-b dark:bg-gray-900 dark:text-gray-300">
             <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between gap-2">

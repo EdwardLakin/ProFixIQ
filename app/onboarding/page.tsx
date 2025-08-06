@@ -25,9 +25,6 @@ export default function OnboardingPage() {
   const [shopProvince, setShopProvince] = useState('');
   const [shopPostal, setShopPostal] = useState('');
 
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -79,18 +76,6 @@ export default function OnboardingPage() {
 
     if (!businessName || !shopStreet || !shopCity || !shopProvince || !shopPostal) {
       setError('Please complete all required shop fields.');
-      setLoading(false);
-      return;
-    }
-
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters.');
-      setLoading(false);
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      setError('Passwords do not match.');
       setLoading(false);
       return;
     }
@@ -178,20 +163,18 @@ export default function OnboardingPage() {
       console.error('Email confirm failed:', err);
     }
 
-    const { error: passwordError } = await supabase.auth.updateUser({ password });
-
-    if (passwordError) {
-      console.error('Password set error:', passwordError.message);
-      setError('Failed to set password.');
-      setLoading(false);
-      return;
-    }
-
     setSuccess(true);
     setLoading(false);
 
-    await supabase.auth.signOut();
-    router.push('/auth');
+    const redirectMap: Record<string, string> = {
+      owner: '/dashboard/owner',
+      admin: '/dashboard/admin',
+      manager: '/dashboard/manager',
+      advisor: '/dashboard/advisor',
+      mechanic: '/dashboard/tech',
+    };
+
+    router.push(redirectMap[role] || '/');
   };
 
   return (
@@ -227,20 +210,12 @@ export default function OnboardingPage() {
           <option value="mechanic">Mechanic</option>
         </select>
 
-        <input type="password" required placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-2 rounded bg-gray-900 border border-orange-500" />
-        <input type="password" required placeholder="Confirm Password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full p-2 rounded bg-gray-900 border border-orange-500" />
-
         <button type="submit" disabled={loading} className="w-full bg-orange-500 hover:bg-orange-600 text-black font-bold py-2 px-4 rounded">
           {loading ? 'Saving...' : 'Complete Onboarding'}
         </button>
 
         {error && <p className="text-red-500 text-sm">{error}</p>}
-
-        {success && (
-          <p className="text-green-400 text-md mt-4">
-            🎉 Onboarding complete! Logging you out...
-          </p>
-        )}
+        {success && <p className="text-green-400 text-md mt-4">🎉 Onboarding complete! Redirecting...</p>}
 
         {emailSent && !success && userEmail && (
           <button

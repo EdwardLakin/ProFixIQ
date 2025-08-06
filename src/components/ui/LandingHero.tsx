@@ -87,14 +87,15 @@ export default function LandingHero() {
     setLoading(true);
     await saveSelectedPlan(plan);
 
-    const priceId = isYearly ? PRICE_IDS[plan].yearly : PRICE_IDS[plan].monthly;
-
     const res = await fetch('/api/stripe/checkout', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
   },
-  body: JSON.stringify({ priceId }),
+  body: JSON.stringify({
+    planKey: plan,
+    interval: isYearly ? 'yearly' : 'monthly',
+  }),
 });
 
     const { url } = await res.json();
