@@ -5,17 +5,32 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 });
 
 export async function getPlans() {
-  const prices = await stripe.prices.list({
-    active: true,
-    expand: ['data.product'],
-  });
+  try {
+    console.log('📦 Fetching active Stripe plans...');
 
-  return prices.data
-    .filter((price) => price.recurring)
-    .map((price) => ({
-      id: price.id,
-      productName: (price.product as Stripe.Product).name,
-      price: (price.unit_amount ?? 0) / 100,
-      interval: price.recurring?.interval,
-    }));
+    const prices = await stripe.prices.list({
+      active: true,
+      expand: ['data.product'],
+    });
+
+    const plans = prices.data
+      .filter((price) => price.recurring)
+      .map((price) => {
+        const product = price.product as Stripe.Product;
+
+        return {
+          id: price.id,
+          productName: product?.name || 'Unnamed Product',
+          price: (price.unit_amount ?? 0) / 100,
+          interval: price.recurring?.interval,
+        };
+      });
+
+    console.log(`✅ Retrieved ${plans.length} plans`);
+    return plans;
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('❌ Error fetching Stripe plans:', message);
+    throw new Error(`Failed to fetch plans: ${message}`);
+  }
 }

@@ -15,45 +15,98 @@ export default function PlanSelectionPage() {
   const router = useRouter();
 
   const saveSelectedPlan = async (plan: 'free' | 'diy' | 'pro' | 'pro_plus') => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    await supabase.from('profiles').update({ plan }).eq('id', user.id);
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        console.error('❌ Failed to fetch user:', userError);
+        return;
+      }
+
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ plan })
+        .eq('id', user.id);
+
+      if (updateError) {
+        console.error('❌ Failed to update plan in profile:', updateError.message);
+      } else {
+        console.log('✅ Plan saved to profile:', plan);
+      }
+    } catch (err) {
+      console.error('❌ Unexpected error in saveSelectedPlan:', err);
+    }
   };
 
   const handleCheckout = async (plan: string) => {
     setSelectedPlan(plan);
     setLoading(true);
 
-    await saveSelectedPlan(plan as 'free' | 'diy' | 'pro' | 'pro_plus');
+    try {
+      await saveSelectedPlan(plan as 'free' | 'diy' | 'pro' | 'pro_plus');
 
-    const priceId = isYearly
-      ? PRICE_IDS[plan as keyof typeof PRICE_IDS]?.yearly
-      : PRICE_IDS[plan as keyof typeof PRICE_IDS]?.monthly;
+      const priceId = isYearly
+        ? PRICE_IDS[plan as keyof typeof PRICE_IDS]?.yearly
+        : PRICE_IDS[plan as keyof typeof PRICE_IDS]?.monthly;
 
-    if (!priceId) {
-      alert('Invalid plan selected');
-      setLoading(false);
-      return;
-    }
+      if (!priceId) {
+        console.error('❌ No price ID found for plan:', { plan, isYearly });
+        alert('Invalid plan selected');
+        setLoading(false);
+        return;
+      }
 
-    const res = await fetch('/api/stripe/checkout', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-  },
-  body: JSON.stringify({
-    planKey: plan,
-    interval: isYearly ? 'yearly' : 'monthly',
-    email: (await supabase.auth.getUser()).data.user?.email,
-  }),
-});
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
 
-    const { url } = await res.json();
+      if (userError || !user?.email) {
+        console.error('❌ User email not found for Stripe checkout:', userError);
+        alert('No user email found');
+        setLoading(false);
+        return;
+      }
 
-    if (url) {
-      window.location.href = url;
-    } else {
-      alert('Failed to redirect to checkout');
+      const res = await fetch('/api/stripe/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          planKey: plan,
+          interval: isYearly ? 'yearly' : 'monthly',
+          email: user.email,
+        }),
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('❌ Stripe checkout API failed:', res.status, errorText);
+        alert('Failed to create Stripe session');
+        setLoading(false);
+        return;
+      }
+
+      let url: string | undefined;
+      try {
+        const json = await res.json();
+        url = json.url;
+      } catch (parseError) {
+        console.error('❌ Failed to parse Stripe checkout response:', parseError);
+      }
+
+      if (url) {
+        console.log('🟢 Redirecting to Stripe Checkout:', url);
+        window.location.href = url;
+      } else {
+        console.error('❌ Stripe checkout returned no URL');
+        alert('Stripe checkout failed');
+      }
+    } catch (err) {
+      console.error('❌ Error in handleCheckout:', err);
+      alert('Something went wrong');
     }
 
     setLoading(false);

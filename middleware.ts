@@ -9,9 +9,15 @@ export async function middleware(req: NextRequest) {
 
   const {
     data: { session },
+    error: sessionError,
   } = await supabase.auth.getSession();
 
   const pathname = req.nextUrl.pathname;
+  const isLoggedIn = !!session?.user;
+
+  if (sessionError) {
+    console.error('❌ Session fetch error:', sessionError.message);
+  }
 
   const PUBLIC_PATHS = [
     '/',
@@ -30,15 +36,25 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith('/BlackOpsOne-Regular.ttf');
 
   if (isPublic) {
-    // 🟠 Redirect logged-in user from landing page to dashboard
-    if (pathname === '/' && session?.user) {
-      const { data: profile } = await supabase
+    // 🟠 If logged in and on landing, redirect to dashboard
+    if (pathname === '/' && isLoggedIn) {
+      console.log('🔁 Logged in user on landing — checking role for redirect...');
+
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('role')
         .eq('id', session.user.id)
         .single();
 
-      if (!profile) return res;
+      if (profileError) {
+        console.error('❌ Failed to fetch profile:', profileError.message);
+        return res;
+      }
+
+      if (!profile) {
+        console.warn('⚠️ No profile found for user — allowing access to public route');
+        return res;
+      }
 
       const role = profile.role;
       let dashboardPath = '/dashboard';
@@ -59,28 +75,38 @@ export async function middleware(req: NextRequest) {
         case 'owner':
           dashboardPath = '/dashboard/owner';
           break;
+        default:
+          console.warn('⚠️ Unknown role:', role);
       }
 
+      console.log(`✅ Redirecting user to ${dashboardPath}`);
       return NextResponse.redirect(new URL(dashboardPath, req.url));
     }
 
+    // 🟢 Allow access to public route
     return res;
   }
 
-  // 🔴 If user not signed in → redirect to landing
-  if (!session) {
+  // 🔴 Private route: user must be logged in
+  if (!isLoggedIn) {
+    console.warn('🔒 User not logged in — redirecting to /');
     return NextResponse.redirect(new URL('/', req.url));
   }
 
-  // ✅ If signed in, make sure profile exists
-  const { data: profile } = await supabase
+  // ✅ Logged in: ensure profile exists
+  const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('id')
     .eq('id', session.user.id)
     .single();
 
+  if (profileError) {
+    console.error('❌ Failed to fetch profile:', profileError.message);
+    return res;
+  }
+
   if (!profile) {
-    // If no profile, redirect to onboarding
+    console.warn('⚠️ No profile found — redirecting to onboarding');
     return NextResponse.redirect(new URL('/onboarding', req.url));
   }
 
