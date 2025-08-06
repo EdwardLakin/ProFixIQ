@@ -41,11 +41,15 @@ Respond ONLY with JSON.
     }
 
     const sections = JSON.parse(content);
-    return NextResponse.json({ sections });
-  } catch (err: any) {
-    return NextResponse.json({
+return NextResponse.json({ sections });
+} catch (err) {
+  const message = err instanceof Error ? err.message : 'Unknown error';
+  return NextResponse.json(
+    {
       error: 'Failed to generate inspection',
-      message: err.message,
-    }, { status: 500 });
-  }
+      message,
+    },
+    { status: 500 }
+  );
+}
 }
