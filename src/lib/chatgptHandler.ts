@@ -4,7 +4,9 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-export default async function chatgptHandler(messages: any[]) {
+import type { ChatCompletionMessageParam } from 'openai/resources/chat';
+
+export default async function chatgptHandler(messages: ChatCompletionMessageParam[]) {
   const response = await openai.chat.completions.create({
     model: 'gpt-4o',
     messages,

@@ -6,6 +6,21 @@ export type Json =
   | { [key: string]: Json }
   | Json[];
 
+export type InspectionItem = {
+  item: string;
+  status?: 'ok' | 'fail' | 'recommend';
+  value?: string;
+  unit?: string;
+  notes?: string;
+  photoUrls?: string[];
+  recommend?: string[];
+};
+
+export type InspectionSection = {
+  title: string;
+  items: InspectionItem[];
+};
+
 export interface Database {
   public: {
     Tables: {
@@ -15,7 +30,7 @@ export interface Database {
     id: string;
     user_id: string;
     template_name: string;
-    sections:{}; // or a typed array like InspectionSection[]
+    sections: InspectionSection[];
     description?: string | null;
     tags?: string[] | null;
     vehicle_type?: string | null;
@@ -26,7 +41,7 @@ export interface Database {
   Insert: {
     user_id: string;
     template_name: string;
-    sections: {};
+    sections: InspectionSection[];
     description?: string | null;
     tags?: string[] | null;
     vehicle_type?: string | null;
@@ -34,7 +49,7 @@ export interface Database {
   };
   Update: Partial<{
     template_name: string;
-    sections: {};
+    sections: InspectionSection[];
     description?: string | null;
     tags?: string[] | null;
     vehicle_type?: string | null;

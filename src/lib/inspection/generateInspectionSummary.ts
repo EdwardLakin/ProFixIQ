@@ -12,7 +12,11 @@ export function generateInspectionSummary(session: InspectionSession): Inspectio
   for (const section of session.sections) {
     for (const item of section.items) {
       const name = item.name || 'Unnamed Item';
-      const status: 'ok' | 'fail' | 'recommend' = (item.status?.toLowerCase() ?? 'ok') as any;
+      const rawStatus = item.status?.toLowerCase() ?? 'ok';
+      const status: 'ok' | 'fail' | 'recommend' =
+  rawStatus === 'ok' || rawStatus === 'fail' || rawStatus === 'recommend'
+    ? rawStatus
+    : 'ok';
       const notes = item.notes?.trim() || '';
       const value = item.value ?? null;
       const unit = item.unit ?? '';
