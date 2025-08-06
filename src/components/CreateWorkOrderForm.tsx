@@ -164,6 +164,3 @@ export default function CreateWorkOrderForm() {
     </div>
   );
 }
-
-// Tailwind CSS reusable class
-const input = "w-full mt-2 p-2 rounded bg-neutral-900 text-white border border-neutral-700 focus:outline-none focus:ring-2 focus:ring-orange-500";

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { FaBars, FaBell, FaSearch, FaSignOutAlt } from 'react-icons/fa';
 import clsx from 'clsx';
@@ -13,14 +13,14 @@ import RoleNavOwner from '@components/nav/RoleNavOwner';
 import RoleNavManager from '@components/nav/RoleNavManager';
 import RoleNavParts from '@components/nav/RoleNavParts';
 import type { Database } from '@/types/supabase';
+import type { User } from '@supabase/auth-helpers-nextjs';
 
 export default function Navbar() {
   const supabase = createClientComponentClient<Database>();
   const router = useRouter();
-  const pathname = usePathname();
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Database['public']['Tables']['profiles']['Row'] | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);

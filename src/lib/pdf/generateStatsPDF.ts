@@ -6,13 +6,28 @@ import type { Database } from '@/types/supabase';
 
 const supabase = createClientComponentClient<Database>();
 
+type StatsTotals = {
+  revenue: number;
+  profit: number;
+  labor: number;
+  expenses: number;
+  jobs: number;
+  techEfficiency: number;
+};
+
+type ShopStats = {
+  shop_id: string;
+  start: string;
+  end: string;
+  total: StatsTotals;
+};
+
 export async function generateStatsPDF(
-  stats: any,
+  stats: ShopStats,
   aiSummary: string,
   range: string,
   chartImgData: string
 ): Promise<Blob> {
-  // Fetch shop info for branding
   const { data: shop } = await supabase
     .from('shops')
     .select('name, address, phone_number, email, logo_url')
@@ -21,7 +36,7 @@ export async function generateStatsPDF(
 
   const doc = new jsPDF();
 
-  // Shop logo
+  // 🏪 Logo (if available)
   if (shop?.logo_url) {
     try {
       const imgRes = await fetch(shop.logo_url);
@@ -37,7 +52,7 @@ export async function generateStatsPDF(
     }
   }
 
-  // Header
+  // 🧾 Header Info
   doc.setFontSize(16);
   doc.text(shop?.name || 'Shop Report', 15, 40);
   doc.setFontSize(12);
@@ -45,7 +60,7 @@ export async function generateStatsPDF(
   doc.text(`From: ${stats.start}`, 15, 54);
   doc.text(`To: ${stats.end}`, 15, 60);
 
-  // Stats Summary Table
+  // 📊 Stats Table
   autoTable(doc, {
     startY: 70,
     head: [['Metric', 'Value']],
@@ -61,7 +76,7 @@ export async function generateStatsPDF(
     headStyles: { fillColor: [255, 165, 0] },
   });
 
-  // Chart image
+  // 📈 Chart Page
   if (chartImgData) {
     doc.addPage();
     doc.setFontSize(14);
@@ -69,7 +84,7 @@ export async function generateStatsPDF(
     doc.addImage(chartImgData, 'PNG', 15, 30, 180, 100);
   }
 
-  // AI Summary
+  // 🧠 AI Summary Page
   if (aiSummary) {
     doc.addPage();
     doc.setFontSize(14);
@@ -79,7 +94,7 @@ export async function generateStatsPDF(
     doc.text(summaryLines, 15, 30);
   }
 
-  // Footer branding
+  // 🔻 Footer
   doc.setFontSize(10);
   doc.setTextColor(100);
   doc.text(

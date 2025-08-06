@@ -16,8 +16,8 @@ type JobLine = Database['public']['Tables']['work_order_lines']['Row'] & {
 
 export async function getQueuedJobsForTech(): Promise<JobLine[]> {
   const supabase = createClientComponentClient<Database>();
-
   const { data: { user } } = await supabase.auth.getUser();
+
   if (!user) {
     console.warn('No authenticated user found');
     return [];
@@ -32,9 +32,12 @@ export async function getQueuedJobsForTech(): Promise<JobLine[]> {
         make,
         model
       ),
-      profiles!assigned_tech ( full_name )
+      profiles:assigned_to (
+        full_name
+      )
     `)
-    .or(`assigned_tech.eq.${user.id},assigned_tech.is.null`)
+    .eq('status', 'queued')
+    .or(`assigned_to.eq.${user.id},assigned_to.is.null`)
     .order('created_at', { ascending: true });
 
   if (error || !data) {
@@ -42,7 +45,7 @@ export async function getQueuedJobsForTech(): Promise<JobLine[]> {
     return [];
   }
 
-  const jobLines: JobLine[] = data.map((row: any) => ({
+  const jobLines: JobLine[] = data.map((row): JobLine => ({
     ...row,
     vehicle: row.vehicles
       ? {

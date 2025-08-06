@@ -1,6 +1,4 @@
-// src/lib/ai.ts
-
-export async function analyzeImage(file: File): Promise<any> {
+export async function analyzeImage(file: File): Promise<unknown> {
   const formData = new FormData();
   formData.append("file", file);
 

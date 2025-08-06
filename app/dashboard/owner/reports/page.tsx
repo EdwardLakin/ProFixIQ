@@ -22,11 +22,36 @@ import {
 const supabase = createClientComponentClient<Database>();
 type Range = 'weekly' | 'monthly' | 'quarterly' | 'yearly';
 
+type StatsTotals = {
+  revenue: number;
+  profit: number;
+  labor: number;
+  expenses: number;
+  jobs: number;
+  techEfficiency: number;
+};
+
+type PeriodStats = {
+  label: string;
+  revenue: number;
+  profit: number;
+  labor: number;
+  expenses: number;
+};
+
+type ShopStats = {
+  shop_id: string;
+  start: string;
+  end: string;
+  total: StatsTotals;
+  periods: PeriodStats[];
+};
+
 export default function ReportsPage() {
   const chartRef = useRef<HTMLDivElement>(null);
   const [shopId, setShopId] = useState<string | null>(null);
   const [range, setRange] = useState<Range>('monthly');
-  const [stats, setStats] = useState<any>(null);
+  const [stats, setStats] = useState<ShopStats | null>(null); // ✅ Typed
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [goalRevenue, setGoalRevenue] = useState<number>(10000);
@@ -56,7 +81,7 @@ export default function ReportsPage() {
         const res = await fetch('/api/ai/summarize-stats', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ stats: fetchedStats, timeRange: range }), // ✅ Fixed key here
+          body: JSON.stringify({ stats: fetchedStats, timeRange: range }),
         });
         const json = await res.json();
         setAiSummary(json.summary);
@@ -81,13 +106,14 @@ export default function ReportsPage() {
     a.click();
   };
 
-  const chartData = stats?.periods?.map((p: any) => ({
-    label: p.label,
-    revenue: p.revenue,
-    profit: p.profit,
-    labor: p.labor,
-    expenses: p.expenses,
-  })) || [];
+  const chartData =
+    stats?.periods?.map((p) => ({
+      label: p.label,
+      revenue: p.revenue,
+      profit: p.profit,
+      labor: p.labor,
+      expenses: p.expenses,
+    })) || [];
 
   return (
     <div className="p-6 text-white max-w-5xl mx-auto">

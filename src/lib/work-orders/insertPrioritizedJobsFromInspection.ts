@@ -2,17 +2,31 @@
 
 import supabase from '@lib/supabaseClient';
 import { Database } from '@/types/supabase';
-import { estimateLabor } from '@lib/ai/generateLaborTimeEstimate'; // ✅ Secure client-side call
+import { estimateLabor } from '@lib/ai/generateLaborTimeEstimate';
 
 type Inspection = Database['public']['Tables']['inspections']['Row'];
 type WorkOrderLineInsert = Database['public']['Tables']['work_order_lines']['Insert'];
 type PartsRequestInsert = Database['public']['Tables']['parts_requests']['Insert'];
 
+type InspectionResult = {
+  sections: {
+    title: string;
+    items: {
+      name: string;
+      value?: string;
+      unit?: string;
+      notes?: string;
+      status?: 'ok' | 'fail' | 'na' | 'recommend';
+      recommend?: boolean;
+    }[];
+  }[];
+};
+
 export async function insertPrioritizedJobsFromInspection(
   inspectionId: string,
   workOrderId: string,
   vehicleId: string,
-  userId: string, // ✅ NEW PARAM
+  userId: string,
   autoGenerateParts: boolean = true
 ) {
   const { data: inspection, error } = await supabase
@@ -26,14 +40,18 @@ export async function insertPrioritizedJobsFromInspection(
     return;
   }
 
-  const result = inspection.result as any;
+  const result = inspection.result as InspectionResult;
   if (!result?.sections) {
     console.warn('Invalid inspection format');
     return;
   }
 
   const allJobs: WorkOrderLineInsert[] = [];
-  const jobItemMap: { itemName: string; originalItem: any; jobIndex: number }[] = [];
+  const jobItemMap: {
+    itemName: string;
+    originalItem: InspectionResult['sections'][number]['items'][number];
+    jobIndex: number;
+  }[] = [];
 
   const diagnosisKeywords = ['check engine', 'diagnose', 'misfire', 'no start'];
   const maintenanceKeywords = ['oil', 'fluid', 'filter', 'belt', 'coolant'];
@@ -48,7 +66,7 @@ export async function insertPrioritizedJobsFromInspection(
       else if (item.status === 'fail') jobType = 'inspection-fail';
       else if (maintenanceKeywords.some(k => name.includes(k))) jobType = 'maintenance';
 
-      const laborTime = await estimateLabor(item.name, jobType); // ✅ Secure AI call
+      const laborTime = await estimateLabor(item.name, jobType);
 
       const complaintParts = [item.name];
       if (item.value) complaintParts.push(`(${item.value}${item.unit || ''})`);
@@ -82,7 +100,6 @@ export async function insertPrioritizedJobsFromInspection(
     }
   }
 
-  // Insert jobs and get IDs
   const insertedJobsRes = await supabase
     .from('work_order_lines')
     .insert(allJobs)

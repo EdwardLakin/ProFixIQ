@@ -1,5 +1,18 @@
 import supabase from '@lib/supabaseClient';
 import { JobLine } from '@lib/types';
+import type { Database } from '@/types/supabase';
+
+// Create a helper type to include joined `vehicles` and `profiles`
+type WorkOrderLineWithJoins = Database['public']['Tables']['work_order_lines']['Row'] & {
+  vehicles?: {
+    year: number | null;
+    make: string | null;
+    model: string | null;
+  } | null;
+  profiles?: {
+    full_name: string | null;
+  } | null;
+};
 
 export async function fetchAllJobLines(): Promise<JobLine[]> {
   const { data, error } = await supabase
@@ -11,36 +24,37 @@ export async function fetchAllJobLines(): Promise<JobLine[]> {
       punched_in_at,
       punched_out_at,
       hold_reason,
-      work_order_id,
+      created_at,
       vehicles (
         year,
         make,
         model
       ),
-      assigned_tech:profiles (
+      profiles:assigned_to (
         full_name
       )
-    `);
+    `) as unknown as { data: WorkOrderLineWithJoins[]; error: any };
 
-  if (error) {
+  if (error || !data) {
     console.error('❌ Error fetching job lines:', error);
     return [];
   }
 
-  return (
-    data?.map((row: any) => ({
-      id: row.id,
-      status: row.status,
-      complaint: row.complaint,
-      punched_in_at: row.punched_in_at,
-      punched_out_at: row.punched_out_at,
-      hold_reason: row.hold_reason,
-      work_order_id: row.work_order_id,
-      vehicle_year: row.vehicles?.year ?? null,
-      vehicle_make: row.vehicles?.make ?? null,
-      vehicle_model: row.vehicles?.model ?? null,
-      assigned_tech_full_name: row.assigned_tech?.full_name ?? null,
-      created_at: row.created_at,
-    })) ?? []
-  );
+  return data.map((row): JobLine => ({
+    id: row.id ?? '',
+    status: row.status as JobLine['status'], // cast due to broader Supabase type
+    complaint: row.complaint ?? null,
+    punched_in_at: row.punched_in_at ?? null,
+    punched_out_at: row.punched_out_at ?? null,
+    hold_reason: row.hold_reason ?? null,
+    created_at: row.created_at ?? '',
+    vehicle: {
+      year: row.vehicles?.year ?? undefined,
+      make: row.vehicles?.make ?? undefined,
+      model: row.vehicles?.model ?? undefined,
+    },
+    assigned_to: {
+      full_name: row.profiles?.full_name ?? undefined,
+    },
+  }));
 }

@@ -1,11 +1,18 @@
-export function startVoiceRecognition(onResult: (transcript: string) => void): SpeechRecognition {
-  const SpeechRecognition =
-    (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-  const recognition = new SpeechRecognition();
+export function startVoiceRecognition(
+  onResult: (transcript: string) => void
+): SpeechRecognition {
+  const SpeechRecognitionClass =
+    window.SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+  if (!SpeechRecognitionClass) {
+    throw new Error("Speech Recognition not supported in this browser.");
+  }
+
+  const recognition = new SpeechRecognitionClass() as SpeechRecognition;
 
   recognition.continuous = true;
   recognition.interimResults = false;
-  recognition.lang = 'en-US';
+  recognition.lang = "en-US";
 
   recognition.onresult = (event: SpeechRecognitionEvent) => {
     const lastResult = event.results[event.results.length - 1];
@@ -13,8 +20,8 @@ export function startVoiceRecognition(onResult: (transcript: string) => void): S
     onResult(transcript);
   };
 
-  recognition.onerror = (event: any) => {
-    console.error('Speech recognition error:', event?.error);
+  recognition.onerror = (event: SpeechRecognitionEvent) => {
+    console.error("Speech recognition error:", event.error);
   };
 
   recognition.start();

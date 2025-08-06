@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { FaSignOutAlt, FaBars, FaBell, FaSearch } from 'react-icons/fa';
 import type { Database } from '@/types/supabase';
@@ -12,7 +12,7 @@ import clsx from 'clsx';
 export default function Navbar() {
   const supabase = createClientComponentClient<Database>();
   const router = useRouter();
-  const pathname = usePathname();
+  
 
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Database['public']['Tables']['profiles']['Row'] | null>(null);

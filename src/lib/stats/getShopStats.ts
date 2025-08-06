@@ -136,6 +136,7 @@ export async function getShopStats(shopId: string, timeRange: TimeRange, filters
   });
 
   return {
+    shop_id: shopId,
     range: timeRange,
     start: start.toISOString(),
     end: end.toISOString(),

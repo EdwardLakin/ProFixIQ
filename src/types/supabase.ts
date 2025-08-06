@@ -15,7 +15,7 @@ export interface Database {
     id: string;
     user_id: string;
     template_name: string;
-    sections: any; // or a typed array like InspectionSection[]
+    sections:{}; // or a typed array like InspectionSection[]
     description?: string | null;
     tags?: string[] | null;
     vehicle_type?: string | null;
@@ -26,7 +26,7 @@ export interface Database {
   Insert: {
     user_id: string;
     template_name: string;
-    sections: any;
+    sections: {};
     description?: string | null;
     tags?: string[] | null;
     vehicle_type?: string | null;
@@ -34,7 +34,7 @@ export interface Database {
   };
   Update: Partial<{
     template_name: string;
-    sections: any;
+    sections: {};
     description?: string | null;
     tags?: string[] | null;
     vehicle_type?: string | null;
@@ -72,7 +72,11 @@ export interface Database {
 
       work_order_lines: {
         Row: {
-          vehicles: any;
+          vehicles: {
+  year: number | null;
+  make: string | null;
+  model: string | null;
+};
           id: string;
           work_order_id: string | null;
           vehicle_id: string | null;
@@ -701,7 +705,6 @@ punch_events: {
 
       customers: {
         Row: {
-          [x: string]: any;
           id: string;
           first_name: string;
           last_name: string;
@@ -865,8 +868,6 @@ punch_events: {
         ];
       };
     };
-  
-
     Views: {};
     Functions: {};
     Enums: {};

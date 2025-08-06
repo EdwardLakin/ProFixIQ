@@ -27,7 +27,7 @@ function JobQueueCard({
   onView,
   isActive,
 }: JobQueueCardProps) {
-  const { complaint, created_at, status, assigned_to, id } = job;
+  const { complaint, created_at, assigned_to, id } = job;
 
   const [selectedTech, setSelectedTech] = useState<string | null>(assigned_to?.id || null);
 

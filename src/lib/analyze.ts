@@ -1,8 +1,17 @@
 import { Message } from "@lib/types";
 
+type VehicleInfo = {
+  year: string;
+  make: string;
+  model: string;
+  vin?: string;
+  mileage?: number;
+  plate?: string;
+};
+
 export default async function analyze(
   input: string,
-  vehicleInfo: any,
+  vehicleInfo: VehicleInfo,
   context?: Message[]
 ) {
   const response = await fetch("/api/diagnose", {

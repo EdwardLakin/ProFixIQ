@@ -130,8 +130,8 @@ export interface QuoteLine {
 
 export interface QuoteLineItem {
   id: string;
-  item: any;
-  partPrice: any;
+  item: string | null;
+  partPrice: string | null;
   partName: string;
   name: string;
   description?: string;
