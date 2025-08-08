@@ -1,31 +1,31 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import type { Database } from '@/types/supabase';
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
 
 export default function OnboardingPage() {
   const supabase = createClientComponentClient<Database>();
   const router = useRouter();
 
-  const [fullName, setFullName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [role, setRole] = useState('owner');
+  const [fullName, setFullName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [role, setRole] = useState("owner");
 
-  const [userStreet, setUserStreet] = useState('');
-  const [userCity, setUserCity] = useState('');
-  const [userProvince, setUserProvince] = useState('');
-  const [userPostal, setUserPostal] = useState('');
+  const [userStreet, setUserStreet] = useState("");
+  const [userCity, setUserCity] = useState("");
+  const [userProvince, setUserProvince] = useState("");
+  const [userPostal, setUserPostal] = useState("");
 
-  const [businessName, setBusinessName] = useState('');
-  const [shopName, setShopName] = useState('');
-  const [shopStreet, setShopStreet] = useState('');
-  const [shopCity, setShopCity] = useState('');
-  const [shopProvince, setShopProvince] = useState('');
-  const [shopPostal, setShopPostal] = useState('');
+  const [businessName, setBusinessName] = useState("");
+  const [shopName, setShopName] = useState("");
+  const [shopStreet, setShopStreet] = useState("");
+  const [shopCity, setShopCity] = useState("");
+  const [shopProvince, setShopProvince] = useState("");
+  const [shopPostal, setShopPostal] = useState("");
 
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
@@ -37,19 +37,21 @@ export default function OnboardingPage() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      const sessionId = new URLSearchParams(window.location.search).get('session_id');
+      const sessionId = new URLSearchParams(window.location.search).get(
+        "session_id",
+      );
 
       if (user) {
         setUserEmail(user.email ?? null);
         if (sessionId) {
-          await fetch('/api/stripe/link-user', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+          await fetch("/api/stripe/link-user", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ sessionId, userId: user.id }),
           });
         }
       } else {
-        router.push('/auth');
+        router.push("/auth");
       }
     };
 
@@ -58,7 +60,7 @@ export default function OnboardingPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError("");
     setLoading(true);
 
     const {
@@ -66,7 +68,7 @@ export default function OnboardingPage() {
     } = await supabase.auth.getUser();
 
     if (!user) {
-      setError('User not found.');
+      setError("User not found.");
       setLoading(false);
       return;
     }
@@ -74,20 +76,26 @@ export default function OnboardingPage() {
     const email = user.email;
     setUserEmail(email ?? null);
 
-    if (!businessName || !shopStreet || !shopCity || !shopProvince || !shopPostal) {
-      setError('Please complete all required shop fields.');
+    if (
+      !businessName ||
+      !shopStreet ||
+      !shopCity ||
+      !shopProvince ||
+      !shopPostal
+    ) {
+      setError("Please complete all required shop fields.");
       setLoading(false);
       return;
     }
 
     const { data: newShop, error: shopError } = await supabase
-      .from('shops')
+      .from("shops")
       .insert([
         {
           id: crypto.randomUUID(),
           business_name: businessName,
           shop_name: shopName || businessName,
-          plan: 'diy',
+          plan: "diy",
           created_at: new Date().toISOString(),
           owner_id: user.id,
           uuid: user.id,
@@ -101,8 +109,8 @@ export default function OnboardingPage() {
       .maybeSingle();
 
     if (shopError || !newShop) {
-      console.error('Shop creation error:', shopError?.message || shopError);
-      setError('Failed to create shop. Please try again.');
+      console.error("Shop creation error:", shopError?.message || shopError);
+      setError("Failed to create shop. Please try again.");
       setLoading(false);
       return;
     }
@@ -110,7 +118,7 @@ export default function OnboardingPage() {
     const newShopId = newShop.id;
 
     const { error: updateError } = await supabase
-      .from('profiles')
+      .from("profiles")
       .update({
         full_name: fullName,
         phone,
@@ -123,58 +131,58 @@ export default function OnboardingPage() {
         province: userProvince,
         postal_code: userPostal,
       })
-      .eq('id', user.id);
+      .eq("id", user.id);
 
     if (updateError) {
-      console.error('Profile update error:', updateError.message);
-      setError('Failed to update profile.');
+      console.error("Profile update error:", updateError.message);
+      setError("Failed to update profile.");
       setLoading(false);
       return;
     }
 
-    await fetch('/api/set-role-cookie', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    await fetch("/api/set-role-cookie", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ role }),
     });
 
     try {
-      await fetch('/api/send-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      await fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email,
-          subject: 'Welcome to ProFixIQ!',
+          subject: "Welcome to ProFixIQ!",
           html: `<p>Hi ${fullName},</p><p>Your shop <strong>${shopName || businessName}</strong> is now set up.</p>`,
         }),
       });
       setEmailSent(true);
     } catch (err) {
-      console.error('Email send failed:', err);
+      console.error("Email send failed:", err);
     }
 
     try {
-      await fetch('/api/confirm-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      await fetch("/api/confirm-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       });
     } catch (err) {
-      console.error('Email confirm failed:', err);
+      console.error("Email confirm failed:", err);
     }
 
     setSuccess(true);
     setLoading(false);
 
     const redirectMap: Record<string, string> = {
-      owner: '/dashboard/owner',
-      admin: '/dashboard/admin',
-      manager: '/dashboard/manager',
-      advisor: '/dashboard/advisor',
-      mechanic: '/dashboard/tech',
+      owner: "/dashboard/owner",
+      admin: "/dashboard/admin",
+      manager: "/dashboard/manager",
+      advisor: "/dashboard/advisor",
+      mechanic: "/dashboard/tech",
     };
 
-    router.push(redirectMap[role] || '/');
+    router.push(redirectMap[role] || "/");
   };
 
   return (
@@ -183,26 +191,114 @@ export default function OnboardingPage() {
 
       <form onSubmit={handleSubmit} className="w-full max-w-xl space-y-4">
         <h2 className="text-xl text-orange-400 mt-4">Your Info</h2>
-        <input type="text" required placeholder="Full Name" value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full p-2 rounded bg-gray-900 border border-orange-500" />
-        <input type="text" required placeholder="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full p-2 rounded bg-gray-900 border border-orange-500" />
-        <input type="text" required placeholder="Street Address" value={userStreet} onChange={(e) => setUserStreet(e.target.value)} className="w-full p-2 rounded bg-gray-900 border border-orange-500" />
+        <input
+          type="text"
+          required
+          placeholder="Full Name"
+          value={fullName}
+          onChange={(e) => setFullName(e.target.value)}
+          className="w-full p-2 rounded bg-gray-900 border border-orange-500"
+        />
+        <input
+          type="text"
+          required
+          placeholder="Phone"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          className="w-full p-2 rounded bg-gray-900 border border-orange-500"
+        />
+        <input
+          type="text"
+          required
+          placeholder="Street Address"
+          value={userStreet}
+          onChange={(e) => setUserStreet(e.target.value)}
+          className="w-full p-2 rounded bg-gray-900 border border-orange-500"
+        />
         <div className="flex gap-2">
-          <input type="text" required placeholder="City" value={userCity} onChange={(e) => setUserCity(e.target.value)} className="w-full p-2 rounded bg-gray-900 border border-orange-500" />
-          <input type="text" required placeholder="Province" value={userProvince} onChange={(e) => setUserProvince(e.target.value)} className="w-full p-2 rounded bg-gray-900 border border-orange-500" />
-          <input type="text" required placeholder="Postal Code" value={userPostal} onChange={(e) => setUserPostal(e.target.value)} className="w-full p-2 rounded bg-gray-900 border border-orange-500" />
+          <input
+            type="text"
+            required
+            placeholder="City"
+            value={userCity}
+            onChange={(e) => setUserCity(e.target.value)}
+            className="w-full p-2 rounded bg-gray-900 border border-orange-500"
+          />
+          <input
+            type="text"
+            required
+            placeholder="Province"
+            value={userProvince}
+            onChange={(e) => setUserProvince(e.target.value)}
+            className="w-full p-2 rounded bg-gray-900 border border-orange-500"
+          />
+          <input
+            type="text"
+            required
+            placeholder="Postal Code"
+            value={userPostal}
+            onChange={(e) => setUserPostal(e.target.value)}
+            className="w-full p-2 rounded bg-gray-900 border border-orange-500"
+          />
         </div>
 
         <h2 className="text-xl text-orange-400 mt-6">Shop Info</h2>
-        <input type="text" required placeholder="Business Name" value={businessName} onChange={(e) => setBusinessName(e.target.value)} className="w-full p-2 rounded bg-gray-900 border border-orange-500" />
-        <input type="text" placeholder="Shop Name (Optional)" value={shopName} onChange={(e) => setShopName(e.target.value)} className="w-full p-2 rounded bg-gray-900 border border-orange-500" />
-        <input type="text" required placeholder="Street Address" value={shopStreet} onChange={(e) => setShopStreet(e.target.value)} className="w-full p-2 rounded bg-gray-900 border border-orange-500" />
+        <input
+          type="text"
+          required
+          placeholder="Business Name"
+          value={businessName}
+          onChange={(e) => setBusinessName(e.target.value)}
+          className="w-full p-2 rounded bg-gray-900 border border-orange-500"
+        />
+        <input
+          type="text"
+          placeholder="Shop Name (Optional)"
+          value={shopName}
+          onChange={(e) => setShopName(e.target.value)}
+          className="w-full p-2 rounded bg-gray-900 border border-orange-500"
+        />
+        <input
+          type="text"
+          required
+          placeholder="Street Address"
+          value={shopStreet}
+          onChange={(e) => setShopStreet(e.target.value)}
+          className="w-full p-2 rounded bg-gray-900 border border-orange-500"
+        />
         <div className="flex gap-2">
-          <input type="text" required placeholder="City" value={shopCity} onChange={(e) => setShopCity(e.target.value)} className="w-full p-2 rounded bg-gray-900 border border-orange-500" />
-          <input type="text" required placeholder="Province" value={shopProvince} onChange={(e) => setShopProvince(e.target.value)} className="w-full p-2 rounded bg-gray-900 border border-orange-500" />
-          <input type="text" required placeholder="Postal Code" value={shopPostal} onChange={(e) => setShopPostal(e.target.value)} className="w-full p-2 rounded bg-gray-900 border border-orange-500" />
+          <input
+            type="text"
+            required
+            placeholder="City"
+            value={shopCity}
+            onChange={(e) => setShopCity(e.target.value)}
+            className="w-full p-2 rounded bg-gray-900 border border-orange-500"
+          />
+          <input
+            type="text"
+            required
+            placeholder="Province"
+            value={shopProvince}
+            onChange={(e) => setShopProvince(e.target.value)}
+            className="w-full p-2 rounded bg-gray-900 border border-orange-500"
+          />
+          <input
+            type="text"
+            required
+            placeholder="Postal Code"
+            value={shopPostal}
+            onChange={(e) => setShopPostal(e.target.value)}
+            className="w-full p-2 rounded bg-gray-900 border border-orange-500"
+          />
         </div>
 
-        <select required value={role} onChange={(e) => setRole(e.target.value)} className="w-full p-2 rounded bg-gray-900 border border-orange-500">
+        <select
+          required
+          value={role}
+          onChange={(e) => setRole(e.target.value)}
+          className="w-full p-2 rounded bg-gray-900 border border-orange-500"
+        >
           <option value="owner">Owner</option>
           <option value="admin">Admin</option>
           <option value="manager">Manager</option>
@@ -210,12 +306,20 @@ export default function OnboardingPage() {
           <option value="mechanic">Mechanic</option>
         </select>
 
-        <button type="submit" disabled={loading} className="w-full bg-orange-500 hover:bg-orange-600 text-black font-bold py-2 px-4 rounded">
-          {loading ? 'Saving...' : 'Complete Onboarding'}
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-orange-500 hover:bg-orange-600 text-black font-bold py-2 px-4 rounded"
+        >
+          {loading ? "Saving..." : "Complete Onboarding"}
         </button>
 
         {error && <p className="text-red-500 text-sm">{error}</p>}
-        {success && <p className="text-green-400 text-md mt-4">🎉 Onboarding complete! Redirecting...</p>}
+        {success && (
+          <p className="text-green-400 text-md mt-4">
+            🎉 Onboarding complete! Redirecting...
+          </p>
+        )}
 
         {emailSent && !success && userEmail && (
           <button
@@ -223,24 +327,24 @@ export default function OnboardingPage() {
             onClick={async () => {
               setResending(true);
               try {
-                await fetch('/api/send-email', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
+                await fetch("/api/send-email", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
                     email: userEmail,
-                    subject: 'Welcome to ProFixIQ!',
+                    subject: "Welcome to ProFixIQ!",
                     html: `<p>Hi ${fullName},</p><p>Your shop <strong>${shopName || businessName}</strong> is now set up.</p>`,
                   }),
                 });
               } catch (err) {
-                console.error('Resend failed:', err);
+                console.error("Resend failed:", err);
               }
               setResending(false);
             }}
             className="text-sm text-orange-400 underline mt-2"
             disabled={resending}
           >
-            {resending ? 'Resending...' : 'Resend Welcome Email'}
+            {resending ? "Resending..." : "Resend Welcome Email"}
           </button>
         )}
       </form>

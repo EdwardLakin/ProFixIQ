@@ -1,25 +1,27 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import type { Database } from '@/types/supabase';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from "react";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/supabase";
+import { useRouter } from "next/navigation";
 
-type Profile = Database['public']['Tables']['profiles']['Row'];
+type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 
 export default function CreateUserPage() {
   const supabase = createClientComponentClient<Database>();
   const router = useRouter();
 
-  const [email, setEmail] = useState('');
-  const [tempPassword, setTempPassword] = useState('');
-  const [role, setRole] = useState<'owner' | 'admin' | 'manager' | 'advisor' | 'mechanic'>('mechanic');
-  const [plan, setPlan] = useState<'free' | 'diy' | 'pro' | 'pro_plus'>('free');
-  const [fullName, setFullName] = useState('');
-  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState("");
+  const [tempPassword, setTempPassword] = useState("");
+  const [role, setRole] = useState<
+    "owner" | "admin" | "manager" | "advisor" | "mechanic"
+  >("mechanic");
+  const [plan, setPlan] = useState<"free" | "diy" | "pro" | "pro_plus">("free");
+  const [fullName, setFullName] = useState("");
+  const [phone, setPhone] = useState("");
   const [users, setUsers] = useState<Profile[]>([]);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   useEffect(() => {
     fetchUsers();
@@ -27,30 +29,31 @@ export default function CreateUserPage() {
 
   const fetchUsers = async () => {
     const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .order('created_at', { ascending: false });
+      .from("profiles")
+      .select("*")
+      .order("created_at", { ascending: false });
 
     setUsers(data || []);
   };
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    setSuccess('');
+    setError("");
+    setSuccess("");
 
-    const { data: user, error: signUpError } = await supabase.auth.admin.createUser({
-      email,
-      password: tempPassword,
-      email_confirm: true,
-    });
+    const { data: user, error: signUpError } =
+      await supabase.auth.admin.createUser({
+        email,
+        password: tempPassword,
+        email_confirm: true,
+      });
 
     if (signUpError || !user.user?.id) {
-      setError(signUpError?.message || 'Failed to create user.');
+      setError(signUpError?.message || "Failed to create user.");
       return;
     }
 
-    const { error: profileError } = await supabase.from('profiles').insert({
+    const { error: profileError } = await supabase.from("profiles").insert({
       id: user.user.id,
       full_name: fullName,
       email,
@@ -67,16 +70,16 @@ export default function CreateUserPage() {
       setError(profileError.message);
     } else {
       setSuccess(`${role} created successfully!`);
-      setEmail('');
-      setTempPassword('');
-      setFullName('');
-      setPhone('');
+      setEmail("");
+      setTempPassword("");
+      setFullName("");
+      setPhone("");
       fetchUsers();
     }
   };
 
   const handleDelete = async (userId: string) => {
-    await supabase.from('profiles').delete().eq('id', userId);
+    await supabase.from("profiles").delete().eq("id", userId);
     await supabase.auth.admin.deleteUser(userId);
     fetchUsers();
   };
@@ -147,7 +150,7 @@ export default function CreateUserPage() {
             Create User
           </button>
           <button
-            onClick={() => router.push('/dashboard/admin')}
+            onClick={() => router.push("/dashboard/admin")}
             className="text-orange-400 underline"
           >
             ← Back to Dashboard
@@ -167,10 +170,10 @@ export default function CreateUserPage() {
           >
             <div>
               <p className="font-bold">
-                {user.full_name || '—'} ({user.role})
+                {user.full_name || "—"} ({user.role})
               </p>
               <p className="text-sm text-gray-400">{user.email}</p>
-              <p className="text-sm text-gray-500">{user.phone || '—'}</p>
+              <p className="text-sm text-gray-500">{user.phone || "—"}</p>
             </div>
             <button
               onClick={() => handleDelete(user.id)}

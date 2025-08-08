@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import type { Database } from '@/types/supabase';
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/supabase";
 
 export default function ConfirmPage() {
   const router = useRouter();
@@ -18,33 +18,33 @@ export default function ConfirmPage() {
       if (!session?.user) return;
 
       const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', session.user.id)
+        .from("profiles")
+        .select("role")
+        .eq("id", session.user.id)
         .single();
 
       switch (profile?.role) {
-        case 'owner':
-          router.push('/dashboard/owner');
+        case "owner":
+          router.push("/dashboard/owner");
           break;
-        case 'admin':
-          router.push('/dashboard/admin');
+        case "admin":
+          router.push("/dashboard/admin");
           break;
-        case 'advisor':
-          router.push('/dashboard/advisor');
+        case "advisor":
+          router.push("/dashboard/advisor");
           break;
-        case 'manager':
-          router.push('/dashboard/manager');
+        case "manager":
+          router.push("/dashboard/manager");
           break;
-        case 'parts':
-          router.push('/dashboard/parts');
+        case "parts":
+          router.push("/dashboard/parts");
           break;
-        case 'mechanic':
-        case 'tech':
-          router.push('/dashboard/tech');
+        case "mechanic":
+        case "tech":
+          router.push("/dashboard/tech");
           break;
         default:
-          router.push('/dashboard');
+          router.push("/dashboard");
           break;
       }
     };

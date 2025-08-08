@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { getQueuedJobsForTech } from '@lib/work-orders/getQueuedJobsForTech';
-import JobQueue from '@components/JobQueue';
-import type { Database } from '@/types/supabase';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from "react";
+import { getQueuedJobsForTech } from "@shared/lib/work-orders/getQueuedJobsForTech";
+import JobQueue from "@shared/components/JobQueue";
+import type { Database } from "@shared/types/supabase";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { useRouter } from "next/navigation";
 
-type JobLine = Database['public']['Tables']['work_order_lines']['Row'] & {
+type JobLine = Database["public"]["Tables"]["work_order_lines"]["Row"] & {
   vehicle?: {
     year?: number | null;
     make?: string | null;
@@ -23,7 +23,10 @@ export default function TechQueuePage() {
   const supabase = createClientComponentClient<Database>();
   const [jobs, setJobs] = useState<JobLine[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tech, setTech] = useState<{ id: string; full_name: string | null } | null>(null);
+  const [tech, setTech] = useState<{
+    id: string;
+    full_name: string | null;
+  } | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -38,9 +41,9 @@ export default function TechQueuePage() {
     if (!user) return;
 
     const { data: profile } = await supabase
-      .from('profiles')
-      .select('id, full_name')
-      .eq('id', user.id)
+      .from("profiles")
+      .select("id, full_name")
+      .eq("id", user.id)
       .single();
 
     if (profile) setTech({ id: profile.id, full_name: profile.full_name });
@@ -52,9 +55,9 @@ export default function TechQueuePage() {
 
   const handleAssignTech = async (jobId: string, techId: string) => {
     await supabase
-      .from('work_order_lines')
+      .from("work_order_lines")
       .update({ assigned_to: techId })
-      .eq('id', jobId);
+      .eq("id", jobId);
     fetchJobsAndProfile();
   };
 
@@ -67,7 +70,10 @@ export default function TechQueuePage() {
         jobs={jobs}
         techOptions={tech ? [tech] : []}
         onAssignTech={handleAssignTech}
-        onView={(job) => job.work_order_id && router.push(`/work-orders/view/${job.work_order_id}`)}
+        onView={(job) =>
+          job.work_order_id &&
+          router.push(`/work-orders/view/${job.work_order_id}`)
+        }
         filterTechId={tech?.id || null}
         title="Assigned Job Queue"
       />

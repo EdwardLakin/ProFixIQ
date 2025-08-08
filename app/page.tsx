@@ -1,4 +1,4 @@
-import ProFixIQLanding from '@components/ProFixIQLanding';
+import ProFixIQLanding from "@shared/components/ProFixIQLanding";
 
 export default function Home() {
   return <ProFixIQLanding />;

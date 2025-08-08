@@ -1,34 +1,34 @@
 // src/app/menu/page.tsx
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import supabase from '@lib/supabaseClient';
-import { useUser } from '@hooks/useUser';
-import type { Database } from '@/types/supabase';
+import { useEffect, useState } from "react";
+import supabase from "@shared/lib/supabaseClient";
+import { useUser } from "@shared/hooks/useUser";
+import type { Database } from "@shared/types/supabase";
 
-type MenuItem = Database['public']['Tables']['menu_items']['Row'];
-type InsertMenuItem = Database['public']['Tables']['menu_items']['Insert'];
+type MenuItem = Database["public"]["Tables"]["menu_items"]["Row"];
+type InsertMenuItem = Database["public"]["Tables"]["menu_items"]["Insert"];
 
 export default function MenuItemsPage() {
   const { user, isLoading } = useUser();
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [form, setForm] = useState<InsertMenuItem>({
-    name: '',
-    category: '',
+    name: "",
+    category: "",
     total_price: 0,
-    user_id: '',
+    user_id: "",
   });
 
   const fetchItems = async () => {
     if (!user?.id) return;
 
     const { data, error } = await supabase
-      .from('menu_items')
-      .select('*')
-      .eq('user_id', user.id);
+      .from("menu_items")
+      .select("*")
+      .eq("user_id", user.id);
 
     if (error) {
-      console.error('Failed to fetch menu items:', error);
+      console.error("Failed to fetch menu items:", error);
     } else {
       setMenuItems(data ?? []);
     }
@@ -39,11 +39,11 @@ export default function MenuItemsPage() {
       fetchItems();
 
       const channel = supabase
-        .channel('menu-items-sync')
+        .channel("menu-items-sync")
         .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'menu_items' },
-          fetchItems
+          "postgres_changes",
+          { event: "*", schema: "public", table: "menu_items" },
+          fetchItems,
         )
         .subscribe();
 
@@ -61,18 +61,18 @@ export default function MenuItemsPage() {
       user_id: user.id,
     };
 
-    const { error } = await supabase.from('menu_items').insert([newItem]);
+    const { error } = await supabase.from("menu_items").insert([newItem]);
 
     if (error) {
-      console.error('Insert failed:', error);
+      console.error("Insert failed:", error);
     } else {
-      setForm({ name: '', category: '', total_price: 0, user_id: user.id });
+      setForm({ name: "", category: "", total_price: 0, user_id: user.id });
     }
   };
 
   const handleDelete = async (id: string) => {
-    const { error } = await supabase.from('menu_items').delete().eq('id', id);
-    if (error) console.error('Delete failed:', error);
+    const { error } = await supabase.from("menu_items").delete().eq("id", id);
+    if (error) console.error("Delete failed:", error);
   };
 
   if (isLoading) return <div>Loading...</div>;
@@ -90,7 +90,7 @@ export default function MenuItemsPage() {
         />
         <input
           placeholder="Category"
-          value={form.category || ''}
+          value={form.category || ""}
           onChange={(e) => setForm({ ...form, category: e.target.value })}
           className="border px-2 py-1"
         />

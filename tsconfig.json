@@ -15,15 +15,33 @@
     "isolatedModules": true,
     "jsx": "preserve",
     "baseUrl": ".",
-    "paths": {
-      "@components/*": ["src/components/*"],
-      "@hooks/*": ["src/hooks/*"],
-      "@lib/*": ["src/lib/*"],
-      "@custom-types/*": ["src/types/*"],
-      "@/types/*": ["src/types/*"], 
-      "@/utils/*": ["src/utils/*"], 
-      "@context/*": ["src/context/*"]
-    },
+      "paths": {
+       "@components/*": ["src/components/*"],
+  "@hooks/*": ["src/hooks/*"],
+  "@lib/*": ["src/lib/*"],
+  "@custom-types/*": ["src/types/*"],
+  "@/types/*": ["src/types/*"], 
+  "@/utils/*": ["src/utils/*"], 
+  "@context/*": ["src/context/*"], 
+  "@/features/*": ["features/*"],
+
+  "@inspections/*": ["features/inspections/*"],
+  "@work-orders/*": ["features/work-orders/*"],
+  "@ai/*": ["features/ai/*"],
+  "@stripe/*": ["features/stripe/*"],
+  "@quotes/*": ["features/quotes/*"],
+  "@dashboard/*": ["features/dashboard/*"],
+  "@auth/*": ["features/auth/*"],
+  "@parts/*": ["features/parts/*"],
+  "@shared/*": ["features/shared/*"],
+
+  // Optional convenience subpaths
+  "@components/*": ["features/shared/components/*"],
+  "@layout/*": ["features/shared/layout/*"],
+  "@types/*": ["features/shared/types/*"],
+  "@context/*": ["features/shared/context/*"],
+  "@lib/*": ["features/shared/lib/*"]
+},
     "types": [],
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,

@@ -1,66 +1,62 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 
-export default function SubscribePage() {
-  const [email, setEmail] = useState('');
-  const [priceId, setPriceId] = useState(''); // set default if desired
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+export default function SignUpPage() {
+  const searchParams = useSearchParams();
+  const [email, setEmail] = useState("");
+  const [_loading, setLoading] = useState(true);
 
-  const handleCheckout = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-
-    const res = await fetch('/api/stripe/checkout', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, priceId }),
-    });
-
-    const data = await res.json();
-
-    if (data.url) {
-      window.location.href = data.url;
-    } else {
-      setError(data.error || 'Checkout failed.');
+  useEffect(() => {
+    const sessionId = searchParams.get("session_id");
+    if (!sessionId) {
+      setLoading(false);
+      return;
     }
 
-    setLoading(false);
-  };
+    const fetchEmail = async () => {
+      try {
+        const res = await fetch(`/api/stripe/session?session_id=${sessionId}`);
+        const data = await res.json();
+        if (data?.email) {
+          setEmail(data.email);
+        }
+      } catch (err) {
+        console.error("Failed to fetch session:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchEmail();
+  }, [searchParams]);
 
   return (
     <div className="min-h-screen bg-black text-white flex items-center justify-center px-4">
-      <form onSubmit={handleCheckout} className="max-w-md w-full space-y-4 bg-gray-900 p-6 rounded border border-orange-500">
-        <h1 className="text-xl font-bold text-orange-400">Subscribe to a Plan</h1>
+      <form className="max-w-md w-full space-y-4 bg-gray-900 p-6 rounded">
+        <h2 className="text-2xl font-semibold">Sign Up</h2>
 
         <input
           type="email"
-          required
-          placeholder="Your email"
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="w-full p-2 rounded bg-gray-800 border border-orange-400"
+          placeholder="Email"
+          className="w-full p-2 rounded bg-gray-800 border border-gray-700"
+          readOnly
         />
 
-        <select
-          required
-          value={priceId}
-          onChange={(e) => setPriceId(e.target.value)}
-          className="w-full p-2 rounded bg-gray-800 border border-orange-400"
+        <input
+          type="password"
+          placeholder="Create password"
+          className="w-full p-2 rounded bg-gray-800 border border-gray-700"
+        />
+
+        <button
+          type="submit"
+          className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded"
         >
-          <option value="">Select a plan</option>
-          <option value="price_123_DIY">DIY - $9</option>
-          <option value="price_456_PRO">Pro - $49</option>
-          <option value="price_789_PLUS">Pro+ - $99</option>
-        </select>
-
-        <button type="submit" disabled={loading} className="bg-orange-500 hover:bg-orange-600 text-black py-2 px-4 rounded w-full">
-          {loading ? 'Redirecting...' : 'Continue to Checkout'}
+          Create Account
         </button>
-
-        {error && <p className="text-red-500 text-sm">{error}</p>}
       </form>
     </div>
   );

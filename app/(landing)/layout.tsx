@@ -1,14 +1,18 @@
-import './globals.css';
-import type { Metadata } from 'next';
-import Providers from '../providers';
-import { Toaster } from 'sonner';
+import "./globals.css";
+import type { Metadata } from "next";
+import Providers from "../providers";
+import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
-  title: 'ProFixIQ',
-  description: 'AI-powered vehicle diagnostics and repair assistant',
+  title: "ProFixIQ",
+  description: "AI-powered vehicle diagnostics and repair assistant",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head />

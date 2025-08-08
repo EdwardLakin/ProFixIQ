@@ -1,17 +1,21 @@
-import './globals.css';
-import { Inter } from 'next/font/google';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
-import type { Database } from '@/types/supabase';
-import { cookies } from 'next/headers';
+import "./globals.css";
+import { Inter } from "next/font/google";
+import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/supabase";
+import { cookies } from "next/headers";
 
-const inter = Inter({ subsets: ['latin'] });
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata = {
-  title: 'ProFixIQ',
-  description: 'Auto diagnostics and inspections made easy',
+  title: "ProFixIQ",
+  description: "Auto diagnostics and inspections made easy",
 };
 
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const supabase = createServerComponentClient<Database>({
     cookies: () => cookies(), // ✅ wrap in function to avoid sync call
   });
@@ -24,9 +28,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   if (user) {
     const { data } = await supabase
-      .from('shops')
-      .select('name, address, city, province, postal_code, phone_number, email')
-      .eq('id', user?.user_metadata?.shop_id || '')
+      .from("shops")
+      .select("name, address, city, province, postal_code, phone_number, email")
+      .eq("id", user?.user_metadata?.shop_id || "")
       .single();
 
     shop = data;
@@ -40,7 +44,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between gap-2">
               <div>
                 <strong>{shop.name}</strong>
-                <p>{shop.address}, {shop.city}, {shop.province} {shop.postal_code}</p>
+                <p>
+                  {shop.address}, {shop.city}, {shop.province}{" "}
+                  {shop.postal_code}
+                </p>
               </div>
               <div>
                 <p>📞 {shop.phone_number}</p>

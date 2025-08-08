@@ -1,32 +1,32 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { parseWorkOrderCommand } from '@lib/work-orders/commandProcessor';
-import { handleWorkOrderCommand } from '@lib/work-orders/handleWorkOrderCommand';
-import { createBrowserClient } from '@supabase/ssr';
-import { useUser } from '@hooks/useUser';
-import type { Database } from '@/types/supabase';
+import { useState } from "react";
+import { parseWorkOrderCommand } from "@shared/lib/work-orders/commandProcessor";
+import { handleWorkOrderCommand } from "@shared/lib/work-orders/handleWorkOrderCommand";
+import { createBrowserClient } from "@supabase/ssr";
+import { useUser } from "@shared/hooks/useUser";
+import type { Database } from "@shared/types/supabase";
 
 const supabase = createBrowserClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
 );
 
 export default function BookingPage() {
   const { user } = useUser();
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState("");
   const [output, setOutput] = useState<string | null>(null);
 
   const runCommand = async () => {
     const parsed = parseWorkOrderCommand(input);
 
     if (!parsed) {
-      setOutput('Unrecognized command.');
+      setOutput("Unrecognized command.");
       return;
     }
 
     if (!user) {
-      setOutput('User not authenticated.');
+      setOutput("User not authenticated.");
       return;
     }
 
