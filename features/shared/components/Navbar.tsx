@@ -51,22 +51,20 @@ export default function Navbar() {
         .eq("id", session.user.id)
         .single();
 
-      setProfile(prof);
+      setProfile(prof ?? null);
 
       const { data: shift } = await supabase
         .from("tech_shifts")
         .select("*")
         .eq("tech_id", session.user.id)
-        .is("ended_at", null)
-        .order("started_at", { ascending: false })
+        .is("ended_time", null)
+        .order("start_time", { ascending: false })
         .limit(1)
         .single();
 
       if (!shift) setShiftStatus("not_started");
-      else if (shift.break_start && !shift.break_end)
-        setShiftStatus("on_break");
-      else if (shift.lunch_start && !shift.lunch_end)
-        setShiftStatus("on_lunch");
+      else if (shift.break_start && !shift.break_end) setShiftStatus("on_break");
+      else if (shift.lunch_start && !shift.lunch_end) setShiftStatus("on_lunch");
       else setShiftStatus("active");
     };
 
@@ -101,8 +99,34 @@ export default function Navbar() {
     punched_out: "bg-neutral-800",
   }[shiftStatus];
 
+  // ---------- Role helpers (single source of truth) ----------
+  type StaffRole =
+    | "owner"
+    | "admin"
+    | "manager"
+    | "advisor"
+    | "parts"
+    | "mechanic";
+
+  type AnyRole = StaffRole | "customer" | null;
+
+  // Normalize once; do NOT use profile?.role elsewhere
+  const role: AnyRole = (profile?.role as AnyRole) ?? null;
+
+  const staffRoles = new Set<StaffRole>([
+    "owner",
+    "admin",
+    "manager",
+    "advisor",
+    "parts",
+    "mechanic",
+  ]);
+
+  const isStaff = role ? staffRoles.has(role as StaffRole) : false;
+  const isCustomer = role === "customer" || role === null;
+
   const renderRoleLinks = () => {
-    switch (profile?.role) {
+    switch (role) {
       case "mechanic":
         return <RoleNavTech />;
       case "advisor":
@@ -115,6 +139,14 @@ export default function Navbar() {
         return <RoleNavOwner />;
       case "parts":
         return <RoleNavParts />;
+      case "customer":
+      case null:
+        // Minimal customer entry—portal link visible in both desktop & mobile menus
+        return (
+          <Link href="/portal" className="hover:text-orange-400">
+            Customer Portal
+          </Link>
+        );
       default:
         return null;
     }
@@ -136,19 +168,34 @@ export default function Navbar() {
           {user ? (
             <>
               {renderRoleLinks()}
-              <button
-                title="Quick Access"
-                className="hover:text-orange-400"
-                onClick={() => alert("Quick Access coming soon")}
-              >
-                <FaSearch />
-              </button>
-              <button
-                className="hover:text-orange-400"
-                onClick={() => alert("Notifications coming soon")}
-              >
-                <FaBell />
-              </button>
+
+              {isCustomer && (
+                <Link
+                  href="/portal"
+                  className="hover:text-orange-400 font-semibold"
+                >
+                  Portal
+                </Link>
+              )}
+
+              {isStaff && (
+                <>
+                  <button
+                    title="Quick Access"
+                    className="hover:text-orange-400"
+                    onClick={() => alert("Quick Access coming soon")}
+                  >
+                    <FaSearch />
+                  </button>
+                  <button
+                    className="hover:text-orange-400"
+                    onClick={() => alert("Notifications coming soon")}
+                  >
+                    <FaBell />
+                  </button>
+                </>
+              )}
+
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setDropdownOpen((prev) => !prev)}
@@ -211,6 +258,16 @@ export default function Navbar() {
           {user ? (
             <>
               {renderRoleLinks()}
+
+              {isCustomer && (
+                <Link
+                  href="/portal"
+                  className="block px-4 py-2 hover:bg-neutral-800 text-orange-400"
+                >
+                  Portal
+                </Link>
+              )}
+
               <button
                 onClick={handleSignOut}
                 className="block w-full text-left px-4 py-2 hover:bg-neutral-800 text-red-400"

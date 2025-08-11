@@ -16,13 +16,6 @@
     "jsx": "preserve",
     "baseUrl": ".",
       "paths": {
-       "@components/*": ["src/components/*"],
-  "@hooks/*": ["src/hooks/*"],
-  "@lib/*": ["src/lib/*"],
-  "@custom-types/*": ["src/types/*"],
-  "@/types/*": ["src/types/*"], 
-  "@/utils/*": ["src/utils/*"], 
-  "@context/*": ["src/context/*"], 
   "@/features/*": ["features/*"],
 
   "@inspections/*": ["features/inspections/*"],
@@ -34,6 +27,8 @@
   "@auth/*": ["features/auth/*"],
   "@parts/*": ["features/parts/*"],
   "@shared/*": ["features/shared/*"],
+  "@shared/types/types/supabase": ["features/shared/types/types/supabase.ts"],
+
 
   // Optional convenience subpaths
   "@components/*": ["features/shared/components/*"],

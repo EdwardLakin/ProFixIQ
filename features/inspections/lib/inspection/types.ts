@@ -166,7 +166,8 @@ export interface QuoteLineItem {
     name: string;
     price?: number | null; // optional/nullable so .toFixed() needs a guard
   };
-  partPrice?: string | null; // legacy field used in some places
+  partName: string;
+  partPrice?: string | number | null; // legacy field used in some places
   photoUrls?: string[];
 }
 

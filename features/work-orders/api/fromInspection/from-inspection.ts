@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import supabase from "@shared/lib/supabaseClient";
+import { createPagesServerClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/supabase";
 
 interface InspectionItem {
   name: string;
@@ -39,6 +40,9 @@ export default async function handler(
       return res.status(400).json({ error: "Missing required fields" });
     }
 
+    // Create Supabase client bound to this request/response (keeps user session)
+    const supabase = createPagesServerClient<Database>({ req, res });
+
     const inspectionRes = await fetch(
       `${process.env.NEXT_PUBLIC_BASE_URL}/api/inspections/${inspectionId}`,
     );
@@ -60,7 +64,7 @@ export default async function handler(
             recommendation: item.recommend || undefined,
             notes: item.notes || undefined,
             status: "not_started",
-            labor_time: 0, // Placeholder; can be updated via AI
+            labor_time: 0,
           });
         }
       });

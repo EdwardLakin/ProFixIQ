@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { insertPrioritizedJobsFromInspection } from "@shared/lib/work-orders/insertPrioritizedJobsFromInspection";
+import { insertPrioritizedJobsFromInspection } from "@work-orders/lib/work-orders/insertPrioritizedJobsFromInspection";
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs"; // ✅ Corrected
 import { cookies } from "next/headers";
-import { Database } from "@shared/types/supabase";
+import { Database } from "@shared/types/types/supabase";
 
 export async function POST(req: NextRequest) {
   try {

@@ -20,6 +20,9 @@ export default function LandingHero() {
   const supabase = createClientComponentClient<Database>();
   const router = useRouter();
 
+  // NEW: dynamic portal link based on session (signed-in → /portal/booking)
+  const [portalHref, setPortalHref] = useState("/auth?redirect=/portal/booking");
+
   const scrollTo = (id: string) => {
     const el = document.getElementById(id);
     if (el) el.scrollIntoView({ behavior: "smooth" });
@@ -65,11 +68,19 @@ export default function LandingHero() {
     canvas.height = 400;
     animate();
   }, []);
+
   useEffect(() => {
     const onScroll = () => window.scrollY > 300 && setFadeIn(true);
     window.addEventListener("scroll", onScroll);
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  // NEW: compute portal href once we know session
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) setPortalHref("/portal/booking");
+    });
+  }, [supabase]);
 
   const handleExpand = (index: number) => {
     setExpandedIndex(index === expandedIndex ? null : index);
@@ -182,6 +193,14 @@ export default function LandingHero() {
             automation.
           </p>
           <div className="flex justify-center gap-4 flex-wrap">
+            {/* NEW: Portal CTA — uses portalHref computed from session */}
+            <Link
+              href={portalHref}
+              className="bg-orange-500 hover:bg-orange-600 text-black font-bold py-3 px-6 rounded-lg text-lg shadow-lg transition"
+            >
+              Book Service
+            </Link>
+
             <Link
               href="/sign-in?redirectedFrom=/ai"
               className="bg-orange-500 hover:bg-orange-600 text-black font-bold py-3 px-6 rounded-lg text-lg shadow-lg transition"
@@ -357,7 +376,9 @@ export default function LandingHero() {
                 <h3 className="text-xl font-blackops text-orange-400">
                   {plan.name}
                 </h3>
-                <p className="text-sm text-gray-300 mb-2">{plan.description}</p>
+                <p className="text-sm text-gray-300 mb-2">
+                  {plan.description}
+                </p>
                 <p className="text-lg text-orange-500 font-bold mb-4">
                   {plan.price}
                 </p>

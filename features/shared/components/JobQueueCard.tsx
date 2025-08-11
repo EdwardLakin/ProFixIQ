@@ -1,24 +1,21 @@
 "use client";
 
 import { memo, useState } from "react";
-import type { Database } from "@shared/types/types/supabase";
-
-// Row shape from Supabase
-type JobLine = Database["public"]["Tables"]["work_order_lines"]["Row"];
+import type { QueueJob } from "./JobQueue"; // ← use the joined shape
 
 type AssignProps = {
   techOptions: { id: string; full_name: string | null }[];
   onAssignTech: (jobId: string, techId: string) => void;
-  onView: (job: JobLine) => void;
+  onView: (job: QueueJob) => void;
 };
 
 type PunchProps = {
-  onPunchIn?: (job: JobLine) => void | Promise<void>;
-  onPunchOut?: (job: JobLine) => void | Promise<void>;
+  onPunchIn?: (job: QueueJob) => void | Promise<void>;
+  onPunchOut?: (job: QueueJob) => void | Promise<void>;
 };
 
 type CommonProps = {
-  job: JobLine;
+  job: QueueJob;
   isActive?: boolean;
 };
 
@@ -35,14 +32,16 @@ function JobQueueCard({
 }: JobQueueCardProps) {
   const { complaint, created_at, assigned_to, id } = job;
 
-  const [selectedTech, setSelectedTech] = useState<string | null>(
-    assigned_to ?? null
-  );
+  // normalize assigned_to -> technician id
+  const assignedId =
+    typeof assigned_to === "string" ? assigned_to : assigned_to?.id ?? null;
+
+  const [selectedTech, setSelectedTech] = useState<string | null>(assignedId);
 
   const handleAssign = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const techId = e.target.value || null;
     setSelectedTech(techId);
-    if (techId && onAssignTech) onAssignTech(id!, techId);
+    if (techId && onAssignTech && id) onAssignTech(id, techId);
   };
 
   return (
@@ -54,7 +53,7 @@ function JobQueueCard({
       <div className="p-3">
         <div className="font-medium">{complaint ?? "No complaint"}</div>
         <div className="text-xs text-neutral-500">
-          Created: {new Date(created_at ?? "").toLocaleString()}
+          Created: {created_at ? new Date(created_at).toLocaleString() : "—"}
         </div>
 
         {/* Tech assign UI (only if props provided) */}

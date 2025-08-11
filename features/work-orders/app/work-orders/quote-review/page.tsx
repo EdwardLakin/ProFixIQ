@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import QuoteViewer from "@shared/components/QuoteViewer";
-import { QuoteLineItem } from "@shared/lib/inspection/types";
+import QuoteViewer from "@quotes/components/QuoteViewer";
+import { QuoteLineItem } from "@inspections/lib/inspection/types";
 
 export default function QuoteReviewPage() {
   const [quote, setQuote] = useState<QuoteLineItem[]>([]);

@@ -24,6 +24,255 @@ export type InspectionSection = {
 export interface Database {
   public: {
     Tables: {
+
+      shop_time_off: {
+  Row: {
+    id: string;
+    shop_id: string;
+    starts_at: string;   // timestamptz ISO
+    ends_at: string;     // timestamptz ISO
+    reason: string | null;
+  };
+  Insert: {
+    id?: string;
+    shop_id: string;
+    starts_at: string;
+    ends_at: string;
+    reason?: string | null;
+  };
+  Update: {
+    id?: string;
+    shop_id?: string;
+    starts_at?: string;
+    ends_at?: string;
+    reason?: string | null;
+  };
+  Relationships: [
+    {
+      foreignKeyName: "shop_time_off_shop_id_fkey";
+      columns: ["shop_id"];
+      isOneToOne: false;
+      referencedRelation: "shop";
+      referencedColumns: ["id"];
+    }
+  ];
+};
+
+      shop_hours: {
+  Row: {
+    id: string;
+    shop_id: string;
+    weekday: number;     // 0-6
+    open_time: string;   // "08:00"
+    close_time: string;  // "17:00"
+  };
+  Insert: {
+    id?: string;
+    shop_id: string;
+    weekday: number;
+    open_time: string;
+    close_time: string;
+  };
+  Update: {
+    id?: string;
+    shop_id?: string;
+    weekday?: number;
+    open_time?: string;
+    close_time?: string;
+  };
+  Relationships: [
+    {
+      foreignKeyName: "shop_hours_shop_id_fkey";
+      columns: ["shop_id"];
+      isOneToOne: false;
+      referencedRelation: "shop";
+      referencedColumns: ["id"];
+    }
+  ];
+};
+
+      bookings: {
+  Row: {
+    id: string;
+    shop_id: string;
+    customer_id: string | null;
+    vehicle_id: string | null;
+    starts_at: string;        // timestamptz ISO
+    ends_at: string;          // timestamptz ISO
+    status: "pending" | "confirmed" | "cancelled" | "completed";
+    notes: string | null;
+    created_at: string;       // timestamptz ISO
+    created_by: string | null;
+  };
+  Insert: {
+    id?: string;
+    shop_id: string;
+    customer_id?: string | null;
+    vehicle_id?: string | null;
+    starts_at: string;
+    ends_at: string;
+    status?: "pending" | "confirmed" | "cancelled" | "completed";
+    notes?: string | null;
+    created_at?: string;
+    created_by?: string | null;
+  };
+  Update: {
+    id?: string;
+    shop_id?: string;
+    customer_id?: string | null;
+    vehicle_id?: string | null;
+    starts_at?: string;
+    ends_at?: string;
+    status?: "pending" | "confirmed" | "cancelled" | "completed";
+    notes?: string | null;
+    created_at?: string;
+    created_by?: string | null;
+  };
+  Relationships: [
+    {
+      foreignKeyName: "bookings_shop_id_fkey";
+      columns: ["shop_id"];
+      isOneToOne: false;
+      referencedRelation: "shop";
+      referencedColumns: ["id"];
+    },
+    {
+      foreignKeyName: "bookings_customer_id_fkey";
+      columns: ["customer_id"];
+      isOneToOne: false;
+      referencedRelation: "customers";
+      referencedColumns: ["id"];
+    },
+    {
+      foreignKeyName: "bookings_vehicle_id_fkey";
+      columns: ["vehicle_id"];
+      isOneToOne: false;
+      referencedRelation: "vehicles";
+      referencedColumns: ["id"];
+    }
+  ];
+};
+
+        // ---------------------------------------------
+// customer_settings
+// ---------------------------------------------
+customer_settings: {
+  Row: {
+    customer_id: string;
+    comm_email_enabled: boolean;
+    comm_sms_enabled: boolean;
+    marketing_opt_in: boolean;
+    preferred_contact: "email" | "sms" | "phone" | null;
+    units: "imperial" | "metric" | null;
+    language: string | null;
+    timezone: string | null;
+    updated_at: string; // timestamptz ISO
+  };
+  Insert: {
+    customer_id: string;
+    comm_email_enabled?: boolean;
+    comm_sms_enabled?: boolean;
+    marketing_opt_in?: boolean;
+    preferred_contact?: "email" | "sms" | "phone" | null;
+    units?: "imperial" | "metric" | null;
+    language?: string | null;
+    timezone?: string | null;
+    updated_at?: string;
+  };
+  Update: {
+    customer_id?: string;
+    comm_email_enabled?: boolean;
+    comm_sms_enabled?: boolean;
+    marketing_opt_in?: boolean;
+    preferred_contact?: "email" | "sms" | "phone" | null;
+    units?: "imperial" | "metric" | null;
+    language?: string | null;
+    timezone?: string | null;
+    updated_at?: string;
+  };
+  Relationships: [
+    {
+      foreignKeyName: "customer_settings_customer_id_fkey";
+      columns: ["customer_id"];
+      isOneToOne: true;
+      referencedRelation: "customers";
+      referencedColumns: ["id"];
+    }
+  ];
+};
+
+        history: {
+  Row: {
+    id: string;
+    customer_id: string;
+    vehicle_id: string;
+    inspection_id: string | null;
+    work_order_id: string | null;
+    description: string | null;
+    notes: string | null;
+    service_date: string | null; // ISO date string
+    status: string | null; // could be 'completed', 'in_progress', etc.
+    created_at: string;
+    type: 'inspection' | 'work_order' | 'note' | 'other';
+  };
+  Insert: {
+    id?: string;
+    customer_id: string;
+    vehicle_id: string;
+    inspection_id?: string | null;
+    work_order_id?: string | null;
+    description?: string | null;
+    notes?: string | null;
+    service_date?: string | null;
+    status?: string | null;
+    created_at?: string;
+    type: 'inspection' | 'work_order' | 'note' | 'other';
+  };
+  Update: {
+    id?: string;
+    customer_id?: string;
+    vehicle_id?: string;
+    inspection_id?: string | null;
+    work_order_id?: string | null;
+    description?: string | null;
+    notes?: string | null;
+    service_date?: string | null;
+    status?: string | null;
+    created_at?: string;
+    type?: 'inspection' | 'work_order' | 'note' | 'other';
+  };
+  Relationships: [
+    {
+      foreignKeyName: "history_customer_id_fkey";
+      columns: ["customer_id"];
+      isOneToOne: false;
+      referencedRelation: "customers";
+      referencedColumns: ["id"];
+    },
+    {
+      foreignKeyName: "history_vehicle_id_fkey";
+      columns: ["vehicle_id"];
+      isOneToOne: false;
+      referencedRelation: "vehicles";
+      referencedColumns: ["id"];
+    },
+    {
+      foreignKeyName: "history_inspection_id_fkey";
+      columns: ["inspection_id"];
+      isOneToOne: false;
+      referencedRelation: "inspections";
+      referencedColumns: ["id"];
+    },
+    {
+      foreignKeyName: "history_work_order_id_fkey";
+      columns: ["work_order_id"];
+      isOneToOne: false;
+      referencedRelation: "work_orders";
+      referencedColumns: ["id"];
+    }
+  ];
+};
+
       inspection_templates: {
         Row: {
           id: string;
@@ -597,6 +846,10 @@ export interface Database {
           shop_id?: string | null;
           business_name: string | null;
           phone: string | null;
+          street: string | null;
+city: string | null;
+province: string | null;
+postal_code: string | null;
           role:
             | "owner"
             | "admin"
@@ -616,6 +869,10 @@ export interface Database {
           shop_id?: string | null;
           business_name: string | null;
           phone: string | null;
+          street: string | null;
+            city: string | null;
+            province: string | null;
+            postal_code: string | null;
           role:
             | "owner"
             | "admin"
@@ -635,6 +892,10 @@ export interface Database {
           shop_id?: string | null;
           business_name?: string | null;
           phone?: string | null;
+          street: string | null;
+city: string | null;
+province: string | null;
+postal_code: string | null;
           role?:
             | "owner"
             | "admin"
@@ -823,6 +1084,10 @@ export interface Database {
           last_name: string;
           phone: string;
           email: string;
+          street: string | null;
+city: string | null;
+province: string | null;
+postal_code: string | null;
           created_at: string;
         };
         Insert: {
@@ -831,6 +1096,10 @@ export interface Database {
           last_name: string;
           phone?: string;
           email?: string;
+          street: string | null;
+city: string | null;
+province: string | null;
+postal_code: string | null;
           created_at?: string;
         };
         Update: {
@@ -839,6 +1108,10 @@ export interface Database {
           last_name?: string;
           phone?: string;
           email?: string;
+          street: string | null;
+city: string | null;
+province: string | null;
+postal_code: string | null;
           created_at?: string;
         };
         Relationships: [
@@ -853,6 +1126,7 @@ export interface Database {
 
       shop: {
         Row: {
+          slug: string;
           id: string;
           name: string;
           created_at: string;
@@ -863,6 +1137,7 @@ export interface Database {
             | "mechanic"
             | "advisor"
             | "parts"
+            | "customer"
             | null;
           address: string | null;
           city: string | null;
@@ -895,6 +1170,7 @@ export interface Database {
             | "mechanic"
             | "advisor"
             | "parts"
+            | "customer"
             | null;
           address: string | null;
           city: string | null;
@@ -926,6 +1202,7 @@ export interface Database {
             | "mechanic"
             | "advisor"
             | "parts"
+            | "customer"
             | null;
           address: string | null;
           city: string | null;
@@ -1056,3 +1333,18 @@ export type JobLine = {
   hold_reason?: string | null;
   created_at: string;
 };
+
+export type UserRole =
+  | "owner"
+  | "admin"
+  | "manager"
+  | "mechanic"
+  | "advisor"
+  | "parts"
+  | "customer";
+
+  export type CustomerSettingsRow =
+  Database["public"]["Tables"]["customer_settings"]["Row"];
+
+export type CustomerSettingsUpsert =
+  Database["public"]["Tables"]["customer_settings"]["Insert"];

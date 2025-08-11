@@ -1,6 +1,6 @@
-import { QuoteLineItem } from "@shared/lib/inspection/types";
+import { QuoteLineItem } from "@inspections/lib/inspection/types";
 import { QuoteLine } from "./generateQuoteFromInspection";
-import { inferPartName } from "@shared/lib/ai/inferPartName";
+import { inferPartName } from "@ai/lib/ai/inferPartName";
 
 /**
  * Normalize a QuoteLine into a QuoteLineItem with inferred part info.

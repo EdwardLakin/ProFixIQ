@@ -1,14 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { clsx } from "clsx";
+import clsx from "clsx";
 import React from "react";
 
 type Variant = "default" | "secondary" | "destructive" | "ghost" | "outline";
 type Size = "sm" | "md" | "lg";
 
-interface LinkButtonProps
-  extends React.AnchorHTMLAttributes<HTMLAnchorElement> {
+interface LinkButtonProps extends React.AnchorHTMLAttributes<HTMLAnchorElement> {
   href: string;
   children: React.ReactNode;
   className?: string;
@@ -33,7 +32,7 @@ const sizeClasses: Record<Size, string> = {
   lg: "text-lg px-5 py-3",
 };
 
-export const LinkButton = ({
+function LinkButton({
   href,
   children,
   className = "",
@@ -42,7 +41,7 @@ export const LinkButton = ({
   icon,
   iconRight,
   ...props
-}: LinkButtonProps) => {
+}: LinkButtonProps) {
   return (
     <Link
       href={href}
@@ -59,4 +58,7 @@ export const LinkButton = ({
       {iconRight && <span className="ml-2">{iconRight}</span>}
     </Link>
   );
-};
+}
+
+export default LinkButton;
+export type { LinkButtonProps, Variant, Size };

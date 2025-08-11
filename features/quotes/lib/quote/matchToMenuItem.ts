@@ -1,5 +1,5 @@
 import { QuoteLine } from "./generateQuoteFromInspection";
-import { InspectionItem } from "@shared/lib/inspection/types";
+import { InspectionItem } from "@inspections/lib/inspection/types";
 import { quoteMenu } from "./quoteMenu";
 
 const defaultRate = 120;

@@ -1,7 +1,7 @@
 // lib/parts/searchParts.ts
 
 import { createClient } from "@supabase/supabase-js";
-import type { Database } from "@shared/types/supabase";
+import type { Database } from "@shared/types/types/supabase";
 
 const supabase = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,

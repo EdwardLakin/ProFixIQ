@@ -3,10 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { extractSummaryFromSession } from "@inspections/lib/inspection/summary";
-import { createBrowserSupabase } from "@shared/lib/supabase/client"; // ✅ changed
+import { supabase } from "@shared/lib/supabase/client";
 import type { InspectionSession } from "@inspections/lib/inspection/types";
-
-const supabase = createBrowserSupabase(); // ✅ added
 
 export default function InspectionSummaryPage() {
   const router = useRouter();
@@ -32,7 +30,7 @@ export default function InspectionSummaryPage() {
         const summaryText = items
           .map(
             (item) =>
-              `• ${item.section} - ${item.item} (${item.status}): ${item.note || "No notes"}`
+              `• ${item.section} - ${item.item} (${item.status}): ${item.note || "No notes"}`,
           )
           .join("\n");
         setSummary(summaryText);

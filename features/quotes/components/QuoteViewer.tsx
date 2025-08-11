@@ -1,81 +1,127 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { updateQuoteLine } from "@shared/lib/supabaseHelpers";
-import { generateQuotePDF } from "@shared/lib/work-orders/generateQuotePdf";
-import { QuoteLine } from "@shared/lib/quote/generateQuoteFromInspection";
-import { QuoteLineItem } from "@shared/lib/inspection/types";
-import { searchPartsByKeyword } from "@shared/lib/parts/searchParts";
-import { inferPartName } from "@shared/lib/ai/inferPartName";
+import { useEffect, useState } from "react";
+import { supabase } from "@shared/lib/supabase/client";
+import { generateQuotePDFBytes } from "@work-orders/lib/work-orders/generateQuotePdf";
+import type { QuoteLine } from "@quotes/lib/quote/generateQuoteFromInspection";
+import type { QuoteLineItem as BaseQuoteLineItem } from "@inspections/lib/inspection/types";
+import { searchPartsByKeyword } from "@parts/lib/parts/searchParts";
+import { inferPartName } from "@ai/lib/ai/inferPartName";
+
+/** What the UI edits; keep part compatible with your QuoteLineItem type */
+type EditableQuoteLineItem = BaseQuoteLineItem & {
+  // name is required in your domain
+  part?: { name: string; price: number | null } | null;
+  partName: string;          // required, never null/undefined
+  partPrice?: number | null; // convenience mirror for editing
+};
 
 interface QuoteViewerProps {
   summary: string;
-  quote: (QuoteLine | QuoteLineItem)[];
+  quote: (QuoteLine | BaseQuoteLineItem)[];
+}
+
+/** Minimal inline save; adjust table/columns if yours differ */
+async function updateQuoteLine(item: EditableQuoteLineItem) {
+  const { error } = await supabase
+    .from("quote_lines")
+    .upsert(
+      {
+        id: item.id,
+        name: item.name ?? item.description ?? "",
+        description: item.description ?? "",
+        labor_hours: item.laborHours ?? 0,
+        parts_cost: item.part?.price ?? item.partPrice ?? 0,
+        total_price: item.price ?? 0,
+        part_name: item.part?.name ?? item.partName, // guaranteed string
+        part_price: item.part?.price ?? item.partPrice ?? 0,
+        created_at: new Date().toISOString(),
+      },
+      { onConflict: "id" },
+    );
+
+  if (error) throw error;
 }
 
 async function normalizeQuoteLine(
-  line: QuoteLine | QuoteLineItem,
-): Promise<QuoteLineItem> {
+  line: QuoteLine | BaseQuoteLineItem,
+): Promise<EditableQuoteLineItem> {
+  // Already QuoteLineItem-shaped
   if ("laborHours" in line && "price" in line && "part" in line) {
-    return line as QuoteLineItem;
+    const li = line as BaseQuoteLineItem;
+    const ensuredName = li.part?.name ?? "";
+    const ensuredPrice =
+      typeof li.part?.price === "number" ? li.part!.price : li.part?.price ?? null;
+
+    return {
+      ...li,
+      part: { name: ensuredName, price: ensuredPrice },
+      partName: ensuredName,
+      partPrice: ensuredPrice ?? 0,
+    };
   }
 
-  const fallback = line as QuoteLine;
-  const partName = await inferPartName(fallback.description);
+  // Legacy QuoteLine
+  const legacy = line as QuoteLine;
+  const inferred = (await inferPartName(legacy.description)) ?? "";
 
   return {
     id: crypto.randomUUID(),
-    item: fallback.description,
-    name: fallback.description,
-    description: fallback.description,
+    item: legacy.description,
+    name: legacy.description,
+    description: legacy.description,
     status: "fail",
-    price: fallback.total,
-    partName,
+    price: legacy.total,
+    laborHours: legacy.hours,
+    part: { name: inferred, price: 0 },
+    partName: inferred,
     partPrice: 0,
-    part: {
-      name: partName,
-      price: 0,
-    },
-    laborHours: fallback.hours,
     photoUrls: [],
     notes: "",
   };
 }
 
 export default function QuoteViewer({ summary, quote }: QuoteViewerProps) {
-  const [quoteState, setQuoteState] = useState<QuoteLineItem[]>([]);
+  const [quoteState, setQuoteState] = useState<EditableQuoteLineItem[]>([]);
   const [lookupResults, setLookupResults] = useState<Record<number, string[]>>(
     {},
   );
 
   useEffect(() => {
-    const normalize = async () => {
+    (async () => {
       const result = await Promise.all(quote.map(normalizeQuoteLine));
       setQuoteState(result);
-    };
-    normalize();
+    })();
   }, [quote]);
 
   const handleChange = (
     idx: number,
-    field: keyof QuoteLineItem,
+    field: keyof EditableQuoteLineItem | "partName" | "partPrice",
     value: string | number,
   ) => {
     setQuoteState((prev) =>
-      prev.map((item, i) =>
-        i === idx
-          ? {
-              ...item,
-              [field]: value,
-              part:
-                field === "partName"
-                  ? { ...item.part, name: value as string }
-                  : field === "partPrice"
-                    ? { ...item.part, price: parseFloat(value as string) }
-                    : item.part,
-            }
-          : item,
-      ),
+      prev.map((item, i) => {
+        if (i !== idx) return item;
+
+        // base copy
+        let next: EditableQuoteLineItem = { ...item, [field]: value as any };
+
+        // ensure we always have a part object
+        const ensurePart = () => next.part ?? { name: item.partName ?? "", price: null };
+
+        if (field === "partName") {
+          const name = String(value);
+          next.partName = name;
+          next.part = { ...ensurePart(), name };
+        } else if (field === "partPrice") {
+          const price = Number(value);
+          const safe = Number.isFinite(price) ? price : 0;
+          next.partPrice = safe;
+          next.part = { ...ensurePart(), price: safe };
+        }
+
+        return next;
+      }),
     );
   };
 
@@ -85,7 +131,7 @@ export default function QuoteViewer({ summary, quote }: QuoteViewerProps) {
     setQuoteState((prev) =>
       prev.map((item, i) =>
         i === idx
-          ? { ...item, photoUrls: [...(item.photoUrls || []), ...urls] }
+          ? { ...item, photoUrls: [...(item.photoUrls ?? []), ...urls] }
           : item,
       ),
     );
@@ -96,7 +142,7 @@ export default function QuoteViewer({ summary, quote }: QuoteViewerProps) {
     setLookupResults((prev) => ({ ...prev, [idx]: results }));
   };
 
-  const handleSave = async (item: QuoteLineItem) => {
+  const handleSave = async (item: EditableQuoteLineItem) => {
     try {
       await updateQuoteLine(item);
       alert("Quote line saved!");
@@ -107,35 +153,31 @@ export default function QuoteViewer({ summary, quote }: QuoteViewerProps) {
   };
 
   const handleExportPDF = async () => {
-    const blob = await generateQuotePDF(quoteState, summary);
+    const bytes = await generateQuotePDFBytes(quoteState, summary); // Uint8Array
+    const buf = bytes.buffer as ArrayBuffer; // satisfy BlobPart typing
+    const blob = new Blob([buf], { type: "application/pdf" });
     const link = document.createElement("a");
-    link.href = URL.createObjectURL(
-      new Blob([blob], { type: "application/pdf" }),
-    );
+    link.href = URL.createObjectURL(blob);
     link.download = "quote.pdf";
     link.click();
   };
 
-  const grouped: Record<string, QuoteLineItem[]> = {};
+  // group by status for display
+  const grouped: Record<string, EditableQuoteLineItem[]> = {};
   for (const item of quoteState) {
-    const group = item.status || "unknown";
-    if (!grouped[group]) grouped[group] = [];
-    grouped[group].push(item);
+    const key = item.status ?? "unknown";
+    (grouped[key] ??= []).push(item);
   }
 
   return (
     <div className="bg-black/30 text-white rounded-lg p-6 shadow-xl backdrop-blur-lg border border-white/10">
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-2xl font-bold text-orange-400">
-          Inspection Summary
-        </h2>
-        <button
-          onClick={handleExportPDF}
-          className="bg-blue-600 px-3 py-1 rounded text-sm"
-        >
+        <h2 className="text-2xl font-bold text-orange-400">Inspection Summary</h2>
+        <button onClick={handleExportPDF} className="bg-blue-600 px-3 py-1 rounded text-sm">
           Export PDF
         </button>
       </div>
+
       <pre className="whitespace-pre-wrap text-white/80 mb-6">{summary}</pre>
 
       {Object.entries(grouped).map(([group, items]) => (
@@ -147,7 +189,11 @@ export default function QuoteViewer({ summary, quote }: QuoteViewerProps) {
           {items.map((item, idx) => {
             const labor = typeof item.price === "number" ? item.price : 0;
             const partPrice =
-              typeof item.part?.price === "number" ? item.part.price : 0;
+              typeof item.partPrice === "number"
+                ? item.partPrice
+                : typeof item.part?.price === "number"
+                  ? item.part.price
+                  : 0;
 
             return (
               <div
@@ -157,7 +203,7 @@ export default function QuoteViewer({ summary, quote }: QuoteViewerProps) {
                 <div className="flex flex-col md:flex-row md:items-center gap-4">
                   <input
                     className="bg-black/20 text-white p-1 rounded w-full md:w-1/3"
-                    value={item.description}
+                    value={item.description ?? ""}
                     onChange={(e) =>
                       handleChange(idx, "description", e.target.value)
                     }
@@ -166,26 +212,27 @@ export default function QuoteViewer({ summary, quote }: QuoteViewerProps) {
                   <input
                     type="text"
                     className="bg-black/20 text-white p-1 rounded w-full md:w-1/4"
-                    value={item.partName}
-                    onChange={(e) =>
-                      handleChange(idx, "partName", e.target.value)
+                    value={item.partName ?? item.part?.name ?? ""}
+                    onChange={(e) => handleChange(idx, "partName", e.target.value)}
+                    onBlur={() =>
+                      handlePartSearch(
+                        idx,
+                        (item.partName ?? item.part?.name ?? "").toString(),
+                      )
                     }
-                    onBlur={() => handlePartSearch(idx, item.partName)}
                     placeholder="Part name"
                   />
                   <input
                     type="number"
                     className="bg-black/20 text-white p-1 rounded w-full md:w-1/6"
-                    value={item.part?.price}
-                    onChange={(e) =>
-                      handleChange(idx, "partPrice", e.target.value)
-                    }
+                    value={item.partPrice ?? item.part?.price ?? 0}
+                    onChange={(e) => handleChange(idx, "partPrice", e.target.value)}
                     placeholder="Part cost"
                   />
                   <input
                     type="number"
                     className="bg-black/20 text-white p-1 rounded w-full md:w-1/6"
-                    value={item.price}
+                    value={item.price ?? 0}
                     onChange={(e) =>
                       handleChange(idx, "price", parseFloat(e.target.value))
                     }
@@ -195,10 +242,11 @@ export default function QuoteViewer({ summary, quote }: QuoteViewerProps) {
 
                 <textarea
                   className="bg-black/20 text-white p-1 rounded w-full"
-                  value={item.notes}
+                  value={item.notes ?? ""}
                   onChange={(e) => handleChange(idx, "notes", e.target.value)}
                   placeholder="Notes"
                 />
+
                 <p className="text-sm text-white/70">
                   Labor: ${labor.toFixed(2)} | Part: ${partPrice.toFixed(2)}
                 </p>

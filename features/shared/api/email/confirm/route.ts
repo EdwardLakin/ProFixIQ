@@ -1,7 +1,7 @@
 // app/api/confirm-email/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import type { Database } from "@shared/types/supabase";
+import type { Database } from "@shared/types/types/supabase";
 
 const supabaseAdmin = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,

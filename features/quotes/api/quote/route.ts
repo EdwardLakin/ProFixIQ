@@ -1,7 +1,7 @@
 // app/api/quote/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { generateQuoteFromInspection } from "@shared/lib/quote/generateQuoteFromInspection";
-import { InspectionItem } from "@shared/lib/inspection/types";
+import { generateQuoteFromInspection } from "@quotes/lib/quote/generateQuoteFromInspection";
+import { InspectionItem } from "@inspections/lib/inspection/types";
 
 export async function POST(req: NextRequest) {
   try {

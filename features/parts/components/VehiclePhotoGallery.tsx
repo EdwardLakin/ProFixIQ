@@ -5,7 +5,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import Image from "next/image";
 import { Dialog } from "@headlessui/react";
 import { PencilIcon, TrashIcon, XMarkIcon } from "@heroicons/react/24/outline";
-import type { Database } from "@shared/types/supabase";
+import type { Database } from "@shared/types/types/supabase";
 
 type VehiclePhoto = Database["public"]["Tables"]["vehicle_photos"]["Row"];
 

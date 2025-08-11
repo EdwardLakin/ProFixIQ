@@ -1,116 +1,104 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Database } from "@shared/types/supabase";
-import JobQueue from "@shared/components/JobQueue";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
+import JobQueue, { QueueJob } from "@shared/components/JobQueue";
 
-type JobLine = Database["public"]["Tables"]["work_order_lines"]["Row"] & {
-  vehicle?: {
-    year?: number | null;
-    make?: string | null;
-    model?: string | null;
-  };
-  assigned_to?: {
-    id?: string | null;
-    full_name?: string | null;
-  };
-};
+const supabase = createClientComponentClient<Database>();
 
-type Tech = {
-  id: string;
-  full_name: string | null;
-};
+type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 
 export default function WorkOrderQueuePage() {
-  const supabase = createClientComponentClient<Database>();
   const router = useRouter();
 
-  const [jobs, setJobs] = useState<JobLine[]>([]);
-  const [techs, setTechs] = useState<Tech[]>([]);
-  const [filterTech, setFilterTech] = useState<string>("");
+  const [jobs, setJobs] = useState<QueueJob[]>([]);
+  const [techs, setTechs] = useState<{ id: string; full_name: string | null }[]>(
+    []
+  );
+  const [filterTechId, setFilterTechId] = useState<string | null>(null);
+
+  const fetchJobs = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("work_order_lines")
+      .select(
+        `
+        *,
+        vehicles:vehicles(*),
+        assigned_to:profiles(id, full_name)
+      `
+      )
+      .order("created_at", { ascending: false })
+      .returns<QueueJob[]>(); // <-- ensures TS knows this is QueueJob[]
+
+    if (error) {
+      console.error("Failed to load queue:", error);
+      return;
+    }
+    setJobs(data ?? []);
+  }, []);
+
+  const fetchTechs = useCallback(async () => {
+    // grab people who can be assigned; tweak filter to your role field if needed
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, full_name")
+      .returns<Pick<Profile, "id" | "full_name">[]>();
+
+    if (error) {
+      console.error("Failed to load techs:", error);
+      return;
+    }
+    setTechs(data ?? []);
+  }, []);
 
   useEffect(() => {
-    const fetchData = async () => {
-      const { data: jobLines } = await supabase
-        .from("work_order_lines")
-        .select(
-          `
-          *,
-          vehicles (
-            year,
-            make,
-            model
-          ),
-          assigned_to:profiles (
-            id,
-            full_name
-          )
-        `,
-        )
-        .order("created_at", { ascending: false });
-
-      const { data: techProfiles } = await supabase
-        .from("profiles")
-        .select("id, full_name")
-        .in("role", ["mechanic", "technician"]);
-
-      if (jobLines) setJobs(jobLines as JobLine[]);
-      if (techProfiles) setTechs(techProfiles);
-    };
-
-    fetchData();
-  }, [supabase]);
-
-  const getTechById = (id: string) =>
-    techs.find((t) => t.id === id) ?? { id, full_name: null };
+    fetchJobs();
+    fetchTechs();
+  }, [fetchJobs, fetchTechs]);
 
   const handleAssignTech = async (jobId: string, techId: string) => {
-    await supabase
+    const { error } = await supabase
       .from("work_order_lines")
       .update({ assigned_to: techId })
       .eq("id", jobId);
 
-    const tech = getTechById(techId);
+    if (error) {
+      console.error("Failed to assign tech:", error);
+      return;
+    }
 
+    // optimistic UI update
     setJobs((prev) =>
-      prev.map((job) =>
-        job.id === jobId
-          ? ({
-              ...job,
-              assigned_to: {
-                id: techId,
-                full_name: tech.full_name,
-              },
-            } as JobLine)
-          : job,
-      ),
+      prev.map((j) =>
+        j.id === jobId
+          ? { ...j, assigned_to: { id: techId, full_name: techs.find(t => t.id === techId)?.full_name ?? null } }
+          : j
+      )
     );
   };
 
-  const handleView = (job: JobLine) => {
-    if (job.work_order_id) {
-      router.push(`/work-orders/view/${job.work_order_id}`);
-    }
+  const handleView = (job: QueueJob) => {
+    router.push(`/work-orders/view/${job.id}`);
   };
 
-  return (
-    <div className="p-4 max-w-5xl mx-auto space-y-4">
-      <h1 className="text-2xl font-bold text-white">Work Order Queue</h1>
+  const jobsForUI = useMemo(() => jobs, [jobs]);
 
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-        <label className="text-white text-sm">
-          Filter by Technician:
+  return (
+    <div className="p-6">
+      <div className="mb-4">
+        <label className="text-sm text-gray-300">
+          Filter by technician:
           <select
-            value={filterTech}
-            onChange={(e) => setFilterTech(e.target.value)}
-            className="ml-2 bg-zinc-900 text-white border border-zinc-700 rounded px-2 py-1"
+            className="ml-2 bg-neutral-800 text-white border border-neutral-600 rounded px-2 py-1"
+            value={filterTechId ?? ""}
+            onChange={(e) => setFilterTechId(e.target.value || null)}
           >
             <option value="">All</option>
-            {techs.map((tech) => (
-              <option key={tech.id} value={tech.id}>
-                {tech.full_name || "Unnamed"}
+            {techs.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.full_name ?? "Unnamed"}
               </option>
             ))}
           </select>
@@ -118,11 +106,12 @@ export default function WorkOrderQueuePage() {
       </div>
 
       <JobQueue
-        jobs={jobs}
+        jobs={jobsForUI}
         techOptions={techs}
         onAssignTech={handleAssignTech}
         onView={handleView}
-        filterTechId={filterTech}
+        filterTechId={filterTechId}
+        title="Work Order Queue"
       />
     </div>
   );

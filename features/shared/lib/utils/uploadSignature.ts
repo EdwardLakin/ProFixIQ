@@ -1,4 +1,4 @@
-import { supabase } from "@lib/supabase/client";
+import { supabase } from "@shared/lib/supabase/client";
 
 export async function uploadSignatureImage(
   base64: string,

@@ -1,6 +1,6 @@
 import { matchToMenuItem } from "./matchToMenuItem";
-import { InspectionItem } from "@shared/lib/inspection/types";
-import { generateLaborTimeEstimate } from "@shared/lib/ai/generateLaborTimeEstimate";
+import { InspectionItem } from "@inspections/lib/inspection/types";
+import { generateLaborTimeEstimate } from "@ai/lib/ai/generateLaborTimeEstimate";
 
 export interface QuoteLine {
   description: string;

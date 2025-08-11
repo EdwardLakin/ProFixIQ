@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import supabase from "@shared/lib/supabaseClient";
 import { v4 as uuidv4 } from "uuid";
-import type { Database } from "@shared/types/supabase";
-import { insertPrioritizedJobsFromInspection } from "@shared/lib/work-orders/insertPrioritizedJobsFromInspection";
+import type { Database } from "@shared/types/types/supabase";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { insertPrioritizedJobsFromInspection } from "@work-orders/lib/work-orders/insertPrioritizedJobsFromInspection";
+
+const supabase = createClientComponentClient<Database>();
 
 type Vehicle = Database["public"]["Tables"]["vehicles"]["Row"];
 type Customer = Database["public"]["Tables"]["customers"]["Row"];
@@ -38,7 +40,7 @@ export default function CreateWorkOrderPage() {
     if (c) setCustomerId(c);
     if (i) {
       setInspectionId(i);
-      setType("inspection"); // Auto-set if inspection
+      setType("inspection");
     }
   }, [searchParams]);
 
@@ -175,7 +177,7 @@ export default function CreateWorkOrderPage() {
           <p>
             <strong>Customer:</strong>{" "}
             {customer
-              ? `${customer.full_name} (${customer.email})`
+              ? `${customer.first_name} (${customer.email})`
               : customerId || "—"}
           </p>
           {inspectionId && (

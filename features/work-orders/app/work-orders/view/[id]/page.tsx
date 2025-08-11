@@ -7,16 +7,16 @@ import { format, formatDistanceStrict } from "date-fns";
 import { toast } from "sonner";
 
 import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
-import DtcSuggestionPopup from "@shared/components/workorders/DtcSuggestionPopup";
-import PartsRequestModal from "@shared/components/workorders/PartsRequestModal";
-import CauseCorrectionModal from "@shared/components/workorders/CauseCorrectionModal";
-import AddJobModal from "@shared/components/workorders/AddJobModal";
-import { generateQuotePDF } from "@shared/lib/work-orders/generateQuotePdf";
-import VehiclePhotoUploader from "@shared/components/vehicles/VehiclePhotoUploader";
-import VehiclePhotoGallery from "@shared/components/vehicles/VehiclePhotoGallery";
+import DtcSuggestionPopup from "@work-orders/components/workorders/DtcSuggestionPopup";
+import PartsRequestModal from "@work-orders/components/workorders/PartsRequestModal";
+import CauseCorrectionModal from "@work-orders/components/workorders/CauseCorrectionModal";
+import AddJobModal from "@work-orders/components/workorders/AddJobModal";
+import { generateQuotePDFBytes } from "@work-orders/lib/work-orders/generateQuotePdf";
+import VehiclePhotoUploader from "@parts/components/VehiclePhotoUploader";
+import VehiclePhotoGallery from "@parts/components/VehiclePhotoGallery";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
-import type { Database } from "@shared/types/supabase";
+import type { Database } from "@shared/types/types/supabase";
 
 type WorkOrderLine = Database["public"]["Tables"]["work_order_lines"]["Row"];
 type Vehicle = Database["public"]["Tables"]["vehicles"]["Row"];
@@ -224,7 +224,7 @@ export default function WorkOrderDetailPage() {
       return;
     }
 
-    const pdfBytes = await generateQuotePDF(jobs, jobs[0]?.vehicle_id ?? "");
+    const pdfBytes = await generateQuotePDFBytes(jobs, jobs[0]?.vehicle_id ?? "");
     const fileName = `quote-${line.work_order_id}.pdf`;
 
     const { error: uploadError } = await supabase.storage
@@ -313,9 +313,19 @@ export default function WorkOrderDetailPage() {
               </div>
               <div>
                 <h2 className="font-semibold mb-1">Customer Info</h2>
-                <p>{customer.full_name}</p>
-                <p>{customer.phone}</p>
-                <p>{customer.address}</p>
+<p>
+  {[customer?.first_name, customer?.last_name].filter(Boolean).join(" ") || "—"}
+</p>
+<p>{customer?.phone || "—"}</p>
+{/* Compose address only if parts exist */}
+{(customer?.street || customer?.city || customer?.province || customer?.postal_code) ? (
+  <p>
+    {[customer?.street, customer?.city, customer?.province, customer?.postal_code]
+      .filter(Boolean)
+      .join(", ")}
+  </p>
+) : null}
+                
               </div>
             </div>
           )}
