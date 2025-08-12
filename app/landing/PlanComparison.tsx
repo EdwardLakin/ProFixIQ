@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { PRICE_IDS } from "@shared/lib/stripe/constants";
+import { PRICE_IDS } from "@stripe/lib/stripe/constants";
 
 type Plan = {
   id: string;
