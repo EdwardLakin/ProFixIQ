@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import { Database } from "@shared/types/supabase";
+import { Database } from "@shared/types/types/supabase";
 import { getShopStats } from "@shared/lib/stats/getShopStats";
 import { generateStatsPDF } from "@shared/lib/pdf/generateStatsPDF";
 import { Button } from "@shared/components/ui/Button";
