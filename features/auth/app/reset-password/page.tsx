@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/supabase";
+import type { Database } from "@shared/types/types/supabase";
 
 export default function ResetPasswordPage() {
   const router = useRouter();

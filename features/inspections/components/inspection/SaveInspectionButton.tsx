@@ -1,7 +1,7 @@
 "use client";
 
-import useInspectionSession from "@shared/hooks/useInspectionSession";
-import { saveInspectionSession } from "@shared/lib/inspection/save";
+import useInspectionSession from "@inspections/hooks/useInspectionSession";
+import { saveInspectionSession } from "@inspections/lib/inspection/save";
 
 export function SaveInspectionButton() {
   const { session } = useInspectionSession();

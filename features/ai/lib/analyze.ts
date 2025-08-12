@@ -1,4 +1,11 @@
-import { Message } from "@shared/lib/types";
+// features/diagnostics/analyze.ts (or wherever this lives)
+
+type Message = {
+  role: "user" | "assistant" | "system";
+  content: string;
+  // Allow extra fields without breaking:
+  [key: string]: unknown;
+};
 
 type VehicleInfo = {
   year: string;
@@ -16,9 +23,7 @@ export default async function analyze(
 ) {
   const response = await fetch("/api/diagnose", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       dtcCode: input,
       vehicle: vehicleInfo,

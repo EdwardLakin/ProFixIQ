@@ -2,10 +2,10 @@
 
 import { useEffect, useState, useRef } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/supabase";
+import type { Database } from "@shared/types/types/supabase";
 import clsx from "clsx";
 import { toast } from "sonner";
-import PartsRequestChat from "@shared/components/PartsRequestChat";
+import PartsRequestChat from "@parts/components/PartsRequestChat";
 
 type PartsRequest = Database["public"]["Tables"]["parts_requests"]["Row"];
 

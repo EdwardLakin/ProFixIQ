@@ -3,6 +3,18 @@ import { InspectionItem } from "@inspections/lib/inspection/types";
 import { generateLaborTimeEstimate } from "@ai/lib/ai/generateLaborTimeEstimate";
 
 export interface QuoteLine {
+  item: any;
+  status: "ok" | "fail" | "na" | "recommend";
+  notes: string;
+  laborTime: number;
+  laborRate: number;
+  parts: any;
+  item: any;
+  status: "ok" | "fail" | "na" | "recommend";
+  notes: string;
+  laborTime: number;
+  laborRate: number;
+  parts: any;
   description: string;
   hours: number;
   rate: number;

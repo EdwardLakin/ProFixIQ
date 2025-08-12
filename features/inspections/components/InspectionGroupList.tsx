@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ChevronDownIcon, ChevronRightIcon } from "@heroicons/react/24/solid";
-import type { InspectionCategory } from "@shared/lib/inspection/masterInspectionList";
+import type { InspectionCategory } from "@inspections/lib/inspection/masterInspectionList";
 
 interface Props {
   categories: InspectionCategory[];

@@ -2,14 +2,20 @@
 
 import { useEffect, useRef, useState } from "react";
 
-declare global {
-  interface Window {
-    webkitSpeechRecognition: typeof SpeechRecognition;
-    SpeechRecognition: typeof SpeechRecognition;
-  }
-}
-
+type SRConstructor = new () => SpeechRecognition;
 type SpeechRecognitionInstance = SpeechRecognition | null;
+
+function resolveSR(): SRConstructor | undefined {
+  if (typeof window === "undefined") return undefined;
+
+  // Narrow `window` to the two possible constructors
+  const w = window as unknown as {
+    SpeechRecognition?: SRConstructor;
+    webkitSpeechRecognition?: SRConstructor;
+  };
+
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? undefined;
+}
 
 export default function useVoiceInput() {
   const [isListening, setIsListening] = useState(false);
@@ -17,23 +23,20 @@ export default function useVoiceInput() {
   const session = useRef<SpeechRecognitionInstance>(null);
 
   const initRecognition = (): SpeechRecognitionInstance => {
-    const SpeechRecognition =
-      typeof window !== "undefined" &&
-      (window.SpeechRecognition || window.webkitSpeechRecognition);
-
-    if (!SpeechRecognition) {
+    const SR = resolveSR();
+    if (!SR) {
       console.error("Speech recognition not supported.");
       return null;
     }
 
-    const recognition = new SpeechRecognition();
+    const recognition = new SR();
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = "en-US";
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
       const text = Array.from(event.results)
-        .map((result) => result[0].transcript)
+        .map((r) => r[0].transcript)
         .join("");
       setTranscript(text);
     };
@@ -54,7 +57,6 @@ export default function useVoiceInput() {
     if (!session.current) {
       session.current = initRecognition();
     }
-
     try {
       session.current?.start();
       setIsListening(true);
@@ -74,7 +76,11 @@ export default function useVoiceInput() {
 
   useEffect(() => {
     return () => {
-      pauseListening(); // Ensure cleanup on unmount
+      try {
+        session.current?.stop();
+      } catch {
+        /* ignore */
+      }
     };
   }, []);
 

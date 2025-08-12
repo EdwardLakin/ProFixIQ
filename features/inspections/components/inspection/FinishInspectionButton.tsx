@@ -2,9 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { Button } from "@shared/components/ui/Button";
-import useInspectionSession from "@shared/hooks/useInspectionSession";
-import { saveInspectionSession } from "@shared/lib/inspection/save";
-import { generateInspectionSummary } from "@shared/lib/inspection/generateInspectionSummary";
+import useInspectionSession from "@inspections/hooks/useInspectionSession";
+import { saveInspectionSession } from "@inspections/lib/inspection/save";
+import { generateInspectionSummary } from "@inspections/lib/inspection/generateInspectionSummary";
 
 export default function FinishInspectionButton() {
   const router = useRouter();

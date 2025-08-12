@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateQuoteFromInspection } from "@shared/lib/quote/generateQuoteFromInspection";
-import { generateQuotePDF } from "@shared/lib/work-orders/generateQuotePdf";
-import { sendQuoteEmail } from "@shared/lib/email/sendQuoteEmail";
-import { generateInspectionSummary } from "@shared/lib/inspection/generateInspectionSummary";
-import { createClient } from "@shared/lib/supabase/server";
-import type { InspectionSession } from "@shared/lib/inspection/types";
-import type { QuoteLineItem } from "@shared/lib/inspection/types";
+import { cookies } from "next/headers";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+
+import { generateQuoteFromInspection } from "@quotes/lib/quote/generateQuoteFromInspection";
+import { generateQuotePDFBytes } from "@work-orders/lib/work-orders/generateQuotePdf";
+import { sendQuoteEmail } from "@shared/lib/email/email/sendQuoteEmail";
+import { generateInspectionSummary } from "@inspections/lib/inspection/generateInspectionSummary";
+
+import type { Database } from "@shared/types/types/supabase";
+import type { InspectionSession, QuoteLineItem } from "@inspections/lib/inspection/types";
+
+export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -24,71 +29,67 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const supabase = createClient();
+    const supabase = createRouteHandlerClient<Database>({ cookies });
 
-    // ✅ Generate structured inspection summary
+    // 1) Structured inspection summary
     const summary = generateInspectionSummary(inspectionSession);
+    const summaryText = typeof summary === "string" ? summary : summary?.summaryText ?? "";
 
-    // ✅ Flatten inspection items
-    const allItems = inspectionSession.sections.flatMap(
-      (section) => section.items,
-    );
-
-    // ✅ Generate quote from items
+    // 2) Flatten inspection items and create a quote
+    const allItems = inspectionSession.sections.flatMap((s) => s.items);
     const { quote } = await generateQuoteFromInspection(allItems);
 
-    // ✅ Normalize to QuoteLineItem[]
+    // 3) Normalize to QuoteLineItem[]
     const quoteItems: QuoteLineItem[] = quote.map((line, index) => ({
       id: `${index}-${line.item}`,
       item: line.item || "",
-      partName: line.parts?.[0]?.name || "TBD",
-      partPrice: Number(line.parts?.[0]?.price) || 0,
-      labor: Number(line.laborTime) || 0,
-      rate: Number(line.laborRate) || 120,
-      hours: Number(line.laborTime) || 1,
-      total:
-        (Number(line.parts?.[0]?.price) || 0) + (Number(line.laborTime) || 0),
-      job_type: line.type || "repair",
-      status: line.status || "fail",
-      notes: line.notes || "",
+      name: line.item || "",
       description: line.description || "",
-      price: 0,
-      part: {
-        name: line.parts?.[0]?.name || "",
-        price: Number(line.parts?.[0]?.price) || 0,
-      },
-      source2: line.source2 || "inspection",
+      status: (line.status as QuoteLineItem["status"]) || "fail",
+      notes: line.notes || "",
+      laborHours: line.laborTime ?? 0,
+      price: (line.laborRate ?? 0) * (line.laborTime ?? 0),
+      part: line.parts?.[0]
+        ? {
+            name: line.parts[0].name ?? "",
+            price:
+              typeof line.parts[0].price === "number"
+                ? line.parts[0].price
+                : Number(line.parts[0].price ?? 0),
+          }
+        : undefined,
+      partName: line.parts?.[0]?.name ?? "",
+      partPrice:
+        typeof line.parts?.[0]?.price === "number"
+          ? line.parts[0].price
+          : Number(line.parts?.[0]?.price ?? 0),
       photoUrls: [],
     }));
 
-    // ✅ Generate PDF
-    const pdfBlob = await generateQuotePDF(quoteItems, summary);
-    const arrayBuffer = await pdfBlob.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const pdfBase64 = buffer.toString("base64");
+    // 4) Generate PDF bytes
+    const pdfBytes = await generateQuotePDFBytes(quoteItems, summaryText);
 
-    // ✅ Upload PDF to Supabase storage
+    // 5) Upload to Supabase storage
     const fileName = `quotes/${workOrderId}-${Date.now()}.pdf`;
     const { error: uploadError } = await supabase.storage
       .from("quotes")
-      .upload(fileName, buffer, {
+      .upload(fileName, pdfBytes, {
         contentType: "application/pdf",
         upsert: true,
       });
-
     if (uploadError) {
       throw new Error("PDF upload failed: " + uploadError.message);
     }
 
     const { data } = supabase.storage.from("quotes").getPublicUrl(fileName);
-    const publicUrl = data?.publicUrl;
+    const publicUrl = data?.publicUrl ?? null;
 
-    // ✅ Send email
+    // 6) Email the quote (URL + attachment)
     await sendQuoteEmail({
       to: customerEmail,
       workOrderId,
-      pdfBuffer: pdfBase64,
-      pdfUrl: publicUrl,
+      pdfBuffer: Buffer.from(pdfBytes).toString("base64"),
+      pdfUrl: publicUrl ?? undefined,
     });
 
     return NextResponse.json({ success: true, quoteUrl: publicUrl });

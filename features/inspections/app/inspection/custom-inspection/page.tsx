@@ -2,12 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import { Database } from "@shared/types/supabase";
+import { Database } from "@shared/types/types/supabase";
 import { Button } from "@shared/components/ui/Button";
 import { Textarea } from "@shared/components/ui/textarea";
 import { Input } from "@shared/components/ui/input";
-import InspectionGroupList from "@shared/components/InspectionGroupList";
-import { InspectionCategory } from "@shared/lib/inspection/masterInspectionList";
+import InspectionGroupList from "@inspections/components/InspectionGroupList";
+import { InspectionCategory } from "@inspections/lib/inspection/masterInspectionList";
 
 type SavedInspection = {
   id: string;

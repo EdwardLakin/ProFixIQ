@@ -1,6 +1,6 @@
 import { createServerActionClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
-import { Database } from "@shared/types/supabase";
+import { Database } from "@shared/types/types/supabase";
 
 const supabase = createServerActionClient<Database>({ cookies });
 

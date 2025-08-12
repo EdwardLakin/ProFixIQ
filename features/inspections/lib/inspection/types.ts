@@ -132,14 +132,28 @@ export interface InspectionTemplate {
   sections: InspectionSection[];
 }
 
+/** Used by PDF generation and quote UI */
 export interface QuoteLine {
   id: string;
-  inspectionItem?: string;
-  item: string;
+  item: string | null;
+  name: string;
   description?: string;
-  status?: InspectionItemStatus;
-  value?: number | string | null;
   notes?: string;
+  value?: string | number | null;
+  status: "fail" | "recommend" | "ok" | "na";
+  laborHours?: number;
+  price: number; // labor price (or total if that’s how you use it)
+  part?: {
+    name: string;
+    price?: number | null;
+    type?: "economy" | "premium" | "oem";
+  };
+  partName: string;
+  partPrice?: string | number | null;
+  photoUrls?: string[];
+
+  /** Extra fields from QuoteLine so both types are interchangeable */
+  inspectionItem?: string;
   laborTime?: number;
   laborRate?: number;
   parts?: {
@@ -164,11 +178,32 @@ export interface QuoteLineItem {
   price: number; // labor price (or total if that’s how you use it)
   part?: {
     name: string;
-    price?: number | null; // optional/nullable so .toFixed() needs a guard
+    price?: number | null;
+    type?: "economy" | "premium" | "oem";
   };
   partName: string;
-  partPrice?: string | number | null; // legacy field used in some places
+  partPrice?: string | number | null;
   photoUrls?: string[];
+
+  /** Extra fields from QuoteLine so both types are interchangeable */
+  inspectionItem?: string;
+  laborTime?: number;
+  laborRate?: number;
+  parts?: {
+    name: string;
+    price: number;
+    type: "economy" | "premium" | "oem";
+  }[];
+  totalCost?: number;
+  editable?: boolean;
+  source?: "inspection" | "manual" | "ai";
+}
+
+export interface SendQuoteEmailParams {
+  to: string;
+  workOrderId: string;
+  pdfBuffer?: string; // Base64 string for attachment
+  pdfUrl?: string;    // Public URL alternative
 }
 
 /* ---------- Sessions & Summary ---------- */

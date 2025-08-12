@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
-import { Database } from "@shared/types/supabase";
+import { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
 
 import PreviousPageButton from "@shared/components/ui/PreviousPageButton";

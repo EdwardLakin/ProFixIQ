@@ -7,7 +7,7 @@ import {
   InspectionSession,
   QuoteLine,
   BrakeType,
-} from "@shared/lib/inspection/types";
+} from "@inspections/lib/inspection/types";
 
 type AxleLayoutConfig = {
   axleCount: number;

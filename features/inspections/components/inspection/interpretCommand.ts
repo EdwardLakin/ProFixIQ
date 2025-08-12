@@ -1,6 +1,6 @@
 // src/lib/inspection/interpretCommand.ts
 
-import { ParsedCommand } from "@shared/lib/inspection/types";
+import { ParsedCommand } from "@inspections/lib/inspection/types";
 
 export const interpretCommand = async (
   transcript: string,

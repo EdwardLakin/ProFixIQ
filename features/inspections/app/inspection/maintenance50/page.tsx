@@ -3,30 +3,37 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 
-import PauseResumeButton from "@shared/lib/inspection/PauseResume";
-import PhotoUploadButton from "@shared/lib/inspection/PhotoUploadButton";
-import StartListeningButton from "@shared/lib/inspection/StartListeningButton";
-import ProgressTracker from "@shared/lib/inspection/ProgressTracker";
-import useInspectionSession from "@shared/hooks/useInspectionSession";
+import PauseResumeButton from "@inspections/lib/inspection/PauseResume";
+import PhotoUploadButton from "@inspections/lib/inspection/PhotoUploadButton";
+import StartListeningButton from "@inspections/lib/inspection/StartListeningButton";
+import ProgressTracker from "@inspections/lib/inspection/ProgressTracker";
+import useInspectionSession from "@inspections/hooks/useInspectionSession";
 
-import { handleTranscriptFn } from "@shared/lib/inspection/handleTranscript";
-import { interpretCommand } from "@shared/components/inspection/interpretCommand";
+import { handleTranscriptFn } from "@inspections/lib/inspection/handleTranscript";
+import { interpretCommand } from "@inspections/components/inspection/interpretCommand";
 
 import {
   ParsedCommand,
   InspectionItemStatus,
   InspectionStatus,
-} from "@shared/lib/inspection/types";
+  InspectionSection,
+  InspectionItem,
+} from "@inspections/lib/inspection/types";
 
-import { SaveInspectionButton } from "@shared/components/inspection/SaveInspectionButton";
-import FinishInspectionButton from "@shared/components/inspection/FinishInspectionButton";
+import { SaveInspectionButton } from "@inspections/components/inspection/SaveInspectionButton";
+import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
 
 import { v4 as uuidv4 } from "uuid";
 
-declare global {
-  interface Window {
-    webkitSpeechRecognition: typeof SpeechRecognition;
-  }
+/** Resolve the SR constructor without touching global typings */
+type SRConstructor = new () => SpeechRecognition;
+function resolveSR(): SRConstructor | undefined {
+  if (typeof window === "undefined") return undefined;
+  const w = window as unknown as {
+    SpeechRecognition?: SRConstructor;
+    webkitSpeechRecognition?: SRConstructor;
+  };
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? undefined;
 }
 
 export default function CustomInspectionPage() {
@@ -91,7 +98,7 @@ export default function CustomInspectionPage() {
 
   useEffect(() => {
     startSession(initialSession);
-  }, [initialSession]);
+  }, [initialSession, startSession]);
 
   const handleTranscript = async (transcript: string) => {
     setTranscript(transcript);
@@ -110,24 +117,21 @@ export default function CustomInspectionPage() {
   };
 
   const startListening = () => {
-    const SpeechRecognition =
-      typeof window !== "undefined" &&
-      (window.SpeechRecognition || window.webkitSpeechRecognition);
-
-    if (!SpeechRecognition) {
+    const SR = resolveSR();
+    if (!SR) {
       console.error("SpeechRecognition API not supported");
       return;
     }
 
-    const recognition = new SpeechRecognition();
+    const recognition = new SR();
     recognition.continuous = true;
     recognition.interimResults = false;
     recognition.lang = "en-US";
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
       const last = event.results.length - 1;
-      const transcript = event.results[last][0].transcript;
-      handleTranscript(transcript);
+      const t = event.results[last][0].transcript;
+      handleTranscript(t);
     };
 
     recognition.onerror = (event: Event & { error: string }) => {
@@ -142,6 +146,7 @@ export default function CustomInspectionPage() {
   if (!session || !session.sections || session.sections.length === 0) {
     return <div className="text-white p-4">Loading inspection...</div>;
   }
+
   return (
     <div className="px-4 pb-12">
       <h1 className="text-2xl font-bold text-center mb-4">{templateName}</h1>
@@ -188,18 +193,15 @@ export default function CustomInspectionPage() {
         }
       />
 
-      {/* Sections */}
-      {session.sections.map((section, sectionIndex) => (
+      {session.sections.map((section: InspectionSection, sectionIndex: number) => (
         <div key={sectionIndex} className="mb-8">
           <h2 className="text-xl font-bold mb-2 text-orange-400">
             {section.title}
           </h2>
 
-          {section.items.map((item, itemIndex) => {
+          {section.items.map((item: InspectionItem, itemIndex: number) => {
             const isSelected = (val: string) => item.status === val;
-            const isWheelTorque = item.item
-              ?.toLowerCase()
-              .includes("wheel torque");
+            const isWheelTorque = item.item?.toLowerCase().includes("wheel torque");
 
             const handleStatusClick = (val: InspectionItemStatus) => {
               updateItem(sectionIndex, itemIndex, { status: val });
@@ -218,6 +220,9 @@ export default function CustomInspectionPage() {
                   editable: true,
                   source: "inspection",
                   id: "",
+                  name: "",
+                  price: 0,
+                  partName: ""
                 });
               }
             };
@@ -273,9 +278,7 @@ export default function CustomInspectionPage() {
                                   : "bg-blue-500 text-white"
                             : "bg-zinc-700 text-gray-300"
                         }`}
-                        onClick={() =>
-                          handleStatusClick(val as InspectionItemStatus)
-                        }
+                        onClick={() => handleStatusClick(val as InspectionItemStatus)}
                       >
                         {val.toUpperCase()}
                       </button>
@@ -315,7 +318,6 @@ export default function CustomInspectionPage() {
         </div>
       ))}
 
-      {/* Footer Actions */}
       <div className="flex justify-between items-center mt-8 gap-4">
         <SaveInspectionButton />
         <FinishInspectionButton />

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { Input } from "@shared/components/ui/input";
 import { Button } from "@shared/components/ui/Button";
-import type { Database } from "@shared/types/supabase";
+import type { Database } from "@shared/types/types/supabase";
 
 const supabase = createClientComponentClient<Database>();
 

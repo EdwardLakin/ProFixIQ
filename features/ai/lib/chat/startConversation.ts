@@ -1,6 +1,6 @@
 // lib/chat/startConversation.ts
 import { createClient } from "@supabase/supabase-js";
-import { Database } from "@shared/types/supabase";
+import { Database } from "@shared/types/types/supabase";
 
 const supabase = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,

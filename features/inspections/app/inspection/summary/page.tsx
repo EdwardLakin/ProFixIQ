@@ -1,22 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
-import useInspectionSession from "@shared/hooks/useInspectionSession";
-import { generateInspectionPDF } from "@shared/lib/inspection/pdf";
-import { generateQuoteFromInspection } from "@shared/lib/quote/generateQuoteFromInspection";
-import supabase from "@shared/lib/supabaseClient";
-import QuoteViewer from "@shared/components/QuoteViewer";
+
+import useInspectionSession from "@inspections/hooks/useInspectionSession";
+import { generateInspectionPDF } from "@inspections/lib/inspection/pdf";
+import { generateQuoteFromInspection } from "@quotes/lib/quote/generateQuoteFromInspection";
+import { supabase } from "@shared/lib/supabase/client"; // ✅ named export
+import QuoteViewer from "@quotes/components/QuoteViewer";
 import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
 import HomeButton from "@shared/components/ui/HomeButton";
+
 import type {
   InspectionItem,
   InspectionSection,
   QuoteLineItem,
-} from "@shared/lib/inspection/types";
-import type { QuoteLine } from "@shared/lib/quote/generateQuoteFromInspection";
-import type { Database } from "@shared/types/supabase";
+} from "@inspections/lib/inspection/types";
+import type { QuoteLine } from "@quotes/lib/quote/generateQuoteFromInspection";
+import type { Database } from "@shared/types/types/supabase";
 
 export default function SummaryPage() {
   const router = useRouter();
@@ -27,21 +29,20 @@ export default function SummaryPage() {
   const { session, updateItem, updateQuoteLines } = useInspectionSession();
   const [quoteLines, setQuoteLines] = useState<QuoteLine[]>([]);
   const [summaryText, setSummaryText] = useState("");
-  const [workOrderId, setWorkOrderId] = useState<string | null>(
-    workOrderIdFromUrl || null,
-  );
+  const [workOrderId, setWorkOrderId] = useState<string | null>(workOrderIdFromUrl || null);
   const [isAddingToWorkOrder, setIsAddingToWorkOrder] = useState(false);
 
   // AI quote generation on load
   useEffect(() => {
     const runQuote = async () => {
-      const allItems: InspectionItem[] = session.sections.flatMap(
-        (s) => s.items,
-      );
+      const allItems: InspectionItem[] =
+  session.sections.flatMap((s: InspectionSection) => s.items);
       const { summary, quote } = await generateQuoteFromInspection(allItems);
 
       setSummaryText(summary);
       setQuoteLines(quote);
+
+      // normalize into QuoteLineItem[] for the store
       updateQuoteLines(
         quote.map(
           (line): QuoteLineItem => ({
@@ -52,13 +53,10 @@ export default function SummaryPage() {
             name: line.description,
             description: line.description,
             notes: "",
-            status: "fail", // default assumption; or replace with real value if available
+            status: "fail",
             laborHours: line.hours,
             price: line.total,
-            part: {
-              name: "",
-              price: 0,
-            },
+            part: { name: "", price: 0 },
             photoUrls: [],
           }),
         ),
@@ -72,9 +70,7 @@ export default function SummaryPage() {
       }
     };
 
-    if (session.sections.length > 0) {
-      runQuote();
-    }
+    if (session.sections.length > 0) runQuote();
   }, [session, inspectionId, updateQuoteLines]);
 
   const handleFieldChange = (
@@ -86,13 +82,11 @@ export default function SummaryPage() {
     updateItem(sectionIndex, itemIndex, { [field]: value });
   };
 
-  const hasFailedItems = session.sections.some((section) =>
-    section.items.some(
-      (item) => item.status === "fail" || item.status === "recommend",
-    ),
+  const hasFailedItems = session.sections.some((section: InspectionSection) =>
+    section.items.some((item: InspectionItem) => item.status === "fail" || item.status === "recommend"),
   );
 
-  const createWorkOrderIfNoneExists = async () => {
+  const createWorkOrderIfNoneExists = async (): Promise<string | null> => {
     if (workOrderId) return workOrderId;
 
     const newId = uuidv4();
@@ -130,19 +124,15 @@ export default function SummaryPage() {
       }),
     });
 
-    if (response.ok) {
-      alert("Jobs added to work order successfully!");
-    } else {
-      alert("Failed to add jobs to work order.");
-    }
-
+    alert(response.ok ? "Jobs added to work order successfully!" : "Failed to add jobs to work order.");
     setIsAddingToWorkOrder(false);
   };
 
   const handleSubmit = async () => {
     try {
-      const pdfBlob = await generateInspectionPDF(session);
-      const blob = new Blob([pdfBlob], { type: "application/pdf" });
+      // generateInspectionPDF returns Uint8Array; use its .buffer for Blob typing
+      const pdfBytes: Uint8Array = await generateInspectionPDF(session);
+      const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: "application/pdf" }); // ✅ no type error
 
       const link = document.createElement("a");
       link.href = window.URL.createObjectURL(blob);
@@ -169,16 +159,13 @@ export default function SummaryPage() {
 
       <div className="bg-zinc-800 text-white p-4 rounded mb-6">
         <h2 className="text-xl font-bold mb-2">Customer Info</h2>
-        <p>
-          Name: {session.customer?.first_name} {session.customer?.last_name}
-        </p>
+        <p>Name: {session.customer?.first_name} {session.customer?.last_name}</p>
         <p>Phone: {session.customer?.phone}</p>
         <p>Email: {session.customer?.email}</p>
 
         <h2 className="text-xl font-bold mt-4 mb-2">Vehicle Info</h2>
         <p>
-          Year/Make/Model: {session.vehicle?.year} {session.vehicle?.make}{" "}
-          {session.vehicle?.model}
+          Year/Make/Model: {session.vehicle?.year} {session.vehicle?.make} {session.vehicle?.model}
         </p>
         <p>VIN: {session.vehicle?.vin}</p>
         <p>License Plate: {session.vehicle?.license_plate}</p>
@@ -187,108 +174,83 @@ export default function SummaryPage() {
       </div>
 
       {/* Editable inspection sections */}
-      {session.sections.map(
-        (section: InspectionSection, sectionIndex: number) => (
-          <div key={sectionIndex} className="mb-6 border rounded-md">
-            <div className="bg-gray-200 px-4 py-2 font-bold">
-              {section.title}
-            </div>
-            <div className="p-4 space-y-6">
-              {section.items.map((item: InspectionItem, itemIndex: number) => (
-                <div key={itemIndex} className="border-b pb-4 space-y-2">
-                  <div className="font-semibold">{item.name}</div>
+      {session.sections.map((section: InspectionSection, sectionIndex: number) => (
+        <div key={sectionIndex} className="mb-6 border rounded-md">
+          <div className="bg-gray-200 px-4 py-2 font-bold">{section.title}</div>
+          <div className="p-4 space-y-6">
+            {section.items.map((item: InspectionItem, itemIndex: number) => (
+              <div key={itemIndex} className="border-b pb-4 space-y-2">
+                <div className="font-semibold">{item.name}</div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                    <label className="flex flex-col">
-                      Status
-                      <select
-                        className="border rounded p-1"
-                        value={item?.status ?? ""}
-                        onChange={(e) =>
-                          handleFieldChange(
-                            sectionIndex,
-                            itemIndex,
-                            "status",
-                            e.target.value,
-                          )
-                        }
-                      >
-                        <option value="">Select</option>
-                        <option value="ok">OK</option>
-                        <option value="fail">Fail</option>
-                        <option value="na">N/A</option>
-                        <option value="recommend">Recommend</option>
-                      </select>
-                    </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                  <label className="flex flex-col">
+                    Status
+                    <select
+                      className="border rounded p-1"
+                      value={item?.status ?? ""}
+                      onChange={(e) =>
+                        handleFieldChange(sectionIndex, itemIndex, "status", e.target.value)
+                      }
+                    >
+                      <option value="">Select</option>
+                      <option value="ok">OK</option>
+                      <option value="fail">Fail</option>
+                      <option value="na">N/A</option>
+                      <option value="recommend">Recommend</option>
+                    </select>
+                  </label>
 
-                    <label className="flex flex-col">
-                      Note
-                      <input
-                        className="border rounded p-1"
-                        value={item?.notes || ""}
-                        onChange={(e) =>
-                          handleFieldChange(
-                            sectionIndex,
-                            itemIndex,
-                            "notes",
-                            e.target.value,
-                          )
-                        }
-                      />
-                    </label>
+                  <label className="flex flex-col">
+                    Note
+                    <input
+                      className="border rounded p-1"
+                      value={item?.notes || ""}
+                      onChange={(e) =>
+                        handleFieldChange(sectionIndex, itemIndex, "notes", e.target.value)
+                      }
+                    />
+                  </label>
 
-                    <label className="flex flex-col">
-                      Value
-                      <input
-                        className="border rounded p-1"
-                        value={item?.value || ""}
-                        onChange={(e) =>
-                          handleFieldChange(
-                            sectionIndex,
-                            itemIndex,
-                            "value",
-                            e.target.value,
-                          )
-                        }
-                      />
-                    </label>
+                  <label className="flex flex-col">
+                    Value
+                    <input
+                      className="border rounded p-1"
+                      value={item?.value || ""}
+                      onChange={(e) =>
+                        handleFieldChange(sectionIndex, itemIndex, "value", e.target.value)
+                      }
+                    />
+                  </label>
 
-                    <label className="flex flex-col">
-                      Unit
-                      <input
-                        className="border rounded p-1"
-                        value={item?.unit || ""}
-                        onChange={(e) =>
-                          handleFieldChange(
-                            sectionIndex,
-                            itemIndex,
-                            "unit",
-                            e.target.value,
-                          )
-                        }
-                      />
-                    </label>
-                  </div>
-
-                  {Array.isArray(item?.photoUrls) &&
-                    item.photoUrls.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {item.photoUrls.map((url, i) => (
-                          <img
-                            key={i}
-                            src={url}
-                            alt="Uploaded"
-                            className="max-h-32 rounded border border-white/20"
-                          />
-                        ))}
-                      </div>
-                    )}
+                  <label className="flex flex-col">
+                    Unit
+                    <input
+                      className="border rounded p-1"
+                      value={item?.unit || ""}
+                      onChange={(e) =>
+                        handleFieldChange(sectionIndex, itemIndex, "unit", e.target.value)
+                      }
+                    />
+                  </label>
                 </div>
-              ))}
-            </div>
+
+                {Array.isArray(item?.photoUrls) && item.photoUrls.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {item.photoUrls.map((url: string, i: number) => (
+                      <img
+                        key={i}
+                        src={url}
+                        alt="Uploaded"
+                        className="max-h-32 rounded border border-white/20"
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
-        ),
-      )}
+        </div>
+      ))}
 
       {/* Quote viewer from AI */}
       {quoteLines.length > 0 && (
@@ -297,15 +259,14 @@ export default function SummaryPage() {
         </div>
       )}
 
+      {/* Actions */}
       {hasFailedItems && (
         <button
           onClick={handleAddToWorkOrder}
           disabled={isAddingToWorkOrder}
           className="w-full bg-orange-600 text-white py-3 rounded-md font-bold text-lg mt-4"
         >
-          {isAddingToWorkOrder
-            ? "Adding to Work Order..."
-            : "Add to Work Order"}
+          {isAddingToWorkOrder ? "Adding to Work Order..." : "Add to Work Order"}
         </button>
       )}
 

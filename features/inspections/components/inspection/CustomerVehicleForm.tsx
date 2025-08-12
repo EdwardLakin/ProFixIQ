@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { CustomerInfo, VehicleInfo } from "@shared/lib/inspection/types";
+import { CustomerInfo, VehicleInfo } from "@inspections/lib/inspection/types";
 
 interface Props {
   customer: CustomerInfo;
