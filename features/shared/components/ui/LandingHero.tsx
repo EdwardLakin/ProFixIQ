@@ -8,15 +8,23 @@ import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
+// tsParticles v3
+import Particles, { initParticlesEngine } from "@tsparticles/react";
+import { loadSlim } from "@tsparticles/slim";
+import type { Engine, RecursivePartial, IOptions } from "@tsparticles/engine";
+
 type PlanKey = "free" | "diy" | "pro" | "pro_plus";
 
 export default function LandingHero() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // UI state (all retained)
   const [, setFadeIn] = useState(false);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<PlanKey | null>(null);
   const [isYearly, setIsYearly] = useState(false);
   const [, setLoading] = useState(false);
+
   const supabase = createClientComponentClient<Database>();
   const router = useRouter();
 
@@ -35,6 +43,7 @@ export default function LandingHero() {
     };
   }, []);
 
+  // simple canvas glow bg (retained)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -69,23 +78,26 @@ export default function LandingHero() {
     animate();
   }, []);
 
+  // fade trigger on scroll (retained)
   useEffect(() => {
     const onScroll = () => window.scrollY > 300 && setFadeIn(true);
     window.addEventListener("scroll", onScroll);
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  // NEW: compute portal href once we know session
+  // Compute portal href based on session (retained)
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) setPortalHref("/portal/booking");
     });
   }, [supabase]);
 
+  // Expand/collapse feature tiles (retained)
   const handleExpand = (index: number) => {
     setExpandedIndex(index === expandedIndex ? null : index);
   };
 
+  // plan helpers (retained)
   const saveSelectedPlan = async (plan: PlanKey) => {
     const {
       data: { user },
@@ -100,7 +112,6 @@ export default function LandingHero() {
     await saveSelectedPlan(plan);
 
     const priceId = isYearly ? PRICE_IDS[plan].yearly : PRICE_IDS[plan].monthly;
-
     if (!priceId) {
       alert("Invalid plan selected.");
       setLoading(false);
@@ -121,6 +132,58 @@ export default function LandingHero() {
     else alert("Failed to redirect");
 
     setLoading(false);
+  };
+
+  // ----------------------
+  // tsParticles v3 wiring
+  // ----------------------
+
+  // init engine once (v3)
+  useEffect(() => {
+    initParticlesEngine(async (engine: Engine) => {
+      await loadSlim(engine);
+    });
+  }, []);
+
+  // v3-safe options
+  const particlesOptions: RecursivePartial<IOptions> = {
+    fullScreen: { enable: false },
+    background: { color: { value: "transparent" } },
+    detectRetina: true,
+    fpsLimit: 60,
+    interactivity: {
+      events: {
+        onHover: { enable: true, mode: "repulse" },
+        onClick: { enable: true, mode: "push" },
+        resize: { enable: true }, // v3: object, not boolean
+      },
+      modes: {
+        repulse: { distance: 120, duration: 0.3 },
+        push: { quantity: 3 },
+      },
+    },
+    particles: {
+      number: { value: 80 }, // keep simple; v3 density/area shape changed
+      color: { value: ["#ff6a00", "#ffd700"] },
+      shape: { type: "circle" },
+      opacity: { value: { min: 0.3, max: 0.8 } }, // avoid old animation.minimumValue schema
+      size: { value: { min: 1, max: 3 } },
+      links: {
+        enable: true,
+        distance: 140,
+        opacity: 0.35,
+        width: 1,
+        color: { value: "#ffb347" },
+      },
+      move: {
+        enable: true,
+        speed: 0.6,
+        direction: "none",
+        outModes: { default: "bounce" },
+        random: false,
+        straight: false,
+      },
+    },
   };
 
   const features = [
@@ -177,9 +240,15 @@ export default function LandingHero() {
         />
       </Head>
 
+      {/* simple canvas glow */}
       <canvas ref={canvasRef} className="absolute top-0 left-0 z-0" />
 
       <section className="relative overflow-hidden bg-black text-white pt-24 pb-32 px-6 sm:px-12 lg:px-24">
+        {/* tsParticles layer behind text */}
+        <div className="absolute inset-0 z-[-1] pointer-events-none">
+          <Particles id="hero-particles" options={particlesOptions} />
+        </div>
+
         <div className="relative z-10 max-w-5xl mx-auto text-center">
           <p className="text-xl text-[#ff6a00] font-bold mb-2 tracking-wide uppercase">
             Repair Smarter. Diagnose Faster.
@@ -193,7 +262,7 @@ export default function LandingHero() {
             automation.
           </p>
           <div className="flex justify-center gap-4 flex-wrap">
-            {/* NEW: Portal CTA — uses portalHref computed from session */}
+            {/* Portal CTA — uses portalHref computed from session */}
             <Link
               href={portalHref}
               className="bg-orange-500 hover:bg-orange-600 text-black font-bold py-3 px-6 rounded-lg text-lg shadow-lg transition"
@@ -315,48 +384,28 @@ export default function LandingHero() {
                 key: "free",
                 price: "$0",
                 description: "Try the basics",
-                features: [
-                  "5 AI uses",
-                  "No inspections",
-                  "1 vehicle",
-                  "No support",
-                ],
+                features: ["5 AI uses", "No inspections", "1 vehicle", "No support"],
               },
               {
                 name: "DIY",
                 key: "diy",
                 price: isYearly ? "$90/year" : "$9/month",
                 description: "For home users",
-                features: [
-                  "Basic AI",
-                  "Limited inspections",
-                  "Photo upload",
-                  "Email support",
-                ],
+                features: ["Basic AI", "Limited inspections", "Photo upload", "Email support"],
               },
               {
                 name: "Pro",
                 key: "pro",
                 price: isYearly ? "$490/year" : "$49/month",
                 description: "For solo pros",
-                features: [
-                  "Unlimited AI",
-                  "Voice & photo",
-                  "PDF export",
-                  "1 user",
-                ],
+                features: ["Unlimited AI", "Voice & photo", "PDF export", "1 user"],
               },
               {
                 name: "Pro+",
                 key: "pro_plus",
                 price: isYearly ? "$990/year" : "$99/month",
                 description: "For teams",
-                features: [
-                  "All features",
-                  "5 users",
-                  "Admin/Tech roles",
-                  "+$49/user addon",
-                ],
+                features: ["All features", "5 users", "Admin/Tech roles", "+$49/user addon"],
               },
             ].map((plan) => (
               <button
@@ -376,9 +425,7 @@ export default function LandingHero() {
                 <h3 className="text-xl font-blackops text-orange-400">
                   {plan.name}
                 </h3>
-                <p className="text-sm text-gray-300 mb-2">
-                  {plan.description}
-                </p>
+                <p className="text-sm text-gray-300 mb-2">{plan.description}</p>
                 <p className="text-lg text-orange-500 font-bold mb-4">
                   {plan.price}
                 </p>
@@ -401,22 +448,13 @@ export default function LandingHero() {
             </span>
           </div>
           <div className="flex flex-col md:flex-row justify-center items-center gap-6 text-gray-400 text-sm mb-4">
-            <Link
-              href="/"
-              className="hover:text-orange-400 transition-all duration-200"
-            >
+            <Link href="/" className="hover:text-orange-400 transition-all duration-200">
               Home
             </Link>
-            <Link
-              href="/subscribe"
-              className="hover:text-orange-400 transition-all duration-200"
-            >
+            <Link href="/subscribe" className="hover:text-orange-400 transition-all duration-200">
               Plans
             </Link>
-            <Link
-              href="/dashboard"
-              className="hover:text-orange-400 transition-all duration-200"
-            >
+            <Link href="/dashboard" className="hover:text-orange-400 transition-all duration-200">
               Dashboard
             </Link>
             <a
@@ -427,8 +465,7 @@ export default function LandingHero() {
             </a>
           </div>
           <p className="text-gray-600 font-mono">
-            &copy; {new Date().getFullYear()} ProFixIQ. Built for techs, by a
-            tech.
+            &copy; {new Date().getFullYear()} ProFixIQ. Built for techs, by a tech.
           </p>
         </div>
 
