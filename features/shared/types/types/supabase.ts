@@ -1357,3 +1357,12 @@ export type UserRole =
 
 export type CustomerSettingsUpsert =
   Database["public"]["Tables"]["customer_settings"]["Insert"];
+
+  // Minimal chat message shape used by the app’s AI helpers
+export type Message = {
+  role: "user" | "assistant" | "system";
+  content: string;
+  created_at?: string;              // optional timestamp
+  conversation_id?: string | null;  // optional, if you thread chats
+  meta?: Record<string, unknown>;   // optional, for extra data
+};

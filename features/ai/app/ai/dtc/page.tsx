@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import useVehicleInfo from "@shared/hooks/useVehicleInfo";
-import analyze from "@shared/lib/analyze";
-import { Message } from "@shared/lib/types";
+import analyze from "@ai/lib/analyze";
+import { Message } from "@shared/types/types/supabase";
 import Markdown from "react-markdown";
 import HomeButton from "@shared/components/ui/HomeButton";
 import PreviousPageButton from "@shared/components/ui/PreviousPageButton";

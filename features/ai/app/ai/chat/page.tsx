@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/supabase";
+import type { Database } from "@shared/types/types/supabase";
 import type { ChatCompletionMessageParam } from "openai/resources/index.mjs";
 import Markdown from "react-markdown";
 import HomeButton from "@shared/components/ui/HomeButton";

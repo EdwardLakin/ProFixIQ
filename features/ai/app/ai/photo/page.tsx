@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import useVehicleInfo from "@shared/hooks/useVehicleInfo";
-import { analyzeImage } from "@shared/lib/analyzeComponents";
+import { analyzeImage } from "@ai/lib/analyzeComponents";
 import HomeButton from "@shared/components/ui/HomeButton";
 import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
 
