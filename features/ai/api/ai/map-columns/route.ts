@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { mapCsvColumns } from "@shared/lib/ai/mapColumns";
+import { mapCsvColumns } from "@ai/lib/ai/mapColumns";
 
 export async function POST(req: Request) {
   const { headers } = await req.json();
