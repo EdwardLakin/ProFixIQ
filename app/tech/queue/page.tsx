@@ -68,8 +68,9 @@ export default function TechQueuePage() {
 
     // Normalize assigned_to -> string | {id, full_name} | null
     let assigned_to: string | { id: string; full_name: string | null } | null = null;
-    if (typeof (j as any).assigned_to === "string") {
-      assigned_to = (j as any).assigned_to as string;
+    const maybeAssigned = (j as unknown as { assigned_to?: string | JobLineRow["assigned_to"] }).assigned_to;
+    if (typeof maybeAssigned === "string") {
+      assigned_to = maybeAssigned;
     } else if (j.assigned_to?.id) {
       assigned_to = { id: j.assigned_to.id!, full_name: j.assigned_to.full_name ?? null };
     } else {

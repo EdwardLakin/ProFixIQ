@@ -17,7 +17,7 @@ type Body = {
   timezone?: string | null;                // default America/Edmonton
   accepts_online_booking?: boolean | null; // default true
   slugHint?: string | null;                // optional preferred slug seed
-  pin: string;                             // required (short password / PIN)
+  pin: string;                             // required PIN
 };
 
 function toSlugSeed(input: string) {
@@ -32,29 +32,22 @@ async function ensureUniqueSlug(
   supabase: ReturnType<typeof createRouteHandlerClient<Database>>,
   seed: string
 ): Promise<string> {
-  // try seed, then seed-xyz
   let base = seed || "my-shop";
   base = toSlugSeed(base) || "my-shop";
   let candidate = base;
 
   for (let i = 0; i < 20; i++) {
     const { data, error } = await supabase
-      .from("shop") // <-- change to "shops" if your table is plural
+      .from("shop") // change to "shops" if your table is plural
       .select("id")
       .eq("slug", candidate)
       .maybeSingle();
 
-    if (error) {
-      // If error on select, break and just use candidate (very unlikely).
-      break;
-    }
-    if (!data) {
-      // slug not taken
-      return candidate;
-    }
+    if (error) break;
+    if (!data) return candidate;
     candidate = `${base}-${Math.floor(Math.random() * 10000)}`;
   }
-  return `${base}-${Date.now()}`; // super unique fallback
+  return `${base}-${Date.now()}`;
 }
 
 export async function POST(req: Request) {
@@ -70,18 +63,16 @@ export async function POST(req: Request) {
 
   // 1) Parse and validate body
   const body = (await req.json().catch(() => ({}))) as Body;
-  const {
-    businessName,
-    shopName,
-    address = null,
-    city = null,
-    province = null,
-    postal_code = null,
-    timezone = "America/Edmonton",
-    accepts_online_booking = true,
-    slugHint = null,
-    pin,
-  } = body || {};
+  const businessName = body?.businessName;
+  const shopName = body?.shopName;
+  const address = body?.address ?? null;
+  const city = body?.city ?? null;
+  const province = body?.province ?? null;
+  const postal_code = body?.postal_code ?? null;
+  const timezone: string | null = body?.timezone ?? "America/Edmonton";
+  const accepts_online_booking = body?.accepts_online_booking ?? true;
+  const slugHint = body?.slugHint ?? null;
+  const pin = body?.pin;
 
   if (!pin || String(pin).length < 4) {
     return NextResponse.json(
@@ -91,20 +82,13 @@ export async function POST(req: Request) {
   }
 
   // 2) If the profile already has a role, no-op (idempotent)
-  const { data: prof, error: profErr } = await supabase
+  const { data: prof } = await supabase
     .from("profiles")
     .select("id, role, shop_id, full_name, email, business_name, shop_name")
     .eq("id", user.id)
     .single();
 
-  if (profErr) {
-    // Not fatal—profile might be missing. We’ll create/update it later.
-    // But we still proceed with shop creation.
-    // console.warn("Profile read error:", profErr.message);
-  }
-
   if (prof?.role) {
-    // Already initialized as staff/customer; do not create another shop.
     return NextResponse.json({
       ok: true,
       msg: "Profile already initialized",
@@ -115,30 +99,50 @@ export async function POST(req: Request) {
   // 3) Create the shop with hashed PIN
   const pinHash = await bcrypt.hash(String(pin), 10);
 
-  // Build a decent slug seed
+  // Build slug
   const seed =
-    slugHint ||
-    shopName ||
-    businessName ||
-    user.email?.split("@")[0] ||
-    "my-shop";
+    slugHint || shopName || businessName || user.email?.split("@")[0] || "my-shop";
   const slug = await ensureUniqueSlug(supabase, seed);
 
-  // Insert payload; cast owner_pin_hash if it's not in your generated types yet
-  const insertShop = {
+  // ----- Typed insert payload -----
+  // Use your generated Insert type and extend to include owner_pin_hash
+  type BaseInsert = Database["public"]["Tables"]["shops"]["Insert"]; // change to "shops" if plural
+  type ShopInsert = BaseInsert & { owner_pin_hash: string , slug: string};
+
+  const insertShop: ShopInsert = {
+    // required by your Insert type
     name: shopName || businessName || "My Shop",
     slug,
-    timezone,
-    accepts_online_booking,
-    owner_pin_hash: pinHash,
+    timezone,                    // matches Insert type (string | null)
+    accepts_online_booking,      // boolean
     address,
     city,
     province,
     postal_code,
-  } as unknown as Database["public"]["Tables"]["shop"]["Insert"]; // change "shop" to "shops" if needed
+
+    // fields that your generated Insert expects but are nullable (still must be present)
+    role: null,
+    phone_number: null,
+    email: null,
+    logo_url: null,
+    default_labor_rate: null,
+    default_shop_supplies_percent: null,
+    default_diagnostic_fee: null,
+    default_tax_rate: null,
+    require_cause_correction: null,
+    require_job_authorization: null,
+    enable_ai: null,
+    invoice_terms: null,
+    invoice_footer: null,
+    auto_email_quotes: null,
+    auto_pdf_quotes: null,
+
+    // extension for hashed PIN if not yet in generated types
+    owner_pin_hash: pinHash,
+  };
 
   const { data: newShop, error: shopErr } = await supabase
-    .from("shop") // <-- change to "shops" if your table is plural
+    .from("shop") // change to "shops" if your table is plural
     .insert(insertShop)
     .select("id, slug")
     .single();
@@ -150,23 +154,26 @@ export async function POST(req: Request) {
     );
   }
 
-  // 4) Seed default hours (best-effort)
-  try {
-    await supabase.rpc("seed_default_hours", { shop_id: newShop.id });
-  } catch {
-    // ignore
-  }
+  // 4) Seed default hours (best-effort; ignore failure)
+  await supabase.rpc("seed_default_hours", { shop_id: newShop.id }).match(() => {});
 
-  // 5) Promote user to owner + attach shop_id; also stash business/shop names on profile
+  // 5) Promote user to owner + attach shop_id; stash names
+  const ownerRole =
+    "owner" as Database["public"]["Tables"]["profiles"]["Row"]["role"];
+
   const { error: updErr } = await supabase
     .from("profiles")
     .update({
-      role: "owner" as any,
+      role: ownerRole,
       shop_id: newShop.id,
       business_name: businessName ?? prof?.business_name ?? null,
       shop_name: shopName ?? prof?.shop_name ?? businessName ?? null,
       email: prof?.email ?? user.email ?? null,
-    } as Database["public"]["Tables"]["profiles"]["Update"])
+      street: null,
+      city: null,
+      province: null,
+      postal_code: null
+    } satisfies Database["public"]["Tables"]["profiles"]["Update"])
     .eq("id", user.id);
 
   if (updErr) {
@@ -176,9 +183,5 @@ export async function POST(req: Request) {
     );
   }
 
-  return NextResponse.json({
-    ok: true,
-    shop_id: newShop.id,
-    slug: newShop.slug,
-  });
+  return NextResponse.json({ ok: true, shop_id: newShop.id, slug: newShop.slug });
 }

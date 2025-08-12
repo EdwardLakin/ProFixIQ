@@ -6,7 +6,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
-type Shop = Database["public"]["Tables"]["shop"]["Row"]; // change to "shops" if your table is plural
+type Shop = Database["public"]["Tables"]["shops"]["Row"]; // change to "shops" if your table is plural
 
 type UserWithShop = Profile & {
   shop?: Shop | null;

@@ -95,8 +95,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   }
 
   // 5) If rescheduling (startsAt/endsAt), staff only
-  let newStart = startsAt ? new Date(startsAt) : null;
-  let newEnd = endsAt ? new Date(endsAt) : null;
+  const newStart = startsAt ? new Date(startsAt) : null;
+  const newEnd = endsAt ? new Date(endsAt) : null;
   if (newStart || newEnd) {
     if (!isStaff) return bad("Only staff can reschedule", 403);
     if (!newStart || !newEnd || isNaN(newStart.getTime()) || isNaN(newEnd.getTime()) || newEnd <= newStart) {

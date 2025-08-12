@@ -1124,7 +1124,7 @@ postal_code: string | null;
         ];
       };
 
-      shop: {
+      shops: {
         Row: {
           slug: string;
           id: string;
@@ -1157,6 +1157,9 @@ postal_code: string | null;
           invoice_footer: string | null;
           auto_email_quotes: boolean | null;
           auto_pdf_quotes: boolean | null;
+          timezone: string | null;
+          accepts_online_booking: boolean | null;
+          owner_pin_hash: string | null;
           // Add any other fields you use
         };
         Insert: {
@@ -1190,6 +1193,9 @@ postal_code: string | null;
           invoice_footer: string | null;
           auto_email_quotes: boolean | null;
           auto_pdf_quotes: boolean | null;
+          timezone: string | null;
+          accepts_online_booking: boolean | null;
+          owner_pin_hash: string | null;
         };
         Update: {
           id?: string;
@@ -1222,6 +1228,9 @@ postal_code: string | null;
           invoice_footer: string | null;
           auto_email_quotes: boolean | null;
           auto_pdf_quotes: boolean | null;
+          timezone: string | null;
+          accepts_online_booking: boolean | null;
+          owner_pin_hash: string | null;
         };
         Relationships: [];
       };

@@ -38,16 +38,16 @@ export default function PortalProfilePage() {
         .maybeSingle();
 
       if (customer) {
-        setForm({
-          first_name: customer.first_name ?? "",
-          last_name: customer.last_name ?? "",
-          phone: customer.phone ?? "",
-          email: customer.email ?? "",
-          street: (customer as any).street ?? "",
-          city: (customer as any).city ?? "",
-          province: (customer as any).province ?? "",
-          postal_code: (customer as any).postal_code ?? "",
-        });
+       setForm({
+        first_name: customer.first_name ?? "",
+        last_name: customer.last_name ?? "",
+        phone: customer.phone ?? "",
+        email: customer.email ?? "",
+        street: customer.street ?? "",
+        city: customer.city ?? "",
+        province: customer.province ?? "",
+        postal_code: customer.postal_code ?? "",
+      }); 
       }
       setLoading(false);
     })();

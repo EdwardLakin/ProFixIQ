@@ -134,8 +134,9 @@ export async function POST(req: Request) {
 
     // 9) Return the booking
     return NextResponse.json({ booking: created }, { status: 201 });
-  } catch (err: any) {
-    console.error("Booking error:", err?.message || err);
-    return bad("Unexpected error", 500);
-  }
+  } catch (err: unknown) {
+  const message = err instanceof Error ? err.message : String(err);
+  console.error("Booking error:", message);
+  return bad("Unexpected error", 500);
+}
 }

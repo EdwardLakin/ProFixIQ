@@ -11,7 +11,7 @@ import { Toaster, toast } from "sonner";
 type Slot = { start: string; end: string };
 type AvailabilityResponse = { tz: string; slots: Slot[]; disabled?: boolean };
 
-type ShopRow = Database["public"]["Tables"]["shop"]["Row"];
+type ShopRow = Database["public"]["Tables"]["shops"]["Row"];
 
 const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
 const toYMD = (d: Date) =>
@@ -147,8 +147,9 @@ export default function PortalBookingPage() {
       toast.success("Appointment requested! We’ll email you when it’s confirmed.");
       // Optimistically remove this slot so it can't be double-booked locally
       setSlots((prev) => prev.filter((s) => s.start !== startIso));
-    } catch (e: any) {
-      toast.error(e?.message || "Could not book.");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Could not book.";
+      toast.error(msg)
     }
   }
 

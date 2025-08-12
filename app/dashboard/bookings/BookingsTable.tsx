@@ -35,8 +35,9 @@ export default function BookingsTable({
       const updated = await res.json();
       setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...updated } : r)));
       toast.success("Booking updated.");
-    } catch (e: any) {
-      toast.error(e?.message || "Could not update booking.");
+    } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : "Could not update booking.";
+    toast.error(message);
     } finally {
       setBusy(null);
     }

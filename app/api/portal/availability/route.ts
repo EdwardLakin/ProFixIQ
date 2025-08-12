@@ -1,3 +1,4 @@
+// app/api/portal/availability/route.ts
 import { NextResponse, NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
@@ -47,6 +48,19 @@ function* iterateDays(startYMD: string, endYMD: string) {
 const addMinutes = (date: Date, mins: number) => new Date(date.getTime() + mins * 60_000);
 const overlaps = (aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) => aStart < bEnd && bStart < aEnd;
 
+// Narrowed types from your generated Database types
+type ShopsRow = Database["public"]["Tables"]["shops"]["Row"];
+type ShopPick = Pick<ShopsRow, "id" | "slug" | "timezone" | "accepts_online_booking">;
+
+type ShopHoursRow = Database["public"]["Tables"]["shop_hours"]["Row"];
+type HoursPick = Pick<ShopHoursRow, "weekday" | "open_time" | "close_time">;
+
+type TimeOffRow = Database["public"]["Tables"]["shop_time_off"]["Row"];
+type TimeOffPick = Pick<TimeOffRow, "starts_at" | "ends_at">;
+
+type BookingRow = Database["public"]["Tables"]["bookings"]["Row"];
+type BookingPick = Pick<BookingRow, "starts_at" | "ends_at" | "status">;
+
 export async function GET(req: NextRequest) {
   try {
     const supabase = createRouteHandlerClient<Database>({ cookies });
@@ -61,32 +75,34 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Missing required params: shop, start, end" }, { status: 400 });
     }
 
-    // 1) Load shop config
+    // 1) Load shop config (only the columns you have)
     const shopRes = await supabase
       .from("shops")
-      .select("id, slug, timezone, accepts_online_booking, min_notice_minutes, max_lead_days")
+      .select<"id, slug, timezone, accepts_online_booking">("id, slug, timezone, accepts_online_booking")
       .eq("slug", slug)
       .maybeSingle();
 
-    const shop = shopRes.data;
+    const shop = shopRes.data as ShopPick | null;
     if (!shop) return NextResponse.json({ error: "Shop not found" }, { status: 404 });
-    if (!shop.accepts_online_booking) return NextResponse.json({ slots: [], tz: shop.timezone, disabled: true });
+    if (!shop.accepts_online_booking) {
+      return NextResponse.json({ slots: [], tz: shop.timezone ?? "UTC", disabled: true });
+    }
 
+    // Use hard-coded defaults since your table doesn’t have these fields
     const tz = shop.timezone || "UTC";
-    const minNoticeMin = shop.min_notice_minutes ?? 120;
-    const maxLeadDays = shop.max_lead_days ?? 30;
-
+    const MIN_NOTICE_MIN = 120; // 2 hours
+    const MAX_LEAD_DAYS = 30;   // 30 days
     const now = new Date();
-    const maxLeadUntil = addMinutes(now, maxLeadDays * 24 * 60);
+    const maxLeadUntil = addMinutes(now, MAX_LEAD_DAYS * 24 * 60);
 
     // 2) Weekly hours
     const hoursRes = await supabase
       .from("shop_hours")
-      .select("weekday, open_time, close_time")
+      .select<"weekday, open_time, close_time">("weekday, open_time, close_time")
       .eq("shop_id", shop.id);
-    const hours = hoursRes.data ?? [];
+    const hours = (hoursRes.data ?? []) as HoursPick[];
 
-    // 3) Time-off windows overlapping range
+    // 3) Time-off within the requested window
     const s = parseYMD(startYMD);
     const e = parseYMD(endYMD);
     const windowStartUtc = makeZonedDate(tz, s.y, s.m, s.d, 0, 0);
@@ -94,29 +110,29 @@ export async function GET(req: NextRequest) {
 
     const timeOffRes = await supabase
       .from("shop_time_off")
-      .select("starts_at, ends_at")
+      .select<"starts_at, ends_at">("starts_at, ends_at")
       .eq("shop_id", shop.id)
       .gte("ends_at", windowStartUtc.toISOString())
       .lte("starts_at", windowEndUtc.toISOString());
-    const timeOff = timeOffRes.data ?? [];
+    const timeOff = (timeOffRes.data ?? []) as TimeOffPick[];
 
-    // 4) Bookings overlapping range
+    // 4) Existing bookings within the window
     const bookingsRes = await supabase
       .from("bookings")
-      .select("starts_at, ends_at, status")
+      .select<"starts_at, ends_at, status">("starts_at, ends_at, status")
       .eq("shop_id", shop.id)
       .gte("ends_at", windowStartUtc.toISOString())
       .lte("starts_at", windowEndUtc.toISOString());
-    const bookings = bookingsRes.data ?? [];
+    const bookings = (bookingsRes.data ?? []) as BookingPick[];
 
     const offWindows = timeOff.map(t => ({
-      start: new Date(t.starts_at as string),
-      end: new Date(t.ends_at as string),
+      start: new Date(t.starts_at),
+      end: new Date(t.ends_at),
     }));
 
     const bookingWindows = bookings
       .filter(b => b.status === "pending" || b.status === "confirmed")
-      .map(b => ({ start: new Date(b.starts_at as string), end: new Date(b.ends_at as string) }));
+      .map(b => ({ start: new Date(b.starts_at), end: new Date(b.ends_at) }));
 
     // Helper: weekday in shop tz (0–6)
     const weekdayInTz = (d: Date) => {
@@ -132,8 +148,8 @@ export async function GET(req: NextRequest) {
       if (dayHours.length === 0) continue;
 
       for (const h of dayHours) {
-        const [oh, om] = (h.open_time as string).split(":").map(Number);
-        const [ch, cm] = (h.close_time as string).split(":").map(Number);
+        const [oh, om] = h.open_time.split(":").map(Number);
+        const [ch, cm] = h.close_time.split(":").map(Number);
 
         const open = makeZonedDate(tz, day.y, day.m, day.d, oh, om);
         const close = makeZonedDate(tz, day.y, day.m, day.d, ch, cm);
@@ -141,8 +157,9 @@ export async function GET(req: NextRequest) {
         for (let sdt = new Date(open); addMinutes(sdt, slotMins) <= close; sdt = addMinutes(sdt, slotMins)) {
           const edt = addMinutes(sdt, slotMins);
 
-          if (sdt < addMinutes(now, minNoticeMin)) continue; // min notice
-          if (sdt > maxLeadUntil) continue; // max lead
+          // min notice & max lead
+          if (sdt < addMinutes(now, MIN_NOTICE_MIN)) continue;
+          if (sdt > maxLeadUntil) continue;
 
           const isBlocked =
             offWindows.some(w => overlaps(sdt, edt, w.start, w.end)) ||
@@ -155,10 +172,8 @@ export async function GET(req: NextRequest) {
     }
 
     return NextResponse.json({ tz, slots });
-  } catch (err: any) {
-    return NextResponse.json(
-      { error: err?.message || "Failed to compute availability" },
-      { status: 500 },
-    );
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to compute availability";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
