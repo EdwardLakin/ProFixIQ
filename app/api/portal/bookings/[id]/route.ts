@@ -1,8 +1,7 @@
 // app/api/portal/bookings/[id]/route.ts
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { NextResponse, type NextRequest } from "next/server"; // ⬅️ add NextRequest
-
+import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 
 export const runtime = "nodejs";
@@ -18,12 +17,9 @@ function bad(msg: string, code = 400) {
   return NextResponse.json({ error: msg }, { status: code });
 }
 
-export async function PATCH(
-  req: NextRequest,
-  context: { params: { id: string } }
-) {
+export async function PATCH(req: NextRequest, context: { params: { id: string } }) {
   const supabase = createRouteHandlerClient<Database>({ cookies });
-  const bookingId = context.params.id; 
+  const bookingId = context.params.id;
 
   // 1) Auth
   const {
@@ -47,7 +43,6 @@ export async function PATCH(
     .select("id, shop_id, customer_id, starts_at, ends_at, status")
     .eq("id", bookingId)
     .single();
-
   if (bErr || !booking) return bad("Booking not found", 404);
 
   // 3) Determine actor role
@@ -63,53 +58,51 @@ export async function PATCH(
     (staffRoles as readonly string[]).includes(profile.role) &&
     profile.shop_id === booking.shop_id;
 
-  // Check if this user is the customer who owns the booking
+  // Is this the customer who owns the booking?
   const { data: custRow } = await supabase
     .from("customers")
     .select("id")
     .eq("id", booking.customer_id)
     .eq("user_id", user.id)
     .maybeSingle();
-
   const isCustomerOwner = !!custRow;
 
-  if (!isStaff && !isCustomerOwner) {
-    // RLS would also block, but give a friendly message
-    return bad("Not allowed", 403);
-  }
+  if (!isStaff && !isCustomerOwner) return bad("Not allowed", 403);
 
   // 4) Validate status transition
   const curr = booking.status as PatchBody["status"];
-  const allowedTransitions: Record<NonNullable<PatchBody["status"]>, NonNullable<PatchBody["status"]>[]> = {
+  const allowedTransitions: Record<
+    NonNullable<PatchBody["status"]>,
+    NonNullable<PatchBody["status"]>[]
+  > = {
     pending: ["confirmed", "cancelled"],
     confirmed: ["completed", "cancelled"],
-    completed: [], // terminal
-    cancelled: [], // terminal
+    completed: [],
+    cancelled: [],
   };
 
-  // Customers can only cancel their own booking
   if (isCustomerOwner && nextStatus && nextStatus !== "cancelled") {
     return bad("Customers may only cancel their own booking", 403);
   }
-
   if (nextStatus) {
     if (!curr || !allowedTransitions[curr].includes(nextStatus)) {
       return bad(`Invalid status transition: ${curr} → ${nextStatus}`);
     }
   }
 
-  // 5) If rescheduling (startsAt/endsAt), staff only
+  // 5) Reschedule (staff only)
   const newStart = startsAt ? new Date(startsAt) : null;
   const newEnd = endsAt ? new Date(endsAt) : null;
+
   if (newStart || newEnd) {
     if (!isStaff) return bad("Only staff can reschedule", 403);
     if (!newStart || !newEnd || isNaN(newStart.getTime()) || isNaN(newEnd.getTime()) || newEnd <= newStart) {
       return bad("Invalid startsAt/endsAt");
     }
 
-    // Load shop window constraints
+    // Shop constraints
     const { data: shop } = await supabase
-      .from("shop")
+      .from("shop") // change to "shops" if your table is plural
       .select("id, min_notice_minutes, max_lead_days")
       .eq("id", booking.shop_id)
       .single();
@@ -119,17 +112,13 @@ export async function PATCH(
     const maxLead = shop?.max_lead_days ?? 30;
 
     const minutesUntil = Math.floor((newStart.getTime() - now.getTime()) / 60000);
-    if (minutesUntil < minNotice) {
-      return bad(`Reschedule requires at least ${minNotice} minutes notice`);
-    }
+    if (minutesUntil < minNotice) return bad(`Reschedule requires at least ${minNotice} minutes notice`);
 
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
     const daysUntil = Math.floor((newStart.getTime() - startOfToday) / 86400000);
-    if (daysUntil > maxLead) {
-      return bad(`Cannot schedule more than ${maxLead} days ahead`);
-    }
+    if (daysUntil > maxLead) return bad(`Cannot schedule more than ${maxLead} days ahead`);
 
-    // Overlap check within same shop (exclude this booking id)
+    // Overlap check (exclude this booking)
     const { data: overlaps, error: ovErr } = await supabase
       .from("bookings")
       .select("id")
@@ -137,14 +126,11 @@ export async function PATCH(
       .neq("id", booking.id)
       .or(`and(starts_at.lt.${newEnd.toISOString()},ends_at.gt.${newStart.toISOString()})`)
       .limit(1);
-
     if (ovErr) return bad("Failed to check overlaps", 500);
-    if (overlaps && overlaps.length > 0) {
-      return bad("Selected time overlaps another booking", 409);
-    }
+    if (overlaps && overlaps.length > 0) return bad("Selected time overlaps another booking", 409);
   }
 
-  // 6) Build update patch
+  // 6) Patch
   const patch: Partial<Database["public"]["Tables"]["bookings"]["Update"]> = {};
   if (nextStatus) patch.status = nextStatus;
   if (typeof notes !== "undefined") patch.notes = notes;
@@ -152,19 +138,15 @@ export async function PATCH(
     patch.starts_at = newStart.toISOString();
     patch.ends_at = newEnd.toISOString();
   }
+  if (Object.keys(patch).length === 0) return bad("Nothing to update");
 
-  if (Object.keys(patch).length === 0) {
-    return bad("Nothing to update");
-  }
-
-  // 7) Apply update (RLS will enforce shop/customer scope)
+  // 7) Update
   const { data: updated, error: upErr } = await supabase
     .from("bookings")
     .update(patch)
     .eq("id", bookingId)
     .select("*")
     .single();
-
   if (upErr || !updated) return bad("Failed to update booking", 500);
 
   return NextResponse.json({ booking: updated }, { status: 200 });
