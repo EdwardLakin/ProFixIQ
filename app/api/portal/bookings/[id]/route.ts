@@ -1,7 +1,8 @@
 // app/api/portal/bookings/[id]/route.ts
-import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { NextResponse, type NextRequest } from "next/server"; // ⬅️ add NextRequest
+
 import type { Database } from "@shared/types/types/supabase";
 
 export const runtime = "nodejs";
@@ -17,9 +18,12 @@ function bad(msg: string, code = 400) {
   return NextResponse.json({ error: msg }, { status: code });
 }
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(
+  req: NextRequest,
+  context: { params: { id: string } }
+) {
   const supabase = createRouteHandlerClient<Database>({ cookies });
-  const bookingId = params.id;
+  const bookingId = context.params.id; 
 
   // 1) Auth
   const {
