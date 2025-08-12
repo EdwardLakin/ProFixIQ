@@ -8,12 +8,12 @@ export const metadata: Metadata = {
 export default async function ShopSharePage({
   params,
 }: {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 }) {
-  const { slug } = params;
+  const { slug } = await params;
 
   // Build the public booking URL shown to staff
-  const base = process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000";
+  const base = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
   const bookingUrl = `${base}/portal/booking?shop=${encodeURIComponent(slug)}`;
 
   // QR endpoint you already created
