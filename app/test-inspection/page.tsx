@@ -1,5 +1,5 @@
-import masterInspectionList from "@shared/lib/inspection/masterInspectionList";
-import InspectionGroupList from "@shared/components/InspectionGroupList";
+import masterInspectionList from "@inspections/lib/inspection/masterInspectionList";
+import InspectionGroupList from "@inspections/components/InspectionGroupList";
 
 export default function TestInspectionPage() {
   return (

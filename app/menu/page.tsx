@@ -2,61 +2,73 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import supabase from "@shared/lib/supabaseClient";
-import { useUser } from "@shared/hooks/useUser";
-import type { Database } from "@shared/types/supabase";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
+import { useUser } from "@auth/hooks/useUser";
 
 type MenuItem = Database["public"]["Tables"]["menu_items"]["Row"];
 type InsertMenuItem = Database["public"]["Tables"]["menu_items"]["Insert"];
 
 export default function MenuItemsPage() {
+  const supabase = createClientComponentClient<Database>();
   const { user, isLoading } = useUser();
+
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [form, setForm] = useState<InsertMenuItem>({
     name: "",
     category: "",
     total_price: 0,
-    user_id: "",
+    // user_id is set on submit so we don’t store a stale value here
+    user_id: undefined as unknown as string, // satisfies Insert type; we set it before insert
   });
 
-  const fetchItems = async () => {
+  async function fetchItems() {
     if (!user?.id) return;
 
     const { data, error } = await supabase
       .from("menu_items")
       .select("*")
-      .eq("user_id", user.id);
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
 
     if (error) {
       console.error("Failed to fetch menu items:", error);
-    } else {
-      setMenuItems(data ?? []);
+      return;
     }
-  };
+    setMenuItems(data ?? []);
+  }
 
   useEffect(() => {
-    if (user?.id) {
-      fetchItems();
+    if (!user?.id) return;
 
-      const channel = supabase
-        .channel("menu-items-sync")
-        .on(
-          "postgres_changes",
-          { event: "*", schema: "public", table: "menu_items" },
-          fetchItems,
-        )
-        .subscribe();
+    fetchItems();
 
-      return () => {
-        supabase.removeChannel(channel);
-      };
-    }
-  }, [user]);
+    // realtime updates for this user’s items only
+    const channel = supabase
+      .channel("menu-items-sync")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "menu_items",
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => fetchItems()
+      )
+      .subscribe();
 
-  const handleSubmit = async () => {
-    if (!form.name || !form.total_price || !user?.id) return;
+    return () => {
+      supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
-    const newItem = {
+  async function handleSubmit() {
+    if (!user?.id) return;
+    if (!form.name || Number.isNaN(form.total_price)) return;
+
+    const newItem: InsertMenuItem = {
       ...form,
       user_id: user.id,
     };
@@ -65,69 +77,88 @@ export default function MenuItemsPage() {
 
     if (error) {
       console.error("Insert failed:", error);
-    } else {
-      setForm({ name: "", category: "", total_price: 0, user_id: user.id });
+      return;
     }
-  };
 
-  const handleDelete = async (id: string) => {
+    setForm({
+      name: "",
+      category: "",
+      total_price: 0,
+      user_id: undefined as unknown as string,
+    });
+  }
+
+  async function handleDelete(id: string) {
     const { error } = await supabase.from("menu_items").delete().eq("id", id);
     if (error) console.error("Delete failed:", error);
-  };
+  }
 
-  if (isLoading) return <div>Loading...</div>;
+  if (isLoading) return <div className="p-4">Loading...</div>;
 
   return (
-    <div className="p-4">
-      <h1 className="text-xl font-bold mb-4">Menu Items</h1>
+    <div className="p-6 text-white">
+      <h1 className="text-2xl font-blackops text-orange-400 mb-4">Menu Items</h1>
 
-      <div className="flex flex-col gap-2 mb-4">
+      <div className="grid gap-2 mb-6 max-w-md">
         <input
           placeholder="Name"
-          value={form.name}
+          value={form.name ?? ""}
           onChange={(e) => setForm({ ...form, name: e.target.value })}
-          className="border px-2 py-1"
+          className="border border-neutral-700 bg-neutral-900 px-3 py-2 rounded"
         />
         <input
           placeholder="Category"
-          value={form.category || ""}
+          value={form.category ?? ""}
           onChange={(e) => setForm({ ...form, category: e.target.value })}
-          className="border px-2 py-1"
+          className="border border-neutral-700 bg-neutral-900 px-3 py-2 rounded"
         />
         <input
           placeholder="Total Price"
           type="number"
-          value={form.total_price}
+          inputMode="decimal"
+          value={form.total_price ?? 0}
           onChange={(e) =>
-            setForm({ ...form, total_price: parseFloat(e.target.value) || 0 })
+            setForm({
+              ...form,
+              total_price: parseFloat(e.target.value || "0"),
+            })
           }
-          className="border px-2 py-1"
+          className="border border-neutral-700 bg-neutral-900 px-3 py-2 rounded"
         />
         <button
           onClick={handleSubmit}
-          className="bg-black text-white px-4 py-2 rounded"
+          className="bg-orange-600 hover:bg-orange-700 text-black font-semibold px-4 py-2 rounded"
         >
           Add Menu Item
         </button>
       </div>
 
-      <ul className="space-y-2">
+      <ul className="space-y-2 max-w-2xl">
         {menuItems.map((item) => (
           <li
             key={item.id}
-            className="border p-2 rounded flex justify-between items-center"
+            className="border border-neutral-800 bg-neutral-950 p-3 rounded flex justify-between items-center"
           >
             <span>
-              <strong>{item.name}</strong> — ${item.total_price}
+              <strong className="text-orange-400">{item.name}</strong>{" "}
+              {item.category && (
+                <span className="text-xs text-neutral-400">
+                  ({item.category})
+                </span>
+              )}{" "}
+              — ${Number(item.total_price ?? 0).toFixed(2)}
             </span>
             <button
               onClick={() => handleDelete(item.id)}
-              className="text-red-500"
+              className="text-red-400 hover:text-red-300"
             >
               Delete
             </button>
           </li>
         ))}
+        {menuItems.length === 0 && (
+          <li className="text-sm text-neutral-400">No items yet.</li>
+        )}
       </ul>
     </div>
   );

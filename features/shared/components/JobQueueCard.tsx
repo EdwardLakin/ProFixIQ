@@ -56,6 +56,16 @@ function JobQueueCard({
           Created: {created_at ? new Date(created_at).toLocaleString() : "—"}
         </div>
 
+        {/* Assigned tech display */}
+        {!onAssignTech && (
+          <div className="text-xs text-neutral-400 mt-1">
+            Assigned to:{" "}
+            {typeof assigned_to === "string"
+              ? assigned_to
+              : assigned_to?.full_name || "Unassigned"}
+          </div>
+        )}
+
         {/* Tech assign UI (only if props provided) */}
         {techOptions && onAssignTech && (
           <div className="mt-2">

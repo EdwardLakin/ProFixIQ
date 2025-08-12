@@ -11,6 +11,7 @@ type JobLine = Database["public"]["Tables"]["work_order_lines"]["Row"] & {
   };
   assigned_to?: {
     full_name?: string | null;
+    id?: string | null;
   };
 };
 
@@ -36,9 +37,10 @@ export async function getQueuedJobsForTech(): Promise<JobLine[]> {
         model
       ),
       profiles:assigned_to (
+        id,
         full_name
       )
-    `,
+    `
     )
     .eq("status", "queued")
     .or(`assigned_to.eq.${user.id},assigned_to.is.null`)
@@ -61,10 +63,11 @@ export async function getQueuedJobsForTech(): Promise<JobLine[]> {
         : undefined,
       assigned_to: row.profiles
         ? {
+            id: row.profiles.id,
             full_name: row.profiles.full_name,
           }
         : undefined,
-    }),
+    })
   );
 
   return jobLines;

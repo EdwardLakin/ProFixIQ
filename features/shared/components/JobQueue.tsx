@@ -8,7 +8,7 @@ type JobLine = Database["public"]["Tables"]["work_order_lines"]["Row"];
 type Vehicle = Database["public"]["Tables"]["vehicles"]["Row"];
 
 // Use Omit so we can redefine assigned_to as a union
-export type QueueJob = Omit<JobLine, "assigned_to"> & {
+export type QueueJob = Omit<JobLine, "assigned_to" | "vehicles"> & {
   assigned_to: { id: string; full_name: string | null } | string | null;
   vehicles?: Partial<Vehicle> | null;
 };

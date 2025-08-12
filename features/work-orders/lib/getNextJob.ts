@@ -1,36 +1,87 @@
 // features/work-orders/lib/getNextJob.ts
-import { createServerSupabaseRSC } from '@shared/lib/supabase/server';
+import { createServerSupabaseRSC } from "@shared/lib/supabase/server";
+import type { Database } from "@shared/types/types/supabase";
 
-export async function getNextAvailableLine(technicianId: string) {
+type WOL = Database["public"]["Tables"]["work_order_lines"]["Row"] & {
+  // If your types don't have this yet, keep it optional
+  priority?: number | null;
+};
+type NextLine = Pick<WOL, "id" | "work_order_id" | "created_at" | "status"> & {
+  priority?: number | null;
+};
+
+export async function getNextAvailableLine(technicianId: string): Promise<NextLine | null> {
   const supabase = createServerSupabaseRSC();
 
-  // Step 1: check for jobs the tech can resume
-  const { data: resumeLines } = await supabase
-    .from('work_order_lines')
-    .select('id, work_order_id, priority, created_at')
-    .eq('assigned_to', technicianId)
-    .eq('line_status', 'ready')
-    .order('created_at', { ascending: true });
+  // Scope to tech's shop
+  const { data: prof } = await supabase
+    .from("profiles")
+    .select("shop_id")
+    .eq("id", technicianId)
+    .single();
 
-  if (resumeLines?.length) return resumeLines[0];
+  const shopId = prof?.shop_id;
+  if (!shopId) return null;
 
-  // Step 2: pick unassigned jobs
-  const { data: queuedLines } = await supabase
-    .from('work_order_lines')
-    .select('id, work_order_id, priority, created_at')
-    .is('assigned_to', null)
-    .eq('line_status', 'ready')
-    .order('priority', { ascending: true })
-    .order('created_at', { ascending: true });
+  // 1) Resume the tech’s own job if applicable
+  {
+    const { data: resume } = await supabase
+      .from("work_order_lines")
+      .select("id, work_order_id, created_at, status, priority")
+      .eq("assigned_to", technicianId)
+      .in("status", ["in_progress", "paused", "awaiting"])
+      // If multiple are resumable, prefer highest priority then oldest
+      .order("priority", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: true })
+      .limit(1);
 
-  if (queuedLines?.length) {
-    const line = queuedLines[0];
-    await supabase
-      .from('work_order_lines')
-      .update({ assigned_to: technicianId })
-      .eq('id', line.id);
-    return line;
+    if (resume?.length) return resume[0] as NextLine;
   }
 
-  return null;
+  // 2) Oldest highest-priority unassigned queued job in this shop
+  //    join work_orders to enforce same-shop
+  const { data: candidateList, error: candErr } = await supabase
+    .from("work_order_lines")
+    .select(
+      `
+        id,
+        work_order_id,
+        created_at,
+        status,
+        priority,
+        work_orders!inner (
+          id,
+          shop_id
+        )
+      `
+    )
+    .eq("status", "queued")
+    .is("assigned_to", null)
+    .eq("work_orders.shop_id", shopId)
+    .order("priority", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: true })
+    .limit(1);
+
+  if (candErr) {
+    console.warn("Failed to find next queued job:", candErr.message);
+    return null;
+  }
+  const candidate = candidateList?.[0];
+  if (!candidate) return null;
+
+  // 3) Claim it safely (race-safe conditional update)
+  const { data: claimed, error: claimErr } = await supabase
+    .from("work_order_lines")
+    .update({ assigned_to: technicianId, status: "awaiting" })
+    .eq("id", candidate.id)
+    .is("assigned_to", null)
+    .select("id, work_order_id, created_at, status, priority")
+    .single();
+
+  if (claimErr) {
+    // Someone else grabbed it—return null so caller can try again
+    return null;
+  }
+
+  return claimed as NextLine;
 }
