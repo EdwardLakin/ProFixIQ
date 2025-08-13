@@ -1,14 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
 import type { ChatCompletionMessageParam } from "openai/resources/index.mjs";
 import Markdown from "react-markdown";
 import HomeButton from "@shared/components/ui/HomeButton";
 import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
-
-const supabase = createClientComponentClient<Database>();
 
 export default function AiChatPage() {
   const [input, setInput] = useState("");
