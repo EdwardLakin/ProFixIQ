@@ -2,7 +2,7 @@
 
 import { Dialog } from "@headlessui/react";
 import { useEffect, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { supabase } from "@shared/lib/supabase/client";            // ✅ use shared client
 import type { Database } from "@shared/types/types/supabase";
 import { v4 as uuidv4 } from "uuid";
 import { toast } from "sonner";
@@ -26,20 +26,23 @@ export default function NewChatModal({
   context_type,
   context_id,
 }: Props) {
-  const supabase = createClientComponentClient<Database>();
   const [users, setUsers] = useState<Profile[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
 
   useEffect(() => {
-    const fetch = async () => {
-      const { data } = await supabase
+    const fetchUsers = async () => {
+      const { data, error } = await supabase
         .from("profiles")
         .select("id, full_name, role");
 
+      if (error) {
+        console.error("Failed to load users:", error);
+        return;
+      }
       if (data) setUsers(data as Profile[]);
     };
-    fetch();
+    fetchUsers();
   }, []);
 
   const toggleUser = (id: string) => {
@@ -77,6 +80,7 @@ export default function NewChatModal({
     });
 
     if (convError) {
+      console.error(convError);
       toast.error("Failed to create conversation");
       return;
     }
@@ -87,7 +91,16 @@ export default function NewChatModal({
       user_id: id,
     }));
 
-    await supabase.from("conversation_participants").insert(inserts);
+    const { error: partErr } = await supabase
+      .from("conversation_participants")
+      .insert(inserts);
+
+    if (partErr) {
+      console.error(partErr);
+      toast.error("Failed to add participants");
+      return;
+    }
+
     toast.success("Chat created");
     onCreated(conversationId);
     onClose();

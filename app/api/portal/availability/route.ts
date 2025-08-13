@@ -1,7 +1,7 @@
 // app/api/portal/availability/route.ts
 import { NextResponse, NextRequest } from "next/server";
 import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerClient} from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 /** Build a Date in UTC that corresponds to local components in a given IANA tz. */

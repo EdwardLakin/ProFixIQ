@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+
 import { Input } from "@shared/components/ui/input";
 import { Button } from "@shared/components/ui/Button";
 import type { Database } from "@shared/types/types/supabase";
@@ -38,6 +39,7 @@ export default function SettingsPage() {
       setMessage(error.message);
     } else {
       setMessage("Password updated successfully.");
+      router.refresh(); // use the router
     }
   };
 
@@ -51,6 +53,7 @@ export default function SettingsPage() {
       setMessage(error.message);
     } else {
       setMessage("Verification email resent.");
+      router.refresh(); // use the router
     }
   };
 
@@ -71,12 +74,18 @@ export default function SettingsPage() {
         .getPublicUrl(filePath);
       setPhotoUrl(data.publicUrl);
       setMessage("Photo uploaded.");
+      router.refresh(); // use the router
     }
   };
 
   return (
     <div className="max-w-xl mx-auto py-10 space-y-10 text-white">
-      <h1 className="text-3xl font-bold text-orange-400">User Settings</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-bold text-orange-400">User Settings</h1>
+        <Button variant="outline" onClick={() => router.back()}>
+          Back
+        </Button>
+      </div>
 
       <div>
         <h2 className="text-lg font-semibold mb-2">Change Password</h2>
@@ -107,12 +116,7 @@ export default function SettingsPage() {
 
       <div>
         <h2 className="text-lg font-semibold mb-2">Profile Photo</h2>
-        <Input
-          type="file"
-          accept="image/*"
-          onChange={handlePhotoUpload}
-          className="mb-2"
-        />
+        <Input type="file" accept="image/*" onChange={handlePhotoUpload} className="mb-2" />
         {photoUrl && (
           <img
             src={photoUrl}

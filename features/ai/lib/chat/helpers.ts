@@ -18,7 +18,7 @@ export async function getMessages(conversationId: string) {
     return [];
   }
 
-  return data;
+  return data ?? [];
 }
 
 export async function getUserConversations(userId: string) {
@@ -32,7 +32,10 @@ export async function getUserConversations(userId: string) {
     return [];
   }
 
-  return data.map((entry) => entry.conversations);
+  // Guard in case a row has no joined conversation
+  return (data ?? [])
+    .map((entry) => entry.conversations)
+    .filter(Boolean);
 }
 
 export async function sendMessage({

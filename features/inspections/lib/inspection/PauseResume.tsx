@@ -20,7 +20,6 @@ const PauseResumeButton = ({
   isPaused,
   onPause,
   onResume,
-  isListening,
   setIsListening,
   recognitionInstance,
   onTranscript,

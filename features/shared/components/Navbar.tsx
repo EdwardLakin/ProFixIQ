@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/auth-helpers-nextjs";
 import { FaBars, FaBell, FaSearch, FaSignOutAlt } from "react-icons/fa";
 import clsx from "clsx";
 import RoleNavTech from "@shared/components/RoleNavTech";
@@ -16,7 +16,7 @@ import type { Database } from "@shared/types/types/supabase";
 import type { User } from "@supabase/auth-helpers-nextjs";
 
 export default function Navbar() {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserClient<Database>();
   const router = useRouter();
   const dropdownRef = useRef<HTMLDivElement>(null);
 

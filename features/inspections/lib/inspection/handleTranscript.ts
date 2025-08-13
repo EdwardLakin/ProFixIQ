@@ -29,10 +29,7 @@ interface HandleTranscriptArgs {
 export async function handleTranscriptFn({
   command,
   session,
-  updateInspection,
   updateItem,
-  updateSection,
-  finishSession,
 }: HandleTranscriptArgs): Promise<void> {
   const { section, item, status, value, notes } = command;
 

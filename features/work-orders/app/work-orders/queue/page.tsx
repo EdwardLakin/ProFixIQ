@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import JobQueue, { QueueJob } from "@shared/components/JobQueue";
 
-const supabase = createClientComponentClient<Database>();
+const supabase = createBrowserClient<Database>();
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 

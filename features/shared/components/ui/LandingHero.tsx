@@ -5,7 +5,7 @@ import Link from "next/link";
 import Head from "next/head";
 import { PRICE_IDS } from "@stripe/lib/stripe/constants";
 import { useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 // tsParticles v3
@@ -25,7 +25,7 @@ export default function LandingHero() {
   const [isYearly, setIsYearly] = useState(false);
   const [, setLoading] = useState(false);
 
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserClient<Database>();
   const router = useRouter();
 
   // NEW: dynamic portal link based on session (signed-in → /portal/booking)

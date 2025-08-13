@@ -50,11 +50,10 @@ export async function POST(req: NextRequest) {
       item: line.description,
       name: line.description,
       description: line.description,
-      // If you track status per line elsewhere, pass it here; otherwise default:
       status: "fail",
       notes: "",
       laborHours: line.hours,
-      price: line.hours * line.rate, // labor price used by your PDF
+      price: line.hours * line.rate,
       part: undefined,
       partName: "",
       partPrice: null,

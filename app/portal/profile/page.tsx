@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 type Customer = Pick<
@@ -9,7 +9,7 @@ type Customer = Pick<
 >;
 
 export default function PortalProfilePage() {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserClient<Database>();
   const [form, setForm] = useState<Customer>({
     first_name: "",
     last_name: "",

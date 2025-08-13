@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+
 import { Database } from "@shared/types/types/supabase";
 import { Button } from "@shared/components/ui/Button";
 import { Textarea } from "@shared/components/ui/textarea";

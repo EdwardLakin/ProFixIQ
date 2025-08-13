@@ -1,7 +1,7 @@
 // app/api/onboarding/bootstrap-owner/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerClient} from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import bcrypt from "bcryptjs";
 

@@ -5,7 +5,7 @@ import Navbar from "@shared/components/Navbar";
 import DynamicRoleSidebar from "@shared/components/DynamicRoleSidebar";
 import Calendar from "@shared/components/ui/Calendar";
 import { TabsProvider } from "@shared/context/TabsProvider";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import ShareBookingLink from "@dashboard/components/ShareBookingLink";
 
@@ -23,7 +23,7 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserClient<Database>();
 
   // Sidebar calendar state
   const [month, setMonth] = useState(() => new Date());

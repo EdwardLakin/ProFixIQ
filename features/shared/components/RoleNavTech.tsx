@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import ShiftTracker from "@shared/components/ShiftTracker";
 import {
@@ -18,7 +18,7 @@ import {
 import clsx from "clsx";
 
 export default function RoleNavTech() {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserClient<Database>();
   const pathname = usePathname();
   const [role, setRole] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);

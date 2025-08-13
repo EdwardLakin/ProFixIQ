@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Input } from "@shared/components/ui/input";
 import { Button } from "@shared/components/ui/Button";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+
 import type { Database } from "@shared/types/types/supabase";
 import { useRouter } from "next/navigation";
 

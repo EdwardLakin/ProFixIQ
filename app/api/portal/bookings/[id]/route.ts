@@ -1,6 +1,6 @@
 // app/api/portal/bookings/[id]/route.ts
 import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerClient} from "@supabase/auth-helpers-nextjs";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 

@@ -6,10 +6,10 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
-type Shop = Database["public"]["Tables"]["shops"]["Row"]; // change to "shops" if your table is plural
+type Shop = Database["public"]["Tables"]["shops"]["Row"];
 
 type UserWithShop = Profile & {
-  shop?: Shop | null;
+  shops?: Shop | null; // joined as "shops(*)"
 };
 
 export function useUser() {
@@ -32,10 +32,10 @@ export function useUser() {
       return;
     }
 
-    // profile + shop join
+    // profile + shop join (plural: shops)
     const { data, error } = await supabase
       .from("profiles")
-      .select("*, shop(*)") // if plural: "*, shops(*)"
+      .select("*, shops(*)")
       .eq("id", authUser.id)
       .single();
 
@@ -43,7 +43,7 @@ export function useUser() {
       console.error("Failed to fetch user profile:", error);
       setUser(null);
     } else {
-      setUser(data as UserWithShop);
+      setUser(data as unknown as UserWithShop);
     }
 
     setIsLoading(false);
@@ -58,7 +58,7 @@ export function useUser() {
       load();
     });
 
-    // realtime: profile row for this user
+    // realtime: profile row for this user (+ watch linked shop row)
     let profileChannel: ReturnType<typeof supabase.channel> | null = null;
     let shopChannel: ReturnType<typeof supabase.channel> | null = null;
 
@@ -78,11 +78,11 @@ export function useUser() {
             table: "profiles",
             filter: `id=eq.${authUser.id}`,
           },
-          () => load()
+          () => load(),
         )
         .subscribe();
 
-      // if the profile links to a shop, also watch that shop row
+      // if the profile links to a shop, also watch that shop row (plural: shops)
       const { data: profile } = await supabase
         .from("profiles")
         .select("shop_id")
@@ -98,10 +98,10 @@ export function useUser() {
             {
               event: "*",
               schema: "public",
-              table: "shop", // if plural, change to "shops"
+              table: "shops",
               filter: `id=eq.${shopId}`,
             },
-            () => load()
+            () => load(),
           )
           .subscribe();
       }

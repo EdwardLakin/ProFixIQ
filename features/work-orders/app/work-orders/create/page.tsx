@@ -4,10 +4,10 @@ import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 import type { Database } from "@shared/types/types/supabase";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/auth-helpers-nextjs";
 import { insertPrioritizedJobsFromInspection } from "@work-orders/lib/work-orders/insertPrioritizedJobsFromInspection";
 
-const supabase = createClientComponentClient<Database>();
+const supabase = createBrowserClient<Database>();
 
 type Vehicle = Database["public"]["Tables"]["vehicles"]["Row"];
 type Customer = Database["public"]["Tables"]["customers"]["Row"];

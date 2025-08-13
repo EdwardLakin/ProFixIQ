@@ -22,21 +22,17 @@ export default function ResetPasswordPage() {
 
     if (access_token && refresh_token) {
       supabase.auth
-        .setSession({
-          access_token,
-          refresh_token,
-        })
+        .setSession({ access_token, refresh_token })
         .then(({ error }) => {
-          if (error) {
-            setError("Invalid or expired password reset link.");
-          }
+          if (error) setError("Invalid or expired password reset link.");
           setLoading(false);
         });
     } else {
       setError("Missing access or refresh token.");
       setLoading(false);
     }
-  }, [searchParams, supabase]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]); // supabase is stable from the factory; no need in deps
 
   const handleReset = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,17 +46,13 @@ export default function ResetPasswordPage() {
     setError("");
     setSuccess("");
 
-    const { error } = await supabase.auth.updateUser({
-      password,
-    });
+    const { error } = await supabase.auth.updateUser({ password });
 
     if (error) {
       setError(error.message);
     } else {
       setSuccess("Password reset successfully.");
-      setTimeout(() => {
-        router.push("/sign-in");
-      }, 1500);
+      setTimeout(() => router.push("/sign-in"), 1500);
     }
 
     setLoading(false);

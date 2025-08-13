@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { formatDistanceToNow } from "date-fns";
 
-const supabase = createClientComponentClient<Database>();
+const supabase = createBrowserClient<Database>();
 
 export default function ShiftTracker({ userId }: { userId: string }) {
   const [shiftId, setShiftId] = useState<string | null>(null);

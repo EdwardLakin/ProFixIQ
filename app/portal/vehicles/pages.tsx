@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 type Vehicle = Database["public"]["Tables"]["vehicles"]["Row"];
 type Customer = Database["public"]["Tables"]["customers"]["Row"];
 
 export default function PortalVehiclesPage() {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserClient<Database>();
 
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);

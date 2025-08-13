@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { useRouter } from "next/navigation";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 
 export default function CreateUserPage() {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserClient<Database>();
   const router = useRouter();
 
   const [email, setEmail] = useState("");

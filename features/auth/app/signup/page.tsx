@@ -14,7 +14,7 @@ export default function SignUpPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // 🧠 Use useEffect + router to redirect if already signed in
+  // Redirect if already signed in
   useEffect(() => {
     const checkSession = async () => {
       const { data } = await supabase.auth.getUser();
@@ -23,7 +23,8 @@ export default function SignUpPage() {
       }
     };
     checkSession();
-  }, [supabase, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router]);
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,7 +43,7 @@ export default function SignUpPage() {
     }
 
     setLoading(false);
-    router.push("/onboarding"); // 👈 or to /auth/callback if you want email confirm
+    router.push("/onboarding"); // or /auth/callback if using email confirm
   };
 
   return (

@@ -6,6 +6,7 @@ import { Button } from "@shared/components/ui/Button";
 import Papa from "papaparse";
 import { toast } from "sonner";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+
 import type { Database } from "@shared/types/types/supabase";
 
 const supabase = createClientComponentClient<Database>();

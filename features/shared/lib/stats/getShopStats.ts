@@ -13,7 +13,7 @@ import {
   format,
 } from "date-fns";
 
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 type TimeRange = "weekly" | "monthly" | "quarterly" | "yearly";
@@ -28,7 +28,7 @@ export async function getShopStats(
   timeRange: TimeRange,
   filters: Filters = {},
 ) {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserClient<Database>();
   const now = new Date();
   let start: Date;
   let end: Date;

@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { getUserConversations } from "@ai/lib/chat/getUserConversations";
-import type { Database } from "@shared/types/types/supabase";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import clsx from "clsx";
+
+import { supabase } from "@shared/lib/supabase/client";               // ✅ use shared client
+import type { Database } from "@shared/types/types/supabase";
+import { getUserConversations } from "@ai/lib/chat/getUserConversations";
 
 type Conversation = Database["public"]["Tables"]["conversations"]["Row"];
 type Message = Database["public"]["Tables"]["messages"]["Row"];
@@ -21,18 +22,15 @@ export default function ConversationList({
   activeConversationId,
   setActiveConversationId,
 }: Props) {
-  const supabase = createClientComponentClient<Database>();
-  const [conversations, setConversations] = useState<ConversationWithMeta[]>(
-    [],
-  );
+  const [conversations, setConversations] = useState<ConversationWithMeta[]>([]);
 
   useEffect(() => {
-    const fetch = async () => {
+    const fetchConversations = async () => {
       const result = await getUserConversations(supabase);
       setConversations(result);
     };
-    fetch();
-  }, [supabase]);
+    fetchConversations();
+  }, []);
 
   return (
     <div className="w-full">

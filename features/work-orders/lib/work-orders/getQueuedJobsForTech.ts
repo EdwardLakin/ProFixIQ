@@ -1,6 +1,6 @@
 // lib/work-orders/getQueuedJobsForTech.ts
 
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 type JobLine = Database["public"]["Tables"]["work_order_lines"]["Row"] & {
@@ -16,7 +16,7 @@ type JobLine = Database["public"]["Tables"]["work_order_lines"]["Row"] & {
 };
 
 export async function getQueuedJobsForTech(): Promise<JobLine[]> {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserClient<Database>();
   const {
     data: { user },
   } = await supabase.auth.getUser();

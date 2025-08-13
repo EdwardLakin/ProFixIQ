@@ -1,10 +1,10 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { formatCurrency } from "@shared/lib/formatters";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
-const supabase = createClientComponentClient<Database>();
+const supabase = createBrowserClient<Database>();
 
 type StatsTotals = {
   revenue: number;

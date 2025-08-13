@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { useUser } from "@auth/hooks/useUser";
 
@@ -10,7 +10,7 @@ type MenuItem = Database["public"]["Tables"]["menu_items"]["Row"];
 type InsertMenuItem = Database["public"]["Tables"]["menu_items"]["Insert"];
 
 export default function MenuItemsPage() {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserClient<Database>();
   const { user, isLoading } = useUser();
 
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);

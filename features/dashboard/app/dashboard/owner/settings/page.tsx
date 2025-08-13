@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Input } from "@shared/components/ui/input";
 import { Button } from "@shared/components/ui/Button";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/auth-helpers-nextjs";
 import { toast } from "sonner";
 import type { Database } from "@shared/types/types/supabase";
 import OwnerPinModal from "@shared/components/OwnerPinModal";
@@ -12,7 +12,7 @@ import OwnerPinBadge from "@shared/components/OwnerPinBadge";
 type HourRow = { weekday: number; open_time: string; close_time: string };
 type TimeOffRow = { id: string; starts_at: string; ends_at: string; reason: string | null };
 
-const supabase = createClientComponentClient<Database>();
+const supabase = createBrowserClient<Database>();
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 

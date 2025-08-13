@@ -1,6 +1,6 @@
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import type { Database } from "@shared/types/types/supabase";
 
 interface VinDecodeRequestBody {
@@ -19,7 +19,25 @@ interface VinDecodeResponse {
 }
 
 export async function POST(req: Request) {
-  const supabase = createRouteHandlerClient<Database>({ cookies });
+  // Adapt next/headers cookies() for @supabase/ssr
+  const cookieStore = await cookies();
+  const supabase = createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value;
+        },
+        set(name: string, value: string, options: CookieOptions) {
+          cookieStore.set({ name, value, ...options });
+        },
+        remove(name: string, options: CookieOptions) {
+          cookieStore.set({ name, value: "", ...options, maxAge: 0 });
+        },
+      },
+    }
+  );
 
   let body: VinDecodeRequestBody;
   try {
@@ -32,19 +50,18 @@ export async function POST(req: Request) {
 
   try {
     const vinRes = await fetch(
-      `https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/${vin}?format=json`,
+      `https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/${vin}?format=json`
     );
 
     if (!vinRes.ok) {
       return NextResponse.json(
         { error: "Failed to fetch from VIN API" },
-        { status: 502 },
+        { status: 502 }
       );
     }
 
     const vinData: VinDecodeResponse = await vinRes.json();
     const decoded = vinData?.Results?.[0] || {};
-
     const { Year, Make, Model, Trim, EngineModel } = decoded;
 
     const { error } = await supabase.from("vin_decodes").upsert({
@@ -61,7 +78,7 @@ export async function POST(req: Request) {
       console.error("❌ Supabase upsert error:", error);
       return NextResponse.json(
         { error: "Database insert failed" },
-        { status: 500 },
+        { status: 500 }
       );
     }
 
@@ -76,7 +93,7 @@ export async function POST(req: Request) {
     console.error("❌ VIN decode failed:", err);
     return NextResponse.json(
       { error: "Failed to decode VIN" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

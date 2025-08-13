@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 import RoleNavAdmin from "@shared/components/RoleNavAdmin";
@@ -11,7 +11,7 @@ import RoleNavOwner from "@shared/components/RoleNavOwner";
 import RoleNavParts from "@shared/components/RoleNavParts";
 
 export default function DynamicRoleSidebar() {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserClient<Database>();
   const [role, setRole] = useState<string | null>(null);
 
   useEffect(() => {
