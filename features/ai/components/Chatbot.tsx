@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { FaPaperPlane, FaRobot } from "react-icons/fa";
-import Image from "next/image"; // 👈 For logo support
+import Image from "next/image";
+import Link from "next/link"; // 👈 for clickable logo
 
 export default function Chatbot() {
   const [open, setOpen] = useState(false);
@@ -18,8 +19,7 @@ export default function Chatbot() {
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (bottomRef.current)
-      bottomRef.current.scrollIntoView({ behavior: "smooth" });
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   const sendMessage = async () => {
@@ -29,23 +29,30 @@ export default function Chatbot() {
     setInput("");
     setLoading(true);
 
-    const res = await fetch("/api/chatbot", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: updated }),
-    });
+    try {
+      const res = await fetch("/api/chatbot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: updated }),
+      });
 
-    const data = await res.json();
-    if (data.reply) {
-      setMessages([...updated, { role: "assistant", content: data.reply }]);
-    } else {
+      const data = await res.json();
+      if (data.reply) {
+        setMessages([...updated, { role: "assistant", content: data.reply }]);
+      } else {
+        setMessages([
+          ...updated,
+          { role: "assistant", content: "Sorry, something went wrong." },
+        ]);
+      }
+    } catch {
       setMessages([
         ...updated,
-        { role: "assistant", content: "Sorry, something went wrong." },
+        { role: "assistant", content: "Connection error. Please try again." },
       ]);
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   return (
@@ -60,11 +67,17 @@ export default function Chatbot() {
 
       {open && (
         <div className="fixed bottom-20 right-6 w-80 bg-black border border-neutral-700 text-white rounded-lg shadow-xl flex flex-col z-50">
-          {/* 💡 Brand Header with Logo */}
+          {/* Brand Header with Clickable Logo */}
           <div className="flex items-center gap-2 p-3 border-b border-neutral-700 bg-neutral-900 rounded-t">
-            {/* Uncomment and replace logo path */}
-            {/* <Image src="/logo.png" alt="ProFixIQ" width={28} height={28} /> */}
-            <FaRobot className="text-orange-400" />
+            <Link href="/" title="Go to Home">
+              <Image
+                src="/logo.png" // ✅ make sure this exists in /public
+                alt="ProFixIQ"
+                width={28}
+                height={28}
+                priority
+              />
+            </Link>
             <span className="font-bold text-orange-400">TechBot Assistant</span>
           </div>
 
