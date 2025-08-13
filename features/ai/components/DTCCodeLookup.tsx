@@ -1,16 +1,16 @@
 "use client";
 
 import React, { useState } from "react";
-import { useVehicleInfo } from "@shared/hooks/useVehicleInfo";
+import useVehicleInfo from "@shared/hooks/useVehicleInfo";
 
 export default function DTCCodeLookup() {
   const [code, setCode] = useState("");
   const [result, setResult] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const { vehicle } = useVehicleInfo();
+  const { vehicleInfo } = useVehicleInfo(); // ← use the correct property
 
   const handleSearch = async () => {
-    if (!code || !vehicle || !vehicle.make || !vehicle.year || !vehicle.model) {
+    if (!code || !vehicleInfo?.make || !vehicleInfo?.year || !vehicleInfo?.model) {
       alert("Please enter a DTC code and select a vehicle.");
       return;
     }
@@ -21,12 +21,10 @@ export default function DTCCodeLookup() {
     try {
       const res = await fetch("/api/diagnose", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           code,
-          vehicle,
+          vehicle: vehicleInfo, // ← send the selected vehicle info
         }),
       });
 
@@ -44,14 +42,12 @@ export default function DTCCodeLookup() {
 
   return (
     <div className="mt-4">
-      <label className="block mb-1 text-sm font-medium">
-        Enter a DTC code (e.g., P0131)
-      </label>
+      <label className="block mb-1 text-sm font-medium">Enter a DTC code (e.g., P0131)</label>
       <div className="flex items-center gap-2">
         <input
           type="text"
           value={code}
-          onChange={(e) => setCode(e.target.value)}
+          onChange={(e) => setCode(e.target.value.toUpperCase())}
           placeholder="P0131"
           className="border rounded p-2 w-48"
         />
@@ -63,6 +59,7 @@ export default function DTCCodeLookup() {
           {isLoading ? "Searching..." : "Search"}
         </button>
       </div>
+
       {result && (
         <div className="mt-4 p-4 border rounded bg-muted text-sm whitespace-pre-wrap">
           {result}
