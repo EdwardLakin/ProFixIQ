@@ -1,8 +1,9 @@
-"use client";
+ "use client";
 
 import { useEffect, useState, useRef } from "react";
-import supabase from "@shared/lib/supabaseClient";
-import { Database } from "@shared/types/supabase";
+import { supabase } from "@shared/lib/supabase/client"; // ✅ correct path + named export
+import type { RealtimePostgresInsertPayload } from "@supabase/supabase-js";
+import type { Database } from "@shared/types/types/supabase";
 
 type Message = Database["public"]["Tables"]["messages"]["Row"];
 
@@ -27,7 +28,7 @@ export default function ChatWindow({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ conversationId }),
         });
-        const data = await res.json();
+        const data: Message[] = await res.json();
         setMessages(data);
       } catch (err) {
         console.error("Fetch error:", err);
@@ -47,9 +48,9 @@ export default function ChatWindow({
           table: "messages",
           filter: `conversation_id=eq.${conversationId}`,
         },
-        (payload) => {
-          setMessages((prev) => [...prev, payload.new as Message]);
-        },
+        (payload: RealtimePostgresInsertPayload<Message>) => {
+          setMessages((prev) => [...prev, payload.new]);
+        }
       )
       .subscribe();
 
