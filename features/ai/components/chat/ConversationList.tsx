@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { getUserConversations } from "@shared/lib/chat/getUserConversations";
-import type { Database } from "@shared/types/supabase";
+import { getUserConversations } from "@ai/lib/chat/getUserConversations";
+import type { Database } from "@shared/types/types/supabase";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import clsx from "clsx";
 
