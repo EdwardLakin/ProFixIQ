@@ -1,6 +1,6 @@
 // lib/inspection/save.ts
 import { createClient } from "@supabase/supabase-js";
-import { InspectionSession } from "@shared/lib/inspection/types";
+import { InspectionSession } from "@inspections/lib/inspection/types";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,

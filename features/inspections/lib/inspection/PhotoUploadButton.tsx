@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import PhotoThumbnail from "@shared/components/inspection/PhotoThumbnail";
+import PhotoThumbnail from "@inspections/components/inspection/PhotoThumbnail";
 
 interface PhotoUploadButtonProps {
   photoUrls: string[];

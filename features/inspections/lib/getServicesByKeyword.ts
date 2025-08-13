@@ -1,5 +1,5 @@
-import { masterServicesList } from "@shared/lib/inspection/masterServicesList";
-import type { ServiceItem } from "@shared/types/services";
+import { masterServicesList } from "@inspections/lib/inspection/masterServicesList";
+import type { ServiceItem } from "@shared/types/types/services";
 
 export function getServicesByKeyword(keyword: string): ServiceItem[] {
   const lowerKeyword = keyword.toLowerCase();

@@ -2,7 +2,7 @@ import {
   InspectionSession,
   InspectionItemStatus,
   QuoteLine,
-} from "@shared/lib/inspection/types";
+} from "@inspections/lib/inspection/types";
 
 export function updateItemStatus(
   session: InspectionSession,

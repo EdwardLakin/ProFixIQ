@@ -1,4 +1,4 @@
-import { ParsedCommand, Command } from "@shared/lib/inspection/types";
+import { ParsedCommand, Command } from "@inspections/lib/inspection/types";
 
 type SessionContext = {
   currentSectionIndex: number;
@@ -65,7 +65,11 @@ export function convertParsedCommands(
         return { type: "pause" };
 
       case "finish_inspection":
-        return { type: "complete" };
+  return {
+    type: "complete",
+    sectionIndex,
+    itemIndex,
+  };
 
       default:
         console.warn("Unknown ParsedCommand:", cmd);

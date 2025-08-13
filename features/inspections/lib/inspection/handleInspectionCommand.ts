@@ -1,6 +1,6 @@
 import type { InspectionCommand, InspectionSession } from "./types";
 import { resolveSynonym } from "./synonyms";
-import type { RecommendCommand } from "@shared/lib/inspection/types";
+import type { RecommendCommand } from "@inspections/lib/inspection/types";
 
 export default function handleInspectionCommand(
   session: InspectionSession,

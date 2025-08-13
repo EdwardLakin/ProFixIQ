@@ -1,7 +1,7 @@
 import {
   InspectionItem,
   InspectionItemStatus,
-} from "@shared/lib/inspection/types";
+} from "@inspections/lib/inspection/types";
 
 interface StatusButtonsProps {
   item: InspectionItem;

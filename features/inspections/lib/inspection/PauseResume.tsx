@@ -3,7 +3,7 @@
 import {
   stopVoiceRecognition,
   startVoiceRecognition,
-} from "@shared/lib/inspection/voiceControl";
+} from "@inspections/lib/inspection/voiceControl";
 
 interface PauseResumeButtonProps {
   isPaused: boolean;

@@ -1,25 +1,14 @@
-import { matchToMenuItem } from "./matchToMenuItem";
-import { InspectionItem } from "@inspections/lib/inspection/types";
+import type { InspectionItem } from "@inspections/lib/inspection/types";
+import { serviceMenu } from "@shared/lib/menuItems";
 import { generateLaborTimeEstimate } from "@ai/lib/ai/generateLaborTimeEstimate";
 
+/** Shape expected by QuoteViewer (summary page) */
 export interface QuoteLine {
-  item: any;
-  status: "ok" | "fail" | "na" | "recommend";
-  notes: string;
-  laborTime: number;
-  laborRate: number;
-  parts: any;
-  item: any;
-  status: "ok" | "fail" | "na" | "recommend";
-  notes: string;
-  laborTime: number;
-  laborRate: number;
-  parts: any;
   description: string;
   hours: number;
   rate: number;
   total: number;
-  job_type: string;
+  job_type: "repair" | "maintenance";
 }
 
 /**
@@ -42,7 +31,7 @@ export async function generateQuoteFromInspection(
     } else if (status === "recommend") {
       recommended.push({ ...item, status });
     }
-    // items defaulting to 'ok' are ignored in quote generation
+    // "ok" items are not included in the quote
   }
 
   const summary = [
@@ -60,23 +49,41 @@ export async function generateQuoteFromInspection(
     .join("\n");
 
   const quote: QuoteLine[] = [];
+  const RATE = 120;
 
-  for (const item of [...failed, ...recommended]) {
-    const matched = matchToMenuItem(item.item, item);
+  for (const itm of [...failed, ...recommended]) {
+    const term = (itm.item ?? itm.name ?? "").toString();
 
-    if (matched) {
-      quote.push(matched as QuoteLine);
-    } else {
-      const labor = await generateLaborTimeEstimate(item.item, "repair");
-      if (labor && labor > 0) {
-        quote.push({
-          description: item.item,
-          hours: labor,
-          rate: 120,
-          total: parseFloat((labor * 120).toFixed(2)),
-          job_type: "repair",
-        });
-      }
+    // 1) Try to match a known service menu item
+    const menuMatch = serviceMenu.find((m) =>
+      term.toLowerCase().includes(m.name.toLowerCase()),
+    );
+
+    if (menuMatch) {
+      const hours = menuMatch.laborHours ?? 1;
+      const partsCost = menuMatch.partCost ?? 0;
+      const total = Number((hours * RATE + partsCost).toFixed(2));
+
+      quote.push({
+        description: menuMatch.name,
+        hours,
+        rate: RATE,
+        total,
+        job_type: "repair",
+      });
+      continue;
+    }
+
+    // 2) Fall back to AI labor estimate
+    const labor = await generateLaborTimeEstimate(term, "repair");
+    if (labor && labor > 0) {
+      quote.push({
+        description: term,
+        hours: labor,
+        rate: RATE,
+        total: Number((labor * RATE).toFixed(2)),
+        job_type: "repair",
+      });
     }
   }
 

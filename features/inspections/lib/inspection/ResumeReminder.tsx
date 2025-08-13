@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import useInspectionSession from "@shared/hooks/useInspectionSession";
+import useInspectionSession from "@inspections/hooks/useInspectionSession";
 
 const ResumeReminder = () => {
   const { isPaused, resumeSession } = useInspectionSession();

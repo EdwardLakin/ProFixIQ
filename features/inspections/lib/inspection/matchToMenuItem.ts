@@ -6,6 +6,7 @@ export default function matchToMenuItem(
   session: InspectionSession,
   item: InspectionItem,
 ): InspectionSession {
+  // Only create quote lines for actionable statuses
   if (!item || !item.status || !["fail", "recommend"].includes(item.status)) {
     return session;
   }
@@ -22,6 +23,15 @@ export default function matchToMenuItem(
     );
 
     if (match) {
+      // Guard status so it matches QuoteLine["status"]
+      const statusSafe: QuoteLine["status"] =
+        item.status === "ok" ||
+        item.status === "fail" ||
+        item.status === "na" ||
+        item.status === "recommend"
+          ? item.status
+          : "ok";
+
       const quoteLine: QuoteLine = {
         id: uuidv4(),
         inspectionItem: item.name,
@@ -34,10 +44,13 @@ export default function matchToMenuItem(
             type: "economy",
           },
         ],
-        status: item.status ?? "ok",
+        status: statusSafe,
         notes: item.notes ?? "",
         source: "inspection",
         totalCost: (match.partCost ?? 0) + (match.laborHours ?? 1) * 120,
+        name: "",
+        price: 0,
+        partName: ""
       };
 
       newQuoteLines.push(quoteLine);

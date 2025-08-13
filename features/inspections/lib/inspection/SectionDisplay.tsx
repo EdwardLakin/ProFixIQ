@@ -1,6 +1,6 @@
 "use client";
 
-import { InspectionSection } from "@shared/lib/inspection/types";
+import { InspectionSection } from "@inspections/lib/inspection/types";
 import InspectionItemCard from "./InspectionItemCard";
 
 interface SectionDisplayProps {

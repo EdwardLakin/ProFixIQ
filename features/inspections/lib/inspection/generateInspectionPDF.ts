@@ -1,5 +1,5 @@
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
-import { InspectionSummaryItem } from "@shared/lib/inspection/summary";
+import { InspectionSummaryItem } from "@inspections/lib/inspection/summary";
 
 export async function generateInspectionPDF(items: InspectionSummaryItem[]) {
   const doc = await PDFDocument.create();

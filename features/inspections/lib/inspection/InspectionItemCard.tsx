@@ -3,10 +3,10 @@
 import {
   InspectionItem,
   InspectionItemStatus,
-} from "@shared/lib/inspection/types";
+} from "@inspections/lib/inspection/types";
 import StatusButtons from "./StatusButtons";
 import PhotoUploadButton from "./PhotoUploadButton";
-import PhotoThumbnail from "@shared/components/inspection/PhotoThumbnail";
+import PhotoThumbnail from "@inspections/components/inspection/PhotoThumbnail";
 
 interface InspectionItemCardProps {
   item: InspectionItem;

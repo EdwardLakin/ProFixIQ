@@ -1,4 +1,4 @@
-import { ParsedCommand } from "@shared/lib/inspection/types";
+import { ParsedCommand } from "@inspections/lib/inspection/types";
 
 export default async function interpretCommand(
   transcript: string,
