@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { createBrowserClient } from "@supabase/auth-helpers-nextjs";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+
 import type { Database } from "@shared/types/types/supabase";
 import ShiftTracker from "@shared/components/ShiftTracker";
 import {
@@ -19,7 +20,8 @@ import {
 import { HiMenuAlt2 } from "react-icons/hi";
 
 export default function RoleNavOwner() {
-  const supabase = createBrowserClient<Database>();
+    const supabase = createClientComponentClient<Database>();
+
   const [role, setRole] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);

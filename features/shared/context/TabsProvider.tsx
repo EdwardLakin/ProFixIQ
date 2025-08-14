@@ -2,7 +2,8 @@
 
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createBrowserClient } from "@supabase/auth-helpers-nextjs";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+
 import type { Database } from "@shared/types/types/supabase";
 
 type Tab = {
@@ -35,7 +36,8 @@ export const useTabs = () => {
 
 export const TabsProvider = ({ children }: { children: React.ReactNode }) => {
   const router = useRouter();
-  const supabase = createBrowserClient<Database>();
+    const supabase = createClientComponentClient<Database>();
+
 
   const [tabs, setTabsState] = useState<Tab[]>([]);
   const [activeTab, setActiveTab] = useState("");

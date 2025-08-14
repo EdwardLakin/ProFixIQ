@@ -1,117 +1,75 @@
+// app/tech/queue/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createBrowserClient } from "@supabase/auth-helpers-nextjs";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import JobQueue, { QueueJob } from "@shared/components/JobQueue";
 
-const supabase = createBrowserClient<Database>();
+import JobQueue from "@shared/components/JobQueue";
+import type { QueueJob } from "@work-orders/components/workorders/queueTypes";
+import { getQueuedJobsForTech } from "@work-orders/lib/work-orders/getQueuedJobsForTech";
 
-type Profile = Database["public"]["Tables"]["profiles"]["Row"];
-
-export default function WorkOrderQueuePage() {
+export default function TechQueuePage() {
+  const supabase = createClientComponentClient<Database>();
   const router = useRouter();
 
   const [jobs, setJobs] = useState<QueueJob[]>([]);
-  const [techs, setTechs] = useState<{ id: string; full_name: string | null }[]>(
-    []
-  );
-  const [filterTechId, setFilterTechId] = useState<string | null>(null);
-
-  const fetchJobs = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("work_order_lines")
-      .select(
-        `
-        *,
-        vehicles:vehicles(*),
-        assigned_to:profiles(id, full_name)
-      `
-      )
-      .order("created_at", { ascending: false })
-      .returns<QueueJob[]>(); // <-- ensures TS knows this is QueueJob[]
-
-    if (error) {
-      console.error("Failed to load queue:", error);
-      return;
-    }
-    setJobs(data ?? []);
-  }, []);
-
-  const fetchTechs = useCallback(async () => {
-    // grab people who can be assigned; tweak filter to your role field if needed
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("id, full_name")
-      .returns<Pick<Profile, "id" | "full_name">[]>();
-
-    if (error) {
-      console.error("Failed to load techs:", error);
-      return;
-    }
-    setTechs(data ?? []);
-  }, []);
+  const [loading, setLoading] = useState(true);
+  const [tech, setTech] = useState<{ id: string; full_name: string | null } | null>(null);
 
   useEffect(() => {
-    fetchJobs();
-    fetchTechs();
-  }, [fetchJobs, fetchTechs]);
+    void fetchJobsAndProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const handleAssignTech = async (jobId: string, techId: string) => {
-    const { error } = await supabase
-      .from("work_order_lines")
-      .update({ assigned_to: techId })
-      .eq("id", jobId);
+  async function fetchJobsAndProfile() {
+    setLoading(true);
 
-    if (error) {
-      console.error("Failed to assign tech:", error);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setLoading(false);
       return;
     }
 
-    // optimistic UI update
-    setJobs((prev) =>
-      prev.map((j) =>
-        j.id === jobId
-          ? { ...j, assigned_to: { id: techId, full_name: techs.find(t => t.id === techId)?.full_name ?? null } }
-          : j
-      )
-    );
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("id, full_name")
+      .eq("id", user.id)
+      .single();
+
+    if (profile) {
+      setTech({ id: profile.id, full_name: profile.full_name });
+    }
+
+    // ✅ returns QueueJob[] already normalized
+    const result = await getQueuedJobsForTech(supabase, { techId: profile?.id });
+    setJobs(result);
+    setLoading(false);
+  }
+
+  const handleAssignTech = async (jobId: string, techId: string) => {
+    await supabase.from("work_order_lines").update({ assigned_to: techId }).eq("id", jobId);
+    void fetchJobsAndProfile();
   };
 
-  const handleView = (job: QueueJob) => {
-    router.push(`/work-orders/view/${job.id}`);
-  };
-
-  const jobsForUI = useMemo(() => jobs, [jobs]);
+  if (loading) return <p className="p-4 text-white">Loading jobs...</p>;
 
   return (
-    <div className="p-6">
-      <div className="mb-4">
-        <label className="text-sm text-gray-300">
-          Filter by technician:
-          <select
-            className="ml-2 bg-neutral-800 text-white border border-neutral-600 rounded px-2 py-1"
-            value={filterTechId ?? ""}
-            onChange={(e) => setFilterTechId(e.target.value || null)}
-          >
-            <option value="">All</option>
-            {techs.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.full_name ?? "Unnamed"}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+    <div className="p-4">
+      <h1 className="mb-4 text-2xl font-bold text-white">Your Assigned Jobs</h1>
 
       <JobQueue
-        jobs={jobsForUI}
-        techOptions={techs}
+        jobs={jobs}
+        techOptions={tech ? [tech] : []}
         onAssignTech={handleAssignTech}
-        onView={handleView}
-        filterTechId={filterTechId}
-        title="Work Order Queue"
+        onView={(job) =>
+          job.work_order_id && router.push(`/work-orders/view/${job.work_order_id}`)
+        }
+        filterTechId={tech?.id || null}
+        title="Assigned Job Queue"
       />
     </div>
   );

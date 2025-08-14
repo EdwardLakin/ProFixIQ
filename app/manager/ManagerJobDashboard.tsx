@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { Database } from "@shared/types/types/supabase";
 import JobQueueCard from "@shared/components/JobQueueCard";
-import type { QueueJob } from "@shared/components/JobQueue";
+import type { QueueJob } from "@work-orders/components/workorders/queueTypes";
 import { format } from "date-fns";
 
 const supabase = createBrowserClient<Database>(

@@ -4,12 +4,17 @@
 import { createBrowserClient } from "@supabase/ssr";
 import type { Database } from "@shared/types/types/supabase";
 
-/**
- * Client-side Supabase instance.
- * Uses the public anon key and URL.
- * Safe to import anywhere in the client code.
- */
-export const supabase = createBrowserClient<Database>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-);
+let _client:
+  | ReturnType<typeof createBrowserClient<Database>>
+  | null = null;
+
+export function createBrowserSupabase() {
+  if (_client) return _client;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  _client = createBrowserClient<Database>(url, anon);
+  return _client;
+}
+
+// optional ready-to-use singleton
+export const supabaseBrowser = createBrowserSupabase();

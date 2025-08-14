@@ -1,14 +1,14 @@
+// app/(wherever)/getUserSession.ts
 "use server";
 
-import { createServerClient} from "@supabase/auth-helpers-nextjs";
+import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 import type { Database } from "@shared/types/types/supabase";
 import { redirect } from "next/navigation";
 
 export async function getUserSession() {
-  const supabase = createServerComponentClient<Database>({
-    cookies: () => cookies(), // ✅ correct usage
-  });
+  // ✅ Use the correct helper and pass cookies directly
+  const supabase = createServerComponentClient<Database>({ cookies });
 
   const {
     data: { session },
@@ -20,7 +20,9 @@ export async function getUserSession() {
 
   const { data: profile, error } = await supabase
     .from("profiles")
-    .select("plan, shop(id, name, city, province, owner_id, plan, user_limit)")
+    .select(
+      "plan, shop(id, name, city, province, owner_id, plan, user_limit)"
+    )
     .eq("id", session.user.id)
     .single();
 

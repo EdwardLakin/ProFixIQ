@@ -14,7 +14,8 @@ import AddJobModal from "@work-orders/components/workorders/AddJobModal";
 import { generateQuotePDFBytes } from "@work-orders/lib/work-orders/generateQuotePdf";
 import VehiclePhotoUploader from "@parts/components/VehiclePhotoUploader";
 import VehiclePhotoGallery from "@parts/components/VehiclePhotoGallery";
-import { createBrowserClient } from "@supabase/auth-helpers-nextjs";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+
 
 import type { Database } from "@shared/types/types/supabase";
 
@@ -44,7 +45,8 @@ export default function WorkOrderDetailPage() {
   const [updatingNotes, setUpdatingNotes] = useState(false);
   const [showDetails, setShowDetails] = useState(true);
 
-  const supabase = createBrowserClient<Database>();
+    const supabase = createClientComponentClient<Database>();
+
 
   const [isPartsModalOpen, setIsPartsModalOpen] = useState(false);
   const [isCauseModalOpen, setIsCauseModalOpen] = useState(false);

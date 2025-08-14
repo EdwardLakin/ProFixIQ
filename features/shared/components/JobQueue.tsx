@@ -1,23 +1,14 @@
+// features/work-orders/components/workorders/JobQueue.tsx
 "use client";
 
-import JobQueueCard from "./JobQueueCard";
-import type { Database } from "@shared/types/types/supabase";
-
-// Base table rows
-type JobLine = Database["public"]["Tables"]["work_order_lines"]["Row"];
-type Vehicle = Database["public"]["Tables"]["vehicles"]["Row"];
-
-// Use Omit so we can redefine assigned_to as a union
-export type QueueJob = Omit<JobLine, "assigned_to" | "vehicles"> & {
-  assigned_to: { id: string; full_name: string | null } | string | null;
-  vehicles?: Partial<Vehicle> | null;
-};
+import JobQueueCard from "@shared/components/JobQueueCard";
+import type { QueueJob } from "@work-orders/components/workorders/queueTypes";
 
 interface JobQueueProps {
   jobs: QueueJob[];
   techOptions: { id: string; full_name: string | null }[];
   onAssignTech: (jobId: string, techId: string) => void;
-  onView: (job: QueueJob) => void; // send full job
+  onView: (job: QueueJob) => void;
   filterTechId?: string | null;
   title?: string;
 }
@@ -54,7 +45,7 @@ export default function JobQueue({
               job={job}
               techOptions={techOptions}
               onAssignTech={onAssignTech}
-              onView={() => onView(job)} // pass full job
+              onView={() => onView(job)}
             />
           ))}
         </div>

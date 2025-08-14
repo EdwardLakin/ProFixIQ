@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState} from "react";
 import { PRICE_IDS } from "@stripe/lib/stripe/constants";
 import { useRouter } from "next/navigation";
-import { createBrowserClient } from "@supabase/auth-helpers-nextjs";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+
 import type { Database } from "@shared/types/types/supabase";
 
 type PlanKey = "free" | "diy" | "pro" | "pro_plus";
@@ -12,7 +13,8 @@ export default function PlanSelectionPage() {
   const [selectedPlan, setSelectedPlan] = useState<PlanKey | null>(null);
   const [isYearly, setIsYearly] = useState(false);
   const [loading, setLoading] = useState(false);
-  const supabase = createBrowserClient<Database>();
+    const supabase = createClientComponentClient<Database>();
+
   const router = useRouter();
 
   const handleCheckout = async (plan: PlanKey) => {

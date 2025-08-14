@@ -1,7 +1,10 @@
 // app/work-orders/insertPrioritizedJobs.ts
 
+import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
+import { cookies } from "next/headers";
+
 import { v4 as uuidv4 } from "uuid";
-import { type Database } from "@shared/types/supabase";
+import { type Database } from "@shared/types/types/supabase";
 
 type WorkOrderLineInsert =
   Database["public"]["Tables"]["work_order_lines"]["Insert"];
@@ -17,7 +20,7 @@ export async function insertPrioritizedJobs(
   vehicleId: string,
   jobs: JobInput[],
 ) {
-  const supabase = (await import("@shared/lib/supabaseClient")).default;
+  const supabase = createServerComponentClient<Database>({ cookies });
 
   const priority = {
     diagnosis: 1,

@@ -1,70 +1,60 @@
+// features/work-orders/components/workorders/TechJobScreen.tsx
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
-import { useUser } from "@auth/hooks/useUser";
-import { createBrowserSupabase } from "@shared/lib/supabase/client";
+import { useCallback, useEffect, useState } from "react";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import type { QueueJob } from "@work-orders/components/workorders/queueTypes";
 import JobQueueCard from "@shared/components/JobQueueCard";
-import { Button } from "@shared/components/ui/Button";
 
-// Supabase typed row
-type JobLine = Database["public"]["Tables"]["work_order_lines"]["Row"] & {
-  vehicle?: { year?: number | null; make?: string | null; model?: string | null };
-  assigned_to_profile?: { full_name?: string | null }; // if you join a profile, optional
-};
-
-const supabase = createBrowserSupabase();
+import { getQueuedJobsForTech } from "@work-orders/lib/work-orders/getQueuedJobsForTech";
 
 export default function TechJobScreen() {
-  const { user } = useUser();
-  const [jobLines, setJobLines] = useState<JobLine[]>([]);
+  const supabase = createClientComponentClient<Database>();
+  const [jobs, setJobs] = useState<QueueJob[]>([]);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const fetchJobs = useCallback(async () => {
-    if (!user) return;
     setLoading(true);
-
-    // Pull jobs assigned to the current tech or unassigned, in relevant statuses
-    const { data, error } = await supabase
-      .from("work_order_lines")
-      .select(
-        // keep it simple; add relationships if you have FKs/views for them
-        "*"
-      )
-      .or(`assigned_to.eq.${user.id},assigned_to.is.null`)
-      .in("status", ["awaiting", "in_progress", "on_hold"])
-      .order("created_at", { ascending: true });
-
-    if (!error && data) {
-      setJobLines(data as JobLine[]);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setJobs([]);
+      setLoading(false);
+      return;
     }
 
+    // ✅ Updated to match helper signature
+    const result = await getQueuedJobsForTech({ techId: user.id });
+    setJobs(result);
     setLoading(false);
-  }, [user]);
+  }, [supabase]);
 
   useEffect(() => {
-    if (!user) return;
+    void fetchJobs();
 
-    fetchJobs();
-
-    // realtime updates
     const channel = supabase
       .channel("job-updates")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "work_order_lines" },
-        fetchJobs
+        () => void fetchJobs()
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, fetchJobs]);
+  }, [fetchJobs, supabase]);
 
-  const handlePunchIn = async (job: JobLine) => {
+  const handlePunchIn = async (job: QueueJob) => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) return;
+
     setActiveJobId(job.id ?? null);
 
     await supabase
@@ -72,10 +62,10 @@ export default function TechJobScreen() {
       .update({ status: "in_progress", assigned_to: user.id })
       .eq("id", job.id as string);
 
-    fetchJobs();
+    void fetchJobs();
   };
 
-  const handlePunchOut = async (job: JobLine) => {
+  const handlePunchOut = async (job: QueueJob) => {
     setActiveJobId(null);
 
     await supabase
@@ -83,10 +73,10 @@ export default function TechJobScreen() {
       .update({ status: "awaiting" })
       .eq("id", job.id as string);
 
-    fetchJobs();
+    void fetchJobs();
   };
 
-  const renderJobCard = (job: JobLine) => (
+  const renderJobCard = (job: QueueJob) => (
     <JobQueueCard
       key={job.id as string}
       job={job}
@@ -96,11 +86,9 @@ export default function TechJobScreen() {
     />
   );
 
-  const activeJob = jobLines.find((j) => j.id === activeJobId) ?? null;
-  const readyJobs = jobLines.filter(
-    (j) => j.status === "awaiting" && j.id !== activeJobId
-  );
-  const onHoldJobs = jobLines.filter((j) => j.status === "on_hold");
+  const activeJob = jobs.find((j) => j.id === activeJobId) ?? null;
+  const readyJobs = jobs.filter((j) => j.status === "awaiting" && j.id !== activeJobId);
+  const onHoldJobs = jobs.filter((j) => j.status === "on_hold");
 
   return (
     <div className="p-4 space-y-6">
@@ -126,10 +114,6 @@ export default function TechJobScreen() {
           {onHoldJobs.map(renderJobCard)}
         </section>
       )}
-
-      <div className="pt-6">
-        <Button onClick={() => supabase.auth.signOut()}>Sign Out</Button>
-      </div>
     </div>
   );
 }

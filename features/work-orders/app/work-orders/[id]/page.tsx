@@ -3,12 +3,13 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import type { Database } from "@shared/types/types/supabase";
-import { createBrowserClient } from "@supabase/auth-helpers-nextjs";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+
 import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
 import { format, formatDistance } from "date-fns";
 import DtcSuggestionPopup from "@work-orders/components/workorders/DtcSuggestionPopup";
 
-const supabase = createBrowserClient<Database>();
+  const supabase = createClientComponentClient<Database>();
 
 type WorkOrderLine = Database["public"]["Tables"]["work_order_lines"]["Row"];
 type Vehicle = Database["public"]["Tables"]["vehicles"]["Row"];

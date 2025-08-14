@@ -1,8 +1,8 @@
 "use client";
 
 import { Dialog } from "@headlessui/react";
-import { useState } from "react";
-import { createBrowserSupabase } from "@shared/lib/supabase/client"; // ✅ updated import
+import { useMemo, useState } from "react";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { v4 as uuidv4 } from "uuid";
 
 interface Props {
@@ -14,7 +14,7 @@ interface Props {
   onJobAdded?: () => void;
 }
 
-const supabase = createBrowserSupabase(); // ✅ instantiate browser client
+type Urgency = "low" | "medium" | "high";
 
 export default function AddJobModal({
   isOpen,
@@ -24,38 +24,46 @@ export default function AddJobModal({
   techId,
   onJobAdded,
 }: Props) {
+  // ✅ create the client inside the component (memoized once)
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [jobName, setJobName] = useState("");
   const [notes, setNotes] = useState("");
-  const [urgency, setUrgency] = useState<"low" | "medium" | "high">("medium");
+  const [urgency, setUrgency] = useState<Urgency>("medium");
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async () => {
-    if (!jobName) return alert("Job name is required.");
+    if (!jobName.trim()) {
+      alert("Job name is required.");
+      return;
+    }
+
     setSubmitting(true);
+    try {
+      const { error } = await supabase.from("work_order_lines").insert({
+        id: uuidv4(),
+        work_order_id: workOrderId,
+        vehicle_id: vehicleId,
+        complaint: jobName.trim(),
+        hold_reason: notes.trim() || null,
+        status: "queued",              // ensure this matches your enum values
+        job_type: "tech-suggested",    // ensure this matches your enum values
+        assigned_to: techId,
+        urgency,                       // "low" | "medium" | "high"
+        // created_at / updated_at typically come from DB defaults
+      });
 
-    const { error } = await supabase.from("work_order_lines").insert({
-      id: uuidv4(),
-      work_order_id: workOrderId,
-      vehicle_id: vehicleId,
-      complaint: jobName,
-      hold_reason: notes,
-      status: "queued",
-      job_type: "tech-suggested",
-      assigned_to: techId,
-      urgency,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    });
+      if (error) {
+        alert("Failed to add job: " + error.message);
+        return;
+      }
 
-    setSubmitting(false);
-
-    if (error) {
-      alert("Failed to add job: " + error.message);
-    } else {
       onJobAdded?.();
       onClose();
       setJobName("");
       setNotes("");
+      setUrgency("medium");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -79,9 +87,7 @@ export default function AddJobModal({
           <select
             className="w-full mb-3 p-2 rounded bg-neutral-100 dark:bg-neutral-800"
             value={urgency}
-            onChange={(e) =>
-              setUrgency(e.target.value as "low" | "medium" | "high")
-            }
+            onChange={(e) => setUrgency(e.target.value as Urgency)}
           >
             <option value="low">Low Urgency</option>
             <option value="medium">Medium Urgency</option>
@@ -105,7 +111,7 @@ export default function AddJobModal({
               Cancel
             </button>
             <button
-              className="bg-blue-600 text-white px-4 py-2 rounded"
+              className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-60"
               onClick={handleSubmit}
               disabled={submitting}
             >

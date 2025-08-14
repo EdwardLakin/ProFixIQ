@@ -1,17 +1,24 @@
 // features/work-orders/lib/getNextJob.ts
 import { createServerSupabaseRSC } from "@shared/lib/supabase/server";
-import type { Database } from "@shared/types/types/supabase";
 
-type WOL = Database["public"]["Tables"]["work_order_lines"]["Row"] & {
-  // If your types don't have this yet, keep it optional
-  priority?: number | null;
-};
-type NextLine = Pick<WOL, "id" | "work_order_id" | "created_at" | "status"> & {
+type NextLine = {
+  id: string;
+  work_order_id: string | null;
+  created_at: string;
+  status:
+    | "ready"
+    | "active"
+    | "paused"
+    | "on_hold"
+    | "completed"
+    | "queued"
+    | "awaiting"
+    | "in_progress";
   priority?: number | null;
 };
 
 export async function getNextAvailableLine(technicianId: string): Promise<NextLine | null> {
-  const supabase = createServerSupabaseRSC();
+  const supabase = await createServerSupabaseRSC(); // ✅ await
 
   // Scope to tech's shop
   const { data: prof } = await supabase
@@ -23,14 +30,13 @@ export async function getNextAvailableLine(technicianId: string): Promise<NextLi
   const shopId = prof?.shop_id;
   if (!shopId) return null;
 
-  // 1) Resume the tech’s own job if applicable
+  // 1) Resume tech's own job if available
   {
     const { data: resume } = await supabase
       .from("work_order_lines")
       .select("id, work_order_id, created_at, status, priority")
       .eq("assigned_to", technicianId)
       .in("status", ["in_progress", "paused", "awaiting"])
-      // If multiple are resumable, prefer highest priority then oldest
       .order("priority", { ascending: true, nullsFirst: false })
       .order("created_at", { ascending: true })
       .limit(1);
@@ -38,8 +44,7 @@ export async function getNextAvailableLine(technicianId: string): Promise<NextLi
     if (resume?.length) return resume[0] as NextLine;
   }
 
-  // 2) Oldest highest-priority unassigned queued job in this shop
-  //    join work_orders to enforce same-shop
+  // 2) Oldest highest-priority unassigned queued job in same shop
   const { data: candidateList, error: candErr } = await supabase
     .from("work_order_lines")
     .select(
@@ -49,10 +54,7 @@ export async function getNextAvailableLine(technicianId: string): Promise<NextLi
         created_at,
         status,
         priority,
-        work_orders!inner (
-          id,
-          shop_id
-        )
+        work_orders!inner ( id, shop_id )
       `
     )
     .eq("status", "queued")
@@ -69,7 +71,7 @@ export async function getNextAvailableLine(technicianId: string): Promise<NextLi
   const candidate = candidateList?.[0];
   if (!candidate) return null;
 
-  // 3) Claim it safely (race-safe conditional update)
+  // 3) Claim it conditionally (race-safe)
   const { data: claimed, error: claimErr } = await supabase
     .from("work_order_lines")
     .update({ assigned_to: technicianId, status: "awaiting" })
@@ -78,10 +80,7 @@ export async function getNextAvailableLine(technicianId: string): Promise<NextLi
     .select("id, work_order_id, created_at, status, priority")
     .single();
 
-  if (claimErr) {
-    // Someone else grabbed it—return null so caller can try again
-    return null;
-  }
+  if (claimErr || !claimed) return null;
 
   return claimed as NextLine;
 }

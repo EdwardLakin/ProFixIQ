@@ -1,74 +1,68 @@
-// lib/work-orders/getQueuedJobsForTech.ts
+// features/work-orders/lib/work-orders/getQueuedJobsForTech.ts
+import { createBrowserSupabase } from "@shared/lib/supabase/client";
+import type { QueueJob } from "@work-orders/components/workorders/queueTypes";
 
-import { createBrowserClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+/**
+ * Returns queue jobs for a tech (assigned to them OR unassigned).
+ * Normalizes to your QueueJob shape:
+ *  - vehicles is ALWAYS an object with nullable fields (never null/undefined)
+ *  - assigned_to is string | {id, full_name} | null
+ */
+export async function getQueuedJobsForTech(opts?: { techId?: string }): Promise<QueueJob[]> {
+  const supabase = createBrowserSupabase();
+  const techId = opts?.techId ?? null;
 
-type JobLine = Database["public"]["Tables"]["work_order_lines"]["Row"] & {
-  vehicle?: {
-    year?: number | null;
-    make?: string | null;
-    model?: string | null;
-  };
-  assigned_to?: {
-    full_name?: string | null;
-    id?: string | null;
-  };
-};
-
-export async function getQueuedJobsForTech(): Promise<JobLine[]> {
-  const supabase = createBrowserClient<Database>();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    console.warn("No authenticated user found");
-    return [];
-  }
-
-  const { data, error } = await supabase
+  let query = supabase
     .from("work_order_lines")
-    .select(
-      `
-      *,
-      vehicles (
-        year,
-        make,
-        model
-      ),
-      profiles:assigned_to (
-        id,
-        full_name
-      )
-    `
-    )
-    .eq("status", "queued")
-    .or(`assigned_to.eq.${user.id},assigned_to.is.null`)
+    .select("*")
+    .in("status", ["queued", "awaiting", "in_progress", "on_hold"])
     .order("created_at", { ascending: true });
 
-  if (error || !data) {
-    console.error("❌ Error fetching queued jobs for tech:", error);
-    return [];
+  if (techId) {
+    // show jobs for this tech OR unassigned
+    query = query.or(`assigned_to.eq.${techId},assigned_to.is.null`);
   }
 
-  const jobLines: JobLine[] = data.map(
-    (row): JobLine => ({
-      ...row,
-      vehicle: row.vehicles
-        ? {
-            year: row.vehicles.year,
-            make: row.vehicles.make,
-            model: row.vehicles.model,
-          }
-        : undefined,
-      assigned_to: row.profiles
-        ? {
-            id: row.profiles.id,
-            full_name: row.profiles.full_name,
-          }
-        : undefined,
-    })
-  );
+  const { data, error } = await query;
+  if (error) throw error;
 
-  return jobLines;
+  const rows = (data ?? []) as any[];
+
+  return rows.map((j) => {
+    const v = j.vehicles as
+      | { year: number | null; make: string | null; model: string | null }
+      | null
+      | undefined;
+
+    // ✅ Non-null object for QueueJob.vehicles
+    const vehicles: QueueJob["vehicles"] = {
+      year: v?.year ?? null,
+      make: v?.make ?? null,
+      model: v?.model ?? null,
+    };
+
+    const a = j.assigned_to;
+    const assigned_to: QueueJob["assigned_to"] =
+      a == null
+        ? null
+        : typeof a === "string"
+          ? a
+          : { id: (a as any).id as string, full_name: ((a as any).full_name as string) ?? null };
+
+    const job : QueueJob = {
+      id: j.id,
+      work_order_id: j.work_order_id,
+      complaint: j.complaint ?? null,
+      status: j.status,
+      created_at: j.created_at,
+      updated_at: j.updated_at,
+      hold_reason: j.hold_reason ?? null,
+      punched_in_at: j.punched_in_at ?? null,
+      punched_out_at: j.punched_out_at ?? null,
+      vehicles,
+      assigned_to,
+    };
+
+    return job;
+  });
 }

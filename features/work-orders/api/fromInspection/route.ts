@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { insertPrioritizedJobsFromInspection } from "@work-orders/lib/work-orders/insertPrioritizedJobsFromInspection";
-import { createServerClient} from "@supabase/auth-helpers-nextjs"; // ✅ Corrected
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
-import { Database } from "@shared/types/types/supabase";
+import type { Database } from "@shared/types/types/supabase";
+
+type Body = {
+  inspectionId: string;
+  workOrderId: string;
+  vehicleId: string;
+};
 
 export async function POST(req: NextRequest) {
   try {
-    const { inspectionId, workOrderId, vehicleId } = await req.json();
+    const { inspectionId, workOrderId, vehicleId } = (await req.json()) as Body;
 
     if (!inspectionId || !workOrderId || !vehicleId) {
       return NextResponse.json(
@@ -15,7 +21,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const supabase = createServerComponentClient<Database>({ cookies });
+    const supabase = createRouteHandlerClient<Database>({ cookies });
+
     const {
       data: { user },
       error: authError,
@@ -29,7 +36,7 @@ export async function POST(req: NextRequest) {
       inspectionId,
       workOrderId,
       vehicleId,
-      user.id, // ✅ Now works
+      user.id,
     );
 
     return NextResponse.json({ success: true });

@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { createBrowserClient } from "@supabase/auth-helpers-nextjs";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+
 import type { Database } from "@shared/types/types/supabase";
 import {
   FaChartBar,
@@ -15,7 +16,8 @@ import {
 import ShiftTracker from "@shared/components/ShiftTracker";
 
 export default function RoleNavAdmin() {
-  const supabase = createBrowserClient<Database>();
+    const supabase = createClientComponentClient<Database>();
+
   const [userId, setUserId] = useState<string | null>(null);
   const [openSection, setOpenSection] = useState<string | null>(null);
 

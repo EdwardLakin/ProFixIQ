@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useState } from "react";
-import type { QueueJob } from "./JobQueue"; // ← use the joined shape
+import type { QueueJob } from "@work-orders/components/workorders/queueTypes";
 
 type AssignProps = {
   techOptions: { id: string; full_name: string | null }[];
@@ -14,12 +14,11 @@ type PunchProps = {
   onPunchOut?: (job: QueueJob) => void | Promise<void>;
 };
 
-type CommonProps = {
+type JobQueueCardProps = {
   job: QueueJob;
   isActive?: boolean;
-};
-
-type JobQueueCardProps = CommonProps & Partial<AssignProps> & PunchProps;
+} & Partial<AssignProps> &
+  PunchProps;
 
 function JobQueueCard({
   job,
@@ -32,7 +31,6 @@ function JobQueueCard({
 }: JobQueueCardProps) {
   const { complaint, created_at, assigned_to, id } = job;
 
-  // normalize assigned_to -> technician id
   const assignedId =
     typeof assigned_to === "string" ? assigned_to : assigned_to?.id ?? null;
 
@@ -56,7 +54,6 @@ function JobQueueCard({
           Created: {created_at ? new Date(created_at).toLocaleString() : "—"}
         </div>
 
-        {/* Assigned tech display */}
         {!onAssignTech && (
           <div className="text-xs text-neutral-400 mt-1">
             Assigned to:{" "}
@@ -66,7 +63,6 @@ function JobQueueCard({
           </div>
         )}
 
-        {/* Tech assign UI (only if props provided) */}
         {techOptions && onAssignTech && (
           <div className="mt-2">
             <select
@@ -93,7 +89,6 @@ function JobQueueCard({
           </div>
         )}
 
-        {/* Punch controls (only if handlers provided) */}
         {(onPunchIn || onPunchOut) && (
           <div className="mt-3 flex gap-2">
             {onPunchIn && !isActive && (

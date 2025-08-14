@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createBrowserClient } from "@supabase/auth-helpers-nextjs";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+
 import type { Database } from "@shared/types/types/supabase";
 import { AiOutlineLoading3Quarters } from "react-icons/ai";
 
@@ -16,7 +17,8 @@ type Props = {
 };
 
 export default function DtcSuggestionPopup({ jobId, vehicle }: Props) {
-  const supabase = createBrowserClient<Database>();
+    const supabase = createClientComponentClient<Database>();
+
   const [show, setShow] = useState(false);
   const [cause, setCause] = useState("");
   const [correction, setCorrection] = useState("");

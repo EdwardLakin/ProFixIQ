@@ -6,7 +6,7 @@ export async function generateInspectionPDF(
 ): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage();
-  const { width, height } = page.getSize();
+  const { height } = page.getSize();
 
   const fontSize = 12;
   const margin = 50;
@@ -71,7 +71,7 @@ export async function generateInspectionPDF(
   session.sections.forEach((section, sectionIndex) => {
     drawText(`Section ${sectionIndex + 1}: ${section.title}`);
 
-    section.items.forEach((item, itemIndex) => {
+    section.items.forEach((item) => {
       drawText(`  - Item: ${item.item}`);
       drawText(`    Status: ${item.status ?? "N/A"}`);
       if (item.value !== undefined) drawText(`    Value: ${item.value}`);
