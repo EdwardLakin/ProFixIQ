@@ -17,10 +17,10 @@ function bad(msg: string, code = 400) {
   return NextResponse.json({ error: msg }, { status: code });
 }
 
-// 👇 Do NOT import NextRequest, and do NOT type the 2nd arg.
-//    Let Next provide it and treat it as any.
-export async function PATCH(req: Request, { params }: any) {
-  const bookingId = String(params?.id ?? "");
+export async function PATCH(req: Request): Promise<Response> {
+  // 👇 derive the [id] from the URL — no context param needed
+  const { pathname } = new URL(req.url);
+  const bookingId = pathname.split("/").pop() ?? "";
   if (!bookingId) return bad("Missing booking id");
 
   const supabase = createRouteHandlerClient<Database>({ cookies });
