@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { createBrowserClient } from "@supabase/auth-helpers-nextjs";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+
 import type { Database } from "@shared/types/types/supabase";
 import Calendar from "@shared/components/ui/Calendar";
 import  LinkButton  from "@shared/components/ui/LinkButton";
@@ -42,7 +43,8 @@ const keyInTz = (iso: string, tz: string) => {
 };
 
 export default function PortalBookingPage() {
-  const supabase = createBrowserClient<Database>();
+    const supabase = createClientComponentClient<Database>();
+
   const search = useSearchParams();
   const router = useRouter();
 

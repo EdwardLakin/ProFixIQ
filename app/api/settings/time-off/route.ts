@@ -1,9 +1,19 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { createServerClient} from "@supabase/auth-helpers-nextjs";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 const COOKIE_NAME = "pfq_owner_pin_shop";
+
+function getCookieFromReq(req: Request, name: string): string | null {
+  const raw = req.headers.get("cookie");
+  if (!raw) return null;
+  for (const part of raw.split(";")) {
+    const [k, ...rest] = part.trim().split("=");
+    if (k === name) return decodeURIComponent(rest.join("="));
+  }
+  return null;
+}
 
 /**
  * GET /api/settings/time-off?shopId=...
@@ -74,7 +84,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const pinCookie = (await cookies()).get(COOKIE_NAME)?.value;
+    const pinCookie = getCookieFromReq(req, COOKIE_NAME);
     if (!pinCookie || pinCookie !== shopId) {
       return NextResponse.json({ error: "Owner PIN required" }, { status: 401 });
     }
@@ -110,6 +120,7 @@ export async function DELETE(req: Request) {
       shopId?: string;
       id?: string;
     };
+
     const shopId = body.shopId ?? null;
     const id = body.id ?? null;
 
@@ -128,7 +139,7 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const pinCookie = (await cookies()).get(COOKIE_NAME)?.value;
+    const pinCookie = getCookieFromReq(req, COOKIE_NAME);
     if (!pinCookie || pinCookie !== shopId) {
       return NextResponse.json({ error: "Owner PIN required" }, { status: 401 });
     }

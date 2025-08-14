@@ -1,9 +1,10 @@
 import { cookies } from "next/headers";
-import { createServerClient} from "@supabase/auth-helpers-nextjs";
+import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import BookingsTable from "./BookingsTable";
 
 export default async function BookingsPage() {
+  // ✅ correct helper for server components
   const supabase = createServerComponentClient<Database>({ cookies });
 
   // who am I?
@@ -30,11 +31,15 @@ export default async function BookingsPage() {
   }
 
   // fetch future (and recent) bookings in the same shop
+  const sevenDaysAgoIso = new Date(
+    new Date().setDate(new Date().getDate() - 7)
+  ).toISOString();
+
   const { data: bookings } = await supabase
     .from("bookings")
     .select("id, starts_at, ends_at, status, notes, customer_id, vehicle_id")
     .eq("shop_id", prof.shop_id)
-    .gte("starts_at", new Date(new Date().setDate(new Date().getDate() - 7)).toISOString())
+    .gte("starts_at", sevenDaysAgoIso)
     .order("starts_at", { ascending: true });
 
   return (
@@ -45,7 +50,7 @@ export default async function BookingsPage() {
       <BookingsTable
         initialRows={bookings ?? []}
         canEdit={["owner", "admin", "manager", "advisor"].includes(
-          (prof.role ?? "") as string
+          prof.role ?? ""
         )}
       />
     </div>

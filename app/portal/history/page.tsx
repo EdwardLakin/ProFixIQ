@@ -1,5 +1,6 @@
 // app/portal/history/page.tsx
-import { createServerClient} from "@supabase/auth-helpers-nextjs";
+import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
+
 import { cookies } from "next/headers";
 import type { Database } from "@shared/types/types/supabase";
 import HistoryList from "./components/HistoryList";

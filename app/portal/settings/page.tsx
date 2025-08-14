@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createBrowserClient } from "@supabase/auth-helpers-nextjs";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+
 import type { Database } from "@shared/types/types/supabase";
 import LinkButton from "@shared/components/ui/LinkButton";
 
@@ -10,7 +11,8 @@ type SettingsRow = Database["public"]["Tables"]["customer_settings"]["Row"];
 type SettingsInsert = Database["public"]["Tables"]["customer_settings"]["Insert"];
 
 export default function PortalSettingsPage() {
-  const supabase = createBrowserClient<Database>();
+    const supabase = createClientComponentClient<Database>();
+
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

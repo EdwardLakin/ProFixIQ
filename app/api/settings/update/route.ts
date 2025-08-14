@@ -1,6 +1,7 @@
+// app/api/settings/update/route.ts
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createServerClient} from "@supabase/auth-helpers-nextjs";
+import { cookies as nextCookies } from "next/headers";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 const COOKIE_NAME = "pfq_owner_pin_shop";
@@ -16,21 +17,23 @@ const ALLOWED_FIELDS = new Set([
   "email",
   "logo_url",
 
+  // numeric settings
   "labor_rate",
   "supplies_percent",
   "diagnostic_fee",
   "tax_rate",
 
+  // boolean flags
   "use_ai",
   "require_cause_correction",
   "require_authorization",
-
-  "invoice_terms",
-  "invoice_footer",
   "email_on_complete",
-
   "auto_generate_pdf",
   "auto_send_quote_email",
+
+  // text
+  "invoice_terms",
+  "invoice_footer",
 ]);
 
 type Payload = {
@@ -40,7 +43,8 @@ type Payload = {
 
 export async function POST(req: Request) {
   try {
-    const supabase = createRouteHandlerClient<Database>({ cookies });
+    // Pass the cookies FUNCTION to Supabase
+    const supabase = createRouteHandlerClient<Database>({ cookies: nextCookies });
 
     // 1) Auth required
     const {
@@ -72,27 +76,24 @@ export async function POST(req: Request) {
     }
 
     // 4) Require valid owner-PIN cookie for this shop
-    const pinCookie = (await cookies()).get(COOKIE_NAME)?.value;
-    if (!pinCookie || pinCookie !== shopId) {
-      return NextResponse.json(
-        { error: "Owner PIN required" },
-        { status: 401 },
-      );
-    }
+    // 4) Require valid owner-PIN cookie for this shop
+const cookieStore = await nextCookies();                // <-- add this
+const pinCookie = cookieStore.get(COOKIE_NAME)?.value;  // <-- use store
+if (!pinCookie || pinCookie !== shopId) {
+  return NextResponse.json({ error: "Owner PIN required" }, { status: 401 });
+}
 
     // 5) Filter payload to allowed fields only
     const safeUpdate: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(update)) {
       if (!ALLOWED_FIELDS.has(k)) continue;
-      // basic numeric coercion for number fields (null allowed)
-      if (
-        ["labor_rate", "supplies_percent", "diagnostic_fee", "tax_rate"].includes(k)
-      ) {
+
+      if (["labor_rate", "supplies_percent", "diagnostic_fee", "tax_rate"].includes(k)) {
         safeUpdate[k] =
           v === null || v === "" ? null : typeof v === "number" ? v : Number(v);
         continue;
       }
-      // boolean flags
+
       if (
         [
           "use_ai",
@@ -106,7 +107,7 @@ export async function POST(req: Request) {
         safeUpdate[k] = Boolean(v);
         continue;
       }
-      // strings / text
+
       safeUpdate[k] = v;
     }
 
@@ -115,16 +116,9 @@ export async function POST(req: Request) {
     }
 
     // 6) Update only within this shop
-    const { error: updErr } = await supabase
-      .from("shops")
-      .update(safeUpdate)
-      .eq("id", shopId);
-
+    const { error: updErr } = await supabase.from("shops").update(safeUpdate).eq("id", shopId);
     if (updErr) {
-      return NextResponse.json(
-        { error: updErr.message ?? "Update failed" },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: updErr.message ?? "Update failed" }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true });

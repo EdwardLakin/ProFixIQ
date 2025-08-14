@@ -1,6 +1,6 @@
 // app/api/portal/bookings/[id]/route.ts
 import { cookies } from "next/headers";
-import { createServerClient} from "@supabase/auth-helpers-nextjs";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -17,10 +17,11 @@ function bad(msg: string, code = 400) {
   return NextResponse.json({ error: msg }, { status: code });
 }
 
-export async function PATCH(req: NextRequest, ctx: unknown) {
-  // Let Next own the type; narrow locally:
-  const { params } = ctx as { params: { id: string } };
-  const bookingId = params.id;
+export async function PATCH(
+  req: NextRequest,
+  ctx: { params: { id: string } }
+) {
+  const bookingId = ctx.params.id;
 
   const supabase = createRouteHandlerClient<Database>({ cookies });
 
@@ -88,6 +89,7 @@ export async function PATCH(req: NextRequest, ctx: unknown) {
     cancelled: [],
   };
 
+  // Customers can only cancel their own booking
   if (isCustomerOwner && nextStatus && nextStatus !== "cancelled") {
     return bad("Customers may only cancel their own booking", 403);
   }
@@ -157,7 +159,7 @@ export async function PATCH(req: NextRequest, ctx: unknown) {
     return bad("Nothing to update");
   }
 
-  // 7) Apply update
+  // 7) Apply update (RLS will enforce scope)
   const { data: updated, error: upErr } = await supabase
     .from("bookings")
     .update(patch)

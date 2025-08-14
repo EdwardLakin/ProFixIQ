@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createBrowserClient } from "@supabase/auth-helpers-nextjs";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+
 import type { Database } from "@shared/types/types/supabase";
 
 export default function OnboardingPage() {
-  const supabase = createBrowserClient<Database>();
+    const supabase = createClientComponentClient<Database>();
+
   const router = useRouter();
 
   const [fullName, setFullName] = useState("");

@@ -1,7 +1,7 @@
 // app/api/portal/book/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { createServerClient} from "@supabase/auth-helpers-nextjs";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 export const runtime = "nodejs";
@@ -101,13 +101,13 @@ export async function POST(req: Request) {
     }
 
     // 7) Insert booking
-    const insertPayload = {
+    const insertPayload: Database["public"]["Tables"]["bookings"]["Insert"] = {
       shop_id: shop.id,
       customer_id: customer.id,
       vehicle_id: vehicleId ?? null,
       starts_at: startsAt,
       ends_at: endsAt,
-      status: "pending" as const,
+      status: "pending",
       notes: notes || null,
     };
 
@@ -135,8 +135,8 @@ export async function POST(req: Request) {
     // 9) Return the booking
     return NextResponse.json({ booking: created }, { status: 201 });
   } catch (err: unknown) {
-  const message = err instanceof Error ? err.message : String(err);
-  console.error("Booking error:", message);
-  return bad("Unexpected error", 500);
-}
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("Booking error:", message);
+    return bad("Unexpected error", 500);
+  }
 }

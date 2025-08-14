@@ -1,7 +1,7 @@
 // app/api/portal/availability/route.ts
 import { NextResponse, NextRequest } from "next/server";
 import { cookies } from "next/headers";
-import { createServerClient} from "@supabase/auth-helpers-nextjs";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 /** Build a Date in UTC that corresponds to local components in a given IANA tz. */
@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
     // 1) Load shop config (only the columns you have)
     const shopRes = await supabase
       .from("shops")
-      .select<"id, slug, timezone, accepts_online_booking">("id, slug, timezone, accepts_online_booking")
+      .select("id, slug, timezone, accepts_online_booking")
       .eq("slug", slug)
       .maybeSingle();
 
@@ -98,7 +98,7 @@ export async function GET(req: NextRequest) {
     // 2) Weekly hours
     const hoursRes = await supabase
       .from("shop_hours")
-      .select<"weekday, open_time, close_time">("weekday, open_time, close_time")
+      .select("weekday, open_time, close_time")
       .eq("shop_id", shop.id);
     const hours = (hoursRes.data ?? []) as HoursPick[];
 
@@ -110,7 +110,7 @@ export async function GET(req: NextRequest) {
 
     const timeOffRes = await supabase
       .from("shop_time_off")
-      .select<"starts_at, ends_at">("starts_at, ends_at")
+      .select("starts_at, ends_at")
       .eq("shop_id", shop.id)
       .gte("ends_at", windowStartUtc.toISOString())
       .lte("starts_at", windowEndUtc.toISOString());
@@ -119,7 +119,7 @@ export async function GET(req: NextRequest) {
     // 4) Existing bookings within the window
     const bookingsRes = await supabase
       .from("bookings")
-      .select<"starts_at, ends_at, status">("starts_at, ends_at, status")
+      .select("starts_at, ends_at, status")
       .eq("shop_id", shop.id)
       .gte("ends_at", windowStartUtc.toISOString())
       .lte("starts_at", windowEndUtc.toISOString());

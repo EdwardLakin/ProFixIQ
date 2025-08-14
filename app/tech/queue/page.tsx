@@ -3,7 +3,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createBrowserClient } from "@supabase/auth-helpers-nextjs";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+
 
 import JobQueue from "@shared/components/JobQueue";
 import { getQueuedJobsForTech } from "@work-orders/lib/work-orders/getQueuedJobsForTech";
@@ -15,7 +16,8 @@ type JobLineRow = Database["public"]["Tables"]["work_order_lines"]["Row"] & {
 };
 
 export default function TechQueuePage() {
-  const supabase = createBrowserClient<Database>();
+    const supabase = createClientComponentClient<Database>();
+
   const router = useRouter();
 
   const [jobs, setJobs] = useState<JobLineRow[]>([]);

@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createBrowserClient } from "@supabase/auth-helpers-nextjs";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { useUser } from "@auth/hooks/useUser";
 
@@ -10,16 +10,18 @@ type MenuItem = Database["public"]["Tables"]["menu_items"]["Row"];
 type InsertMenuItem = Database["public"]["Tables"]["menu_items"]["Insert"];
 
 export default function MenuItemsPage() {
-  const supabase = createBrowserClient<Database>();
+  // ✅ correct helper for client components
+  const supabase = createClientComponentClient<Database>();
   const { user, isLoading } = useUser();
 
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [form, setForm] = useState<InsertMenuItem>({
+
+  // Only keep fields the user actually edits; we add user_id at insert time
+  type FormState = Pick<InsertMenuItem, "name" | "category" | "total_price">;
+  const [form, setForm] = useState<FormState>({
     name: "",
     category: "",
     total_price: 0,
-    // user_id is set on submit so we don’t store a stale value here
-    user_id: undefined as unknown as string, // satisfies Insert type; we set it before insert
   });
 
   async function fetchItems() {
@@ -43,7 +45,7 @@ export default function MenuItemsPage() {
 
     fetchItems();
 
-    // realtime updates for this user’s items only
+    // Realtime updates for this user's items
     const channel = supabase
       .channel("menu-items-sync")
       .on(
@@ -70,7 +72,7 @@ export default function MenuItemsPage() {
 
     const newItem: InsertMenuItem = {
       ...form,
-      user_id: user.id,
+      user_id: user.id, // ✅ provide here, no cast needed
     };
 
     const { error } = await supabase.from("menu_items").insert([newItem]);
@@ -80,12 +82,7 @@ export default function MenuItemsPage() {
       return;
     }
 
-    setForm({
-      name: "",
-      category: "",
-      total_price: 0,
-      user_id: undefined as unknown as string,
-    });
+    setForm({ name: "", category: "", total_price: 0 });
   }
 
   async function handleDelete(id: string) {
@@ -102,13 +99,13 @@ export default function MenuItemsPage() {
       <div className="grid gap-2 mb-6 max-w-md">
         <input
           placeholder="Name"
-          value={form.name ?? ""}
+          value={form.name}
           onChange={(e) => setForm({ ...form, name: e.target.value })}
           className="border border-neutral-700 bg-neutral-900 px-3 py-2 rounded"
         />
         <input
           placeholder="Category"
-          value={form.category ?? ""}
+          value={form.category}
           onChange={(e) => setForm({ ...form, category: e.target.value })}
           className="border border-neutral-700 bg-neutral-900 px-3 py-2 rounded"
         />
@@ -116,7 +113,7 @@ export default function MenuItemsPage() {
           placeholder="Total Price"
           type="number"
           inputMode="decimal"
-          value={form.total_price ?? 0}
+          value={form.total_price}
           onChange={(e) =>
             setForm({
               ...form,
