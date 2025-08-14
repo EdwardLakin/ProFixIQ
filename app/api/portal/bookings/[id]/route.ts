@@ -1,7 +1,7 @@
 // app/api/portal/bookings/[id]/route.ts
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 
 export const runtime = "nodejs";
@@ -18,8 +18,8 @@ function bad(msg: string, code = 400) {
 }
 
 export async function PATCH(
-  req: Request,
-  { params }: { params: { id: string } }
+  req: NextRequest,
+  { params }: { params: { id: string } }   // ✅ correct App Router ctx shape
 ) {
   const bookingId = params.id;
 
@@ -47,7 +47,6 @@ export async function PATCH(
     .select("id, shop_id, customer_id, starts_at, ends_at, status")
     .eq("id", bookingId)
     .single();
-
   if (bErr || !booking) return bad("Booking not found", 404);
 
   // 3) Determine actor role
@@ -63,19 +62,16 @@ export async function PATCH(
     (staffRoles as readonly string[]).includes(profile.role) &&
     profile.shop_id === booking.shop_id;
 
-  // Is this user the customer who owns the booking?
+  // Check if this user is the customer who owns the booking
   const { data: custRow } = await supabase
     .from("customers")
     .select("id")
     .eq("id", booking.customer_id)
     .eq("user_id", user.id)
     .maybeSingle();
-
   const isCustomerOwner = !!custRow;
 
-  if (!isStaff && !isCustomerOwner) {
-    return bad("Not allowed", 403);
-  }
+  if (!isStaff && !isCustomerOwner) return bad("Not allowed", 403);
 
   // 4) Validate status transition
   const curr = booking.status as PatchBody["status"];
@@ -92,7 +88,6 @@ export async function PATCH(
   if (isCustomerOwner && nextStatus && nextStatus !== "cancelled") {
     return bad("Customers may only cancel their own booking", 403);
   }
-
   if (nextStatus) {
     if (!curr || !allowedTransitions[curr].includes(nextStatus)) {
       return bad(`Invalid status transition: ${curr} → ${nextStatus}`);
@@ -110,7 +105,7 @@ export async function PATCH(
 
     // Load shop window constraints
     const { data: shop } = await supabase
-      .from("shop") // singular table name used elsewhere in your repo
+      .from("shop")
       .select("id, min_notice_minutes, max_lead_days")
       .eq("id", booking.shop_id)
       .single();
@@ -153,10 +148,7 @@ export async function PATCH(
     patch.starts_at = newStart.toISOString();
     patch.ends_at = newEnd.toISOString();
   }
-
-  if (Object.keys(patch).length === 0) {
-    return bad("Nothing to update");
-  }
+  if (Object.keys(patch).length === 0) return bad("Nothing to update");
 
   // 7) Apply update
   const { data: updated, error: upErr } = await supabase
@@ -165,7 +157,6 @@ export async function PATCH(
     .eq("id", bookingId)
     .select("*")
     .single();
-
   if (upErr || !updated) return bad("Failed to update booking", 500);
 
   return NextResponse.json({ booking: updated }, { status: 200 });
