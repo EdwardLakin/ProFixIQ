@@ -1,7 +1,7 @@
 // app/api/portal/bookings/[id]/route.ts
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 
 export const runtime = "nodejs";
@@ -18,10 +18,10 @@ function bad(msg: string, code = 400) {
 }
 
 export async function PATCH(
-  req: NextRequest,
-  ctx: { params: { id: string } }
+  req: Request,
+  { params }: { params: { id: string } }
 ) {
-  const bookingId = ctx.params.id;
+  const bookingId = params.id;
 
   const supabase = createRouteHandlerClient<Database>({ cookies });
 
@@ -63,7 +63,7 @@ export async function PATCH(
     (staffRoles as readonly string[]).includes(profile.role) &&
     profile.shop_id === booking.shop_id;
 
-  // Check if this user is the customer who owns the booking
+  // Is this user the customer who owns the booking?
   const { data: custRow } = await supabase
     .from("customers")
     .select("id")
@@ -89,7 +89,6 @@ export async function PATCH(
     cancelled: [],
   };
 
-  // Customers can only cancel their own booking
   if (isCustomerOwner && nextStatus && nextStatus !== "cancelled") {
     return bad("Customers may only cancel their own booking", 403);
   }
@@ -111,7 +110,7 @@ export async function PATCH(
 
     // Load shop window constraints
     const { data: shop } = await supabase
-      .from("shop")
+      .from("shop") // singular table name used elsewhere in your repo
       .select("id, min_notice_minutes, max_lead_days")
       .eq("id", booking.shop_id)
       .single();
@@ -159,7 +158,7 @@ export async function PATCH(
     return bad("Nothing to update");
   }
 
-  // 7) Apply update (RLS will enforce scope)
+  // 7) Apply update
   const { data: updated, error: upErr } = await supabase
     .from("bookings")
     .update(patch)
