@@ -33,7 +33,7 @@ async function ensureUniqueSlug(
   supabase: SupabaseClient<Database>,
   seed: string
 ): Promise<string> {
-  let base = toSlugSeed(seed || "my-shop") || "my-shop";
+  const base = toSlugSeed(seed || "my-shop") || "my-shop";
   let candidate = base;
 
   for (let i = 0; i < 20; i++) {
