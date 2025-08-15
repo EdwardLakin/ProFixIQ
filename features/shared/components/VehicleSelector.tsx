@@ -7,7 +7,7 @@ export default function VehicleSelector() {
   const { vehicleInfo, updateVehicle, clearVehicle } = useVehicleInfo();
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
+    const { value } = e.target;
 
     updateVehicle({
       year: vehicleInfo?.year || "",
