@@ -2,13 +2,13 @@
 "use client";
 
 import JobQueueCard from "@shared/components/JobQueueCard";
-import type { QueueJob } from "@work-orders/components/workorders/queueTypes";
+import type { TechQueueJob } from "@work-orders/lib/work-orders/getQueuedJobsForTech";
 
 interface JobQueueProps {
-  jobs: QueueJob[];
+  jobs: TechQueueJob[];
   techOptions: { id: string; full_name: string | null }[];
   onAssignTech: (jobId: string, techId: string) => void;
-  onView: (job: QueueJob) => void;
+  onView: (job: TechQueueJob) => void;
   filterTechId?: string | null;
   title?: string;
 }

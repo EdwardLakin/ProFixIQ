@@ -1,14 +1,21 @@
-// features/work-orders/lib/work-orders/getQueuedJobsForTech.ts
 import { createBrowserSupabase } from "@shared/lib/supabase/client";
-import type { QueueJob } from "@work-orders/components/workorders/queueTypes";
+import type { Database } from "@shared/types/types/supabase";
 
-/**
- * Returns queue jobs for a tech (assigned to them OR unassigned).
- * Normalizes to your QueueJob shape:
- *  - vehicles is ALWAYS an object with nullable fields (never null/undefined)
- *  - assigned_to is string | {id, full_name} | null
+// DB row type
+type WOL = Database["public"]["Tables"]["work_order_lines"]["Row"];
+
+/** Minimal UI job shape derived from DB
+ *  - vehicles: always an object (fields nullable)
+ *  - assigned_to: supports string id | joined object | null
  */
-export async function getQueuedJobsForTech(opts?: { techId?: string }): Promise<QueueJob[]> {
+export type TechQueueJob = Omit<WOL, "vehicles" | "assigned_to"> & {
+  vehicles: { year: number | null; make: string | null; model: string | null };
+  assigned_to: string | { id: string; full_name: string | null } | null;
+};
+
+export async function getQueuedJobsForTech(opts?: {
+  techId?: string | null;
+}): Promise<TechQueueJob[]> {
   const supabase = createBrowserSupabase();
   const techId = opts?.techId ?? null;
 
@@ -19,50 +26,40 @@ export async function getQueuedJobsForTech(opts?: { techId?: string }): Promise<
     .order("created_at", { ascending: true });
 
   if (techId) {
-    // show jobs for this tech OR unassigned
+    // show lines assigned to this tech OR unassigned
     query = query.or(`assigned_to.eq.${techId},assigned_to.is.null`);
   }
 
   const { data, error } = await query;
   if (error) throw error;
 
-  const rows = (data ?? []) as any[];
+  const rows = (data ?? []) as WOL[];
 
   return rows.map((j) => {
-    const v = j.vehicles as
-      | { year: number | null; make: string | null; model: string | null }
-      | null
-      | undefined;
-
-    // ✅ Non-null object for QueueJob.vehicles
-    const vehicles: QueueJob["vehicles"] = {
-      year: v?.year ?? null,
-      make: v?.make ?? null,
-      model: v?.model ?? null,
+    // normalize vehicles to a non-null object
+    const vehicles: TechQueueJob["vehicles"] = {
+      year: j.vehicles?.year ?? null,
+      make: j.vehicles?.make ?? null,
+      model: j.vehicles?.model ?? null,
     };
 
-    const a = j.assigned_to;
-    const assigned_to: QueueJob["assigned_to"] =
-      a == null
-        ? null
-        : typeof a === "string"
-          ? a
-          : { id: (a as any).id as string, full_name: ((a as any).full_name as string) ?? null };
+    // normalize assigned_to to accept string OR joined object OR null
+    let assigned_to: TechQueueJob["assigned_to"] = null;
+    if (j.assigned_to) {
+      if (typeof j.assigned_to === "string") {
+        assigned_to = j.assigned_to;
+      } else {
+        // when a view joins profiles and returns an object
+        const a = j.assigned_to as { id?: string | null; full_name?: string | null };
+        assigned_to = { id: a.id ?? "", full_name: a.full_name ?? null };
+      }
+    }
 
-    const job : QueueJob = {
-      id: j.id,
-      work_order_id: j.work_order_id,
-      complaint: j.complaint ?? null,
-      status: j.status,
-      created_at: j.created_at,
-      updated_at: j.updated_at,
-      hold_reason: j.hold_reason ?? null,
-      punched_in_at: j.punched_in_at ?? null,
-      punched_out_at: j.punched_out_at ?? null,
+    // keep all other columns from the row
+    return {
+      ...j,
       vehicles,
       assigned_to,
     };
-
-    return job;
   });
 }

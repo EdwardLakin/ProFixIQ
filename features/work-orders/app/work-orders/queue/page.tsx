@@ -7,16 +7,18 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 import JobQueue from "@shared/components/JobQueue";
-import type { QueueJob } from "@work-orders/components/workorders/queueTypes";
+import type { TechQueueJob } from "@work-orders/lib/work-orders/getQueuedJobsForTech";
 import { getQueuedJobsForTech } from "@work-orders/lib/work-orders/getQueuedJobsForTech";
+
+type TechOption = { id: string; full_name: string | null };
 
 export default function TechQueuePage() {
   const supabase = createClientComponentClient<Database>();
   const router = useRouter();
 
-  const [jobs, setJobs] = useState<QueueJob[]>([]);
+  const [jobs, setJobs] = useState<TechQueueJob[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tech, setTech] = useState<{ id: string; full_name: string | null } | null>(null);
+  const [tech, setTech] = useState<TechOption | null>(null);
 
   useEffect(() => {
     void fetchJobsAndProfile();
@@ -30,6 +32,8 @@ export default function TechQueuePage() {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) {
+      setJobs([]);
+      setTech(null);
       setLoading(false);
       return;
     }
@@ -42,10 +46,12 @@ export default function TechQueuePage() {
 
     if (profile) {
       setTech({ id: profile.id, full_name: profile.full_name });
+    } else {
+      setTech(null);
     }
 
-    // ✅ returns QueueJob[] already normalized
-    const result = await getQueuedJobsForTech(supabase, { techId: profile?.id });
+    // Returns TechQueueJob[] already normalized
+    const result = await getQueuedJobsForTech({ techId: profile?.id });
     setJobs(result);
     setLoading(false);
   }
@@ -57,18 +63,19 @@ export default function TechQueuePage() {
 
   if (loading) return <p className="p-4 text-white">Loading jobs...</p>;
 
+  // Avoid never[] inference by typing the empty branch
+  const techOptions: TechOption[] = tech ? [tech] : [];
+
   return (
     <div className="p-4">
       <h1 className="mb-4 text-2xl font-bold text-white">Your Assigned Jobs</h1>
 
       <JobQueue
         jobs={jobs}
-        techOptions={tech ? [tech] : []}
+        techOptions={techOptions}
         onAssignTech={handleAssignTech}
-        onView={(job) =>
-          job.work_order_id && router.push(`/work-orders/view/${job.work_order_id}`)
-        }
-        filterTechId={tech?.id || null}
+        onView={(job) => job.work_order_id && router.push(`/work-orders/view/${job.work_order_id}`)}
+        filterTechId={tech?.id ?? null}
         title="Assigned Job Queue"
       />
     </div>

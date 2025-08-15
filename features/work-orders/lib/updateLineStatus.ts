@@ -1,26 +1,27 @@
 // features/work-orders/lib/updateLineStatus.ts
-import { createServerSupabaseRSC } from '@shared/lib/supabase/server';
+import { createServerSupabaseRSC } from "@shared/lib/supabase/server";
 
 export async function updateLineStatusIfPartsReceived(lineId: string) {
-  const supabase = createServerSupabaseRSC();
+  const supabase = await createServerSupabaseRSC();
 
   const { data: line, error } = await supabase
-    .from('work_order_lines')
-    .select('id, parts_required, parts_received, line_status')
-    .eq('id', lineId)
+    .from("work_order_lines")
+    .select("id, parts_needed, parts_received, status, hold_reason")
+    .eq("id", lineId)
     .single();
 
   if (error || !line) return;
 
-  const required = line.parts_required ?? [];
-  const received = line.parts_received ?? [];
+  const required: string[] = Array.isArray(line.parts_needed) ? line.parts_needed : [];
+  const received: string[] = Array.isArray(line.parts_received) ? line.parts_received : [];
 
-  const allReceived = required.every((part: string) => received.includes(part));
+  // Only consider it "all received" if we actually required some parts
+  const allReceived = required.length > 0 && required.every((p) => received.includes(p));
 
-  if (allReceived && line.line_status === 'on_hold_parts') {
+  if (allReceived && line.status === "on_hold") {
     await supabase
-      .from('work_order_lines')
-      .update({ line_status: 'ready', on_hold_since: null })
-      .eq('id', lineId);
+      .from("work_order_lines")
+      .update({ status: "awaiting", hold_reason: null })
+      .eq("id", lineId);
   }
 }
