@@ -1,18 +1,22 @@
+// features/inspections/app/inspection/summary/page.tsx  (adjust path as needed)
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
 import { extractSummaryFromSession } from "@inspections/lib/inspection/summary";
-import { supabase } from "@shared/lib/supabase/client";
 import type { InspectionSession } from "@inspections/lib/inspection/types";
 
 export default function InspectionSummaryPage() {
   const router = useRouter();
+  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+
   const [summary, setSummary] = useState("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    async function loadLatestInspection() {
+    (async () => {
       const { data, error } = await supabase
         .from("inspections")
         .select("*")
@@ -24,21 +28,22 @@ export default function InspectionSummaryPage() {
         return;
       }
 
-      if (data && data.length > 0 && data[0].result) {
-        const result = data[0].result as unknown as InspectionSession;
+      const latest = data?.[0];
+      if (latest?.result) {
+        const result = latest.result as unknown as InspectionSession;
         const items = extractSummaryFromSession(result);
         const summaryText = items
           .map(
             (item) =>
-              `• ${item.section} - ${item.item} (${item.status}): ${item.note || "No notes"}`,
+              `• ${item.section} - ${item.item} (${item.status}): ${
+                item.note || "No notes"
+              }`,
           )
           .join("\n");
         setSummary(summaryText);
       }
-    }
-
-    loadLatestInspection();
-  }, []);
+    })();
+  }, [supabase]);
 
   const handleSubmit = async () => {
     try {
