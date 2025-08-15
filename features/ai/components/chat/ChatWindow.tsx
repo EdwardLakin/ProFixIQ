@@ -1,7 +1,8 @@
- "use client";
+// features/chat/components/ChatWindow.tsx
+"use client";
 
-import { useEffect, useState, useRef } from "react";
-import { supabase } from "@shared/lib/supabase/client"; // ✅ correct path + named export
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { RealtimePostgresInsertPayload } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -12,31 +13,35 @@ type ChatWindowProps = {
   userId: string;
 };
 
-export default function ChatWindow({
-  conversationId,
-  userId,
-}: ChatWindowProps) {
+export default function ChatWindow({ conversationId, userId }: ChatWindowProps) {
+  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
+  // Fetch existing messages
   useEffect(() => {
-    const fetchInitialMessages = async () => {
+    let cancelled = false;
+    (async () => {
       try {
         const res = await fetch("/api/chat/get-messages", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ conversationId }),
         });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data: Message[] = await res.json();
-        setMessages(data);
+        if (!cancelled) setMessages(data);
       } catch (err) {
-        console.error("Fetch error:", err);
+        console.error("Fetch messages failed:", err);
       }
+    })();
+    return () => {
+      cancelled = true;
     };
-    fetchInitialMessages();
   }, [conversationId]);
 
+  // Live inserts for this conversation
   useEffect(() => {
     const channel = supabase
       .channel(`messages-${conversationId}`)
@@ -57,27 +62,34 @@ export default function ChatWindow({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [conversationId]);
+  }, [supabase, conversationId]);
 
-  const handleSend = async () => {
-    if (!newMessage.trim()) return;
+  const handleSend = useCallback(async () => {
+    const content = newMessage.trim();
+    if (!content) return;
 
     try {
-      await fetch("/api/chat/send-message", {
+      // (optional) optimistic UI:
+      // setMessages((prev) => [...prev, { ...temp msg } as Message]);
+
+      const res = await fetch("/api/chat/send-message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           conversationId,
           senderId: userId,
-          content: newMessage,
+          content,
         }),
       });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setNewMessage("");
     } catch (error) {
       console.error("Error sending message:", error);
     }
-  };
+  }, [conversationId, userId, newMessage]);
 
+  // Auto-scroll to bottom on new messages
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -94,9 +106,9 @@ export default function ChatWindow({
                 : "bg-gray-700 mr-auto"
             }`}
           >
-            <p className="text-sm">{msg.content}</p>
+            <p className="text-sm break-words">{msg.content}</p>
             <p className="text-xs text-gray-400">
-              {new Date(msg.sent_at).toLocaleTimeString()}
+              {msg.sent_at ? new Date(msg.sent_at).toLocaleTimeString() : ""}
             </p>
           </div>
         ))}
