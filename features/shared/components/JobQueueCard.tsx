@@ -1,21 +1,21 @@
 "use client";
 
 import { memo, useState } from "react";
-import type { QueueJob } from "@work-orders/components/workorders/queueTypes";
+import type { TechQueueJob } from "@work-orders/lib/work-orders/getQueuedJobsForTech";
 
 type AssignProps = {
   techOptions: { id: string; full_name: string | null }[];
   onAssignTech: (jobId: string, techId: string) => void;
-  onView: (job: QueueJob) => void;
+  onView: (job: TechQueueJob) => void;
 };
 
 type PunchProps = {
-  onPunchIn?: (job: QueueJob) => void | Promise<void>;
-  onPunchOut?: (job: QueueJob) => void | Promise<void>;
+  onPunchIn?: (job: TechQueueJob) => void | Promise<void>;
+  onPunchOut?: (job: TechQueueJob) => void | Promise<void>;
 };
 
 type JobQueueCardProps = {
-  job: QueueJob;
+  job: TechQueueJob;
   isActive?: boolean;
 } & Partial<AssignProps> &
   PunchProps;
