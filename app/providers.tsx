@@ -1,10 +1,17 @@
+// app/providers.tsx
 "use client";
 
+import { useMemo } from "react";
 import { SessionContextProvider } from "@supabase/auth-helpers-react";
-import { supabase } from "@shared/lib/supabase/client"; // ✅ correct import
-import type { ReactNode } from "react";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
 
-export default function Providers({ children }: { children: ReactNode }) {
+type Props = { children: React.ReactNode };
+
+export default function Providers({ children }: Props) {
+  // create a single Supabase client for this client tree
+  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+
   return (
     <SessionContextProvider supabaseClient={supabase}>
       {children}
