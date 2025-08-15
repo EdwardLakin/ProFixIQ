@@ -1,21 +1,24 @@
+// features/ai/components/NewChatModal.tsx
 "use client";
 
 import { Dialog } from "@headlessui/react";
-import { useEffect, useState } from "react";
-import { supabase } from "@shared/lib/supabase/client";            // ✅ use shared client
+import { useEffect, useMemo, useState } from "react";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { v4 as uuidv4 } from "uuid";
 import { toast } from "sonner";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
+type ConversationInsert = Database["public"]["Tables"]["conversations"]["Insert"];
+type ParticipantInsert = Database["public"]["Tables"]["conversation_participants"]["Insert"];
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   onCreated: (conversationId: string) => void;
   created_by: string;
-  context_type?: string;
-  context_id?: string;
+  context_type?: string | null;
+  context_id?: string | null;
 }
 
 export default function NewChatModal({
@@ -23,72 +26,89 @@ export default function NewChatModal({
   onClose,
   onCreated,
   created_by,
-  context_type,
-  context_id,
+  context_type = null,
+  context_id = null,
 }: Props) {
+  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
   const [users, setUsers] = useState<Profile[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
 
+  // Load users when the modal opens
   useEffect(() => {
-    const fetchUsers = async () => {
+    if (!isOpen) return;
+
+    (async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, full_name, role");
+        .select("id, full_name, role")
+        .order("full_name", { ascending: true });
 
       if (error) {
         console.error("Failed to load users:", error);
+        toast.error("Failed to load users");
         return;
       }
-      if (data) setUsers(data as Profile[]);
-    };
-    fetchUsers();
-  }, []);
+      setUsers((data as Profile[]) ?? []);
+    })();
+  }, [isOpen, supabase]);
 
   const toggleUser = (id: string) => {
     setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id],
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
     );
   };
 
   const toggleRole = (role: string) => {
     setSelectedRoles((prev) =>
-      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role],
+      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]
     );
   };
 
   const handleCreate = async () => {
+    if (loading) return;
+
     const conversationId = uuidv4();
 
     const participants = new Set<string>(selectedIds);
-    users.forEach((user) => {
+    for (const user of users) {
       if (user.role && selectedRoles.includes(user.role)) {
         participants.add(user.id);
       }
-    });
+    }
 
     if (participants.size < 2) {
-      toast.error("Select at least 1 other participant");
+      toast.error("Select at least one other participant");
       return;
     }
 
-    const { error: convError } = await supabase.from("conversations").insert({
+    setLoading(true);
+
+    // 1) Create conversation
+    const conversation: ConversationInsert = {
       id: conversationId,
       created_by,
       context_type,
       context_id,
-    });
+    };
+
+    const { error: convError } = await supabase
+      .from("conversations")
+      .insert(conversation);
 
     if (convError) {
       console.error(convError);
       toast.error("Failed to create conversation");
+      setLoading(false);
       return;
     }
 
-    const inserts = Array.from(participants).map((id) => ({
+    // 2) Add participants
+    const inserts: ParticipantInsert[] = Array.from(participants).map((user_id) => ({
       id: uuidv4(),
       conversation_id: conversationId,
-      user_id: id,
+      user_id,
     }));
 
     const { error: partErr } = await supabase
@@ -98,10 +118,12 @@ export default function NewChatModal({
     if (partErr) {
       console.error(partErr);
       toast.error("Failed to add participants");
+      setLoading(false);
       return;
     }
 
     toast.success("Chat created");
+    setLoading(false);
     onCreated(conversationId);
     onClose();
   };
@@ -119,9 +141,7 @@ export default function NewChatModal({
         </Dialog.Title>
 
         <div>
-          <label className="block font-medium text-sm mb-1">
-            Select Users:
-          </label>
+          <label className="block font-medium text-sm mb-1">Select Users:</label>
           <div className="max-h-40 overflow-y-auto space-y-1">
             {users.map((user) => (
               <label key={user.id} className="block">
@@ -130,48 +150,46 @@ export default function NewChatModal({
                   checked={selectedIds.includes(user.id)}
                   onChange={() => toggleUser(user.id)}
                 />{" "}
-                {user.full_name} ({user.role})
+                {user.full_name ?? "(no name)"} {user.role ? `(${user.role})` : ""}
               </label>
             ))}
           </div>
         </div>
 
         <div>
-          <label className="block font-medium text-sm mb-1">
-            Add Role Groups:
-          </label>
+          <label className="block font-medium text-sm mb-1">Add Role Groups:</label>
           <div className="flex flex-wrap gap-2">
-            {["tech", "advisor", "parts", "foreman", "lead_hand"].map(
-              (role) => (
-                <button
-                  key={role}
-                  type="button"
-                  onClick={() => toggleRole(role)}
-                  className={`px-2 py-1 rounded text-sm border ${
-                    selectedRoles.includes(role)
-                      ? "bg-orange-500 text-white"
-                      : "bg-neutral-700 text-gray-200"
-                  }`}
-                >
-                  {role}
-                </button>
-              ),
-            )}
+            {["tech", "advisor", "parts", "foreman", "lead_hand"].map((role) => (
+              <button
+                key={role}
+                type="button"
+                onClick={() => toggleRole(role)}
+                className={`px-2 py-1 rounded text-sm border ${
+                  selectedRoles.includes(role)
+                    ? "bg-orange-500 text-white"
+                    : "bg-neutral-700 text-gray-200"
+                }`}
+              >
+                {role}
+              </button>
+            ))}
           </div>
         </div>
 
         <div className="flex justify-end gap-2 pt-4">
           <button
             onClick={onClose}
-            className="px-4 py-2 border rounded bg-neutral-700 hover:bg-neutral-600"
+            className="px-4 py-2 border rounded bg-neutral-700 hover:bg-neutral-600 disabled:opacity-50"
+            disabled={loading}
           >
             Cancel
           </button>
           <button
             onClick={handleCreate}
-            className="px-4 py-2 rounded bg-orange-500 hover:bg-orange-600 text-white font-semibold"
+            className="px-4 py-2 rounded bg-orange-500 hover:bg-orange-600 text-white font-semibold disabled:opacity-50"
+            disabled={loading}
           >
-            Create Chat
+            {loading ? "Creating…" : "Create Chat"}
           </button>
         </div>
       </Dialog.Panel>
