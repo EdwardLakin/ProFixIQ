@@ -1,13 +1,17 @@
+// app/inspection/summary/page.tsx (or wherever this lives)
 "use client";
 
-import { useEffect, useState, } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
+
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
 
 import useInspectionSession from "@inspections/hooks/useInspectionSession";
 import { generateInspectionPDF } from "@inspections/lib/inspection/pdf";
 import { generateQuoteFromInspection } from "@quotes/lib/quote/generateQuoteFromInspection";
-import { supabase } from "@shared/lib/supabase/client"; // ✅ named export
+
 import QuoteViewer from "@quotes/components/QuoteViewer";
 import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
 import HomeButton from "@shared/components/ui/HomeButton";
@@ -18,11 +22,12 @@ import type {
   QuoteLineItem,
 } from "@inspections/lib/inspection/types";
 import type { QuoteLine } from "@quotes/lib/quote/generateQuoteFromInspection";
-import type { Database } from "@shared/types/types/supabase";
 
 export default function SummaryPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+
   const inspectionId = searchParams.get("inspectionId");
   const workOrderIdFromUrl = searchParams.get("workOrderId");
 
@@ -32,11 +37,15 @@ export default function SummaryPage() {
   const [workOrderId, setWorkOrderId] = useState<string | null>(workOrderIdFromUrl || null);
   const [isAddingToWorkOrder, setIsAddingToWorkOrder] = useState(false);
 
-  // AI quote generation on load
+  // AI quote generation on load (when sections exist)
   useEffect(() => {
-    const runQuote = async () => {
-      const allItems: InspectionItem[] =
-  session.sections.flatMap((s: InspectionSection) => s.items);
+    if (session.sections.length === 0) return;
+
+    (async () => {
+      const allItems: InspectionItem[] = session.sections.flatMap(
+        (s: InspectionSection) => s.items
+      );
+
       const { summary, quote } = await generateQuoteFromInspection(allItems);
 
       setSummaryText(summary);
@@ -58,8 +67,8 @@ export default function SummaryPage() {
             price: line.total,
             part: { name: "", price: 0 },
             photoUrls: [],
-          }),
-        ),
+          })
+        )
       );
 
       if (inspectionId) {
@@ -68,52 +77,58 @@ export default function SummaryPage() {
           .update({ quote, summary })
           .eq("id", inspectionId);
       }
-    };
-
-    if (session.sections.length > 0) runQuote();
-  }, [session, inspectionId, updateQuoteLines]);
+    })();
+  }, [session.sections, inspectionId, supabase, updateQuoteLines]);
 
   const handleFieldChange = (
     sectionIndex: number,
     itemIndex: number,
     field: keyof InspectionItem,
-    value: string,
+    value: string
   ) => {
     updateItem(sectionIndex, itemIndex, { [field]: value });
   };
 
   const hasFailedItems = session.sections.some((section: InspectionSection) =>
-    section.items.some((item: InspectionItem) => item.status === "fail" || item.status === "recommend"),
+    section.items.some(
+      (item: InspectionItem) => item.status === "fail" || item.status === "recommend"
+    )
   );
 
   const createWorkOrderIfNoneExists = async (): Promise<string | null> => {
     if (workOrderId) return workOrderId;
 
     const newId = uuidv4();
-    const { error } = await supabase.from("work_orders").insert([
-      {
-        id: newId,
-        vehicle_id: session.vehicle?.id ?? null,
-        inspection_id: inspectionId ?? null,
-        created_at: new Date().toISOString(),
-        status: "queued",
-        location: session.location ?? "unspecified",
-      },
-    ] as Database["public"]["Tables"]["work_orders"]["Insert"][]);
 
-    if (!error) {
-      setWorkOrderId(newId);
-      return newId;
-    } else {
+    const { error } = await supabase
+      .from("work_orders")
+      .insert([
+        {
+          id: newId,
+          vehicle_id: session.vehicle?.id ?? null,
+          inspection_id: inspectionId ?? null,
+          created_at: new Date().toISOString(),
+          status: "queued", // keep as-is if valid in your schema
+          location: session.location ?? "unspecified",
+        } as Database["public"]["Tables"]["work_orders"]["Insert"],
+      ]);
+
+    if (error) {
       console.error("Error creating work order:", error);
       return null;
     }
+
+    setWorkOrderId(newId);
+    return newId;
   };
 
   const handleAddToWorkOrder = async () => {
     setIsAddingToWorkOrder(true);
     const id = await createWorkOrderIfNoneExists();
-    if (!id || !inspectionId) return;
+    if (!id || !inspectionId) {
+      setIsAddingToWorkOrder(false);
+      return;
+    }
 
     const response = await fetch("/api/work-orders/from-inspection", {
       method: "POST",
@@ -124,15 +139,19 @@ export default function SummaryPage() {
       }),
     });
 
-    alert(response.ok ? "Jobs added to work order successfully!" : "Failed to add jobs to work order.");
+    alert(
+      response.ok
+        ? "Jobs added to work order successfully!"
+        : "Failed to add jobs to work order."
+    );
     setIsAddingToWorkOrder(false);
   };
 
   const handleSubmit = async () => {
     try {
-      // generateInspectionPDF returns Uint8Array; use its .buffer for Blob typing
+      // generateInspectionPDF returns Uint8Array
       const pdfBytes: Uint8Array = await generateInspectionPDF(session);
-      const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: "application/pdf" }); // ✅ no type error
+      const blob = new Blob([pdfBytes as BlobPart], { type: "application/pdf" });
 
       const link = document.createElement("a");
       link.href = window.URL.createObjectURL(blob);
@@ -159,13 +178,16 @@ export default function SummaryPage() {
 
       <div className="bg-zinc-800 text-white p-4 rounded mb-6">
         <h2 className="text-xl font-bold mb-2">Customer Info</h2>
-        <p>Name: {session.customer?.first_name} {session.customer?.last_name}</p>
+        <p>
+          Name: {session.customer?.first_name} {session.customer?.last_name}
+        </p>
         <p>Phone: {session.customer?.phone}</p>
         <p>Email: {session.customer?.email}</p>
 
         <h2 className="text-xl font-bold mt-4 mb-2">Vehicle Info</h2>
         <p>
-          Year/Make/Model: {session.vehicle?.year} {session.vehicle?.make} {session.vehicle?.model}
+          Year/Make/Model: {session.vehicle?.year} {session.vehicle?.make}{" "}
+          {session.vehicle?.model}
         </p>
         <p>VIN: {session.vehicle?.vin}</p>
         <p>License Plate: {session.vehicle?.license_plate}</p>
@@ -264,7 +286,7 @@ export default function SummaryPage() {
         <button
           onClick={handleAddToWorkOrder}
           disabled={isAddingToWorkOrder}
-          className="w-full bg-orange-600 text-white py-3 rounded-md font-bold text-lg mt-4"
+          className="w-full bg-orange-600 text-white py-3 rounded-md font-bold text-lg mt-4 disabled:opacity-60"
         >
           {isAddingToWorkOrder ? "Adding to Work Order..." : "Add to Work Order"}
         </button>
