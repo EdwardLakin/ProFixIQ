@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import Link from "next/link";
 import Head from "next/head";
 import { PRICE_IDS } from "@stripe/lib/stripe/constants";
 import { useRouter } from "next/navigation";
-import { createBrowserClient } from "@supabase/auth-helpers-nextjs";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 // tsParticles v3
@@ -18,18 +18,19 @@ type PlanKey = "free" | "diy" | "pro" | "pro_plus";
 export default function LandingHero() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // UI state (all retained)
+  // UI state
   const [, setFadeIn] = useState(false);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<PlanKey | null>(null);
   const [isYearly, setIsYearly] = useState(false);
   const [, setLoading] = useState(false);
 
-  const supabase = createBrowserClient<Database>();
+  // ✅ proper Supabase client for client components
+  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
   const router = useRouter();
 
-  // NEW: dynamic portal link based on session (signed-in → /portal/booking)
-  const [portalHref, setPortalHref] = useState("/auth?redirect=/portal/booking");
+  // dynamic portal link based on session (signed-in → /portal/booking)
+  const [portalHref, setPortalHref] = useState<string>("/auth?redirect=/portal/booking");
 
   const scrollTo = (id: string) => {
     const el = document.getElementById(id);
@@ -43,11 +44,13 @@ export default function LandingHero() {
     };
   }, []);
 
-  // simple canvas glow bg (retained)
+  // simple canvas glow bg
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
     const particles = Array.from({ length: 50 }, () => ({
       x: Math.random() * window.innerWidth,
       y: Math.random() * 400,
@@ -56,8 +59,8 @@ export default function LandingHero() {
       radius: Math.random() * 2 + 1,
       alpha: Math.random(),
     }));
+
     const animate = () => {
-      if (!ctx) return;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       for (const p of particles) {
         p.x += p.dx;
@@ -73,31 +76,32 @@ export default function LandingHero() {
       }
       requestAnimationFrame(animate);
     };
+
     canvas.width = window.innerWidth;
     canvas.height = 400;
     animate();
   }, []);
 
-  // fade trigger on scroll (retained)
+  // fade trigger on scroll
   useEffect(() => {
-    const onScroll = () => window.scrollY > 300 && setFadeIn(true);
+    const onScroll = () => {
+      if (window.scrollY > 300) setFadeIn(true);
+    };
     window.addEventListener("scroll", onScroll);
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Compute portal href based on session (retained)
+  // Compute portal href based on session
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) setPortalHref("/portal/booking");
     });
   }, [supabase]);
 
-  // Expand/collapse feature tiles (retained)
   const handleExpand = (index: number) => {
     setExpandedIndex(index === expandedIndex ? null : index);
   };
 
-  // plan helpers (retained)
   const saveSelectedPlan = async (plan: PlanKey) => {
     const {
       data: { user },
@@ -111,7 +115,9 @@ export default function LandingHero() {
     setLoading(true);
     await saveSelectedPlan(plan);
 
-    const priceId = isYearly ? PRICE_IDS[plan].yearly : PRICE_IDS[plan].monthly;
+    const priceId =
+      isYearly ? PRICE_IDS[plan]?.yearly : PRICE_IDS[plan]?.monthly;
+
     if (!priceId) {
       alert("Invalid plan selected.");
       setLoading(false);
@@ -127,25 +133,20 @@ export default function LandingHero() {
       }),
     });
 
-    const { url } = await res.json();
+    const { url } = (await res.json()) as { url?: string };
     if (url) window.location.href = url;
     else alert("Failed to redirect");
 
     setLoading(false);
   };
 
-  // ----------------------
   // tsParticles v3 wiring
-  // ----------------------
-
-  // init engine once (v3)
   useEffect(() => {
-    initParticlesEngine(async (engine: Engine) => {
+    void initParticlesEngine(async (engine: Engine) => {
       await loadSlim(engine);
     });
   }, []);
 
-  // v3-safe options
   const particlesOptions: RecursivePartial<IOptions> = {
     fullScreen: { enable: false },
     background: { color: { value: "transparent" } },
@@ -155,7 +156,7 @@ export default function LandingHero() {
       events: {
         onHover: { enable: true, mode: "repulse" },
         onClick: { enable: true, mode: "push" },
-        resize: { enable: true }, // v3: object, not boolean
+        resize: { enable: true },
       },
       modes: {
         repulse: { distance: 120, duration: 0.3 },
@@ -163,10 +164,10 @@ export default function LandingHero() {
       },
     },
     particles: {
-      number: { value: 80 }, // keep simple; v3 density/area shape changed
+      number: { value: 80 },
       color: { value: ["#ff6a00", "#ffd700"] },
       shape: { type: "circle" },
-      opacity: { value: { min: 0.3, max: 0.8 } }, // avoid old animation.minimumValue schema
+      opacity: { value: { min: 0.3, max: 0.8 } },
       size: { value: { min: 1, max: 3 } },
       links: {
         enable: true,
@@ -223,7 +224,7 @@ export default function LandingHero() {
       content:
         "Get premium support and optional add-ons like additional users for Pro+ at $49/mo each.",
     },
-  ];
+  ] as const;
 
   return (
     <>
@@ -298,10 +299,7 @@ export default function LandingHero() {
         </div>
       </section>
 
-      <section
-        id="features"
-        className="pt-20 px-6 max-w-5xl mx-auto text-white"
-      >
+      <section id="features" className="pt-20 px-6 max-w-5xl mx-auto text-white">
         <h2 className="text-4xl font-blackops text-center mb-10 text-orange-400 drop-shadow-lg">
           Powerful Features
         </h2>
@@ -314,9 +312,7 @@ export default function LandingHero() {
                 expandedIndex === i ? "bg-neutral-900" : "bg-black/30"
               }`}
             >
-              <h3 className="text-xl text-orange-400 font-blackops mb-1">
-                {f.title}
-              </h3>
+              <h3 className="text-xl text-orange-400 font-blackops mb-1">{f.title}</h3>
               <p className="text-sm text-gray-300 mb-2 italic">{f.subtitle}</p>
               {expandedIndex === i && (
                 <p className="text-sm text-white">{f.content}</p>
@@ -324,9 +320,7 @@ export default function LandingHero() {
             </div>
           ))}
         </div>
-        <p className="text-center mt-6 text-gray-400">
-          More questions? Ask the chatbot!
-        </p>
+        <p className="text-center mt-6 text-gray-400">More questions? Ask the chatbot!</p>
       </section>
 
       <section id="why" className="py-20 bg-neutral-950 text-white px-4">
@@ -358,9 +352,7 @@ export default function LandingHero() {
             <button
               onClick={() => setIsYearly(false)}
               className={`px-4 py-2 rounded font-blackops ${
-                !isYearly
-                  ? "bg-orange-500 text-black"
-                  : "bg-neutral-700 text-gray-300"
+                !isYearly ? "bg-orange-500 text-black" : "bg-neutral-700 text-gray-300"
               }`}
             >
               Monthly
@@ -368,9 +360,7 @@ export default function LandingHero() {
             <button
               onClick={() => setIsYearly(true)}
               className={`px-4 py-2 rounded font-blackops ${
-                isYearly
-                  ? "bg-orange-500 text-black"
-                  : "bg-neutral-700 text-gray-300"
+                isYearly ? "bg-orange-500 text-black" : "bg-neutral-700 text-gray-300"
               }`}
             >
               Yearly
@@ -415,20 +405,16 @@ export default function LandingHero() {
                     await saveSelectedPlan("free");
                     router.push("/onboarding/profile");
                   } else {
-                    handleCheckout(plan.key as PlanKey);
+                    void handleCheckout(plan.key as PlanKey);
                   }
                 }}
                 className={`border border-orange-500 p-6 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-left transition-all shadow hover:shadow-orange-600/20 ${
                   selectedPlan === plan.key ? "ring-2 ring-orange-500" : ""
                 }`}
               >
-                <h3 className="text-xl font-blackops text-orange-400">
-                  {plan.name}
-                </h3>
+                <h3 className="text-xl font-blackops text-orange-400">{plan.name}</h3>
                 <p className="text-sm text-gray-300 mb-2">{plan.description}</p>
-                <p className="text-lg text-orange-500 font-bold mb-4">
-                  {plan.price}
-                </p>
+                <p className="text-lg text-orange-500 font-bold mb-4">{plan.price}</p>
                 <ul className="text-sm text-gray-300 space-y-1">
                   {plan.features.map((f, i) => (
                     <li key={i}>✓ {f}</li>
