@@ -1,25 +1,28 @@
-// components/inspection/SectionHeader.tsx
+// features/inspections/components/inspection/SectionHeader.tsx
+"use client";
 
-import { useState } from "react";
 import { ChevronUpIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
 
 interface SectionHeaderProps {
   title: string;
   isCollapsed: boolean;
   onToggle: () => void;
+  section?: number;
 }
 
-const SectionHeader = ({
+export default function SectionHeader({
   title,
   isCollapsed,
   onToggle,
-}: SectionHeaderProps) => {
+  section,
+}: SectionHeaderProps) {
   return (
-    <div className="sticky top-0 z-10 bg-black bg-opacity-80 backdrop-blur border-b border-gray-700 p-3 flex items-center justify-between text-white font-bold text-lg">
-      <span>{title}</span>
+    <div className="sticky top-2 z-10 bg-black/80 backdrop-blur border-b border-gray-700 p-3 flex items-center justify-between">
+      <span className="text-sm">{section != null ? `Section ${section + 1}` : ""}</span>
       <button
         onClick={onToggle}
         className="text-white hover:text-orange-400 transition"
+        aria-label={isCollapsed ? "Expand section" : "Collapse section"}
       >
         {isCollapsed ? (
           <ChevronDownIcon className="h-5 w-5" />
@@ -29,6 +32,4 @@ const SectionHeader = ({
       </button>
     </div>
   );
-};
-
-export default SectionHeader;
+}
