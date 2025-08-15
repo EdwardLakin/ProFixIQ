@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
-import clsx from "clsx";
+// features/ai/components/ConversationList.tsx
+"use client";
 
-import { supabase } from "@shared/lib/supabase/client";               // ✅ use shared client
+import { useEffect, useMemo, useState } from "react";
+import clsx from "clsx";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { getUserConversations } from "@ai/lib/chat/getUserConversations";
 
@@ -22,15 +24,52 @@ export default function ConversationList({
   activeConversationId,
   setActiveConversationId,
 }: Props) {
+  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
   const [conversations, setConversations] = useState<ConversationWithMeta[]>([]);
 
+  // initial fetch
   useEffect(() => {
-    const fetchConversations = async () => {
-      const result = await getUserConversations(supabase);
-      setConversations(result);
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await getUserConversations(supabase);
+        if (!cancelled) setConversations(result);
+      } catch (e) {
+        console.error("Failed to load conversations:", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
     };
-    fetchConversations();
-  }, []);
+  }, [supabase]);
+
+  // optional: keep list fresh on new messages/conversations
+  useEffect(() => {
+    const channel = supabase
+      .channel("ai-conversation-list")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages" },
+        async () => {
+          // lightweight refetch; you can optimize to patch local state if needed
+          const result = await getUserConversations(supabase);
+          setConversations(result);
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "conversations" },
+        async () => {
+          const result = await getUserConversations(supabase);
+          setConversations(result);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase]);
 
   return (
     <div className="w-full">
@@ -42,7 +81,7 @@ export default function ConversationList({
             "px-3 py-2 cursor-pointer rounded",
             conv.id === activeConversationId
               ? "bg-gray-200 font-bold"
-              : "hover:bg-neutral-800",
+              : "hover:bg-neutral-800"
           )}
           onClick={() => setActiveConversationId(conv.id)}
         >
