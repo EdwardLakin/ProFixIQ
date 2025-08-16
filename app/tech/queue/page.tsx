@@ -22,21 +22,36 @@ export default function TechQueuePage() {
 
   useEffect(() => {
     void fetchJobsAndProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function fetchJobsAndProfile() {
     setLoading(true);
 
+    // load current user id
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setJobs([]);
+      setTech(null);
+      setLoading(false);
+      return;
+    }
+
+    // load profile for display
     const { data: profile } = await supabase
       .from("profiles")
       .select("id, full_name")
-      .eq("id", (await supabase.auth.getUser()).data.user?.id ?? "")
+      .eq("id", user.id)
       .single();
 
-    if (profile) setTech({ id: profile.id, full_name: profile.full_name });
+    if (profile) {
+      setTech({ id: profile.id, full_name: profile.full_name });
+    }
 
-    // ✅ return JobLine[] instead of TechQueueJob[]
-    const result: JobLine[] = await getQueuedJobsForTech(profile?.id ?? "");
+    // ✅ fetch queued jobs for this tech (expects a string id)
+    const result = await getQueuedJobsForTech(profile?.id ?? user.id);
     setJobs(result);
 
     setLoading(false);
@@ -57,14 +72,15 @@ export default function TechQueuePage() {
 
   return (
     <div className="p-4">
-      <h1 className="mb-4 text-2xl font-bold text-white">
-        Your Assigned Jobs
-      </h1>
+      <h1 className="mb-4 text-2xl font-bold text-white">Your Assigned Jobs</h1>
+
       <JobQueue
         jobs={jobs}
         techOptions={techOptions}
         onAssignTech={handleAssignTech}
-        onView={(job) => router.push(`/work-orders/view/${job.work_order_id}`)}
+        onView={(job) => {
+          if (job.work_order_id) router.push(`/work-orders/view/${job.work_order_id}`);
+        }}
         filterTechId={tech?.id ?? null}
         title="Assigned Job Queue"
       />
