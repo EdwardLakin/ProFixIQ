@@ -7,7 +7,7 @@ interface CauseCorrectionModalProps {
   isOpen: boolean;
   onClose: () => void;
   jobId: string;
-  onSubmit: (cause: string, correction: string) => Promise<void>;
+  onSubmit: (jobId: string, cause: string, correction: string) => Promise<void>;
 }
 
 export default function CauseCorrectionModal({
@@ -22,7 +22,7 @@ export default function CauseCorrectionModal({
 
   const handleSubmit = async () => {
     setSubmitting(true);
-    await onSubmit(cause, correction);
+    await onSubmit(jobId, cause, correction); // ✅ pass jobId
     setSubmitting(false);
     setCause("");
     setCorrection("");
