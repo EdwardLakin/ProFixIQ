@@ -7,16 +7,16 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 import JobQueue from "@shared/components/JobQueue";
-import type { TechQueueJob } from "@work-orders/lib/work-orders/getQueuedJobsForTech";
-import { getQueuedJobsForTech } from "@work-orders/lib/work-orders/getQueuedJobsForTech";
+import { getQueuedJobsForTech } from "@work-orders/lib/work-orders/getQueuedJobsForTech"; // ✅ correct helper path
 
+type JobLine = Database["public"]["Tables"]["work_order_lines"]["Row"]; // ✅ DB row type
 type TechOption = { id: string; full_name: string | null };
 
 export default function TechQueuePage() {
   const supabase = createClientComponentClient<Database>();
   const router = useRouter();
 
-  const [jobs, setJobs] = useState<TechQueueJob[]>([]);
+  const [jobs, setJobs] = useState<JobLine[]>([]);          // ✅ use JobLine[]
   const [loading, setLoading] = useState(true);
   const [tech, setTech] = useState<TechOption | null>(null);
 
@@ -50,8 +50,8 @@ export default function TechQueuePage() {
       setTech(null);
     }
 
-    // Returns TechQueueJob[] already normalized
-    const result = await getQueuedJobsForTech({ techId: profile?.id });
+    // ✅ helper returns JobLine[] and takes a string | undefined
+    const result = await getQueuedJobsForTech(profile?.id);
     setJobs(result);
     setLoading(false);
   }
@@ -63,7 +63,6 @@ export default function TechQueuePage() {
 
   if (loading) return <p className="p-4 text-white">Loading jobs...</p>;
 
-  // Avoid never[] inference by typing the empty branch
   const techOptions: TechOption[] = tech ? [tech] : [];
 
   return (
