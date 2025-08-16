@@ -242,11 +242,14 @@ export default function LandingHero() {
       </Head>
 
       {/* simple canvas glow */}
-      <canvas ref={canvasRef} className="absolute top-0 left-0 z-0" />
+      <canvas
+        ref={canvasRef}
+        className="absolute top-0 left-0 -z-10 pointer-events-none"
+      />
 
       <section className="relative overflow-hidden bg-black text-white pt-24 pb-32 px-6 sm:px-12 lg:px-24">
         {/* tsParticles layer behind text */}
-        <div className="absolute inset-0 z-[-1] pointer-events-none">
+          <div className="absolute inset-0 -z-10 pointer-events-none">
           <Particles id="hero-particles" options={particlesOptions} />
         </div>
 
