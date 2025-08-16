@@ -1,6 +1,7 @@
 // app/layout.tsx
 import "./globals.css";
 import { Inter } from "next/font/google";
+import Link from "next/link";
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 
@@ -26,15 +27,17 @@ export default async function RootLayout({
     data: { user },
   } = await supabase.auth.getUser();
 
-  let shop: {
-    name: string | null;
-    address: string | null;
-    city: string | null;
-    province: string | null;
-    postal_code: string | null;
-    phone_number: string | null;
-    email: string | null;
-  } | null = null;
+  let shop:
+    | {
+        name: string | null;
+        address: string | null;
+        city: string | null;
+        province: string | null;
+        postal_code: string | null;
+        phone_number: string | null;
+        email: string | null;
+      }
+    | null = null;
 
   if (user) {
     const { data } = await supabase
@@ -58,21 +61,21 @@ export default async function RootLayout({
               ProFixIQ
             </div>
             <nav className="hidden sm:flex gap-4 text-sm text-gray-300">
-              <a href="/" className="hover:text-orange-400 transition-colors">
+              <Link href="/" className="hover:text-orange-400 transition-colors">
                 Home
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/subscribe"
                 className="hover:text-orange-400 transition-colors"
               >
                 Plans
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/dashboard"
                 className="hover:text-orange-400 transition-colors"
               >
                 Dashboard
-              </a>
+              </Link>
               <a
                 href="mailto:support@profixiq.com"
                 className="hover:text-orange-400 transition-colors"
