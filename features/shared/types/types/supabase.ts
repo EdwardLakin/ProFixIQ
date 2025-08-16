@@ -485,6 +485,7 @@ customer_settings: {
 
       work_orders: {
         Row: {
+          quote_url: any;
           id: string;
           vehicle_id: string | null;
           inspection_id: string | null;

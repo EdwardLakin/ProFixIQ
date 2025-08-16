@@ -1,3 +1,4 @@
+// features/work-orders/app/work-orders/view/[id]/page.tsx
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
@@ -15,7 +16,6 @@ import { generateQuotePDFBytes } from "@work-orders/lib/work-orders/generateQuot
 import VehiclePhotoUploader from "@parts/components/VehiclePhotoUploader";
 import VehiclePhotoGallery from "@parts/components/VehiclePhotoGallery";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-
 
 import type { Database } from "@shared/types/types/supabase";
 
@@ -45,8 +45,7 @@ export default function WorkOrderDetailPage() {
   const [updatingNotes, setUpdatingNotes] = useState(false);
   const [showDetails, setShowDetails] = useState(true);
 
-    const supabase = createClientComponentClient<Database>();
-
+  const supabase = createClientComponentClient<Database>();
 
   const [isPartsModalOpen, setIsPartsModalOpen] = useState(false);
   const [isCauseModalOpen, setIsCauseModalOpen] = useState(false);
@@ -68,7 +67,7 @@ export default function WorkOrderDetailPage() {
     };
 
     fetchUser();
-  }, []);
+  }, [supabase]);
 
   const fetchData = useCallback(async () => {
     if (!id || typeof id !== "string") return;
@@ -132,7 +131,7 @@ export default function WorkOrderDetailPage() {
 
     if (error) console.error("Failed to fetch:", error);
     setLoading(false);
-  }, [id]);
+  }, [id, supabase]);
 
   useEffect(() => {
     fetchData();
@@ -226,7 +225,10 @@ export default function WorkOrderDetailPage() {
       return;
     }
 
-    const pdfBytes = await generateQuotePDFBytes(jobs, jobs[0]?.vehicle_id ?? "");
+    const pdfBytes = await generateQuotePDFBytes(
+      jobs,
+      jobs[0]?.vehicle_id ?? "",
+    );
     const fileName = `quote-${line.work_order_id}.pdf`;
 
     const { error: uploadError } = await supabase.storage
@@ -250,6 +252,11 @@ export default function WorkOrderDetailPage() {
       .from("work_orders")
       .update({ quote_url: publicUrl })
       .eq("id", line.work_order_id);
+
+    // ✅ reflect quote URL locally so the "View Quote PDF" button shows immediately
+    if (publicUrl) {
+      setWorkOrder((prev) => (prev ? { ...prev, quote_url: publicUrl } : prev));
+    }
 
     const { data: workOrder } = await supabase
       .from("work_orders")
@@ -292,6 +299,71 @@ export default function WorkOrderDetailPage() {
     <div className="p-4 sm:p-6 space-y-6">
       <PreviousPageButton to="/work-orders/queue" />
 
+      {/* 🔸 Work Order header (uses existing workOrder/vehicle/customer state) */}
+      {workOrder && (
+        <div className="border rounded p-4 bg-white dark:bg-gray-900">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold">
+              Work Order #{workOrder.id.slice(0, 8)}
+            </h2>
+            <span className="text-xs text-neutral-500">
+              {workOrder.created_at
+                ? format(new Date(workOrder.created_at), "PPpp")
+                : "—"}
+            </span>
+          </div>
+
+          <div className="mt-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div className="text-sm text-neutral-700 dark:text-neutral-300">
+              <div>
+                Status:{" "}
+                <span className="font-medium">
+                  {workOrder.status?.replaceAll("_", " ") || "—"}
+                </span>
+              </div>
+              <div>
+                Vehicle:{" "}
+                {vehicle
+                  ? `${vehicle.year} ${vehicle.make} ${vehicle.model}`
+                  : "—"}
+              </div>
+              <div>
+                Customer:{" "}
+                {customer
+                  ? [customer.first_name, customer.last_name]
+                      .filter(Boolean)
+                      .join(" ")
+                  : "—"}
+              </div>
+            </div>
+
+            {workOrder.quote_url && (
+              <a
+                href={workOrder.quote_url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-sm px-3 py-1 rounded bg-purple-600 text-white self-start sm:self-auto"
+              >
+                View Quote PDF
+              </a>
+            )}
+          </div>
+
+          {relatedJobs.length > 0 && (
+            <div className="mt-2 text-sm text-neutral-600 dark:text-neutral-300">
+              {relatedJobs.length} jobs ·{" "}
+              {relatedJobs.filter((j) => j.status === "awaiting").length} awaiting
+              ·{" "}
+              {relatedJobs.filter((j) => j.status === "in_progress").length} in
+              progress ·{" "}
+              {relatedJobs.filter((j) => j.status === "on_hold").length} on hold
+              ·{" "}
+              {relatedJobs.filter((j) => j.status === "completed").length} completed
+            </div>
+          )}
+        </div>
+      )}
+
       {vehicle && customer && (
         <div className="border rounded p-4 bg-white dark:bg-gray-900">
           <button
@@ -315,26 +387,28 @@ export default function WorkOrderDetailPage() {
               </div>
               <div>
                 <h2 className="font-semibold mb-1">Customer Info</h2>
-<p>
-  {[customer?.first_name, customer?.last_name].filter(Boolean).join(" ") || "—"}
-</p>
-<p>{customer?.phone || "—"}</p>
-{/* Compose address only if parts exist */}
-{(customer?.street || customer?.city || customer?.province || customer?.postal_code) ? (
-  <p>
-    {[customer?.street, customer?.city, customer?.province, customer?.postal_code]
-      .filter(Boolean)
-      .join(", ")}
-  </p>
-) : null}
-                
+                <p>
+                  {[customer?.first_name, customer?.last_name]
+                    .filter(Boolean)
+                    .join(" ") || "—"}
+                </p>
+                <p>{customer?.phone || "—"}</p>
+                {(customer?.street ||
+                  customer?.city ||
+                  customer?.province ||
+                  customer?.postal_code) ? (
+                  <p>
+                    {[customer?.street, customer?.city, customer?.province, customer?.postal_code]
+                      .filter(Boolean)
+                      .join(", ")}
+                  </p>
+                ) : null}
               </div>
             </div>
           )}
         </div>
       )}
 
-      {/* ...rest of your existing JSX stays unchanged from here... */}
       {vehicle?.id && currentUserId && (
         <div className="mt-6 space-y-4">
           <h2 className="text-xl font-semibold">Vehicle Photos</h2>
@@ -347,7 +421,6 @@ export default function WorkOrderDetailPage() {
         </div>
       )}
 
-      {/* rest of your existing JSX stays unchanged from here */}
       {loading ? (
         <div>Loading...</div>
       ) : line ? (
@@ -355,7 +428,9 @@ export default function WorkOrderDetailPage() {
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-semibold">Job: {line.id}</h1>
             <span
-              className={`text-sm px-2 py-1 rounded ${statusBadge[line.status as keyof typeof statusBadge]}`}
+              className={`text-sm px-2 py-1 rounded ${
+                statusBadge[line.status as keyof typeof statusBadge]
+              }`}
             >
               {line.status.replace("_", " ")}
             </span>
@@ -469,7 +544,11 @@ export default function WorkOrderDetailPage() {
 
                       <div className="flex items-center gap-2">
                         <span
-                          className={`text-xs px-2 py-1 rounded ${statusBadge[job.status as keyof typeof statusBadge] || "bg-gray-300 text-gray-800"}`}
+                          className={`text-xs px-2 py-1 rounded ${
+                            statusBadge[
+                              job.status as keyof typeof statusBadge
+                            ] || "bg-gray-300 text-gray-800"
+                          }`}
                         >
                           {job.status.replace("_", " ")}
                         </span>
