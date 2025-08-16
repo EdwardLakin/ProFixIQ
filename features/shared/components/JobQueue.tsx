@@ -1,42 +1,34 @@
-// features/work-orders/components/workorders/JobQueue.tsx
+// features/shared/components/JobQueue.tsx
 "use client";
 
 import JobQueueCard from "@shared/components/JobQueueCard";
-import type { TechQueueJob } from "@work-orders/lib/work-orders/getQueuedJobsForTech";
+import type { Database } from "@shared/types/types/supabase";
 
-interface JobQueueProps {
-  jobs: TechQueueJob[];
-  techOptions: { id: string; full_name: string | null }[];
-  onAssignTech: (jobId: string, techId: string) => void;
-  onView: (job: TechQueueJob) => void;
-  filterTechId?: string | null;
-  title?: string;
-}
+type JobLine = Database["public"]["Tables"]["work_order_lines"]["Row"];
+
+type Props = {
+  title: string;
+  jobs: JobLine[];
+  techOptions?: { id: string; full_name: string | null }[];
+  onAssignTech?: (jobId: string, techId: string) => void;
+  onView?: (job: JobLine) => void;
+};
 
 export default function JobQueue({
+  title,
   jobs,
   techOptions,
   onAssignTech,
   onView,
-  filterTechId,
-  title = "Work Order Queue",
-}: JobQueueProps) {
-  const filteredJobs = filterTechId
-    ? jobs.filter((job) => {
-        const assigned =
-          typeof job.assigned_to === "string"
-            ? job.assigned_to
-            : job.assigned_to?.id ?? null;
-        return assigned === filterTechId;
-      })
-    : jobs;
+}: Props) {
+  const filteredJobs = jobs.filter((job) => job.status === "queued"); // or whatever filter you want
 
   return (
     <div className="p-4">
       <h2 className="text-xl font-semibold mb-4 text-white">{title}</h2>
 
       {filteredJobs.length === 0 ? (
-        <p className="text-sm text-gray-400 italic">No jobs available.</p>
+        <p className="text-sm text-gray-400">No jobs available.</p>
       ) : (
         <div className="space-y-4">
           {filteredJobs.map((job) => (
@@ -45,7 +37,7 @@ export default function JobQueue({
               job={job}
               techOptions={techOptions}
               onAssignTech={onAssignTech}
-              onView={() => onView(job)}
+              onView={onView}
             />
           ))}
         </div>

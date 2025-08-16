@@ -4,13 +4,12 @@
 import { memo, useState } from "react";
 import type { Database } from "@shared/types/types/supabase";
 
-// Use the raw DB row for work_order_lines everywhere
 type JobLine = Database["public"]["Tables"]["work_order_lines"]["Row"];
 
 type AssignProps = {
-  techOptions: { id: string; full_name: string | null }[];
-  onAssignTech: (jobId: string, techId: string) => void;
-  onView: (job: JobLine) => void;
+  techOptions?: { id: string; full_name: string | null }[];
+  onAssignTech?: (jobId: string, techId: string) => void;
+  onView?: (job: JobLine) => void;
 };
 
 type PunchProps = {
@@ -21,7 +20,7 @@ type PunchProps = {
 type JobQueueCardProps = {
   job: JobLine;
   isActive?: boolean;
-} & Partial<AssignProps> &
+} & AssignProps &
   PunchProps;
 
 function JobQueueCard({
@@ -36,7 +35,7 @@ function JobQueueCard({
   const { complaint, created_at, assigned_to, id } = job;
 
   const [selectedTech, setSelectedTech] = useState<string | null>(
-    (assigned_to as string | null) ?? null
+    assigned_to ?? null
   );
 
   const handleAssign = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -57,12 +56,14 @@ function JobQueueCard({
           Created: {created_at ? new Date(created_at).toLocaleString() : "—"}
         </div>
 
+        {/* Read-only assigned label when no assign handler is provided */}
         {!onAssignTech && (
           <div className="text-xs text-neutral-400 mt-1">
-            Assigned to: {typeof assigned_to === "string" ? assigned_to : "Unassigned"}
+            Assigned to: {assigned_to || "Unassigned"}
           </div>
         )}
 
+        {/* Assign/select + View button */}
         {techOptions && onAssignTech && (
           <div className="mt-2">
             <select
@@ -89,6 +90,7 @@ function JobQueueCard({
           </div>
         )}
 
+        {/* Optional punch controls */}
         {(onPunchIn || onPunchOut) && (
           <div className="mt-3 flex gap-2">
             {onPunchIn && !isActive && (
