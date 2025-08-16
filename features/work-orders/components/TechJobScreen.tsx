@@ -4,14 +4,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import type { QueueJob } from "@work-orders/components/workorders/queueTypes";
 import JobQueueCard from "@shared/components/JobQueueCard";
 
-import { getQueuedJobsForTech } from "@work-orders/lib/work-orders/getQueuedJobsForTech";
+// Use the raw DB row for work_order_lines
+type JobLine = Database["public"]["Tables"]["work_order_lines"]["Row"];
 
 export default function TechJobScreen() {
   const supabase = createClientComponentClient<Database>();
-  const [jobs, setJobs] = useState<QueueJob[]>([]);
+  const [jobs, setJobs] = useState<JobLine[]>([]);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -26,9 +26,15 @@ export default function TechJobScreen() {
       return;
     }
 
-    // ✅ Updated to match helper signature
-    const result = await getQueuedJobsForTech({ techId: user.id });
-    setJobs(result);
+    // Pull the queue directly with the DB row type
+    const { data } = await supabase
+      .from("work_order_lines")
+      .select("*")
+      .or(`assigned_to.eq.${user.id},assigned_to.is.null`)
+      .in("status", ["awaiting", "in_progress", "on_hold"])
+      .order("created_at", { ascending: true });
+
+    setJobs((data ?? []) as JobLine[]);
     setLoading(false);
   }, [supabase]);
 
@@ -49,7 +55,7 @@ export default function TechJobScreen() {
     };
   }, [fetchJobs, supabase]);
 
-  const handlePunchIn = async (job: QueueJob) => {
+  const handlePunchIn = async (job: JobLine) => {
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -65,7 +71,7 @@ export default function TechJobScreen() {
     void fetchJobs();
   };
 
-  const handlePunchOut = async (job: QueueJob) => {
+  const handlePunchOut = async (job: JobLine) => {
     setActiveJobId(null);
 
     await supabase
@@ -76,7 +82,7 @@ export default function TechJobScreen() {
     void fetchJobs();
   };
 
-  const renderJobCard = (job: QueueJob) => (
+  const renderJobCard = (job: JobLine) => (
     <JobQueueCard
       key={job.id as string}
       job={job}

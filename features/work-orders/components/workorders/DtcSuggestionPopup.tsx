@@ -23,7 +23,7 @@ export default function DtcSuggestionPopup({ jobId, vehicle }: Props) {
   const [cause, setCause] = useState("");
   const [correction, setCorrection] = useState("");
   const [laborTime, setLaborTime] = useState<number | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading] = useState(false);
 
   useEffect(() => {
     const timeout = setTimeout(() => setShow(true), 10 * 60 * 1000); // 10 minutes

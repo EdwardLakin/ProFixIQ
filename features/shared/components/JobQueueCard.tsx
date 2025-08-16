@@ -1,21 +1,25 @@
+// features/shared/components/JobQueueCard.tsx
 "use client";
 
 import { memo, useState } from "react";
-import type { TechQueueJob } from "@work-orders/lib/work-orders/getQueuedJobsForTech";
+import type { Database } from "@shared/types/types/supabase";
+
+// Use the raw DB row for work_order_lines everywhere
+type JobLine = Database["public"]["Tables"]["work_order_lines"]["Row"];
 
 type AssignProps = {
   techOptions: { id: string; full_name: string | null }[];
   onAssignTech: (jobId: string, techId: string) => void;
-  onView: (job: TechQueueJob) => void;
+  onView: (job: JobLine) => void;
 };
 
 type PunchProps = {
-  onPunchIn?: (job: TechQueueJob) => void | Promise<void>;
-  onPunchOut?: (job: TechQueueJob) => void | Promise<void>;
+  onPunchIn?: (job: JobLine) => void | Promise<void>;
+  onPunchOut?: (job: JobLine) => void | Promise<void>;
 };
 
 type JobQueueCardProps = {
-  job: TechQueueJob;
+  job: JobLine;
   isActive?: boolean;
 } & Partial<AssignProps> &
   PunchProps;
@@ -31,10 +35,9 @@ function JobQueueCard({
 }: JobQueueCardProps) {
   const { complaint, created_at, assigned_to, id } = job;
 
-  const assignedId =
-    typeof assigned_to === "string" ? assigned_to : assigned_to?.id ?? null;
-
-  const [selectedTech, setSelectedTech] = useState<string | null>(assignedId);
+  const [selectedTech, setSelectedTech] = useState<string | null>(
+    (assigned_to as string | null) ?? null
+  );
 
   const handleAssign = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const techId = e.target.value || null;
@@ -56,10 +59,7 @@ function JobQueueCard({
 
         {!onAssignTech && (
           <div className="text-xs text-neutral-400 mt-1">
-            Assigned to:{" "}
-            {typeof assigned_to === "string"
-              ? assigned_to
-              : assigned_to?.full_name || "Unassigned"}
+            Assigned to: {typeof assigned_to === "string" ? assigned_to : "Unassigned"}
           </div>
         )}
 
