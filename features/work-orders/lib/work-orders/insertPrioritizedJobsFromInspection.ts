@@ -10,6 +10,7 @@ type WorkOrderLineInsert =
 type PartsRequestInsert =
   Database["public"]["Tables"]["parts_requests"]["Insert"];
 
+// What the `result` JSON inside inspections looks like
 type InspectionResult = {
   sections: {
     title: string;
@@ -37,14 +38,15 @@ export async function insertPrioritizedJobsFromInspection(
     .from("inspections")
     .select("*")
     .eq("id", inspectionId)
-    .single();
+    .single<Inspection>();
 
   if (error || !inspection) {
     console.error("Failed to fetch inspection:", error);
     return;
   }
 
-  const result = inspection.result as InspectionResult;
+  // Parse the JSON result into typed shape
+  const result = inspection.result as unknown as InspectionResult;
   if (!result?.sections) {
     console.warn("Invalid inspection format");
     return;
