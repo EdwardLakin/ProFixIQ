@@ -3,10 +3,9 @@
 import { useState, useEffect } from "react";
 import { Dialog } from "@headlessui/react";
 import { v4 as uuidv4 } from "uuid";
-import { createBrowserSupabase } from "@shared/lib/supabase/client";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { toast } from "sonner";
-import { stringFromBase64URL } from "@supabase/ssr";
 
 type PartsRequest = Database["public"]["Tables"]["parts_requests"]["Insert"];
 
@@ -27,7 +26,7 @@ export default function PartsRequestModal({
   requested_by,
   existingRequest = null,
 }: Props) {
-  const supabase = createBrowserSupabase();
+  const supabase = createClientComponentClient<Database>();
 
   const [partsNeeded, setPartsNeeded] = useState("");
   const [urgency, setUrgency] = useState<"low" | "medium" | "high">("medium");
@@ -39,7 +38,7 @@ export default function PartsRequestModal({
   useEffect(() => {
     if (existingRequest) {
       setPartsNeeded(existingRequest.part_name || "");
-      setUrgency(existingRequest.urgency as "low" | "medium" | "high");
+      setUrgency((existingRequest.urgency as "low" | "medium" | "high") ?? "medium");
       setNotes(existingRequest.notes || "");
       setQuantity(existingRequest.quantity || 1);
       setPhotoUrls(existingRequest.photo_urls || []);
@@ -76,20 +75,13 @@ export default function PartsRequestModal({
     };
 
     const { error } = existingRequest
-      ? await supabase
-          .from("parts_requests")
-          .update(payload)
-          .eq("id", existingRequest.id!)
+      ? await supabase.from("parts_requests").update(payload).eq("id", existingRequest.id!)
       : await supabase.from("parts_requests").insert(payload);
 
     if (error) {
       toast.error("Failed to submit parts request: " + error.message);
     } else {
-      toast.success(
-        existingRequest
-          ? "Request updated successfully."
-          : "Parts request submitted.",
-      );
+      toast.success(existingRequest ? "Request updated successfully." : "Parts request submitted.");
       resetForm();
       setTimeout(onClose, 1500);
     }
@@ -111,11 +103,13 @@ export default function PartsRequestModal({
 
       if (error) {
         toast.error(`Upload failed: ${file.name}`);
-      } else {
-        const url = supabase.storage
+      } else if (data) {
+        // ✅ use the returned `data.path` instead of ignoring it
+        const { data: publicData } = supabase.storage
           .from("parts-request-photos")
-          .getPublicUrl(fileName).data.publicUrl;
-        setPhotoUrls((prev) => [...prev, url]);
+          .getPublicUrl(data.path);
+        const url = publicData?.publicUrl ?? "";
+        if (url) setPhotoUrls((prev) => [...prev, url]);
       }
     }
     setUploading(false);
@@ -135,9 +129,7 @@ export default function PartsRequestModal({
           </Dialog.Title>
 
           <div className="mb-3">
-            <label className="block text-sm font-medium mb-1">
-              Parts Needed*
-            </label>
+            <label className="block text-sm font-medium mb-1">Parts Needed*</label>
             <textarea
               rows={2}
               className="w-full rounded bg-neutral-800 border border-neutral-600 p-2"
@@ -163,9 +155,7 @@ export default function PartsRequestModal({
             <select
               className="w-full rounded bg-neutral-800 border border-neutral-600 p-2"
               value={urgency}
-              onChange={(e) =>
-                setUrgency(e.target.value as "low" | "medium" | "high")
-              }
+              onChange={(e) => setUrgency(e.target.value as "low" | "medium" | "high")}
             >
               <option value="low">Low</option>
               <option value="medium">Medium</option>
@@ -198,11 +188,7 @@ export default function PartsRequestModal({
             <div className="flex flex-wrap gap-2">
               {photoUrls.map((url) => (
                 <div key={url} className="relative">
-                  <img
-                    src={url}
-                    alt="part"
-                    className="h-16 w-16 rounded object-cover"
-                  />
+                  <img src={url} alt="part" className="h-16 w-16 rounded object-cover" />
                   <button
                     onClick={() => handleDeletePhoto(url)}
                     className="absolute top-0 right-0 bg-red-600 text-xs rounded px-1"
