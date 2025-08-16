@@ -8,8 +8,8 @@ type JobLine = Database["public"]["Tables"]["work_order_lines"]["Row"];
 
 type AssignProps = {
   techOptions?: { id: string; full_name: string | null }[];
-  onAssignTech?: (jobId: string, techId: string) => void;
-  onView?: (job: JobLine) => void;
+  onAssignTech?: (jobId: string, techId: string) => void | Promise<void>;
+  onView?: () => void;
 };
 
 type PunchProps = {
@@ -25,7 +25,7 @@ type JobQueueCardProps = {
 
 function JobQueueCard({
   job,
-  techOptions,
+  techOptions = [],
   onAssignTech,
   onView,
   onPunchIn,
@@ -35,7 +35,7 @@ function JobQueueCard({
   const { complaint, created_at, assigned_to, id } = job;
 
   const [selectedTech, setSelectedTech] = useState<string | null>(
-    assigned_to ?? null
+    assigned_to ?? null,
   );
 
   const handleAssign = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -56,15 +56,13 @@ function JobQueueCard({
           Created: {created_at ? new Date(created_at).toLocaleString() : "—"}
         </div>
 
-        {/* Read-only assigned label when no assign handler is provided */}
         {!onAssignTech && (
           <div className="text-xs text-neutral-400 mt-1">
-            Assigned to: {assigned_to || "Unassigned"}
+            Assigned to: {assigned_to ?? "Unassigned"}
           </div>
         )}
 
-        {/* Assign/select + View button */}
-        {techOptions && onAssignTech && (
+        {techOptions.length > 0 && onAssignTech && (
           <div className="mt-2">
             <select
               value={selectedTech ?? ""}
@@ -82,7 +80,7 @@ function JobQueueCard({
             {onView && (
               <button
                 className="ml-2 px-2 py-1 rounded bg-neutral-700 text-white"
-                onClick={() => onView(job)}
+                onClick={onView}
               >
                 View
               </button>
@@ -90,7 +88,6 @@ function JobQueueCard({
           </div>
         )}
 
-        {/* Optional punch controls */}
         {(onPunchIn || onPunchOut) && (
           <div className="mt-3 flex gap-2">
             {onPunchIn && !isActive && (

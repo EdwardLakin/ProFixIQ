@@ -1,34 +1,37 @@
-// features/shared/components/JobQueue.tsx
 "use client";
 
-import JobQueueCard from "@shared/components/JobQueueCard";
+import JobQueueCard from "./JobQueueCard";
 import type { Database } from "@shared/types/types/supabase";
 
 type JobLine = Database["public"]["Tables"]["work_order_lines"]["Row"];
 
-type Props = {
-  title: string;
+interface JobQueueProps {
   jobs: JobLine[];
-  techOptions?: { id: string; full_name: string | null }[];
-  onAssignTech?: (jobId: string, techId: string) => void;
+  techOptions: { id: string; full_name: string | null }[];
+  onAssignTech?: (jobId: string, techId: string) => void | Promise<void>;
   onView?: (job: JobLine) => void;
-};
+  filterTechId?: string | null;
+  title?: string;
+}
 
 export default function JobQueue({
-  title,
   jobs,
   techOptions,
   onAssignTech,
   onView,
-}: Props) {
-  const filteredJobs = jobs.filter((job) => job.status === "queued"); // or whatever filter you want
+  filterTechId,
+  title = "Work Order Queue",
+}: JobQueueProps) {
+  const filteredJobs = filterTechId
+    ? jobs.filter((job) => (job.assigned_to ?? null) === filterTechId)
+    : jobs;
 
   return (
     <div className="p-4">
       <h2 className="text-xl font-semibold mb-4 text-white">{title}</h2>
 
       {filteredJobs.length === 0 ? (
-        <p className="text-sm text-gray-400">No jobs available.</p>
+        <p className="text-sm text-gray-400 italic">No jobs available.</p>
       ) : (
         <div className="space-y-4">
           {filteredJobs.map((job) => (
@@ -37,7 +40,7 @@ export default function JobQueue({
               job={job}
               techOptions={techOptions}
               onAssignTech={onAssignTech}
-              onView={onView}
+              onView={onView ? () => onView(job) : undefined}
             />
           ))}
         </div>
