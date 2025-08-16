@@ -11,7 +11,6 @@ type Props = {
 };
 
 export function WorkOrderPDF({
-  vehicleId,
   workOrderId,
   vehicleInfo,
   customerInfo,
