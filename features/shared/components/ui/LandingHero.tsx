@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, useMemo } from "react";
-import Link from "next/link";
 import Head from "next/head";
+import Link from "next/link";
 import { PRICE_IDS } from "@stripe/lib/stripe/constants";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
@@ -12,6 +12,9 @@ import type { Database } from "@shared/types/types/supabase";
 import Particles, { initParticlesEngine } from "@tsparticles/react";
 import { loadSlim } from "@tsparticles/slim";
 import type { Engine, RecursivePartial, IOptions } from "@tsparticles/engine";
+
+// ✅ bring the chatbot onto this page so its own launcher button renders
+import Chatbot from "@ai/components/Chatbot";
 
 type PlanKey = "free" | "diy" | "pro" | "pro_plus";
 
@@ -25,7 +28,7 @@ export default function LandingHero() {
   const [isYearly, setIsYearly] = useState(false);
   const [, setLoading] = useState(false);
 
-  // ✅ proper Supabase client for client components
+  // Supabase client (only used for portal link convenience)
   const supabase = useMemo(() => createClientComponentClient<Database>(), []);
   const router = useRouter();
 
@@ -102,40 +105,50 @@ export default function LandingHero() {
     setExpandedIndex(index === expandedIndex ? null : index);
   };
 
-  const saveSelectedPlan = async (plan: PlanKey) => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
-    await supabase.from("profiles").update({ plan }).eq("id", user.id);
-  };
-
+  // Public checkout flow (no sign-in required)
   const handleCheckout = async (plan: PlanKey) => {
     setSelectedPlan(plan);
     setLoading(true);
-    await saveSelectedPlan(plan);
 
-    const priceId =
-      isYearly ? PRICE_IDS[plan]?.yearly : PRICE_IDS[plan]?.monthly;
+    if (plan === "free") {
+      // Free → go to auth first then onboard after magic link/verification
+      router.push("/auth?redirect=/onboarding/profile");
+      setLoading(false);
+      return;
+    }
 
+    const priceId = isYearly ? PRICE_IDS[plan]?.yearly : PRICE_IDS[plan]?.monthly;
     if (!priceId) {
       alert("Invalid plan selected.");
       setLoading(false);
       return;
     }
 
+    // Create Stripe session anonymously – Stripe collects email
     const res = await fetch("/api/stripe/checkout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         planKey: priceId,
         interval: isYearly ? "yearly" : "monthly",
+        isAddon: false,
+        shopId: null,
+        userId: null,
       }),
     });
 
-    const { url } = (await res.json()) as { url?: string };
-    if (url) window.location.href = url;
-    else alert("Failed to redirect");
+    try {
+      const data = await res.json();
+      if (data?.url) {
+        window.location.href = data.url;
+      } else if (data?.id) {
+        window.location.href = `https://checkout.stripe.com/c/pay/${data.id}`;
+      } else {
+        alert("Failed to redirect to Stripe");
+      }
+    } catch {
+      alert("Checkout failed.");
+    }
 
     setLoading(false);
   };
@@ -228,45 +241,40 @@ export default function LandingHero() {
 
   return (
     <>
+      {/* Page <title>/social meta (optional) */}
       <Head>
         <title>ProFixIQ – Repair Smarter</title>
-        <meta
-          name="description"
-          content="AI-powered diagnostics and shop management for auto pros"
-        />
+        <meta name="description" content="AI-powered diagnostics and shop management for auto pros" />
         <meta property="og:title" content="ProFixIQ" />
-        <meta
-          property="og:description"
-          content="AI-powered diagnostics and workflow for mechanics"
-        />
+        <meta property="og:description" content="AI-powered diagnostics and workflow for mechanics" />
       </Head>
 
-      {/* simple canvas glow */}
-      <canvas
-        ref={canvasRef}
-        className="absolute top-0 left-0 -z-10 pointer-events-none"
-      />
+      {/* background canvas always behind */}
+      <canvas ref={canvasRef} className="absolute top-0 left-0 -z-10 pointer-events-none" />
 
       <section className="relative overflow-hidden bg-black text-white pt-24 pb-32 px-6 sm:px-12 lg:px-24">
-        {/* tsParticles layer behind text */}
-          <div className="absolute inset-0 -z-10 pointer-events-none">
+        {/* particles behind content */}
+        <div className="absolute inset-0 -z-10 pointer-events-none">
           <Particles id="hero-particles" options={particlesOptions} />
         </div>
 
+        {/* ✅ TITLE lives here; keep z above backgrounds */}
         <div className="relative z-10 max-w-5xl mx-auto text-center">
           <p className="text-xl text-[#ff6a00] font-bold mb-2 tracking-wide uppercase">
             Repair Smarter. Diagnose Faster.
           </p>
-          <h1 className="font-blackops text-[6.5rem] sm:text-[8rem] leading-[1.1] text-transparent bg-gradient-to-r from-[#ff6a00] to-[#ffd700] bg-clip-text drop-shadow-[0_0_35px_rgba(255,106,0,0.6)] mb-6">
+          <h1
+            className="font-blackops text-[12vw] sm:text-[8rem] leading-[1.05] text-transparent bg-gradient-to-r from-[#ff6a00] to-[#ffd700] bg-clip-text drop-shadow-[0_0_35px_rgba(255,106,0,0.6)] mb-6"
+            style={{ WebkitTextStroke: "0 transparent" }} /* ensure no accidental stroke hides text */
+          >
             ProFixIQ
           </h1>
           <p className="text-lg text-neutral-300 max-w-3xl mx-auto mb-10">
             From diagnostics to dispatch — AI handles the heavy lifting.
-            Streamline every repair, inspection, and work order with smart
-            automation.
+            Streamline every repair, inspection, and work order with smart automation.
           </p>
+
           <div className="flex justify-center gap-4 flex-wrap">
-            {/* Portal CTA — uses portalHref computed from session */}
             <Link
               href={portalHref}
               className="bg-orange-500 hover:bg-orange-600 text-black font-bold py-3 px-6 rounded-lg text-lg shadow-lg transition"
@@ -280,6 +288,7 @@ export default function LandingHero() {
             >
               Try the AI
             </Link>
+
             <button
               onClick={() => scrollTo("plans")}
               className="border border-orange-500 text-orange-500 hover:bg-orange-500 hover:text-black font-bold py-3 px-6 rounded-lg text-lg shadow-md transition"
@@ -332,15 +341,7 @@ export default function LandingHero() {
             Why ProFixIQ?
           </h2>
           <p className="text-lg text-gray-300 leading-relaxed">
-            ProFixIQ was built by a technician who lived the shop life — not a
-            corporate product manager. We know the real bottlenecks: the hours
-            spent at a desk quoting jobs, chasing approvals, writing work
-            orders, and double-checking inspections. That’s why we built
-            ProFixIQ to be your digital assistant — AI-powered, voice-enabled,
-            and built to streamline everything from diagnostics to dispatch.
-            Whether you’re a solo tech or running a full shop, ProFixIQ reduces
-            screen time, speeds up workflows, and gives you more time to do what
-            you do best — Repair vehicles.
+            ProFixIQ was built by a technician who lived the shop life — not a corporate product manager...
           </p>
         </div>
       </section>
@@ -403,14 +404,7 @@ export default function LandingHero() {
             ].map((plan) => (
               <button
                 key={plan.key}
-                onClick={async () => {
-                  if (plan.key === "free") {
-                    await saveSelectedPlan("free");
-                    router.push("/onboarding/profile");
-                  } else {
-                    void handleCheckout(plan.key as PlanKey);
-                  }
-                }}
+                onClick={() => handleCheckout(plan.key as PlanKey)}
                 className={`border border-orange-500 p-6 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-left transition-all shadow hover:shadow-orange-600/20 ${
                   selectedPlan === plan.key ? "ring-2 ring-orange-500" : ""
                 }`}
@@ -457,17 +451,10 @@ export default function LandingHero() {
             &copy; {new Date().getFullYear()} ProFixIQ. Built for techs, by a tech.
           </p>
         </div>
-
-        <button
-          onClick={() => {
-            const chatbot = document.getElementById("chatbot-button");
-            if (chatbot) chatbot.click();
-          }}
-          className="fixed bottom-6 right-6 z-50 bg-orange-500 hover:bg-orange-600 text-black font-blackops px-4 py-3 rounded-full shadow-lg transition-all duration-300"
-        >
-          Ask AI
-        </button>
       </footer>
+
+      {/* ✅ Render Chatbot so its floating launcher button appears on this page */}
+      <Chatbot />
     </>
   );
 }

@@ -1,26 +1,49 @@
+// @ai/components/Chatbot.tsx
 "use client";
 
 import { useEffect, useRef, useState } from "react";
 import { FaPaperPlane, FaRobot } from "react-icons/fa";
 import Image from "next/image";
-import Link from "next/link"; // 👈 for clickable logo
+import Link from "next/link";
 
-export default function Chatbot() {
+type Variant = "marketing" | "full";
+
+function systemPromptFor(variant: Variant) {
+  if (variant === "marketing") {
+    return `You are TechBot for ProFixIQ on the public landing page.
+Answer ONLY questions about ProFixIQ: features, pricing, plans, roles, onboarding, and how the app works.
+Do NOT discuss private user data, shop workflows, or take actions. Keep answers brief and helpful.`;
+  }
+  return `You are TechBot for ProFixIQ inside the app.
+Help with diagnostics, inspections, work orders, quotes, parts, and app navigation.
+When relevant, suggest next actions in the product. Keep answers clear and mechanic-friendly.`;
+}
+
+export default function Chatbot({ variant = "full" }: { variant?: Variant }) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState([
-    {
-      role: "system",
-      content:
-        "You are TechBot, an experienced diagnostic assistant for ProFixIQ. Answer in a clear, mechanic-friendly tone and help with symptoms, next steps, or repair advice.",
-    },
+    { role: "system", content: systemPromptFor(variant) },
   ]);
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
+  // allow external “Ask AI” buttons to open this modal
+  useEffect(() => {
+    const handler = () => setOpen(true);
+    window.addEventListener("open-chatbot", handler as EventListener);
+    return () => window.removeEventListener("open-chatbot", handler as EventListener);
+  }, []);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // If variant changes (e.g. component mounted in different place),
+  // reset the system message to the correct mode.
+  useEffect(() => {
+    setMessages([{ role: "system", content: systemPromptFor(variant) }]);
+  }, [variant]);
 
   const sendMessage = async () => {
     if (!input.trim()) return;
@@ -33,18 +56,14 @@ export default function Chatbot() {
       const res = await fetch("/api/chatbot", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: updated }),
+        // pass the variant too (server can reinforce guardrails)
+        body: JSON.stringify({ messages: updated, variant }),
       });
-
       const data = await res.json();
-      if (data.reply) {
-        setMessages([...updated, { role: "assistant", content: data.reply }]);
-      } else {
-        setMessages([
-          ...updated,
-          { role: "assistant", content: "Sorry, something went wrong." },
-        ]);
-      }
+      setMessages([
+        ...updated,
+        { role: "assistant", content: data.reply || "Sorry, something went wrong." },
+      ]);
     } catch {
       setMessages([
         ...updated,
@@ -58,8 +77,9 @@ export default function Chatbot() {
   return (
     <>
       <button
+        id="chatbot-button"
         onClick={() => setOpen((o) => !o)}
-        title="Ask TechBot for help with diagnostics"
+        title="Ask TechBot"
         className="fixed bottom-6 right-6 bg-orange-600 hover:bg-orange-700 text-white p-3 rounded-full shadow-lg z-50"
       >
         <FaRobot size={20} />
@@ -67,21 +87,15 @@ export default function Chatbot() {
 
       {open && (
         <div className="fixed bottom-20 right-6 w-80 bg-black border border-neutral-700 text-white rounded-lg shadow-xl flex flex-col z-50">
-          {/* Brand Header with Clickable Logo */}
           <div className="flex items-center gap-2 p-3 border-b border-neutral-700 bg-neutral-900 rounded-t">
             <Link href="/" title="Go to Home">
-              <Image
-                src="/logo.png" // ✅ make sure this exists in /public
-                alt="ProFixIQ"
-                width={28}
-                height={28}
-                priority
-              />
+              <Image src="/logo.png" alt="ProFixIQ" width={28} height={28} priority />
             </Link>
-            <span className="font-bold text-orange-400">TechBot Assistant</span>
+            <span className="font-bold text-orange-400">
+              {variant === "marketing" ? "TechBot (About ProFixIQ)" : "TechBot Assistant"}
+            </span>
           </div>
 
-          {/* Chat history */}
           <div className="flex-1 overflow-y-auto p-3 space-y-2 max-h-96 text-sm">
             {messages.slice(1).map((m, i) => (
               <div
@@ -98,18 +112,17 @@ export default function Chatbot() {
             <div ref={bottomRef} />
           </div>
 
-          {/* Input */}
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              sendMessage();
+              void sendMessage();
             }}
             className="flex items-center border-t border-neutral-700 p-2 bg-neutral-900"
           >
             <input
               type="text"
               className="flex-1 bg-transparent outline-none px-2 text-white placeholder-gray-400"
-              placeholder="Ask TechBot..."
+              placeholder={variant === "marketing" ? "Ask about ProFixIQ…" : "Ask TechBot…"}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               disabled={loading}
