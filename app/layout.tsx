@@ -13,13 +13,13 @@ const blackOps = Black_Ops_One({
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      {/* expose both font variables on <body> */}
+      {/* Inter is the base body font; Black Ops is opt-in via .font-blackops */}
       <body className={`${inter.variable} ${blackOps.variable} ${inter.className} bg-black text-white`}>
-        {/* site-wide navbar (no hero, no marketing sections here) */}
+        {/* Site navbar (simple) */}
         <header className="fixed top-0 left-0 right-0 z-20 bg-black/80 backdrop-blur border-b border-white/10">
           <div className="mx-auto max-w-7xl px-4 py-3 flex items-center justify-between">
-            <Link href="/" className="tracking-wide" style={{ fontFamily: "var(--font-blackops)" }}>
-              <span className="text-orange-400">ProFixIQ</span>
+            <Link href="/" className="tracking-wide font-blackops text-orange-400">
+              ProFixIQ
             </Link>
             <nav className="hidden sm:flex gap-4 text-sm text-gray-300">
               <Link href="/" className="hover:text-orange-400 transition-colors">Home</Link>
@@ -30,7 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </div>
         </header>
 
-        {/* push content below the fixed header */}
+        {/* Push content below fixed header */}
         <main className="pt-16">{children}</main>
       </body>
     </html>

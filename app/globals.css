@@ -2,29 +2,31 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Use next/font in layout; don't embed a manual @font-face here */
-:root {
-  /* nothing needed here for fonts; next/font sets CSS variables */
-}
+/* Keep things fast & clean; next/font loads Inter + Black Ops for us. */
 
-/* Make Inter the default via layout's Inter class; do NOT force Black Ops on body */
-body {
-  @apply bg-black text-white antialiased;
-}
+/* Global look */
+html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+body { @apply bg-background text-white antialiased; }
 
-/* Utility: apply Black Ops where you want it (titles/brand) */
-@layer utilities {
-  .font-blackops {
-    font-family: var(--font-blackops), system-ui, -apple-system, "Segoe UI",
-      Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji",
-      "Segoe UI Emoji", "Segoe UI Symbol";
-  }
-}
+/* Optional utility if you ever want to force Black Ops without Tailwind's font-header */
+.font-blackops { font-family: var(--font-blackops), var(--font-inter), ui-sans-serif, system-ui, sans-serif; }
 
-html {
-  scroll-behavior: smooth;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
+/* Inputs + small UX bits */
+.input { @apply w-full px-3 py-2 rounded bg-neutral-900 border border-neutral-700 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-orange-500; }
+:focus-visible { @apply outline-none ring-2 ring-orange-500; }
 
-/* … keep your other utilities as-is … */
+@keyframes fade-in {
+  0% { opacity: 0; transform: translateY(10px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.fade-in { animation: fade-in 0.6s ease-out forwards; }
+
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-thumb { background: #ff6a00; border-radius: 8px; }
+::-webkit-scrollbar-track { background: #1a1a1a; }
+
+/* Light button utilities remain compatible with your Button component */
+.btn { @apply inline-flex items-center justify-center px-4 py-2 font-semibold rounded transition-colors; }
+.btn-orange { @apply bg-orange-500 hover:bg-orange-600 text-black; }
+.btn-outline { @apply border border-white text-white hover:bg-white hover:text-black; }
+.card { @apply rounded-xl border border-white/10 bg-black/20 backdrop-blur-md shadow-md p-6; }

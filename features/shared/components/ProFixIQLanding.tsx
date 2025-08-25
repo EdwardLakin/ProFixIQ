@@ -9,15 +9,11 @@ import WhySection from "@shared/components/ui/WhySection";
 import PricingSection from "@shared/components/ui/PricingSection";
 import Footer from "@shared/components/ui/Footer";
 import Chatbot from "@ai/components/Chatbot";
+import Container from "@shared/components/ui/Container";
 
-// local type to satisfy PricingSection callback
-type CheckoutPayload = {
-  priceId: string;                  // Stripe price_...
-  interval: "monthly" | "yearly";
-};
+type Interval = "monthly" | "yearly";
 
 export default function ProFixIQLanding() {
-  // keep for client-only hydration if needed
   useEffect(() => {}, []);
 
   return (
@@ -27,44 +23,42 @@ export default function ProFixIQLanding() {
       {/* 1) HERO */}
       <LandingHero />
 
-      {/* 2) FEATURES (only one heading — keep it here) */}
+      {/* 2) FEATURES (single heading here) */}
       <section id="features" className="py-20">
-        <div className="mx-auto max-w-6xl px-4">
+        <Container>
           <h2
-            className="text-center text-4xl text-orange-400"
+            className="text-center text-4xl md:text-5xl text-orange-400 mb-10"
             style={{ fontFamily: "var(--font-blackops)" }}
           >
             Powerful Features
           </h2>
-          <p className="mt-2 text-center text-neutral-400">
+
+          <p className="text-center text-neutral-400 mb-10">
             Have questions? Open the chatbot and ask anything about ProFixIQ.
           </p>
 
-          <div className="mt-10">
-            <FeaturesSection />
-          </div>
-        </div>
+          <FeaturesSection showHeading={false} />
+        </Container>
       </section>
 
-      {/* 3) WHY (this component includes its own heading) */}
+      {/* 3) WHY */}
       <section id="why" className="bg-neutral-950 py-20">
-        <div className="mx-auto max-w-6xl px-4">
+        <Container>
           <WhySection />
-        </div>
+        </Container>
       </section>
 
       {/* 4) PRICING */}
       <section id="plans" className="bg-neutral-900 py-20">
-        <div className="mx-auto max-w-6xl px-4">
+        <Container>
           <PricingSection
-            onCheckout={async ({ priceId, interval }: CheckoutPayload) => {
-              // Public checkout (no login required)
+            onCheckout={async ({ priceId, interval }: { priceId: string; interval: Interval }) => {
               const res = await fetch("/api/stripe/checkout", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                  planKey: priceId, // Stripe price_*
-                  interval,         // "monthly" | "yearly"
+                  planKey: priceId,
+                  interval,
                   isAddon: false,
                   shopId: null,
                   userId: null,
@@ -75,26 +69,21 @@ export default function ProFixIQLanding() {
                 alert("Checkout failed");
                 return;
               }
-
               const data = await res.json();
-              if (data?.url) {
-                window.location.href = data.url;
-              } else {
-                alert("No checkout URL returned");
-              }
+              if (data?.url) window.location.href = data.url;
+              else alert("No checkout URL returned");
             }}
             onStartFree={() => {
-              // Free → straight to onboarding (no auth needed)
               window.location.href = "/onboarding/profile";
             }}
           />
-        </div>
+        </Container>
       </section>
 
-      {/* 5) Floating chatbot for marketing */}
+      {/* 5) Chatbot */}
       <Chatbot variant="marketing" />
 
-      {/* 6) FOOTER */}
+      {/* 6) Footer */}
       <Footer />
     </div>
   );
