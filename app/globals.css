@@ -2,17 +2,23 @@
 @tailwind components;
 @tailwind utilities;
 
-@font-face {
-  font-family: 'Black Ops One';
-  src: url('/BlackOpsOne-Regular.ttf') format('truetype');
-  font-weight: normal;
-  font-style: normal;
+/* Use next/font in layout; don't embed a manual @font-face here */
+:root {
+  /* nothing needed here for fonts; next/font sets CSS variables */
 }
 
-/* === Custom global styles === */
+/* Make Inter the default via layout's Inter class; do NOT force Black Ops on body */
 body {
-  font-family: 'Black Ops One', sans-serif;
-  @apply bg-background text-white antialiased;
+  @apply bg-black text-white antialiased;
+}
+
+/* Utility: apply Black Ops where you want it (titles/brand) */
+@layer utilities {
+  .font-blackops {
+    font-family: var(--font-blackops), system-ui, -apple-system, "Segoe UI",
+      Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji",
+      "Segoe UI Emoji", "Segoe UI Symbol";
+  }
 }
 
 html {
@@ -21,51 +27,4 @@ html {
   -moz-osx-font-smoothing: grayscale;
 }
 
-.input {
-  @apply w-full px-3 py-2 rounded bg-neutral-900 border border-neutral-700 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-orange-500;
-}
-
-/* === Optional UI polish additions === */
-:focus-visible {
-  @apply outline-none ring-2 ring-orange-500;
-}
-
-@keyframes fade-in {
-  0% {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.fade-in {
-  animation: fade-in 0.6s ease-out forwards;
-}
-
-::-webkit-scrollbar {
-  width: 8px;
-}
-::-webkit-scrollbar-thumb {
-  background: #ff6a00;
-  border-radius: 8px;
-}
-::-webkit-scrollbar-track {
-  background: #1a1a1a;
-}
-
-.btn {
-  @apply inline-flex items-center justify-center px-4 py-2 font-semibold rounded transition-colors;
-}
-.btn-orange {
-  @apply bg-orange-500 hover:bg-orange-600 text-black;
-}
-.btn-outline {
-  @apply border border-white text-white hover:bg-white hover:text-black;
-}
-
-.card {
-  @apply rounded-xl border border-white/10 bg-black/20 backdrop-blur-md shadow-md p-6;
-}
+/* … keep your other utilities as-is … */

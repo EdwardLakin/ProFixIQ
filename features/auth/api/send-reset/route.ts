@@ -15,7 +15,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Missing email" }, { status: 400 });
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://profixiq.com/";
 
   // Trigger Supabase to send magic link with tokens
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
