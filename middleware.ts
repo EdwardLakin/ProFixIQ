@@ -17,7 +17,10 @@ export async function middleware(req: NextRequest) {
     pathname === "/" ||
     pathname.startsWith("/compare-plans") ||
     pathname.startsWith("/subscribe") ||
-    pathname.startsWith("/confirm") || // ⬅️ allow Stripe success return
+    pathname.startsWith("/confirm") ||     // Stripe success return
+    pathname.startsWith("/signup") ||      // <-- make public
+    pathname.startsWith("/sign-in") ||     // <-- make public (if you use it)
+    pathname.startsWith("/auth") ||        // <-- magic-link / OAuth callbacks
     pathname.startsWith("/onboarding") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api") ||
@@ -27,7 +30,7 @@ export async function middleware(req: NextRequest) {
     pathname === "/logo.svg";
 
   if (isPublic) {
-    // optional: if already logged in and on landing, bounce to dashboard-by-role
+    // Optional: if logged-in user hits landing, send to role dashboard
     if (pathname === "/" && session?.user) {
       const { data: profile } = await supabase
         .from("profiles")
@@ -37,11 +40,11 @@ export async function middleware(req: NextRequest) {
 
       const role = profile?.role;
       const to =
-        role === "owner" ? "/dashboard/owner" :
-        role === "admin" ? "/dashboard/admin" :
-        role === "advisor" ? "/dashboard/advisor" :
-        role === "manager" ? "/dashboard/manager" :
-        role === "parts" ? "/dashboard/parts" :
+        role === "owner"    ? "/dashboard/owner" :
+        role === "admin"    ? "/dashboard/admin" :
+        role === "advisor"  ? "/dashboard/advisor" :
+        role === "manager"  ? "/dashboard/manager" :
+        role === "parts"    ? "/dashboard/parts" :
         role === "mechanic" || role === "tech" ? "/dashboard/tech" :
         "/dashboard";
 
