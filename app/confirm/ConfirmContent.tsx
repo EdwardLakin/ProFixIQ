@@ -42,40 +42,43 @@ export default function ConfirmContent() {
     };
 
     (async () => {
-      // 1) Handle magic-link/OAuth code if present
+      // 1) Handle magic-link / OAuth code if present.
       const code = searchParams.get("code");
       if (code) {
         try {
-          // works with older helper signature; ignored if already exchanged
-          // @ts-ignore – allow either signature
+          // Some helper versions expect a different signature; we gate it safely.
+          // @ts-expect-error — allow older helper signature (string) without breaking newer ones
           await supabase.auth.exchangeCodeForSession(code);
-        } catch {/* ignore */}
+        } catch {
+          // ignore invalid/expired code
+        }
       }
 
-      // 2) Already have a session? Route by role.
+      // 2) If we already have a session, route by role.
       const routed = await goToRoleHome();
       if (routed) return;
 
-      // 3) Coming from Stripe Checkout? Send to signup with the session_id
+      // 3) From Stripe checkout → send to signup to finish account creation.
       const sessionId = searchParams.get("session_id");
       if (sessionId) {
         router.replace(`/signup?session_id=${encodeURIComponent(sessionId)}`);
         return;
       }
 
-      // 4) Fallback
+      // 4) Fallback → sign in.
       router.replace("/sign-in");
     })();
 
-    // Listen for a late-arriving session
-    const { data: listener } = supabase.auth.onAuthStateChange(async () => {
+    // Listen for a late-arriving session and route when it appears.
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async () => {
       await goToRoleHome();
     });
-    const unsubscribe = () => listener.subscription.unsubscribe();
 
     return () => {
       cancelled = true;
-      unsubscribe();
+      subscription?.unsubscribe();
     };
   }, [router, searchParams, supabase]);
 
@@ -83,9 +86,7 @@ export default function ConfirmContent() {
     <div className="min-h-[60vh] grid place-items-center text-white">
       <div className="text-center">
         <h1 className="text-2xl font-bold">Confirming your account…</h1>
-        <p className="text-sm text-neutral-400">
-          You’ll be redirected automatically.
-        </p>
+        <p className="text-sm text-neutral-400">You’ll be redirected automatically.</p>
       </div>
     </div>
   );
