@@ -6,27 +6,85 @@
 │   ├── admin
 │   │   └── create-user
 │   │       └── pages.tsx
-│   ├── booking
-│   │   ├── confirmation
-│   │   │   └── page.tsx
-│   │   └── page.tsx
+│   ├── api
+│   │   ├── onboarding
+│   │   │   └── bootstrap-owner
+│   │   │       └── route.ts
+│   │   ├── portal
+│   │   │   ├── availability
+│   │   │   │   └── route.ts
+│   │   │   ├── book
+│   │   │   │   └── route.ts
+│   │   │   ├── bookings
+│   │   │   │   └── [id]
+│   │   │   │       └── route.ts
+│   │   │   └── qr
+│   │   │       └── [slug]
+│   │   │           └── route.ts
+│   │   ├── settings
+│   │   │   ├── hours
+│   │   │   │   └── route.ts
+│   │   │   ├── time-off
+│   │   │   │   └── route.ts
+│   │   │   └── update
+│   │   │       ├── route.ts
+│   │   │       └── shop
+│   │   │           └── owner-pin
+│   │   ├── shop
+│   │   │   └── owner-pin
+│   │   │       ├── clear
+│   │   │       │   └── route.ts
+│   │   │       └── verify
+│   │   │           └── route.ts
+│   │   └── stripe
+│   │       └── checkout
+│   │           └── route.ts
+│   ├── auth
+│   │   └── signout
+│   │       └── route.ts
 │   ├── compare-plans
 │   │   └── page.tsx
 │   ├── confirm
 │   │   └── page.tsx
+│   ├── dashboard
+│   │   ├── bookings
+│   │   │   ├── BookingsTable.tsx
+│   │   │   └── page.tsx
+│   │   └── manager
+│   │       └── page.tsx
 │   ├── globals.css
-│   ├── head.tsx
 │   ├── landing
 │   │   ├── PlanComparison.tsx
 │   │   └── actions.ts
 │   ├── layout.tsx
-│   ├── manager
-│   │   └── ManagerJobDashboard.tsx
 │   ├── menu
 │   │   └── page.tsx
 │   ├── onboarding
 │   │   └── page.tsx
 │   ├── page.tsx
+│   ├── portal
+│   │   ├── booking
+│   │   │   ├── confirmation
+│   │   │   │   └── page.tsx
+│   │   │   └── page.tsx
+│   │   ├── history
+│   │   │   ├── components
+│   │   │   │   └── HistoryList.tsx
+│   │   │   ├── page.tsx
+│   │   │   └── types.ts
+│   │   ├── layout.tsx
+│   │   ├── page.tsx
+│   │   ├── profile
+│   │   │   └── page.tsx
+│   │   ├── settings
+│   │   │   └── page.tsx
+│   │   ├── shop
+│   │   │   └── [slug]
+│   │   │       ├── ShareBox.tsx
+│   │   │       ├── metadata.ts
+│   │   │       └── page.tsx
+│   │   └── vehicles
+│   │       └── pages.tsx
 │   ├── providers.tsx
 │   ├── subscribe
 │   │   └── page.tsx
@@ -130,7 +188,6 @@
 │   │   │   ├── SignIn.tsx
 │   │   │   └── SignOutButton.tsx
 │   │   ├── hooks
-│   │   │   ├── useFeatureAccess.ts
 │   │   │   └── useUser.ts
 │   │   └── lib
 │   ├── dashboard
@@ -141,26 +198,24 @@
 │   │   │       ├── advisor
 │   │   │       │   └── page.tsx
 │   │   │       ├── layout.tsx
+│   │   │       ├── manager
+│   │   │       │   └── page.tsx
 │   │   │       ├── owner
 │   │   │       │   ├── create-user
-│   │   │       │   │   └── page.tsx
 │   │   │       │   ├── import-customers
-│   │   │       │   │   └── page.tsx
 │   │   │       │   ├── page.tsx
 │   │   │       │   ├── reports
-│   │   │       │   │   └── page.tsx
 │   │   │       │   └── settings
-│   │   │       │       └── page.tsx
 │   │   │       ├── page.tsx
 │   │   │       ├── parts
 │   │   │       │   └── page.tsx
 │   │   │       ├── settings
 │   │   │       │   └── user
-│   │   │       │       └── page.tsx
 │   │   │       └── tech
 │   │   │           └── page.tsx
 │   │   ├── components
-│   │   │   └── DashboardTabs.tsx
+│   │   │   ├── DashboardTabs.tsx
+│   │   │   └── ShareBookingLink.tsx
 │   │   ├── hooks
 │   │   ├── layout
 │   │   └── lib
@@ -171,7 +226,6 @@
 │   │   │   └── inspection
 │   │   │       └── submit
 │   │   │           ├── pdf
-│   │   │           │   └── route.ts
 │   │   │           └── route.ts
 │   │   ├── app
 │   │   │   └── inspection
@@ -202,7 +256,6 @@
 │   │   │       ├── PhotoPreview.tsx
 │   │   │       ├── PhotoThumbnail.tsx
 │   │   │       ├── SaveInspectionButton.tsx
-│   │   │       ├── SectionHeader.tsx
 │   │   │       ├── SectionWrapper.tsx
 │   │   │       ├── StatusLegend.tsx
 │   │   │       ├── UndoVoiceActionButton.tsx
@@ -290,6 +343,8 @@
 │   │   │   ├── LoadWorkOrderById.tsx
 │   │   │   ├── LoadingOverlay.tsx
 │   │   │   ├── Navbar.tsx
+│   │   │   ├── OwnerPinBadge.tsx
+│   │   │   ├── OwnerPinModal.tsx
 │   │   │   ├── PhotoCapture.tsx
 │   │   │   ├── PlanSelectionPage.tsx
 │   │   │   ├── ProFixIQLanding.tsx
@@ -302,15 +357,18 @@
 │   │   │   ├── RoleNavTech.tsx
 │   │   │   ├── ShiftTracker.tsx
 │   │   │   ├── SignaturePad.tsx
+│   │   │   ├── SiteHeader.tsx
 │   │   │   ├── SubscribeBanner.tsx
 │   │   │   ├── VehicleSelector.tsx
 │   │   │   ├── VehicleSelectorModal.tsx
 │   │   │   ├── summary.tsx
 │   │   │   └── ui
 │   │   │       ├── Button.tsx
+│   │   │       ├── Calendar.tsx
 │   │   │       ├── Card.tsx
 │   │   │       ├── Container.tsx
 │   │   │       ├── FeatureCard.tsx
+│   │   │       ├── FeaturesSection.tsx
 │   │   │       ├── Footer.tsx
 │   │   │       ├── HomeButton.tsx
 │   │   │       ├── LandingHero.tsx
@@ -318,8 +376,10 @@
 │   │   │       ├── LoadingSpinner.tsx
 │   │   │       ├── LockedFeature.tsx
 │   │   │       ├── PreviousPageButton.tsx
+│   │   │       ├── PricingSection.tsx
 │   │   │       ├── QuoteViewer.tsx
 │   │   │       ├── Section.tsx
+│   │   │       ├── WhySection.tsx
 │   │   │       ├── input.tsx
 │   │   │       └── textarea.tsx
 │   │   ├── context
@@ -356,6 +416,7 @@
 │   │   │   │   └── uploadSignature.ts
 │   │   │   └── utils.ts
 │   │   └── types
+│   │       ├── supabase.ts
 │   │       ├── types
 │   │       │   ├── global.d.ts
 │   │       │   ├── services.ts
@@ -367,10 +428,7 @@
 │   │   │   └── stripe
 │   │   │       └── checkout
 │   │   │           ├── link-user
-│   │   │           │   └── route.ts
-│   │   │           ├── route.ts
 │   │   │           └── webhook
-│   │   │               └── route.ts
 │   │   ├── app
 │   │   ├── components
 │   │   └── lib
@@ -408,7 +466,6 @@
 │       │       │   └── page.tsx
 │       │       └── view
 │       │           └── [id]
-│       │               └── page.tsx
 │       ├── components
 │       │   ├── QuickActions.tsx
 │       │   ├── RecentWorkOrders.tsx
@@ -419,6 +476,8 @@
 │       │   ├── WorkOrderInvoicePDF.tsx
 │       │   ├── WorkOrderLineEditor.tsx
 │       │   ├── WorkOrderPDF.tsx
+│       │   ├── manager
+│       │   │   └── ManagerJobDashboard.tsx
 │       │   └── workorders
 │       │       ├── AddJobModal.tsx
 │       │       ├── CauseCorrectionModal.tsx
@@ -440,9 +499,6 @@
 │               └── parseWorkOrderCommand.ts
 ├── file-tree.txt
 ├── finalize-moves.sh
-├── lib
-│   └── inspection
-│       └── pdf.ts.save
 ├── middleware.ts
 ├── move-final.sh
 ├── move-remaining.sh
@@ -458,6 +514,7 @@
 ├── public
 │   ├── BlackOpsOne-Regular.ttf
 │   └── carbon-weave.png
+├── repo-src.zip
 ├── rewrite-imports.js
 ├── send-test.js
 ├── sendgrid.env
@@ -465,16 +522,15 @@
 │   ├── README.md
 │   ├── eslint.config.mjs
 │   ├── public
+│   │   ├── eslint.config.js
 │   │   ├── file.svg
 │   │   ├── globe.svg
 │   │   ├── next.svg
 │   │   ├── vercel.svg
 │   │   └── window.svg
-│   ├── styles.css
-│   └── test
-│       └── Test.tsx
+│   └── styles.css
 ├── tailwind.config.js
 ├── tsconfig.json
 └── tsconfig.tsbuildinfo
 
-170 directories, 307 files
+203 directories, 330 files
