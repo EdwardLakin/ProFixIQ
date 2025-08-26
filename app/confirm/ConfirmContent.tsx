@@ -1,4 +1,3 @@
-// app/confirm/ConfirmContent.tsx
 "use client";
 
 import { useEffect } from "react";
@@ -7,13 +6,26 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 const rolePath = (role?: string | null) =>
-  role === "owner"    ? "/dashboard/owner"    :
-  role === "admin"    ? "/dashboard/admin"    :
-  role === "advisor"  ? "/dashboard/advisor"  :
-  role === "manager"  ? "/dashboard/manager"  :
-  role === "parts"    ? "/dashboard/parts"    :
+  role === "owner"    ? "/dashboard/owner"   :
+  role === "admin"    ? "/dashboard/admin"   :
+  role === "advisor"  ? "/dashboard/advisor" :
+  role === "manager"  ? "/dashboard/manager" :
+  role === "parts"    ? "/dashboard/parts"   :
   role === "mechanic" || role === "tech" ? "/dashboard/tech" :
   "/dashboard";
+
+// ship logs to server so they appear in Vercel logs
+async function log(message: string, extra?: Record<string, unknown>) {
+  try {
+    console.log("[confirm]", message, extra ?? "");
+    await fetch("/api/diag/log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      keepalive: true,                 // don’t lose logs on navigation
+      body: JSON.stringify({ message, extra }),
+    });
+  } catch {/* ignore */}
+}
 
 export default function ConfirmContent() {
   const router = useRouter();
@@ -23,15 +35,12 @@ export default function ConfirmContent() {
   useEffect(() => {
     let cancelled = false;
 
-    const log = (...args: unknown[]) =>
-      console.log("[/confirm]", ...args);
-
-    const goToRoleHome = async (): Promise<boolean> => {
+    const goToRoleHome = async () => {
       const { data: { session }, error } = await supabase.auth.getSession();
-      if (error) log("supabase.auth.getSession error:", error.message);
+      if (error) await log("supabase.getSession error", { error: error.message });
 
       const user = session?.user;
-      log("session user:", user?.id ?? null);
+      await log("session check", { hasSession: !!user });
 
       if (!user || cancelled) return false;
 
@@ -41,64 +50,54 @@ export default function ConfirmContent() {
         .eq("id", user.id)
         .single();
 
-      if (profErr) {
-        log("profiles fetch error:", profErr.message);
-        return false;
-      }
+      if (profErr) await log("profiles fetch error", { error: profErr.message });
 
-      const dest = rolePath(prof?.role ?? null);
-      log("profile role:", prof?.role ?? null, "→ redirect:", dest);
-      if (!cancelled) router.replace(dest);
+      const path = rolePath(prof?.role ?? null);
+      await log("routing to role home", { role: prof?.role ?? null, path });
+      if (!cancelled) router.replace(path);
       return true;
     };
 
     (async () => {
-      // ---- 0) Log inbound params ----
+      // 1) If we came back with a Supabase auth code (magic link / OAuth), exchange it
       const code = searchParams.get("code");
-      const sessionId = searchParams.get("session_id");
-      log("mounted with params:", { code, session_id: sessionId });
-
-      // ---- 1) Handle magic link / OAuth code (if any) ----
       if (code) {
         try {
-          log("exchanging code for session…");
+          await log("found auth code, exchanging");
           await supabase.auth.exchangeCodeForSession(code);
-          log("exchangeCodeForSession: success");
+          await log("auth code exchanged OK");
         } catch (e) {
-          log("exchangeCodeForSession: error", e);
+          await log("exchangeCodeForSession failed", { error: e instanceof Error ? e.message : String(e) });
         }
       }
 
-      // ---- 2) If a session already exists, route by role ----
+      // 2) If we already have a session, route by role
       const routed = await goToRoleHome();
-      if (routed) {
-        log("already had session → routed by role");
-        return;
-      }
+      if (routed) return;
 
-      // ---- 3) No session yet: if coming from Stripe, send to signup ----
+      // 3) If no session yet but we have Stripe session_id → send to signup
+      const sessionId = searchParams.get("session_id");
       if (sessionId) {
-        const nextUrl = `/signup?session_id=${encodeURIComponent(sessionId)}`;
-        log("no session; session_id present → redirecting to", nextUrl);
-        router.replace(nextUrl);
+        const dest = `/signup?session_id=${encodeURIComponent(sessionId)}`;
+        await log("no session; redirecting to signup with session_id", { dest });
+        router.replace(dest);
         return;
       }
 
-      // ---- 4) Fallback: ask user to sign in ----
-      log("no session; no session_id → redirecting to /sign-in");
+      // 4) Fallback → sign in
+      await log("no session and no session_id; redirecting to sign-in");
       router.replace("/sign-in");
     })();
 
-    // Also listen for late-arriving sessions (e.g., after exchange)
-    const { data: listener } = supabase.auth.onAuthStateChange(async (evt) => {
-      log("auth state changed:", evt);
+    // Also listen for a late-arriving session and route when it appears
+    const { data: listener } = supabase.auth.onAuthStateChange(async (ev) => {
+      await log("auth state change", { event: ev });
       await goToRoleHome();
     });
 
     return () => {
       cancelled = true;
       listener.subscription.unsubscribe();
-      log("unmounted");
     };
   }, [router, searchParams, supabase]);
 
@@ -106,9 +105,7 @@ export default function ConfirmContent() {
     <div className="min-h-[60vh] grid place-items-center text-white">
       <div className="text-center">
         <h1 className="text-2xl font-bold">Confirming your account…</h1>
-        <p className="text-sm text-neutral-400">
-          You’ll be redirected automatically.
-        </p>
+        <p className="text-sm text-neutral-400">You’ll be redirected automatically.</p>
       </div>
     </div>
   );
