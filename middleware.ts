@@ -1,4 +1,3 @@
-// middleware.ts
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
@@ -6,47 +5,47 @@ import type { Database } from '@shared/types/types/supabase';
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
-  const supabase = createMiddlewareClient<Database>({ req, res });
+  const url = req.nextUrl;
+  const pathname = url.pathname;
 
-  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-  const pathname = req.nextUrl.pathname;
+  // 🔓 EARLY ESCAPES — never block these routes
+  if (
+    pathname.startsWith('/auth') ||  // e.g., /auth/callback
+    pathname === '/confirm' ||
+    pathname === '/signup' ||
+    pathname === '/subscribe' // harmless if you keep it
+  ) {
+    return res;
+  }
+
+  const supabase = createMiddlewareClient<Database>({ req, res });
+  const { data: { session } } = await supabase.auth.getSession();
   const isLoggedIn = !!session?.user;
 
-  if (sessionError) console.error('❌ Session fetch error:', sessionError.message);
-
-  // ✅ Add the missing public routes used by the checkout → signup → callback flow
+  // Public routes
   const PUBLIC_PATHS = [
-    '/',                 // landing
-    '/compare-plans',
-    '/subscribe',        // safe to keep, even if you stop using it
-    '/signup',           // ← user lands here after Stripe success_url
-    '/confirm',          // ← client exchanges session & role-redirects here
-    '/onboarding',
-    '/favicon.ico',
-    '/logo.svg',
+    '/', '/compare-plans', '/onboarding',
+    '/favicon.ico', '/logo.svg'
   ];
 
   const isPublic =
     PUBLIC_PATHS.includes(pathname) ||
-    pathname.startsWith('/auth') ||            // ← /auth/callback, etc.
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api') ||
     pathname.startsWith('/fonts') ||
     pathname.startsWith('/BlackOpsOne-Regular.ttf');
 
   if (isPublic) {
-    // If the user is already logged in and visits the landing page, send them to their dashboard
+    // Optional: send logged-in users away from landing
     if (pathname === '/' && isLoggedIn) {
-      const { data: profile, error: profileError } = await supabase
+      const { data: profile } = await supabase
         .from('profiles')
         .select('role')
-        .eq('id', session.user.id)
+        .eq('id', session!.user.id)
         .single();
 
-      if (profileError || !profile) return res;
-
-      const role = profile.role;
-      const dashboardPath =
+      const role = profile?.role;
+      const dest =
         role === 'mechanic' || role === 'tech' ? '/dashboard/tech' :
         role === 'advisor'  ? '/dashboard/advisor' :
         role === 'admin'    ? '/dashboard/admin'   :
@@ -54,30 +53,31 @@ export async function middleware(req: NextRequest) {
         role === 'owner'    ? '/dashboard/owner'   :
         '/dashboard';
 
-      return NextResponse.redirect(new URL(dashboardPath, req.url));
+      return NextResponse.redirect(new URL(dest, req.url));
     }
-    return res; // allow public routes
+    return res;
   }
 
-  // Private routes below this point
+  // Private: require login
   if (!isLoggedIn) {
     return NextResponse.redirect(new URL('/', req.url));
   }
 
   // Ensure profile exists for logged-in users
-  const { data: profile, error: profileError } = await supabase
+  const { data: profile } = await supabase
     .from('profiles')
     .select('id')
-    .eq('id', session.user.id)
+    .eq('id', session!.user.id)
     .single();
 
-  if (profileError) return res;
-  if (!profile) return NextResponse.redirect(new URL('/onboarding', req.url));
+  if (!profile) {
+    return NextResponse.redirect(new URL('/onboarding', req.url));
+  }
 
   return res;
 }
 
-// 🔧 Optional perf: don’t run middleware for /api or static assets
+// Keep middleware off static + API (and let it run for pages like /confirm)
 export const config = {
   matcher: ['/((?!_next/static|_next/image|favicon.ico|api).*)'],
 };
