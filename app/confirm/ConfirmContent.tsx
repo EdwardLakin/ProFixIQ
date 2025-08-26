@@ -1,3 +1,4 @@
+// app/confirm/ConfirmContent.tsx
 "use client";
 
 import { useEffect } from "react";
@@ -22,63 +23,82 @@ export default function ConfirmContent() {
   useEffect(() => {
     let cancelled = false;
 
-    const goToRoleHome = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+    const log = (...args: unknown[]) =>
+      console.log("[/confirm]", ...args);
+
+    const goToRoleHome = async (): Promise<boolean> => {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (error) log("supabase.auth.getSession error:", error.message);
 
       const user = session?.user;
+      log("session user:", user?.id ?? null);
+
       if (!user || cancelled) return false;
 
-      const { data: prof } = await supabase
+      const { data: prof, error: profErr } = await supabase
         .from("profiles")
         .select("role")
         .eq("id", user.id)
         .single();
 
-      if (cancelled) return true;
-      router.replace(rolePath(prof?.role ?? null));
+      if (profErr) {
+        log("profiles fetch error:", profErr.message);
+        return false;
+      }
+
+      const dest = rolePath(prof?.role ?? null);
+      log("profile role:", prof?.role ?? null, "→ redirect:", dest);
+      if (!cancelled) router.replace(dest);
       return true;
     };
 
     (async () => {
-      // 1) Handle magic-link / OAuth code if present.
+      // ---- 0) Log inbound params ----
       const code = searchParams.get("code");
+      const sessionId = searchParams.get("session_id");
+      log("mounted with params:", { code, session_id: sessionId });
+
+      // ---- 1) Handle magic link / OAuth code (if any) ----
       if (code) {
         try {
-          // Some helper versions expect a different signature; we gate it safely.
-          // @ts-expect-error — allow older helper signature (string) without breaking newer ones
+          log("exchanging code for session…");
           await supabase.auth.exchangeCodeForSession(code);
-        } catch {
-          // ignore invalid/expired code
+          log("exchangeCodeForSession: success");
+        } catch (e) {
+          log("exchangeCodeForSession: error", e);
         }
       }
 
-      // 2) If we already have a session, route by role.
+      // ---- 2) If a session already exists, route by role ----
       const routed = await goToRoleHome();
-      if (routed) return;
-
-      // 3) From Stripe checkout → send to signup to finish account creation.
-      const sessionId = searchParams.get("session_id");
-      if (sessionId) {
-        router.replace(`/signup?session_id=${encodeURIComponent(sessionId)}`);
+      if (routed) {
+        log("already had session → routed by role");
         return;
       }
 
-      // 4) Fallback → sign in.
+      // ---- 3) No session yet: if coming from Stripe, send to signup ----
+      if (sessionId) {
+        const nextUrl = `/signup?session_id=${encodeURIComponent(sessionId)}`;
+        log("no session; session_id present → redirecting to", nextUrl);
+        router.replace(nextUrl);
+        return;
+      }
+
+      // ---- 4) Fallback: ask user to sign in ----
+      log("no session; no session_id → redirecting to /sign-in");
       router.replace("/sign-in");
     })();
 
-    // Listen for a late-arriving session and route when it appears.
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async () => {
+    // Also listen for late-arriving sessions (e.g., after exchange)
+    const { data: listener } = supabase.auth.onAuthStateChange(async (evt) => {
+      log("auth state changed:", evt);
       await goToRoleHome();
     });
 
     return () => {
       cancelled = true;
-      subscription?.unsubscribe();
+      listener.subscription.unsubscribe();
+      log("unmounted");
     };
   }, [router, searchParams, supabase]);
 
@@ -86,7 +106,9 @@ export default function ConfirmContent() {
     <div className="min-h-[60vh] grid place-items-center text-white">
       <div className="text-center">
         <h1 className="text-2xl font-bold">Confirming your account…</h1>
-        <p className="text-sm text-neutral-400">You’ll be redirected automatically.</p>
+        <p className="text-sm text-neutral-400">
+          You’ll be redirected automatically.
+        </p>
       </div>
     </div>
   );
