@@ -1,3 +1,4 @@
+// middleware.ts
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
@@ -7,22 +8,19 @@ export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
   const supabase = createMiddlewareClient<Database>({ req, res });
 
-  const {
-    data: { session },
-    error: sessionError,
-  } = await supabase.auth.getSession();
-
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
   const pathname = req.nextUrl.pathname;
   const isLoggedIn = !!session?.user;
 
-  if (sessionError) {
-    console.error('❌ Session fetch error:', sessionError.message);
-  }
+  if (sessionError) console.error('❌ Session fetch error:', sessionError.message);
 
+  // ✅ Add the missing public routes used by the checkout → signup → callback flow
   const PUBLIC_PATHS = [
-    '/',
+    '/',                 // landing
     '/compare-plans',
-    '/subscribe',
+    '/subscribe',        // safe to keep, even if you stop using it
+    '/signup',           // ← user lands here after Stripe success_url
+    '/confirm',          // ← client exchanges session & role-redirects here
     '/onboarding',
     '/favicon.ico',
     '/logo.svg',
@@ -30,89 +28,56 @@ export async function middleware(req: NextRequest) {
 
   const isPublic =
     PUBLIC_PATHS.includes(pathname) ||
+    pathname.startsWith('/auth') ||            // ← /auth/callback, etc.
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api') ||
     pathname.startsWith('/fonts') ||
     pathname.startsWith('/BlackOpsOne-Regular.ttf');
 
   if (isPublic) {
-    // 🟠 If logged in and on landing, redirect to dashboard
+    // If the user is already logged in and visits the landing page, send them to their dashboard
     if (pathname === '/' && isLoggedIn) {
-      console.log('🔁 Logged in user on landing — checking role for redirect...');
-
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('role')
         .eq('id', session.user.id)
         .single();
 
-      if (profileError) {
-        console.error('❌ Failed to fetch profile:', profileError.message);
-        return res;
-      }
-
-      if (!profile) {
-        console.warn('⚠️ No profile found for user — allowing access to public route');
-        return res;
-      }
+      if (profileError || !profile) return res;
 
       const role = profile.role;
-      let dashboardPath = '/dashboard';
+      const dashboardPath =
+        role === 'mechanic' || role === 'tech' ? '/dashboard/tech' :
+        role === 'advisor'  ? '/dashboard/advisor' :
+        role === 'admin'    ? '/dashboard/admin'   :
+        role === 'manager'  ? '/dashboard/manager' :
+        role === 'owner'    ? '/dashboard/owner'   :
+        '/dashboard';
 
-      switch (role) {
-        case 'mechanic':
-          dashboardPath = '/dashboard/tech';
-          break;
-        case 'advisor':
-          dashboardPath = '/dashboard/advisor';
-          break;
-        case 'admin':
-          dashboardPath = '/dashboard/admin';
-          break;
-        case 'manager':
-          dashboardPath = '/dashboard/manager';
-          break;
-        case 'owner':
-          dashboardPath = '/dashboard/owner';
-          break;
-        default:
-          console.warn('⚠️ Unknown role:', role);
-      }
-
-      console.log(`✅ Redirecting user to ${dashboardPath}`);
       return NextResponse.redirect(new URL(dashboardPath, req.url));
     }
-
-    // 🟢 Allow access to public route
-    return res;
+    return res; // allow public routes
   }
 
-  // 🔴 Private route: user must be logged in
+  // Private routes below this point
   if (!isLoggedIn) {
-    console.warn('🔒 User not logged in — redirecting to /');
     return NextResponse.redirect(new URL('/', req.url));
   }
 
-  // ✅ Logged in: ensure profile exists
+  // Ensure profile exists for logged-in users
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('id')
     .eq('id', session.user.id)
     .single();
 
-  if (profileError) {
-    console.error('❌ Failed to fetch profile:', profileError.message);
-    return res;
-  }
-
-  if (!profile) {
-    console.warn('⚠️ No profile found — redirecting to onboarding');
-    return NextResponse.redirect(new URL('/onboarding', req.url));
-  }
+  if (profileError) return res;
+  if (!profile) return NextResponse.redirect(new URL('/onboarding', req.url));
 
   return res;
 }
 
+// 🔧 Optional perf: don’t run middleware for /api or static assets
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|api).*)'],
 };

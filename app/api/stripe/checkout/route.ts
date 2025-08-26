@@ -31,7 +31,7 @@ export async function POST(req: Request) {
       mode: "subscription",
       payment_method_types: ["card"],
       line_items: [{ price: planKey, quantity: 1 }],
-      success_url: `${successBase}/confirm?session_id={CHECKOUT_SESSION_ID}`,
+      success_url: `${successBase}/signup?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${successBase}/subscribe`,
       metadata: {
         plan_key: planKey,
