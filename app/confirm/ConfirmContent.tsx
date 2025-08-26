@@ -1,4 +1,3 @@
-// app/confirm/ConfirmContent.tsx
 "use client";
 
 import { useEffect } from "react";
@@ -7,11 +6,11 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 const rolePath = (role?: string | null) =>
-  role === "owner"    ? "/dashboard/owner"   :
-  role === "admin"    ? "/dashboard/admin"   :
-  role === "advisor"  ? "/dashboard/advisor" :
-  role === "manager"  ? "/dashboard/manager" :
-  role === "parts"    ? "/dashboard/parts"   :
+  role === "owner"    ? "/dashboard/owner"    :
+  role === "admin"    ? "/dashboard/admin"    :
+  role === "advisor"  ? "/dashboard/advisor"  :
+  role === "manager"  ? "/dashboard/manager"  :
+  role === "parts"    ? "/dashboard/parts"    :
   role === "mechanic" || role === "tech" ? "/dashboard/tech" :
   "/dashboard";
 
@@ -30,50 +29,51 @@ export default function ConfirmContent() {
       } = await supabase.auth.getSession();
 
       const user = session?.user;
-      if (!user || cancelled) return;
+      if (!user || cancelled) return false;
 
-      const { data: profile } = await supabase
+      // Get role -> route
+      const { data: prof } = await supabase
         .from("profiles")
         .select("role")
         .eq("id", user.id)
         .single();
 
-      if (cancelled) return;
-      router.replace(rolePath(profile?.role ?? null));
+      if (cancelled) return true;
+      router.replace(rolePath(prof?.role ?? null));
+      return true;
     };
 
     (async () => {
-      // If Supabase sent us an auth code (email confirm / magic link), finalize the session.
+      // 1) Handle magic-link OAuth code if present
       const code = searchParams.get("code");
       if (code) {
         try {
           await supabase.auth.exchangeCodeForSession(code);
         } catch {
-          // Ignore invalid/expired code; we'll fall back to the checks below.
+          // ignore invalid/expired
         }
       }
 
-      // If we’re already logged in after checkout or callback → route by role
-      const { data: sessionData } = await supabase.auth.getSession();
-      if (sessionData.session?.user) {
-        await goToRoleHome();
-      } else {
-        // Not logged in yet. If this came from Stripe checkout, send to signup to finish account creation.
-        const sessionId = searchParams.get("session_id");
-        if (sessionId) {
-          router.replace(`/signup?session_id=${encodeURIComponent(sessionId)}`);
-        } else {
-          // Fallback: go to sign-in (then on success we’ll route to onboarding/role)
-          router.replace("/sign-in?redirect=/onboarding");
-        }
+      // 2) If we already have a session, route by role
+      const routed = await goToRoleHome();
+      if (routed) return;
+
+      // 3) No session yet → if coming from Stripe checkout, send to signup
+      const sessionId = searchParams.get("session_id");
+      if (sessionId) {
+        router.replace(`/signup?session_id=${encodeURIComponent(sessionId)}`);
+        return;
       }
 
-      // Also listen briefly in case the session arrives moments later.
-      const { data: listener } = supabase.auth.onAuthStateChange(async () => {
-        await goToRoleHome();
-      });
-      unsubscribe = () => listener.subscription.unsubscribe();
+      // 4) Fallback: ask user to sign in
+      router.replace("/sign-in");
     })();
+
+    // Also listen for any late-arriving session (e.g., after exchange)
+    const { data: listener } = supabase.auth.onAuthStateChange(async () => {
+      await goToRoleHome();
+    });
+    unsubscribe = () => listener.subscription.unsubscribe();
 
     return () => {
       cancelled = true;
@@ -82,9 +82,13 @@ export default function ConfirmContent() {
   }, [router, searchParams, supabase]);
 
   return (
-    <div className="p-10 text-white text-center">
-      <h1 className="text-2xl font-bold mb-2">Finishing up…</h1>
-      <p>You’ll be redirected in a moment.</p>
+    <div className="min-h-[60vh] grid place-items-center text-white">
+      <div className="text-center">
+        <h1 className="text-2xl font-bold">Confirming your account…</h1>
+        <p className="text-sm text-neutral-400">
+          You’ll be redirected automatically.
+        </p>
+      </div>
     </div>
   );
 }
