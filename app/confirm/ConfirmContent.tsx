@@ -21,7 +21,6 @@ export default function ConfirmContent() {
 
   useEffect(() => {
     let cancelled = false;
-    let unsubscribe: (() => void) | undefined;
 
     const goToRoleHome = async () => {
       const {
@@ -31,7 +30,6 @@ export default function ConfirmContent() {
       const user = session?.user;
       if (!user || cancelled) return false;
 
-      // Get role -> route
       const { data: prof } = await supabase
         .from("profiles")
         .select("role")
@@ -44,40 +42,40 @@ export default function ConfirmContent() {
     };
 
     (async () => {
-      // 1) Handle magic-link OAuth code if present
+      // 1) Handle magic-link/OAuth code if present
       const code = searchParams.get("code");
       if (code) {
         try {
+          // works with older helper signature; ignored if already exchanged
+          // @ts-ignore – allow either signature
           await supabase.auth.exchangeCodeForSession(code);
-        } catch {
-          // ignore invalid/expired
-        }
+        } catch {/* ignore */}
       }
 
-      // 2) If we already have a session, route by role
+      // 2) Already have a session? Route by role.
       const routed = await goToRoleHome();
       if (routed) return;
 
-      // 3) No session yet → if coming from Stripe checkout, send to signup
+      // 3) Coming from Stripe Checkout? Send to signup with the session_id
       const sessionId = searchParams.get("session_id");
       if (sessionId) {
         router.replace(`/signup?session_id=${encodeURIComponent(sessionId)}`);
         return;
       }
 
-      // 4) Fallback: ask user to sign in
+      // 4) Fallback
       router.replace("/sign-in");
     })();
 
-    // Also listen for any late-arriving session (e.g., after exchange)
+    // Listen for a late-arriving session
     const { data: listener } = supabase.auth.onAuthStateChange(async () => {
       await goToRoleHome();
     });
-    unsubscribe = () => listener.subscription.unsubscribe();
+    const unsubscribe = () => listener.subscription.unsubscribe();
 
     return () => {
       cancelled = true;
-      if (unsubscribe) unsubscribe();
+      unsubscribe();
     };
   }, [router, searchParams, supabase]);
 
