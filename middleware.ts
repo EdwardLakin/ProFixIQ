@@ -8,15 +8,13 @@ export async function middleware(req: NextRequest) {
   const supabase = createMiddlewareClient<Database>({ req, res });
 
   const { pathname } = req.nextUrl;
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  const { data: { session } } = await supabase.auth.getSession();
 
   const isPublic =
     pathname === "/" ||
     pathname.startsWith("/compare-plans") ||
     pathname.startsWith("/subscribe") ||
-    pathname.startsWith("/confirm") ||     // Stripe success return + magic link land
+    pathname.startsWith("/confirm") ||
     pathname.startsWith("/signup") ||
     pathname.startsWith("/sign-in") ||
     pathname.startsWith("/auth") ||
@@ -29,15 +27,15 @@ export async function middleware(req: NextRequest) {
     pathname === "/logo.svg";
 
   if (isPublic) {
-    // If a logged-in user hits landing, send by role (fallback to /onboarding)
+    // Optional: send logged-in users from landing to their role page or onboarding
     if (pathname === "/" && session?.user) {
       const { data: profile } = await supabase
         .from("profiles")
         .select("role")
         .eq("id", session.user.id)
-        .single();
+        .maybeSingle();
 
-      const role = profile?.role;
+      const role = profile?.role ?? null;
       const to =
         role === "owner"    ? "/dashboard/owner" :
         role === "admin"    ? "/dashboard/admin" :
@@ -45,15 +43,29 @@ export async function middleware(req: NextRequest) {
         role === "manager"  ? "/dashboard/manager" :
         role === "parts"    ? "/dashboard/parts" :
         role === "mechanic" || role === "tech" ? "/dashboard/tech" :
-        "/onboarding"; // 👈 default if no role yet
+        "/onboarding";
 
       return NextResponse.redirect(new URL(to, req.url));
     }
     return res;
   }
 
+  // Protected routes below this line
   if (!session?.user) {
-    return NextResponse.redirect(new URL("/", req.url));
+    return NextResponse.redirect(new URL("/sign-in", req.url));
+  }
+
+  // If a user with no role hits a generic /dashboard, push them to onboarding
+  if (pathname === "/dashboard") {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", session.user.id)
+      .maybeSingle();
+
+    if (!profile?.role) {
+      return NextResponse.redirect(new URL("/onboarding", req.url));
+    }
   }
 
   return res;
