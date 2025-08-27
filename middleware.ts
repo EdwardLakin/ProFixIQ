@@ -1,4 +1,3 @@
-// middleware.ts
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
@@ -17,10 +16,10 @@ export async function middleware(req: NextRequest) {
     pathname === "/" ||
     pathname.startsWith("/compare-plans") ||
     pathname.startsWith("/subscribe") ||
-    pathname.startsWith("/confirm") ||     // Stripe success return
-    pathname.startsWith("/signup") ||      // <-- make public
-    pathname.startsWith("/sign-in") ||     // <-- make public (if you use it)
-    pathname.startsWith("/auth") ||        // <-- magic-link / OAuth callbacks
+    pathname.startsWith("/confirm") ||     // Stripe success return + magic link land
+    pathname.startsWith("/signup") ||
+    pathname.startsWith("/sign-in") ||
+    pathname.startsWith("/auth") ||
     pathname.startsWith("/onboarding") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api") ||
@@ -30,7 +29,7 @@ export async function middleware(req: NextRequest) {
     pathname === "/logo.svg";
 
   if (isPublic) {
-    // Optional: if logged-in user hits landing, send to role dashboard
+    // If a logged-in user hits landing, send by role (fallback to /onboarding)
     if (pathname === "/" && session?.user) {
       const { data: profile } = await supabase
         .from("profiles")
@@ -46,7 +45,7 @@ export async function middleware(req: NextRequest) {
         role === "manager"  ? "/dashboard/manager" :
         role === "parts"    ? "/dashboard/parts" :
         role === "mechanic" || role === "tech" ? "/dashboard/tech" :
-        "/dashboard";
+        "/onboarding"; // 👈 default if no role yet
 
       return NextResponse.redirect(new URL(to, req.url));
     }

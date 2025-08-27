@@ -1,4 +1,3 @@
-// app/confirm/ConfirmContent.tsx
 "use client";
 
 import { useEffect } from "react";
@@ -13,9 +12,10 @@ const rolePath = (role?: string | null) =>
   role === "manager"  ? "/dashboard/manager" :
   role === "parts"    ? "/dashboard/parts"   :
   role === "mechanic" || role === "tech" ? "/dashboard/tech" :
-  "/onboarding"; // default for first-time users
+  // 👇 default for new users with no role yet
+  "/onboarding";
 
-// ship logs to server so they appear in Vercel logs
+// tiny server logger so we can see flow in Vercel logs (optional)
 async function log(message: string, extra?: Record<string, unknown>) {
   try {
     console.log("[confirm]", message, extra ?? "");
@@ -36,31 +36,30 @@ export default function ConfirmContent() {
   useEffect(() => {
     let cancelled = false;
 
-    async function ensureProfile(userId: string, email: string | null) {
-      const { data, error } = await supabase
+    const goToRoleHome = async () => {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (error) await log("supabase.getSession error", { error: error.message });
+
+      const user = session?.user;
+      await log("session check", { hasSession: !!user });
+      if (!user || cancelled) return false;
+
+      const { data: prof, error: profErr } = await supabase
         .from("profiles")
-        .select("id, role")
-        .eq("id", userId)
-        .maybeSingle();
+        .select("role")
+        .eq("id", user.id)
+        .single();
 
-      if (error) await log("profiles fetch error", { error: error.message });
+      if (profErr) await log("profiles fetch error", { error: profErr.message });
 
-      if (!data) {
-        await log("no profile row; inserting minimal profile");
-        const { error: insErr } = await supabase.from("profiles").insert({
-          id: userId,
-          email,
-          created_at: new Date().toISOString(),
-          role: null,
-        } as Database["public"]["Tables"]["profiles"]["Insert"]);
-        if (insErr) await log("profile insert error", { error: insErr.message });
-        return { role: null as string | null };
-      }
-      return { role: data.role as string | null };
-    }
+      const path = rolePath(prof?.role ?? null);
+      await log("routing to role home", { role: prof?.role ?? null, path });
+      if (!cancelled) router.replace(path);
+      return true;
+    };
 
-    const proceed = async () => {
-      // 1) If we came back with a Supabase auth code (magic link / OAuth), exchange it
+    (async () => {
+      // 1) If we have an auth `code` (magic link / OAuth), exchange it
       const code = searchParams.get("code");
       if (code) {
         try {
@@ -72,32 +71,28 @@ export default function ConfirmContent() {
         }
       }
 
-      // 2) If we already have a session, ensure profile then route by role
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) {
-        const sid = searchParams.get("session_id");
-        const dest = sid ? `/signup?session_id=${encodeURIComponent(sid)}` : "/sign-in";
-        await log("no session; redirecting", { dest });
-        if (!cancelled) router.replace(dest);
+      // 2) If we already have a session, route by role (falls back to /onboarding)
+      const routed = await goToRoleHome();
+      if (routed) return;
+
+      // 3) If no session yet but we have Stripe session_id → go to /signup
+      const sessionId = searchParams.get("session_id");
+      if (sessionId) {
+        const dest = `/signup?session_id=${encodeURIComponent(sessionId)}`;
+        await log("no session; redirecting to signup with session_id", { dest });
+        router.replace(dest);
         return;
       }
 
-      const user = session.user;
-      await log("session check", { hasSession: true, userId: user.id });
+      // 4) Otherwise: sign in
+      await log("no session and no session_id; redirecting to sign-in");
+      router.replace("/sign-in");
+    })();
 
-      const { role } = await ensureProfile(user.id, user.email ?? null);
-      const path = rolePath(role);
-      await log("routing after confirm", { role, path });
-      if (!cancelled) router.replace(path);
-    };
-
-    // Run once
-    proceed();
-
-    // Also listen for a late-arriving session (SIGNED_IN)
+    // Watch for a late session and route as soon as it exists
     const { data: listener } = supabase.auth.onAuthStateChange(async (ev) => {
       await log("auth state change", { event: ev });
-      if (ev === "SIGNED_IN") await proceed();
+      await goToRoleHome();
     });
 
     return () => {
