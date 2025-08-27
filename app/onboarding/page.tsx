@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -10,7 +10,6 @@ type Role = "owner" | "admin" | "manager" | "advisor" | "mechanic";
 export default function OnboardingPage() {
   const supabase = createClientComponentClient<Database>();
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   // Personal
   const [fullName, setFullName] = useState("");
@@ -28,14 +27,14 @@ export default function OnboardingPage() {
   const [shopCity, setShopCity] = useState("");
   const [shopProvince, setShopProvince] = useState("");
   const [shopPostal, setShopPostal] = useState("");
-  const [ownerPin, setOwnerPin] = useState(""); // <-- REQUIRED by API
+  const [ownerPin, setOwnerPin] = useState(""); // required by API
 
   // Flags
   const [asOwner, setAsOwner] = useState(true);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Prefill from Stripe session (optional) + ensure user present
+  // Ensure user present + (optionally) link Stripe session to user
   useEffect(() => {
     (async () => {
       const {
@@ -47,8 +46,9 @@ export default function OnboardingPage() {
         return;
       }
 
-      // Optional Stripe linking if you later add /api/stripe/link-user
-      const sessionId = searchParams.get("session_id");
+      // Read session_id from the URL without useSearchParams
+      const params = new URLSearchParams(window.location.search);
+      const sessionId = params.get("session_id");
       if (sessionId) {
         try {
           await fetch("/api/stripe/link-user", {
@@ -57,13 +57,13 @@ export default function OnboardingPage() {
             body: JSON.stringify({ sessionId, userId: user.id }),
           });
         } catch {
-          // ignore; non-blocking
+          // non-blocking
         }
       }
     })();
-  }, [router, searchParams, supabase]);
+  }, [router, supabase]);
 
-  // Sync toggle with role
+  // Keep owner toggle synced with role
   useEffect(() => {
     setAsOwner(role === "owner");
   }, [role]);
@@ -89,7 +89,7 @@ export default function OnboardingPage() {
       .update({
         full_name: fullName,
         phone,
-        role: asOwner ? undefined : role, // leave null for owner; the API will set owner
+        role: asOwner ? undefined : role, // owner gets set by bootstrap API
         street: userStreet,
         city: userCity,
         province: userProvince,
@@ -127,7 +127,7 @@ export default function OnboardingPage() {
           city: shopCity,
           province: shopProvince,
           postal_code: shopPostal,
-          pin: ownerPin, // <-- send the PIN
+          pin: ownerPin,
         }),
       });
 
@@ -139,7 +139,7 @@ export default function OnboardingPage() {
       }
     }
 
-    // 3) Redirect
+    // 3) Redirect by final role
     const finalRole: Role = asOwner ? "owner" : role;
     const redirectMap: Record<Role, string> = {
       owner: "/dashboard/owner",
