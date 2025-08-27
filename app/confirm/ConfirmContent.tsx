@@ -14,11 +14,8 @@ const rolePath = (role?: string | null) =>
   role === "mechanic" || role === "tech" ? "/dashboard/tech" :
   "/dashboard";
 
-// ship logs to server so they appear in Vercel logs
 async function log(message: string, extra?: Record<string, unknown>) {
   try {
-    // always log to console, too
-    // eslint-disable-next-line no-console
     console.log("[confirm]", message, extra ?? "");
     await fetch("/api/diag/log", {
       method: "POST",
@@ -26,106 +23,93 @@ async function log(message: string, extra?: Record<string, unknown>) {
       keepalive: true,
       body: JSON.stringify({ message, extra }),
     });
-  } catch {
-    /* ignore */
-  }
+  } catch {}
 }
 
 export default function ConfirmContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const search = useSearchParams();
   const supabase = createClientComponentClient<Database>();
 
   useEffect(() => {
     let cancelled = false;
+    const timeout = setTimeout(() => {
+      // never hang here—if we still haven't routed after 4s, go to onboarding
+      router.replace("/onboarding");
+    }, 4000);
 
-    const waitForSession = async (tries = 25, delayMs = 250) => {
-      for (let i = 0; i < tries; i++) {
-        const { data } = await supabase.auth.getSession();
-        if (data.session?.user) return data.session;
-        await new Promise(r => setTimeout(r, delayMs));
-      }
-      return null;
-    };
-
-    const routeByRole = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
-      await log("session check", { hasSession: !!user });
-      if (!user) return false;
-
-      const { data: prof, error: profErr } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .single();
-
-      if (profErr) await log("profiles fetch error", { error: profErr.message });
-
-      const path = rolePath(prof?.role ?? null);
-      await log("routing to role home", { role: prof?.role ?? null, path });
-      if (!cancelled) router.replace(path);
-      return true;
-    };
-
-    (async () => {
-      const code = searchParams.get("code");
-      const error = searchParams.get("error");
-      const errorDesc = searchParams.get("error_description");
-      const sessionId = searchParams.get("session_id");
-
-      if (error) {
-        await log("supabase returned error on callback", { error, errorDesc });
-      }
-
-      // 1) Exchange magic-link/OAuth code if present
+    const run = async () => {
+      // 1) Exchange auth code from magic link/OAuth if present
+      const code = search.get("code");
       if (code) {
         try {
           await log("found auth code, exchanging");
           await supabase.auth.exchangeCodeForSession(code);
           await log("auth code exchanged OK");
         } catch (e) {
-          await log("exchangeCodeForSession failed", {
-            error: e instanceof Error ? e.message : String(e),
-          });
+          await log("exchangeCodeForSession failed", { error: String(e) });
         }
       }
 
-      // 2) Try to see a session (poll to handle eventual consistency)
-      const session = await waitForSession();
-      if (!session) {
-        // No session materialized.
-        if (sessionId) {
-          const dest = `/signup?session_id=${encodeURIComponent(sessionId)}`;
-          await log("no session after wait; redirecting to signup", { dest });
+      // 2) Current session?
+      const { data: { session }, error: sessErr } = await supabase.auth.getSession();
+      if (sessErr) await log("getSession error", { error: sessErr.message });
+
+      // 2a) No session yet, but coming from Stripe? → go sign up and prefill
+      if (!session?.user) {
+        const sid = search.get("session_id");
+        if (sid && !cancelled) {
+          const dest = `/signup?session_id=${encodeURIComponent(sid)}`;
+          await log("no session; redirecting to signup with session_id", { dest });
           router.replace(dest);
           return;
         }
-        await log("no session after wait; redirecting to sign-in");
+        // Otherwise send to sign in
+        await log("no session; redirecting to sign-in");
         router.replace("/sign-in");
         return;
       }
 
-      // 3) We have a session → route by role
-      const routed = await routeByRole();
-      if (routed) return;
+      // 3) We have a session. Look for a profile row.
+      const uid = session.user.id;
+      const { data: prof, error: profErr } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", uid)
+        .maybeSingle(); // important: don’t throw on 0 rows
 
-      // 4) Safety fallback to onboarding
-      await log("had session but could not route by role; sending to onboarding");
-      router.replace("/onboarding");
-    })();
+      if (profErr) await log("profiles fetch error", { error: profErr.message });
 
-    // also react to late auth events
-    const { data: sub } = supabase.auth.onAuthStateChange(async (evt) => {
-      await log("auth state change", { event: evt });
-      await routeByRole();
+      // 3a) If there is no profile row yet → onboarding
+      if (!prof) {
+        await log("no profile row; redirecting to onboarding");
+        if (!cancelled) router.replace("/onboarding");
+        return;
+      }
+
+      // 4) Route by role
+      const path = rolePath(prof.role ?? null);
+      await log("routing to role home", { role: prof.role ?? null, path });
+      if (!cancelled) router.replace(path);
+    };
+
+    run();
+
+    // also react to late session establishment
+    const { data: sub } = supabase.auth.onAuthStateChange(async (ev) => {
+      await log("auth state change", { event: ev });
+      if (ev === "SIGNED_IN") {
+        // try again—this will go to onboarding if profile is still missing
+        router.replace("/confirm"); // re-run logic (cheap client page)
+      }
     });
 
     return () => {
       cancelled = true;
+      clearTimeout(timeout);
       sub.subscription.unsubscribe();
     };
-  }, [router, searchParams, supabase]);
+  }, [router, search, supabase]);
 
   return (
     <div className="min-h-[60vh] grid place-items-center text-white">
