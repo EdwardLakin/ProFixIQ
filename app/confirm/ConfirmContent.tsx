@@ -39,6 +39,29 @@ export default function ConfirmContent() {
   useEffect(() => {
     let cancelled = false;
 
+    const hardGoto = (url: string) => {
+      // last-resort navigation (avoids being stuck on /confirm)
+      try {
+        window.location.assign(url);
+      } catch {
+        router.replace(url);
+      }
+    };
+
+    const softReplace = (url: string) => {
+      if (cancelled || navigated.current) return;
+      navigated.current = true;
+      // Defer one tick to avoid racing hydration, then refresh
+      setTimeout(() => {
+        try {
+          router.replace(url);
+          router.refresh();
+        } catch {
+          hardGoto(url);
+        }
+      }, 0);
+    };
+
     const goToRoleHome = async () => {
       const { data: { session }, error } = await supabase.auth.getSession();
       if (error) await log("supabase.getSession error", { error: error.message });
@@ -59,11 +82,7 @@ export default function ConfirmContent() {
 
       const path = rolePath(prof?.role ?? null);
       await log("routing to role home", { role: prof?.role ?? null, path });
-
-      if (!cancelled && !navigated.current) {
-        navigated.current = true;
-        router.replace(path);
-      }
+      softReplace(path);
       return true;
     };
 
@@ -90,33 +109,31 @@ export default function ConfirmContent() {
       if (sessionId && !navigated.current) {
         const dest = `/signup?session_id=${encodeURIComponent(sessionId)}`;
         await log("no session; redirecting to signup with session_id", { dest });
-        navigated.current = true;
-        router.replace(dest);
+        softReplace(dest);
         return;
       }
 
       // 4) Fallback → sign in
       await log("no session and no session_id; redirecting to sign-in");
-      if (!navigated.current) {
-        navigated.current = true;
-        router.replace("/sign-in");
-      }
+      softReplace("/sign-in");
     })();
 
-    // 5) Safety: if nothing has happened after 4s, try again with the same logic
+    // 5) Safety: if nothing has happened after 4s, re-check and hard-redirect
     const safety = setTimeout(async () => {
       if (navigated.current || cancelled) return;
       await log("safety timeout: still here on /confirm; re-checking session");
-      const routed = await (async () => {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) return await goToRoleHome();
-        return false;
-      })();
-      if (!routed && !navigated.current) {
-        const sid = searchParams.get("session_id");
-        navigated.current = true;
-        router.replace(sid ? `/signup?session_id=${encodeURIComponent(sid)}` : "/sign-in");
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", session.user.id)
+          .maybeSingle();
+        hardGoto(rolePath(prof?.role ?? null));
+        return;
       }
+      const sid = searchParams.get("session_id");
+      hardGoto(sid ? `/signup?session_id=${encodeURIComponent(sid)}` : "/sign-in");
     }, 4000);
 
     // Also listen for a late session (e.g., code arrives)
