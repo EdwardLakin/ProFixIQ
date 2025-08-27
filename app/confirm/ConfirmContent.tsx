@@ -17,14 +17,18 @@ const rolePath = (role?: string | null) =>
 // ship logs to server so they appear in Vercel logs
 async function log(message: string, extra?: Record<string, unknown>) {
   try {
+    // always log to console, too
+    // eslint-disable-next-line no-console
     console.log("[confirm]", message, extra ?? "");
     await fetch("/api/diag/log", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      keepalive: true,                 // don’t lose logs on navigation
+      keepalive: true,
       body: JSON.stringify({ message, extra }),
     });
-  } catch {/* ignore */}
+  } catch {
+    /* ignore */
+  }
 }
 
 export default function ConfirmContent() {
@@ -35,14 +39,20 @@ export default function ConfirmContent() {
   useEffect(() => {
     let cancelled = false;
 
-    const goToRoleHome = async () => {
-      const { data: { session }, error } = await supabase.auth.getSession();
-      if (error) await log("supabase.getSession error", { error: error.message });
+    const waitForSession = async (tries = 25, delayMs = 250) => {
+      for (let i = 0; i < tries; i++) {
+        const { data } = await supabase.auth.getSession();
+        if (data.session?.user) return data.session;
+        await new Promise(r => setTimeout(r, delayMs));
+      }
+      return null;
+    };
 
+    const routeByRole = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
       const user = session?.user;
       await log("session check", { hasSession: !!user });
-
-      if (!user || cancelled) return false;
+      if (!user) return false;
 
       const { data: prof, error: profErr } = await supabase
         .from("profiles")
@@ -59,45 +69,61 @@ export default function ConfirmContent() {
     };
 
     (async () => {
-      // 1) If we came back with a Supabase auth code (magic link / OAuth), exchange it
       const code = searchParams.get("code");
+      const error = searchParams.get("error");
+      const errorDesc = searchParams.get("error_description");
+      const sessionId = searchParams.get("session_id");
+
+      if (error) {
+        await log("supabase returned error on callback", { error, errorDesc });
+      }
+
+      // 1) Exchange magic-link/OAuth code if present
       if (code) {
         try {
           await log("found auth code, exchanging");
           await supabase.auth.exchangeCodeForSession(code);
           await log("auth code exchanged OK");
         } catch (e) {
-          await log("exchangeCodeForSession failed", { error: e instanceof Error ? e.message : String(e) });
+          await log("exchangeCodeForSession failed", {
+            error: e instanceof Error ? e.message : String(e),
+          });
         }
       }
 
-      // 2) If we already have a session, route by role
-      const routed = await goToRoleHome();
-      if (routed) return;
-
-      // 3) If no session yet but we have Stripe session_id → send to signup
-      const sessionId = searchParams.get("session_id");
-      if (sessionId) {
-        const dest = `/signup?session_id=${encodeURIComponent(sessionId)}`;
-        await log("no session; redirecting to signup with session_id", { dest });
-        router.replace(dest);
+      // 2) Try to see a session (poll to handle eventual consistency)
+      const session = await waitForSession();
+      if (!session) {
+        // No session materialized.
+        if (sessionId) {
+          const dest = `/signup?session_id=${encodeURIComponent(sessionId)}`;
+          await log("no session after wait; redirecting to signup", { dest });
+          router.replace(dest);
+          return;
+        }
+        await log("no session after wait; redirecting to sign-in");
+        router.replace("/sign-in");
         return;
       }
 
-      // 4) Fallback → sign in
-      await log("no session and no session_id; redirecting to sign-in");
-      router.replace("/sign-in");
+      // 3) We have a session → route by role
+      const routed = await routeByRole();
+      if (routed) return;
+
+      // 4) Safety fallback to onboarding
+      await log("had session but could not route by role; sending to onboarding");
+      router.replace("/onboarding");
     })();
 
-    // Also listen for a late-arriving session and route when it appears
-    const { data: listener } = supabase.auth.onAuthStateChange(async (ev) => {
-      await log("auth state change", { event: ev });
-      await goToRoleHome();
+    // also react to late auth events
+    const { data: sub } = supabase.auth.onAuthStateChange(async (evt) => {
+      await log("auth state change", { event: evt });
+      await routeByRole();
     });
 
     return () => {
       cancelled = true;
-      listener.subscription.unsubscribe();
+      sub.subscription.unsubscribe();
     };
   }, [router, searchParams, supabase]);
 

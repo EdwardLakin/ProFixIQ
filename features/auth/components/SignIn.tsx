@@ -1,3 +1,4 @@
+// features/auth/components/signin.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -5,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 
+// Single client for this component
 const supabase = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -30,16 +32,18 @@ export default function AuthPage() {
   const [email, setEmail] = useState(params.get("email") || "");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState(params.get("notice") || ""); // show message from URL
   const [loading, setLoading] = useState(false);
 
-  // Optional redirect (used for customers only after sign-in)
+  // Optional redirect (customer portal, etc.)
   const redirectParam = params.get("redirect") || "/portal";
 
+  // If already signed in, route by role immediately
   useEffect(() => {
-    // If the user is already signed in (e.g., returning from Stripe), route immediately
     (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       if (!session?.user) return;
 
       const { data: profile } = await supabase
@@ -60,15 +64,21 @@ export default function AuthPage() {
     setError("");
     setNotice("");
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
     if (error) {
       setError(error.message);
       setLoading(false);
       return;
     }
 
-    // Route by role
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
     if (!user) {
       setError("No user in session.");
       setLoading(false);
@@ -94,7 +104,12 @@ export default function AuthPage() {
     setError("");
     setNotice("");
 
-    const emailRedirectTo = `${window.location.origin}/auth/callback`;
+    // Ensure the magic link returns to /confirm (our consolidating page)
+    const origin =
+      typeof window !== "undefined"
+        ? window.location.origin
+        : process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || "";
+    const emailRedirectTo = `${origin}/confirm`;
 
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -108,35 +123,45 @@ export default function AuthPage() {
       return;
     }
 
-    // If email confirm is required, there will be no session here.
+    // If email confirmation is enabled (typical), there's no session yet
     if (!data.session) {
-      setNotice("Check your email to confirm your account. After confirming, we'll take you to onboarding.");
+      setNotice(
+        "Check your inbox for a confirmation link. After confirming, we’ll take you to onboarding."
+      );
       setLoading(false);
       return;
     }
 
-    // If confirmation is disabled and session exists immediately, we still want onboarding
-    router.replace("/onboarding/profile");
+    // If confirmation is disabled and a session exists immediately:
+    router.replace("/onboarding");
     setLoading(false);
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 bg-background">
+    <div className="min-h-screen flex flex-col items-center justify-center px-4 bg-black text-white">
       <div className="max-w-md w-full space-y-6 border border-orange-500 p-8 rounded-xl backdrop-blur-md bg-black/30">
         <h1 className="text-4xl text-center font-blackops text-orange-500">
-          {mode === "sign-in" ? "Sign In" : "Create your Portal Account"}
+          {mode === "sign-in" ? "Sign In" : "Create your Account"}
         </h1>
 
         <div className="flex justify-center gap-4 text-sm">
           <button
-            className={`px-3 py-1 rounded ${mode === "sign-in" ? "bg-orange-500 text-black" : "bg-neutral-800 text-neutral-300"}`}
+            className={`px-3 py-1 rounded ${
+              mode === "sign-in"
+                ? "bg-orange-500 text-black"
+                : "bg-neutral-800 text-neutral-300"
+            }`}
             onClick={() => setMode("sign-in")}
             disabled={loading}
           >
             Sign In
           </button>
           <button
-            className={`px-3 py-1 rounded ${mode === "sign-up" ? "bg-orange-500 text-black" : "bg-neutral-800 text-neutral-300"}`}
+            className={`px-3 py-1 rounded ${
+              mode === "sign-up"
+                ? "bg-orange-500 text-black"
+                : "bg-neutral-800 text-neutral-300"
+            }`}
             onClick={() => setMode("sign-up")}
             disabled={loading}
           >
@@ -144,14 +169,17 @@ export default function AuthPage() {
           </button>
         </div>
 
-        <form onSubmit={mode === "sign-in" ? handleSignIn : handleSignUp} className="space-y-4">
+        <form
+          onSubmit={mode === "sign-in" ? handleSignIn : handleSignUp}
+          className="space-y-4"
+        >
           <input
             type="email"
             placeholder="Email"
             autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="input"
+            className="w-full p-2 rounded bg-gray-900 border border-orange-500"
             required
           />
           <input
@@ -160,13 +188,17 @@ export default function AuthPage() {
             autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="input"
+            className="w-full p-2 rounded bg-gray-900 border border-orange-500"
             required
             minLength={6}
           />
 
-          {error && <p className="text-red-500 text-sm text-center">{error}</p>}
-          {notice && <p className="text-green-400 text-sm text-center">{notice}</p>}
+          {error && (
+            <p className="text-red-500 text-sm text-center">{error}</p>
+          )}
+          {notice && (
+            <p className="text-green-400 text-sm text-center">{notice}</p>
+          )}
 
           <button
             type="submit"
@@ -178,17 +210,22 @@ export default function AuthPage() {
                 ? "Signing In..."
                 : "Creating Account..."
               : mode === "sign-in"
-                ? "Sign In"
-                : "Sign Up"}
+              ? "Sign In"
+              : "Sign Up"}
           </button>
         </form>
 
         <div className="text-center text-xs text-neutral-400">
           <p>
             By continuing you agree to our{" "}
-            <a href="/terms" className="text-orange-400 hover:underline">Terms</a>{" "}
+            <a href="/terms" className="text-orange-400 hover:underline">
+              Terms
+            </a>{" "}
             and{" "}
-            <a href="/privacy" className="text-orange-400 hover:underline">Privacy Policy</a>.
+            <a href="/privacy" className="text-orange-400 hover:underline">
+              Privacy Policy
+            </a>
+            .
           </p>
         </div>
       </div>

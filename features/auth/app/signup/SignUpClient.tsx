@@ -12,31 +12,31 @@ export default function SignUpClient() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string>("");
-  const [info, setInfo] = useState<string>("");
 
-  // Where should the Supabase magic link land after email confirmation?
+  // Where should the magic link redirect?
   const emailRedirectTo = useMemo(() => {
-    // Prefer a configured origin; fall back to current
     const base =
-      process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
+      process.env.NEXT_PUBLIC_SITE_URL ??
       (typeof window !== "undefined" ? window.location.origin : "");
-    return `${base}/confirm`;
+    return `${base.replace(/\/$/, "")}/confirm`;
   }, []);
 
-  // Prefill from Stripe Checkout session (if present)
+  // Prefill email if we came from Stripe or a redirect
   useEffect(() => {
-    const sessionId = searchParams.get("session_id");
-    if (!sessionId) return;
+    const fromQuery = searchParams.get("email");
+    if (fromQuery) setEmail(fromQuery);
 
+    const sid = searchParams.get("session_id");
+    if (!sid) return;
     (async () => {
       try {
-        const res = await fetch(`/api/stripe/session?session_id=${sessionId}`);
+        const res = await fetch(`/api/stripe/session?session_id=${sid}`);
         const data = await res.json();
-        if (data?.email) setEmail(data.email as string);
+        if (data?.email) setEmail(data.email);
       } catch (e) {
-        console.error("[signup] stripe prefill failed:", e);
+        console.error("[signup] prefill from stripe failed", e);
       }
     })();
   }, [searchParams]);
@@ -45,9 +45,7 @@ export default function SignUpClient() {
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getUser();
-      if (data?.user) {
-        router.replace("/onboarding");
-      }
+      if (data?.user) router.replace("/onboarding");
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
@@ -55,92 +53,90 @@ export default function SignUpClient() {
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    setInfo("");
     setSubmitting(true);
 
-    try {
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { emailRedirectTo },
-      });
+    // Normal sign up
+    const { error: signUpError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { emailRedirectTo },
+    });
 
-      if (signUpError) {
-        // Helpful copy for common cases
-        if (
-          signUpError.message.toLowerCase().includes("already registered") ||
-          signUpError.message.toLowerCase().includes("user already exists")
-        ) {
-          setError(
-            "That email is already registered. Try signing in, or use the magic link from your inbox."
-          );
-        } else {
-          setError(signUpError.message);
-        }
-        return;
-      }
-
-      // If email confirmations are ON (recommended), Supabase returns no session.
-      // Tell the user to check their inbox.
-      if (!data.session) {
-        setInfo(
-          "We’ve sent a confirmation email. Open it and click the link to finish setting up your account."
-        );
-        return;
-      }
-
-      // If confirmations are OFF, we already have a session → continue.
-      router.replace("/onboarding");
-    } catch (err) {
-      console.error("[signup] unexpected error:", err);
-      setError("Something went wrong. Please try again.");
-    } finally {
+    if (!signUpError) {
+      // Success → let confirm page handle the magic-link callback / role routing
       setSubmitting(false);
+      router.replace("/confirm");
+      return;
     }
+
+    // ── SAFETY: user may have already signed up ───────────────────────────────
+    const msg = (signUpError.message || "").toLowerCase();
+    const looksLikeAlreadyExists =
+      msg.includes("already registered") ||
+      msg.includes("already exists") ||
+      signUpError.status === 422;
+
+    if (looksLikeAlreadyExists) {
+      // Try to resend the signup confirmation (non-blocking)
+      try {
+        // supabase-js v2: resend a confirmation email
+        // @ts-ignore - some versions don't expose type on the client package
+        await supabase.auth.resend({
+          type: "signup",
+          email,
+          options: { emailRedirectTo },
+        });
+      } catch (err) {
+        console.warn("[signup] resend failed:", err);
+      }
+
+      // Then push to sign-in with a hint so the user can finish
+      setSubmitting(false);
+      const params = new URLSearchParams({
+        email,
+        notice:
+          "We found an existing signup. Check your inbox for a new confirmation link, or sign in if you already confirmed.",
+      });
+      router.replace(`/sign-in?${params.toString()}`);
+      return;
+    }
+
+    // Any other error
+    setSubmitting(false);
+    setError(signUpError.message);
   };
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-black text-white px-4 font-blackops">
       <h1 className="text-3xl mb-6 text-orange-500">Create Account</h1>
-
       <form onSubmit={handleSignUp} className="w-full max-w-md space-y-4">
         <input
           type="email"
           placeholder="Email"
+          autoComplete="email"
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           className="w-full p-2 rounded bg-gray-900 border border-orange-500"
         />
-
         <input
           type="password"
           placeholder="Password"
+          autoComplete="new-password"
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           className="w-full p-2 rounded bg-gray-900 border border-orange-500"
         />
-
         <button
           type="submit"
           disabled={submitting}
-          className="w-full bg-orange-500 hover:bg-orange-600 text-black font-bold py-2 px-4 rounded disabled:opacity-60"
+          className="w-full bg-orange-500 hover:bg-orange-600 text-black font-bold py-2 px-4 rounded"
         >
-          {submitting ? "Creating Account…" : "Sign Up"}
+          {submitting ? "Creating Account..." : "Sign Up"}
         </button>
-
-        {!!error && <p className="text-red-500 text-sm">{error}</p>}
-        {!!info && <p className="text-green-400 text-sm">{info}</p>}
+        {error && <p className="text-red-500 text-sm">{error}</p>}
       </form>
-
-      {/* Simple link for users who actually had an account */}
-      <p className="mt-4 text-neutral-400 text-sm">
-        Already have an account?{" "}
-        <a href="/sign-in" className="text-orange-400 underline">
-          Sign in
-        </a>
-      </p>
     </div>
   );
 }
