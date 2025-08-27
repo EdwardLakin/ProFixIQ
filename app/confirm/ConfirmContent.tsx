@@ -1,6 +1,7 @@
+// app/confirm/ConfirmContent.tsx
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
@@ -12,8 +13,9 @@ const rolePath = (role?: string | null) =>
   role === "manager"  ? "/dashboard/manager" :
   role === "parts"    ? "/dashboard/parts"   :
   role === "mechanic" || role === "tech" ? "/dashboard/tech" :
-  "/onboarding"; // <-- default to onboarding if no role
+  "/onboarding"; // default for first-time users
 
+// ship logs to server so they appear in Vercel logs
 async function log(message: string, extra?: Record<string, unknown>) {
   try {
     console.log("[confirm]", message, extra ?? "");
@@ -23,7 +25,7 @@ async function log(message: string, extra?: Record<string, unknown>) {
       keepalive: true,
       body: JSON.stringify({ message, extra }),
     });
-  } catch {}
+  } catch { /* ignore */ }
 }
 
 export default function ConfirmContent() {
@@ -31,16 +33,34 @@ export default function ConfirmContent() {
   const searchParams = useSearchParams();
   const supabase = createClientComponentClient<Database>();
 
-  const sessionId = useMemo(
-    () => searchParams.get("session_id"),
-    [searchParams]
-  );
-
   useEffect(() => {
     let cancelled = false;
 
-    const routeByState = async () => {
-      // 1) Exchange auth code (magic link / OAuth)
+    async function ensureProfile(userId: string, email: string | null) {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, role")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (error) await log("profiles fetch error", { error: error.message });
+
+      if (!data) {
+        await log("no profile row; inserting minimal profile");
+        const { error: insErr } = await supabase.from("profiles").insert({
+          id: userId,
+          email,
+          created_at: new Date().toISOString(),
+          role: null,
+        } as Database["public"]["Tables"]["profiles"]["Insert"]);
+        if (insErr) await log("profile insert error", { error: insErr.message });
+        return { role: null as string | null };
+      }
+      return { role: data.role as string | null };
+    }
+
+    const proceed = async () => {
+      // 1) If we came back with a Supabase auth code (magic link / OAuth), exchange it
       const code = searchParams.get("code");
       if (code) {
         try {
@@ -48,66 +68,43 @@ export default function ConfirmContent() {
           await supabase.auth.exchangeCodeForSession(code);
           await log("auth code exchanged OK");
         } catch (e) {
-          await log("exchangeCodeForSession failed", { error: String(e) });
+          await log("exchangeCodeForSession failed", { error: e instanceof Error ? e.message : String(e) });
         }
       }
 
-      // 2) Read current session
-      const { data: { session }, error: sessErr } = await supabase.auth.getSession();
-      if (sessErr) await log("getSession error", { error: sessErr.message });
-
-      // 2a) Came from Stripe, no Supabase session yet → go to signup to create account
-      if (!session) {
-        if (sessionId) {
-          const dest = `/signup?session_id=${encodeURIComponent(sessionId)}`;
-          await log("no session; redirecting to signup", { dest });
-          if (!cancelled) router.replace(dest);
-          return;
-        }
-        // 2b) No session and no Stripe context → sign-in
-        await log("no session and no session_id; redirecting to sign-in");
-        if (!cancelled) router.replace("/sign-in");
-        return;
-      }
-
-      // 3) We have a session; check for a profile
-      const { data: prof, error: profErr } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", session.user.id)
-        .maybeSingle();                 // <-- important: avoid throwing when not found
-
-      if (profErr) await log("profiles fetch error", { error: profErr.message });
-
-      // 3a) No profile row yet → onboarding
-      if (!prof) {
-        const dest = sessionId
-          ? `/onboarding?session_id=${encodeURIComponent(sessionId)}`
-          : "/onboarding";
-        await log("no profile; redirecting to onboarding", { dest });
+      // 2) If we already have a session, ensure profile then route by role
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
+        const sid = searchParams.get("session_id");
+        const dest = sid ? `/signup?session_id=${encodeURIComponent(sid)}` : "/sign-in";
+        await log("no session; redirecting", { dest });
         if (!cancelled) router.replace(dest);
         return;
       }
 
-      // 3b) Have role → send to correct dashboard
-      const path = rolePath(prof.role ?? null);
-      await log("routing to role home", { role: prof.role ?? null, path });
+      const user = session.user;
+      await log("session check", { hasSession: true, userId: user.id });
+
+      const { role } = await ensureProfile(user.id, user.email ?? null);
+      const path = rolePath(role);
+      await log("routing after confirm", { role, path });
       if (!cancelled) router.replace(path);
     };
 
-    routeByState();
+    // Run once
+    proceed();
 
-    // Also react to a late SIGNED_IN event
+    // Also listen for a late-arriving session (SIGNED_IN)
     const { data: listener } = supabase.auth.onAuthStateChange(async (ev) => {
       await log("auth state change", { event: ev });
-      if (ev === "SIGNED_IN") routeByState();
+      if (ev === "SIGNED_IN") await proceed();
     });
 
     return () => {
       cancelled = true;
       listener.subscription.unsubscribe();
     };
-  }, [router, searchParams, sessionId, supabase]);
+  }, [router, searchParams, supabase]);
 
   return (
     <div className="min-h-[60vh] grid place-items-center text-white">

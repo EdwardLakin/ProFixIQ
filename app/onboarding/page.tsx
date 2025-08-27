@@ -1,7 +1,8 @@
+// app/onboarding/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -10,6 +11,11 @@ type Role = "owner" | "admin" | "manager" | "advisor" | "mechanic";
 export default function OnboardingPage() {
   const supabase = createClientComponentClient<Database>();
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Session gate
+  const [sessionChecked, setSessionChecked] = useState(false);
+  const [hasSession, setHasSession] = useState(false);
 
   // Personal
   const [fullName, setFullName] = useState("");
@@ -27,29 +33,23 @@ export default function OnboardingPage() {
   const [shopCity, setShopCity] = useState("");
   const [shopProvince, setShopProvince] = useState("");
   const [shopPostal, setShopPostal] = useState("");
-  const [ownerPin, setOwnerPin] = useState(""); // required by API
+  const [ownerPin, setOwnerPin] = useState(""); // REQUIRED by API
 
   // Flags
   const [asOwner, setAsOwner] = useState(true);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Ensure user present + (optionally) link Stripe session to user
+  // Ensure session (but do not redirect if missing; show message)
   useEffect(() => {
     (async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const { data: { user } } = await supabase.auth.getUser();
+      setHasSession(!!user);
+      setSessionChecked(true);
 
-      if (!user) {
-        router.replace("/signup");
-        return;
-      }
-
-      // Read session_id from the URL without useSearchParams
-      const params = new URLSearchParams(window.location.search);
-      const sessionId = params.get("session_id");
-      if (sessionId) {
+      // Optional Stripe linking if you later add /api/stripe/link-user
+      const sessionId = searchParams.get("session_id");
+      if (user && sessionId) {
         try {
           await fetch("/api/stripe/link-user", {
             method: "POST",
@@ -57,13 +57,13 @@ export default function OnboardingPage() {
             body: JSON.stringify({ sessionId, userId: user.id }),
           });
         } catch {
-          // non-blocking
+          /* ignore */
         }
       }
     })();
-  }, [router, supabase]);
+  }, [searchParams, supabase]);
 
-  // Keep owner toggle synced with role
+  // Sync toggle with role
   useEffect(() => {
     setAsOwner(role === "owner");
   }, [role]);
@@ -73,10 +73,7 @@ export default function OnboardingPage() {
     setError("");
     setLoading(true);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
+    const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       setError("User not found.");
       setLoading(false);
@@ -89,7 +86,7 @@ export default function OnboardingPage() {
       .update({
         full_name: fullName,
         phone,
-        role: asOwner ? undefined : role, // owner gets set by bootstrap API
+        role: asOwner ? undefined : role, // leave null for owner; the API will set owner
         street: userStreet,
         city: userCity,
         province: userProvince,
@@ -139,7 +136,7 @@ export default function OnboardingPage() {
       }
     }
 
-    // 3) Redirect by final role
+    // 3) Redirect
     const finalRole: Role = asOwner ? "owner" : role;
     const redirectMap: Record<Role, string> = {
       owner: "/dashboard/owner",
@@ -152,6 +149,24 @@ export default function OnboardingPage() {
     setLoading(false);
     router.replace(redirectMap[finalRole] || "/dashboard");
   };
+
+  // Session gate rendering
+  if (!sessionChecked) {
+    return <div className="min-h-screen grid place-items-center text-white">Loading…</div>;
+  }
+  if (!hasSession) {
+    return (
+      <div className="min-h-screen grid place-items-center text-white text-center px-6">
+        <div>
+          <h1 className="text-2xl font-bold mb-2">Almost there</h1>
+          <p className="text-neutral-400 mb-4">
+            Please confirm your email from the link we sent. After confirming, you’ll be routed here automatically.
+          </p>
+          <a href="/sign-in" className="text-orange-400 underline">Already confirmed? Sign in</a>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-black text-white px-4 font-blackops">

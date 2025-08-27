@@ -2,13 +2,11 @@ import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
   try {
-    const { message, extra } = await req.json();
-    // These console logs show up in Vercel “Logs”
-    /* eslint-disable no-console */
-    console.log("[diag]", message, extra ?? "");
+    const body = await req.json().catch(() => ({}));
+    console.log("[diag]", body.message, body.extra || "");
     return NextResponse.json({ ok: true });
   } catch (e) {
-    console.error("[diag] failed to log", e);
-    return NextResponse.json({ ok: false }, { status: 400 });
+    console.error("[diag] failed", e);
+    return NextResponse.json({ ok: false }, { status: 500 });
   }
 }
