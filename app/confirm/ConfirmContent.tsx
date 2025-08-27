@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
@@ -12,7 +12,7 @@ const rolePath = (role?: string | null) =>
   role === "manager"  ? "/dashboard/manager" :
   role === "parts"    ? "/dashboard/parts"   :
   role === "mechanic" || role === "tech" ? "/dashboard/tech" :
-  "/dashboard";
+  "/onboarding"; // <-- default to onboarding if no role
 
 async function log(message: string, extra?: Record<string, unknown>) {
   try {
@@ -28,19 +28,20 @@ async function log(message: string, extra?: Record<string, unknown>) {
 
 export default function ConfirmContent() {
   const router = useRouter();
-  const search = useSearchParams();
+  const searchParams = useSearchParams();
   const supabase = createClientComponentClient<Database>();
+
+  const sessionId = useMemo(
+    () => searchParams.get("session_id"),
+    [searchParams]
+  );
 
   useEffect(() => {
     let cancelled = false;
-    const timeout = setTimeout(() => {
-      // never hang here—if we still haven't routed after 4s, go to onboarding
-      router.replace("/onboarding");
-    }, 4000);
 
-    const run = async () => {
-      // 1) Exchange auth code from magic link/OAuth if present
-      const code = search.get("code");
+    const routeByState = async () => {
+      // 1) Exchange auth code (magic link / OAuth)
+      const code = searchParams.get("code");
       if (code) {
         try {
           await log("found auth code, exchanging");
@@ -51,65 +52,62 @@ export default function ConfirmContent() {
         }
       }
 
-      // 2) Current session?
+      // 2) Read current session
       const { data: { session }, error: sessErr } = await supabase.auth.getSession();
       if (sessErr) await log("getSession error", { error: sessErr.message });
 
-      // 2a) No session yet, but coming from Stripe? → go sign up and prefill
-      if (!session?.user) {
-        const sid = search.get("session_id");
-        if (sid && !cancelled) {
-          const dest = `/signup?session_id=${encodeURIComponent(sid)}`;
-          await log("no session; redirecting to signup with session_id", { dest });
-          router.replace(dest);
+      // 2a) Came from Stripe, no Supabase session yet → go to signup to create account
+      if (!session) {
+        if (sessionId) {
+          const dest = `/signup?session_id=${encodeURIComponent(sessionId)}`;
+          await log("no session; redirecting to signup", { dest });
+          if (!cancelled) router.replace(dest);
           return;
         }
-        // Otherwise send to sign in
-        await log("no session; redirecting to sign-in");
-        router.replace("/sign-in");
+        // 2b) No session and no Stripe context → sign-in
+        await log("no session and no session_id; redirecting to sign-in");
+        if (!cancelled) router.replace("/sign-in");
         return;
       }
 
-      // 3) We have a session. Look for a profile row.
-      const uid = session.user.id;
+      // 3) We have a session; check for a profile
       const { data: prof, error: profErr } = await supabase
         .from("profiles")
         .select("role")
-        .eq("id", uid)
-        .maybeSingle(); // important: don’t throw on 0 rows
+        .eq("id", session.user.id)
+        .maybeSingle();                 // <-- important: avoid throwing when not found
 
       if (profErr) await log("profiles fetch error", { error: profErr.message });
 
-      // 3a) If there is no profile row yet → onboarding
+      // 3a) No profile row yet → onboarding
       if (!prof) {
-        await log("no profile row; redirecting to onboarding");
-        if (!cancelled) router.replace("/onboarding");
+        const dest = sessionId
+          ? `/onboarding?session_id=${encodeURIComponent(sessionId)}`
+          : "/onboarding";
+        await log("no profile; redirecting to onboarding", { dest });
+        if (!cancelled) router.replace(dest);
         return;
       }
 
-      // 4) Route by role
+      // 3b) Have role → send to correct dashboard
       const path = rolePath(prof.role ?? null);
       await log("routing to role home", { role: prof.role ?? null, path });
       if (!cancelled) router.replace(path);
     };
 
-    run();
+    routeByState();
 
-    // also react to late session establishment
-    const { data: sub } = supabase.auth.onAuthStateChange(async (ev) => {
+    // Also react to a late SIGNED_IN event
+    const { data: listener } = supabase.auth.onAuthStateChange(async (ev) => {
       await log("auth state change", { event: ev });
-      if (ev === "SIGNED_IN") {
-        // try again—this will go to onboarding if profile is still missing
-        router.replace("/confirm"); // re-run logic (cheap client page)
-      }
+      if (ev === "SIGNED_IN") routeByState();
     });
 
     return () => {
       cancelled = true;
-      clearTimeout(timeout);
-      sub.subscription.unsubscribe();
+      listener.subscription.unsubscribe();
     };
-  }, [router, search, supabase]);
+  }, [router, searchParams, sessionId, supabase]);
 
   return (
     <div className="min-h-[60vh] grid place-items-center text-white">
