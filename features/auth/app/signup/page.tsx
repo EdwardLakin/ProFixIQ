@@ -1,118 +1,154 @@
-// features/auth/app/signup/page.tsx
+// app/signup/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 export default function SignUpPage() {
   const supabase = createClientComponentClient<Database>();
-  const searchParams = useSearchParams();
+  const router = useRouter();
+  const sp = useSearchParams();
 
   const [email, setEmail] = useState("");
-  const [sending, setSending] = useState(false);
-  const [sent, setSent] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [password, setPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
-  // Prefill email from Stripe Checkout session if present
+  const sessionId = sp.get("session_id");
+
+  const origin =
+    typeof window !== "undefined" && window.location?.origin
+      ? window.location.origin
+      : "https://profixiq.com";
+
+  // Prefill email if we arrived from Stripe Checkout
   useEffect(() => {
-    const sessionId = searchParams.get("session_id");
-    if (!sessionId) return;
+    let cancelled = false;
+    (async () => {
+      if (!sessionId) return;
 
-    const fetchEmail = async () => {
       try {
-        const res = await fetch(`/api/stripe/session?session_id=${sessionId}`);
+        const res = await fetch(`/api/stripe/session?session_id=${encodeURIComponent(sessionId)}`);
         const data = await res.json();
-        if (data?.email) setEmail(data.email);
+        if (!cancelled && data?.email && !email) {
+          setEmail(data.email);
+        }
       } catch (e) {
-        console.error("Failed to prefill email from Stripe:", e);
+        // optional, remove if you don't have this route
+        fetch("/api/diag/log", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ where: "signup prefill", error: String(e) }),
+        }).catch(() => {});
       }
+    })();
+    return () => {
+      cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
 
-    void fetchEmail();
-  }, [searchParams]);
+  // If already signed in, bounce to /confirm so role router can take over
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.auth.getUser();
+      if (data?.user) router.replace("/confirm");
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const handleSendMagicLink = async (e: React.FormEvent) => {
+  const canSubmit = useMemo(() => {
+    return !!email && !!password && !submitting;
+  }, [email, password, submitting]);
+
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setSent(false);
-    setSending(true);
+    setErr(null);
+    setSubmitting(true);
 
     try {
-      const emailRedirectTo =
-        (typeof window !== "undefined" ? window.location.origin : "") +
-        "/confirm";
+      const { error } = await supabase.auth.signUp({
+  email,
+  password,
+  options: {
+    emailRedirectTo: `${origin}/confirm`, // or your computed emailRedirectTo
+  },
+});
 
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          // This is where the magic-link will land
-          emailRedirectTo,
-        },
-      });
-
-      if (otpError) {
-        setError(otpError.message);
-        setSending(false);
+      if (error) {
+        setErr(error.message);
         return;
       }
 
-      setSent(true);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Unknown error";
-      setError(msg);
+      // Optional: log for debugging
+      fetch("/api/diag/log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          where: "signup submit",
+          note: "signup success, redirecting to /confirm to await magic link",
+        }),
+      }).catch(() => {});
+
+      // Take the user to the confirm page where we do code exchange / role routing
+      router.replace("/confirm");
+    } catch (e: any) {
+      setErr(e?.message ?? "Unexpected error");
     } finally {
-      setSending(false);
+      setSubmitting(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-black text-white flex items-center justify-center px-4">
+    <main className="min-h-screen bg-black text-white grid place-items-center px-4">
       <form
-        onSubmit={handleSendMagicLink}
-        className="w-full max-w-md rounded-xl border border-white/10 bg-neutral-900/60 backdrop-blur p-6 shadow-md"
+        onSubmit={onSubmit}
+        className="w-full max-w-md space-y-4 bg-zinc-900/70 border border-zinc-800 rounded-lg p-6"
       >
-        <h1
-          className="text-3xl mb-2"
-          style={{ fontFamily: "var(--font-blackops)" }}
-        >
-          Create Your Account
-        </h1>
-        <p className="text-sm text-neutral-300 mb-6">
-          Enter your email and we’ll send you a sign-in link. After confirming,
-          we’ll take you to onboarding.
-        </p>
+        <h1 className="text-2xl font-semibold text-orange-500">Create your account</h1>
 
-        <label className="block text-sm text-neutral-300 mb-1">Email</label>
-        <input
-          type="email"
-          required
-          value={email}
-          placeholder="you@example.com"
-          onChange={(e) => setEmail(e.target.value)}
-          className="w-full rounded bg-neutral-800 border border-neutral-700 px-3 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-orange-500"
-        />
+        <label className="block">
+          <span className="text-sm text-zinc-300">Email</span>
+          <input
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="mt-1 w-full rounded bg-zinc-950 border border-zinc-700 p-2 outline-none focus:border-orange-500"
+            placeholder="you@company.com"
+          />
+        </label>
+
+        <label className="block">
+          <span className="text-sm text-zinc-300">Password</span>
+          <input
+            type="password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="mt-1 w-full rounded bg-zinc-950 border border-zinc-700 p-2 outline-none focus:border-orange-500"
+            placeholder="••••••••"
+          />
+        </label>
+
+        {err && <p className="text-sm text-red-400">{err}</p>}
 
         <button
           type="submit"
-          disabled={sending || !email}
-          className="w-full bg-orange-500 hover:bg-orange-600 text-black font-semibold rounded px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={!canSubmit}
+          className="w-full rounded bg-orange-500 hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed text-black font-bold py-2"
         >
-          {sending ? "Sending magic link…" : "Send magic link"}
+          {submitting ? "Creating account…" : "Sign Up"}
         </button>
 
-        {sent && (
-          <p className="mt-3 text-green-400 text-sm">
-            Magic link sent! Check your email to continue.
-          </p>
-        )}
-        {error && (
-          <p className="mt-3 text-red-400 text-sm">
-            {error}
+        {sessionId && (
+          <p className="text-xs text-zinc-400">
+            Prefilled from checkout session: <span className="font-mono">{sessionId}</span>
           </p>
         )}
       </form>
-    </div>
+    </main>
   );
 }

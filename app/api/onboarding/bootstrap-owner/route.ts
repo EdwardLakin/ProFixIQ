@@ -17,8 +17,8 @@ type Body = {
   postal_code?: string | null;
   timezone?: string | null;                // default "America/Edmonton"
   accepts_online_booking?: boolean | null; // default true
-  slugHint?: string | null;                // optional preferred slug seed
-  pin: string;                             // required PIN
+  slugHint?: string | null;
+  pin: string;                             // REQUIRED
 };
 
 function toSlugSeed(input: string) {
@@ -37,18 +37,15 @@ async function ensureUniqueSlug(
   let candidate = base;
 
   for (let i = 0; i < 20; i++) {
-    const { data, error } = await supabase
-      .from("shop") // use "shops" if your table is plural
+    const { data } = await supabase
+      .from("shops")
       .select("id")
       .eq("slug", candidate)
       .maybeSingle();
 
-    if (error) break;      // on read error, just fall through and uniquify
     if (!data) return candidate;
-
     candidate = `${base}-${Math.floor(Math.random() * 10000)}`;
   }
-  // Final fallback if we somehow never returned
   return `${base}-${Date.now()}`;
 }
 
@@ -56,12 +53,11 @@ export async function POST(req: Request) {
   try {
     const supabase = createRouteHandlerClient<Database>({ cookies });
 
-    // 0) Auth required
+    // 0) Must be authenticated
     const {
       data: { user },
-      error: authErr,
     } = await supabase.auth.getUser();
-    if (authErr || !user) {
+    if (!user) {
       return NextResponse.json({ ok: false, msg: "Not authenticated" }, { status: 401 });
     }
 
@@ -84,17 +80,17 @@ export async function POST(req: Request) {
       pin,
     } = raw;
 
-    if (!pin || String(pin).length < 4) {
+    if (!pin || pin.length < 4) {
       return NextResponse.json(
         { ok: false, msg: "Owner PIN required (min 4 characters)" },
         { status: 400 }
       );
     }
 
-    // 2) If profile already has a role, no-op (idempotent)
+    // 2) Idempotency: if profile already has a role, return
     const { data: prof } = await supabase
       .from("profiles")
-      .select("id, role, shop_id, full_name, email, business_name, shop_name")
+      .select("id, role, shop_id, business_name, shop_name, email")
       .eq("id", user.id)
       .single();
 
@@ -106,27 +102,27 @@ export async function POST(req: Request) {
       });
     }
 
-    // 3) Create the shop with hashed PIN + unique slug
-    const pinHash = await bcrypt.hash(String(pin), 10);
-
+    // 3) Create shop (table = shops)
+    const pinHash = await bcrypt.hash(pin, 10);
     const seed =
       slugHint ||
       shopName ||
       businessName ||
       user.email?.split("@")[0] ||
       "my-shop";
-
     const slug = await ensureUniqueSlug(supabase, seed);
 
-    type ShopInsert =
-      Database["public"]["Tables"]["shops"]["Insert"] & // change to "shops" if plural
-      { owner_pin_hash: string; slug: string; name: string };
+    type ShopsInsert = Database["public"]["Tables"]["shops"]["Insert"] & {
+      slug: string;
+      owner_pin_hash: string | null;
+      name: string;
+    };
 
-    const insertShop: Partial<ShopInsert> = {
+    const insertShop: Partial<ShopsInsert> = {
       name: shopName || businessName || "My Shop",
       slug,
       owner_pin_hash: pinHash,
-      // include optional fields when provided to avoid type complaints
+      // optional business settings (only include if defined to appease types)
       ...(timezone !== undefined ? { timezone } : {}),
       ...(accepts_online_booking !== undefined
         ? { accepts_online_booking }
@@ -138,7 +134,7 @@ export async function POST(req: Request) {
     };
 
     const { data: newShop, error: shopErr } = await supabase
-      .from("shop") // use "shops" if your table is plural
+      .from("shops")
       .insert(insertShop)
       .select("id, slug")
       .single();
@@ -150,38 +146,40 @@ export async function POST(req: Request) {
       );
     }
 
-    // 4) Best-effort: seed default hours (ignore failure)
+    // 4) Best-effort: seed default hours
     try {
       await supabase.rpc("seed_default_hours", { shop_id: newShop.id });
     } catch {
-      // non-fatal
+      // ignore
     }
 
-    // 5) Promote user to owner + attach shop_id; store names
-    const ownerRole =
-      "owner" as Database["public"]["Tables"]["profiles"]["Row"]["role"];
+    // 5) Promote user to owner + attach shop_id.
+    // NOTE: your Update type requires several keys (email, street, city, province, postal_code),
+    // so we include them even when null.
+    // 5) Promote user to owner + attach shop_id
+const profileUpdate: Database["public"]["Tables"]["profiles"]["Update"] = {
+  role: "owner",
+  shop_id: newShop.id,
+  business_name: businessName ?? prof?.business_name ?? null,
+  shop_name: shopName ?? prof?.shop_name ?? businessName ?? null,
+  email: prof?.email ?? user.email ?? null,
+  street: null,
+  city: null,
+  province: null,
+  postal_code: null
+};
 
-    const { error: updErr } = await supabase
-      .from("profiles")
-      .update({
-        role: ownerRole,
-        shop_id: newShop.id,
-        business_name: businessName ?? prof?.business_name ?? null,
-        shop_name: shopName ?? prof?.shop_name ?? businessName ?? null,
-        email: prof?.email ?? user.email ?? null,
-        street: null,
-        city: null,
-        province: null,
-        postal_code: null
-      } satisfies Database["public"]["Tables"]["profiles"]["Update"])
-      .eq("id", user.id);
+const { error: updErr } = await supabase
+  .from("profiles")
+  .update(profileUpdate)
+  .eq("id", user.id);
 
-    if (updErr) {
-      return NextResponse.json(
-        { ok: false, msg: "Failed to update profile with owner role" },
-        { status: 500 }
-      );
-    }
+if (updErr) {
+  return NextResponse.json(
+    { ok: false, msg: "Failed to update profile with owner role" },
+    { status: 500 }
+  );
+}
 
     return NextResponse.json({
       ok: true,

@@ -1,67 +1,69 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-
 import type { Database } from "@shared/types/types/supabase";
 
+type Role = "owner" | "admin" | "manager" | "advisor" | "mechanic";
+
 export default function OnboardingPage() {
-    const supabase = createClientComponentClient<Database>();
-
+  const supabase = createClientComponentClient<Database>();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
+  // Personal
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
-  const [role, setRole] = useState<"owner" | "admin" | "manager" | "advisor" | "mechanic">("owner");
-
+  const [role, setRole] = useState<Role>("owner");
   const [userStreet, setUserStreet] = useState("");
   const [userCity, setUserCity] = useState("");
   const [userProvince, setUserProvince] = useState("");
   const [userPostal, setUserPostal] = useState("");
 
+  // Shop
   const [businessName, setBusinessName] = useState("");
   const [shopName, setShopName] = useState("");
   const [shopStreet, setShopStreet] = useState("");
   const [shopCity, setShopCity] = useState("");
   const [shopProvince, setShopProvince] = useState("");
   const [shopPostal, setShopPostal] = useState("");
+  const [ownerPin, setOwnerPin] = useState(""); // <-- REQUIRED by API
 
-  // ✅ New: owner bootstrap toggle (default true if role is owner)
+  // Flags
   const [asOwner, setAsOwner] = useState(true);
-
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const [emailSent, setEmailSent] = useState(false);
-  const [resending, setResending] = useState(false);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
 
+  // Prefill from Stripe session (optional) + ensure user present
   useEffect(() => {
-    const linkStripeCustomer = async () => {
+    (async () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      const sessionId = new URLSearchParams(window.location.search).get("session_id");
 
-      if (user) {
-        setUserEmail(user.email ?? null);
-        if (sessionId) {
+      if (!user) {
+        router.replace("/signup");
+        return;
+      }
+
+      // Optional Stripe linking if you later add /api/stripe/link-user
+      const sessionId = searchParams.get("session_id");
+      if (sessionId) {
+        try {
           await fetch("/api/stripe/link-user", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ sessionId, userId: user.id }),
           });
+        } catch {
+          // ignore; non-blocking
         }
-      } else {
-        router.push("/auth");
       }
-    };
+    })();
+  }, [router, searchParams, supabase]);
 
-    linkStripeCustomer();
-  }, [supabase, router]);
-
-  // Keep toggle in sync with role selection (owner => default checked)
+  // Sync toggle with role
   useEffect(() => {
     setAsOwner(role === "owner");
   }, [role]);
@@ -81,115 +83,74 @@ export default function OnboardingPage() {
       return;
     }
 
-    const email = user.email;
-    setUserEmail(email ?? null);
-
-    // Always save the user's personal info on the profile
-    const { error: updateProfileErr } = await supabase
+    // 1) Update base profile info
+    const { error: updateErr } = await supabase
       .from("profiles")
       .update({
         full_name: fullName,
         phone,
-        // Do NOT set role to owner here; bootstrap route will do it when applicable.
-        role: asOwner ? undefined : role, // if not owner flow, we can store selected staff role now
+        role: asOwner ? undefined : role, // leave null for owner; the API will set owner
         street: userStreet,
         city: userCity,
         province: userProvince,
         postal_code: userPostal,
-        email: email ?? null,
+        email: user.email ?? null,
       } as Database["public"]["Tables"]["profiles"]["Update"])
       .eq("id", user.id);
 
-    if (updateProfileErr) {
-      console.error("Profile update error:", updateProfileErr.message);
+    if (updateErr) {
       setError("Failed to update profile.");
       setLoading(false);
       return;
     }
 
-    // If user toggled owner setup, call the secure server route to create the shop + set role=owner
+    // 2) Owner bootstrap (creates shop + sets role=owner)
     if (asOwner) {
-      // Validate required shop fields
+      if (!ownerPin || ownerPin.length < 4) {
+        setError("Please provide an Owner PIN (min 4 characters).");
+        setLoading(false);
+        return;
+      }
       if (!businessName || !shopStreet || !shopCity || !shopProvince || !shopPostal) {
-        setError("Please complete all required shop fields.");
+        setError("Please fill all required shop fields.");
         setLoading(false);
         return;
       }
 
-      try {
-        const res = await fetch("/api/onboarding/bootstrap-owner", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            // pass shop details to server; the route should accept these to populate the new shop
-            businessName,
-            shopName: shopName || businessName,
-            address: shopStreet,
-            city: shopCity,
-            province: shopProvince,
-            postal_code: shopPostal,
-            // optional: timezone, slug hint, accepts_online_booking, etc.
-          }),
-        });
-
-        if (!res.ok) {
-          const j = await res.json().catch(() => ({}));
-          console.warn("bootstrap-owner failed:", j?.msg || res.statusText);
-          setError(j?.msg || "Failed to create shop. Please try again.");
-          setLoading(false);
-          return;
-        }
-      } catch (err) {
-        console.error("Bootstrap owner error:", err);
-        setError("Failed to create shop. Please try again.");
-        setLoading(false);
-        return;
-      }
-    }
-
-    // Optional: role cookie for server-side layout logic
-    await fetch("/api/set-role-cookie", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role: asOwner ? "owner" : role }),
-    }).catch(() => {});
-
-    // Send welcome email (non-blocking)
-    if (email) {
-      fetch("/api/send-email", {
+      const res = await fetch("/api/onboarding/bootstrap-owner", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email,
-          subject: "Welcome to ProFixIQ!",
-          html: `<p>Hi ${fullName},</p>
-                 <p>${asOwner ? `Your shop <strong>${shopName || businessName}</strong> is now set up.` : `Your profile is set up.`}</p>`,
+          businessName,
+          shopName: shopName || businessName,
+          address: shopStreet,
+          city: shopCity,
+          province: shopProvince,
+          postal_code: shopPostal,
+          pin: ownerPin, // <-- send the PIN
         }),
-      })
-        .then(() => setEmailSent(true))
-        .catch((err) => console.error("Email send failed:", err));
+      });
 
-      // Optionally trigger email confirmation workflow
-      fetch("/api/confirm-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
-      }).catch((err) => console.error("Email confirm failed:", err));
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        setError(j?.msg || "Failed to create shop. Please try again.");
+        setLoading(false);
+        return;
+      }
     }
 
-    setSuccess(true);
-    setLoading(false);
-
-    // Final redirect: owners go to owner dashboard; staff to their dashboard; others fallback
-    const redirectMap: Record<string, string> = {
+    // 3) Redirect
+    const finalRole: Role = asOwner ? "owner" : role;
+    const redirectMap: Record<Role, string> = {
       owner: "/dashboard/owner",
       admin: "/dashboard/admin",
       manager: "/dashboard/manager",
       advisor: "/dashboard/advisor",
       mechanic: "/dashboard/tech",
     };
-    const finalRole = asOwner ? "owner" : role;
-    router.push(redirectMap[finalRole] || "/");
+
+    setLoading(false);
+    router.replace(redirectMap[finalRole] || "/dashboard");
   };
 
   return (
@@ -197,7 +158,7 @@ export default function OnboardingPage() {
       <h1 className="text-3xl mb-6 text-orange-500">Onboarding</h1>
 
       <form onSubmit={handleSubmit} className="w-full max-w-xl space-y-4">
-        <h2 className="text-xl text-orange-400 mt-4">Your Info</h2>
+        <h2 className="text-xl text-orange-400 mt-2">Your Info</h2>
         <input
           type="text"
           required
@@ -249,12 +210,12 @@ export default function OnboardingPage() {
           />
         </div>
 
-        <div className="grid grid-cols-1 gap-2 mt-4">
+        <div className="grid gap-2 mt-4">
           <label className="text-sm text-neutral-300">Role</label>
           <select
             required
             value={role}
-            onChange={(e) => setRole(e.target.value as typeof role)}
+            onChange={(e) => setRole(e.target.value as Role)}
             className="w-full p-2 rounded bg-gray-900 border border-orange-500"
           >
             <option value="owner">Owner</option>
@@ -264,7 +225,6 @@ export default function OnboardingPage() {
             <option value="mechanic">Mechanic</option>
           </select>
 
-          {/* Owner toggle */}
           <label className="mt-1 flex items-center gap-2 text-sm">
             <input
               type="checkbox"
@@ -275,8 +235,9 @@ export default function OnboardingPage() {
           </label>
         </div>
 
-        {/* Shop fields only required when asOwner */}
-        <h2 className="text-xl text-orange-400 mt-6">Shop Info {asOwner ? "" : "(optional)"}</h2>
+        <h2 className="text-xl text-orange-400 mt-6">
+          Shop Info {asOwner ? "" : "(optional)"}
+        </h2>
         <input
           type="text"
           placeholder="Business Name"
@@ -327,6 +288,22 @@ export default function OnboardingPage() {
           />
         </div>
 
+        {asOwner && (
+          <div>
+            <label className="block text-sm text-neutral-300 mb-1">
+              Owner PIN (min 4 characters)
+            </label>
+            <input
+              type="password"
+              placeholder="Owner PIN"
+              value={ownerPin}
+              onChange={(e) => setOwnerPin(e.target.value)}
+              className="w-full p-2 rounded bg-gray-900 border border-orange-500"
+              required
+            />
+          </div>
+        )}
+
         <button
           type="submit"
           disabled={loading}
@@ -336,38 +313,6 @@ export default function OnboardingPage() {
         </button>
 
         {error && <p className="text-red-500 text-sm">{error}</p>}
-        {success && (
-          <p className="text-green-400 text-md mt-4">
-            🎉 Onboarding complete! Redirecting...
-          </p>
-        )}
-
-        {emailSent && !success && userEmail && (
-          <button
-            type="button"
-            onClick={async () => {
-              setResending(true);
-              try {
-                await fetch("/api/send-email", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    email: userEmail,
-                    subject: "Welcome to ProFixIQ!",
-                    html: `<p>Hi ${fullName},</p><p>Your shop <strong>${shopName || businessName}</strong> is now set up.</p>`,
-                  }),
-                });
-              } catch (err) {
-                console.error("Resend failed:", err);
-              }
-              setResending(false);
-            }}
-            className="text-sm text-orange-400 underline mt-2"
-            disabled={resending}
-          >
-            {resending ? "Resending..." : "Resend Welcome Email"}
-          </button>
-        )}
       </form>
     </div>
   );
