@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
-// role → path (fallback to onboarding)
 const rolePath = (role?: string | null) =>
   role === "owner"    ? "/dashboard/owner"   :
   role === "admin"    ? "/dashboard/admin"   :
@@ -15,10 +14,8 @@ const rolePath = (role?: string | null) =>
   role === "mechanic" || role === "tech" ? "/dashboard/tech" :
   "/onboarding";
 
-// tiny log helper → Vercel route
 async function log(message: string, extra?: Record<string, unknown>) {
   try {
-    // keep console for local debugging but not required for build
     // eslint-disable-next-line no-console
     console.log("[diag]", message, extra ?? "");
     await fetch("/api/diag/log", {
@@ -27,16 +24,13 @@ async function log(message: string, extra?: Record<string, unknown>) {
       keepalive: true,
       body: JSON.stringify({ message, extra }),
     });
-  } catch {
-    /* ignore */
-  }
+  } catch {/* ignore */}
 }
 
 export default function ConfirmContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClientComponentClient<Database>();
-
   const navigated = useRef(false);
 
   useEffect(() => {
@@ -51,24 +45,24 @@ export default function ConfirmContent() {
     const softReplace = (url: string) => {
       if (cancelled || navigated.current) return;
       navigated.current = true;
-      // defer a tick to avoid hydration race, then refresh
       setTimeout(() => {
         try { router.replace(url); router.refresh(); }
         catch { hardGoto(url); }
       }, 0);
     };
 
-    // ensure profiles row exists; return { role }
+    // Ensure a profiles row exists; return { role }
     const ensureProfile = async (userId: string) => {
-      let { data: prof, error: readerErr } = await supabase
+      // separate destructure so readerErr can be const
+      const { data: prof0, error: readerErr } = await supabase
         .from("profiles")
         .select("id, role")
         .eq("id", userId)
         .maybeSingle();
 
-      if (readerErr) {
-        await log("profiles read error", { error: readerErr.message });
-      }
+      if (readerErr) await log("profiles read error", { error: readerErr.message });
+
+      let prof = prof0;
 
       if (!prof) {
         const { data } = await supabase.auth.getUser();
@@ -114,7 +108,6 @@ export default function ConfirmContent() {
       const code = searchParams.get("code");
       const sessionId = searchParams.get("session_id");
 
-      // 1) Exchange magic-link/OAuth code → session
       if (code) {
         try {
           await log("found auth code, exchanging");
@@ -126,11 +119,9 @@ export default function ConfirmContent() {
         }
       }
 
-      // 2) If we already have a session → ensure profile & route
       const routed = await routeBySession();
       if (routed) return;
 
-      // 3) If we came from Stripe → go to /signup to request email/password
       if (sessionId) {
         const dest = `/signup?session_id=${encodeURIComponent(sessionId)}`;
         await log("no session; redirecting to signup", { dest });
@@ -138,12 +129,10 @@ export default function ConfirmContent() {
         return;
       }
 
-      // 4) Fallback: sign in
       await log("no session; redirecting to sign-in");
       softReplace("/sign-in");
     })();
 
-    // 5) Safety re-check: if still here after 4s, hard redirect
     const safety = setTimeout(async () => {
       if (navigated.current || cancelled) return;
       await log("safety timeout: still on /confirm; re-checking session");
