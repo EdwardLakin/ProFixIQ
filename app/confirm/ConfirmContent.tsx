@@ -1,4 +1,3 @@
-// app/confirm/ConfirmContent.tsx
 "use client";
 
 import { useEffect, useRef } from "react";
@@ -6,19 +5,19 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
-// Role -> dashboard path (fallback handled outside)
-const roleToPath = (role?: string | null) =>
+// Role → path (fallback to onboarding if no role yet)
+const rolePath = (role?: string | null) =>
   role === "owner"    ? "/dashboard/owner"   :
   role === "admin"    ? "/dashboard/admin"   :
-  role === "manager"  ? "/dashboard/manager" :
   role === "advisor"  ? "/dashboard/advisor" :
+  role === "manager"  ? "/dashboard/manager" :
   role === "parts"    ? "/dashboard/parts"   :
-  role === "mechanic" || role === "tech" ? "/dashboard/tech" : null;
+  role === "mechanic" || role === "tech" ? "/dashboard/tech" :
+  "/onboarding";
 
-// tiny logger to Vercel
+// tiny log helper to Vercel
 async function log(message: string, extra?: Record<string, unknown>) {
   try {
-    // visible locally and posted to /api/diag/log if you have it
     console.log("[diag]", message, extra ?? "");
     await fetch("/api/diag/log", {
       method: "POST",
@@ -26,54 +25,61 @@ async function log(message: string, extra?: Record<string, unknown>) {
       keepalive: true,
       body: JSON.stringify({ message, extra }),
     });
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
 export default function ConfirmContent() {
   const router = useRouter();
-  const sp = useSearchParams();
+  const searchParams = useSearchParams();
   const supabase = createClientComponentClient<Database>();
-  const navigated = useRef(false);
 
-  // one guarded navigation helper
-  const go = (href: string) => {
-    if (navigated.current) return;
-    navigated.current = true;
-    // use replace + refresh; if it fails, hard navigate
-    try {
-      router.replace(href);
-      router.refresh();
-    } catch {
-      window.location.assign(href);
-    }
-  };
+  const navigated = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
 
-    const ensureProfileAndRoute = async () => {
-      const { data: { session }, error } = await supabase.auth.getSession();
-      if (error) await log("getSession error", { error: error.message });
+    const hardGoto = (url: string) => {
+      if (cancelled || navigated.current) return;
+      navigated.current = true;
+      try {
+        window.location.assign(url);
+      } catch {
+        router.replace(url);
+      }
+    };
 
-      const user = session?.user;
-      await log("session", { hasSession: !!user });
+    const softReplace = (url: string) => {
+      if (cancelled || navigated.current) return;
+      navigated.current = true;
+      setTimeout(() => {
+        try {
+          router.replace(url);
+          router.refresh();
+        } catch {
+          hardGoto(url);
+        }
+      }, 0);
+    };
 
-      if (!user || cancelled) return false;
-
-      // 1) read profile (role only)
-      let { data: prof, error: rErr } = await supabase
+    // Ensure a profiles row exists; return {role|null}
+    const ensureProfile = async (userId: string) => {
+      // Try to read first
+      const { data: prof, error } = await supabase
         .from("profiles")
         .select("id, role")
-        .eq("id", user.id)
+        .eq("id", userId)
         .maybeSingle();
 
-      if (rErr) await log("profiles read error", { error: rErr.message });
+      if (error) await log("profiles read error", { error: error.message });
 
-      // 2) create stub if missing
       if (!prof) {
-        const { error: iErr } = await supabase.from("profiles").insert({
-          id: user.id,
-          email: user.email ?? null,
+        // create minimal row (lots of nulls are allowed in your types)
+        const { data: { user } } = await supabase.auth.getUser();
+        const { error: insErr } = await supabase.from("profiles").insert({
+          id: userId,
+          email: user?.email ?? null,
           full_name: null,
           plan: "free",
           created_at: new Date().toISOString(),
@@ -87,61 +93,77 @@ export default function ConfirmContent() {
           role: null,
           shop_name: null,
         } as Database["public"]["Tables"]["profiles"]["Insert"]);
-        if (iErr) await log("profiles insert error", { error: iErr.message });
 
-        // after stub creation, onboarding is guaranteed
-        await log("profile created -> onboarding");
-        if (!cancelled) go("/onboarding");
-        return true;
+        if (insErr) {
+          await log("profiles insert error", { error: insErr.message });
+        }
+
+        // re-read to get role (likely null)
+        const { data: reread } = await supabase
+          .from("profiles")
+          .select("id, role")
+          .eq("id", userId)
+          .maybeSingle();
+
+        return { role: reread?.role ?? null };
       }
 
-      // 3) route by role (or onboarding)
-      const role = prof.role ?? null;
-      const dest = roleToPath(role) ?? "/onboarding";
-      await log("route by role", { role, dest });
-      if (!cancelled) go(dest);
+      return { role: prof?.role ?? null };
+    };
+
+    const routeBySession = async () => {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (error) await log("supabase.getSession error", { error: error.message });
+
+      const user = session?.user;
+      await log("session check", { hasSession: !!user });
+
+      if (!user) return false;
+
+      // make sure there’s a profile row—if none, insert it
+      const { role } = await ensureProfile(user.id);
+      const dest = rolePath(role);
+      await log("routing by role or onboarding", { role, dest });
+      softReplace(dest);
       return true;
     };
 
     (async () => {
-      const code = sp.get("code");
-      const sessionId = sp.get("session_id");
+      const code = searchParams.get("code");
+      const sessionId = searchParams.get("session_id");
 
-      // A) If magic-link code present, exchange it first
+      // 1) If magic-link code present → exchange for a session
       if (code) {
         try {
           await log("found auth code, exchanging");
           await supabase.auth.exchangeCodeForSession(code);
           await log("auth code exchanged OK");
         } catch (e) {
-          await log("exchangeCodeForSession failed", {
-            error: e instanceof Error ? e.message : String(e),
-          });
+          await log("exchangeCodeForSession failed", { error: e instanceof Error ? e.message : String(e) });
         }
       }
 
-      // B) If we have a session -> ensure profile then route (role? dashboard : onboarding)
-      const routed = await ensureProfileAndRoute();
+      // 2) If we already have a session → ensure profile & go to onboarding/role
+      const routed = await routeBySession();
       if (routed) return;
 
-      // C) No session yet:
-      //     - if we came from Stripe, push to /signup with session_id (prefill + send magic link)
-      //     - else take them to normal sign-in
+      // 3) No session yet → from Stripe, go to /signup
       if (sessionId) {
         const dest = `/signup?session_id=${encodeURIComponent(sessionId)}`;
-        await log("no session -> signup", { dest });
-        go(dest);
+        await log("no session; redirecting to signup with session_id", { dest });
+        softReplace(dest);
         return;
       }
 
-      await log("no session -> sign-in");
-      go("/sign-in");
+      // 4) Fallback to sign-in
+      await log("no session and no session_id; redirecting to sign-in");
+      softReplace("/sign-in");
     })();
 
-    // Optional safety after 4s: re-check once and hard-route accordingly
+    // 5) Safety re-check after 4s: if still here, try again / hard redirect
     const safety = setTimeout(async () => {
       if (navigated.current || cancelled) return;
-      await log("safety timeout – recheck");
+      await log("safety timeout: still here on /confirm; re-checking session");
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
         const { data } = await supabase
@@ -149,17 +171,17 @@ export default function ConfirmContent() {
           .select("role")
           .eq("id", session.user.id)
           .maybeSingle();
-        go(roleToPath(data?.role ?? null) ?? "/onboarding");
+        hardGoto(rolePath(data?.role ?? null));
       } else {
-        const sid = sp.get("session_id");
-        go(sid ? `/signup?session_id=${encodeURIComponent(sid)}` : "/sign-in");
+        const sid = searchParams.get("session_id");
+        hardGoto(sid ? `/signup?session_id=${encodeURIComponent(sid)}` : "/sign-in");
       }
     }, 4000);
 
-    // Late-arriving session? route once.
+    // Also respond to late-arriving session events
     const { data: listener } = supabase.auth.onAuthStateChange(async (ev) => {
       await log("auth state change", { event: ev });
-      if (!navigated.current) await ensureProfileAndRoute();
+      if (!navigated.current) await routeBySession();
     });
 
     return () => {
@@ -167,8 +189,7 @@ export default function ConfirmContent() {
       clearTimeout(safety);
       listener.subscription.unsubscribe();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [router, searchParams, supabase]);
 
   return (
     <div className="min-h-[60vh] grid place-items-center text-white">
