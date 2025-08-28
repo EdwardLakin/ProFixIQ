@@ -55,8 +55,8 @@ export default function ConfirmContent() {
 
     // Ensure a profiles row exists; return {role|null}
     const ensureProfile = async (userId: string) => {
-      // Try to read first
-      let { data: prof, error } = await supabase
+      // read first
+      const { data: profData, error } = await supabase
         .from("profiles")
         .select("id, role")
         .eq("id", userId)
@@ -64,8 +64,11 @@ export default function ConfirmContent() {
 
       if (error) await log("profiles read error", { error: error.message });
 
+      // we'll possibly reassign this, so make it a separate let
+      let prof = profData;
+
       if (!prof) {
-        // create minimal row (lots of nulls are allowed in your types)
+        // create minimal row (many nulls are allowed by your types)
         const { data: { user } } = await supabase.auth.getUser();
         const { error: insErr } = await supabase.from("profiles").insert({
           id: userId,
@@ -94,10 +97,11 @@ export default function ConfirmContent() {
           .select("id, role")
           .eq("id", userId)
           .maybeSingle();
+
         prof = reread.data ?? null;
       }
 
-      return { role: prof?.role ?? null as string | null };
+      return { role: (prof?.role ?? null) as string | null };
     };
 
     const routeBySession = async () => {
@@ -107,9 +111,8 @@ export default function ConfirmContent() {
       const user = session?.user;
       await log("session check", { hasSession: !!user });
 
-      if (!user) return false; // caller will decide what to do
+      if (!user) return false;
 
-      // make sure there’s a profile row—if none, insert it
       const { role } = await ensureProfile(user.id);
       const dest = rolePath(role);
       await log("routing by role or onboarding", { role, dest });
@@ -121,7 +124,6 @@ export default function ConfirmContent() {
       const code = searchParams.get("code");
       const sessionId = searchParams.get("session_id");
 
-      // 1) If magic-link code present → exchange for a session
       if (code) {
         try {
           await log("found auth code, exchanging");
@@ -132,12 +134,9 @@ export default function ConfirmContent() {
         }
       }
 
-      // 2) If we already have a session → ensure profile & go to onboarding/role
       const routed = await routeBySession();
       if (routed) return;
 
-      // 3) No session yet:
-      //    If we came from Stripe, we *must* send them to /signup to start email verification
       if (sessionId) {
         const dest = `/signup?session_id=${encodeURIComponent(sessionId)}`;
         await log("no session; redirecting to signup with session_id", { dest });
@@ -145,33 +144,27 @@ export default function ConfirmContent() {
         return;
       }
 
-      // 4) Fallback to sign-in (handles direct visits to /confirm)
       await log("no session and no session_id; redirecting to sign-in");
       softReplace("/sign-in");
     })();
 
-    // 5) Safety re-check after 4s: if still here, try again / hard redirect
     const safety = setTimeout(async () => {
       if (navigated.current || cancelled) return;
       await log("safety timeout: still here on /confirm; re-checking session");
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
-        const { role } = await (async () => {
-          const { data } = await supabase
-            .from("profiles")
-            .select("role")
-            .eq("id", session.user!.id)
-            .maybeSingle();
-          return { role: data?.role ?? null };
-        })();
-        hardGoto(rolePath(role));
+        const { data } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", session.user.id)
+          .maybeSingle();
+        hardGoto(rolePath(data?.role ?? null));
       } else {
         const sid = searchParams.get("session_id");
         hardGoto(sid ? `/signup?session_id=${encodeURIComponent(sid)}` : "/sign-in");
       }
     }, 4000);
 
-    // Also respond to late-arriving session events
     const { data: listener } = supabase.auth.onAuthStateChange(async (ev) => {
       await log("auth state change", { event: ev });
       if (!navigated.current) await routeBySession();
