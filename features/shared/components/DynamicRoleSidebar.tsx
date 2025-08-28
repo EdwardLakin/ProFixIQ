@@ -3,41 +3,52 @@
 import { useEffect, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
-import type { Database } from "@shared/types/types/supabase";
-
 import RoleNavAdmin from "@shared/components/RoleNavAdmin";
 import RoleNavTech from "@shared/components/RoleNavTech";
 import RoleNavAdvisor from "@shared/components/RoleNavAdvisor";
 import RoleNavOwner from "@shared/components/RoleNavOwner";
 import RoleNavParts from "@shared/components/RoleNavParts";
 
-export default function DynamicRoleSidebar() {
-    const supabase = createClientComponentClient<Database>();
+type Props = {
+  role?: string | null;
+};
 
-  const [role, setRole] = useState<string | null>(null);
+export default function DynamicRoleSidebar({ role }: Props) {
+  const supabase = createClientComponentClient();
+
+  const [detectedRole, setDetectedRole] = useState<string | null>(null);
+  const effectiveRole = role ?? detectedRole;
 
   useEffect(() => {
-    const fetchRole = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session?.user?.id) return;
+    let mounted = true;
+    if (role) return; // parent provided role, skip fetch
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", session.user.id)
-        .single();
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const userId = session?.user?.id;
+        if (!userId || !mounted) return;
 
-      if (profile?.role) setRole(profile.role);
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", userId)
+          .single();
+
+        if (mounted && profile?.role) setDetectedRole(profile.role);
+      } catch {
+        // ignore
+      }
+    })();
+
+    return () => {
+      mounted = false;
     };
+  }, [role, supabase]);
 
-    fetchRole();
-  }, [supabase]);
+  if (!effectiveRole) return null;
 
-  if (!role) return null;
-
-  switch (role) {
+  switch (effectiveRole) {
     case "admin":
     case "manager":
       return <RoleNavAdmin />;

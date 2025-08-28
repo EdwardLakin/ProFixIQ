@@ -1,0 +1,419 @@
+app/dashboard/owner
+└── page.tsx
+app/work-orders [error opening dir]
+app/parts [error opening dir]
+app/inspections [error opening dir]
+features
+├── ai
+│   ├── api
+│   │   ├── ai
+│   │   │   ├── estimate-labor
+│   │   │   │   └── route.ts
+│   │   │   ├── generateInspectionList
+│   │   │   │   └── route.ts
+│   │   │   ├── interpret
+│   │   │   │   └── route.ts
+│   │   │   └── map-columns
+│   │   │       └── route.ts
+│   │   ├── analyze
+│   │   │   └── route.ts
+│   │   ├── chat
+│   │   │   └── route.ts
+│   │   ├── chatbot
+│   │   │   └── route.ts
+│   │   ├── diagnose
+│   │   │   └── route.ts
+│   │   ├── get-messages
+│   │   │   └── route.ts
+│   │   ├── send-message
+│   │   │   └── route.ts
+│   │   ├── stats
+│   │   │   └── summarize
+│   │   │       └── route.ts
+│   │   └── vin
+│   │       └── route.ts
+│   ├── app
+│   │   └── ai
+│   │       ├── chat
+│   │       │   └── page.tsx
+│   │       ├── dtc
+│   │       │   └── page.tsx
+│   │       ├── page.tsx
+│   │       └── photo
+│   │           └── page.tsx
+│   ├── components
+│   │   ├── AIAssistantPanel.tsx
+│   │   ├── Chatbot.tsx
+│   │   ├── DTCCodeLookup.tsx
+│   │   ├── DtcSuggestionPopup.tsx
+│   │   ├── TechBot.tsx
+│   │   └── chat
+│   │       ├── ChatWindow.tsx
+│   │       ├── ConversationList.tsx
+│   │       └── NewChatModal.tsx
+│   ├── hooks
+│   └── lib
+│       ├── ai
+│       │   ├── estimateLabor.ts
+│       │   ├── generateLaborTimeEstimate.ts
+│       │   ├── inferPartName.ts
+│       │   └── mapColumns.ts
+│       ├── ai.ts
+│       ├── analyze.ts
+│       ├── analyzeComponents.ts
+│       ├── chat
+│       │   ├── getMessages.ts
+│       │   ├── getUserConversations.ts
+│       │   ├── helpers.ts
+│       │   ├── sendMessage.ts
+│       │   └── startConversation.ts
+│       ├── chatgptHandler.ts
+│       ├── dtc.ts
+│       ├── formatTechBotPrompt.ts
+│       ├── parseRepairOutput.ts
+│       ├── tech.ts
+│       └── techBot.ts
+├── auth
+│   ├── api
+│   │   ├── send-reset
+│   │   │   └── route.ts
+│   │   ├── send-reset-email
+│   │   │   └── route.ts
+│   │   └── set-role-cookie
+│   │       └── route.ts
+│   ├── app
+│   │   ├── auth
+│   │   │   └── callback
+│   │   │       └── page.tsx
+│   │   ├── forgot-password
+│   │   │   └── page.tsx
+│   │   ├── onboarding
+│   │   │   └── OnboardingPage.tsx
+│   │   ├── reset-password
+│   │   │   └── page.tsx
+│   │   └── signup
+│   │       └── SignUpClient.tsx
+│   ├── components
+│   │   ├── SignIn.tsx
+│   │   └── SignOutButton.tsx
+│   ├── hooks
+│   │   └── useUser.ts
+│   └── lib
+├── dashboard
+│   ├── app
+│   │   └── dashboard
+│   │       ├── admin
+│   │       │   └── page.tsx
+│   │       ├── advisor
+│   │       │   └── page.tsx
+│   │       ├── layout.tsx
+│   │       ├── manager
+│   │       │   └── page.tsx
+│   │       ├── owner
+│   │       │   ├── create-user
+│   │       │   │   └── page.tsx
+│   │       │   ├── import-customers
+│   │       │   │   └── page.tsx
+│   │       │   ├── page.tsx
+│   │       │   ├── reports
+│   │       │   │   └── page.tsx
+│   │       │   └── settings
+│   │       │       └── page.tsx
+│   │       ├── page.tsx
+│   │       ├── parts
+│   │       │   └── page.tsx
+│   │       ├── settings
+│   │       │   └── user
+│   │       │       └── page.tsx
+│   │       └── tech
+│   │           └── page.tsx
+│   ├── components
+│   │   ├── DashboardTabs.tsx
+│   │   └── ShareBookingLink.tsx
+│   ├── hooks
+│   ├── layout
+│   └── lib
+├── inspections
+│   ├── api
+│   │   ├── generate-inspection
+│   │   │   └── route.ts
+│   │   └── inspection
+│   │       └── submit
+│   │           ├── pdf
+│   │           │   └── route.ts
+│   │           └── route.ts
+│   ├── app
+│   │   └── inspection
+│   │       ├── InspectionMenuClient.tsx
+│   │       ├── [id]
+│   │       │   └── page.tsx
+│   │       ├── custom-inspection
+│   │       │   └── page.tsx
+│   │       ├── customer-vehicle
+│   │       │   └── page.tsx
+│   │       ├── maintenance50
+│   │       │   └── page.tsx
+│   │       ├── page.tsx
+│   │       ├── save
+│   │       │   └── route.ts
+│   │       ├── saved
+│   │       │   └── page.tsx
+│   │       ├── summary
+│   │       │   └── page.tsx
+│   │       └── templates
+│   │           └── page.tsx
+│   ├── components
+│   │   ├── InspectionGroupList.tsx
+│   │   └── inspection
+│   │       ├──  SectionHeader.tsx
+│   │       ├── CustomerVehicleForm.tsx
+│   │       ├── FinishInspectionButton.tsx
+│   │       ├── PhotoPreview.tsx
+│   │       ├── PhotoThumbnail.tsx
+│   │       ├── SaveInspectionButton.tsx
+│   │       ├── SectionWrapper.tsx
+│   │       ├── StatusLegend.tsx
+│   │       ├── UndoVoiceActionButton.tsx
+│   │       ├── interpretCommand.ts
+│   │       └── quote.ts
+│   ├── hooks
+│   │   ├── useCustomInspection.ts
+│   │   ├── useInspectionSession.ts
+│   │   └── useVoiceInput.ts
+│   └── lib
+│       ├── getServicesByKeyword.ts
+│       └── inspection
+│           ├── AutoScrollToItem.tsx
+│           ├── InspectionItemCard.tsx
+│           ├── Legend.tsx
+│           ├── PauseResume.tsx
+│           ├── PhotoUploadButton.tsx
+│           ├── ProgressTracker.tsx
+│           ├── QuickJumpMenu.tsx
+│           ├── ResumeReminder.tsx
+│           ├── SectionDisplay.tsx
+│           ├── StartListeningButton.tsx
+│           ├── StatusButtons.tsx
+│           ├── aiInterpreter.ts
+│           ├── axleTypes.ts
+│           ├── convertAICommands.ts
+│           ├── dispatchCommand.ts
+│           ├── generateAxleLayout.ts
+│           ├── generateInspectionPDF.ts
+│           ├── generateInspectionSummary.ts
+│           ├── handleInspectionCommand.ts
+│           ├── handleTranscript.ts
+│           ├── inspectionState.ts
+│           ├── masterInspectionList.ts
+│           ├── masterServicesList.ts
+│           ├── matchToMenuItem.ts
+│           ├── pdf.ts
+│           ├── sampleCustomer.ts
+│           ├── sampleVehicle.ts
+│           ├── save.ts
+│           ├── summary.ts
+│           ├── synonyms.ts
+│           ├── types.ts
+│           └── voiceControl.ts
+├── parts
+│   ├── api
+│   ├── app
+│   ├── components
+│   │   ├── PartsRequestChat.tsx
+│   │   ├── VehiclePhotoGallery.tsx
+│   │   └── VehiclePhotoUploader.tsx
+│   ├── hooks
+│   └── lib
+│       └── parts
+│           └── searchParts.ts
+├── quotes
+│   ├── api
+│   │   └── quote
+│   │       └── route.ts
+│   ├── app
+│   ├── components
+│   │   └── QuoteViewer.tsx
+│   ├── hooks
+│   └── lib
+│       └── quote
+│           ├── generateQuoteFromInspection.ts
+│           ├── matchToMenuItem.ts
+│           ├── normalizeQuoteLine.ts
+│           └── quoteMenu.ts
+├── shared
+│   ├── api
+│   │   └── email
+│   │       └── confirm
+│   │           └── route.ts
+│   ├── components
+│   │   ├── AccountPlanPanel.tsx
+│   │   ├── CreateWorkOrderForm.tsx
+│   │   ├── DashboardHeader.tsx
+│   │   ├── DynamicRoleSidebar.tsx
+│   │   ├── InvoicePreviewModal.tsx
+│   │   ├── JobActions.tsx
+│   │   ├── JobQueue.tsx
+│   │   ├── JobQueueCard.tsx
+│   │   ├── LandingButtons.tsx
+│   │   ├── LoadWorkOrderById.tsx
+│   │   ├── LoadingOverlay.tsx
+│   │   ├── Navbar.tsx
+│   │   ├── OwnerPinBadge.tsx
+│   │   ├── OwnerPinModal.tsx
+│   │   ├── PhotoCapture.tsx
+│   │   ├── PlanSelectionPage.tsx
+│   │   ├── ProFixIQLanding.tsx
+│   │   ├── PunchInOutButton.tsx
+│   │   ├── RoleNavAdmin.tsx
+│   │   ├── RoleNavAdvisor.tsx
+│   │   ├── RoleNavManager.tsx
+│   │   ├── RoleNavOwner.tsx
+│   │   ├── RoleNavParts.tsx
+│   │   ├── RoleNavTech.tsx
+│   │   ├── ShiftTracker.tsx
+│   │   ├── SignaturePad.tsx
+│   │   ├── SiteHeader.tsx
+│   │   ├── SubscribeBanner.tsx
+│   │   ├── VehicleSelector.tsx
+│   │   ├── VehicleSelectorModal.tsx
+│   │   ├── summary.tsx
+│   │   └── ui
+│   │       ├── Button.tsx
+│   │       ├── Calendar.tsx
+│   │       ├── Card.tsx
+│   │       ├── Container.tsx
+│   │       ├── FeatureCard.tsx
+│   │       ├── FeaturesSection.tsx
+│   │       ├── Footer.tsx
+│   │       ├── HomeButton.tsx
+│   │       ├── LandingHero.tsx
+│   │       ├── LinkButton.tsx
+│   │       ├── LoadingSpinner.tsx
+│   │       ├── LockedFeature.tsx
+│   │       ├── PreviousPageButton.tsx
+│   │       ├── PricingSection.tsx
+│   │       ├── QuoteViewer.tsx
+│   │       ├── Section.tsx
+│   │       ├── WhySection.tsx
+│   │       ├── input.tsx
+│   │       └── textarea.tsx
+│   ├── context
+│   │   └── TabsProvider.tsx
+│   ├── hooks
+│   │   └── useVehicleInfo.ts
+│   ├── layout
+│   ├── lib
+│   │   ├── db.ts
+│   │   ├── email
+│   │   │   ├── email
+│   │   │   │   └── sendQuoteEmail.ts
+│   │   │   ├── sendConfirmation.ts
+│   │   │   ├── sendEmail.ts
+│   │   │   └── sendInvoiceEmail.ts
+│   │   ├── formatters.ts
+│   │   ├── getUserSession.ts
+│   │   ├── menuItems.ts
+│   │   ├── pdf
+│   │   │   └── generateStatsPDF.ts
+│   │   ├── plan
+│   │   │   └── features.ts
+│   │   ├── queries.ts
+│   │   ├── stats
+│   │   │   └── getShopStats.ts
+│   │   ├── supabase
+│   │   │   ├── admin.ts
+│   │   │   ├── client.ts
+│   │   │   └── server.ts
+│   │   ├── tech
+│   │   │   └── index.ts
+│   │   ├── upgradeUser.ts
+│   │   ├── utils
+│   │   │   └── uploadSignature.ts
+│   │   └── utils.ts
+│   └── types
+│       ├── supabase.ts
+│       ├── types
+│       │   ├── global.d.ts
+│       │   ├── services.ts
+│       │   ├── speech.d.ts
+│       │   └── supabase.ts
+│       └── types.ts
+├── stripe
+│   ├── api
+│   │   └── stripe
+│   │       └── checkout
+│   │           ├── link-user
+│   │           │   └── route.ts
+│   │           └── webhook
+│   │               └── route.ts
+│   ├── app
+│   ├── components
+│   └── lib
+│       ├── getStripePlans.ts
+│       └── stripe
+│           ├── constants.ts
+│           └── getPlans.ts
+└── work-orders
+    ├── api
+    │   ├── fromInspection
+    │   │   ├── from-inspection.ts
+    │   │   └── route.ts
+    │   └── update-status
+    │       ├── [id]
+    │       │   └── route.ts
+    │       ├── create
+    │       │   └── route.ts
+    │       ├── list
+    │       │   └── route.ts
+    │       └── route.ts
+    ├── app
+    │   └── work-orders
+    │       ├── ProFixIQ.code-workspace
+    │       ├── [id]
+    │       │   └── page.tsx
+    │       ├── create
+    │       │   └── page.tsx
+    │       ├── customer
+    │       │   └── page.tsx
+    │       ├── insertPrioritizedJobs.ts
+    │       ├── page.tsx
+    │       ├── queue
+    │       │   └── page.tsx
+    │       ├── quote-review
+    │       │   └── page.tsx
+    │       └── view
+    │           └── [id]
+    │               └── page.tsx
+    ├── components
+    │   ├── QuickActions.tsx
+    │   ├── RecentWorkOrders.tsx
+    │   ├── TechJobScreen.tsx
+    │   ├── WorkOrderCard.tsx
+    │   ├── WorkOrderEditorPage.tsx
+    │   ├── WorkOrderInvoiceDownloadButton.tsx
+    │   ├── WorkOrderInvoicePDF.tsx
+    │   ├── WorkOrderLineEditor.tsx
+    │   ├── WorkOrderPDF.tsx
+    │   ├── manager
+    │   │   └── ManagerJobDashboard.tsx
+    │   └── workorders
+    │       ├── AddJobModal.tsx
+    │       ├── CauseCorrectionModal.tsx
+    │       ├── DtcSuggestionPopup.tsx
+    │       └── PartsRequestModal.tsx
+    ├── hooks
+    └── lib
+        ├── getNextJob.ts
+        ├── saveWorkOrderLines.ts
+        ├── updateLineStatus.ts
+        └── work-orders
+            ├── commandProcessor.ts
+            ├── fetchJobs.ts
+            ├── generateQuotePdf.ts
+            ├── getQueuedJobsForTech.ts
+            ├── handleWorkOrderCommand.ts
+            ├── insertPrioritizedJobs.ts
+            ├── insertPrioritizedJobsFromInspection.ts
+            └── parseWorkOrderCommand.ts
+
+149 directories, 263 files
