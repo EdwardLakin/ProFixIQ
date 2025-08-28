@@ -3,14 +3,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClient } from "@supabase/supabase-js";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-
-// Single client for this component
-const supabase = createClient<Database>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-);
 
 type Mode = "sign-in" | "sign-up";
 
@@ -27,15 +21,16 @@ const STAFF_HOME: Record<string, string> = {
 export default function AuthPage() {
   const router = useRouter();
   const params = useSearchParams();
+  const supabase = createClientComponentClient<Database>(); // cookie-aware client
 
   const [mode, setMode] = useState<Mode>("sign-in");
   const [email, setEmail] = useState(params.get("email") || "");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState(params.get("notice") || ""); // show message from URL
+  const [notice, setNotice] = useState(params.get("notice") || "");
   const [loading, setLoading] = useState(false);
 
-  // Optional redirect (customer portal, etc.)
+  // optional redirect target for non-staff (e.g., customer portal)
   const redirectParam = params.get("redirect") || "/portal";
 
   // If already signed in, route by role immediately
@@ -56,7 +51,7 @@ export default function AuthPage() {
       if (role in STAFF_HOME) router.replace(STAFF_HOME[role]);
       else router.replace(redirectParam || "/portal");
     })();
-  }, [router, redirectParam]);
+  }, [router, redirectParam, supabase]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,6 +70,9 @@ export default function AuthPage() {
       return;
     }
 
+    // ensure server components/middleware see the new auth cookie
+    router.refresh();
+
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -92,9 +90,7 @@ export default function AuthPage() {
       .single();
 
     const role = profile?.role ?? "customer";
-    if (role in STAFF_HOME) router.replace(STAFF_HOME[role]);
-    else router.replace(redirectParam || "/portal");
-
+    router.replace(role in STAFF_HOME ? STAFF_HOME[role] : (redirectParam || "/portal"));
     setLoading(false);
   };
 
@@ -104,7 +100,7 @@ export default function AuthPage() {
     setError("");
     setNotice("");
 
-    // Ensure the magic link returns to /confirm (our consolidating page)
+    // Make magic link land on /confirm (which then routes to onboarding/dash)
     const origin =
       typeof window !== "undefined"
         ? window.location.origin
@@ -123,7 +119,7 @@ export default function AuthPage() {
       return;
     }
 
-    // If email confirmation is enabled (typical), there's no session yet
+    // When email confirmation is required, there won't be a session yet
     if (!data.session) {
       setNotice(
         "Check your inbox for a confirmation link. After confirming, we’ll take you to onboarding."
@@ -132,7 +128,8 @@ export default function AuthPage() {
       return;
     }
 
-    // If confirmation is disabled and a session exists immediately:
+    // If confirmation disabled and session exists right away
+    router.refresh();
     router.replace("/onboarding");
     setLoading(false);
   };
@@ -193,9 +190,7 @@ export default function AuthPage() {
             minLength={6}
           />
 
-          {error && (
-            <p className="text-red-500 text-sm text-center">{error}</p>
-          )}
+          {error && <p className="text-red-500 text-sm text-center">{error}</p>}
           {notice && (
             <p className="text-green-400 text-sm text-center">{notice}</p>
           )}
