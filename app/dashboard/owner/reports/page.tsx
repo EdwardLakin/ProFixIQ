@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import FeaturePage from "@features/dashboard/app/dashboard/owner/reports/page";
+import FeaturePage from "@/features/dashboard/app/dashboard/owner/reports/page";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
