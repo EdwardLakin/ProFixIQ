@@ -8,6 +8,16 @@ import type { Database } from "@shared/types/types/supabase";
 
 type Role = "owner" | "admin" | "manager" | "advisor" | "mechanic";
 
+const staffRedirect: Record<Role, string> = {
+  owner: "/dashboard/owner",
+  admin: "/dashboard/admin",
+  manager: "/dashboard/manager",
+  advisor: "/dashboard/advisor",
+  mechanic: "/dashboard/tech",
+};
+const isStaffRole = (r: string | null | undefined): r is Role =>
+  r === "owner" || r === "admin" || r === "manager" || r === "advisor" || r === "mechanic";
+
 export default function OnboardingPage() {
   const supabase = createClientComponentClient<Database>();
   const router = useRouter();
@@ -40,30 +50,76 @@ export default function OnboardingPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Ensure session (but do not redirect if missing; show message)
+  /**
+   * 1) If we arrived from a Supabase magic link (?code=...), exchange it for a session
+   *    and strip the query so we don't re-exchange on refresh.
+   */
+  useEffect(() => {
+    const code = searchParams.get("code");
+    if (!code) return;
+
+    (async () => {
+      try {
+        await supabase.auth.exchangeCodeForSession(code);
+      } finally {
+        const keepSid = searchParams.get("session_id");
+        const clean = keepSid ? `/onboarding?session_id=${encodeURIComponent(keepSid)}` : "/onboarding";
+        router.replace(clean);
+        setTimeout(() => router.refresh(), 0);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // run once on mount
+
+  /**
+   * 2) Check session; if a complete staff profile already exists, route to dashboard.
+   *    Otherwise allow the onboarding form to render.
+   */
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      setHasSession(!!user);
+      const has = !!user;
+      setHasSession(has);
       setSessionChecked(true);
 
-      // Optional Stripe linking if you later add /api/stripe/link-user
-      const sessionId = searchParams.get("session_id");
-      if (user && sessionId) {
+      if (!has || !user) return;
+
+      // Optional: link Stripe session to the user if present (safe no-op if route doesn't exist)
+      const sid = searchParams.get("session_id");
+      if (sid) {
         try {
           await fetch("/api/stripe/link-user", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ sessionId, userId: user.id }),
+            body: JSON.stringify({ sessionId: sid, userId: user.id }),
           });
         } catch {
           /* ignore */
         }
       }
-    })();
-  }, [searchParams, supabase]);
 
-  // Sync toggle with role
+      // See if a staff profile is already complete → skip onboarding
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("role, full_name, phone, shop_id")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      const r = prof?.role ?? null;
+      const complete =
+        isStaffRole(r) &&
+        !!prof?.full_name &&
+        !!prof?.phone &&
+        // owners normally get a shop on bootstrap; if shop already present, even better
+        (r === "owner" ? true : !!prof?.shop_id);
+
+      if (complete) {
+        router.replace(staffRedirect[r]);
+      }
+    })();
+  }, [router, searchParams, supabase]);
+
+  // Sync toggle with role (UI nicety)
   useEffect(() => {
     setAsOwner(role === "owner");
   }, [role]);
@@ -136,18 +192,10 @@ export default function OnboardingPage() {
       }
     }
 
-    // 3) Redirect
+    // 3) Redirect to the right place
     const finalRole: Role = asOwner ? "owner" : role;
-    const redirectMap: Record<Role, string> = {
-      owner: "/dashboard/owner",
-      admin: "/dashboard/admin",
-      manager: "/dashboard/manager",
-      advisor: "/dashboard/advisor",
-      mechanic: "/dashboard/tech",
-    };
-
+    router.replace(staffRedirect[finalRole] || "/dashboard");
     setLoading(false);
-    router.replace(redirectMap[finalRole] || "/dashboard");
   };
 
   // Session gate rendering
