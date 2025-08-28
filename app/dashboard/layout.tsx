@@ -3,7 +3,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import Navbar from "@shared/components/Navbar";
 import DynamicRoleSidebar from "@shared/components/DynamicRoleSidebar";
 import Calendar from "@shared/components/ui/Calendar";
 import { TabsProvider } from "@shared/context/TabsProvider";
@@ -86,7 +85,6 @@ export default function DashboardLayout({
   return (
     <TabsProvider>
       <div className="min-h-screen bg-black text-white font-blackops">
-        <Navbar />
 
         {/* Header */}
         <div className="mx-auto flex max-w-7xl items-center justify-between border-b border-neutral-800 px-4 py-3">
