@@ -6,23 +6,17 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2024-04-10" as Stripe.LatestApiVersion,
 });
 
-// Build an absolute base URL that works locally, on Vercel previews, and in prod.
 function getBaseUrl() {
-  // 1) Vercel preview/production
-  if (process.env.NEXT_PUBLIC_SITE_URL) {
+  if (process.env.NEXT_PUBLIC_SITE_URL)
     return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "");
-  }
-  // 2) Vercel previews expose a host
-  if (process.env.VERCEL_URL) {
+  if (process.env.VERCEL_URL)
     return `https://${process.env.VERCEL_URL.replace(/\/$/, "")}`;
-  }
-  // 3) Local dev
   return "http://localhost:3000";
 }
 
 type Interval = "monthly" | "yearly";
 interface CheckoutPayload {
-  planKey: string;           // Stripe price_ id
+  planKey: string;            // Stripe price_ id
   interval?: Interval;
   isAddon?: boolean;
   shopId?: string | null;
@@ -50,9 +44,10 @@ export async function POST(req: Request) {
       mode: "subscription",
       payment_method_types: ["card"],
       line_items: [{ price: planKey, quantity: 1 }],
-      // ⬇️ These MUST match what you allowed in Supabase (we added both /confirm and /auth/callback)
-      success_url: `${base}/confirm?session_id={CHECKOUT_SESSION_ID}`,
+      // ✅ Send new users straight to Sign Up (not /confirm)
+      success_url: `${base}/signup?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${base}/subscribe`,
+      client_reference_id: userId ?? undefined, // optional; handy for later
       metadata: {
         plan_key: planKey,
         interval,
@@ -61,6 +56,9 @@ export async function POST(req: Request) {
         ...(userId ? { supabaseUserId: userId } : {}),
       },
     });
+
+    // Optional tiny debug (remove if you want)
+    console.log("[stripe] created checkout", { url: session.url, base });
 
     return NextResponse.json({ url: session.url }, { status: 200 });
   } catch (err: unknown) {
