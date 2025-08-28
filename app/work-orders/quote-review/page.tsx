@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import FeaturePage from "@features/work-orders/app/work-orders/quote-review/page";
+import FeaturePage from "@/features/work-orders/app/work-orders/quote-review/page";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
