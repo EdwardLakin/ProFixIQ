@@ -1,3 +1,4 @@
+// app/confirm/ConfirmContent.tsx
 "use client";
 
 import { useEffect, useRef } from "react";
@@ -5,7 +6,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
-// Role → path (fallback to onboarding if no role yet)
 const rolePath = (role?: string | null) =>
   role === "owner"    ? "/dashboard/owner"   :
   role === "admin"    ? "/dashboard/admin"   :
@@ -15,158 +15,130 @@ const rolePath = (role?: string | null) =>
   role === "mechanic" || role === "tech" ? "/dashboard/tech" :
   "/onboarding";
 
-// Tiny logger to Vercel logs (via our diag route)
 async function log(message: string, extra?: Record<string, unknown>) {
   try {
-    // keep console noise minimal in production but helpful in dev
-    if (process.env.NODE_ENV !== "production") console.log("[diag]", message, extra ?? "");
+    console.log("[diag]", message, extra ?? "");
     await fetch("/api/diag/log", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       keepalive: true,
-      body: JSON.stringify({ message, ...extra }),
+      body: JSON.stringify({ message, extra }),
     });
-  } catch {
-    /* ignore */
-  }
+  } catch {}
 }
 
 export default function ConfirmContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const sp = useSearchParams();
   const supabase = createClientComponentClient<Database>();
-
-  // prevent duplicate navigations/races
   const navigated = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
-
-    const hardGoto = (url: string) => {
+    const goto = (url: string) => {
       if (cancelled || navigated.current) return;
       navigated.current = true;
-      try {
-        window.location.assign(url);
-      } catch {
-        router.replace(url);
-      }
+      router.replace(url);
+      router.refresh();
     };
 
-    const softReplace = (url: string) => {
-      if (cancelled || navigated.current) return;
-      navigated.current = true;
-      // Defer one tick to avoid racing hydration, then refresh
-      setTimeout(() => {
-        try {
-          router.replace(url);
-          router.refresh();
-        } catch {
-          hardGoto(url);
-        }
-      }, 0);
-    };
+    const ensureProfileAndRoute = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return goto("/sign-in");
 
-    // Read role (do NOT auto-insert a profile here; signup handles creation)
-    const readRole = async (userId: string) => {
-      const { data, error } = await supabase
+      // Try read role
+      let { data: prof, error } = await supabase
         .from("profiles")
-        .select("role")
-        .eq("id", userId)
+        .select("id, role")
+        .eq("id", user.id)
         .maybeSingle();
-
       if (error) await log("profiles read error", { error: error.message });
 
-      return data?.role ?? null;
-    };
+      // If no row, insert minimal one (role null so they go to onboarding)
+      if (!prof) {
+        const { error: insErr } = await supabase.from("profiles").insert({
+          id: user.id,
+          email: user.email ?? null,
+          role: null,
+        } as Database["public"]["Tables"]["profiles"]["Insert"]);
+        if (insErr) await log("profiles insert error", { error: insErr.message });
+        prof = { id: user.id, role: null };
+      }
 
-    const routeBySession = async () => {
-      const { data, error } = await supabase.auth.getSession();
-      if (error) await log("supabase.getSession error", { error: error.message });
-
-      const user = data.session?.user;
-      await log("session check", { hasSession: !!user });
-
-      if (!user) return false;
-
-      const role = await readRole(user.id);
-      const dest = rolePath(role); // role → dashboard, null → onboarding
-      await log("routing by role", { role, dest });
-      softReplace(dest);
-      return true;
+      const dest = rolePath(prof?.role ?? null);
+      await log("routing by role", { role: prof?.role ?? null, dest });
+      goto(dest);
     };
 
     (async () => {
-      const code = searchParams.get("code");
-      const sessionId = searchParams.get("session_id");
+      // 1) First, support the “hash fragment” format: #access_token=...&refresh_token=...
+      let handled = false;
+      if (typeof window !== "undefined" && window.location.hash) {
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        const at = hashParams.get("access_token");
+        const rt = hashParams.get("refresh_token");
+        const error = hashParams.get("error_description") || hashParams.get("error");
 
-      // 1) If magic-link code present → exchange for a session
-      if (code) {
-        try {
-          await log("found auth code, exchanging");
-          await supabase.auth.exchangeCodeForSession(code);
-          await log("auth code exchanged OK");
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          await log("exchangeCodeForSession failed", { error: msg });
+        if (error) await log("hash error from magic link", { error });
+
+        if (at && rt) {
+          await log("found hash tokens; setting session");
+          try {
+            const { error: setErr } = await supabase.auth.setSession({
+              access_token: at,
+              refresh_token: rt,
+            });
+            if (setErr) {
+              await log("setSession failed", { error: setErr.message });
+              return goto("/sign-in");
+            }
+            // Clean up the hash so we don’t re-process on back/forward
+            history.replaceState({}, "", window.location.pathname + window.location.search);
+            handled = true;
+          } catch (e) {
+            await log("setSession threw", { error: String(e) });
+            return goto("/sign-in");
+          }
         }
       }
 
-      // 2) If we already have a session → go to role dashboard or onboarding
-      const routed = await routeBySession();
-      if (routed) return;
-
-      // 3) No session yet:
-      //    If we came from Stripe checkout, require signup (email + magic link) first.
-      if (sessionId) {
-        const dest = `/signup?session_id=${encodeURIComponent(sessionId)}`;
-        await log("new user from stripe; redirecting to signup", { dest });
-        softReplace(dest);
-        return;
+      // 2) Support the “code in query” format: ?code=...
+      const code = sp.get("code");
+      if (!handled && code) {
+        await log("exchanging code");
+        try {
+          await supabase.auth.exchangeCodeForSession(code);
+          handled = true;
+        } catch (e) {
+          await log("exchange failed", { error: e instanceof Error ? e.message : String(e) });
+          return goto("/sign-in");
+        }
       }
 
-      // 4) Fallback to sign-in (handles direct visits or expired links)
-      await log("no session and no session_id; redirecting to sign-in");
-      softReplace("/sign-in");
+      // 3) If neither tokens nor code are present, bounce to sign-in
+      if (!handled) {
+        await log("no code or tokens present on /confirm");
+        return goto("/sign-in");
+      }
+
+      // 4) We have a session → ensure profile & route
+      await ensureProfileAndRoute();
     })();
 
-    // 5) Safety re-check after 4s: if still here, try again and hard-redirect
+    // 5) Safety timer (in case the browser stalled)
     const safety = setTimeout(async () => {
       if (navigated.current || cancelled) return;
-      await log("safety timeout: still here on /confirm; re-checking");
-      const { data } = await supabase.auth.getSession();
-      const session = data.session;
-
-      if (session?.user) {
-        const role = await (async () => {
-          const { data: prof } = await supabase
-            .from("profiles")
-            .select("role")
-            .eq("id", session.user.id)
-            .maybeSingle();
-          return prof?.role ?? null;
-        })();
-        hardGoto(rolePath(role));
-        return;
-      }
-
-      const sid = searchParams.get("session_id");
-      hardGoto(sid ? `/signup?session_id=${encodeURIComponent(sid)}` : "/sign-in");
+      await log("safety timeout on /confirm");
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) goto("/sign-in");
+      else goto("/onboarding");
     }, 4000);
-
-    // Also respond to late-arriving session events
-    const { data: listener } = supabase.auth.onAuthStateChange(async (ev) => {
-      await log("auth state change", { event: ev });
-      if (!navigated.current) {
-        await routeBySession();
-      }
-    });
 
     return () => {
       cancelled = true;
       clearTimeout(safety);
-      listener.subscription.unsubscribe();
     };
-  }, [router, searchParams, supabase]);
+  }, [router, sp, supabase]);
 
   return (
     <div className="min-h-[60vh] grid place-items-center text-white">
