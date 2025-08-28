@@ -17,7 +17,7 @@ export default function SignUpClient() {
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Success redirect target for Supabase magic link
+  // Where Supabase should send the user after they click the magic link
   const emailRedirectTo = useMemo(() => {
     const base =
       (typeof window !== "undefined"
@@ -26,27 +26,29 @@ export default function SignUpClient() {
     return `${base.replace(/\/$/, "")}/confirm`;
   }, []);
 
-  // Prefill email if we came from Stripe with a session_id
+  // Prefill email from Stripe session (optional)
   useEffect(() => {
     const sid = searchParams.get("session_id");
     if (!sid) return;
 
     (async () => {
       try {
-        const res = await fetch(`/api/stripe/session?session_id=${sid}`);
+        const res = await fetch(`/api/stripe/session?session_id=${encodeURIComponent(sid)}`);
         const data = await res.json();
         if (data?.email) setEmail(data.email);
       } catch (e) {
-        console.error("[signup] failed to prefill from stripe session", e);
+        // non-blocking
+        // eslint-disable-next-line no-console
+        console.error("[signup] prefill error", e);
       }
     })();
   }, [searchParams]);
 
-  // If already signed in, go to onboarding
+  // If already signed in (maybe via magic link in another tab), push to /confirm
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getUser();
-      if (data?.user) router.replace("/onboarding");
+      if (data?.user) router.replace("/confirm");
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
@@ -57,6 +59,8 @@ export default function SignUpClient() {
     setNotice("");
     setLoading(true);
 
+    // Safety: if account already exists, redirect to sign-in instead of failing hard
+    // We try signUp first; if Supabase says "already registered", send the user to sign-in.
     const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
@@ -64,7 +68,27 @@ export default function SignUpClient() {
     });
 
     if (signUpError) {
-      setError(signUpError.message);
+      const msg = signUpError.message || "";
+      const normalized = msg.toLowerCase();
+
+      // common Supabase messages:
+      // - "User already registered"
+      // - "Email rate limit exceeded" (show nicer text)
+      if (normalized.includes("already") && normalized.includes("registered")) {
+        setNotice("Looks like you already have an account. Please sign in.");
+        // give the user a moment to see the message, then go to sign-in with email prefilled
+        setTimeout(() => {
+          router.replace(`/sign-in?email=${encodeURIComponent(email)}`);
+        }, 800);
+        setLoading(false);
+        return;
+      }
+
+      if (normalized.includes("rate") && normalized.includes("limit")) {
+        setError("We’re sending too many emails right now. Please try again in a couple minutes.");
+      } else {
+        setError(msg || "Sign up failed. Please try again.");
+      }
       setLoading(false);
       return;
     }
@@ -74,11 +98,13 @@ export default function SignUpClient() {
       setNotice(
         "Check your email to confirm your account. After confirming, we’ll take you to onboarding."
       );
+      // Optionally take them to /confirm so it can poll/exchange auth code when they return
+      setTimeout(() => router.replace("/confirm"), 600);
       setLoading(false);
       return;
     }
 
-    // If confirmation is disabled (session exists right away) still proceed to onboarding.
+    // If confirmation is disabled (session exists immediately), proceed straight to onboarding.
     setLoading(false);
     router.replace("/onboarding");
   };
@@ -106,6 +132,10 @@ export default function SignUpClient() {
           autoComplete="new-password"
           minLength={6}
         />
+
+        {error && <p className="text-red-500 text-sm">{error}</p>}
+        {notice && <p className="text-green-400 text-sm">{notice}</p>}
+
         <button
           type="submit"
           disabled={loading}
@@ -113,8 +143,13 @@ export default function SignUpClient() {
         >
           {loading ? "Creating Account..." : "Sign Up"}
         </button>
-        {error && <p className="text-red-500 text-sm">{error}</p>}
-        {notice && <p className="text-green-400 text-sm">{notice}</p>}
+
+        {/* Optional: show the session id for debugging */}
+        {searchParams.get("session_id") && (
+          <p className="text-xs text-neutral-400 mt-2">
+            Checkout session: <span className="font-mono">{searchParams.get("session_id")}</span>
+          </p>
+        )}
       </form>
     </div>
   );

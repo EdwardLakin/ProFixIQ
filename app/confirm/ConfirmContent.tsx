@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
-// If we don't yet know a role, go to onboarding instead of /dashboard
+// Role → path (fallback to onboarding if no role yet)
 const rolePath = (role?: string | null) =>
   role === "owner"    ? "/dashboard/owner"   :
   role === "admin"    ? "/dashboard/admin"   :
@@ -15,7 +15,7 @@ const rolePath = (role?: string | null) =>
   role === "mechanic" || role === "tech" ? "/dashboard/tech" :
   "/onboarding";
 
-// tiny log helper (goes to Vercel logs through our diag route)
+// tiny log helper to Vercel
 async function log(message: string, extra?: Record<string, unknown>) {
   try {
     console.log("[diag]", message, extra ?? "");
@@ -33,56 +33,87 @@ export default function ConfirmContent() {
   const searchParams = useSearchParams();
   const supabase = createClientComponentClient<Database>();
 
-  // prevent multiple navigations
   const navigated = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
 
     const hardGoto = (url: string) => {
-      // last-resort navigation (avoids being stuck on /confirm)
-      try {
-        window.location.assign(url);
-      } catch {
-        router.replace(url);
-      }
+      if (cancelled || navigated.current) return;
+      navigated.current = true;
+      try { window.location.assign(url); } catch { router.replace(url); }
     };
 
     const softReplace = (url: string) => {
       if (cancelled || navigated.current) return;
       navigated.current = true;
-      // Defer one tick to avoid racing hydration, then refresh
       setTimeout(() => {
-        try {
-          router.replace(url);
-          router.refresh();
-        } catch {
-          hardGoto(url);
-        }
+        try { router.replace(url); router.refresh(); }
+        catch { hardGoto(url); }
       }, 0);
     };
 
-    const goToRoleHome = async () => {
+    // Ensure a profiles row exists; return {role|null}
+    const ensureProfile = async (userId: string) => {
+      // Try to read first
+      let { data: prof, error } = await supabase
+        .from("profiles")
+        .select("id, role")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (error) await log("profiles read error", { error: error.message });
+
+      if (!prof) {
+        // create minimal row (lots of nulls are allowed in your types)
+        const { data: { user } } = await supabase.auth.getUser();
+        const { error: insErr } = await supabase.from("profiles").insert({
+          id: userId,
+          email: user?.email ?? null,
+          full_name: null,
+          plan: "free",
+          created_at: new Date().toISOString(),
+          shop_id: null,
+          business_name: null,
+          phone: null,
+          street: null,
+          city: null,
+          province: null,
+          postal_code: null,
+          role: null,
+          shop_name: null,
+        } as Database["public"]["Tables"]["profiles"]["Insert"]);
+
+        if (insErr) {
+          await log("profiles insert error", { error: insErr.message });
+        }
+
+        // re-read to get role (likely null)
+        const reread = await supabase
+          .from("profiles")
+          .select("id, role")
+          .eq("id", userId)
+          .maybeSingle();
+        prof = reread.data ?? null;
+      }
+
+      return { role: prof?.role ?? null as string | null };
+    };
+
+    const routeBySession = async () => {
       const { data: { session }, error } = await supabase.auth.getSession();
       if (error) await log("supabase.getSession error", { error: error.message });
 
       const user = session?.user;
       await log("session check", { hasSession: !!user });
 
-      if (!user || cancelled) return false;
+      if (!user) return false; // caller will decide what to do
 
-      // try to fetch role; if none, send them to onboarding
-      const { data: prof, error: profErr } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      if (profErr) await log("profiles fetch error", { error: profErr.message });
-
-      const path = rolePath(prof?.role ?? null);
-      await log("routing to role home", { role: prof?.role ?? null, path });
-      softReplace(path);
+      // make sure there’s a profile row—if none, insert it
+      const { role } = await ensureProfile(user.id);
+      const dest = rolePath(role);
+      await log("routing by role or onboarding", { role, dest });
+      softReplace(dest);
       return true;
     };
 
@@ -90,7 +121,7 @@ export default function ConfirmContent() {
       const code = searchParams.get("code");
       const sessionId = searchParams.get("session_id");
 
-      // 1) Exchange magic-link / OAuth code if present
+      // 1) If magic-link code present → exchange for a session
       if (code) {
         try {
           await log("found auth code, exchanging");
@@ -101,45 +132,49 @@ export default function ConfirmContent() {
         }
       }
 
-      // 2) If a session already exists → route by role (or onboarding)
-      const routed = await goToRoleHome();
+      // 2) If we already have a session → ensure profile & go to onboarding/role
+      const routed = await routeBySession();
       if (routed) return;
 
-      // 3) If no session yet but we came from Stripe, send to signup for password+confirm
-      if (sessionId && !navigated.current) {
+      // 3) No session yet:
+      //    If we came from Stripe, we *must* send them to /signup to start email verification
+      if (sessionId) {
         const dest = `/signup?session_id=${encodeURIComponent(sessionId)}`;
         await log("no session; redirecting to signup with session_id", { dest });
         softReplace(dest);
         return;
       }
 
-      // 4) Fallback → sign in
+      // 4) Fallback to sign-in (handles direct visits to /confirm)
       await log("no session and no session_id; redirecting to sign-in");
       softReplace("/sign-in");
     })();
 
-    // 5) Safety: if nothing has happened after 4s, re-check and hard-redirect
+    // 5) Safety re-check after 4s: if still here, try again / hard redirect
     const safety = setTimeout(async () => {
       if (navigated.current || cancelled) return;
       await log("safety timeout: still here on /confirm; re-checking session");
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
-        const { data: prof } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", session.user.id)
-          .maybeSingle();
-        hardGoto(rolePath(prof?.role ?? null));
-        return;
+        const { role } = await (async () => {
+          const { data } = await supabase
+            .from("profiles")
+            .select("role")
+            .eq("id", session.user!.id)
+            .maybeSingle();
+          return { role: data?.role ?? null };
+        })();
+        hardGoto(rolePath(role));
+      } else {
+        const sid = searchParams.get("session_id");
+        hardGoto(sid ? `/signup?session_id=${encodeURIComponent(sid)}` : "/sign-in");
       }
-      const sid = searchParams.get("session_id");
-      hardGoto(sid ? `/signup?session_id=${encodeURIComponent(sid)}` : "/sign-in");
     }, 4000);
 
-    // Also listen for a late session (e.g., code arrives)
+    // Also respond to late-arriving session events
     const { data: listener } = supabase.auth.onAuthStateChange(async (ev) => {
       await log("auth state change", { event: ev });
-      if (!navigated.current) await goToRoleHome();
+      if (!navigated.current) await routeBySession();
     });
 
     return () => {
