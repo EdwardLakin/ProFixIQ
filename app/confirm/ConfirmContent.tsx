@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
-// Role → path (fallback to onboarding if no role yet)
+// Map role → dashboard path (fallback: onboarding)
 const rolePath = (role?: string | null) =>
   role === "owner"    ? "/dashboard/owner"   :
   role === "admin"    ? "/dashboard/admin"   :
@@ -15,7 +15,7 @@ const rolePath = (role?: string | null) =>
   role === "mechanic" || role === "tech" ? "/dashboard/tech" :
   "/onboarding";
 
-// tiny log helper
+// Small log helper → Vercel
 async function log(message: string, extra?: Record<string, unknown>) {
   try {
     console.log("[diag]", message, extra ?? "");
@@ -25,13 +25,14 @@ async function log(message: string, extra?: Record<string, unknown>) {
       keepalive: true,
       body: JSON.stringify({ message, extra }),
     });
-  } catch {}
+  } catch {/* ignore */}
 }
 
 export default function ConfirmContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClientComponentClient<Database>();
+
   const navigated = useRef(false);
 
   useEffect(() => {
@@ -52,42 +53,35 @@ export default function ConfirmContent() {
       }, 0);
     };
 
-    /** Ensure a profiles row exists; return current role (null if none). */
+    // Ensure profiles row exists; return role
     const ensureProfile = async (userId: string) => {
-      // 1) try read
-      let { data: prof, error: readErr } = await supabase
+      let { data: prof, error: readerErr } = await supabase
         .from("profiles")
         .select("id, role")
         .eq("id", userId)
         .maybeSingle();
 
-      if (readErr) await log("profiles read error", { error: readErr.message });
+      if (readerErr) await log("profiles read error", { error: readerErr.message });
 
-      // 2) if missing, insert **minimal** row (only columns that surely exist!)
       if (!prof) {
-        const { data: u } = await supabase.auth.getUser();
-        // Only id + (optionally) email/plan if they exist in your schema
-        const row: Partial<Database["public"]["Tables"]["profiles"]["Insert"]> = {
+        const { data: { user } } = await supabase.auth.getUser();
+        const { error: insErr } = await supabase.from("profiles").insert({
           id: userId,
-          // email: u?.user?.email ?? null,   // uncomment ONLY if `email` column exists
-          // plan: "free" as any,              // uncomment ONLY if `plan` column exists
-        };
+          email: user?.email ?? null,
+          role: null,
+        } as Database["public"]["Tables"]["profiles"]["Insert"]);
 
-        const { error: insErr } = await supabase.from("profiles").insert(row as any);
-        if (insErr) {
-          await log("profiles insert error", { error: insErr.message });
-        } else {
-          // re-read to get role (likely null)
-          const re = await supabase
-            .from("profiles")
-            .select("id, role")
-            .eq("id", userId)
-            .maybeSingle();
-          prof = re.data ?? null;
-        }
+        if (insErr) await log("profiles insert error", { error: insErr.message });
+
+        const reread = await supabase
+          .from("profiles")
+          .select("id, role")
+          .eq("id", userId)
+          .maybeSingle();
+        prof = reread.data ?? null;
       }
 
-      return prof?.role ?? null;
+      return { role: prof?.role ?? null };
     };
 
     const routeBySession = async () => {
@@ -96,11 +90,12 @@ export default function ConfirmContent() {
 
       const user = session?.user;
       await log("session check", { hasSession: !!user });
+
       if (!user) return false;
 
-      const role = await ensureProfile(user.id);
+      const { role } = await ensureProfile(user.id);
       const dest = rolePath(role);
-      await log("routing by role", { role, dest });
+      await log("routing by role/onboarding", { role, dest });
       softReplace(dest);
       return true;
     };
@@ -109,38 +104,34 @@ export default function ConfirmContent() {
       const code = searchParams.get("code");
       const sessionId = searchParams.get("session_id");
 
-      // 1) exchange magic-link code if present
       if (code) {
         try {
           await log("found auth code, exchanging");
           await supabase.auth.exchangeCodeForSession(code);
           await log("auth code exchanged OK");
-        } catch (e) {
-          await log("exchangeCodeForSession failed", { error: e instanceof Error ? e.message : String(e) });
+        } catch (e: unknown) {
+          const errMsg = e instanceof Error ? e.message : String(e);
+          await log("exchangeCodeForSession failed", { error: errMsg });
         }
       }
 
-      // 2) if we have a session, go by role (or onboarding)
       const routed = await routeBySession();
       if (routed) return;
 
-      // 3) no session yet; if from Stripe, send to signup to trigger email flow
       if (sessionId) {
         const dest = `/signup?session_id=${encodeURIComponent(sessionId)}`;
-        await log("no session; redirecting to signup with session_id", { dest });
+        await log("no session; redirecting to signup", { dest });
         softReplace(dest);
         return;
       }
 
-      // 4) fallback → sign-in
-      await log("no session and no session_id; redirecting to sign-in");
+      await log("no session; redirecting to sign-in");
       softReplace("/sign-in");
     })();
 
-    // 5) safety re-check after 4s
     const safety = setTimeout(async () => {
       if (navigated.current || cancelled) return;
-      await log("safety timeout: still here on /confirm; re-checking session");
+      await log("safety timeout: still on /confirm; re-checking session");
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
         const { data } = await supabase
