@@ -12,10 +12,8 @@ export default function OwnerDashboardPage() {
   const [shopName, setShopName] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Load user, profile, and shop name
   useEffect(() => {
     let isMounted = true;
-
     (async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
@@ -48,10 +46,7 @@ export default function OwnerDashboardPage() {
         if (isMounted) setLoading(false);
       }
     })();
-
-    return () => {
-      isMounted = false;
-    };
+    return () => { isMounted = false; };
   }, [supabase]);
 
   const greeting = useMemo(() => {
@@ -63,10 +58,7 @@ export default function OwnerDashboardPage() {
   }, [fullName, shopName, loading]);
 
   async function handleAddOnPurchase() {
-    if (!email) {
-      alert("User email not found.");
-      return;
-    }
+    if (!email) return alert("User email not found.");
     const res = await fetch("/api/stripe/checkout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -138,6 +130,14 @@ export default function OwnerDashboardPage() {
           <Tile title="Customer Import" subtitle="Import customers and vehicle history" />
         </Link>
 
+        {/* NEW: Workspace (browser-in-a-browser) */}
+        <Link href="/dashboard/workspace" aria-label="Workspace">
+          <Tile
+            title="Workspace (Multi-view)"
+            subtitle="Open Work Orders, Parts, Inspections without losing your place"
+          />
+        </Link>
+
         <button
           onClick={handleAddOnPurchase}
           className="rounded-lg border border-purple-500 bg-purple-800/70 p-5 text-left transition hover:-translate-y-0.5 hover:bg-purple-700 hover:shadow-lg hover:shadow-purple-500/20 active:translate-y-0"
@@ -151,11 +151,11 @@ export default function OwnerDashboardPage() {
   );
 }
 
-/* Small, reusable card (no implicit any) */
+/* Small, reusable card */
 function Tile(props: { title: string; subtitle?: string }) {
   return (
     <div
-      className="rounded-lg border border-white/10 bg-neutral-900 p-5 transition hover:-translate-y-0.5 hover:border-orange-500 hover:shadow-lg hover:shadow-orange-500/10 active:translate-y-0 cursor-pointer"
+      className="cursor-pointer rounded-lg border border-white/10 bg-neutral-900 p-5 transition hover:-translate-y-0.5 hover:border-orange-500 hover:shadow-lg hover:shadow-orange-500/10 active:translate-y-0"
       role="button"
       tabIndex={0}
       aria-label={props.title}

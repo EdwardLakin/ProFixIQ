@@ -1,32 +1,66 @@
-// app/work-orders/page.tsx
 "use client";
 
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 
-const pages = [
-  { title: "Create Work Order", path: "/work-orders/create" },
-  { title: "Customer Work Order Request", path: "/work-orders/customer" },
-  { title: "Job Queue", path: "/work-orders/queue" },
-  { title: "Quote Review", path: "/work-orders/quote-review" },
-];
+export const revalidate = 0;
 
-export default function WorkOrdersLandingPage() {
-  const router = useRouter();
+type TileProps = {
+  href: string;
+  title: string;
+  subtitle?: string;
+  cta?: string;
+};
 
+function Tile(props: TileProps) {
   return (
-    <div className="max-w-xl mx-auto p-6 space-y-6">
-      <h1 className="text-3xl font-bold text-orange-400 mb-6">Work Orders</h1>
+    <Link
+      href={props.href}
+      className="block rounded-lg border border-white/10 bg-neutral-900 p-4 transition
+                 hover:-translate-y-0.5 hover:border-orange-500 hover:shadow-lg hover:shadow-orange-500/10"
+      aria-label={props.title}
+    >
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-white">{props.title}</h2>
+        {props.cta ? (
+          <span className="rounded bg-orange-500 px-3 py-1 text-sm font-semibold text-black">
+            {props.cta}
+          </span>
+        ) : null}
+      </div>
+      {props.subtitle ? (
+        <p className="mt-1 text-sm text-white/70">{props.subtitle}</p>
+      ) : null}
+    </Link>
+  );
+}
 
-      <div className="space-y-4">
-        {pages.map(({ title, path }) => (
-          <button
-            key={path}
-            onClick={() => router.push(path)}
-            className="w-full bg-neutral-800 hover:bg-orange-600 px-4 py-3 rounded-md text-white text-left font-semibold transition"
-          >
-            {title}
-          </button>
-        ))}
+export default function WorkOrdersHome() {
+  return (
+    <div className="mx-auto max-w-3xl px-4 py-8 text-white">
+      <h1 className="mb-6 text-3xl font-bold text-orange-400">Work Orders</h1>
+
+      <div className="grid grid-cols-1 gap-4">
+        <Tile
+          href="/work-orders/create"
+          title="Create Work Order"
+          subtitle="Start a new job for a vehicle"
+          cta="+"
+        />
+        <Tile
+          href="/work-orders/customer"
+          title="Customer Work Order Request"
+          subtitle="Capture a customer-initiated request"
+        />
+        <Tile
+          href="/work-orders/queue"
+          title="Job Queue"
+          subtitle="See active, paused, and in-progress jobs"
+        />
+        <Tile
+          href="/work-orders/quote-review"
+          title="Quote Review"
+          subtitle="Review and send estimates"
+        />
       </div>
     </div>
   );
