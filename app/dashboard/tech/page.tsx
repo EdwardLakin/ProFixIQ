@@ -1,4 +1,10 @@
-export { default } from "@/features/dashboard/app/dashboard/tech/page";
+"use client";
+
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-export const metadata = { title: "Tech Dashboard" };
+
+import FeaturePage from "@/features/dashboard/app/dashboard/tech/page";
+
+export default function Page() {
+  return <FeaturePage />;
+}

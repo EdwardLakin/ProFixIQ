@@ -1,3 +1,6 @@
+"use client";
+
+
 import { Suspense } from "react";
 import FeaturePage from "@/features/work-orders/app/work-orders/page";
 
