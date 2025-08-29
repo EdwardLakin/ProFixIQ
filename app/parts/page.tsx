@@ -13,10 +13,10 @@ export default function PartsHome() {
       </p>
       <div className="grid gap-3 sm:grid-cols-2">
         <Link
-          href="/work-orders"
+          href="/dashboard/owner"
           className="bg-neutral-800 hover:bg-orange-600 p-4 rounded transition"
         >
-          Back to Work Orders
+          Back to Dashboard
         </Link>
       </div>
     </div>
