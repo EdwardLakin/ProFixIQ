@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 import { Suspense } from "react";
 // re-use the client component that lives under features/
 import InspectionMenuClient from "@/features/inspections/app/inspection/InspectionMenuClient";
