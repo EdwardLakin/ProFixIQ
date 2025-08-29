@@ -9,6 +9,8 @@ import { toast } from "sonner";
 import type { Database } from "@shared/types/types/supabase";
 import OwnerPinModal from "@shared/components/OwnerPinModal";
 import OwnerPinBadge from "@shared/components/OwnerPinBadge";
+import ShopPublicProfileSection from "@/features/shops/components/ShopPublicProfileSection";
+import ReviewsList from "@shared/components/reviews/ReviewsList";
 
 type HourRow = { weekday: number; open_time: string; close_time: string };
 type TimeOffRow = { id: string; starts_at: string; ends_at: string; reason: string | null };
@@ -375,6 +377,10 @@ export default function OwnerSettingsPage() {
         )}
       </section>
 
+        {shopId ? (
+          <ShopPublicProfileSection shopId={shopId} isUnlocked={isUnlocked} />
+          ) : null}
+
       {/* Billing Defaults */}
       <section className="space-y-2 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
         <h2 className="text-xl font-semibold">Billing Defaults</h2>
@@ -410,6 +416,17 @@ export default function OwnerSettingsPage() {
           Require customer authorization
         </label>
       </section>
+
+          {/* Public Reviews (view + owner reply) */}
+      {shopId ? (
+        <section className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+          <h2 className="text-xl font-semibold">Customer Reviews</h2>
+           <p className="text-sm text-neutral-400">
+          Recent reviews for your shop. Owners/admins/managers can reply directly below each review.
+          </p>
+           <ReviewsList shopId={shopId} />
+          </section>
+        ) : null}
 
       {/* Communication & Branding */}
       <section className="space-y-2 rounded-xl border border-neutral-800 bg-neutral-950 p-4">

@@ -25,6 +25,50 @@ export interface Database {
   public: {
     Tables: {
 
+      shop_reviews: {
+  Row: {
+    id: string;
+    shop_id: string;
+    reviewer_user_id: string;
+    customer_id: string | null;
+    rating: number;
+    comment: string | null;
+    shop_owner_reply: string | null;
+    replied_at: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  Insert: {
+    id?: string;
+    shop_id: string;
+    reviewer_user_id: string;
+    customer_id?: string | null;
+    rating: number;
+    comment?: string | null;
+    shop_owner_reply?: string | null;
+    replied_at?: string | null;
+    created_at?: string;
+    updated_at?: string;
+  };
+  Update: {
+    id?: string;
+    shop_id?: string;
+    reviewer_user_id?: string;
+    customer_id?: string | null;
+    rating?: number;
+    comment?: string | null;
+    shop_owner_reply?: string | null;
+    replied_at?: string | null;
+    created_at?: string;
+    updated_at?: string;
+  };
+  Relationships: [
+    { foreignKeyName: "shop_reviews_shop_id_fkey"; columns: ["shop_id"]; referencedRelation: "shops"; referencedColumns: ["id"]; },
+    { foreignKeyName: "shop_reviews_reviewer_user_id_fkey"; columns: ["reviewer_user_id"]; referencedRelation: "users"; referencedColumns: ["id"]; },
+    { foreignKeyName: "shop_reviews_customer_id_fkey"; columns: ["customer_id"]; referencedRelation: "customers"; referencedColumns: ["id"]; }
+  ];
+};
+
       shop_time_off: {
   Row: {
     id: string;
@@ -1161,6 +1205,13 @@ postal_code: string | null;
           timezone: string | null;
           accepts_online_booking: boolean | null;
           owner_pin_hash: string | null;
+          // add into shops Row/Insert/Update types
+          description: string | null;
+          website: string | null;
+          hero_image_url: string | null;
+          gallery_urls: string[] | null;
+          latitude: number | null;
+          longitude: number | null;
           // Add any other fields you use
         };
         Insert: {
@@ -1197,6 +1248,13 @@ postal_code: string | null;
           timezone: string | null;
           accepts_online_booking: boolean | null;
           owner_pin_hash: string | null;
+          // add into shops Row/Insert/Update types
+          description: string | null;
+          website: string | null;
+          hero_image_url: string | null;
+          gallery_urls: string[] | null;
+          latitude: number | null;
+          longitude: number | null;
         };
         Update: {
           id?: string;
@@ -1232,6 +1290,13 @@ postal_code: string | null;
           timezone: string | null;
           accepts_online_booking: boolean | null;
           owner_pin_hash: string | null;
+          // add into shops Row/Insert/Update types
+          description: string | null;
+          website: string | null;
+          hero_image_url: string | null;
+          gallery_urls: string[] | null;
+          latitude: number | null;
+          longitude: number | null;
         };
         Relationships: [];
       };

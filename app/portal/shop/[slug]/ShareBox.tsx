@@ -1,7 +1,8 @@
+// app/portal/shop/[slug]/ShareBox.tsx
 "use client";
 
 import { useState } from "react";
-import  LinkButton  from "@shared/components/ui/LinkButton";
+import LinkButton from "@shared/components/ui/LinkButton";
 import { toast } from "sonner";
 
 export default function ShareBox({
@@ -51,6 +52,7 @@ export default function ShareBox({
 
   return (
     <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+      {/* Booking link */}
       <div className="space-y-3">
         <label className="block text-sm text-neutral-400">Booking link</label>
         <div className="flex gap-2">
@@ -62,32 +64,40 @@ export default function ShareBox({
           <button
             onClick={copyLink}
             disabled={copying}
-            className="rounded-lg border border-orange-600 px-3 py-2 text-sm text-orange-400 hover:bg-orange-600 hover:text-black transition"
+            className="rounded-lg border border-orange-600 px-3 py-2 text-sm text-orange-400 transition hover:bg-orange-600 hover:text-black disabled:opacity-60"
           >
             {copying ? "Copying…" : "Copy link"}
           </button>
         </div>
       </div>
 
-      <div className="mt-6 grid grid-cols-1 sm:grid-cols-[auto,1fr] gap-4 items-start">
+      {/* QR + actions */}
+      <div className="mt-6 grid grid-cols-1 items-start gap-4 sm:grid-cols-[auto,1fr]">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={qrSrc}
           alt="Booking QR code"
           className="h-48 w-48 rounded-lg border border-neutral-800 bg-black p-2"
         />
+
         <div className="space-y-2">
           <p className="text-sm text-neutral-300">
             Print this QR and place it at your counter. Customers scan to open
-            your booking page for <span className="text-orange-400">{slug}</span>.
+            your booking page for <span className="text-orange-400">@{slug}</span>.
           </p>
+
           <div className="flex gap-2">
-            <LinkButton href={`/portal/booking?shop=${encodeURIComponent(slug)}`} variant="outline">
+            <LinkButton
+              href={`/portal/booking?shop=${encodeURIComponent(slug)}`}
+              className="rounded-lg border border-orange-600 bg-orange-600 px-3 py-2 text-sm font-semibold text-black transition hover:bg-orange-500"
+            >
               Open booking page
             </LinkButton>
+
             <button
               onClick={downloadQR}
               disabled={downloading}
-              className="rounded-lg border border-orange-600 px-3 py-2 text-sm text-orange-400 hover:bg-orange-600 hover:text-black transition"
+              className="rounded-lg border border-orange-600 px-3 py-2 text-sm text-orange-400 transition hover:bg-orange-600 hover:text-black disabled:opacity-60"
             >
               {downloading ? "Downloading…" : "Download QR"}
             </button>
