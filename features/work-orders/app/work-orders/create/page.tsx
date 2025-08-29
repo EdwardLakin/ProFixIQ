@@ -3,41 +3,35 @@
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
-import type { Database } from "@shared/types/types/supabase";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 import { insertPrioritizedJobsFromInspection } from "@work-orders/lib/work-orders/insertPrioritizedJobsFromInspection";
 
-  const supabase = createClientComponentClient<Database>();
-
-
-type Vehicle = Database["public"]["Tables"]["vehicles"]["Row"];
-type Customer = Database["public"]["Tables"]["customers"]["Row"];
-
 export default function CreateWorkOrderPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const supabase = createClientComponentClient();
 
   const [vehicleId, setVehicleId] = useState<string | null>(null);
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [inspectionId, setInspectionId] = useState<string | null>(null);
+
   const [location, setLocation] = useState("");
-  const [type, setType] = useState<"inspection" | "maintenance" | "diagnosis">(
-    "inspection",
-  );
+  const [type, setType] = useState("inspection"); // "inspection" | "maintenance" | "diagnosis"
   const [notes, setNotes] = useState("");
 
-  const [vehicle, setVehicle] = useState<Vehicle | null>(null);
-  const [customer, setCustomer] = useState<Customer | null>(null);
+  // for UI only (avoid typing whole DB rows)
+  const [vehicleLabel, setVehicleLabel] = useState("");
+  const [customerLabel, setCustomerLabel] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // read query params
   useEffect(() => {
     const v = searchParams.get("vehicleId");
     const c = searchParams.get("customerId");
     const i = searchParams.get("inspectionId");
-
     if (v) setVehicleId(v);
     if (c) setCustomerId(c);
     if (i) {
@@ -46,30 +40,46 @@ export default function CreateWorkOrderPage() {
     }
   }, [searchParams]);
 
+  // fetch labels for display
   useEffect(() => {
-    if (vehicleId) {
-      supabase
-        .from("vehicles")
-        .select("*")
-        .eq("id", vehicleId)
-        .single()
-        .then(({ data }) => {
-          if (data) setVehicle(data);
-        });
-    }
-    if (customerId) {
-      supabase
-        .from("customers")
-        .select("*")
-        .eq("id", customerId)
-        .single()
-        .then(({ data }) => {
-          if (data) setCustomer(data);
-        });
-    }
-  }, [vehicleId, customerId]);
+    let cancelled = false;
 
-  const handleSubmit = async (e: React.FormEvent) => {
+    (async () => {
+      if (vehicleId) {
+        const { data } = await supabase
+          .from("vehicles")
+          .select("year, make, model")
+          .eq("id", vehicleId)
+          .single();
+
+        if (!cancelled) {
+          setVehicleLabel(
+            data ? `${data.year ?? ""} ${data.make ?? ""} ${data.model ?? ""}`.trim() : "",
+          );
+        }
+      }
+
+      if (customerId) {
+        const { data } = await supabase
+          .from("customers")
+          .select("first_name, email")
+          .eq("id", customerId)
+          .single();
+
+        if (!cancelled) {
+          setCustomerLabel(
+            data ? `${data.first_name ?? ""}${data.email ? ` (${data.email})` : ""}`.trim() : "",
+          );
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [vehicleId, customerId, supabase]);
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError("");
@@ -110,24 +120,17 @@ export default function CreateWorkOrderPage() {
     }
 
     if (inspectionId) {
-      await insertPrioritizedJobsFromInspection(
-        newId,
-        inspectionId,
-        user.id,
-        vehicleId,
-      );
+      await insertPrioritizedJobsFromInspection(newId, inspectionId, user.id, vehicleId);
     }
 
     router.push(`/work-orders/view/${newId}`);
-  };
+  }
 
   return (
-    <div className="max-w-xl mx-auto p-6 space-y-6">
-      <h1 className="text-2xl font-bold mb-4">Create Work Order</h1>
+    <div className="mx-auto max-w-xl p-6 space-y-6 text-white">
+      <h1 className="text-2xl font-bold">Create Work Order</h1>
 
-      {error && (
-        <div className="bg-red-100 text-red-700 px-4 py-2 rounded">{error}</div>
-      )}
+      {error ? <div className="rounded bg-red-100 px-4 py-2 text-red-700">{error}</div> : null}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
@@ -136,7 +139,7 @@ export default function CreateWorkOrderPage() {
             type="text"
             value={location}
             onChange={(e) => setLocation(e.target.value)}
-            className="w-full p-2 rounded bg-neutral-800 border border-neutral-600 text-white"
+            className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
             placeholder="E.g., Bay 2"
             required
             disabled={loading}
@@ -147,8 +150,8 @@ export default function CreateWorkOrderPage() {
           <label className="block font-medium">Work Order Type</label>
           <select
             value={type}
-            onChange={(e) => setType(e.target.value as typeof type)}
-            className="w-full p-2 rounded bg-neutral-800 border border-neutral-600 text-white"
+            onChange={(e) => setType(e.target.value)}
+            className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
             disabled={loading}
           >
             <option value="inspection">Inspection</option>
@@ -162,38 +165,32 @@ export default function CreateWorkOrderPage() {
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            className="w-full p-2 rounded bg-neutral-800 border border-neutral-600 text-white"
+            className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
             rows={3}
             placeholder="Optional notes for technician"
             disabled={loading}
           />
         </div>
 
-        <div className="text-sm text-gray-400 space-y-1">
+        <div className="space-y-1 text-sm text-neutral-400">
           <p>
-            <strong>Vehicle:</strong>{" "}
-            {vehicle
-              ? `${vehicle.year} ${vehicle.make} ${vehicle.model}`
-              : vehicleId || "—"}
+            <strong>Vehicle:</strong> {vehicleLabel || vehicleId || "—"}
           </p>
           <p>
-            <strong>Customer:</strong>{" "}
-            {customer
-              ? `${customer.first_name} (${customer.email})`
-              : customerId || "—"}
+            <strong>Customer:</strong> {customerLabel || customerId || "—"}
           </p>
-          {inspectionId && (
+          {inspectionId ? (
             <p>
               <strong>Inspection ID:</strong> {inspectionId}
             </p>
-          )}
+          ) : null}
         </div>
 
-        <div className="flex gap-4 items-center">
+        <div className="flex items-center gap-4">
           <button
             type="submit"
             disabled={loading}
-            className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded font-semibold"
+            className="rounded bg-orange-500 px-4 py-2 font-semibold text-black hover:bg-orange-600"
           >
             {loading ? "Creating..." : "Create Work Order"}
           </button>
@@ -201,7 +198,7 @@ export default function CreateWorkOrderPage() {
           <button
             type="button"
             onClick={() => router.push("/work-orders")}
-            className="text-sm text-gray-400 hover:underline"
+            className="text-sm text-neutral-400 hover:underline"
             disabled={loading}
           >
             Cancel
