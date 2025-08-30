@@ -1,7 +1,5 @@
 "use client";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
 // app/signup/page.tsx
 import { Suspense } from "react";

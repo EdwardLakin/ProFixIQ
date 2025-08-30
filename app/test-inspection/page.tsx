@@ -1,8 +1,5 @@
 "use client";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
 import masterInspectionList from "@inspections/lib/inspection/masterInspectionList";
 import InspectionGroupList from "@inspections/components/InspectionGroupList";
 
