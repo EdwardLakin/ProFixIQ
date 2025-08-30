@@ -1,7 +1,4 @@
-
-
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+"use client"
 
 import { cookies } from "next/headers";
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
