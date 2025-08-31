@@ -59,18 +59,18 @@ export async function POST(req: Request) {
         const parsed = JSON.parse(reply);
         const { cause, correction, estimatedLaborTime } = parsed;
 
-        const { error } = await supabase
-          .from("work_order_lines")
-          .update({
-            cause,
-            correction,
-            labor_time: estimatedLaborTime,
-            punched_in_at: null,
-            punched_out_at: null,
-            assigned_tech_id: null,
-            hold_reason: null,
-          })
-          .eq("id", jobId);
+const { error } = await supabase
+  .from("work_order_lines")
+  .update({
+    cause,
+    correction,
+    labor_time: typeof estimatedLaborTime === "number" ? estimatedLaborTime : null,
+    punched_in_at: null,
+    punched_out_at: null,
+    assigned_tech_id: null,
+    hold_reason: null,
+  })
+  .eq("id", jobId);
 
         if (error) console.error("Failed to update work_order_line:", error);
 
