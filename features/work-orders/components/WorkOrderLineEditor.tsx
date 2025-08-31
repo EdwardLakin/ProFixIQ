@@ -8,7 +8,8 @@ type WorkOrderLine = {
   cause?: string;
   correction?: string;
   labor_time?: number;
-  status?: "unassigned" | "assigned" | "in_progress" | "on_hold" | "completed";
+  // ✅ include "awaiting" to match the rest of the app
+  status?: "unassigned" | "assigned" | "in_progress" | "on_hold" | "completed" | "awaiting";
   hold_reason?: "parts" | "authorization" | "diagnosis_pending" | "other" | "";
   tools?: string;
 };
@@ -16,19 +17,15 @@ type WorkOrderLine = {
 type Props = {
   line: WorkOrderLine;
   onUpdate: (line: WorkOrderLine) => void;
-  onDelete?: () => void; // ✅ optional delete handler
+  onDelete?: () => void;
 };
 
-export default function WorkOrderLineEditor({
-  line,
-  onUpdate,
-  onDelete,
-}: Props) {
+export default function WorkOrderLineEditor({ line, onUpdate, onDelete }: Props) {
   const [localLine, setLocalLine] = useState<WorkOrderLine>(line);
 
   useEffect(() => {
     onUpdate(localLine);
-  }, [localLine]);
+  }, [localLine, onUpdate]);
 
   return (
     <div className="bg-white dark:bg-surface border rounded-lg p-4 mb-4 shadow-card">
@@ -37,9 +34,7 @@ export default function WorkOrderLineEditor({
       </label>
       <input
         value={localLine.complaint}
-        onChange={(e) =>
-          setLocalLine({ ...localLine, complaint: e.target.value })
-        }
+        onChange={(e) => setLocalLine({ ...localLine, complaint: e.target.value })}
         className="w-full border rounded px-2 py-1 mb-3 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
       />
 
@@ -57,9 +52,7 @@ export default function WorkOrderLineEditor({
       </label>
       <input
         value={localLine.correction || ""}
-        onChange={(e) =>
-          setLocalLine({ ...localLine, correction: e.target.value })
-        }
+        onChange={(e) => setLocalLine({ ...localLine, correction: e.target.value })}
         className="w-full border rounded px-2 py-1 mb-3 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
       />
 
@@ -69,9 +62,11 @@ export default function WorkOrderLineEditor({
       <input
         type="number"
         value={localLine.labor_time ?? ""}
-        onChange={(e) =>
-          setLocalLine({ ...localLine, labor_time: parseFloat(e.target.value) })
-        }
+        onChange={(e) => {
+          const v = e.target.value;
+          const num = v === "" ? undefined : Number(v);
+          setLocalLine({ ...localLine, labor_time: Number.isFinite(num!) ? num : undefined });
+        }}
         className="w-full border rounded px-2 py-1 mb-3 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
       />
 
@@ -81,15 +76,13 @@ export default function WorkOrderLineEditor({
       <select
         value={localLine.status || "unassigned"}
         onChange={(e) =>
-          setLocalLine({
-            ...localLine,
-            status: e.target.value as WorkOrderLine["status"],
-          })
+          setLocalLine({ ...localLine, status: e.target.value as WorkOrderLine["status"] })
         }
         className="w-full border rounded px-2 py-1 mb-3 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
       >
         <option value="unassigned">Unassigned</option>
         <option value="assigned">Assigned</option>
+        <option value="awaiting">Awaiting</option>
         <option value="in_progress">In Progress</option>
         <option value="on_hold">On Hold</option>
         <option value="completed">Completed</option>
@@ -103,10 +96,7 @@ export default function WorkOrderLineEditor({
           <select
             value={localLine.hold_reason || ""}
             onChange={(e) =>
-              setLocalLine({
-                ...localLine,
-                hold_reason: e.target.value as WorkOrderLine["hold_reason"],
-              })
+              setLocalLine({ ...localLine, hold_reason: e.target.value as WorkOrderLine["hold_reason"] })
             }
             className="w-full border rounded px-2 py-1 mb-3 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
           >
@@ -120,10 +110,7 @@ export default function WorkOrderLineEditor({
       )}
 
       {onDelete && (
-        <button
-          onClick={onDelete}
-          className="mt-2 text-sm text-red-600 hover:underline"
-        >
+        <button onClick={onDelete} className="mt-2 text-sm text-red-600 hover:underline">
           Delete Line
         </button>
       )}

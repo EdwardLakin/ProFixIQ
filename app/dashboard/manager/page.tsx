@@ -1,13 +1,14 @@
-// app/dashboard/manager/page.tsx (wrapper stays as-is)
 "use client";
 
-import { Suspense } from "react";
 import FeaturePage from "@/features/dashboard/app/dashboard/manager/page";
+import QuickActions from "@shared/components/QuickActions";
 
-export default function Page() {
+export default function managerDashboardPage() {
   return (
-    <Suspense fallback={<div className="p-4 text-white">Loading…</div>}>
+    <div className="p-6 space-y-6">
+      <h1 className="text-2xl font-bold text-white">manager Dashboard</h1>
+      <QuickActions role="manager" />
       <FeaturePage />
-    </Suspense>
+    </div>
   );
 }

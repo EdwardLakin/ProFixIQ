@@ -9,11 +9,11 @@ import WorkOrderLineForm from "@work-orders/components/WorkOrderLineEditor";
 
 type MenuItem = {
   id: string;
-  complaint: string;
-  cause?: string;
-  correction?: string;
-  labor_time?: number;
-  tools?: string;
+  complaint: string | null;
+  cause?: string | null;
+  correction?: string | null;
+  labor_time?: number | null;
+  tools?: string | null;
 };
 
 type WorkOrderLine = {
@@ -23,7 +23,7 @@ type WorkOrderLine = {
   correction?: string;
   labor_time?: number;
   tools?: string;
-  status?: "unassigned" | "assigned" | "in_progress" | "on_hold" | "completed";
+  status?: "unassigned" | "assigned" | "in_progress" | "on_hold" | "completed" | "awaiting";
   hold_reason?: "parts" | "authorization" | "diagnosis_pending" | "other" | "";
 };
 
@@ -32,7 +32,8 @@ export default function WorkOrderEditorPage() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   );
-  const { vehicleInfo } = useVehicleInfo(); // ✅ fixed
+
+  const { vehicleInfo } = useVehicleInfo();
   const { user } = useUser();
 
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
@@ -49,20 +50,18 @@ export default function WorkOrderEditorPage() {
           .eq("vehicle_id", vehicleInfo.id);
 
         if (!error && data) {
-          setMenuItems(data);
+          setMenuItems(data as unknown as MenuItem[]);
         }
       }
     };
     fetchMenuItems();
-  }, [user, vehicleInfo?.id]);
+  }, [user, vehicleInfo?.id, supabase]);
 
   useEffect(() => {
-    if (query.length > 1) {
-      const lowerQuery = query.toLowerCase();
+    if (query.trim().length > 1) {
+      const q = query.toLowerCase();
       setFiltered(
-        menuItems.filter((item) =>
-          item.complaint.toLowerCase().includes(lowerQuery),
-        ),
+        menuItems.filter((item) => (item.complaint ?? "").toLowerCase().includes(q)),
       );
     } else {
       setFiltered([]);
@@ -70,14 +69,15 @@ export default function WorkOrderEditorPage() {
   }, [query, menuItems]);
 
   const handleSuggestionClick = (item: MenuItem) => {
-    setLines([
-      ...lines,
+    setLines((prev) => [
+      ...prev,
       {
-        complaint: item.complaint,
-        cause: item.cause || "",
-        correction: item.correction || "",
-        labor_time: item.labor_time || 0,
-        tools: item.tools || "",
+        complaint: item.complaint ?? "",
+        cause: item.cause ?? "",
+        correction: item.correction ?? "",
+        labor_time: item.labor_time ?? 0,
+        tools: item.tools ?? "",
+        status: "awaiting",
       },
     ]);
     setQuery("");
@@ -104,28 +104,30 @@ export default function WorkOrderEditorPage() {
               onClick={() => handleSuggestionClick(item)}
               className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
             >
-              {item.complaint} — {item.labor_time} hr
+              {(item.complaint ?? "Untitled")} — {item.labor_time ?? 0} hr
             </li>
           ))}
         </ul>
       )}
 
-      {lines.map((line, index) => (
-        <WorkOrderLineForm
-          key={index}
-          line={line}
-          onUpdate={(updatedLine) => {
-            const updated = [...lines];
-            updated[index] = updatedLine;
-            setLines(updated);
-          }}
-          onDelete={() => {
-            const updated = [...lines];
-            updated.splice(index, 1);
-            setLines(updated);
-          }}
-        />
-      ))}
+      <div className="space-y-3">
+        {lines.map((line, index) => (
+          <WorkOrderLineForm
+            key={`${line.id ?? "new"}-${index}`}
+            line={line}
+            onUpdate={(updatedLine) => {
+              const updated = [...lines];
+              updated[index] = updatedLine;
+              setLines(updated);
+            }}
+            onDelete={() => {
+              const updated = [...lines];
+              updated.splice(index, 1);
+              setLines(updated);
+            }}
+          />
+        ))}
+      </div>
     </div>
   );
 }

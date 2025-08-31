@@ -1,5 +1,4 @@
 // lib/work-orders/insertPrioritizedJobsFromInspection.ts
-
 import { createBrowserSupabase } from "@shared/lib/supabase/client";
 import { Database } from "@shared/types/types/supabase";
 import { estimateLabor } from "@ai/lib/ai/generateLaborTimeEstimate";
@@ -10,7 +9,6 @@ type WorkOrderLineInsert =
 type PartsRequestInsert =
   Database["public"]["Tables"]["parts_requests"]["Insert"];
 
-// What the `result` JSON inside inspections looks like
 type InspectionResult = {
   sections: {
     title: string;
@@ -30,7 +28,7 @@ export async function insertPrioritizedJobsFromInspection(
   workOrderId: string,
   vehicleId: string,
   userId: string,
-  autoGenerateParts: boolean = true,
+  autoGenerateParts: boolean = true
 ) {
   const supabase = createBrowserSupabase();
 
@@ -45,8 +43,12 @@ export async function insertPrioritizedJobsFromInspection(
     return;
   }
 
-  // Parse the JSON result into typed shape
-  const result = inspection.result as unknown as InspectionResult;
+  // Some generated supabase.ts versions don't include `result` on inspections.Row.
+  // Cast locally just for this access.
+  const result = (inspection as unknown as { result?: unknown })?.result as
+    | InspectionResult
+    | undefined;
+
   if (!result?.sections) {
     console.warn("Invalid inspection format");
     return;
@@ -61,26 +63,16 @@ export async function insertPrioritizedJobsFromInspection(
 
   const diagnosisKeywords = ["check engine", "diagnose", "misfire", "no start"];
   const maintenanceKeywords = ["oil", "fluid", "filter", "belt", "coolant"];
-  const autoPartsKeywords = [
-    "brake",
-    "pads",
-    "rotor",
-    "fluid",
-    "coolant",
-    "filter",
-    "belt",
-  ];
+  const autoPartsKeywords = ["brake", "pads", "rotor", "fluid", "coolant", "filter", "belt"];
 
   for (const section of result.sections) {
     for (const item of section.items) {
       const name = item.name?.toLowerCase() || "";
       let jobType: WorkOrderLineInsert["job_type"] = "repair";
 
-      if (diagnosisKeywords.some((k) => name.includes(k)))
-        jobType = "diagnosis";
+      if (diagnosisKeywords.some((k) => name.includes(k))) jobType = "diagnosis";
       else if (item.status === "fail") jobType = "inspection-fail";
-      else if (maintenanceKeywords.some((k) => name.includes(k)))
-        jobType = "maintenance";
+      else if (maintenanceKeywords.some((k) => name.includes(k))) jobType = "maintenance";
 
       const laborTime = await estimateLabor(item.name, jobType);
 
@@ -88,14 +80,13 @@ export async function insertPrioritizedJobsFromInspection(
       if (item.value) complaintParts.push(`(${item.value}${item.unit || ""})`);
       if (item.notes) complaintParts.push(`- ${item.notes}`);
 
+      // NOTE: omit created_at/updated_at here — DB defaults/trigger should set them.
       const job: WorkOrderLineInsert = {
         work_order_id: workOrderId,
         vehicle_id: vehicleId,
         complaint: complaintParts.join(" "),
         status: "queued",
         job_type: jobType,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
         punched_in_at: null,
         punched_out_at: null,
         hold_reason: null,
@@ -105,9 +96,7 @@ export async function insertPrioritizedJobsFromInspection(
       };
 
       const shouldInclude =
-        item.status === "fail" ||
-        item.recommend === true ||
-        jobType !== "repair";
+        item.status === "fail" || item.recommend === true || jobType !== "repair";
 
       if (shouldInclude) {
         jobItemMap.push({
@@ -138,7 +127,8 @@ export async function insertPrioritizedJobsFromInspection(
       const { complaint, id: jobId } = insertedJobs[i];
       const { originalItem } = jobItemMap[i];
 
-      const lower = complaint.toLowerCase();
+      // complaint is string | null in types → guard it
+      const lower = (complaint ?? "").toLowerCase();
       if (autoPartsKeywords.some((k) => lower.includes(k))) {
         partsRequests.push({
           id: crypto.randomUUID(),
