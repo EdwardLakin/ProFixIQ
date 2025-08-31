@@ -4,9 +4,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
 export default function PortalLayout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-black text-white">
