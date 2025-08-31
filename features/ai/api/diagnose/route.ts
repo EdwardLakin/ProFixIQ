@@ -65,9 +65,9 @@ const { error } = await supabase
     cause,
     correction,
     labor_time: typeof estimatedLaborTime === "number" ? estimatedLaborTime : null,
-    punched_in_at: null,
-    punched_out_at: null,
-    assigned_tech_id: null,
+    punched_in_at: null as string | null,
+    punched_out_at: null as string | null,
+    assigned_tech_id: null as string | null,
     hold_reason: null,
   })
   .eq("id", jobId);
