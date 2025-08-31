@@ -1,0 +1,17 @@
+{
+  "name": "ProFixIQ",
+  "image": "mcr.microsoft.com/devcontainers/universal:latest",
+  "postCreateCommand": "pnpm store prune && rm -rf node_modules/.cache .next .turbo || true",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      },
+      "extensions": [
+        "esbenp.prettier-vscode",
+        "dbaeumer.vscode-eslint",
+        "bradlc.vscode-tailwindcss"
+      ]
+    }
+  }
+}
