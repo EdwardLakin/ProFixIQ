@@ -1,17 +1,21 @@
+// features/inspections/components/InspectionGroupList.tsx
 "use client";
 
 import { useState } from "react";
 import { ChevronDownIcon, ChevronRightIcon } from "@heroicons/react/24/solid";
 import type { InspectionCategory } from "@inspections/lib/inspection/masterInspectionList";
 
-interface Props {
+type Props = {
   categories: InspectionCategory[];
   editable?: boolean;
-}
+  // optional: parent can be notified when the list changes (reorder, edit, etc.)
+  onChange?: (next: InspectionCategory[]) => void;
+};
 
 export default function InspectionGroupList({
   categories,
   editable = false,
+  onChange,
 }: Props) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
@@ -19,47 +23,53 @@ export default function InspectionGroupList({
     setExpanded((prev) => ({ ...prev, [title]: !prev[title] }));
   };
 
+  // helper if/when you add edits later (rename items/sections, etc.)
+  const emit = (next: InspectionCategory[]) => onChange?.(next);
+
   return (
     <div className="space-y-4">
-      {categories.map((section) => (
+      {categories.map((section, sIdx) => (
         <div
           key={section.title}
-          className="bg-zinc-900 border border-zinc-700 rounded-md overflow-hidden"
+          className="overflow-hidden rounded-md border border-zinc-700 bg-zinc-900"
         >
           <button
             onClick={() => toggleSection(section.title)}
-            className="w-full flex items-center justify-between px-4 py-3 text-left bg-zinc-800 hover:bg-zinc-700 transition-colors"
+            className="flex w-full items-center justify-between bg-zinc-800 px-4 py-3 text-left transition-colors hover:bg-zinc-700"
           >
-            <span className="text-orange-400 font-semibold">
+            <span className="font-semibold text-orange-400">
               {section.title}
             </span>
             {expanded[section.title] ? (
-              <ChevronDownIcon className="w-5 h-5 text-orange-400" />
+              <ChevronDownIcon className="h-5 w-5 text-orange-400" />
             ) : (
-              <ChevronRightIcon className="w-5 h-5 text-orange-400" />
+              <ChevronRightIcon className="h-5 w-5 text-orange-400" />
             )}
           </button>
 
           {expanded[section.title] && (
-            <ul className="px-4 py-3 space-y-3 bg-zinc-900">
-              {section.items.map((item, idx) => (
+            <ul className="space-y-3 bg-zinc-900 px-4 py-3">
+              {section.items.map((item, iIdx) => (
                 <li
-                  key={idx}
+                  key={iIdx}
                   className="flex items-center justify-between border-b border-zinc-700 pb-2"
                 >
                   <span className="text-white">{item.item}</span>
+
                   {editable && (
                     <div className="flex space-x-2">
-                      <button className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-xs">
+                      {/* Buttons are presentational for now.
+                          When you add editing, clone categories -> emit(next) */}
+                      <button className="rounded bg-green-600 px-3 py-1 text-xs text-white hover:bg-green-700">
                         OK
                       </button>
-                      <button className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-xs">
+                      <button className="rounded bg-red-600 px-3 py-1 text-xs text-white hover:bg-red-700">
                         Fail
                       </button>
-                      <button className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded text-xs">
+                      <button className="rounded bg-yellow-500 px-3 py-1 text-xs text-white hover:bg-yellow-600">
                         N/A
                       </button>
-                      <button className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-xs">
+                      <button className="rounded bg-blue-500 px-3 py-1 text-xs text-white hover:bg-blue-600">
                         Rec
                       </button>
                     </div>

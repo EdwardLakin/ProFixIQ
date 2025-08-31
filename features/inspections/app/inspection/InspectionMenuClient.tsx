@@ -1,118 +1,167 @@
+// features/inspections/app/inspection/custom-inspection/page.tsx
 "use client";
 
-import { useEffect } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-import HomeButton from "@shared/components/ui/HomeButton";
+import { useEffect, useState } from "react";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
-export default function InspectionMenuClient() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
+import type { Database } from "@shared/types/types/supabase";
+import { Button } from "@shared/components/ui/Button";
+import { Textarea } from "@shared/components/ui/textarea";
+import { Input } from "@shared/components/ui/input";
+import InspectionGroupList from "@inspections/components/InspectionGroupList";
+import type { InspectionCategory } from "@inspections/lib/inspection/masterInspectionList";
 
+type DB = Database;
+type TemplatesRow   = DB["public"]["Tables"]["inspection_templates"]["Row"];
+type TemplatesInsert= DB["public"]["Tables"]["inspection_templates"]["Insert"];
+
+export default function CustomInspectionPage() {
+  const supabase = createClientComponentClient<DB>();
+
+  // prompt -> generate sections (your UI model)
+  const [prompt, setPrompt] = useState("");
+  const [sections, setSections] = useState<InspectionCategory[]>([]);
+
+  // minimal template meta
+  const [templateName, setTemplateName] = useState("");
+
+  // saved (mine)
+  const [userId, setUserId] = useState<string | null>(null);
+  const [saved, setSaved] = useState<Pick<TemplatesRow, "id" | "template_name" | "sections">[]>([]);
+
+  const [loading, setLoading] = useState(false);
+
+  // auth + load my recent templates
   useEffect(() => {
-    const query = Object.fromEntries(searchParams.entries());
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      setUserId(user.id);
 
-    const customer = {
-      first_name: query.first_name || "",
-      last_name: query.last_name || "",
-      phone: query.phone || "",
-      email: query.email || "",
+      const { data } = await supabase
+        .from("inspection_templates")
+        .select("id, template_name, sections")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+
+      setSaved(data ?? []);
+    })();
+  }, [supabase]);
+
+  async function generateInspection() {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/generate-inspection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
+      });
+      const data: { categories: InspectionCategory[] } = await res.json();
+      setSections(data?.categories ?? []);
+    } catch (err) {
+      console.error("Error generating inspection:", err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function saveTemplate() {
+    if (!userId || !templateName || sections.length === 0) return;
+
+    const payload: TemplatesInsert = {
+      user_id: userId,
+      template_name: templateName,
+      // cast UI model to DB json[] column
+      sections: (sections as unknown) as TemplatesInsert["sections"],
+      description: null,
+      tags: null,
+      vehicle_type: null,
+      is_public: false,
     };
 
-    const vehicle = {
-      year: query.year || "",
-      make: query.make || "",
-      model: query.model || "",
-      vin: query.vin || "",
-      license_plate: query.license_plate || "",
-      mileage: query.mileage || "",
-      color: query.color || "",
-    };
+    const { error } = await supabase.from("inspection_templates").insert([payload]);
+    if (error) {
+      console.error("Save error:", error.message);
+      return;
+    }
 
-    localStorage.setItem("inspectionCustomer", JSON.stringify(customer));
-    localStorage.setItem("inspectionVehicle", JSON.stringify(vehicle));
-  }, [searchParams]);
+    // refresh list
+    const { data } = await supabase
+      .from("inspection_templates")
+      .select("id, template_name, sections")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+
+    setSaved(data ?? []);
+  }
+
+  function loadTemplate(t: Pick<TemplatesRow, "id" | "template_name" | "sections">) {
+    setTemplateName(t.template_name ?? "");
+    setSections(((t.sections ?? []) as unknown) as InspectionCategory[]);
+  }
+
+  async function deleteTemplate(id: string) {
+    if (!userId) return;
+    const { error } = await supabase.from("inspection_templates").delete().eq("id", id);
+    if (error) {
+      console.error("Delete error:", error.message);
+      return;
+    }
+    setSaved((prev) => prev.filter((x) => x.id !== id));
+  }
 
   return (
-    <div className="min-h-screen bg-black text-white relative px-4 pb-8 pt-20 max-w-3xl mx-auto">
-      <HomeButton />
+    <div className="p-6">
+      <h1 className="mb-4 text-3xl font-bold text-white">Custom Inspection Generator</h1>
 
-      <h1 className="text-3xl font-black text-center text-orange-500 mb-8 font-blackOps">
-        Choose an Inspection
-      </h1>
+      <Textarea
+        placeholder="e.g. Create an inspection for brakes, lights, and fluids"
+        value={prompt}
+        onChange={(e) => setPrompt(e.target.value)}
+        className="w-full text-black"
+        rows={4}
+      />
+      <Button onClick={generateInspection} disabled={loading} className="mt-4">
+        {loading ? "Generating..." : "Generate Inspection"}
+      </Button>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <button
-          className="bg-zinc-900 border border-orange-500 rounded-lg p-4 shadow hover:scale-105 transition-all"
-          onClick={() =>
-            router.push(
-              "/inspection/customer-vehicle?inspectionType=maintenance50",
-            )
-          }
-        >
-          <h2 className="text-xl font-bold text-orange-400 mb-2">
-            Maintenance 50 Point
-          </h2>
-          <p className="text-sm text-zinc-300">
-            Comprehensive vehicle health check
-          </p>
-        </button>
+      {sections.length > 0 && (
+        <div className="mt-6">
+          <Input
+            className="mb-2 w-full text-black"
+            placeholder="Name your template"
+            value={templateName}
+            onChange={(e) => setTemplateName(e.target.value)}
+          />
+          <Button onClick={saveTemplate}>Save Template</Button>
 
-        <button
-          className="bg-zinc-900 border border-orange-500 rounded-lg p-4 shadow hover:scale-105 transition-all"
-          onClick={() => router.push("/inspection/brake")}
-        >
-          <h2 className="text-xl font-bold text-orange-400 mb-2">
-            Brake Inspection
-          </h2>
-          <p className="text-sm text-zinc-300">
-            Pads, rotors, calipers, lines, and more
-          </p>
-        </button>
+          <div className="mt-8">
+            <InspectionGroupList categories={sections} editable />
+          </div>
+        </div>
+      )}
 
-        <button
-          className="bg-zinc-900 border border-orange-500 rounded-lg p-4 shadow hover:scale-105 transition-all"
-          onClick={() => router.push("/inspection/diagnostic")}
-        >
-          <h2 className="text-xl font-bold text-orange-400 mb-2">Diagnostic</h2>
-          <p className="text-sm text-zinc-300">
-            Issue investigation & fault tracing
-          </p>
-        </button>
-
-        <button
-          className="bg-zinc-900 border border-orange-500 rounded-lg p-4 shadow hover:scale-105 transition-all"
-          onClick={() => router.push("/inspection/cvip")}
-        >
-          <h2 className="text-xl font-bold text-orange-400 mb-2">CVIP</h2>
-          <p className="text-sm text-zinc-300">
-            Commercial Vehicle Inspection Program
-          </p>
-        </button>
-
-        <button
-          className="bg-zinc-900 border border-orange-500 rounded-lg p-4 shadow hover:scale-105 transition-all"
-          onClick={() => router.push("/inspection/custom")}
-        >
-          <h2 className="text-xl font-bold text-orange-400 mb-2">
-            Custom Inspection
-          </h2>
-          <p className="text-sm text-zinc-300">
-            Build your own inspection checklist
-          </p>
-        </button>
-
-        <button
-          className="bg-zinc-900 border border-orange-500 rounded-lg p-4 shadow hover:scale-105 transition-all"
-          onClick={() => router.push("/inspection/saved")}
-        >
-          <h2 className="text-xl font-bold text-orange-400 mb-2">
-            Saved Inspections
-          </h2>
-          <p className="text-sm text-zinc-300">
-            View, edit, and continue past inspections
-          </p>
-        </button>
-      </div>
+      {saved.length > 0 && (
+        <div className="mt-12">
+          <h2 className="mb-2 text-2xl font-semibold text-white">Saved Templates</h2>
+          <ul className="space-y-2">
+            {saved.map((t) => (
+              <li
+                key={t.id}
+                className="flex items-center justify-between rounded bg-gray-800 p-4"
+              >
+                <span className="font-medium text-white">{t.template_name}</span>
+                <div className="space-x-2">
+                  <Button onClick={() => loadTemplate(t)}>Load</Button>
+                  <Button variant="destructive" onClick={() => deleteTemplate(t.id)}>
+                    Delete
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

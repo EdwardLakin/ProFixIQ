@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
 
 export default function OwnerDashboardPage() {
-  const supabase = createClientComponentClient();
+  const supabase = createClientComponentClient<Database>();
 
   const [email, setEmail] = useState<string | null>(null);
   const [fullName, setFullName] = useState<string>("");
@@ -16,7 +17,9 @@ export default function OwnerDashboardPage() {
     let isMounted = true;
     (async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
         if (!isMounted) return;
 
         if (user?.email) setEmail(user.email);
@@ -46,7 +49,9 @@ export default function OwnerDashboardPage() {
         if (isMounted) setLoading(false);
       }
     })();
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+    };
   }, [supabase]);
 
   const greeting = useMemo(() => {
@@ -106,10 +111,12 @@ export default function OwnerDashboardPage() {
           <Tile title="Work Orders" subtitle="Create, queue, review quotes" />
         </Link>
 
-        <Link href="/parts" aria-label="Parts">
+        {/* stays inside dashboard layout */}
+        <Link href="/dashboard/parts" aria-label="Parts">
           <Tile title="Parts" subtitle="Manage requests, inventory, suppliers" />
         </Link>
 
+        {/* NOTE: /inspections is outside dashboard layout unless we add /dashboard/inspections */}
         <Link href="/inspections" aria-label="Inspections">
           <Tile title="Inspections" subtitle="View and assign inspections" />
         </Link>
@@ -130,7 +137,6 @@ export default function OwnerDashboardPage() {
           <Tile title="Customer Import" subtitle="Import customers and vehicle history" />
         </Link>
 
-        {/* NEW: Workspace (browser-in-a-browser) */}
         <Link href="/dashboard/workspace" aria-label="Workspace">
           <Tile
             title="Workspace (Multi-view)"
@@ -151,7 +157,6 @@ export default function OwnerDashboardPage() {
   );
 }
 
-/* Small, reusable card */
 function Tile(props: { title: string; subtitle?: string }) {
   return (
     <div

@@ -1,0 +1,145 @@
+app
+├── (landing)
+│   └── layout.tsx
+├── admin
+│   └── create-user
+│       └── pages.tsx
+├── api
+│   ├── diag
+│   │   └── log
+│   │       └── route.ts
+│   ├── onboarding
+│   │   └── bootstrap-owner
+│   │       └── route.ts
+│   ├── portal
+│   │   ├── availability
+│   │   │   └── route.ts
+│   │   ├── book
+│   │   │   └── route.ts
+│   │   ├── bookings
+│   │   │   └── [id]
+│   │   └── qr
+│   │       └── [slug]
+│   ├── settings
+│   │   ├── hours
+│   │   │   └── route.ts
+│   │   ├── time-off
+│   │   │   └── route.ts
+│   │   └── update
+│   │       ├── route.ts
+│   │       └── shop
+│   ├── shop
+│   │   └── owner-pin
+│   │       ├── clear
+│   │       └── verify
+│   └── stripe
+│       ├── checkout
+│       │   └── route.ts
+│       └── session
+│           └── route.ts
+├── auth
+│   └── signout
+│       └── route.ts
+├── compare-plans
+│   └── page.tsx
+├── confirm
+│   ├── ConfirmContent.tsx
+│   └── page.tsx
+├── dashboard
+│   ├── admin
+│   │   └── page.tsx
+│   ├── advisor
+│   │   └── page.tsx
+│   ├── bookings
+│   │   ├── BookingsTable.tsx
+│   │   └── page.tsx
+│   ├── layout.tsx
+│   ├── manager
+│   │   └── page.tsx
+│   ├── owner
+│   │   ├── create-user
+│   │   │   └── page.tsx
+│   │   ├── import-customers
+│   │   │   └── page.tsx
+│   │   ├── page.tsx
+│   │   ├── reports
+│   │   │   └── page.tsx
+│   │   └── settings
+│   │       └── page.tsx
+│   ├── page.tsx
+│   ├── parts
+│   │   └── page.tsx
+│   ├── tech
+│   │   └── page.tsx
+│   └── workspace
+│       └── page.tsx
+├── globals.css
+├── inspections
+│   └── page.tsx
+├── landing
+│   ├── PlanComparison.tsx
+│   └── actions.ts
+├── layout.tsx
+├── menu
+│   └── page.tsx
+├── onboarding
+│   └── page.tsx
+├── page.tsx
+├── parts
+│   └── page.tsx
+├── portal
+│   ├── booking
+│   │   ├── BookingPageClient.tsx
+│   │   ├── confirmation
+│   │   │   ├── BookingConfirmationClient.tsx
+│   │   │   └── page.tsx
+│   │   └── page.tsx
+│   ├── history
+│   │   ├── components
+│   │   │   └── HistoryList.tsx
+│   │   ├── page.tsx
+│   │   └── types.ts
+│   ├── layout.tsx
+│   ├── page.tsx
+│   ├── profile
+│   │   └── page.tsx
+│   ├── settings
+│   │   └── page.tsx
+│   ├── shop
+│   │   └── [slug]
+│   │       ├── PageClient.tsx
+│   │       ├── ShareBox.tsx
+│   │       ├── ShopPublicProfileView.tsx
+│   │       ├── metadata.ts
+│   │       └── page.tsx
+│   └── vehicles
+│       └── pages.tsx
+├── providers.tsx
+├── sign-in
+│   └── page.tsx
+├── signup
+│   └── page.tsx
+├── tech
+│   └── queue
+│       └── page.tsx
+├── test-inspection
+│   └── page.tsx
+├── thank-you
+│   └── page.tsx
+└── work-orders
+    ├── [id]
+    │   └── page.tsx
+    ├── create
+    │   └── page.tsx
+    ├── customer
+    │   └── page.tsx
+    ├── page.tsx
+    ├── queue
+    │   └── page.tsx
+    ├── quote-review
+    │   └── page.tsx
+    └── view
+        └── [id]
+            └── page.tsx
+
+73 directories, 69 files

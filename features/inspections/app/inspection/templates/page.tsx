@@ -1,13 +1,12 @@
-// app/inspection/templates/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
 import { Input } from "@shared/components/ui/input";
 import { Button } from "@shared/components/ui/Button";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { useRouter } from "next/navigation";
 
 import type { Database } from "@shared/types/types/supabase";
-import { useRouter } from "next/navigation";
 
 type InspectionTemplate =
   Database["public"]["Tables"]["inspection_templates"]["Row"];
@@ -31,44 +30,47 @@ export default function InspectionTemplatesPage() {
       if (error) {
         console.error("Error loading templates:", error.message);
       } else {
-        setTemplates(data);
-        setFiltered(data);
+        setTemplates(data ?? []);
+        setFiltered(data ?? []);
       }
       setLoading(false);
     };
 
     loadTemplates();
-  }, []);
+  }, [supabase]);
 
   useEffect(() => {
-    const lower = search.toLowerCase();
-    setFiltered(
-      templates.filter(
-        (t) =>
-          (t.template_name || "").toLowerCase().includes(lower) ||
-          (t.tags?.join(", ") || "").toLowerCase().includes(lower) ||
-          (t.vehicle_type || "").toLowerCase().includes(lower),
-      ),
-    );
+    const q = search.toLowerCase();
+    if (!q) {
+      setFiltered(templates);
+    } else {
+      setFiltered(
+        templates.filter(
+          (t) =>
+            (t.template_name || "").toLowerCase().includes(q) ||
+            (t.description || "").toLowerCase().includes(q)
+        )
+      );
+    }
   }, [search, templates]);
 
   const handleLoad = (id: string) => {
-    router.push(`/inspection/custom-inspection?id=${id}`);
+    router.push(`/dashboard/inspections/custom-inspection?id=${id}`);
   };
 
   const handleEdit = (id: string) => {
-    router.push(`/inspection/custom-inspection?id=${id}&edit=true`);
+    router.push(`/dashboard/inspections/custom-inspection?id=${id}&edit=true`);
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this template?")) return;
+    if (!confirm("Delete this template?")) return;
     const { error } = await supabase
       .from("inspection_templates")
       .delete()
       .eq("id", id);
-    if (error) {
-      console.error("Delete error:", error.message);
-    } else {
+
+    if (error) console.error(error.message);
+    else {
       setTemplates((prev) => prev.filter((t) => t.id !== id));
       setFiltered((prev) => prev.filter((t) => t.id !== id));
     }
@@ -83,59 +85,52 @@ export default function InspectionTemplatesPage() {
       <Input
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        placeholder="Search by title, tag, or vehicle type"
+        placeholder="Search by title or description"
         className="mb-4 text-black"
       />
 
       {loading ? (
         <p className="text-white">Loading templates...</p>
+      ) : filtered.length === 0 ? (
+        <p className="text-white">No templates found.</p>
       ) : (
         <div className="space-y-4">
-          {filtered.map((template) => (
+          {filtered.map((t) => (
             <div
-              key={template.id}
+              key={t.id}
               className="border border-gray-700 p-4 rounded-md bg-zinc-800"
             >
               <div className="flex justify-between items-center mb-2">
                 <h2 className="text-xl font-semibold text-orange-400">
-                  {template.template_name}
+                  {t.template_name}
                 </h2>
                 <div className="flex gap-2">
-                  <Button onClick={() => handleLoad(template.id)}>Load</Button>
+                  <Button onClick={() => handleLoad(t.id)}>Load</Button>
                   <Button
                     variant="secondary"
-                    onClick={() => handleEdit(template.id)}
+                    onClick={() => handleEdit(t.id)}
                   >
                     Edit
                   </Button>
                   <Button
                     variant="destructive"
-                    onClick={() => handleDelete(template.id)}
+                    onClick={() => handleDelete(t.id)}
                   >
                     Delete
                   </Button>
                 </div>
               </div>
-              {template.description && (
-                <p className="text-sm text-gray-300 mb-1">
-                  {template.description}
-                </p>
+              {t.description && (
+                <p className="text-sm text-gray-300 mb-1">{t.description}</p>
               )}
-              <p className="text-xs text-gray-400">
-                Vehicle: {template.vehicle_type || "N/A"} | Tags:{" "}
-                {template.tags || "None"} | Owner: {template.user_id}
-              </p>
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-gray-500">
                 Created:{" "}
-                {template.created_at
-                  ? new Date(template.created_at).toLocaleString()
+                {t.created_at
+                  ? new Date(t.created_at).toLocaleString()
                   : "N/A"}
               </p>
             </div>
           ))}
-          {filtered.length === 0 && (
-            <p className="text-white">No templates found.</p>
-          )}
         </div>
       )}
     </div>

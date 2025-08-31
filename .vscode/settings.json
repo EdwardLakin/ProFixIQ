@@ -16,7 +16,12 @@
     "http",
     "net"
   ],
+
   "[typescript]": {
     "editor.defaultFormatter": "denoland.vscode-deno"
-  }
+  },
+
+  "problems.decorations.enabled": true,
+  "explorer.decorations.badges": true,
+  "explorer.decorations.colors": true
 }
