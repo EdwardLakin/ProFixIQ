@@ -1,7 +1,3 @@
 "use client";
-
-import FeaturePage from "@/features/dashboard/app/dashboard/admin/page";
-
-export default function Page() {
-  return <FeaturePage />;
-}
+import AdminDashboardClient from "@features/dashboard/app/dashboard/admin/AdminDashboardClient";
+export default function Page() { return <AdminDashboardClient />; }

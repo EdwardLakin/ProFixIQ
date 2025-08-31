@@ -1,36 +1,43 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import React from "react";
 
-type Props = { role: "owner" | "manager" | "advisor" | "tech" | "admin" };
+type Role = "owner" | "manager" | "advisor" | "tech" | "admin";
 
-export default function QuickActions({ role }: Props) {
+type Props = {
+  role?: Role;
+  className?: string;
+};
+
+const BASE: { label: string; path: string }[] = [
+  { label: "📸 Diagnose from Photo", path: "/tech/diagnose" },
+  { label: "🔍 Run DTC Diagnosis", path: "/tech/dtc-lookup" },
+  { label: "🧾 View Work Orders", path: "/work-orders" },
+  { label: "📋 Start Inspection", path: "/dashboard/inspections/custom-inspection" },
+  { label: "🚘 Add Vehicle", path: "/vehicles" },
+];
+
+const ADMIN_ACTIONS: typeof BASE = [
+  { label: "👤 Add Employee", path: "/dashboard/admin/create-user" },
+  { label: "🛡️ Manage Roles", path: "/dashboard/admin/roles" },
+  { label: "🏪 Manage Shops", path: "/dashboard/admin/shops" },
+  { label: "📜 Audit Logs", path: "/dashboard/admin/audit" },
+];
+
+export default function QuickActions({ role, className = "" }: Props) {
   const router = useRouter();
-
-  const shared = [
-    { label: "🧾 View Work Orders", path: "/work-orders" },
-    { label: "📋 Start Inspection", path: "/inspections" },
-  ];
-
-  const roleSpecific = {
-    owner: [{ label: "📊 Reports", path: "/dashboard/owner/reports" }],
-    manager: [{ label: "👥 Manage Staff", path: "/dashboard/manager/staff" }],
-    advisor: [{ label: "📞 Customer Follow-ups", path: "/dashboard/advisor/customers" }],
-    tech: [{ label: "🔧 My Jobs", path: "/dashboard/tech/work-orders" }],
-    admin: [{ label: "⚙️ Settings", path: "/dashboard/admin/settings" }],
-  };
-
-  const actions = [...shared, ...(roleSpecific[role] || [])];
+  const actions = role === "admin" ? ADMIN_ACTIONS : BASE;
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-8">
-      {actions.map((action) => (
+    <div className={`grid grid-cols-2 sm:grid-cols-3 gap-4 ${className}`}>
+      {actions.map((a) => (
         <button
-          key={action.path}
-          onClick={() => router.push(action.path)}
-          className="bg-surface text-accent shadow-card rounded-lg p-4 hover:shadow-lg transition"
+          key={a.path}
+          onClick={() => router.push(a.path)}
+          className="bg-surface text-accent shadow-card rounded-lg p-4 hover:shadow-lg transition text-left"
         >
-          {action.label}
+          {a.label}
         </button>
       ))}
     </div>
