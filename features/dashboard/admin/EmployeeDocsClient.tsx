@@ -1,56 +1,48 @@
-// features/dashboard/admin/EmployeeDocsClient.tsx
 "use client";
-
 import React, { useEffect, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { uploadEmployeeDoc } from "@shared/lib/hr/uploadEmployeeDoc";
 
 type DB = Database;
-type EmpDoc = DB["public"]["Tables"]["employee_documents"]["Row"];
+type EmpDocRow = DB["public"]["Tables"]["employee_documents"]["Row"];
 type ProfileRow = DB["public"]["Tables"]["profiles"]["Row"];
+type DocType = EmpDocRow["doc_type"];
 
 export default function EmployeeDocsClient() {
   const supabase = createClientComponentClient<DB>();
-
-  const [docs, setDocs] = useState<EmpDoc[]>([]);
+  const [docs, setDocs] = useState<EmpDocRow[]>([]);
   const [busy, setBusy] = useState(false);
-  const [docType, setDocType] = useState<EmpDoc["doc_type"]>("drivers_license");
   const [file, setFile] = useState<File | null>(null);
+  const [docType, setDocType] =
+  useState<DB["public"]["Tables"]["employee_documents"]["Row"]["doc_type"]>("drivers_license");
 
-  async function load() {
+  const load = async () => {
     const { data, error } = await supabase
       .from("employee_documents")
       .select("*")
       .order("uploaded_at", { ascending: false });
+    if (!error && data) setDocs(data as EmpDocRow[]);
+  };
 
-    if (!error && data) setDocs(data);
-  }
+  useEffect(() => { void load(); }, []);
 
-  useEffect(() => {
-    void load();
-  }, []);
-
-  async function onUpload(e: React.FormEvent) {
+  const onUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file) return;
-
     setBusy(true);
     try {
       const {
         data: { user },
-        error: authErr,
       } = await supabase.auth.getUser();
-      if (authErr) throw authErr;
       if (!user) throw new Error("Not signed in");
 
-      // Pull current user's shop_id from profiles
-      const { data: prof, error: profErr } = await supabase
+      const { data: prof, error } = await supabase
         .from("profiles")
         .select("shop_id")
         .eq("id", user.id)
         .maybeSingle<Pick<ProfileRow, "shop_id">>();
-      if (profErr) throw profErr;
+      if (error) throw error;
 
       const shopId = prof?.shop_id ?? null;
       if (!shopId) throw new Error("No shop_id on profile");
@@ -60,21 +52,24 @@ export default function EmployeeDocsClient() {
       await load();
     } catch (err) {
       console.error(err);
-      // (Optional) surface a toast or set an error message state here
+      alert((err as Error).message);
     } finally {
       setBusy(false);
     }
-  }
+  };
+
+  const publicUrlFor = (p: string) =>
+    supabase.storage.from("employee_docs").getPublicUrl(p).data.publicUrl;
 
   return (
-    <div className="p-6">
-      <h1 className="mb-4 text-2xl font-bold">Employee Documents</h1>
+    <div className="p-6 text-white">
+      <h1 className="text-2xl font-bold mb-4">Employee Documents</h1>
 
-      <form onSubmit={onUpload} className="mb-6 flex items-center gap-2">
+      <form onSubmit={onUpload} className="mb-6 flex gap-2 items-center">
         <select
           value={docType}
-          onChange={(e) => setDocType(e.target.value as EmpDoc["doc_type"])}
-          className="rounded border px-2 py-1"
+          onChange={(e) => setDocType(e.target.value as DocType)}
+          className="border rounded px-2 py-1 bg-neutral-900"
         >
           <option value="drivers_license">Driver&apos;s License</option>
           <option value="certification">Certification</option>
@@ -85,55 +80,36 @@ export default function EmployeeDocsClient() {
         <input
           type="file"
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          className="rounded border px-2 py-1"
+          className="border rounded px-2 py-1 bg-neutral-900"
         />
 
         <button
           type="submit"
           disabled={busy || !file}
-          className="rounded bg-neutral-800 px-3 py-1 text-white disabled:opacity-50"
+          className="px-3 py-1 rounded bg-orange-600 text-white disabled:opacity-50"
         >
           {busy ? "Uploading…" : "Upload"}
         </button>
       </form>
 
       <div className="space-y-2">
-        {docs.length === 0 && (
-          <p className="text-sm text-neutral-500">No documents uploaded yet.</p>
-        )}
-
-        {docs.map((d) => {
-          const publicUrl =
-            supabase.storage.from("employee_docs").getPublicUrl(d.file_path)
-              .data.publicUrl;
-
-          return (
-            <div
-              key={d.id}
-              className="flex justify-between rounded border p-3"
-            >
+        {docs.length === 0 ? (
+          <p className="text-sm text-neutral-400">No documents uploaded yet.</p>
+        ) : (
+          docs.map((d) => (
+            <div key={d.id} className="border rounded p-3 flex items-center justify-between bg-neutral-900/40">
               <div>
-                <div className="font-medium">{d.doc_type}</div>
-                <div className="text-xs text-neutral-500">
-                  {d.user_id} •{" "}
-                  {d.uploaded_at
-                    ? new Date(d.uploaded_at).toLocaleString()
-                    : "—"}
+                <div className="font-medium capitalize">{d.doc_type}</div>
+                <div className="text-xs text-neutral-400">
+                  {d.user_id} • {d.uploaded_at ? new Date(d.uploaded_at).toLocaleString() : "—"}
                 </div>
               </div>
-              <div className="text-sm">
-                <a
-                  className="underline"
-                  href={publicUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  View
-                </a>
-              </div>
+              <a className="text-sm underline" href={publicUrlFor(d.file_path)} target="_blank" rel="noreferrer">
+                View
+              </a>
             </div>
-          );
-        })}
+          ))
+        )}
       </div>
     </div>
   );
