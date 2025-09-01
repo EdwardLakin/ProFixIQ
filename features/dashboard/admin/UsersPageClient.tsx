@@ -1,7 +1,7 @@
 // features/dashboard/app/dashboard/admin/UsersPageClient.tsx
+import React from "react";
 "use client";
 
-import * as React from "react";
 import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";

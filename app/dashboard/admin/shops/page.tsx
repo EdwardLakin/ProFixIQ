@@ -1,3 +1,4 @@
 "use client";
-import AdminShopsClient from "@features/dashboard/app/dashboard/admin/ShopsClient";
-export default function Page(){ return <AdminShopsClient/>; }
+import React from "react";
+import ShopsClient from "@/features/dashboard/app/dashboard/admin/ShopsClient";
+export default function Page(){ return <ShopsClient/>; }

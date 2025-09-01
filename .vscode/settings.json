@@ -1,5 +1,10 @@
 {
-  "deno.enablePaths": ["supabase/functions"],
+  "[typescript]": {
+    "editor.defaultFormatter": "denoland.vscode-deno"
+  },
+  "deno.enablePaths": [
+    "supabase/functions"
+  ],
   "deno.lint": true,
   "deno.unstable": [
     "bare-node-builtins",
@@ -16,12 +21,7 @@
     "http",
     "net"
   ],
-
-  "[typescript]": {
-    "editor.defaultFormatter": "denoland.vscode-deno"
-  },
-
-  "problems.decorations.enabled": true,
   "explorer.decorations.badges": true,
-  "explorer.decorations.colors": true
+  "explorer.decorations.colors": true,
+  "problems.decorations.enabled": true
 }

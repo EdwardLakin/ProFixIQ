@@ -1,3 +1,4 @@
 "use client";
-import AdminEmployeesClient from "@features/dashboard/app/dashboard/admin/EmployeesClient";
-export default function Page(){ return <AdminEmployeesClient/>; }
+import React from "react";
+import EmployeesClient from "@/features/dashboard/app/dashboard/admin/EmployeesClient";
+export default function Page(){ return <EmployeesClient/>; }

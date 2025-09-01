@@ -116,6 +116,41 @@ export type Database = {
         }
         Relationships: []
       }
+      audit_logs: {
+        Row: {
+          action: string
+          actor_id: string | null
+          created_at: string
+          id: string
+          metadata: Json | null
+          target: string | null
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          target?: string | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          target?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_logs_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bookings: {
         Row: {
           created_at: string
@@ -653,6 +688,64 @@ export type Database = {
         }
         Relationships: []
       }
+      employee_documents: {
+        Row: {
+          bucket_id: string
+          doc_type: string
+          expires_at: string | null
+          file_path: string
+          id: string
+          shop_id: string
+          status: string
+          uploaded_at: string
+          user_id: string
+        }
+        Insert: {
+          bucket_id?: string
+          doc_type: string
+          expires_at?: string | null
+          file_path: string
+          id?: string
+          shop_id: string
+          status?: string
+          uploaded_at?: string
+          user_id: string
+        }
+        Update: {
+          bucket_id?: string
+          doc_type?: string
+          expires_at?: string | null
+          file_path?: string
+          id?: string
+          shop_id?: string
+          status?: string
+          uploaded_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_documents_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_documents_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_documents_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       followups: {
         Row: {
           created_at: string | null
@@ -831,7 +924,6 @@ export type Database = {
           updated_at?: string | null
           user_id?: string | null
           work_order_id?: string | null
-          
         }
         Update: {
           id?: string
@@ -2564,13 +2656,16 @@ export type Database = {
           labor_time: number | null
           line_status: string | null
           on_hold_since: string | null
+          parts_needed: Json | null
           parts_received: Json | null
           parts_required: Json | null
           priority: number | null
           punched_in_at: string | null
           punched_out_at: string | null
           status: string | null
+          template_id: string | null
           tools: string | null
+          updated_at: string | null
           user_id: string | null
           vehicle_id: string | null
           work_order_id: string | null
@@ -2589,13 +2684,16 @@ export type Database = {
           labor_time?: number | null
           line_status?: string | null
           on_hold_since?: string | null
+          parts_needed?: Json | null
           parts_received?: Json | null
           parts_required?: Json | null
           priority?: number | null
           punched_in_at?: string | null
           punched_out_at?: string | null
           status?: string | null
+          template_id?: string | null
           tools?: string | null
+          updated_at?: string | null
           user_id?: string | null
           vehicle_id?: string | null
           work_order_id?: string | null
@@ -2614,13 +2712,16 @@ export type Database = {
           labor_time?: number | null
           line_status?: string | null
           on_hold_since?: string | null
+          parts_needed?: Json | null
           parts_received?: Json | null
           parts_required?: Json | null
           priority?: number | null
           punched_in_at?: string | null
           punched_out_at?: string | null
           status?: string | null
+          template_id?: string | null
           tools?: string | null
+          updated_at?: string | null
           user_id?: string | null
           vehicle_id?: string | null
           work_order_id?: string | null

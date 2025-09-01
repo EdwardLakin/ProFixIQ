@@ -1,3 +1,4 @@
 "use client";
-import AdminAuditClient from "@features/dashboard/app/dashboard/admin/AuditClient";
-export default function Page(){ return <AdminAuditClient/>; }
+import React from "react";
+import AuditClient from "@/features/dashboard/app/dashboard/admin/AuditClient";
+export default function Page(){ return <AuditClient/>; }
