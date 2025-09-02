@@ -1,16 +1,27 @@
+// app/portal/vehicles/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-
 import type { Database } from "@shared/types/types/supabase";
 
-type Vehicle = Database["public"]["Tables"]["vehicles"]["Row"];
-type Customer = Database["public"]["Tables"]["customers"]["Row"];
+type DB = Database;
+type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
+type Customer = DB["public"]["Tables"]["customers"]["Row"];
+
+// Keep inputs as strings; coerce to DB types on save
+type VehicleForm = {
+  year: string;          // number in DB, string in UI
+  make: string;
+  model: string;
+  vin: string;
+  license_plate: string;
+  mileage: string;
+  color: string;
+};
 
 export default function PortalVehiclesPage() {
-    const supabase = createClientComponentClient<Database>();
-
+  const supabase = createClientComponentClient<DB>();
 
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -18,9 +29,8 @@ export default function PortalVehiclesPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // form state for add/update
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState<Partial<Vehicle>>({
+  const [form, setForm] = useState<VehicleForm>({
     year: "",
     make: "",
     model: "",
@@ -37,22 +47,19 @@ export default function PortalVehiclesPage() {
       setLoading(true);
       setError(null);
 
-      const {
-        data: { user },
-        error: userErr,
-      } = await supabase.auth.getUser();
+      const { data: { user }, error: userErr } = await supabase.auth.getUser();
       if (userErr || !user) {
         setError("You must be signed in.");
         setLoading(false);
         return;
       }
 
-      // find the customer's row by user_id
+      // Load customer by user_id
       const { data: cust, error: custErr } = await supabase
         .from("customers")
         .select("*")
         .eq("user_id", user.id)
-        .maybeSingle();
+        .maybeSingle<Customer>();
 
       if (custErr) setError(custErr.message);
       setCustomer(cust ?? null);
@@ -62,9 +69,12 @@ export default function PortalVehiclesPage() {
           .from("vehicles")
           .select("*")
           .eq("customer_id", cust.id)
-          .order("created_at", { ascending: false });
+          .order("created_at", { ascending: false }) as {
+          data: Vehicle[] | null;
+          error: unknown;
+        };
 
-        if (vehErr) setError(vehErr.message);
+        if (vehErr) setError((vehErr as any)?.message ?? "Failed to load vehicles.");
         setVehicles(v ?? []);
       }
 
@@ -88,7 +98,7 @@ export default function PortalVehiclesPage() {
   const startEdit = (v: Vehicle) => {
     setEditingId(v.id);
     setForm({
-      year: v.year ?? "",
+      year: v.year != null ? String(v.year) : "",
       make: v.make ?? "",
       model: v.model ?? "",
       vin: v.vin ?? "",
@@ -99,6 +109,14 @@ export default function PortalVehiclesPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  function toNull(s: string): string | null {
+    return s.trim() === "" ? null : s;
+  }
+  function toYear(s: string): number | null {
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  }
+
   const onSave = async () => {
     if (!customer?.id) {
       setError("Create your profile first.");
@@ -107,30 +125,32 @@ export default function PortalVehiclesPage() {
     setSaving(true);
     setError(null);
 
-    // Basic validation
-    if (!form.make || !form.model) {
+    if (!form.make.trim() || !form.model.trim()) {
       setError("Make and model are required.");
       setSaving(false);
       return;
     }
 
+    const payload = {
+      customer_id: customer.id,
+      year: toYear(form.year),
+      make: form.make.trim(),                 // allow empty string -> store empty (or make toNull if you prefer)
+      model: form.model.trim(),
+      vin: toNull(form.vin),
+      license_plate: toNull(form.license_plate),
+      mileage: toNull(form.mileage),
+      color: toNull(form.color),
+    } satisfies DB["public"]["Tables"]["vehicles"]["Insert"];
+
     if (isEdit && editingId) {
       const { error: upErr, data: updated } = await supabase
         .from("vehicles")
-        .update({
-          year: (form.year as string) || null,
-          make: (form.make as string) || "",
-          model: (form.model as string) || "",
-          vin: (form.vin as string) || null,
-          license_plate: (form.license_plate as string) || null,
-          mileage: (form.mileage as string) || null,
-          color: (form.color as string) || null,
-        })
+        .update(payload)
         .eq("id", editingId)
         .select()
-        .maybeSingle();
+        .maybeSingle<Vehicle>();
 
-      if (upErr) setError(upErr.message);
+      if (upErr) setError((upErr as any)?.message ?? "Failed to update vehicle.");
       if (updated) {
         setVehicles((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
         resetForm();
@@ -138,20 +158,11 @@ export default function PortalVehiclesPage() {
     } else {
       const { error: insErr, data: inserted } = await supabase
         .from("vehicles")
-        .insert({
-          customer_id: customer.id,
-          year: (form.year as string) || null,
-          make: (form.make as string) || "",
-          model: (form.model as string) || "",
-          vin: (form.vin as string) || null,
-          license_plate: (form.license_plate as string) || null,
-          mileage: (form.mileage as string) || null,
-          color: (form.color as string) || null,
-        })
+        .insert(payload)
         .select()
-        .maybeSingle();
+        .maybeSingle<Vehicle>();
 
-      if (insErr) setError(insErr.message);
+      if (insErr) setError((insErr as any)?.message ?? "Failed to add vehicle.");
       if (inserted) setVehicles((prev) => [inserted, ...prev]);
       resetForm();
     }
@@ -163,7 +174,7 @@ export default function PortalVehiclesPage() {
     if (!confirm("Delete this vehicle?")) return;
     const { error: delErr } = await supabase.from("vehicles").delete().eq("id", id);
     if (delErr) {
-      setError(delErr.message);
+      setError((delErr as any)?.message ?? "Failed to delete vehicle.");
     } else {
       setVehicles((prev) => prev.filter((v) => v.id !== id));
       if (editingId === id) resetForm();
@@ -190,19 +201,19 @@ export default function PortalVehiclesPage() {
           <input
             className="input"
             placeholder="Year"
-            value={(form.year as string) ?? ""}
+            value={form.year}
             onChange={(e) => setForm({ ...form, year: e.target.value })}
           />
           <input
             className="input"
             placeholder="Make *"
-            value={(form.make as string) ?? ""}
+            value={form.make}
             onChange={(e) => setForm({ ...form, make: e.target.value })}
           />
           <input
             className="input"
             placeholder="Model *"
-            value={(form.model as string) ?? ""}
+            value={form.model}
             onChange={(e) => setForm({ ...form, model: e.target.value })}
           />
         </div>
@@ -211,19 +222,19 @@ export default function PortalVehiclesPage() {
           <input
             className="input"
             placeholder="VIN"
-            value={(form.vin as string) ?? ""}
+            value={form.vin}
             onChange={(e) => setForm({ ...form, vin: e.target.value })}
           />
           <input
             className="input"
             placeholder="License Plate"
-            value={(form.license_plate as string) ?? ""}
+            value={form.license_plate}
             onChange={(e) => setForm({ ...form, license_plate: e.target.value })}
           />
           <input
             className="input"
             placeholder="Mileage"
-            value={(form.mileage as string) ?? ""}
+            value={form.mileage}
             onChange={(e) => setForm({ ...form, mileage: e.target.value })}
           />
         </div>
@@ -231,7 +242,7 @@ export default function PortalVehiclesPage() {
         <input
           className="input"
           placeholder="Color"
-          value={(form.color as string) ?? ""}
+          value={form.color}
           onChange={(e) => setForm({ ...form, color: e.target.value })}
         />
 

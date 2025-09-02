@@ -1,7 +1,7 @@
 // app/portal/shop/[slug]/ShopPublicProfileView.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import Link from "next/link";
@@ -11,58 +11,47 @@ type ShopsRow = DB["public"]["Tables"]["shops"]["Row"];
 
 type Props = { slug: string };
 
-/**
- * Public fields projected from `shops`.
- * NOTE: We widen `gallery_urls` to `string | string[] | null` so this keeps working
- * whether your DB column is a CSV string or a string[].
- */
-type PublicFields = Omit<
-  Pick<
-    ShopsRow,
-    | "name"
-    | "description"
-    | "website"
-    | "phone_number"
-    | "email"
-    | "address"
-    | "city"
-    | "province"
-    | "postal_code"
-    | "hero_image_url"
-    | "gallery_urls"
-    | "latitude"
-    | "longitude"
-  >,
-  "gallery_urls"
+type PublicFields = Pick<
+  ShopsRow,
+  | "name"
+  | "phone_number"
+  | "email"
+  | "address"
+  | "city"
+  | "province"
+  | "postal_code"
+  | "images"
+  | "geo_lat"
+  | "geo_lng"
 > & {
-  gallery_urls: string | string[] | null;
+  // Optional extras if your DB actually has them; keep them as maybe-null to avoid TS blowups
+  description?: string | null;
+  website?: string | null;
 };
 
 const emptyPublic: PublicFields = {
   name: "",
-  description: null,
-  website: null,
   phone_number: null,
   email: null,
   address: null,
   city: null,
   province: null,
   postal_code: null,
-  hero_image_url: null,
-  gallery_urls: null,
-  latitude: null,
-  longitude: null,
+  images: null,
+  geo_lat: null,
+  geo_lng: null,
+  description: null,
+  website: null,
 };
 
 export default function PublicProfileClient({ slug }: Props) {
   const supabase = createClientComponentClient<DB>();
   const [data, setData] = useState<PublicFields>(emptyPublic);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [notFound, setNotFound] = useState<boolean>(false);
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-
     (async () => {
       setLoading(true);
 
@@ -71,19 +60,19 @@ export default function PublicProfileClient({ slug }: Props) {
         .select(
           [
             "name",
-            "description",
-            "website",
             "phone_number",
             "email",
             "address",
             "city",
             "province",
             "postal_code",
-            "hero_image_url",
-            "gallery_urls",
-            "latitude",
-            "longitude",
-          ].join(",")
+            "images",
+            "geo_lat",
+            "geo_lng",
+            // include extras only if they exist in your DB:
+            // "description",
+            // "website",
+          ].join(","),
         )
         .eq("slug", slug)
         .maybeSingle<ShopsRow>();
@@ -98,19 +87,17 @@ export default function PublicProfileClient({ slug }: Props) {
 
       const next: PublicFields = {
         name: row.name ?? "",
-        description: row.description ?? null,
-        website: row.website ?? null,
         phone_number: row.phone_number ?? null,
         email: row.email ?? null,
         address: row.address ?? null,
         city: row.city ?? null,
         province: row.province ?? null,
         postal_code: row.postal_code ?? null,
-        hero_image_url: row.hero_image_url ?? null,
-        // Accept either CSV string or string[] from the DB type
-        gallery_urls: (row as PublicFields).gallery_urls ?? null,
-        latitude: row.latitude ?? null,
-        longitude: row.longitude ?? null,
+        images: row.images ?? null,
+        geo_lat: row.geo_lat ?? null,
+        geo_lng: row.geo_lng ?? null,
+        // description: (row as any).description ?? null,
+        // website: (row as any).website ?? null,
       };
 
       setData(next);
@@ -122,20 +109,10 @@ export default function PublicProfileClient({ slug }: Props) {
     };
   }, [slug, supabase]);
 
-  /** Normalize gallery_urls into a clean string[] (no implicit any) */
-  const gallery: string[] = useMemo(() => {
-    const g = data.gallery_urls;
-    if (!g) return [];
-    if (Array.isArray(g)) {
-      return g
-        .map((s: string) => s.trim())
-        .filter((s: string) => s.length > 0);
-    }
-    return g
-      .split(",")
-      .map((s: string) => s.trim())
-      .filter((s: string) => s.length > 0);
-  }, [data.gallery_urls]);
+  // Split hero vs gallery from images[]
+  const images = data.images ?? [];
+  const hero = images[0] ?? null;
+  const gallery = images.slice(1);
 
   if (loading) {
     return (
@@ -159,11 +136,11 @@ export default function PublicProfileClient({ slug }: Props) {
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 space-y-8">
       {/* Hero */}
-      {data.hero_image_url ? (
+      {hero ? (
         <div className="overflow-hidden rounded-xl border border-neutral-800">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={data.hero_image_url}
+            src={hero}
             alt={`${data.name} hero`}
             className="h-64 w-full object-cover"
           />
@@ -209,13 +186,12 @@ export default function PublicProfileClient({ slug }: Props) {
               .join(", ")}
           </p>
 
-          {/* Map link if coords exist */}
-          {data.latitude !== null && data.longitude !== null ? (
+          {data.geo_lat !== null && data.geo_lng !== null ? (
             <p className="mt-2 text-sm">
               <a
                 className="text-orange-400 underline"
                 href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                  `${data.latitude},${data.longitude}`
+                  `${data.geo_lat},${data.geo_lng}`,
                 )}`}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -232,7 +208,7 @@ export default function PublicProfileClient({ slug }: Props) {
         <section className="space-y-3">
           <h2 className="text-lg font-semibold">Gallery</h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {gallery.map((url: string) => (
+            {gallery.map((url) => (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 key={url}

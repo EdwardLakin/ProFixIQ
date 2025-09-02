@@ -2866,6 +2866,7 @@ export type Database = {
           labor_total: number | null
           parts_total: number | null
           quote: Json | null
+          quote_url: string | null
           shop_id: string | null
           status: string | null
           user_id: string | null
@@ -2885,6 +2886,7 @@ export type Database = {
           labor_total?: number | null
           parts_total?: number | null
           quote?: Json | null
+          quote_url?: string | null
           shop_id?: string | null
           status?: string | null
           user_id?: string | null
@@ -2904,6 +2906,7 @@ export type Database = {
           labor_total?: number | null
           parts_total?: number | null
           quote?: Json | null
+          quote_url?: string | null
           shop_id?: string | null
           status?: string | null
           user_id?: string | null
