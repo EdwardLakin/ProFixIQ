@@ -1,9 +1,4 @@
 {
-  "name": "profixiq",
-  "version": "1.0.0",
-  "private": true,
-  "description": "",
-  "license": "ISC",
   "main": "postcss.config.js",
   "scripts": {
     "dev": "next dev",
@@ -26,10 +21,11 @@
     "@heroicons/react": "^2.2.0",
     "@react-pdf/renderer": "^3.4.5",
     "@sendgrid/mail": "^8.1.5",
-    "@supabase/auth-helpers-nextjs": "^0.10.0",
-    "@supabase/auth-helpers-react": "^0.5.0",
-    "@supabase/ssr": "^0.6.1",
-    "@supabase/supabase-js": "^2.39.5",
+    "@supabase/auth-helpers-nextjs": "0.10.0",
+    "@supabase/auth-helpers-react": "0.5.0",
+    "@supabase/auth-helpers-shared": "0.7.0",
+    "@supabase/ssr": "0.6.1",
+    "@supabase/supabase-js": "2.39.5",
     "@tsparticles/interaction-external-bubble": "^3.9.1",
     "@tsparticles/interaction-particles-links": "^3.9.1",
     "@tsparticles/plugin-absorbers": "^3.9.1",
@@ -92,7 +88,15 @@
     "supabase": "^2.26.9",
     "tailwindcss": "^3.4.17",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.2"
+    "typescript": "5.4.5"
+  },
+  "overrides": {
+    "@supabase/supabase-js": "2.39.5",
+    "@supabase/ssr": "0.6.1",
+    "@supabase/auth-helpers-nextjs": "0.10.0",
+    "@supabase/auth-helpers-react": "0.5.0",
+    "@supabase/auth-helpers-shared": "0.7.0",
+    "typescript": "5.4.5"
   },
   "keywords": [],
   "author": ""

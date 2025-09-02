@@ -495,6 +495,7 @@ export type Database = {
           phone_number: string | null
           postal_code: string | null
           province: string | null
+          shop_id: string | null
           street: string | null
           user_id: string | null
         }
@@ -512,6 +513,7 @@ export type Database = {
           phone_number?: string | null
           postal_code?: string | null
           province?: string | null
+          shop_id?: string | null
           street?: string | null
           user_id?: string | null
         }
@@ -529,10 +531,26 @@ export type Database = {
           phone_number?: string | null
           postal_code?: string | null
           province?: string | null
+          shop_id?: string | null
           street?: string | null
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "customers_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customers_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       decoded_vins: {
         Row: {
