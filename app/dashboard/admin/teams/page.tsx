@@ -1,8 +1,7 @@
+// app/dashboard/admin/teams/page.tsx
+
+import TeamsClient from "@/features/dashboard/app/dashboard/admin/TeamsClient";
+
 export default function Page() {
-  return (
-    <div className="p-6 text-white">
-      <h1 className="text-2xl font-bold mb-2">Teams</h1>
-      <p className="text-neutral-300">Coming soon: team management and assignments.</p>
-    </div>
-  );
+  return <TeamsClient />;
 }

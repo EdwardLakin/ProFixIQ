@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import UsersPageClient from "@/features/dashboard/admin/UsersPageClient";
+import UsersPageClient from "@/features/dashboard/app/dashboard/admin//UsersPageClient";
 
 export default function Page() {
   return (
