@@ -1,4 +1,4 @@
-// src/app/menu/page.tsx
+// app/menu/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -10,34 +10,28 @@ type MenuItem = Database["public"]["Tables"]["menu_items"]["Row"];
 type InsertMenuItem = Database["public"]["Tables"]["menu_items"]["Insert"];
 
 export default function MenuItemsPage() {
-  // ✅ correct helper for client components
   const supabase = createClientComponentClient<Database>();
   const { user, isLoading } = useUser();
 
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
 
-  // Only keep fields the user actually edits; we add user_id at insert time
-  type FormState = Pick<InsertMenuItem, "name" | "category" | "total_price">;
+  // Only include fields that actually exist in the schema
+  type FormState = Pick<InsertMenuItem, "name" | "labor_time">;
   const [form, setForm] = useState<FormState>({
     name: "",
-    category: "",
-    total_price: 0,
+    labor_time: 0,
   });
 
   async function fetchItems() {
     if (!user?.id) return;
-
     const { data, error } = await supabase
       .from("menu_items")
       .select("*")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false });
 
-    if (error) {
-      console.error("Failed to fetch menu items:", error);
-      return;
-    }
-    setMenuItems(data ?? []);
+    if (!error) setMenuItems(data ?? []);
+    else console.error("Failed to fetch menu items:", error);
   }
 
   useEffect(() => {
@@ -45,7 +39,6 @@ export default function MenuItemsPage() {
 
     fetchItems();
 
-    // Realtime updates for this user's items
     const channel = supabase
       .channel("menu-items-sync")
       .on(
@@ -68,21 +61,21 @@ export default function MenuItemsPage() {
 
   async function handleSubmit() {
     if (!user?.id) return;
-    if (!form.name || Number.isNaN(form.total_price)) return;
+    if (!form.name) return;
 
     const newItem: InsertMenuItem = {
-      ...form,
-      user_id: user.id, // ✅ provide here, no cast needed
+      name: form.name,
+      labor_time: form.labor_time ?? null,
+      user_id: user.id,
     };
 
     const { error } = await supabase.from("menu_items").insert([newItem]);
-
     if (error) {
       console.error("Insert failed:", error);
       return;
     }
 
-    setForm({ name: "", category: "", total_price: 0 });
+    setForm({ name: "", labor_time: 0 });
   }
 
   async function handleDelete(id: string) {
@@ -94,30 +87,28 @@ export default function MenuItemsPage() {
 
   return (
     <div className="p-6 text-white">
-      <h1 className="text-2xl font-blackops text-orange-400 mb-4">Menu Items</h1>
+      <h1 className="text-2xl font-blackops text-orange-400 mb-4">
+        Menu Items
+      </h1>
 
       <div className="grid gap-2 mb-6 max-w-md">
         <input
           placeholder="Name"
-          value={form.name}
+          value={form.name ?? ""} // coerce nullable to string
           onChange={(e) => setForm({ ...form, name: e.target.value })}
           className="border border-neutral-700 bg-neutral-900 px-3 py-2 rounded"
         />
         <input
-          placeholder="Category"
-          value={form.category}
-          onChange={(e) => setForm({ ...form, category: e.target.value })}
-          className="border border-neutral-700 bg-neutral-900 px-3 py-2 rounded"
-        />
-        <input
-          placeholder="Total Price"
+          placeholder="Labor Time (hours)"
           type="number"
           inputMode="decimal"
-          value={form.total_price}
+          value={form.labor_time ?? 0} // coerce nullable to number
           onChange={(e) =>
             setForm({
               ...form,
-              total_price: parseFloat(e.target.value || "0"),
+              labor_time: Number.isNaN(parseFloat(e.target.value))
+                ? 0
+                : parseFloat(e.target.value),
             })
           }
           className="border border-neutral-700 bg-neutral-900 px-3 py-2 rounded"
@@ -138,12 +129,11 @@ export default function MenuItemsPage() {
           >
             <span>
               <strong className="text-orange-400">{item.name}</strong>{" "}
-              {item.category && (
+              {typeof item.labor_time === "number" && (
                 <span className="text-xs text-neutral-400">
-                  ({item.category})
+                  ({item.labor_time.toFixed(1)}h)
                 </span>
-              )}{" "}
-              — ${Number(item.total_price ?? 0).toFixed(2)}
+              )}
             </span>
             <button
               onClick={() => handleDelete(item.id)}

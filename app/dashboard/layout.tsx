@@ -7,6 +7,8 @@ import DynamicRoleSidebar from "@shared/components/DynamicRoleSidebar";
 import Calendar from "@shared/components/ui/Calendar";
 import { TabsProvider } from "@shared/context/TabsProvider";
 import ShareBookingLink from "@dashboard/components/ShareBookingLink";
+import PunchController from "@/features/shared/components/ui/PunchController";
+import ChatDock from "@/features/chat/components/ChatDock"; // 👈 NEW
 
 // roles that can see the calendar and share link
 const CALENDAR_ROLES = ["owner", "admin", "manager", "advisor"];
@@ -82,10 +84,12 @@ export default function DashboardLayout({
     [loadingRole, role],
   );
 
+  const showPunch = showShareLink;   // same staff gate
+  const showMessages = showShareLink; // 👈 show chat to staff roles
+
   return (
     <TabsProvider>
       <div className="min-h-screen bg-black text-white font-blackops">
-
         {/* Header */}
         <div className="mx-auto flex max-w-7xl items-center justify-between border-b border-neutral-800 px-4 py-3">
           <div className="flex items-center gap-3">
@@ -101,7 +105,17 @@ export default function DashboardLayout({
               {loadingRole ? "Loading…" : "Dashboard"}
             </h1>
           </div>
-          {showShareLink && <ShareBookingLink />}
+
+          {/* Header actions */}
+          <div className="flex items-center gap-3">
+            {showShareLink && <ShareBookingLink />}
+            {showPunch && (
+              <div className="w-56">
+                <PunchController />
+              </div>
+            )}
+            {showMessages && <ChatDock />}{/* 👈 NEW */}
+          </div>
         </div>
 
         <div className="flex">
@@ -130,7 +144,6 @@ export default function DashboardLayout({
           {/* Mobile drawer */}
           {sidebarOpen && (
             <div className="fixed inset-0 z-40 md:hidden">
-              {/* backdrop */}
               <button
                 type="button"
                 aria-label="Close sidebar"

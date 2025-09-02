@@ -1116,39 +1116,75 @@ export type Database = {
       }
       menu_items: {
         Row: {
+          category: string | null
           cause: string | null
           complaint: string | null
           correction: string | null
           created_at: string | null
+          description: string | null
           id: string
+          is_active: boolean | null
+          labor_hours: number | null
           labor_time: number | null
           name: string | null
+          part_cost: number | null
+          shop_id: string | null
           tools: string | null
+          total_price: number | null
           user_id: string | null
         }
         Insert: {
+          category?: string | null
           cause?: string | null
           complaint?: string | null
           correction?: string | null
           created_at?: string | null
+          description?: string | null
           id?: string
+          is_active?: boolean | null
+          labor_hours?: number | null
           labor_time?: number | null
           name?: string | null
+          part_cost?: number | null
+          shop_id?: string | null
           tools?: string | null
+          total_price?: number | null
           user_id?: string | null
         }
         Update: {
+          category?: string | null
           cause?: string | null
           complaint?: string | null
           correction?: string | null
           created_at?: string | null
+          description?: string | null
           id?: string
+          is_active?: boolean | null
+          labor_hours?: number | null
           labor_time?: number | null
           name?: string | null
+          part_cost?: number | null
+          shop_id?: string | null
           tools?: string | null
+          total_price?: number | null
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "menu_items_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "menu_items_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       menu_pricing: {
         Row: {

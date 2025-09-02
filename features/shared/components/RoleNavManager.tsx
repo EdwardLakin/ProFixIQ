@@ -10,7 +10,7 @@ import type { Database } from "@shared/types/types/supabase";
 import {
   FaClipboardList,  // work orders
   FaUserCheck,      // assignments
-  FaWrench,         // inspections
+  FaWrench,         // inspections / actions
   FaBoxes,          // parts
   FaComments,       // messaging
   FaChevronDown,
@@ -90,11 +90,17 @@ export default function RoleNavManager() {
   return (
     <nav className="w-full md:w-64 bg-neutral-900 p-4 text-white space-y-4">
       <Section title="Work Orders" open={ordersOpen} toggle={() => setOrdersOpen(!ordersOpen)}>
+        <Link href="/work-orders/create" className={linkClass("/work-orders/create")}>
+          <FaWrench /> Create Work Order
+        </Link>
         <Link href="/work-orders" className={linkClass("/work-orders")}>
           <FaClipboardList /> Orders List
         </Link>
         <Link href="/dashboard/manager" className={linkClass("/dashboard/manager")}>
           <FaUserCheck /> Assignments Board
+        </Link>
+        <Link href="/menu" className={linkClass("/menu")}>
+          <FaWrench /> Service Menu
         </Link>
       </Section>
 
@@ -124,7 +130,6 @@ export default function RoleNavManager() {
         </Link>
       </Section>
 
-      {/* Add any manager-only widgets below (e.g., KPIs). Avoid ShiftTracker here; that's for techs. */}
       {userId && (
         <div className="border-t border-gray-700 pt-4 text-sm text-neutral-400">
           Signed in as <span className="font-semibold">{userId.slice(0, 8)}</span>

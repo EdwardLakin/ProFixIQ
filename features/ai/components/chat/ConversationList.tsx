@@ -1,5 +1,4 @@
 // features/ai/components/ConversationList.tsx
-"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";

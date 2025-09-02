@@ -1,9 +1,8 @@
-// components/PartsRequestChat.tsx
+// features/parts/components/PartsRequestChat.tsx
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-
 import type { Database } from "@shared/types/types/supabase";
 import { v4 as uuidv4 } from "uuid";
 import { toast } from "sonner";
@@ -11,32 +10,46 @@ import { toast } from "sonner";
 type Message = Database["public"]["Tables"]["parts_request_messages"]["Row"];
 
 interface Props {
-  requestId: string;
+  // allow null/undefined from parents safely
+  requestId: string | null | undefined;
   senderId: string;
 }
 
 export default function PartsRequestChat({ requestId, senderId }: Props) {
-    const supabase = createClientComponentClient<Database>();
+  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMsg, setNewMsg] = useState("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
+  // Fetch messages (guard if requestId isn't ready)
   useEffect(() => {
-    const fetchMessages = async () => {
-      const { data } = await supabase
+    if (!requestId) return;
+
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
         .from("parts_request_messages")
         .select("*")
         .eq("request_id", requestId)
         .order("created_at", { ascending: true });
 
-      if (data) setMessages(data);
+      if (error) {
+        console.error("Failed to load parts request messages:", error);
+        return;
+      }
+      if (!cancelled && data) setMessages(data);
+    })();
+
+    return () => {
+      cancelled = true;
     };
+  }, [requestId, supabase]);
 
-    fetchMessages();
-  }, [requestId]);
-
+  // Realtime inserts (guard if requestId isn't ready)
   useEffect(() => {
+    if (!requestId) return;
+
     const channel = supabase
       .channel(`req-messages-${requestId}`)
       .on(
@@ -60,47 +73,58 @@ export default function PartsRequestChat({ requestId, senderId }: Props) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [requestId, senderId]);
+  }, [requestId, senderId, supabase]);
 
+  // Auto-scroll on new messages
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   const handleSend = async () => {
-    if (!newMsg.trim()) return;
+    const content = newMsg.trim();
+    if (!requestId || !content) return;
 
     const { error } = await supabase.from("parts_request_messages").insert({
       id: uuidv4(),
       request_id: requestId,
       sender_id: senderId,
-      message: newMsg.trim(),
+      message: content,
     });
 
     if (error) {
+      console.error("Failed to send parts request message:", error);
       toast.error("Failed to send message");
     } else {
       setNewMsg("");
     }
   };
 
+  // If we don't have a valid request, render nothing (or a placeholder)
+  if (!requestId) {
+    return null;
+  }
+
   return (
     <div className="border-t border-gray-700 mt-3 pt-2">
       <div className="max-h-40 overflow-y-auto space-y-2 text-sm">
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`p-2 rounded ${
-              msg.sender_id === senderId
-                ? "bg-orange-600 text-white ml-auto text-right"
-                : "bg-gray-700 text-white mr-auto"
-            }`}
-          >
-            <p>{msg.message}</p>
-            <p className="text-xs text-gray-400">
-              {new Date(msg.created_at).toLocaleTimeString()}
-            </p>
-          </div>
-        ))}
+        {messages.map((msg) => {
+          const ts = msg.created_at ? new Date(msg.created_at) : null;
+          return (
+            <div
+              key={msg.id}
+              className={`p-2 rounded ${
+                msg.sender_id === senderId
+                  ? "bg-orange-600 text-white ml-auto text-right"
+                  : "bg-gray-700 text-white mr-auto"
+              }`}
+            >
+              <p>{msg.message}</p>
+              <p className="text-xs text-gray-400">
+                {ts ? ts.toLocaleTimeString() : ""}
+              </p>
+            </div>
+          );
+        })}
         <div ref={bottomRef} />
       </div>
 
@@ -115,6 +139,7 @@ export default function PartsRequestChat({ requestId, senderId }: Props) {
         <button
           onClick={handleSend}
           className="bg-orange-500 hover:bg-orange-600 px-3 py-1 rounded text-white"
+          disabled={!requestId || !newMsg.trim()}
         >
           Send
         </button>

@@ -17,7 +17,7 @@ import type { Database } from "@shared/types/types/supabase";
 import ShiftTracker from "@shared/components/ShiftTracker";
 
 export default function RoleNavAdvisor() {
-    const supabase = createClientComponentClient<Database>();
+  const supabase = createClientComponentClient<Database>();
 
   const pathname = usePathname();
   const [role, setRole] = useState<string | null>(null);
@@ -91,6 +91,10 @@ export default function RoleNavAdvisor() {
             </Link>
             <Link href="/work-orders" className={linkClass("/work-orders")}>
               <FaClipboardList /> All Work Orders
+            </Link>
+            {/* NEW: Service Menu link */}
+            <Link href="/menu" className={linkClass("/menu")}>
+              <FaWrench /> Service Menu
             </Link>
           </div>
         )}

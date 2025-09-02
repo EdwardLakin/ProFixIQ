@@ -102,6 +102,10 @@ export default function RoleNavOwner() {
           <Link href="/work-orders" className="block hover:text-orange-400">
             All Work Orders
           </Link>
+          {/* NEW: Service Menu */}
+          <Link href="/menu" className="block hover:text-orange-400">
+            Service Menu
+          </Link>
         </NavSection>
 
         <NavSection title="Inspections" icon={<FaClipboardList />} sectionKey="inspection">

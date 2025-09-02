@@ -1,5 +1,4 @@
 // features/ai/components/NewChatModal.tsx
-"use client";
 
 import { Dialog } from "@headlessui/react";
 import { useEffect, useMemo, useState } from "react";
