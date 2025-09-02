@@ -3,15 +3,30 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
 
-type DB = Database;
-type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
-type Customer = DB["public"]["Tables"]["customers"]["Row"];
+/** Minimal shapes (keep lint happy, no `any`, no big supabase types) */
+type VehicleRow = {
+  id: string;
+  customer_id: string | null;
+  year: number | null;
+  make: string | null;
+  model: string | null;
+  vin: string | null;
+  license_plate: string | null;
+  mileage: string | null;
+  color: string | null;
+  created_at?: string | null;
+};
 
-// Keep inputs as strings; coerce to DB types on save
+type CustomerRow = {
+  id: string;
+  user_id: string;
+  first_name?: string | null;
+  last_name?: string | null;
+};
+
 type VehicleForm = {
-  year: string;          // number in DB, string in UI
+  year: string; // keep as string in UI
   make: string;
   model: string;
   vin: string;
@@ -21,10 +36,10 @@ type VehicleForm = {
 };
 
 export default function PortalVehiclesPage() {
-  const supabase = createClientComponentClient<DB>();
+  const supabase = createClientComponentClient();
 
-  const [customer, setCustomer] = useState<Customer | null>(null);
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [customer, setCustomer] = useState<CustomerRow | null>(null);
+  const [vehicles, setVehicles] = useState<VehicleRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +62,10 @@ export default function PortalVehiclesPage() {
       setLoading(true);
       setError(null);
 
-      const { data: { user }, error: userErr } = await supabase.auth.getUser();
+      const {
+        data: { user },
+        error: userErr,
+      } = await supabase.auth.getUser();
       if (userErr || !user) {
         setError("You must be signed in.");
         setLoading(false);
@@ -59,23 +77,25 @@ export default function PortalVehiclesPage() {
         .from("customers")
         .select("*")
         .eq("user_id", user.id)
-        .maybeSingle<Customer>();
+        .maybeSingle();
 
       if (custErr) setError(custErr.message);
-      setCustomer(cust ?? null);
+      if (cust) {
+        const typed = cust as unknown as CustomerRow;
+        setCustomer(typed);
 
-      if (cust?.id) {
+        // Load vehicles for this customer
         const { data: v, error: vehErr } = await supabase
           .from("vehicles")
           .select("*")
-          .eq("customer_id", cust.id)
-          .order("created_at", { ascending: false }) as {
-          data: Vehicle[] | null;
-          error: unknown;
-        };
+          .eq("customer_id", typed.id)
+          .order("created_at", { ascending: false });
 
-        if (vehErr) setError((vehErr as any)?.message ?? "Failed to load vehicles.");
-        setVehicles(v ?? []);
+        if (vehErr) setError(vehErr.message);
+        setVehicles((v as unknown as VehicleRow[]) ?? []);
+      } else {
+        setCustomer(null);
+        setVehicles([]);
       }
 
       setLoading(false);
@@ -95,7 +115,7 @@ export default function PortalVehiclesPage() {
     });
   };
 
-  const startEdit = (v: Vehicle) => {
+  const startEdit = (v: VehicleRow) => {
     setEditingId(v.id);
     setForm({
       year: v.year != null ? String(v.year) : "",
@@ -109,13 +129,12 @@ export default function PortalVehiclesPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  function toNull(s: string): string | null {
-    return s.trim() === "" ? null : s;
-  }
-  function toYear(s: string): number | null {
+  // helpers: convert UI strings -> DB values
+  const toNull = (s: string): string | null => (s.trim() === "" ? null : s.trim());
+  const toYear = (s: string): number | null => {
     const n = Number(s);
     return Number.isFinite(n) ? n : null;
-  }
+  };
 
   const onSave = async () => {
     if (!customer?.id) {
@@ -134,37 +153,41 @@ export default function PortalVehiclesPage() {
     const payload = {
       customer_id: customer.id,
       year: toYear(form.year),
-      make: form.make.trim(),                 // allow empty string -> store empty (or make toNull if you prefer)
+      make: form.make.trim(),
       model: form.model.trim(),
       vin: toNull(form.vin),
       license_plate: toNull(form.license_plate),
       mileage: toNull(form.mileage),
       color: toNull(form.color),
-    } satisfies DB["public"]["Tables"]["vehicles"]["Insert"];
+    };
 
     if (isEdit && editingId) {
-      const { error: upErr, data: updated } = await supabase
+      const { data: updated, error: upErr } = await supabase
         .from("vehicles")
         .update(payload)
         .eq("id", editingId)
         .select()
-        .maybeSingle<Vehicle>();
+        .maybeSingle();
 
-      if (upErr) setError((upErr as any)?.message ?? "Failed to update vehicle.");
+      if (upErr) setError(upErr.message);
       if (updated) {
-        setVehicles((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+        const u = updated as unknown as VehicleRow;
+        setVehicles((prev) => prev.map((x) => (x.id === u.id ? u : x)));
         resetForm();
       }
     } else {
-      const { error: insErr, data: inserted } = await supabase
+      const { data: inserted, error: insErr } = await supabase
         .from("vehicles")
         .insert(payload)
         .select()
-        .maybeSingle<Vehicle>();
+        .maybeSingle();
 
-      if (insErr) setError((insErr as any)?.message ?? "Failed to add vehicle.");
-      if (inserted) setVehicles((prev) => [inserted, ...prev]);
-      resetForm();
+      if (insErr) setError(insErr.message);
+      if (inserted) {
+        const i = inserted as unknown as VehicleRow;
+        setVehicles((prev) => [i, ...prev]);
+        resetForm();
+      }
     }
 
     setSaving(false);
@@ -174,7 +197,7 @@ export default function PortalVehiclesPage() {
     if (!confirm("Delete this vehicle?")) return;
     const { error: delErr } = await supabase.from("vehicles").delete().eq("id", id);
     if (delErr) {
-      setError((delErr as any)?.message ?? "Failed to delete vehicle.");
+      setError(delErr.message);
     } else {
       setVehicles((prev) => prev.filter((v) => v.id !== id));
       if (editingId === id) resetForm();
@@ -270,7 +293,7 @@ export default function PortalVehiclesPage() {
             >
               <div>
                 <div className="font-medium">
-                  {[v.year, v.make, v.model].filter(Boolean).join(" ")}
+                  {[v.year ?? "", v.make ?? "", v.model ?? ""].filter(Boolean).join(" ")}
                 </div>
                 <div className="text-sm text-gray-400">
                   VIN {v.vin || "—"} • Plate {v.license_plate || "—"} • Mileage {v.mileage || "—"}
