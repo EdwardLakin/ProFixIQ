@@ -4,9 +4,10 @@
 import { useEffect, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+
 import InspectionGroupList from "@inspections/components/InspectionGroupList";
-import type { InspectionCategory } from "@inspections/lib/inspection/masterInspectionList";
-import { toInspectionCategories } from "@/features/inspections/lib/inspection/normalize";
+import type { InspectionCategory } from "@inspections/lib/inspection/types";
+import { toInspectionCategories } from "@inspections/lib/inspection/normalize";
 import { Button } from "@shared/components/ui/Button";
 
 type DB = Database;
@@ -48,9 +49,7 @@ export default function InspectionMenuClient() {
 
       {active && (
         <div className="rounded-xl border border-neutral-700 bg-neutral-900 p-4">
-          <h2 className="mb-3 text-lg font-semibold text-orange-400">
-            Preview
-          </h2>
+          <h2 className="mb-3 text-lg font-semibold text-orange-400">Preview</h2>
           <InspectionGroupList categories={active} />
         </div>
       )}
