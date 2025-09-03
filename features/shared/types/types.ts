@@ -1,7 +1,7 @@
 // features/work-orders/lib/work-orders/fetchJobs.ts
 
 import { createBrowserClient } from "@supabase/ssr";
-import type { Database, JobLine } from "@shared/types/types/supabase";
+import type { Database } from "@shared/types/types/supabase";
 
 // Shape of the joined row we get back from Supabase for this query
 type WorkOrderLineWithJoins =
@@ -17,6 +17,25 @@ type WorkOrderLineWithJoins =
       full_name: string | null;
     } | null;
   };
+
+// Public JobLine shape that UI code consumes
+type JobLine = {
+  id: string;
+  status: Database["public"]["Tables"]["work_order_lines"]["Row"]["status"];
+  complaint: string | null;
+  punched_in_at: string | null;
+  punched_out_at: string | null;
+  hold_reason: string | null;
+  created_at: string;
+  vehicle?: {
+    year: number | null;
+    make: string | null;
+    model: string | null;
+  };
+  assigned_to?: {
+    full_name: string | null;
+  };
+};
 
 // Reusable select with the two joins we need
 const SELECT_WITH_JOINS = `
