@@ -1,3 +1,4 @@
+// app/dashboard/parts/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -19,12 +20,12 @@ export default function PartsDashboard() {
   const [touchStartY, setTouchStartY] = useState(0);
   const [swipeOffset, setSwipeOffset] = useState(0);
 
-  // Fetch initial user
+  // Fetch current user
   useEffect(() => {
     supabase.auth.getUser().then((res) => {
       setUserId(res.data.user?.id ?? null);
     });
-  }, []);
+  }, [supabase]);
 
   // Fetch initial requests
   useEffect(() => {
@@ -37,7 +38,7 @@ export default function PartsDashboard() {
       if (data) setRequests(data);
     };
     fetch();
-  }, []);
+  }, [supabase]);
 
   // Real-time subscription
   useEffect(() => {
@@ -45,21 +46,19 @@ export default function PartsDashboard() {
       .channel("parts-requests")
       .on(
         "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "parts_requests",
-        },
+        { event: "*", schema: "public", table: "parts_requests" },
         (payload) => {
           const updated = payload.new as PartsRequest;
-
           setRequests((prev) => {
             const exists = prev.find((r) => r.id === updated.id);
+
+            // Insert
             if (!exists && payload.eventType === "INSERT") {
               toast.info(`New parts request: ${updated.part_name}`);
               return [updated, ...prev];
             }
 
+            // Update
             return prev.map((r) => (r.id === updated.id ? updated : r));
           });
         },
@@ -69,34 +68,24 @@ export default function PartsDashboard() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [supabase]);
 
   const handleView = async (id: string) => {
     setSelectedId(id);
     const req = requests.find((r) => r.id === id);
     if (req && !req.viewed_at) {
       const now = new Date().toISOString();
-      await supabase
-        .from("parts_requests")
-        .update({ viewed_at: now })
-        .eq("id", id);
+      await supabase.from("parts_requests").update({ viewed_at: now }).eq("id", id);
     }
   };
 
   const handleFulfill = async (id: string) => {
     const now = new Date().toISOString();
-    await supabase
-      .from("parts_requests")
-      .update({ fulfilled_at: now })
-      .eq("id", id);
-    setRequests((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, fulfilled_at: now } : r)),
-    );
+    await supabase.from("parts_requests").update({ fulfilled_at: now }).eq("id", id);
+    setRequests((prev) => prev.map((r) => (r.id === id ? { ...r, fulfilled_at: now } : r)));
   };
 
-  const filtered = requests.filter((r) =>
-    tab === "active" ? !r.fulfilled_at : !!r.fulfilled_at,
-  );
+  const filtered = requests.filter((r) => (tab === "active" ? !r.fulfilled_at : !!r.fulfilled_at));
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto text-white font-blackops">
@@ -107,9 +96,7 @@ export default function PartsDashboard() {
           onClick={() => setTab("active")}
           className={clsx(
             "px-4 py-2 rounded font-semibold",
-            tab === "active"
-              ? "bg-orange-500 text-white"
-              : "bg-neutral-700 hover:bg-neutral-600",
+            tab === "active" ? "bg-orange-500 text-white" : "bg-neutral-700 hover:bg-neutral-600",
           )}
         >
           Active
@@ -118,9 +105,7 @@ export default function PartsDashboard() {
           onClick={() => setTab("archived")}
           className={clsx(
             "px-4 py-2 rounded font-semibold",
-            tab === "archived"
-              ? "bg-orange-500 text-white"
-              : "bg-neutral-700 hover:bg-neutral-600",
+            tab === "archived" ? "bg-orange-500 text-white" : "bg-neutral-700 hover:bg-neutral-600",
           )}
         >
           Archived
@@ -133,6 +118,7 @@ export default function PartsDashboard() {
         <div className="space-y-4">
           {filtered.map((req) => {
             const isNew = !req.viewed_at;
+            const photos: string[] = Array.isArray(req.photo_urls) ? req.photo_urls : [];
 
             return (
               <div
@@ -151,24 +137,15 @@ export default function PartsDashboard() {
                     </p>
                     <p className="text-sm text-gray-400">
                       <strong>Urgency:</strong> {req.urgency}{" "}
-                      <strong className="ml-4">Requested by:</strong>{" "}
-                      {req.requested_by}
+                      <strong className="ml-4">Requested by:</strong> {req.requested_by}
                     </p>
                     <p className="text-xs text-gray-500">
                       <strong>Sent:</strong>{" "}
-                      {req.created_at
-                        ? new Date(req.created_at).toLocaleString()
-                        : "—"}{" "}
-                      <br />
+                      {req.created_at ? new Date(req.created_at).toLocaleString() : "—"} <br />
                       <strong>Viewed:</strong>{" "}
-                      {req.viewed_at
-                        ? new Date(req.viewed_at).toLocaleString()
-                        : "—"}{" "}
-                      <br />
+                      {req.viewed_at ? new Date(req.viewed_at).toLocaleString() : "—"} <br />
                       <strong>Fulfilled:</strong>{" "}
-                      {req.fulfilled_at
-                        ? new Date(req.fulfilled_at).toLocaleString()
-                        : "—"}
+                      {req.fulfilled_at ? new Date(req.fulfilled_at).toLocaleString() : "—"}
                     </p>
                   </div>
 
@@ -198,9 +175,10 @@ export default function PartsDashboard() {
                   </div>
                 )}
 
-                {selectedId === req.id && req.photo_urls?.length > 0 && (
+                {/* ✅ Safely render photos */}
+                {selectedId === req.id && photos.length > 0 && (
                   <div className="mt-2 flex gap-2 flex-wrap">
-                    {req.photo_urls.map((url) => (
+                    {photos.map((url) => (
                       <img
                         key={url}
                         src={url}
@@ -216,21 +194,15 @@ export default function PartsDashboard() {
                     {/* Mobile Full-Screen Chat with Swipe-to-Close */}
                     <div
                       className="fixed inset-0 bg-black bg-opacity-80 z-50 sm:hidden flex flex-col transition-transform duration-300 ease-out"
-                      style={{
-                        touchAction: "none",
-                        transform: `translateY(${swipeOffset}px)`,
-                      }}
+                      style={{ touchAction: "none", transform: `translateY(${swipeOffset}px)` }}
                       onTouchStart={(e) => setTouchStartY(e.touches[0].clientY)}
                       onTouchMove={(e) => {
                         const delta = e.touches[0].clientY - touchStartY;
                         if (delta > 0) setSwipeOffset(delta);
                       }}
                       onTouchEnd={() => {
-                        if (swipeOffset > 100) {
-                          setSelectedId(null);
-                        } else {
-                          setSwipeOffset(0);
-                        }
+                        if (swipeOffset > 100) setSelectedId(null);
+                        else setSwipeOffset(0);
                       }}
                     >
                       <div className="flex justify-between items-center p-3 bg-neutral-900 text-white border-b border-gray-700">
@@ -243,10 +215,7 @@ export default function PartsDashboard() {
                         </button>
                       </div>
                       <div className="flex-1 overflow-y-auto bg-neutral-800">
-                        <PartsRequestChat
-                          requestId={req.id}
-                          senderId={userId}
-                        />
+                        <PartsRequestChat requestId={req.id} senderId={userId} />
                       </div>
                     </div>
 
