@@ -38,7 +38,8 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ ok: true, user_id: created.user.id });
-  } catch (e) {
-    return NextResponse.json({ error: "Unexpected error" }, { status: 500 });
-  }
+  } catch (e: unknown) {
+  const err = e as Error;
+  return NextResponse.json({ error: err.message || "Unexpected error" }, { status: 500 });
+}
 }
