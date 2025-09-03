@@ -1,12 +1,13 @@
+// features/inspections/lib/inspection/pdf.ts
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
-import { InspectionSession } from "./types";
+import type { InspectionSession } from "./types";
 
 export async function generateInspectionPDF(
   session: InspectionSession,
 ): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage();
-  const { height } = page.getSize();
+  const { height, width } = page.getSize();
 
   const fontSize = 12;
   const margin = 50;
@@ -16,7 +17,16 @@ export async function generateInspectionPDF(
   let y = height - margin;
 
   const drawText = (text: string) => {
-    page.drawText(text, {
+    // Simple page break
+    if (y < margin) {
+      const p = pdfDoc.addPage([width, height]);
+      y = height - margin;
+      p.setFont(font);
+      p.setFontSize(fontSize);
+      // rebind to new page
+      currentPage = p;
+    }
+    currentPage.drawText(text, {
       x: margin,
       y,
       size: fontSize,
@@ -26,39 +36,31 @@ export async function generateInspectionPDF(
     y -= lineHeight;
   };
 
+  let currentPage = page;
+
+  // ---- Customer Info --------------------------------------------------------
   drawText("Customer Info:");
-  drawText(
-    `Name: ${session.customer?.first_name ?? ""} ${session.customer?.last_name ?? ""}`,
-  );
+  const firstName = session.customer?.first_name ?? "";
+  const lastName = session.customer?.last_name ?? "";
+  drawText(`Name: ${firstName} ${lastName}`.trim());
   drawText(`Phone: ${session.customer?.phone ?? ""}`);
   drawText(`Email: ${session.customer?.email ?? ""}`);
   drawText(""); // spacer
 
-  drawText(
-    `Customer Name: ${session.customer?.first_name ?? ""} ${session.customer?.last_name ?? ""}`,
-  );
-  drawText(`Phone: ${session.customer?.phone ?? ""}`);
-  drawText(`Email: ${session.customer?.email ?? ""}`);
-  drawText(
-    `Vehicle: ${session.vehicle.year} ${session.vehicle.make} ${session.vehicle.model}`,
-  );
-  drawText(`VIN: ${session.vehicle.vin}`);
-  drawText(`License Plate: ${session.vehicle.license_plate}`);
-  drawText(`Mileage: ${session.vehicle.mileage}`);
-  drawText(`Color: ${session.vehicle.color}`);
-  drawText(""); // empty line before summary
-
+  // ---- Vehicle Info ---------------------------------------------------------
   drawText("Vehicle Info:");
-  drawText(
-    `Year/Make/Model: ${session.vehicle?.year ?? ""} ${session.vehicle?.make ?? ""} ${session.vehicle?.model ?? ""}`,
-  );
+  const year = session.vehicle?.year ?? "";
+  const make = session.vehicle?.make ?? "";
+  const model = session.vehicle?.model ?? "";
+  drawText(`Year/Make/Model: ${year} ${make} ${model}`.trim());
   drawText(`VIN: ${session.vehicle?.vin ?? ""}`);
   drawText(`License Plate: ${session.vehicle?.license_plate ?? ""}`);
   drawText(`Mileage: ${session.vehicle?.mileage ?? ""}`);
   drawText(`Color: ${session.vehicle?.color ?? ""}`);
   drawText(""); // spacer
 
-  drawText(`Inspection Summary - ${session.templateName}`);
+  // ---- Session Meta ---------------------------------------------------------
+  drawText(`Inspection Summary - ${session.templateName ?? ""}`);
   drawText(`Status: ${session.status ?? "unknown"}`);
   drawText(`Vehicle ID: ${session.vehicleId ?? "N/A"}`);
   drawText(`Customer ID: ${session.customerId ?? "N/A"}`);
@@ -66,25 +68,33 @@ export async function generateInspectionPDF(
   drawText(`Started: ${session.started ? "Yes" : "No"}`);
   drawText(`Completed: ${session.completed ? "Yes" : "No"}`);
   drawText(`Transcript: ${session.transcript ?? "None"}`);
-  y -= lineHeight;
+  drawText(""); // spacer
 
+  // ---- Sections / Items -----------------------------------------------------
   session.sections.forEach((section, sectionIndex) => {
     drawText(`Section ${sectionIndex + 1}: ${section.title}`);
 
-    section.items.forEach((item) => {
-      drawText(`  - Item: ${item.item}`);
-      drawText(`    Status: ${item.status ?? "N/A"}`);
-      if (item.value !== undefined) drawText(`    Value: ${item.value}`);
-      if (item.unit) drawText(`    Unit: ${item.unit}`);
-      if (item.notes) drawText(`    Notes: ${item.notes}`);
-      if (item.recommend && item.recommend.length > 0)
-        drawText(`    Recommend: ${item.recommend.join(", ")}`);
-      if (item.photoUrls && item.photoUrls.length > 0)
-        drawText(`    Photos: ${item.photoUrls.join(", ")}`);
+    section.items.forEach((it) => {
+      const itemName = it.item ?? it.name ?? "";
+      drawText(`  - Item: ${itemName}`);
+      drawText(`    Status: ${it.status ?? "N/A"}`);
+
+      if (it.value !== undefined && it.value !== null) {
+        drawText(`    Value: ${String(it.value)}`);
+      }
+      if (it.unit) drawText(`    Unit: ${it.unit}`);
+      if (it.notes) drawText(`    Notes: ${it.notes}`);
+      if (Array.isArray(it.recommend) && it.recommend.length > 0) {
+        drawText(`    Recommend: ${it.recommend.join(", ")}`);
+      }
+      if (Array.isArray(it.photoUrls) && it.photoUrls.length > 0) {
+        drawText(`    Photos: ${it.photoUrls.join(", ")}`);
+      }
     });
 
+    // small gap after each section
     y -= lineHeight / 2;
   });
 
-  return await pdfDoc.save();
+  return pdfDoc.save();
 }

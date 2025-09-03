@@ -1,7 +1,9 @@
-// src/lib/inspection/handleTranscript.ts
+// features/inspections/lib/inspection/handleTranscript.ts
 
 import {
   ParsedCommand,
+  ParsedCommandNameBased,
+  ParsedCommandIndexed,
   InspectionSession,
   InspectionItemStatus,
 } from "@inspections/lib/inspection/types";
@@ -31,25 +33,48 @@ export async function handleTranscriptFn({
   session,
   updateItem,
 }: HandleTranscriptArgs): Promise<void> {
-  const { section, item, status, value, notes } = command;
+  // Normalized fields
+  let section: string | undefined;
+  let item: string | undefined;
+  let status: InspectionItemStatus | undefined;
+  let note: string | undefined;
+  let value: string | number | undefined;
+  let unit: string | undefined;
+  let mode: string; // which type of command
 
-  // Locate matching section + item index based on names
+  if ("command" in command) {
+    // Indexed shape
+    const c = command as ParsedCommandIndexed;
+    mode = c.command;
+    status = c.status;
+    note = c.notes;
+    value = c.value;
+    unit = c.unit;
+  } else {
+    // Name-based shape
+    const c = command as ParsedCommandNameBased;
+    mode = c.type;
+    section = c.section;
+    item = c.item;
+    if ("status" in c) status = c.status;
+    if ("note" in c) note = c.note;
+    if ("value" in c) value = c.value;
+    if ("unit" in c) unit = c.unit;
+  }
+
+  // Locate section & item by name (fallback)
   const sectionIndex = session.sections.findIndex((sec) =>
-    sec.title.toLowerCase().includes(section?.toLowerCase() || ""),
+    section ? sec.title.toLowerCase().includes(section.toLowerCase()) : false,
   );
-
   const itemIndex =
     sectionIndex >= 0
       ? session.sections[sectionIndex].items.findIndex((it) =>
-          it.name.toLowerCase().includes(item?.toLowerCase() || ""),
+          item ? (it.name ?? it.item ?? "").toLowerCase().includes(item.toLowerCase()) : false,
         )
       : -1;
 
   if (sectionIndex === -1 || itemIndex === -1) {
-    console.warn("Could not match section/item from transcript:", {
-      section,
-      item,
-    });
+    console.warn("Could not match section/item from transcript:", { section, item });
     return;
   }
 
@@ -57,28 +82,30 @@ export async function handleTranscriptFn({
     InspectionSession["sections"][number]["items"][number]
   > = {};
 
-  switch (command.command) {
+  switch (mode) {
     case "update_status":
-      if (status) itemUpdates.status = status as InspectionItemStatus;
+    case "status":
+      if (status) itemUpdates.status = status;
       break;
 
     case "update_value":
+    case "measurement":
       if (value) itemUpdates.value = value;
+      if (unit) itemUpdates.unit = unit;
       break;
 
     case "add_note":
-      if (notes) itemUpdates.notes = notes;
+    case "add":
+      if (note) itemUpdates.notes = note;
       break;
 
     case "recommend":
-      if (notes) {
-        itemUpdates.recommend = [notes];
-      }
+      if (note) itemUpdates.recommend = [note];
       break;
 
     case "complete_item":
     case "skip_item":
-      // Add logic if needed later
+      // no-op for now
       break;
 
     default:

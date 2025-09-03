@@ -28,33 +28,137 @@ export interface InspectionCategory {
 /** Many places import `InspectionSection`; keep it as an alias. */
 export type InspectionSection = InspectionCategory;
 
-/** ---------- Parsed voice commands ---------- */
-export type ParsedCommand =
+/** ---------- Parsed voice/AI commands (support both shapes) ---------- */
+/** Older, name-based command shape used by dispatchCommand/interpreter */
+export type ParsedCommandNameBased =
   | { type: "status"; section: string; item: string; status: InspectionItemStatus }
   | { type: "add"; section: string; item: string; note: string }
   | { type: "recommend"; section: string; item: string; note: string }
-  | { type: "measurement"; section: string; item: string; value: number | string; unit?: string };
+  | {
+      type: "measurement";
+      section: string;
+      item: string;
+      value: number | string;
+      unit?: string;
+    };
+
+/** Newer, index-based command shape used by convertParsedCommands.ts */
+export type ParsedCommandIndexed = {
+  command:
+    | "update_status"
+    | "update_value"
+    | "add_note"
+    | "recommend"
+    | "complete_item"
+    | "skip_item"
+    | "pause_inspection"
+    | "finish_inspection";
+  sectionIndex?: number;
+  itemIndex?: number;
+  status?: InspectionItemStatus;
+  value?: string | number;
+  unit?: string;
+  notes?: string;
+  recommend?: string;
+};
+
+/** Unified ParsedCommand covering both shapes */
+export type ParsedCommand = ParsedCommandNameBased | ParsedCommandIndexed;
+
+/**
+ * Commands consumed by dispatchCommand (older name-based shape),
+ * plus a simple "pause" variant used in a few places.
+ */
+export type InspectionCommand =
+  | ParsedCommandNameBased
+  | { type: "pause"; section?: string; item?: string };
+
+/** ---------- Runtime command objects (AI → actions) ---------- */
+export type Command =
+  | {
+      type: "update_status";
+      sectionIndex: number;
+      itemIndex: number;
+      status: InspectionItemStatus;
+    }
+  | {
+      type: "update_value";
+      sectionIndex: number;
+      itemIndex: number;
+      value: string | number;
+      unit?: string;
+    }
+  | {
+      type: "add_note";
+      sectionIndex: number;
+      itemIndex: number;
+      notes: string;
+    }
+  | {
+      type: "recommend";
+      sectionIndex: number;
+      itemIndex: number;
+      recommendation: string;
+    }
+  | {
+      type: "complete";
+      sectionIndex: number;
+      itemIndex: number;
+    }
+  | {
+      type: "skip";
+      sectionIndex: number;
+      itemIndex: number;
+    }
+  | { type: "pause" }
+  | { type: "finish" };
 
 /** ---------- Quote shapes ---------- */
-/** Lightweight line produced by AI generators (flexible & optional fields). */
+/** Rich source descriptor for where a line came from. */
+export type QuoteSource = "inspection" | "manual" | string;
+
+/**
+ * Lightweight line produced by AI generators / costing flows.
+ * Extended to include fields your costing + menu matching code writes.
+ */
 export interface QuoteLine {
+  /** Core */
   description: string;
 
-  /** Newer generator fields */
+  /** IDs / provenance */
+  id?: string;
+  source?: QuoteSource;
+
+  /** Names used across flows */
+  item?: string;             // selected service/menu name
+  name?: string;             // occasional alias
+  inspectionItem?: string;   // originating inspection item text
+
+  /** Status / notes */
+  status?: InspectionItemStatus;
+  notes?: string;
+
+  /** Time & rates */
   hours?: number;
   rate?: number;
   total?: number;
-
-  /** Older fields still referenced in a few places */
-  qty?: number;
   laborHours?: number | null;
+  laborTime?: number;        // alias used on some screens
+  laborRate?: number;
+
+  /** Parts */
+  parts?: Array<{ name?: string; number?: string; price?: number; type?: string }>;
   partNumber?: string | null;
+  partName?: string;
   unitPrice?: number | null;
+
+  /** Roll-up / pricing */
+  qty?: number;
+  price?: number;            // some code writes final line price here
+  totalCost?: number;
 }
 
-/** Rich line used by PDF and store. Kept broad to accept all callsites. */
-export type QuoteSource = "inspection" | "manual" | string;
-
+/** Detailed line used by PDF/store. */
 export interface QuoteLineItem {
   id: string;
 
@@ -67,10 +171,10 @@ export interface QuoteLineItem {
   notes?: string;
 
   /** Unified commercial fields */
-  price: number;              // line price/total
+  price: number; // line price/total
   laborHours?: number;
   /** Additional variants used in some flows */
-  laborTime?: number;         // alias used on some pages
+  laborTime?: number; // alias used on some pages
   laborRate?: number;
 
   /** Item-level measurement value (rare) */
@@ -93,6 +197,28 @@ export interface QuoteLineItem {
   /** Collections used by some UIs */
   parts?: Array<{ name?: string; number?: string; price?: number }>;
   totalCost?: number;
+
+  /** Optional back-reference to the inspection item */
+  inspectionItem?: string;
+}
+
+/** ---------- Inspection Summary ---------- */
+export interface SummaryItem {
+  section: string;
+  item: string;
+  status: InspectionItemStatus;
+  note?: string;
+  value?: string | number | null;
+  unit?: string | null;
+  photoUrls?: string[];
+  recommend?: string[];
+}
+
+export interface InspectionSummary {
+  templateName?: string | null;
+  date: string;
+  items: SummaryItem[];
+  summaryText: string;
 }
 
 /** ---------- Session (customer/vehicle) ---------- */

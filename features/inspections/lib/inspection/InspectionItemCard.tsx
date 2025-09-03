@@ -69,12 +69,12 @@ export default function InspectionItemCard({
       {showPhotos && (item.status === "fail" || item.status === "recommend") && (
         <div className="mt-4">
           <PhotoUploadButton
-            photoUrls={item.photoUrls ?? []}
-            onChange={(urls) => {
-              const newUrl = urls[urls.length - 1];
-              if (newUrl) onUpload(newUrl, sectionIndex, itemIndex);
-            }}
-          />
+  photoUrls={item.photoUrls ?? []}
+  onChange={(urls: string[]) => {
+    const newUrl = urls[urls.length - 1];
+    if (newUrl) onUpload(newUrl, sectionIndex, itemIndex);
+  }}
+/>
           {Array.isArray(item.photoUrls) && item.photoUrls.length > 0 && (
             <div className="mt-2 gap-2 overflow-x-auto flex">
               {item.photoUrls.map((url, i) => (

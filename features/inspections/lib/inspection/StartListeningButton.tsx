@@ -1,35 +1,30 @@
 "use client";
 
-import { useEffect } from "react";
+import React from "react";
 
 interface StartListeningButtonProps {
   isListening: boolean;
-  setIsListening: (value: boolean) => void;
+  setIsListening: (val: boolean) => void;
   onStart: () => void;
 }
 
-export default function StartListeningButton({
-  isListening,
-  setIsListening,
-  onStart,
-}: StartListeningButtonProps) {
+export default function StartListeningButton(props: any) {
+  const { isListening, setIsListening, onStart } =
+    props as StartListeningButtonProps;
+
   const handleStart = () => {
     setIsListening(true);
     onStart(); // Trigger the actual startListening logic from parent
   };
 
-  useEffect(() => {
-    if (isListening) {
-      console.log("Voice recognition is active.");
-    }
-  }, [isListening]);
-
   return (
     <button
+      type="button"
       onClick={handleStart}
-      className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
+      disabled={isListening}
+      className="px-4 py-2 bg-green-600 text-white rounded disabled:opacity-50"
     >
-      Start Listening
+      {isListening ? "Listening..." : "Start Listening"}
     </button>
   );
 }

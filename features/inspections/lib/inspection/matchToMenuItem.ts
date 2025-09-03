@@ -1,4 +1,9 @@
-import type { InspectionSession, QuoteLine, InspectionItem } from "./types";
+// features/inspections/lib/inspection/matchToMenuItem.ts
+import type {
+  InspectionSession,
+  InspectionItem,
+  QuoteLineItem,
+} from "./types";
 import { serviceMenu } from "@shared/lib/menuItems";
 import { v4 as uuidv4 } from "uuid";
 
@@ -11,8 +16,9 @@ export default function matchToMenuItem(
     return session;
   }
 
-  const newQuoteLines: QuoteLine[] = [];
+  const newQuoteLines: QuoteLineItem[] = [];
 
+  // Try the primary name + any recommended follow-ups
   const namesToMatch = [item.name, ...(item.recommend ?? [])];
 
   namesToMatch.forEach((term) => {
@@ -23,8 +29,8 @@ export default function matchToMenuItem(
     );
 
     if (match) {
-      // Guard status so it matches QuoteLine["status"]
-      const statusSafe: QuoteLine["status"] =
+      // Guard the status to the allowed set
+      const statusSafe: QuoteLineItem["status"] =
         item.status === "ok" ||
         item.status === "fail" ||
         item.status === "na" ||
@@ -32,25 +38,32 @@ export default function matchToMenuItem(
           ? item.status
           : "ok";
 
-      const quoteLine: QuoteLine = {
+      const quoteLine: QuoteLineItem = {
         id: uuidv4(),
-        inspectionItem: item.name,
+        // display + identifiers
         item: match.name,
+        name: "", // optional helper field in some UIs
+        description: match.name,
+
+        // status/notes
+        status: statusSafe,
+        notes: item.notes ?? "",
+
+        // pricing (total can be computed elsewhere; keep price present)
+        price: 0,
         laborTime: match.laborHours || 1,
         parts: [
           {
             name: match.name,
             price: match.partCost || 0,
-            type: "economy",
           },
         ],
-        status: statusSafe,
-        notes: item.notes ?? "",
+        totalCost:
+          (match.partCost ?? 0) + (match.laborHours ?? 1) * 120,
+
+        // provenance + misc helpers used around the app
         source: "inspection",
-        totalCost: (match.partCost ?? 0) + (match.laborHours ?? 1) * 120,
-        name: "",
-        price: 0,
-        partName: ""
+        partName: "",
       };
 
       newQuoteLines.push(quoteLine);
@@ -59,6 +72,6 @@ export default function matchToMenuItem(
 
   return {
     ...session,
-    quote: [...(session.quote || []), ...newQuoteLines],
+    quote: [...(session.quote ?? []), ...newQuoteLines],
   };
 }

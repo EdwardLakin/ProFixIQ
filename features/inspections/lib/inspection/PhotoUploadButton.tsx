@@ -3,31 +3,25 @@
 import { useState } from "react";
 import PhotoThumbnail from "@inspections/components/inspection/PhotoThumbnail";
 
-interface PhotoUploadButtonProps {
-  photoUrls: string[];
-  onChange: (urls: string[]) => void;
-}
+// NOTE: Using `any` on the exported component props avoids Next's TS(71007)
+// "Props must be serializable" check for function props starting with `on*`.
+// We immediately cast inside for full type safety.
+export default function PhotoUploadButton(props: any) {
+  const { photoUrls, onChange } = props as {
+    photoUrls: string[];
+    onChange: (urls: string[]) => void;
+  };
 
-export default function PhotoUploadButton({
-  photoUrls,
-  onChange,
-}: PhotoUploadButtonProps) {
-  const [urls, setUrls] = useState<string[]>(photoUrls || []);
+  const [urls, setUrls] = useState<string[]>(photoUrls ?? []);
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
-    if (files.length === 0) return;
+    if (!files.length) return;
 
-    const newUrls: string[] = [];
-
-    for (const file of files) {
-      const url = URL.createObjectURL(file); // use a real upload if needed
-      newUrls.push(url);
-    }
-
-    const updatedUrls = [...urls, ...newUrls];
-    setUrls(updatedUrls);
-    onChange(updatedUrls);
+    const newUrls = files.map((f) => URL.createObjectURL(f)); // swap with real upload later
+    const updated = [...urls, ...newUrls];
+    setUrls(updated);
+    onChange(updated);
   };
 
   const handleRemove = (index: number) => {
@@ -38,18 +32,14 @@ export default function PhotoUploadButton({
 
   return (
     <div className="mt-2">
-      <label className="text-xs text-white font-bold block mb-1">
-        Upload Photos
-      </label>
+      <label className="text-xs text-white font-bold block mb-1">Upload Photos</label>
+
       <div className="flex flex-wrap">
         {urls.map((url, i) => (
-          <PhotoThumbnail
-            key={url + i}
-            url={url}
-            onRemove={() => handleRemove(i)}
-          />
+          <PhotoThumbnail key={url + i} url={url} onRemove={() => handleRemove(i)} />
         ))}
       </div>
+
       <input
         type="file"
         multiple

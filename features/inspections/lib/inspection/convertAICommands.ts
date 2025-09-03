@@ -10,69 +10,100 @@ export function convertParsedCommands(
   session: SessionContext,
 ): Command[] {
   return parsed.map((cmd: ParsedCommand): Command => {
-    const sectionIndex = cmd.sectionIndex ?? session.currentSectionIndex;
-    const itemIndex = cmd.itemIndex ?? session.currentItemIndex;
+    // Handle the newer, index-based shape
+    if ("command" in cmd) {
+      const sectionIndex = cmd.sectionIndex ?? session.currentSectionIndex;
+      const itemIndex = cmd.itemIndex ?? session.currentItemIndex;
 
-    switch (cmd.command) {
-      case "update_status":
+      switch (cmd.command) {
+        case "update_status":
+          return {
+            type: "update_status",
+            status: cmd.status!,
+            sectionIndex,
+            itemIndex,
+          };
+
+        case "update_value":
+          return {
+            type: "update_value",
+            value: cmd.value ?? "",
+            unit: cmd.unit ?? "",
+            sectionIndex,
+            itemIndex,
+          };
+
+        case "add_note":
+          return {
+            type: "add_note",
+            notes: cmd.notes ?? "",
+            sectionIndex,
+            itemIndex,
+          };
+
+        case "recommend":
+          return {
+            type: "recommend",
+            recommendation: cmd.recommend ?? "",
+            sectionIndex,
+            itemIndex,
+          };
+
+        case "complete_item":
+          return { type: "complete", sectionIndex, itemIndex };
+
+        case "skip_item":
+          return { type: "skip", sectionIndex, itemIndex };
+
+        case "pause_inspection":
+          return { type: "pause" };
+
+        case "finish_inspection":
+          return { type: "finish" };
+
+        default:
+          console.warn("Unknown indexed ParsedCommand:", cmd);
+          return { type: "pause" };
+      }
+    }
+
+    // Handle the older, name-based shape
+    switch (cmd.type) {
+      case "status":
         return {
           type: "update_status",
-          status: cmd.status!,
-          sectionIndex,
-          itemIndex,
+          status: cmd.status,
+          sectionIndex: session.currentSectionIndex,
+          itemIndex: session.currentItemIndex,
         };
 
-      case "update_value":
-        return {
-          type: "update_value",
-          value: cmd.value ?? "",
-          unit: cmd.unit ?? "",
-          sectionIndex,
-          itemIndex,
-        };
-
-      case "add_note":
+      case "add":
         return {
           type: "add_note",
-          notes: cmd.notes ?? "",
-          sectionIndex,
-          itemIndex,
+          notes: cmd.note,
+          sectionIndex: session.currentSectionIndex,
+          itemIndex: session.currentItemIndex,
         };
 
       case "recommend":
         return {
           type: "recommend",
-          recommendation: cmd.recommend ?? "",
-          sectionIndex,
-          itemIndex,
+          recommendation: cmd.note,
+          sectionIndex: session.currentSectionIndex,
+          itemIndex: session.currentItemIndex,
         };
 
-      case "complete_item":
+      case "measurement":
         return {
-          type: "complete",
-          sectionIndex,
-          itemIndex,
+          type: "update_value",
+          value: cmd.value,
+          unit: cmd.unit,
+          sectionIndex: session.currentSectionIndex,
+          itemIndex: session.currentItemIndex,
         };
-
-      case "skip_item":
-        return {
-          type: "skip",
-          sectionIndex,
-          itemIndex,
-        };
-
-      case "pause_inspection":
-        return { type: "pause" };
-
-      case "finish_inspection":
-  return {
-    type: "complete",
-    sectionIndex,
-    itemIndex,
-  };
 
       default:
-        console.warn("Unknown ParsedCommand:", cmd);
+        console.warn("Unknown name-based ParsedCommand:", cmd);
         return { type: "pause" };
     }
   });
