@@ -1,10 +1,9 @@
-// app/inspection/summary/page.tsx (or wherever this lives)
+// features/inspections/app/inspection/summary/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
-
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -16,6 +15,7 @@ import QuoteViewer from "@quotes/components/QuoteViewer";
 import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
 import HomeButton from "@shared/components/ui/HomeButton";
 
+// ✅ use the shared inspections types (not masterInspectionList)
 import type {
   InspectionItem,
   InspectionSection,
@@ -34,16 +34,18 @@ export default function SummaryPage() {
   const { session, updateItem, updateQuoteLines } = useInspectionSession();
   const [quoteLines, setQuoteLines] = useState<QuoteLine[]>([]);
   const [summaryText, setSummaryText] = useState("");
-  const [workOrderId, setWorkOrderId] = useState<string | null>(workOrderIdFromUrl || null);
+  const [workOrderId, setWorkOrderId] = useState<string | null>(
+    workOrderIdFromUrl || null,
+  );
   const [isAddingToWorkOrder, setIsAddingToWorkOrder] = useState(false);
 
-  // AI quote generation on load (when sections exist)
+  // Generate AI summary + quote once sections exist
   useEffect(() => {
     if (session.sections.length === 0) return;
 
     (async () => {
       const allItems: InspectionItem[] = session.sections.flatMap(
-        (s: InspectionSection) => s.items
+        (s: InspectionSection) => s.items,
       );
 
       const { summary, quote } = await generateQuoteFromInspection(allItems);
@@ -51,24 +53,21 @@ export default function SummaryPage() {
       setSummaryText(summary);
       setQuoteLines(quote);
 
-      // normalize into QuoteLineItem[] for the store
+      // ✅ normalize into QuoteLineItem[] for the store (no extra fields)
       updateQuoteLines(
         quote.map(
           (line): QuoteLineItem => ({
-            id: crypto.randomUUID(),
-            item: line.description,
-            partPrice: 0,
-            partName: "",
+            id: uuidv4(),
             name: line.description,
             description: line.description,
             notes: "",
             status: "fail",
-            laborHours: line.hours,
-            price: line.total,
+            laborHours: line.hours ?? 0,
+            price: line.total ?? 0,
             part: { name: "", price: 0 },
             photoUrls: [],
-          })
-        )
+          }),
+        ),
       );
 
       if (inspectionId) {
@@ -84,15 +83,25 @@ export default function SummaryPage() {
     sectionIndex: number,
     itemIndex: number,
     field: keyof InspectionItem,
-    value: string
+    value: string,
   ) => {
-    updateItem(sectionIndex, itemIndex, { [field]: value });
+    // Type-safe update for known fields
+    if (field === "status") {
+      updateItem(sectionIndex, itemIndex, { status: value as InspectionItem["status"] });
+    } else if (field === "notes") {
+      updateItem(sectionIndex, itemIndex, { notes: value });
+    } else if (field === "value") {
+      updateItem(sectionIndex, itemIndex, { value });
+    } else if (field === "unit") {
+      updateItem(sectionIndex, itemIndex, { unit: value });
+    }
   };
 
   const hasFailedItems = session.sections.some((section: InspectionSection) =>
     section.items.some(
-      (item: InspectionItem) => item.status === "fail" || item.status === "recommend"
-    )
+      (item: InspectionItem) =>
+        item.status === "fail" || item.status === "recommend",
+    ),
   );
 
   const createWorkOrderIfNoneExists = async (): Promise<string | null> => {
@@ -105,11 +114,11 @@ export default function SummaryPage() {
       .insert([
         {
           id: newId,
-          vehicle_id: session.vehicle?.id ?? null,
+          vehicle_id: session.vehicleId ?? null,
           inspection_id: inspectionId ?? null,
           created_at: new Date().toISOString(),
-          status: "queued", // keep as-is if valid in your schema
-          location: session.location ?? "unspecified",
+          status: "queued", // keep with your schema
+          location: (session as any).location ?? "unspecified",
         } as Database["public"]["Tables"]["work_orders"]["Insert"],
       ]);
 
@@ -135,14 +144,14 @@ export default function SummaryPage() {
       body: JSON.stringify({
         inspectionId,
         workOrderId: id,
-        vehicleId: session.vehicle?.id,
+        vehicleId: session.vehicleId,
       }),
     });
 
     alert(
       response.ok
         ? "Jobs added to work order successfully!"
-        : "Failed to add jobs to work order."
+        : "Failed to add jobs to work order.",
     );
     setIsAddingToWorkOrder(false);
   };
@@ -151,7 +160,9 @@ export default function SummaryPage() {
     try {
       // generateInspectionPDF returns Uint8Array
       const pdfBytes: Uint8Array = await generateInspectionPDF(session);
-      const blob = new Blob([pdfBytes as BlobPart], { type: "application/pdf" });
+      const blob = new Blob([pdfBytes as BlobPart], {
+        type: "application/pdf",
+      });
 
       const link = document.createElement("a");
       link.href = window.URL.createObjectURL(blob);
@@ -171,108 +182,135 @@ export default function SummaryPage() {
 
   return (
     <div className="p-4">
-      <div className="flex justify-between mb-4">
+      <div className="mb-4 flex justify-between">
         <PreviousPageButton to="/inspection/menu" />
         <HomeButton />
       </div>
 
-      <div className="bg-zinc-800 text-white p-4 rounded mb-6">
-        <h2 className="text-xl font-bold mb-2">Customer Info</h2>
+      <div className="mb-6 rounded bg-zinc-800 p-4 text-white">
+        <h2 className="mb-2 text-xl font-bold">Customer Info</h2>
         <p>
-          Name: {session.customer?.first_name} {session.customer?.last_name}
+          Name: {(session as any).customer?.first_name}{" "}
+          {(session as any).customer?.last_name}
         </p>
-        <p>Phone: {session.customer?.phone}</p>
-        <p>Email: {session.customer?.email}</p>
+        <p>Phone: {(session as any).customer?.phone}</p>
+        <p>Email: {(session as any).customer?.email}</p>
 
-        <h2 className="text-xl font-bold mt-4 mb-2">Vehicle Info</h2>
+        <h2 className="mb-2 mt-4 text-xl font-bold">Vehicle Info</h2>
         <p>
-          Year/Make/Model: {session.vehicle?.year} {session.vehicle?.make}{" "}
-          {session.vehicle?.model}
+          Year/Make/Model: {(session as any).vehicle?.year}{" "}
+          {(session as any).vehicle?.make}{" "}
+          {(session as any).vehicle?.model}
         </p>
-        <p>VIN: {session.vehicle?.vin}</p>
-        <p>License Plate: {session.vehicle?.license_plate}</p>
-        <p>Mileage: {session.vehicle?.mileage}</p>
-        <p>Color: {session.vehicle?.color}</p>
+        <p>VIN: {(session as any).vehicle?.vin}</p>
+        <p>License Plate: {(session as any).vehicle?.license_plate}</p>
+        <p>Mileage: {(session as any).vehicle?.mileage}</p>
+        <p>Color: {(session as any).vehicle?.color}</p>
       </div>
 
       {/* Editable inspection sections */}
-      {session.sections.map((section: InspectionSection, sectionIndex: number) => (
-        <div key={sectionIndex} className="mb-6 border rounded-md">
-          <div className="bg-gray-200 px-4 py-2 font-bold">{section.title}</div>
-          <div className="p-4 space-y-6">
-            {section.items.map((item: InspectionItem, itemIndex: number) => (
-              <div key={itemIndex} className="border-b pb-4 space-y-2">
-                <div className="font-semibold">{item.name}</div>
+      {session.sections.map(
+        (section: InspectionSection, sectionIndex: number) => (
+          <div key={sectionIndex} className="mb-6 rounded border">
+            <div className="bg-gray-200 px-4 py-2 font-bold">
+              {section.title}
+            </div>
+            <div className="space-y-6 p-4">
+              {section.items.map((item: InspectionItem, itemIndex: number) => (
+                <div key={itemIndex} className="space-y-2 border-b pb-4">
+                  <div className="font-semibold">{item.item ?? (item as any).name}</div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                  <label className="flex flex-col">
-                    Status
-                    <select
-                      className="border rounded p-1"
-                      value={item?.status ?? ""}
-                      onChange={(e) =>
-                        handleFieldChange(sectionIndex, itemIndex, "status", e.target.value)
-                      }
-                    >
-                      <option value="">Select</option>
-                      <option value="ok">OK</option>
-                      <option value="fail">Fail</option>
-                      <option value="na">N/A</option>
-                      <option value="recommend">Recommend</option>
-                    </select>
-                  </label>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                    <label className="flex flex-col">
+                      Status
+                      <select
+                        className="rounded border p-1"
+                        value={item?.status ?? ""}
+                        onChange={(e) =>
+                          handleFieldChange(
+                            sectionIndex,
+                            itemIndex,
+                            "status",
+                            e.target.value,
+                          )
+                        }
+                      >
+                        <option value="">Select</option>
+                        <option value="ok">OK</option>
+                        <option value="fail">Fail</option>
+                        <option value="na">N/A</option>
+                        <option value="recommend">Recommend</option>
+                      </select>
+                    </label>
 
-                  <label className="flex flex-col">
-                    Note
-                    <input
-                      className="border rounded p-1"
-                      value={item?.notes || ""}
-                      onChange={(e) =>
-                        handleFieldChange(sectionIndex, itemIndex, "notes", e.target.value)
-                      }
-                    />
-                  </label>
-
-                  <label className="flex flex-col">
-                    Value
-                    <input
-                      className="border rounded p-1"
-                      value={item?.value || ""}
-                      onChange={(e) =>
-                        handleFieldChange(sectionIndex, itemIndex, "value", e.target.value)
-                      }
-                    />
-                  </label>
-
-                  <label className="flex flex-col">
-                    Unit
-                    <input
-                      className="border rounded p-1"
-                      value={item?.unit || ""}
-                      onChange={(e) =>
-                        handleFieldChange(sectionIndex, itemIndex, "unit", e.target.value)
-                      }
-                    />
-                  </label>
-                </div>
-
-                {Array.isArray(item?.photoUrls) && item.photoUrls.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {item.photoUrls.map((url: string, i: number) => (
-                      <img
-                        key={i}
-                        src={url}
-                        alt="Uploaded"
-                        className="max-h-32 rounded border border-white/20"
+                    <label className="flex flex-col">
+                      Note
+                      <input
+                        className="rounded border p-1"
+                        value={item?.notes || ""}
+                        onChange={(e) =>
+                          handleFieldChange(
+                            sectionIndex,
+                            itemIndex,
+                            "notes",
+                            e.target.value,
+                          )
+                        }
                       />
-                    ))}
+                    </label>
+
+                    <label className="flex flex-col">
+                      Value
+                      <input
+                        className="rounded border p-1"
+                        value={(item?.value as string) || ""}
+                        onChange={(e) =>
+                          handleFieldChange(
+                            sectionIndex,
+                            itemIndex,
+                            "value",
+                            e.target.value,
+                          )
+                        }
+                      />
+                    </label>
+
+                    <label className="flex flex-col">
+                      Unit
+                      <input
+                        className="rounded border p-1"
+                        value={item?.unit || ""}
+                        onChange={(e) =>
+                          handleFieldChange(
+                            sectionIndex,
+                            itemIndex,
+                            "unit",
+                            e.target.value,
+                          )
+                        }
+                      />
+                    </label>
                   </div>
-                )}
-              </div>
-            ))}
+
+                  {Array.isArray(item?.photoUrls) &&
+                    item.photoUrls.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {item.photoUrls.map((url: string, i: number) => (
+                          <img
+                            key={i}
+                            src={url}
+                            alt="Uploaded"
+                            className="max-h-32 rounded border border-white/20"
+                          />
+                        ))}
+                      </div>
+                    )}
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      ))}
+        ),
+      )}
 
       {/* Quote viewer from AI */}
       {quoteLines.length > 0 && (
@@ -286,15 +324,17 @@ export default function SummaryPage() {
         <button
           onClick={handleAddToWorkOrder}
           disabled={isAddingToWorkOrder}
-          className="w-full bg-orange-600 text-white py-3 rounded-md font-bold text-lg mt-4 disabled:opacity-60"
+          className="mt-4 w-full rounded-md bg-orange-600 py-3 text-lg font-bold text-white disabled:opacity-60"
         >
-          {isAddingToWorkOrder ? "Adding to Work Order..." : "Add to Work Order"}
+          {isAddingToWorkOrder
+            ? "Adding to Work Order..."
+            : "Add to Work Order"}
         </button>
       )}
 
       <button
         onClick={handleSubmit}
-        className="w-full bg-green-600 text-white py-3 rounded-md font-bold text-lg mt-4"
+        className="mt-4 w-full rounded-md bg-green-600 py-3 text-lg font-bold text-white"
       >
         Submit Inspection
       </button>

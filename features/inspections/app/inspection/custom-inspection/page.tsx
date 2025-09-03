@@ -1,4 +1,3 @@
-// features/inspections/app/inspection/custom-inspection/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -11,14 +10,15 @@ import { Input } from "@shared/components/ui/input";
 import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
 
 import InspectionGroupList from "@inspections/components/InspectionGroupList";
-import type {
-  InspectionCategory,
-} from "@inspections/lib/inspection/masterInspectionList";
+import type { InspectionCategory } from "@inspections/lib/inspection/masterInspectionList";
 import { toInspectionCategories } from "@inspections/lib/inspection/normalize";
 
+import useVoiceGenerate from "@inspections/hooks/useVoiceGenerate";
+import { MicrophoneIcon } from "@heroicons/react/24/solid";
+
 type DB = Database;
-type TemplatesRow     = DB["public"]["Tables"]["inspection_templates"]["Row"];
-type TemplatesInsert  = DB["public"]["Tables"]["inspection_templates"]["Insert"];
+type TemplatesRow = DB["public"]["Tables"]["inspection_templates"]["Row"];
+type TemplatesInsert = DB["public"]["Tables"]["inspection_templates"]["Insert"];
 
 const DRAFT_KEY = "customInspectionDraft:v1";
 
@@ -106,12 +106,10 @@ export default function CustomInspectionPage() {
       if (d.vehicleType) setVehicleType(d.vehicleType);
       if (typeof d.tags === "string") setTags(d.tags);
       if (typeof d.isPublic === "boolean") setIsPublic(d.isPublic);
-    } catch {
-      /* ignore */
-    }
+    } catch { /* ignore */ }
   }, []);
 
-  // ---- Generate sections from a prompt (API you already wired) --------------
+  // ---- Generate sections from a prompt -------------------------------------
   async function generateInspection() {
     if (!prompt.trim()) return;
     setLoadingGen(true);
@@ -121,15 +119,28 @@ export default function CustomInspectionPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt }),
       });
-      const json = await res.json();
-      // Normalize to the UI shape in case the API returns a slightly different structure
-      setSections(toInspectionCategories(json?.categories));
+      const json: unknown = await res.json();
+      setSections(toInspectionCategories((json as any)?.categories));
     } catch (err) {
       console.error("Generate failed:", err);
     } finally {
       setLoadingGen(false);
     }
   }
+
+  async function generateFromText(text: string) {
+    const t = text.trim();
+    if (!t) return;
+    setPrompt(t);
+    await generateInspection();
+  }
+
+  // Voice capture (live updates prompt; final triggers generation)
+  const { listening, start, stop } = useVoiceGenerate({
+    live: (t) => setPrompt(t),
+    onFinal: (t) => void generateFromText(t),
+    autoStopMs: 1200,
+  });
 
   // ---- Save template to DB --------------------------------------------------
   async function saveTemplate() {
@@ -142,7 +153,7 @@ export default function CustomInspectionPage() {
       const payload: TemplatesInsert = {
         user_id: userId,
         template_name: templateName,
-        sections: (sections as unknown) as TemplatesInsert["sections"], // JSONB[]
+        sections: sections as unknown as TemplatesInsert["sections"],
         description: description || null,
         tags: tags
           ? tags.split(",").map((s) => s.trim()).filter(Boolean)
@@ -151,19 +162,15 @@ export default function CustomInspectionPage() {
         is_public: isPublic,
       };
 
-      const { error } = await supabase
-        .from("inspection_templates")
-        .insert(payload);
+      const { error } = await supabase.from("inspection_templates").insert(payload);
       if (error) {
         console.error(error.message);
         alert("Failed to save template.");
         return;
       }
 
-      // Clear draft once saved
       localStorage.removeItem(DRAFT_KEY);
 
-      // Refresh list
       const { data } = await supabase
         .from("inspection_templates")
         .select("id, template_name, sections, created_at")
@@ -191,7 +198,7 @@ export default function CustomInspectionPage() {
       console.error("Delete error:", error.message);
       return;
     }
-    setSaved((prev) => prev.filter((x) => x.id !== id));
+    setSaved(prev => prev.filter(x => x.id !== id));
   }
 
   // ---- Render ---------------------------------------------------------------
@@ -214,9 +221,30 @@ export default function CustomInspectionPage() {
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
         />
-        <Button className="mt-3" onClick={generateInspection} disabled={loadingGen}>
-          {loadingGen ? "Generating…" : "Generate Sections"}
-        </Button>
+
+        <div className="mt-3 flex items-center gap-2">
+          <Button onClick={generateInspection} disabled={loadingGen}>
+            {loadingGen ? "Generating…" : "Generate Sections"}
+          </Button>
+
+          <button
+            type="button"
+            onClick={() => (listening ? stop() : start())}
+            className={
+              "rounded border px-3 py-2 text-sm transition " +
+              (listening
+                ? "border-red-500 text-red-400"
+                : "border-white/20 text-white hover:border-orange-500")
+            }
+            title={listening ? "Stop voice" : "Speak prompt"}
+            aria-pressed={listening}
+          >
+            <span className="inline-flex items-center gap-2">
+              <MicrophoneIcon className="h-4 w-4" />
+              {listening ? "Listening…" : "Use Voice"}
+            </span>
+          </button>
+        </div>
       </div>
 
       {/* Template meta */}
@@ -285,9 +313,7 @@ export default function CustomInspectionPage() {
                 <div>
                   <div className="font-medium">{t.template_name}</div>
                   <div className="text-xs text-neutral-400">
-                    {t.created_at
-                      ? new Date(t.created_at).toLocaleString()
-                      : "—"}
+                    {t.created_at ? new Date(t.created_at).toLocaleString() : "—"}
                   </div>
                 </div>
                 <div className="flex gap-2">

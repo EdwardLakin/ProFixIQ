@@ -2,113 +2,38 @@
 
 import { useState } from "react";
 import {
+  BrakeType,
   InspectionItem,
   InspectionSection,
   InspectionSession,
   QuoteLine,
-  BrakeType,
+  QuoteLineItem,
 } from "@inspections/lib/inspection/types";
 
-type AxleLayoutConfig = {
-  axleCount: number;
-  brakeType: BrakeType;
-};
+/** Simple axle config used when starting a session */
+type AxleLayoutConfig = { axleCount: number; brakeType: BrakeType };
 
-function generateAxleSections({
-  axleCount,
-  brakeType,
-}: AxleLayoutConfig): InspectionSection[] {
+/** Create axle measurement sections (CVIP-style) to prepend to the inspection */
+function generateAxleSections(config: AxleLayoutConfig): InspectionSection[] {
+  const { axleCount, brakeType } = config;
   const sections: InspectionSection[] = [];
 
-  for (let i = 1; i <= axleCount; i++) {
+  for (let i = 1; i <= axleCount; i += 1) {
     const title = `Axle ${i}`;
-
     const items: InspectionItem[] = [
-      {
-        name: "Left Tread Depth",
-        value: null,
-        unit: "mm",
-        notes: "",
-        status: "",
-        photoUrls: [],
-        item: "",
-      },
-      {
-        name: "Right Tread Depth",
-        value: null,
-        unit: "mm",
-        notes: "",
-        status: "",
-        photoUrls: [],
-        item: "",
-      },
-      {
-        name: "Left Tire Pressure",
-        value: null,
-        unit: "psi",
-        notes: "",
-        status: "",
-        photoUrls: [],
-        item: "",
-      },
-      {
-        name: "Right Tire Pressure",
-        value: null,
-        unit: "psi",
-        notes: "",
-        status: "",
-        photoUrls: [],
-        item: "",
-      },
-      {
-        name: "Left Lining Thickness",
-        value: null,
-        unit: "mm",
-        notes: "",
-        status: "",
-        photoUrls: [],
-        item: "",
-      },
-      {
-        name: "Right Lining Thickness",
-        value: null,
-        unit: "mm",
-        notes: "",
-        status: "",
-        photoUrls: [],
-        item: "",
-      },
-      {
-        name: "Wheel Torque",
-        value: null,
-        unit: "ft lbs",
-        notes: "",
-        status: "",
-        photoUrls: [],
-        item: "",
-      },
+      { item: "Left Tread Depth", name: "Left Tread Depth", value: null, unit: "mm", notes: "", photoUrls: [] },
+      { item: "Right Tread Depth", name: "Right Tread Depth", value: null, unit: "mm", notes: "", photoUrls: [] },
+      { item: "Left Tire Pressure", name: "Left Tire Pressure", value: null, unit: "psi", notes: "", photoUrls: [] },
+      { item: "Right Tire Pressure", name: "Right Tire Pressure", value: null, unit: "psi", notes: "", photoUrls: [] },
+      { item: "Left Lining Thickness", name: "Left Lining Thickness", value: null, unit: "mm", notes: "", photoUrls: [] },
+      { item: "Right Lining Thickness", name: "Right Lining Thickness", value: null, unit: "mm", notes: "", photoUrls: [] },
+      { item: "Wheel Torque", name: "Wheel Torque", value: null, unit: "ft lbs", notes: "", photoUrls: [] },
     ];
 
     if (brakeType === "air") {
       items.push(
-        {
-          name: "Left Push Rod Travel",
-          value: null,
-          unit: "in",
-          notes: "",
-          status: "",
-          photoUrls: [],
-          item: "",
-        },
-        {
-          name: "Right Push Rod Travel",
-          value: null,
-          unit: "in",
-          notes: "",
-          status: "",
-          photoUrls: [],
-          item: "",
-        },
+        { item: "Left Push Rod Travel", name: "Left Push Rod Travel", value: null, unit: "in", notes: "", photoUrls: [] },
+        { item: "Right Push Rod Travel", name: "Right Push Rod Travel", value: null, unit: "in", notes: "", photoUrls: [] },
       );
     }
 
@@ -118,9 +43,7 @@ function generateAxleSections({
   return sections;
 }
 
-export default function useInspectionSession(
-  initialSession?: Partial<InspectionSession>,
-) {
+export default function useInspectionSession(initial?: Partial<InspectionSession>) {
   const [session, setSession] = useState<InspectionSession>(() => ({
     id: "",
     vehicleId: "",
@@ -159,144 +82,76 @@ export default function useInspectionSession(
       color: "",
     },
     sections: [],
-    updateItem: () => {},
-    onStart: () => {},
-    onPause: () => {},
-    onResume: () => {},
-    ...initialSession,
+    ...initial,
   }));
 
-  const updateInspection = (updates: Partial<InspectionSession>) => {
-    setSession((prev) => ({
-      ...prev,
-      ...updates,
-      lastUpdated: new Date().toISOString(),
-    }));
-  };
+  const stamp = <T extends object>(updates: T) => ({
+    ...updates,
+    lastUpdated: new Date().toISOString(),
+  });
 
-  const updateSection = (
-    sectionIndex: number,
-    updates: Partial<InspectionSection>,
-  ) => {
-    setSession((prev) => {
-      const newSections = [...prev.sections];
-      newSections[sectionIndex] = {
-        ...newSections[sectionIndex],
-        ...updates,
-      };
-      return {
-        ...prev,
-        sections: newSections,
-        lastUpdated: new Date().toISOString(),
-      };
+  const updateInspection = (updates: Partial<InspectionSession>) =>
+    setSession(prev => ({ ...prev, ...stamp(updates) }));
+
+  const updateSection = (sectionIndex: number, updates: Partial<InspectionSection>) =>
+    setSession(prev => {
+      const sections = [...prev.sections];
+      sections[sectionIndex] = { ...sections[sectionIndex], ...updates };
+      return { ...prev, ...stamp({ sections }) };
     });
-  };
 
-  const updateItem = (
-    sectionIndex: number,
-    itemIndex: number,
-    updates: Partial<InspectionItem>,
-  ) => {
-    setSession((prev) => {
-      const newSections = [...prev.sections];
-      const items = [...newSections[sectionIndex].items];
-      items[itemIndex] = {
-        ...items[itemIndex],
-        ...updates,
-      };
-      newSections[sectionIndex] = {
-        ...newSections[sectionIndex],
-        items,
-      };
-      return {
-        ...prev,
-        sections: newSections,
-        lastUpdated: new Date().toISOString(),
-      };
+  const updateItem = (sectionIndex: number, itemIndex: number, updates: Partial<InspectionItem>) =>
+    setSession(prev => {
+      const sections = [...prev.sections];
+      const items = [...sections[sectionIndex].items];
+      items[itemIndex] = { ...items[itemIndex], ...updates };
+      sections[sectionIndex] = { ...sections[sectionIndex], items };
+      return { ...prev, ...stamp({ sections }) };
     });
-  };
 
-  const addQuoteLine = (line: QuoteLine) => {
-    setSession((prev) => ({
-      ...prev,
-      quote: [...prev.quote, line],
-      lastUpdated: new Date().toISOString(),
-    }));
-  };
+  /** Accepts either DB `QuoteLine` or UI `QuoteLineItem` */
+  const addQuoteLine = (line: QuoteLine | QuoteLineItem) =>
+    setSession(prev => ({ ...prev, ...stamp({ quote: [...(prev.quote || []), line] }) }));
 
-  const updateQuoteLines = (quoteLines: QuoteLine[]) => {
-    setSession((prev) => ({
-      ...prev,
-      quote: quoteLines,
-      lastUpdated: new Date().toISOString(),
-    }));
-  };
+  /** Accepts array of either type */
+  const updateQuoteLines = (lines: (QuoteLine | QuoteLineItem)[]) =>
+    setSession(prev => ({ ...prev, ...stamp({ quote: lines }) }));
 
+  /**
+   * Start / resume with axle presets if provided. New axle sections are
+   * *prepended* above the rest of the template sections.
+   */
   const startSession = (
-    sessionData: Partial<InspectionSession> & { axleConfig?: AxleLayoutConfig },
+    data: Partial<InspectionSession> & { axleConfig?: AxleLayoutConfig },
   ) => {
-    const { axleConfig, ...rest } = sessionData;
+    const { axleConfig, ...rest } = data;
+    const baseSections = data.sections ?? session.sections;
 
-    const newSections =
-      axleConfig?.axleCount && axleConfig?.brakeType
-        ? generateAxleSections(axleConfig)
-        : sessionData.sections || session.sections;
+    const mergedSections =
+      axleConfig && axleConfig.axleCount > 0
+        ? [...generateAxleSections(axleConfig), ...baseSections]
+        : baseSections;
 
-    const newSession: InspectionSession = {
-      ...session,
+    setSession(prev => ({
+      ...prev,
       ...rest,
-      sections: newSections,
-      currentSectionIndex: 0,
-      currentItemIndex: 0,
-      transcript: "",
-      started: true,
-      completed: false,
-      status: "in_progress",
-      isPaused: false,
-      lastUpdated: new Date().toISOString(),
-      updateItem,
-      onStart: () => {},
-      onPause: () => {},
-      onResume: () => {},
-    };
-
-    setSession(newSession);
-  };
-
-  const pauseSession = () => {
-    setSession((prev) => ({
-      ...prev,
-      isPaused: true,
-      status: "paused",
-      lastUpdated: new Date().toISOString(),
+      ...stamp({
+        sections: mergedSections,
+        currentSectionIndex: 0,
+        currentItemIndex: 0,
+        transcript: "",
+        started: true,
+        completed: false,
+        status: "in_progress",
+        isPaused: false,
+      }),
     }));
   };
 
-  const resumeSession = () => {
-    setSession((prev) => ({
-      ...prev,
-      isPaused: false,
-      status: "in_progress",
-      lastUpdated: new Date().toISOString(),
-    }));
-  };
-
-  const finishSession = () => {
-    setSession((prev) => ({
-      ...prev,
-      completed: true,
-      status: "completed",
-      isPaused: false,
-      lastUpdated: new Date().toISOString(),
-    }));
-  };
-
-  const setIsListening = (value: boolean) => {
-    setSession((prev) => ({
-      ...prev,
-      isListening: value,
-    }));
-  };
+  const pauseSession  = () => updateInspection({ isPaused: true,  status: "paused" });
+  const resumeSession = () => updateInspection({ isPaused: false, status: "in_progress" });
+  const finishSession = () => updateInspection({ completed: true, status: "completed", isPaused: false });
+  const setIsListening = (value: boolean) => updateInspection({ isListening: value });
 
   return {
     session,
@@ -311,7 +166,5 @@ export default function useInspectionSession(
     finishSession,
     setIsListening,
     isPaused: session.isPaused,
-    onPause: () => pauseSession(),
-    onResume: () => resumeSession(),
   };
 }

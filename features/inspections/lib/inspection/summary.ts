@@ -4,10 +4,10 @@ export type InspectionSummaryItem = {
   section: string;
   item: string;
   status: InspectionItemStatus;
-  note?: string;
+  notes?: string;
   value?: string | number | null;
-  unit?: string;
-  photoUrls?: string[];
+  unit?: string | null;
+  photoUrls: string[];
 };
 
 export function extractSummaryFromSession(
@@ -16,15 +16,17 @@ export function extractSummaryFromSession(
   const items: InspectionSummaryItem[] = [];
 
   for (const section of session.sections) {
-    for (const item of section.items) {
+    const sectionTitle = section.title ?? "";
+    for (const it of section.items) {
+      const status: InspectionItemStatus = it.status ?? "ok";
       items.push({
-        section: section.title,
-        item: item.name,
-        status: item.status ?? "ok",
-        note: item.notes,
-        value: item.value ?? null,
-        unit: item.unit,
-        photoUrls: item.photoUrls ?? [],
+        section: sectionTitle,
+        item: it.item ?? it.name ?? "",
+        status,
+        notes: it.notes ?? undefined,
+        value: it.value ?? null,
+        unit: it.unit ?? null,
+        photoUrls: Array.isArray(it.photoUrls) ? it.photoUrls : [],
       });
     }
   }
