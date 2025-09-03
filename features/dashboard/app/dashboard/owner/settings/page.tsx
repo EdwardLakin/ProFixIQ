@@ -606,15 +606,13 @@ export default function OwnerSettingsPage() {
         </Button>
       </div>
 
-      {/* PIN Modal */}
-      {shopId && (
-        <OwnerPinModal
-          shopId={shopId}
-          open={pinModalOpen}
-          onClose={() => setPinModalOpen(false)}
-          onVerified={(iso) => setPinExpiresAt(iso)}
-        />
-      )}
+      <OwnerPinModal
+  shopId={shopId}
+  open={pinModalOpen}
+  onClose={() => setPinModalOpen(false)}
+  onVerified={(iso: string | undefined) => setPinExpiresAt(iso)}
+/>
+      )
     </div>
   );
 }
