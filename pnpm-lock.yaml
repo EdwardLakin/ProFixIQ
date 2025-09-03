@@ -105,8 +105,8 @@ importers:
         specifier: ^7.0.5
         version: 7.0.6
       openai:
-        specifier: ^5.3.0
-        version: 5.17.0(ws@8.18.3)(zod@3.25.76)
+        specifier: ^5.18.1
+        version: 5.18.1(ws@8.18.3)(zod@3.25.76)
       openai-edge-stream:
         specifier: ^2.0.1
         version: 2.0.1
@@ -2803,8 +2803,8 @@ packages:
   openai-edge-stream@2.0.1:
     resolution: {integrity: sha512-NCqMT8tT83d7X3ZidT3Lv2ptcWPkjpK9byWT1+h5CgVkcKu3zvrqJTwyYhXmNOmt0+Wjdvvkq5J156yZspb7PQ==}
 
-  openai@5.17.0:
-    resolution: {integrity: sha512-7djpJzihvQ2KlKdfhLcShB+DYQpKW+EPndSM86AvKfXCISnqDYnA/aZtrUWa+VB8zvG/K0rJ6Cmjtd79b64u2w==}
+  openai@5.18.1:
+    resolution: {integrity: sha512-iXSOfLlOL+jgnFr5CGrB2SEZw5C92o1nrFW2SasoAXj4QxGhfeJPgg8zkX+vaCfX80cT6CWjgaGnq7z9XzbyRw==}
     hasBin: true
     peerDependencies:
       ws: ^8.18.0
@@ -6769,7 +6769,7 @@ snapshots:
       eventsource-parser: 1.1.2
       typescript: 5.4.5
 
-  openai@5.17.0(ws@8.18.3)(zod@3.25.76):
+  openai@5.18.1(ws@8.18.3)(zod@3.25.76):
     optionalDependencies:
       ws: 8.18.3
       zod: 3.25.76

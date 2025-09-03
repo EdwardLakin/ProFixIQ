@@ -1,17 +1,24 @@
 // app/dashboard/layout.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+
 import DynamicRoleSidebar from "@shared/components/DynamicRoleSidebar";
 import Calendar from "@shared/components/ui/Calendar";
 import { TabsProvider } from "@shared/context/TabsProvider";
 import ShareBookingLink from "@dashboard/components/ShareBookingLink";
 import PunchController from "@/features/shared/components/ui/PunchController";
 import ChatDock from "@/features/chat/components/ChatDock";
-import TechAssistant from "@/features/shared/components/TechAssistant"; // 👈 NEW
 
-// roles that can see the calendar and share link
+// Lazy-load the assistant to reduce initial bundle & avoid SSR issues
+const TechAssistant = dynamic(
+  () => import("@/features/shared/components/TechAssistant"),
+  { ssr: false }
+);
+
+// roles that can see certain header items
 const CALENDAR_ROLES = ["owner", "admin", "manager", "advisor"];
 const STAFF_ROLES = ["owner", "admin", "manager", "advisor", "parts"];
 
@@ -22,23 +29,31 @@ export default function DashboardLayout({
 }) {
   const supabase = createClientComponentClient();
 
-  // role state
+  // ---- Role state ----
   const [role, setRole] = useState<string | null>(null);
   const [loadingRole, setLoadingRole] = useState(true);
 
-  // calendar state
+  // ---- Calendar state ----
   const [month, setMonth] = useState<Date>(() => new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
-  // mobile sidebar
+  // ---- UI state ----
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
 
-  // tech assistant drawer
-  const [assistantOpen, setAssistantOpen] = useState(false); // 👈 NEW
+  // ---- Assistant context (seed vehicle + WO line) ----
+  const [currentVehicle, setCurrentVehicle] = useState<{
+    year?: string;
+    make?: string;
+    model?: string;
+  } | null>(null);
 
+  const [currentWorkOrderLineId, setCurrentWorkOrderLineId] =
+    useState<string | null>(null);
+
+  // Fetch user role once
   useEffect(() => {
     let cancelled = false;
-
     (async () => {
       try {
         setLoadingRole(true);
@@ -63,34 +78,41 @@ export default function DashboardLayout({
         if (!cancelled) setLoadingRole(false);
       }
     })();
-
     return () => {
       cancelled = true;
     };
   }, [supabase]);
 
-  // close drawer on Escape
+  // Demo context seed (replace with your own selection/route/DB logic)
+  useEffect(() => {
+    // Example: seed a known vehicle + example work order line
+    // Replace this with: read from router params, page state, or Supabase fetch.
+    setCurrentVehicle({ year: "2016", make: "Ford", model: "F-150" });
+    setCurrentWorkOrderLineId(null); // or "uuid-of-work-order-line"
+  }, []);
+
+  // Close drawers on ESC
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSidebarOpen(false);
+      if (e.key === "Escape") {
+        setSidebarOpen(false);
+        setAssistantOpen(false);
+      }
     };
-    if (sidebarOpen) window.addEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [sidebarOpen]);
+  }, []);
 
+  // Visibility gates
   const showCalendar = useMemo(
     () => !loadingRole && !!role && CALENDAR_ROLES.includes(role),
     [loadingRole, role],
   );
 
-  const showShareLink = useMemo(
+  const showStaffTools = useMemo(
     () => !loadingRole && !!role && STAFF_ROLES.includes(role),
     [loadingRole, role],
   );
-
-  const showPunch = showShareLink;    // same staff gate
-  const showMessages = showShareLink; // chat dock to staff roles
-  const showAssistant = showShareLink; // 👈 assistant to staff roles
 
   return (
     <TabsProvider>
@@ -113,16 +135,16 @@ export default function DashboardLayout({
 
           {/* Header actions */}
           <div className="flex items-center gap-3">
-            {showShareLink && <ShareBookingLink />}
-            {showPunch && (
+            {showStaffTools && <ShareBookingLink />}
+            {showStaffTools && (
               <div className="w-56">
                 <PunchController />
               </div>
             )}
-            {showMessages && <ChatDock />}
+            {showStaffTools && <ChatDock />}
 
-            {/* 👇 NEW: Tech Assistant launcher */}
-            {showAssistant && (
+            {/* Tech Assistant launcher */}
+            {showStaffTools && (
               <button
                 type="button"
                 onClick={() => setAssistantOpen(true)}
@@ -162,6 +184,7 @@ export default function DashboardLayout({
           {/* Mobile drawer */}
           {sidebarOpen && (
             <div className="fixed inset-0 z-40 md:hidden">
+              {/* backdrop */}
               <button
                 type="button"
                 aria-label="Close sidebar"
@@ -186,7 +209,6 @@ export default function DashboardLayout({
 
                 <div className="h-[calc(100dvh-96px)] overflow-y-auto pr-1">
                   <DynamicRoleSidebar role={role ?? undefined} />
-
                   {showCalendar && (
                     <div className="mt-4 rounded-xl border border-neutral-800 bg-neutral-950 p-3">
                       <h3 className="mb-2 text-sm font-semibold text-neutral-300">
@@ -224,10 +246,10 @@ export default function DashboardLayout({
         </div>
       </div>
 
-      {/* 👇 NEW: Tech Assistant Drawer */}
+      {/* Tech Assistant Drawer */}
       {assistantOpen && (
         <div className="fixed inset-0 z-50">
-          {/* backdrop */}
+          {/* Backdrop */}
           <button
             className="absolute inset-0 bg-black/60"
             aria-label="Close assistant"
@@ -239,7 +261,9 @@ export default function DashboardLayout({
             aria-modal="true"
           >
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-neutral-300">Tech Assistant</h2>
+              <h2 className="text-sm font-semibold text-neutral-300">
+                Tech Assistant
+              </h2>
               <button
                 onClick={() => setAssistantOpen(false)}
                 className="rounded border border-white/15 px-2 py-1 text-xs hover:border-orange-500"
@@ -248,8 +272,11 @@ export default function DashboardLayout({
               </button>
             </div>
 
-            {/* If you have contextual data (e.g., current WO), pass it as defaultContext */}
-            <TechAssistant />
+            {/* Pass context here */}
+            <TechAssistant
+              defaultVehicle={currentVehicle ?? undefined}
+              workOrderLineId={currentWorkOrderLineId ?? undefined}
+            />
           </aside>
         </div>
       )}

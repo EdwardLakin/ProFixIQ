@@ -1,110 +1,162 @@
 // app/api/assistant/route.ts
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
+import { createClient } from "@supabase/supabase-js";
+// If you keep a DB type, import it; otherwise omit:
+// import type { Database } from "@shared/types/types/supabase";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+/** Minimal vehicle context */
 type Vehicle = { year: string; make: string; model: string };
+
+/** Chat turn you store on the client */
+type TextPart = { type: "text"; text: string };
+type ImagePart = { type: "image_url"; image_url: { url: string } };
+type ClientMessage =
+  | { role: "user" | "assistant" | "system"; content: string }
+  | { role: "user"; content: (TextPart | ImagePart)[] }; // user can send multimodal
+
+type Body = {
+  vehicle?: Vehicle;
+  /** Full running chat transcript you keep on the client */
+  messages?: ClientMessage[];
+  /** Optional “action” to summarize & export */
+  action?:
+    | "chat" // default
+    | "summarize-and-export";
+  /** Target WO line when exporting summary */
+  workOrderLineId?: string;
+};
+
+function hasVehicle(v?: Vehicle): v is Vehicle {
+  return !!v?.year && !!v?.make && !!v?.model;
+}
+
+/** System prompt—no modes; assistant figures it out from context/media */
+function systemFor(vehicle: Vehicle) {
+  const vdesc = `${vehicle.year} ${vehicle.make} ${vehicle.model}`;
+  return [
+    `You are a top-level automotive diagnostic assistant working on a ${vdesc}.`,
+    `You can see conversation context and sometimes images.`,
+    `Be concise, structured, and hands-on.`,
+    `Always reply in Markdown with clear sections like **Complaint**, **Observations / Data**, **Likely Causes**, **Recommended Fix**, **Estimated Labor Time**.`,
+    `If the user provides OBD-II codes, waveforms, or test readings, incorporate them into the reasoning.`,
+    `If a calculation or check is needed, lay out steps for the tech.`,
+    `Never hallucinate data; ask for missing readings (voltage/ohms/psi, etc.) when needed.`,
+  ].join(" ");
+}
+
+/** Convert client message (with possible image parts) into Chat API message */
+function toOpenAIMessage(m: ClientMessage): ChatCompletionMessageParam {
+  if (Array.isArray(m.content)) {
+    // multimodal user message
+    return { role: "user", content: m.content };
+  }
+  // plain text message
+  return { role: m.role, content: m.content };
+}
 
 export async function POST(req: Request) {
   try {
-    const { vehicle, prompt, dtcCode, image_data, context } = await req.json() as {
-      vehicle?: Vehicle;
-      prompt?: string;
-      dtcCode?: string;
-      image_data?: string; // data URL (base64) or external URL
-      context?: string; // optional extra detail
-    };
+    const body = (await req.json()) as Body;
 
-    // Basic guard for all modes
-    if (!vehicle?.year || !vehicle?.make || !vehicle?.model) {
+    if (!hasVehicle(body.vehicle)) {
       return NextResponse.json(
         { error: "Missing vehicle info (year/make/model)." },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
-    const vdesc = `${vehicle.year} ${vehicle.make} ${vehicle.model}`;
+    const messages = (body.messages ?? []).map(toOpenAIMessage);
+    const withSystem: ChatCompletionMessageParam[] = [
+      { role: "system", content: systemFor(body.vehicle) },
+      ...messages,
+    ];
 
-    // -------- PHOTO MODE --------
-    if (image_data) {
-      const system = [
-        `You are an automotive repair expert. A technician uploaded a photo from a ${vdesc}.`,
-        `Analyze the image and return a concise, helpful markdown answer with sections:`,
-        `**Issue**, **Likely Cause**, **Recommended Fix**, **Estimated Labor Time**.`,
-      ].join(" ");
+    // ---------- ACTION: Summarize + Export ----------
+    if (body.action === "summarize-and-export") {
+      if (!body.workOrderLineId) {
+        return NextResponse.json(
+          { error: "workOrderLineId is required for summarize-and-export." },
+          { status: 400 }
+        );
+      }
 
-      const resp = await openai.chat.completions.create({
+      // Ask the model for a structured JSON summary we can persist
+      const summarizePrompt =
+        "Summarize the conversation into JSON with fields: " +
+        `{"cause": string, "correction": string, "steps": string[], "estimatedLaborTimeHours": number}. ` +
+        "Keep text succinct but specific. Use the technician's measurements when present.";
+
+      const completion = await openai.chat.completions.create({
         model: "gpt-4o",
         temperature: 0.4,
         messages: [
-          { role: "system", content: system },
-          {
-            role: "user",
-            content: [
-              context ? { type: "text", text: context } : null,
-              { type: "image_url", image_url: { url: image_data } },
-            ].filter(Boolean) as any,
-          },
+          ...withSystem,
+          { role: "user", content: summarizePrompt },
         ],
       });
 
-      const result =
-        resp.choices?.[0]?.message?.content?.trim() ?? "No analysis.";
-      return NextResponse.json({ mode: "photo", result });
-    }
+      const raw = completion.choices?.[0]?.message?.content ?? "";
+      let parsed: {
+        cause?: string;
+        correction?: string;
+        steps?: string[];
+        estimatedLaborTimeHours?: number;
+      } = {};
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        // If model produced markdown fenced JSON, try a loose parse:
+        const m = raw.match(/```json([\s\S]*?)```/i) || raw.match(/({[\s\S]*})/);
+        if (m) parsed = JSON.parse(m[1]);
+      }
 
-    // -------- DTC MODE --------
-    if (dtcCode?.trim()) {
-      const code = dtcCode.trim().toUpperCase();
-      const system =
-        `You are a master diagnostic technician. Analyze DTC ${code} for a ${vdesc}. ` +
-        `Reply in markdown with **DTC Summary**, **Likely Causes**, **Troubleshooting Steps**, ` +
-        `**Recommended Fix**, and **Estimated Labor Time**. Keep it practical.`;
+      // Update WO line in Supabase
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+      ); // service role needed to update server-side
 
-      const resp = await openai.chat.completions.create({
-        model: "gpt-4o",
-        temperature: 0.5,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: context?.trim() ? context : `Code: ${code}` },
-        ],
+      await supabase
+        .from("work_order_lines")
+        .update({
+          cause: parsed.cause ?? null,
+          correction: parsed.correction ?? null,
+          labor_time:
+            typeof parsed.estimatedLaborTimeHours === "number"
+              ? parsed.estimatedLaborTimeHours
+              : null,
+          // Optionally: set status or punch out:
+          // status: "completed",
+          // punched_out_at: new Date().toISOString(),
+        })
+        .eq("id", body.workOrderLineId);
+
+      return NextResponse.json({
+        ok: true,
+        saved: {
+          workOrderLineId: body.workOrderLineId,
+          ...parsed,
+        },
       });
-
-      const result =
-        resp.choices?.[0]?.message?.content?.trim() ?? "No result.";
-      return NextResponse.json({ mode: "dtc", result });
     }
 
-    // -------- CHAT MODE --------
-    const userPrompt = (prompt ?? "").trim();
-    if (!userPrompt) {
-      return NextResponse.json(
-        { error: "Provide a prompt, DTC, or image." },
-        { status: 400 },
-      );
-    }
-
-    const system =
-      `You are a top-level automotive diagnostic expert helping on a ${vdesc}. ` +
-      `Reply in clear markdown with **Complaint**, **Likely Causes**, **Recommended Fix**, ` +
-      `and **Estimated Labor Time**. Prefer concise, actionable guidance.`;
-
-    const resp = await openai.chat.completions.create({
+    // ---------- ACTION: Chat (default) ----------
+    const completion = await openai.chat.completions.create({
       model: "gpt-4o",
       temperature: 0.6,
-      messages: [
-        { role: "system", content: system },
-        ...(context?.trim() ? [{ role: "user", content: context }] : []),
-        { role: "user", content: userPrompt },
-      ],
+      messages: withSystem,
     });
 
-    const result =
-      resp.choices?.[0]?.message?.content?.trim() ?? "No response.";
-    return NextResponse.json({ mode: "chat", result });
+    const reply =
+      completion.choices?.[0]?.message?.content?.trim() ??
+      "No response.";
+    return NextResponse.json({ reply });
   } catch (err) {
-    console.error("Assistant error:", err);
+    console.error("assistant error:", err);
     return NextResponse.json({ error: "Assistant failed." }, { status: 500 });
   }
 }
