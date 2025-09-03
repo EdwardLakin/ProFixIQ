@@ -1,7 +1,8 @@
-"use client";
-
 import React from "react";
-import { CustomerInfo, VehicleInfo } from "@inspections/lib/inspection/types";
+import {
+  SessionCustomer as CustomerInfo,
+  SessionVehicle as VehicleInfo,
+} from "@inspections/lib/inspection/types";
 
 interface Props {
   customer: CustomerInfo;
@@ -21,6 +22,7 @@ export default function CustomerVehicleForm({
       <h2 className="text-xl font-bold border-b border-orange-400 pb-2">
         Customer Info
       </h2>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <input
           className="input"
@@ -75,6 +77,7 @@ export default function CustomerVehicleForm({
       <h2 className="text-xl font-bold border-b border-orange-400 pb-2 pt-8">
         Vehicle Info
       </h2>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <input
           type="number"
