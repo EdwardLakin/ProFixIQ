@@ -18,15 +18,26 @@ export default function useVoiceGenerate(opts: {
   autoStopMs?: number; // silence timeout
 }) {
   const { live, onFinal, autoStopMs = 1200 } = opts;
+
   let sr: MaybeSR = null;
-  let lastResultAt = 0;
   let timer: number | undefined;
   let listening = false;
+
+  const stop = () => {
+    try {
+      sr?.stop();
+    } catch {
+      /* noop */
+    }
+    listening = false;
+    if (timer) window.clearTimeout(timer);
+  };
 
   const start = () => {
     if (listening) return;
     const SR = getSR();
     if (!SR) return;
+
     sr = new SR();
     listening = true;
 
@@ -35,11 +46,13 @@ export default function useVoiceGenerate(opts: {
     sr.lang = "en-US";
 
     sr.onresult = (e: SpeechRecognitionEvent) => {
-      const txt = Array.from(e.results).map(r => r[0].transcript).join("");
-      lastResultAt = Date.now();
+      const txt = Array.from(e.results)
+        .map((r) => r[0].transcript)
+        .join("");
+
       live?.(txt);
 
-      const isFinal = Array.from(e.results).some(r => r.isFinal);
+      const isFinal = Array.from(e.results).some((r) => r.isFinal);
       if (isFinal) onFinal?.(txt);
 
       if (timer) window.clearTimeout(timer);
@@ -47,19 +60,21 @@ export default function useVoiceGenerate(opts: {
     };
 
     sr.onerror = () => stop();
-    sr.onend = () => (listening = false);
+    sr.onend = () => {
+      listening = false;
+    };
 
-    try { sr.start(); } catch { /* already started */ }
-  };
-
-  const stop = () => {
-    try { sr?.stop(); } catch { /* noop */ }
-    listening = false;
-    if (timer) window.clearTimeout(timer);
+    try {
+      sr.start();
+    } catch {
+      /* already started */
+    }
   };
 
   return {
-    get listening() { return listening; },
+    get listening() {
+      return listening;
+    },
     start,
     stop,
   };
