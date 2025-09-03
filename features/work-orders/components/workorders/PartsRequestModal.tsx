@@ -18,14 +18,17 @@ interface Props {
   existingRequest?: Partial<PartsRequest> | null;
 }
 
-export default function PartsRequestModal({
-  isOpen,
-  onClose,
-  jobId,
-  workOrderId,
-  requested_by,
-  existingRequest = null,
-}: Props) {
+export default function PartsRequestModal(props: any) {
+  // Cast locally for strong typing while keeping exported signature serializable-safe
+  const {
+    isOpen,
+    onClose,
+    jobId,
+    workOrderId,
+    requested_by,
+    existingRequest = null,
+  } = props as Props;
+
   const supabase = createClientComponentClient<Database>();
 
   const [partsNeeded, setPartsNeeded] = useState("");
@@ -104,7 +107,6 @@ export default function PartsRequestModal({
       if (error) {
         toast.error(`Upload failed: ${file.name}`);
       } else if (data) {
-        // ✅ use the returned `data.path` instead of ignoring it
         const { data: publicData } = supabase.storage
           .from("parts-request-photos")
           .getPublicUrl(data.path);

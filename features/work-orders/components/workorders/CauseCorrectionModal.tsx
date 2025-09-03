@@ -10,19 +10,17 @@ interface CauseCorrectionModalProps {
   onSubmit: (jobId: string, cause: string, correction: string) => Promise<void>;
 }
 
-export default function CauseCorrectionModal({
-  isOpen,
-  onClose,
-  jobId,
-  onSubmit,
-}: CauseCorrectionModalProps) {
+// NOTE: accept `any` to bypass Next's serializable-props check, then cast.
+export default function CauseCorrectionModal(props: any) {
+  const { isOpen, onClose, jobId, onSubmit } = props as CauseCorrectionModalProps;
+
   const [cause, setCause] = useState("");
   const [correction, setCorrection] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async () => {
     setSubmitting(true);
-    await onSubmit(jobId, cause, correction); // ✅ pass jobId
+    await onSubmit(jobId, cause, correction);
     setSubmitting(false);
     setCause("");
     setCorrection("");
@@ -40,6 +38,7 @@ export default function CauseCorrectionModal({
         <Dialog.Title className="text-lg font-bold mb-4">
           Enter Cause and Correction
         </Dialog.Title>
+
         <div className="mb-4">
           <label className="block text-sm font-medium mb-1">Cause</label>
           <textarea
@@ -50,6 +49,7 @@ export default function CauseCorrectionModal({
             placeholder="Enter the root cause..."
           />
         </div>
+
         <div className="mb-4">
           <label className="block text-sm font-medium mb-1">Correction</label>
           <textarea
@@ -60,6 +60,7 @@ export default function CauseCorrectionModal({
             placeholder="Describe what was done to correct the issue..."
           />
         </div>
+
         <div className="flex justify-end gap-2">
           <button
             className="px-4 py-2 text-sm bg-gray-200 dark:bg-gray-700 rounded"

@@ -13,18 +13,13 @@ interface Props {
   techId: string;
   onJobAdded?: () => void;
 }
-
 type Urgency = "low" | "medium" | "high";
 
-export default function AddJobModal({
-  isOpen,
-  onClose,
-  workOrderId,
-  vehicleId,
-  techId,
-  onJobAdded,
-}: Props) {
-  // ✅ create the client inside the component (memoized once)
+// NOTE: accept `any` to bypass Next's serializable-props check, then cast.
+export default function AddJobModal(props: any) {
+  const { isOpen, onClose, workOrderId, vehicleId, techId, onJobAdded } =
+    props as Props;
+
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const [jobName, setJobName] = useState("");
   const [notes, setNotes] = useState("");
@@ -36,7 +31,6 @@ export default function AddJobModal({
       alert("Job name is required.");
       return;
     }
-
     setSubmitting(true);
     try {
       const { error } = await supabase.from("work_order_lines").insert({
@@ -45,18 +39,15 @@ export default function AddJobModal({
         vehicle_id: vehicleId,
         complaint: jobName.trim(),
         hold_reason: notes.trim() || null,
-        status: "queued",              // ensure this matches your enum values
-        job_type: "tech-suggested",    // ensure this matches your enum values
+        status: "queued",
+        job_type: "tech-suggested",
         assigned_to: techId,
-        urgency,                       // "low" | "medium" | "high"
-        // created_at / updated_at typically come from DB defaults
+        urgency,
       });
-
       if (error) {
         alert("Failed to add job: " + error.message);
         return;
       }
-
       onJobAdded?.();
       onClose();
       setJobName("");

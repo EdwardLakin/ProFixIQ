@@ -1,3 +1,4 @@
+// features/shops/components/ShopPublicProfileSection.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -18,42 +19,35 @@ type Props = {
 };
 
 /**
- * Form model:
- * - keep a CSV string for gallery (easy to edit)
- * - everything else mirrors the DB nullable shapes
+ * Form model aligned to current DB columns.
+ * `gallery_csv` is UI-only and maps to `images` (string[] | null).
  */
 type Form = {
   name: ShopsRow["name"];
-  address: ShopsRow["address"];
+  street: ShopsRow["street"];
   city: ShopsRow["city"];
   province: ShopsRow["province"];
   postal_code: ShopsRow["postal_code"];
   phone_number: ShopsRow["phone_number"];
   email: ShopsRow["email"];
-  description: ShopsRow["description"];
-  website: ShopsRow["website"];
   logo_url: ShopsRow["logo_url"];
-  hero_image_url: ShopsRow["hero_image_url"];
-  gallery_csv: string;                // <- CSV the user edits
-  latitude: ShopsRow["latitude"];
-  longitude: ShopsRow["longitude"];
+  gallery_csv: string; // UI helper for images[]
+  geo_lat: ShopsRow["geo_lat"];
+  geo_lng: ShopsRow["geo_lng"];
 };
 
 const EMPTY_FORM: Form = {
   name: "",
-  address: null,
+  street: null,
   city: null,
   province: null,
   postal_code: null,
   phone_number: null,
   email: null,
-  description: null,
-  website: null,
   logo_url: null,
-  hero_image_url: null,
   gallery_csv: "",
-  latitude: null,
-  longitude: null,
+  geo_lat: null,
+  geo_lng: null,
 };
 
 export default function ShopPublicProfileSection({ shopId, isUnlocked }: Props) {
@@ -73,19 +67,16 @@ export default function ShopPublicProfileSection({ shopId, isUnlocked }: Props) 
         .select(
           [
             "name",
-            "address",
+            "street",
             "city",
             "province",
             "postal_code",
             "phone_number",
             "email",
-            "description",
-            "website",
             "logo_url",
-            "hero_image_url",
-            "gallery_urls", // string[] | null in DB
-            "latitude",
-            "longitude",
+            "images",   // string[] | null
+            "geo_lat",
+            "geo_lng",
           ].join(","),
         )
         .eq("id", shopId)
@@ -100,25 +91,22 @@ export default function ShopPublicProfileSection({ shopId, isUnlocked }: Props) 
       }
 
       const gallery_csv =
-        Array.isArray(data?.gallery_urls) && data!.gallery_urls.length > 0
-          ? data!.gallery_urls.join(", ")
+        Array.isArray(data?.images) && data!.images.length > 0
+          ? data!.images.join(", ")
           : "";
 
       const next: Form = {
         name: data?.name ?? "",
-        address: data?.address ?? null,
+        street: data?.street ?? null,
         city: data?.city ?? null,
         province: data?.province ?? null,
         postal_code: data?.postal_code ?? null,
         phone_number: data?.phone_number ?? null,
         email: data?.email ?? null,
-        description: data?.description ?? null,
-        website: data?.website ?? null,
         logo_url: data?.logo_url ?? null,
-        hero_image_url: data?.hero_image_url ?? null,
         gallery_csv,
-        latitude: data?.latitude ?? null,
-        longitude: data?.longitude ?? null,
+        geo_lat: data?.geo_lat ?? null,
+        geo_lng: data?.geo_lng ?? null,
       };
 
       setForm(next);
@@ -146,45 +134,24 @@ export default function ShopPublicProfileSection({ shopId, isUnlocked }: Props) 
     }
     setSaving(true);
 
-    // Convert CSV -> string[] | null for DB
-    const galleryArray: string[] | null =
-      form.gallery_csv.trim().length > 0
-        ? form.gallery_csv
-            .split(",")
-            .map((s) => s.trim())
-            .filter((s) => s.length > 0)
+    // CSV -> string[] | null
+    const images: string[] | null =
+      form.gallery_csv.trim()
+        ? form.gallery_csv.split(",").map((s) => s.trim()).filter(Boolean)
         : null;
 
     const update: ShopsUpdate = {
-        name: form.name,
-        address: form.address,
-        city: form.city,
-        province: form.province,
-        postal_code: form.postal_code,
-        phone_number: form.phone_number,
-        email: form.email,
-        description: form.description,
-        website: form.website,
-        logo_url: form.logo_url,
-        hero_image_url: form.hero_image_url,
-        gallery_urls: galleryArray, // ✅ matches DB type string[] | null
-        latitude: form.latitude,
-        longitude: form.longitude,
-        role: null,
-        default_labor_rate: null,
-        default_shop_supplies_percent: null,
-        default_diagnostic_fee: null,
-        default_tax_rate: null,
-        require_cause_correction: null,
-        require_job_authorization: null,
-        enable_ai: null,
-        invoice_terms: null,
-        invoice_footer: null,
-        auto_email_quotes: null,
-        auto_pdf_quotes: null,
-        timezone: null,
-        accepts_online_booking: null,
-        owner_pin_hash: null
+      name: form.name,
+      street: form.street,
+      city: form.city,
+      province: form.province,
+      postal_code: form.postal_code,
+      phone_number: form.phone_number,
+      email: form.email,
+      logo_url: form.logo_url,
+      images,          // ✅ maps to DB `images`
+      geo_lat: form.geo_lat,
+      geo_lng: form.geo_lng,
     };
 
     const { error } = await supabase.from("shops").update(update).eq("id", shopId);
@@ -208,23 +175,62 @@ export default function ShopPublicProfileSection({ shopId, isUnlocked }: Props) 
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <Input value={form.name} onChange={(e) => onChange("name", e.target.value)} placeholder="Shop name" disabled={!isUnlocked} />
-        <Input value={form.website ?? ""} onChange={(e) => onChange("website", e.target.value || null)} placeholder="Website (https://…)" disabled={!isUnlocked} />
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        {/* Basic */}
+        <Input
+          value={form.name ?? ""}                // ← coerce null -> ""
+          onChange={(e) => onChange("name", e.target.value)}
+          placeholder="Shop name"
+          disabled={!isUnlocked}
+        />
+        <Input
+          value={form.phone_number ?? ""}
+          onChange={(e) => onChange("phone_number", e.target.value || null)}
+          placeholder="Phone"
+          disabled={!isUnlocked}
+        />
+        <Input
+          value={form.email ?? ""}
+          onChange={(e) => onChange("email", e.target.value || null)}
+          placeholder="Public email"
+          disabled={!isUnlocked}
+        />
 
-        <Input value={form.phone_number ?? ""} onChange={(e) => onChange("phone_number", e.target.value || null)} placeholder="Phone" disabled={!isUnlocked} />
-        <Input value={form.email ?? ""} onChange={(e) => onChange("email", e.target.value || null)} placeholder="Public email" disabled={!isUnlocked} />
+        {/* Address */}
+        <Input
+          value={form.street ?? ""}
+          onChange={(e) => onChange("street", e.target.value || null)}
+          placeholder="Street"
+          disabled={!isUnlocked}
+        />
+        <Input
+          value={form.city ?? ""}
+          onChange={(e) => onChange("city", e.target.value || null)}
+          placeholder="City"
+          disabled={!isUnlocked}
+        />
+        <Input
+          value={form.province ?? ""}
+          onChange={(e) => onChange("province", e.target.value || null)}
+          placeholder="Province/State"
+          disabled={!isUnlocked}
+        />
+        <Input
+          value={form.postal_code ?? ""}
+          onChange={(e) => onChange("postal_code", e.target.value || null)}
+          placeholder="Postal Code"
+          disabled={!isUnlocked}
+        />
 
-        <Input value={form.address ?? ""} onChange={(e) => onChange("address", e.target.value || null)} placeholder="Street address" disabled={!isUnlocked} />
-        <Input value={form.city ?? ""} onChange={(e) => onChange("city", e.target.value || null)} placeholder="City" disabled={!isUnlocked} />
+        {/* Branding */}
+        <Input
+          value={form.logo_url ?? ""}
+          onChange={(e) => onChange("logo_url", e.target.value || null)}
+          placeholder="Logo URL"
+          disabled={!isUnlocked}
+        />
 
-        <Input value={form.province ?? ""} onChange={(e) => onChange("province", e.target.value || null)} placeholder="Province/State" disabled={!isUnlocked} />
-        <Input value={form.postal_code ?? ""} onChange={(e) => onChange("postal_code", e.target.value || null)} placeholder="Postal Code" disabled={!isUnlocked} />
-
-        <Input value={form.logo_url ?? ""} onChange={(e) => onChange("logo_url", e.target.value || null)} placeholder="Logo URL" disabled={!isUnlocked} />
-        <Input value={form.hero_image_url ?? ""} onChange={(e) => onChange("hero_image_url", e.target.value || null)} placeholder="Hero image URL" disabled={!isUnlocked} />
-
-        {/* CSV editor for gallery (UI) */}
+        {/* Gallery (CSV → images[]) */}
         <Input
           value={form.gallery_csv}
           onChange={(e) => onChange("gallery_csv", e.target.value)}
@@ -232,28 +238,20 @@ export default function ShopPublicProfileSection({ shopId, isUnlocked }: Props) 
           disabled={!isUnlocked}
         />
 
+        {/* Coordinates */}
         <Input
-          value={form.latitude !== null ? String(form.latitude) : ""}
-          onChange={(e) => onChange("latitude", parseNumberOrNull(e.target.value))}
+          value={form.geo_lat !== null ? String(form.geo_lat) : ""}
+          onChange={(e) => onChange("geo_lat", parseNumberOrNull(e.target.value))}
           placeholder="Latitude"
           disabled={!isUnlocked}
         />
         <Input
-          value={form.longitude !== null ? String(form.longitude) : ""}
-          onChange={(e) => onChange("longitude", parseNumberOrNull(e.target.value))}
+          value={form.geo_lng !== null ? String(form.geo_lng) : ""}
+          onChange={(e) => onChange("geo_lng", parseNumberOrNull(e.target.value))}
           placeholder="Longitude"
           disabled={!isUnlocked}
         />
       </div>
-
-      <textarea
-        className="w-full rounded border border-neutral-800 bg-neutral-900 p-2 text-sm"
-        rows={4}
-        placeholder="Public description"
-        value={form.description ?? ""}
-        onChange={(e) => onChange("description", e.target.value || null)}
-        disabled={!isUnlocked}
-      />
     </section>
   );
 }

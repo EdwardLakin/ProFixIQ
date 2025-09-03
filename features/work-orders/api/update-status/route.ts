@@ -45,19 +45,17 @@ export async function POST(req: NextRequest) {
     if (command === "punch-in") {
       updateFields = {
         status: "in_progress",
-        started_at: new Date().toISOString(),
       };
     } else if (command === "complete") {
       updateFields = {
         status: "completed",
-        completed_at: new Date().toISOString(),
       };
 
       if (quote && summary) {
         updateFields.quote = {
           summary,
           items: quote,
-        };
+        } as any; // keep if `quote` column is jsonb; remove `as any` if typed
       }
     } else {
       return NextResponse.json({ error: "Unknown command" }, { status: 400 });

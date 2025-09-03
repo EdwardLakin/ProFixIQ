@@ -8,7 +8,6 @@ type WorkOrderLine = {
   cause?: string;
   correction?: string;
   labor_time?: number;
-  // ✅ include "awaiting" to match the rest of the app
   status?: "unassigned" | "assigned" | "in_progress" | "on_hold" | "completed" | "awaiting";
   hold_reason?: "parts" | "authorization" | "diagnosis_pending" | "other" | "";
   tools?: string;
@@ -20,7 +19,10 @@ type Props = {
   onDelete?: () => void;
 };
 
-export default function WorkOrderLineEditor({ line, onUpdate, onDelete }: Props) {
+export default function WorkOrderLineEditor(props: any) {
+  // Cast locally to keep strong typing, while avoiding Next’s serializable-props check
+  const { line, onUpdate, onDelete } = props as Props;
+
   const [localLine, setLocalLine] = useState<WorkOrderLine>(line);
 
   useEffect(() => {
@@ -96,7 +98,10 @@ export default function WorkOrderLineEditor({ line, onUpdate, onDelete }: Props)
           <select
             value={localLine.hold_reason || ""}
             onChange={(e) =>
-              setLocalLine({ ...localLine, hold_reason: e.target.value as WorkOrderLine["hold_reason"] })
+              setLocalLine({
+                ...localLine,
+                hold_reason: e.target.value as WorkOrderLine["hold_reason"],
+              })
             }
             className="w-full border rounded px-2 py-1 mb-3 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
           >
