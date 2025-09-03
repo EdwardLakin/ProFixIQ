@@ -1,20 +1,25 @@
-"use client"
+// features/dashboard/app/dashboard/admin/EmployeesClient.tsx
+"use client";
 
 import React from "react";
-
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
+type EmpRow = Pick<Profile, "id" | "full_name" | "email" | "role">;
 
 export default function AdminEmployeesClient() {
   const supabase = createClientComponentClient<Database>();
-  const [rows, setRows] = React.useState<Profile[] | null>(null);
+  const [rows, setRows] = React.useState<EmpRow[] | null>(null);
   const [err, setErr] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     (async () => {
-      const { data, error } = await supabase.from("profiles").select("id, full_name, email, role");
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, full_name, email, role")
+        .returns<EmpRow[]>();
+
       if (error) setErr(error.message);
       setRows(data ?? []);
     })();
@@ -22,8 +27,14 @@ export default function AdminEmployeesClient() {
 
   return (
     <div className="p-6 text-white">
-      <h1 className="text-2xl font-semibold mb-4">Employees</h1>
-      {err && <p className="text-red-400 mb-3">profiles table not found or error: {err}</p>}
+      <h1 className="mb-4 text-2xl font-semibold">Employees</h1>
+
+      {err && (
+        <p className="mb-3 text-red-400">
+          profiles table not found or error: {err}
+        </p>
+      )}
+
       {!rows ? (
         <p className="opacity-70">Loading…</p>
       ) : rows.length === 0 ? (
@@ -39,11 +50,11 @@ export default function AdminEmployeesClient() {
               </tr>
             </thead>
             <tbody>
-              {rows.map(r => (
+              {rows.map((r) => (
                 <tr key={r.id} className="border-t border-neutral-800">
                   <td className="px-3 py-2">{r.full_name ?? "—"}</td>
-                  <td className="px-3 py-2">{(r as any).email ?? "—"}</td>
-                  <td className="px-3 py-2">{(r as any).role ?? "—"}</td>
+                  <td className="px-3 py-2">{r.email ?? "—"}</td>
+                  <td className="px-3 py-2">{r.role ?? "—"}</td>
                 </tr>
               ))}
             </tbody>
