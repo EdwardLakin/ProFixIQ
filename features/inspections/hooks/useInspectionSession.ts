@@ -1,38 +1,35 @@
+// features/inspections/hooks/useInspectionSession.ts
 "use client";
 
 import { useState } from "react";
 import {
-  BrakeType,
   InspectionItem,
   InspectionSection,
   InspectionSession,
-  QuoteLine,
-  QuoteLineItem,
+  QuoteLineItem,      // ⬅️ use only QuoteLineItem here
+  BrakeType,
 } from "@inspections/lib/inspection/types";
 
-/** Simple axle config used when starting a session */
 type AxleLayoutConfig = { axleCount: number; brakeType: BrakeType };
 
-/** Create axle measurement sections (CVIP-style) to prepend to the inspection */
-function generateAxleSections(config: AxleLayoutConfig): InspectionSection[] {
-  const { axleCount, brakeType } = config;
+function generateAxleSections({ axleCount, brakeType }: AxleLayoutConfig): InspectionSection[] {
   const sections: InspectionSection[] = [];
 
-  for (let i = 1; i <= axleCount; i += 1) {
+  for (let i = 1; i <= axleCount; i++) {
     const title = `Axle ${i}`;
     const items: InspectionItem[] = [
-      { item: "Left Tread Depth", name: "Left Tread Depth", value: null, unit: "mm", notes: "", photoUrls: [] },
-      { item: "Right Tread Depth", name: "Right Tread Depth", value: null, unit: "mm", notes: "", photoUrls: [] },
-      { item: "Left Tire Pressure", name: "Left Tire Pressure", value: null, unit: "psi", notes: "", photoUrls: [] },
+      { item: "Left Tread Depth",  name: "Left Tread Depth",  value: null, unit: "mm",  notes: "",  photoUrls: [] },
+      { item: "Right Tread Depth", name: "Right Tread Depth", value: null, unit: "mm",  notes: "",  photoUrls: [] },
+      { item: "Left Tire Pressure",  name: "Left Tire Pressure",  value: null, unit: "psi", notes: "", photoUrls: [] },
       { item: "Right Tire Pressure", name: "Right Tire Pressure", value: null, unit: "psi", notes: "", photoUrls: [] },
-      { item: "Left Lining Thickness", name: "Left Lining Thickness", value: null, unit: "mm", notes: "", photoUrls: [] },
+      { item: "Left Lining Thickness",  name: "Left Lining Thickness",  value: null, unit: "mm", notes: "", photoUrls: [] },
       { item: "Right Lining Thickness", name: "Right Lining Thickness", value: null, unit: "mm", notes: "", photoUrls: [] },
       { item: "Wheel Torque", name: "Wheel Torque", value: null, unit: "ft lbs", notes: "", photoUrls: [] },
     ];
 
     if (brakeType === "air") {
       items.push(
-        { item: "Left Push Rod Travel", name: "Left Push Rod Travel", value: null, unit: "in", notes: "", photoUrls: [] },
+        { item: "Left Push Rod Travel",  name: "Left Push Rod Travel",  value: null, unit: "in", notes: "", photoUrls: [] },
         { item: "Right Push Rod Travel", name: "Right Push Rod Travel", value: null, unit: "in", notes: "", photoUrls: [] },
       );
     }
@@ -43,7 +40,7 @@ function generateAxleSections(config: AxleLayoutConfig): InspectionSection[] {
   return sections;
 }
 
-export default function useInspectionSession(initial?: Partial<InspectionSession>) {
+export default function useInspectionSession(initialSession?: Partial<InspectionSession>) {
   const [session, setSession] = useState<InspectionSession>(() => ({
     id: "",
     vehicleId: "",
@@ -60,7 +57,7 @@ export default function useInspectionSession(initial?: Partial<InspectionSession
     completed: false,
     isListening: false,
     isPaused: false,
-    quote: [],
+    quote: [],                                 // ⬅️ QuoteLineItem[]
     lastUpdated: new Date().toISOString(),
     customer: {
       first_name: "",
@@ -82,22 +79,19 @@ export default function useInspectionSession(initial?: Partial<InspectionSession
       color: "",
     },
     sections: [],
-    ...initial,
+    ...initialSession,
   }));
 
-  const stamp = <T extends object>(updates: T) => ({
-    ...updates,
-    lastUpdated: new Date().toISOString(),
-  });
+  const stamp = () => ({ lastUpdated: new Date().toISOString() });
 
   const updateInspection = (updates: Partial<InspectionSession>) =>
-    setSession(prev => ({ ...prev, ...stamp(updates) }));
+    setSession(prev => ({ ...prev, ...updates, ...stamp() }));
 
   const updateSection = (sectionIndex: number, updates: Partial<InspectionSection>) =>
     setSession(prev => {
       const sections = [...prev.sections];
       sections[sectionIndex] = { ...sections[sectionIndex], ...updates };
-      return { ...prev, ...stamp({ sections }) };
+      return { ...prev, sections, ...stamp() };
     });
 
   const updateItem = (sectionIndex: number, itemIndex: number, updates: Partial<InspectionItem>) =>
@@ -106,45 +100,35 @@ export default function useInspectionSession(initial?: Partial<InspectionSession
       const items = [...sections[sectionIndex].items];
       items[itemIndex] = { ...items[itemIndex], ...updates };
       sections[sectionIndex] = { ...sections[sectionIndex], items };
-      return { ...prev, ...stamp({ sections }) };
+      return { ...prev, sections, ...stamp() };
     });
 
-  /** Accepts either DB `QuoteLine` or UI `QuoteLineItem` */
-  const addQuoteLine = (line: QuoteLine | QuoteLineItem) =>
-    setSession(prev => ({ ...prev, ...stamp({ quote: [...(prev.quote || []), line] }) }));
+  // ✅ strictly QuoteLineItem (the normalized/store+PDF shape)
+  const addQuoteLine = (line: QuoteLineItem) =>
+    setSession(prev => ({ ...prev, quote: [...(prev.quote ?? []), line], ...stamp() }));
 
-  /** Accepts array of either type */
-  const updateQuoteLines = (lines: (QuoteLine | QuoteLineItem)[]) =>
-    setSession(prev => ({ ...prev, ...stamp({ quote: lines }) }));
+  const updateQuoteLines = (lines: QuoteLineItem[]) =>
+    setSession(prev => ({ ...prev, quote: lines, ...stamp() }));
 
-  /**
-   * Start / resume with axle presets if provided. New axle sections are
-   * *prepended* above the rest of the template sections.
-   */
-  const startSession = (
-    data: Partial<InspectionSession> & { axleConfig?: AxleLayoutConfig },
-  ) => {
-    const { axleConfig, ...rest } = data;
-    const baseSections = data.sections ?? session.sections;
-
-    const mergedSections =
-      axleConfig && axleConfig.axleCount > 0
-        ? [...generateAxleSections(axleConfig), ...baseSections]
-        : baseSections;
+  const startSession = (sessionData: Partial<InspectionSession> & { axleConfig?: AxleLayoutConfig }) => {
+    const { axleConfig, ...rest } = sessionData;
+    const newSections =
+      axleConfig?.axleCount && axleConfig?.brakeType
+        ? generateAxleSections(axleConfig)
+        : sessionData.sections || session.sections;
 
     setSession(prev => ({
       ...prev,
       ...rest,
-      ...stamp({
-        sections: mergedSections,
-        currentSectionIndex: 0,
-        currentItemIndex: 0,
-        transcript: "",
-        started: true,
-        completed: false,
-        status: "in_progress",
-        isPaused: false,
-      }),
+      sections: newSections,
+      currentSectionIndex: 0,
+      currentItemIndex: 0,
+      transcript: "",
+      started: true,
+      completed: false,
+      status: "in_progress",
+      isPaused: false,
+      ...stamp(),
     }));
   };
 
