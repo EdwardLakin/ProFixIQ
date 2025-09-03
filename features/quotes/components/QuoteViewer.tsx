@@ -10,7 +10,8 @@ import { searchPartsByKeyword } from "@parts/lib/parts/searchParts";
 import { inferPartName } from "@ai/lib/ai/inferPartName";
 
 /** What the UI edits; keep part compatible with your QuoteLineItem type */
-type EditableQuoteLineItem = BaseQuoteLineItem & {
+type EditableQuoteLineItem = Omit<BaseQuoteLineItem, "part"> & {
+  /** allow null while editing */
   part?: { name: string; price: number | null } | null;
   partName: string;
   partPrice?: number | null;
