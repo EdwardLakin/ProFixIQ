@@ -102,7 +102,7 @@ export default function RoleNavOwner() {
           <Link href="/work-orders" className="block hover:text-orange-400">
             All Work Orders
           </Link>
-          {/* NEW: Service Menu */}
+          {/* Service Menu */}
           <Link href="/menu" className="block hover:text-orange-400">
             Service Menu
           </Link>
@@ -156,15 +156,10 @@ export default function RoleNavOwner() {
           </Link>
         </NavSection>
 
+        {/* ✅ Unified AI assistant only */}
         <NavSection title="AI Tools" icon={<FaCogs />} sectionKey="ai">
-          <Link href="/ai/photo" className="block hover:text-orange-400">
-            AI Photo
-          </Link>
-          <Link href="/ai/dtc" className="block hover:text-orange-400">
-            DTC Decoder
-          </Link>
-          <Link href="/ai/chat" className="block hover:text-orange-400">
-            AI Chat
+          <Link href="/ai/assistant" className="block hover:text-orange-400">
+            Tech Assistant
           </Link>
         </NavSection>
 

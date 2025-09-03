@@ -13,6 +13,7 @@ import {
   FaWrench,         // inspections / actions
   FaBoxes,          // parts
   FaComments,       // messaging
+  FaCogs,           // ai assistant
   FaChevronDown,
   FaChevronRight,
 } from "react-icons/fa";
@@ -29,6 +30,7 @@ export default function RoleNavManager() {
   const [inspectionsOpen, setInspectionsOpen] = useState(false);
   const [partsOpen, setPartsOpen] = useState(false);
   const [messagingOpen, setMessagingOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -125,8 +127,21 @@ export default function RoleNavManager() {
         open={messagingOpen}
         toggle={() => setMessagingOpen(!messagingOpen)}
       >
-        <Link href="/ai/chat" className={linkClass("/ai/chat")}>
-          <FaComments /> Chat
+        {/* Keep internal chat link if you have a page for it; otherwise you can remove this entirely
+            because ChatDock now lives in the dashboard layout header. */}
+        <Link href="/messages" className={linkClass("/messages")}>
+          <FaComments /> Team Messages
+        </Link>
+      </Section>
+
+      {/* New unified AI assistant link (replaces old /ai/chat) */}
+      <Section
+        title="AI"
+        open={aiOpen}
+        toggle={() => setAiOpen(!aiOpen)}
+      >
+        <Link href="/ai/assistant" className={linkClass("/ai/assistant")}>
+          <FaCogs /> AI Assistant
         </Link>
       </Section>
 

@@ -1,27 +1,29 @@
+// app/dashboard/admin/AdminDashboardClient.tsx
 "use client";
 
 import Link from "next/link";
 import QuickActions from "@shared/components/QuickActions";
+import AdminQuickPanel from "@/features/admin/components/AdminQuickPanel";
 
 export default function AdminDashboardClient() {
   const tiles = [
     // People & HR
-    { href: "/dashboard/admin/employees",    label: "Employees" },
-    { href: "/dashboard/admin/create-user",  label: "Create User" },
-    { href: "/dashboard/admin/employee-docs",label: "Employee Documents" },
-    { href: "/dashboard/admin/certifications", label: "Certifications" },
-    { href: "/dashboard/admin/scheduling",   label: "Scheduling" },
+    { href: "/dashboard/admin/employees",        label: "Employees" },
+    { href: "/dashboard/admin/create-user",      label: "Create User" },
+    { href: "/dashboard/admin/employee-docs",    label: "Employee Documents" },
+    { href: "/dashboard/admin/certifications",   label: "Certifications" },
+    { href: "/dashboard/admin/scheduling",       label: "Scheduling" },
 
     // Org & Access
-    { href: "/dashboard/admin/roles",        label: "Roles" },
-    { href: "/dashboard/admin/teams",        label: "Teams" },
+    { href: "/dashboard/admin/roles",            label: "Roles" },
+    { href: "/dashboard/admin/teams",            label: "Teams" },
 
     // Business
-    { href: "/dashboard/admin/shops",        label: "Shops" },
-    { href: "/dashboard/admin/billing",      label: "Billing" },
+    { href: "/dashboard/admin/shops",            label: "Shops" },
+    { href: "/dashboard/admin/billing",          label: "Billing" },
 
     // System
-    { href: "/dashboard/admin/audit",        label: "Audit Logs" },
+    { href: "/dashboard/admin/audit",            label: "Audit Logs" },
   ];
 
   return (
@@ -39,8 +41,15 @@ export default function AdminDashboardClient() {
         </div>
       </header>
 
-      <QuickActions role="admin" className="mb-8" />
+      {/* Quick actions */}
+      <QuickActions role="admin" className="mb-6" />
 
+      {/* NEW: condensed quick panel */}
+      <div className="mb-8">
+        <AdminQuickPanel />
+      </div>
+
+      {/* Tiles */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {tiles.map((t) => (
           <Link key={t.href} href={t.href} className="block">

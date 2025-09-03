@@ -8,7 +8,8 @@ import Calendar from "@shared/components/ui/Calendar";
 import { TabsProvider } from "@shared/context/TabsProvider";
 import ShareBookingLink from "@dashboard/components/ShareBookingLink";
 import PunchController from "@/features/shared/components/ui/PunchController";
-import ChatDock from "@/features/chat/components/ChatDock"; // 👈 NEW
+import ChatDock from "@/features/chat/components/ChatDock";
+import TechAssistant from "@/features/shared/components/TechAssistant"; // 👈 NEW
 
 // roles that can see the calendar and share link
 const CALENDAR_ROLES = ["owner", "admin", "manager", "advisor"];
@@ -31,6 +32,9 @@ export default function DashboardLayout({
 
   // mobile sidebar
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // tech assistant drawer
+  const [assistantOpen, setAssistantOpen] = useState(false); // 👈 NEW
 
   useEffect(() => {
     let cancelled = false;
@@ -84,8 +88,9 @@ export default function DashboardLayout({
     [loadingRole, role],
   );
 
-  const showPunch = showShareLink;   // same staff gate
-  const showMessages = showShareLink; // 👈 show chat to staff roles
+  const showPunch = showShareLink;    // same staff gate
+  const showMessages = showShareLink; // chat dock to staff roles
+  const showAssistant = showShareLink; // 👈 assistant to staff roles
 
   return (
     <TabsProvider>
@@ -114,7 +119,20 @@ export default function DashboardLayout({
                 <PunchController />
               </div>
             )}
-            {showMessages && <ChatDock />}{/* 👈 NEW */}
+            {showMessages && <ChatDock />}
+
+            {/* 👇 NEW: Tech Assistant launcher */}
+            {showAssistant && (
+              <button
+                type="button"
+                onClick={() => setAssistantOpen(true)}
+                className="rounded border border-white/15 px-3 py-1 text-sm hover:border-orange-500"
+                aria-label="Open Tech Assistant"
+                title="Open Tech Assistant"
+              >
+                Tech Assistant
+              </button>
+            )}
           </div>
         </div>
 
@@ -205,6 +223,36 @@ export default function DashboardLayout({
           </main>
         </div>
       </div>
+
+      {/* 👇 NEW: Tech Assistant Drawer */}
+      {assistantOpen && (
+        <div className="fixed inset-0 z-50">
+          {/* backdrop */}
+          <button
+            className="absolute inset-0 bg-black/60"
+            aria-label="Close assistant"
+            onClick={() => setAssistantOpen(false)}
+          />
+          <aside
+            className="absolute right-0 top-0 h-full w-full max-w-3xl bg-neutral-900 text-white border-l border-neutral-800 p-4 overflow-y-auto"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-neutral-300">Tech Assistant</h2>
+              <button
+                onClick={() => setAssistantOpen(false)}
+                className="rounded border border-white/15 px-2 py-1 text-xs hover:border-orange-500"
+              >
+                Close
+              </button>
+            </div>
+
+            {/* If you have contextual data (e.g., current WO), pass it as defaultContext */}
+            <TechAssistant />
+          </aside>
+        </div>
+      )}
     </TabsProvider>
   );
 }

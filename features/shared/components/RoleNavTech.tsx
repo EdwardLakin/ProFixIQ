@@ -15,11 +15,12 @@ import {
   FaComments,
   FaChevronDown,
   FaChevronRight,
+  FaCogs,
 } from "react-icons/fa";
 import clsx from "clsx";
 
 export default function RoleNavTech() {
-    const supabase = createClientComponentClient<Database>();
+  const supabase = createClientComponentClient<Database>();
 
   const pathname = usePathname();
   const [role, setRole] = useState<string | null>(null);
@@ -29,6 +30,7 @@ export default function RoleNavTech() {
   const [inspectionOpen, setInspectionOpen] = useState(false);
   const [partsOpen, setPartsOpen] = useState(false);
   const [messagingOpen, setMessagingOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(true);
 
   useEffect(() => {
     const fetchRole = async () => {
@@ -72,6 +74,7 @@ export default function RoleNavTech() {
 
   return (
     <nav className="w-full md:w-64 bg-neutral-900 p-4 text-white space-y-4">
+      {/* Jobs */}
       <div>
         {sectionHeader("Jobs", jobOpen, () => setJobOpen(!jobOpen))}
         {jobOpen && (
@@ -80,8 +83,8 @@ export default function RoleNavTech() {
               <FaClipboardList /> Job Queue
             </Link>
             <Link
-              href="/work-orders/view"
-              className={linkClass("/work-orders/view")}
+              href="/work-orders" // "/work-orders/view" needs an id; list is safer
+              className={linkClass("/work-orders")}
             >
               <FaTools /> Assigned Jobs
             </Link>
@@ -89,6 +92,7 @@ export default function RoleNavTech() {
         )}
       </div>
 
+      {/* Inspections */}
       <div>
         {sectionHeader("Inspections", inspectionOpen, () =>
           setInspectionOpen(!inspectionOpen),
@@ -105,6 +109,7 @@ export default function RoleNavTech() {
         )}
       </div>
 
+      {/* Parts */}
       <div>
         {sectionHeader("Parts", partsOpen, () => setPartsOpen(!partsOpen))}
         {partsOpen && (
@@ -116,14 +121,27 @@ export default function RoleNavTech() {
         )}
       </div>
 
+      {/* AI Tools (Unified Assistant) */}
+      <div>
+        {sectionHeader("AI Tools", aiOpen, () => setAiOpen(!aiOpen))}
+        {aiOpen && (
+          <div className="pl-2 space-y-1">
+            <Link href="/ai/assistant" className={linkClass("/ai/assistant")}>
+              <FaCogs /> Tech Assistant
+            </Link>
+          </div>
+        )}
+      </div>
+
+      {/* Messaging (Chat Dock lives in the dashboard header) */}
       <div>
         {sectionHeader("Messaging", messagingOpen, () =>
           setMessagingOpen(!messagingOpen),
         )}
         {messagingOpen && (
           <div className="pl-2 space-y-1">
-            <Link href="/ai/chat" className={linkClass("/ai/chat")}>
-              <FaComments /> Chat
+            <Link href="/dashboard" className={linkClass("/dashboard")}>
+              <FaComments /> Open Chat (Header Dock)
             </Link>
           </div>
         )}

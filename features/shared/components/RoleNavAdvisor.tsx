@@ -1,3 +1,4 @@
+// features/shared/components/RoleNavAdvisor.tsx
 "use client";
 
 import Link from "next/link";
@@ -9,6 +10,7 @@ import {
   FaClipboardList,
   FaWrench,
   FaComments,
+  FaCogs,
   FaChevronDown,
   FaChevronRight,
 } from "react-icons/fa";
@@ -18,8 +20,8 @@ import ShiftTracker from "@shared/components/ShiftTracker";
 
 export default function RoleNavAdvisor() {
   const supabase = createClientComponentClient<Database>();
-
   const pathname = usePathname();
+
   const [role, setRole] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
 
@@ -69,11 +71,7 @@ export default function RoleNavAdvisor() {
           <span className="flex items-center gap-2">
             <FaClipboardList /> Work Orders
           </span>
-          {openSection === "workorders" ? (
-            <FaChevronDown />
-          ) : (
-            <FaChevronRight />
-          )}
+          {openSection === "workorders" ? <FaChevronDown /> : <FaChevronRight />}
         </button>
         {openSection === "workorders" && (
           <div className="space-y-1 ml-2">
@@ -92,7 +90,6 @@ export default function RoleNavAdvisor() {
             <Link href="/work-orders" className={linkClass("/work-orders")}>
               <FaClipboardList /> All Work Orders
             </Link>
-            {/* NEW: Service Menu link */}
             <Link href="/menu" className={linkClass("/menu")}>
               <FaWrench /> Service Menu
             </Link>
@@ -126,7 +123,27 @@ export default function RoleNavAdvisor() {
         )}
       </div>
 
-      {/* Chat */}
+      {/* AI Assistant */}
+      <div>
+        <button
+          onClick={() => toggleSection("ai")}
+          className="flex items-center justify-between w-full text-left text-orange-500 font-bold mb-2"
+        >
+          <span className="flex items-center gap-2">
+            <FaCogs /> AI Assistant
+          </span>
+          {openSection === "ai" ? <FaChevronDown /> : <FaChevronRight />}
+        </button>
+        {openSection === "ai" && (
+          <div className="space-y-1 ml-2">
+            <Link href="/ai/assistant" className={linkClass("/ai/assistant")}>
+              <FaCogs /> Expert Assistant
+            </Link>
+          </div>
+        )}
+      </div>
+
+      {/* Communication (optional; if ChatDock in layout is enough, remove this block) */}
       <div>
         <button
           onClick={() => toggleSection("chat")}
@@ -139,8 +156,8 @@ export default function RoleNavAdvisor() {
         </button>
         {openSection === "chat" && (
           <div className="space-y-1 ml-2">
-            <Link href="/ai/chat" className={linkClass("/ai/chat")}>
-              <FaComments /> Chat
+            <Link href="/messages" className={linkClass("/messages")}>
+              <FaComments /> Team Messages
             </Link>
           </div>
         )}
