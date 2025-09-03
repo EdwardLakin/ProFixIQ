@@ -1,134 +1,167 @@
-// Shared inspection/quote types used across UI, API and PDF
+// features/inspections/lib/inspection/types.ts
 
-/* ===================== Inspection ===================== */
-
+/** ---------- Item / Section ---------- */
 export type InspectionItemStatus = "ok" | "fail" | "na" | "recommend";
 
-/** One inspection line item */
 export interface InspectionItem {
-  /** Primary label (e.g., "Brake pads") */
-  item: string;
-  /** Optional alternate label some components use */
+  /** Primary label. Some code uses `item`, some uses `name` — support both. */
+  item?: string;
   name?: string;
 
   status?: InspectionItemStatus;
   notes?: string;
+  /** Some AI/normalizers use singular `note`. */
+  note?: string;
 
-  /** Optional numeric/typed value (e.g., tread depth) */
   value?: string | number | null;
   unit?: string | null;
 
   photoUrls?: string[];
+  recommend?: string[];
 }
 
-/** Section of an inspection (e.g., “Brakes”) */
 export interface InspectionCategory {
   title: string;
   items: InspectionItem[];
 }
 
-/** Alias used by some components */
+/** Many places import `InspectionSection`; keep it as an alias. */
 export type InspectionSection = InspectionCategory;
 
-/** Lightweight session model kept in client state */
+/** ---------- Parsed voice commands ---------- */
+export type ParsedCommand =
+  | { type: "status"; section: string; item: string; status: InspectionItemStatus }
+  | { type: "add"; section: string; item: string; note: string }
+  | { type: "recommend"; section: string; item: string; note: string }
+  | { type: "measurement"; section: string; item: string; value: number | string; unit?: string };
+
+/** ---------- Quote shapes ---------- */
+/** Lightweight line produced by AI generators (flexible & optional fields). */
+export interface QuoteLine {
+  description: string;
+
+  /** Newer generator fields */
+  hours?: number;
+  rate?: number;
+  total?: number;
+
+  /** Older fields still referenced in a few places */
+  qty?: number;
+  laborHours?: number | null;
+  partNumber?: string | null;
+  unitPrice?: number | null;
+}
+
+/** Rich line used by PDF and store. Kept broad to accept all callsites. */
+export type QuoteSource = "inspection" | "manual" | string;
+
+export interface QuoteLineItem {
+  id: string;
+
+  /** Some places map description into both `item` and `name`. */
+  item?: string;
+  name?: string;
+  description: string;
+
+  status: InspectionItemStatus;
+  notes?: string;
+
+  /** Unified commercial fields */
+  price: number;              // line price/total
+  laborHours?: number;
+  /** Additional variants used in some flows */
+  laborTime?: number;         // alias used on some pages
+  laborRate?: number;
+
+  /** Item-level measurement value (rare) */
+  value?: string | number | null;
+
+  /** Parts can be object or split fields */
+  part?: { name: string; price: number };
+  partName?: string;
+  partPrice?: number | null;
+
+  /** Old-style fields occasionally present */
+  qty?: number;
+  unitPrice?: number | null;
+
+  /** Misc UI helpers */
+  photoUrls?: string[];
+  editable?: boolean;
+  source?: QuoteSource;
+
+  /** Collections used by some UIs */
+  parts?: Array<{ name?: string; number?: string; price?: number }>;
+  totalCost?: number;
+}
+
+/** ---------- Session (customer/vehicle) ---------- */
+export interface SessionCustomer {
+  first_name: string;
+  last_name: string;
+  phone: string;
+  email: string;
+  address: string;
+  city: string;
+  province: string;
+  postal_code: string;
+}
+
+export interface SessionVehicle {
+  year: string;
+  make: string;
+  model: string;
+  vin: string;
+  license_plate: string;
+  mileage: string;
+  color: string;
+}
+
+/** ---------- Session status ---------- */
+export type InspectionStatus = "not_started" | "in_progress" | "paused" | "completed";
+
+/** ---------- Full session ---------- */
 export interface InspectionSession {
   id?: string;
 
-  // linking
+  /** Links to other records */
   customerId?: string | null;
   vehicleId?: string | null;
   workOrderId?: string | null;
 
-  // template context
+  /** Template meta */
   templateId?: string | null;
   templateName?: string | null;
 
-  // UI/session state
   location?: string | null;
-  currentSectionIndex?: number;
-  currentItemIndex?: number;
+
+  /** Progress */
+  currentSectionIndex: number;
+  currentItemIndex: number;
+
+  /** Voice */
   transcript?: string;
-  status?: "not_started" | "in_progress" | "paused" | "completed";
-  started?: boolean;
-  completed?: boolean;
-  isListening?: boolean;
-  isPaused?: boolean;
+  isListening: boolean;
+
+  /** Lifecycle */
+  status: InspectionStatus;
+  started: boolean;
+  completed: boolean;
+  isPaused: boolean;
+
+  /** Audit */
   lastUpdated?: string;
 
-  // optional rich entities used by your summary page UI
-  customer?: {
-    first_name?: string;
-    last_name?: string;
-    phone?: string;
-    email?: string;
-    address?: string;
-    city?: string;
-    province?: string;
-    postal_code?: string;
-  } | null;
+  /** Entities */
+  customer?: SessionCustomer | null;
+  vehicle?: SessionVehicle | null;
 
-  vehicle?: {
-    year?: string | number | null;
-    make?: string | null;
-    model?: string | null;
-    vin?: string | null;
-    license_plate?: string | null;
-    mileage?: string | number | null;
-    color?: string | null;
-    id?: string | null;
-  } | null;
-
+  /** Content */
   sections: InspectionCategory[];
 
-  /** Quote attached to this session (UI/store/PDF shape) */
-  quote?: QuoteLineItem[];
+  /** Quotes can be DB-sourced or UI-generated — accept both */
+  quote?: Array<QuoteLine | QuoteLineItem>;
 }
 
-/* ======================= Axle / Brake ======================= */
-
+/** ---------- Brake / Axle helpers ---------- */
 export type BrakeType = "air" | "hydraulic";
-
-/* ======================== Quotes ======================== */
-/**
- * AI output / generator output used in summary page before normalization.
- * Keep this minimal and stable.
- */
-export interface QuoteLine {
-  description: string;          // e.g., "Replace front pads/rotors"
-  qty?: number;                 // optional quantity
-  hours?: number;               // labor hours (can be undefined)
-  rate?: number;                // hourly rate (can be undefined)
-  unitPrice?: number | null;    // optional, when a single unit price is known
-}
-
-/**
- * App/store/PDF quote line. This matches how your UI constructs items
- * and what `generateQuotePDFBytes` expects after normalization.
- */
-export interface QuoteLineItem {
-  id: string;
-
-  /** Display label(s) used by UI and PDF */
-  item?: string;                // alias some code sets
-  name: string;
-  description: string;
-
-  /** Optional details and annotations */
-  status?: InspectionItemStatus; // usually "fail" for recommended repairs
-  notes?: string;
-
-  /** Pricing */
-  laborHours?: number | null;
-  /** Final line price (labor + parts, if you pre-compute it); optional */
-  price?: number | null;
-
-  /** Optional structured part line (preferred) */
-  part?: { name: string; price: number } | undefined;
-
-  /** Back-compat fields some code paths set instead of `part` */
-  partName?: string;            // allow present or empty string
-  partPrice?: number | null;    // allow null during construction
-
-  /** Photos tied to the quote line */
-  photoUrls?: string[];
-}

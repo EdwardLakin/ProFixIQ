@@ -10,7 +10,7 @@ import { Input } from "@shared/components/ui/input";
 import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
 
 import InspectionGroupList from "@inspections/components/InspectionGroupList";
-import type { InspectionCategory } from "@inspections/lib/inspection/masterInspectionList";
+import type { InspectionCategory } from "@inspections/lib/inspection/types";
 import { toInspectionCategories } from "@inspections/lib/inspection/normalize";
 
 import useVoiceGenerate from "@inspections/hooks/useVoiceGenerate";
