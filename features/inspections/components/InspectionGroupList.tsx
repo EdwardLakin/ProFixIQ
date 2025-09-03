@@ -5,10 +5,9 @@ import { useState } from "react";
 import { ChevronDownIcon, ChevronRightIcon } from "@heroicons/react/24/solid";
 import type { InspectionCategory } from "@inspections/lib/inspection/masterInspectionList";
 
-type Props = {
+export type InspectionGroupListProps = {
   categories: InspectionCategory[];
   editable?: boolean;
-  // optional: parent can be notified when the list changes (reorder, edit, etc.)
   onChange?: (next: InspectionCategory[]) => void;
 };
 
@@ -16,25 +15,23 @@ export default function InspectionGroupList({
   categories,
   editable = false,
   onChange,
-}: Props) {
+}: InspectionGroupListProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
-  const toggleSection = (title: string) => {
+  const toggle = (title: string) =>
     setExpanded((prev) => ({ ...prev, [title]: !prev[title] }));
-  };
 
-  // helper if/when you add edits later (rename items/sections, etc.)
   const emit = (next: InspectionCategory[]) => onChange?.(next);
 
   return (
     <div className="space-y-4">
-      {categories.map((section, sIdx) => (
+      {categories.map((section) => (
         <div
           key={section.title}
           className="overflow-hidden rounded-md border border-zinc-700 bg-zinc-900"
         >
           <button
-            onClick={() => toggleSection(section.title)}
+            onClick={() => toggle(section.title)}
             className="flex w-full items-center justify-between bg-zinc-800 px-4 py-3 text-left transition-colors hover:bg-zinc-700"
           >
             <span className="font-semibold text-orange-400">
@@ -49,17 +46,15 @@ export default function InspectionGroupList({
 
           {expanded[section.title] && (
             <ul className="space-y-3 bg-zinc-900 px-4 py-3">
-              {section.items.map((item, iIdx) => (
+              {section.items.map((item, idx) => (
                 <li
-                  key={iIdx}
+                  key={`${section.title}-${idx}`}
                   className="flex items-center justify-between border-b border-zinc-700 pb-2"
                 >
                   <span className="text-white">{item.item}</span>
 
                   {editable && (
                     <div className="flex space-x-2">
-                      {/* Buttons are presentational for now.
-                          When you add editing, clone categories -> emit(next) */}
                       <button className="rounded bg-green-600 px-3 py-1 text-xs text-white hover:bg-green-700">
                         OK
                       </button>

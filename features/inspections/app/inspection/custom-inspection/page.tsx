@@ -1,47 +1,69 @@
+// features/inspections/app/inspection/custom-inspection/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
 
-import type { Database, InspectionSection } from "@shared/types/types/supabase";
 import { Button } from "@shared/components/ui/Button";
 import { Textarea } from "@shared/components/ui/textarea";
 import { Input } from "@shared/components/ui/input";
+import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
+
 import InspectionGroupList from "@inspections/components/InspectionGroupList";
+import type {
+  InspectionCategory,
+} from "@inspections/lib/inspection/masterInspectionList";
+import { toInspectionCategories } from "@inspections/lib/inspection/normalize";
 
 type DB = Database;
-type TemplateRow = DB["public"]["Tables"]["inspection_templates"]["Row"];
-type TemplateInsert = DB["public"]["Tables"]["inspection_templates"]["Insert"];
+type TemplatesRow     = DB["public"]["Tables"]["inspection_templates"]["Row"];
+type TemplatesInsert  = DB["public"]["Tables"]["inspection_templates"]["Insert"];
 
 const DRAFT_KEY = "customInspectionDraft:v1";
 
 export default function CustomInspectionPage() {
   const supabase = createClientComponentClient<DB>();
 
-  // authoring state
+  // ---- Authoring state ------------------------------------------------------
   const [prompt, setPrompt] = useState("");
-  const [sections, setSections] = useState<InspectionSection[]>([]);
+  const [sections, setSections] = useState<InspectionCategory[]>([]);
+
+  // Template metadata
   const [templateName, setTemplateName] = useState("");
   const [description, setDescription] = useState("");
   const [vehicleType, setVehicleType] = useState("");
   const [tags, setTags] = useState<string>("");
   const [isPublic, setIsPublic] = useState(false);
 
-  const [saving, setSaving] = useState(false);
-  const [loading, setLoading] = useState(false);
+  // Saved templates (mine)
   const [userId, setUserId] = useState<string | null>(null);
+  const [saved, setSaved] = useState<
+    Pick<TemplatesRow, "id" | "template_name" | "sections" | "created_at">[]
+  >([]);
 
-  // load user id
+  // UI state
+  const [loadingGen, setLoadingGen] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  // ---- Auth + load my recent templates -------------------------------------
   useEffect(() => {
     (async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      setUserId(user?.id ?? null);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      setUserId(user.id);
+
+      const { data } = await supabase
+        .from("inspection_templates")
+        .select("id, template_name, sections, created_at")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+
+      setSaved(data ?? []);
     })();
   }, [supabase]);
 
-  // autosave draft (debounced to 500ms)
+  // ---- Autosave draft to localStorage (debounced) ---------------------------
   const draftJson = useMemo(
     () =>
       JSON.stringify({
@@ -57,20 +79,20 @@ export default function CustomInspectionPage() {
   );
 
   useEffect(() => {
-    const id = setTimeout(() => {
+    const id = window.setTimeout(() => {
       localStorage.setItem(DRAFT_KEY, draftJson);
     }, 500);
     return () => clearTimeout(id);
   }, [draftJson]);
 
-  // resume draft on mount
+  // Resume draft on mount
   useEffect(() => {
-    const raw = localStorage.getItem(DRAFT_KEY);
-    if (!raw) return;
     try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
       const d = JSON.parse(raw) as {
         prompt?: string;
-        sections?: InspectionSection[];
+        sections?: InspectionCategory[];
         templateName?: string;
         description?: string;
         vehicleType?: string;
@@ -84,86 +106,118 @@ export default function CustomInspectionPage() {
       if (d.vehicleType) setVehicleType(d.vehicleType);
       if (typeof d.tags === "string") setTags(d.tags);
       if (typeof d.isPublic === "boolean") setIsPublic(d.isPublic);
-    } catch {}
+    } catch {
+      /* ignore */
+    }
   }, []);
 
-  // generate sections from prompt (same endpoint you used before)
-  const generate = async () => {
+  // ---- Generate sections from a prompt (API you already wired) --------------
+  async function generateInspection() {
     if (!prompt.trim()) return;
-    setLoading(true);
+    setLoadingGen(true);
     try {
       const res = await fetch("/api/generate-inspection", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt }),
       });
-      const data = await res.json();
-      // Expecting { categories: InspectionSection[] } shape
-      const cats: InspectionSection[] = Array.isArray(data?.categories)
-        ? data.categories
-        : [];
-      setSections(cats);
-    } catch (e) {
-      console.error("Generate failed:", e);
+      const json = await res.json();
+      // Normalize to the UI shape in case the API returns a slightly different structure
+      setSections(toInspectionCategories(json?.categories));
+    } catch (err) {
+      console.error("Generate failed:", err);
     } finally {
-      setLoading(false);
+      setLoadingGen(false);
     }
-  };
+  }
 
-  const saveTemplate = async () => {
+  // ---- Save template to DB --------------------------------------------------
+  async function saveTemplate() {
     if (!userId) return alert("Not signed in.");
     if (!templateName.trim()) return alert("Template name is required.");
     if (sections.length === 0) return alert("No sections to save.");
 
     setSaving(true);
     try {
-      const insert: TemplateInsert = {
+      const payload: TemplatesInsert = {
         user_id: userId,
         template_name: templateName,
-        sections,                         // JSONB array, strongly typed
+        sections: (sections as unknown) as TemplatesInsert["sections"], // JSONB[]
         description: description || null,
         tags: tags
-          ? tags
-              .split(",")
-              .map((s) => s.trim())
-              .filter(Boolean)
+          ? tags.split(",").map((s) => s.trim()).filter(Boolean)
           : null,
         vehicle_type: vehicleType || null,
         is_public: isPublic,
-        // optional: version defaults to 1 in SQL
       };
 
       const { error } = await supabase
         .from("inspection_templates")
-        .insert(insert);
+        .insert(payload);
       if (error) {
         console.error(error.message);
         alert("Failed to save template.");
         return;
       }
-      // clear draft once successfully saved
+
+      // Clear draft once saved
       localStorage.removeItem(DRAFT_KEY);
+
+      // Refresh list
+      const { data } = await supabase
+        .from("inspection_templates")
+        .select("id, template_name, sections, created_at")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false });
+      setSaved(data ?? []);
+
       alert("Template saved.");
     } finally {
       setSaving(false);
     }
-  };
+  }
 
+  // ---- Load/Delete existing templates --------------------------------------
+  function loadTemplate(t: Pick<TemplatesRow, "id" | "template_name" | "sections">) {
+    setTemplateName(t.template_name ?? "");
+    setSections(toInspectionCategories(t.sections as unknown));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function deleteTemplate(id: string) {
+    if (!userId) return;
+    const { error } = await supabase.from("inspection_templates").delete().eq("id", id);
+    if (error) {
+      console.error("Delete error:", error.message);
+      return;
+    }
+    setSaved((prev) => prev.filter((x) => x.id !== id));
+  }
+
+  // ---- Render ---------------------------------------------------------------
   return (
     <div className="min-h-screen px-4 py-6 text-white">
-      <h1 className="mb-4 text-3xl font-bold">Custom Inspection</h1>
+      <div className="mb-4 flex items-center justify-between">
+        <PreviousPageButton to="/inspection" />
+        <h1 className="text-3xl font-bold">Custom Inspection</h1>
+      </div>
 
       {/* Prompt → Generate */}
-      <Textarea
-        className="w-full text-black"
-        rows={4}
-        placeholder="Describe what to include (e.g., brakes, lights, fluids)…"
-        value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
-      />
-      <Button className="mt-3" onClick={generate} disabled={loading}>
-        {loading ? "Generating…" : "Generate Sections"}
-      </Button>
+      <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+        <label className="mb-2 block text-sm font-semibold text-neutral-300">
+          Describe what to include
+        </label>
+        <Textarea
+          className="w-full text-black"
+          rows={4}
+          placeholder="e.g. brakes, lights, fluids…"
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+        />
+        <Button className="mt-3" onClick={generateInspection} disabled={loadingGen}>
+          {loadingGen ? "Generating…" : "Generate Sections"}
+        </Button>
+      </div>
 
       {/* Template meta */}
       <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -210,14 +264,43 @@ export default function CustomInspectionPage() {
             editable
             onChange={(next) => setSections(next)}
           />
+          <div className="mt-4 flex gap-3">
+            <Button onClick={saveTemplate} disabled={saving}>
+              {saving ? "Saving…" : "Save Template"}
+            </Button>
+          </div>
         </div>
       )}
 
-      <div className="mt-6 flex gap-3">
-        <Button onClick={saveTemplate} disabled={saving}>
-          {saving ? "Saving…" : "Save Template"}
-        </Button>
-      </div>
+      {/* Saved templates list */}
+      {saved.length > 0 && (
+        <div className="mt-10">
+          <h2 className="mb-2 text-2xl font-semibold text-white">Saved Templates</h2>
+          <ul className="space-y-2">
+            {saved.map((t) => (
+              <li
+                key={t.id}
+                className="flex flex-col gap-2 rounded border border-neutral-800 bg-neutral-900 p-4 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div>
+                  <div className="font-medium">{t.template_name}</div>
+                  <div className="text-xs text-neutral-400">
+                    {t.created_at
+                      ? new Date(t.created_at).toLocaleString()
+                      : "—"}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button onClick={() => loadTemplate(t)}>Load</Button>
+                  <Button variant="destructive" onClick={() => deleteTemplate(t.id)}>
+                    Delete
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
