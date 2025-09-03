@@ -112,21 +112,21 @@ export default function WorkOrderEditorPage() {
 
       <div className="space-y-3">
         {lines.map((line, index) => (
-          <WorkOrderLineForm
-            key={`${line.id ?? "new"}-${index}`}
-            line={line}
-            onUpdate={(updatedLine) => {
-              const updated = [...lines];
-              updated[index] = updatedLine;
-              setLines(updated);
-            }}
-            onDelete={() => {
-              const updated = [...lines];
-              updated.splice(index, 1);
-              setLines(updated);
-            }}
-          />
-        ))}
+  <WorkOrderLineForm
+    key={`${line.id ?? "new"}-${index}`}
+    line={line}
+    onUpdate={(updatedLine: WorkOrderLine) => {
+      const updated = [...lines];
+      updated[index] = updatedLine;
+      setLines(updated);
+    }}
+    onDelete={() => {
+      const updated = [...lines];
+      updated.splice(index, 1);
+      setLines(updated);
+    }}
+  />
+))}
       </div>
     </div>
   );
