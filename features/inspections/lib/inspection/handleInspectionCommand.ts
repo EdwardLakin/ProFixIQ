@@ -1,6 +1,6 @@
+// features/inspections/lib/inspection/handleInspectionCommand.ts
 import type { InspectionCommand, InspectionSession } from "./types";
 import { resolveSynonym } from "./synonyms";
-import type { RecommendCommand } from "@inspections/lib/inspection/types";
 
 export default function handleInspectionCommand(
   session: InspectionSession,
@@ -23,7 +23,8 @@ export default function handleInspectionCommand(
           return { ...item, notes: command.note };
 
         case "recommend": {
-          const { note } = command as RecommendCommand;
+          // Narrow to the recommend variant of the union (has `note`)
+          const { note } = command as Extract<InspectionCommand, { type: "recommend" }>;
           return { ...item, notes: note };
         }
 
