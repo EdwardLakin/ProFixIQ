@@ -36,7 +36,7 @@ export default function InspectionSummaryPage() {
           .map(
             (item) =>
               `• ${item.section} - ${item.item} (${item.status}): ${
-                item.note || "No notes"
+                item.notes || "No notes"
               }`,
           )
           .join("\n");

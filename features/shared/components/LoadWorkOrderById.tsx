@@ -2,14 +2,35 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
-import { RepairLine } from "@ai/lib/parseRepairOutput";
+import type { RepairLine } from "@ai/lib/parseRepairOutput";
 import WorkOrderLineEditor from "@work-orders/components/WorkOrderLineEditor";
 import { saveWorkOrderLines } from "@work-orders/lib/saveWorkOrderLines";
+import type { ComponentProps } from "react";
+
+// Infer the 'line' prop type from WorkOrderLineEditor
+type WorkOrderLine = ComponentProps<typeof WorkOrderLineEditor>["line"];
+
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
 );
+
+// Normalize DB status into RepairLine["status"]
+function normalizeStatus(status: any): RepairLine["status"] {
+  switch (status) {
+    case "unassigned":
+    case "assigned":
+    case "in_progress":
+    case "on_hold":
+    case "completed":
+      return status;
+    case "awaiting": // DB-specific value → map to valid
+      return "assigned";
+    default:
+      return "unassigned";
+  }
+}
 
 export default function LoadWorkOrderById({
   userId,
@@ -36,7 +57,11 @@ export default function LoadWorkOrderById({
         console.error(error);
         setError(error.message);
       } else {
-        setLines(data);
+        const normalized: RepairLine[] = (data ?? []).map((row: any) => ({
+          ...row,
+          status: normalizeStatus(row.status),
+        }));
+        setLines(normalized);
       }
 
       setIsLoading(false);
@@ -81,13 +106,15 @@ export default function LoadWorkOrderById({
       <h2 className="text-xl font-semibold">Edit Work Order #{workOrderId}</h2>
 
       {lines.map((line, index) => (
-        <WorkOrderLineEditor
-          key={line.id || index}
-          line={line}
-          onUpdate={(updated) => updateLine(index, updated)}
-          onDelete={() => deleteLine(index)}
-        />
-      ))}
+  <WorkOrderLineEditor
+    key={(line as any).id ?? index}
+    line={line as unknown as WorkOrderLine}
+    onUpdate={(updated: WorkOrderLine) =>
+      updateLine(index, updated as unknown as RepairLine)
+    }
+    onDelete={() => deleteLine(index)}
+  />
+))}
 
       <button
         onClick={handleSave}

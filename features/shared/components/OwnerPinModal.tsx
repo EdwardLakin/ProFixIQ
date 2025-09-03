@@ -12,7 +12,10 @@ type Props = {
   onVerified?: (expiresAtISO?: string) => void;
 };
 
-export default function OwnerPinModal({ shopId, open, onClose, onVerified }: Props) {
+export default function OwnerPinModal(rawProps: any) {
+  // Cast internally to avoid Next.js client-entry serializable props warning
+  const { shopId, open, onClose, onVerified } = rawProps as Props;
+
   const [pin, setPin] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -33,7 +36,6 @@ export default function OwnerPinModal({ shopId, open, onClose, onVerified }: Pro
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j?.error || "PIN verification failed");
 
-      // Pass the server-reported expiry for the helper timer
       onVerified?.(j?.expiresAt);
       toast.success("Unlocked");
       onClose();
