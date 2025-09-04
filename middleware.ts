@@ -4,6 +4,16 @@ import type { NextRequest } from "next/server";
 import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
+const STAFF_HOME: Record<string, string> = {
+  owner: "/dashboard/owner",
+  admin: "/dashboard/admin",
+  manager: "/dashboard/manager",
+  advisor: "/dashboard/advisor",
+  parts: "/dashboard/parts",
+  mechanic: "/dashboard/tech",
+  tech: "/dashboard/tech",
+};
+
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
   const supabase = createMiddlewareClient<Database>({ req, res });
@@ -13,6 +23,7 @@ export async function middleware(req: NextRequest) {
     data: { session },
   } = await supabase.auth.getSession();
 
+  // Public pages
   const isPublic =
     pathname === "/" ||
     pathname.startsWith("/compare-plans") ||
@@ -20,58 +31,52 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/confirm") ||
     pathname.startsWith("/signup") ||
     pathname.startsWith("/sign-in") ||
+    pathname.startsWith("/portal") || // customer portal always public
     pathname.startsWith("/auth") ||
-    pathname.startsWith("/onboarding") ||
-    pathname.startsWith("/portal") || // portal stays public, but routed to only for customers
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api") ||
     pathname.startsWith("/fonts") ||
     pathname.endsWith("/favicon.ico") ||
-    pathname.endsWith(".svg");
+    pathname.endsWith("/logo.svg");
 
-  // Public routes
+  // If we need role/completion info, fetch it once
+  let role: string | null = null;
+  let completed = false;
+
+  if (session?.user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role, completed_onboarding")
+      .eq("id", session.user.id)
+      .maybeSingle();
+
+    role = profile?.role ?? null;
+    completed = !!profile?.completed_onboarding;
+  }
+
+  // Logged-in user hits the landing? Send to their home (or onboarding if not done)
+  if (pathname === "/" && session?.user) {
+    const to = role && completed ? STAFF_HOME[role] ?? "/onboarding" : "/onboarding";
+    return NextResponse.redirect(new URL(to, req.url));
+  }
+
   if (isPublic) {
-    // If logged-in user hits the landing page, send to role page
-    if (pathname === "/" && session?.user) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", session.user.id)
-        .maybeSingle();
-
-      const role = profile?.role ?? null;
-
-      const to =
-        role === "owner" ? "/dashboard/owner" :
-        role === "admin" ? "/dashboard/admin" :
-        role === "advisor" ? "/dashboard/advisor" :
-        role === "manager" ? "/dashboard/manager" :
-        role === "parts" ? "/dashboard/parts" :
-        role === "mechanic" || role === "tech" ? "/dashboard/tech" :
-        role === "customer" ? "/portal" :
-        "/onboarding";
-
+    // If user tries to open /onboarding but they’re done, send to their home
+    if (pathname.startsWith("/onboarding") && session?.user && role && completed) {
+      const to = STAFF_HOME[role] ?? "/dashboard";
       return NextResponse.redirect(new URL(to, req.url));
     }
     return res;
   }
 
-  // Protected routes below this line
+  // Protected routes below
   if (!session?.user) {
     return NextResponse.redirect(new URL("/sign-in", req.url));
   }
 
-  // If a user with no role hits /dashboard, push them to onboarding
-  if (pathname === "/dashboard") {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", session.user.id)
-      .maybeSingle();
-
-    if (!profile?.role) {
-      return NextResponse.redirect(new URL("/onboarding", req.url));
-    }
+  // If user hasn’t completed onboarding, force them there from any /dashboard* page
+  if (pathname.startsWith("/dashboard") && !(role && completed)) {
+    return NextResponse.redirect(new URL("/onboarding", req.url));
   }
 
   return res;

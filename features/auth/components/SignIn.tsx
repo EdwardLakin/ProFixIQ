@@ -1,8 +1,8 @@
-// features/auth/components/signin.tsx
+// features/auth/components/Signin.tsx
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -20,20 +20,25 @@ const STAFF_HOME: Record<string, string> = {
 
 export default function AuthPage() {
   const router = useRouter();
-  const params = useSearchParams();
   const supabase = createClientComponentClient<Database>();
 
   const [mode, setMode] = useState<Mode>("sign-in");
-  const [email, setEmail] = useState(params.get("email") || "");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState(params.get("notice") || "");
+  const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // ⬇️ Default fallback is onboarding (not /portal)
-  const redirectParam = params.get("redirect") || "/onboarding";
+  // For sign-up: where magic link should land
+  const emailRedirectTo = useMemo(() => {
+    const origin =
+      typeof window !== "undefined"
+        ? window.location.origin
+        : (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
+    return `${origin || "https://profixiq.com"}/confirm`;
+  }, []);
 
-  // If already signed in, route by role
+  // If already signed in, route by role/completed_onboarding
   useEffect(() => {
     (async () => {
       const {
@@ -43,15 +48,16 @@ export default function AuthPage() {
 
       const { data: profile } = await supabase
         .from("profiles")
-        .select("role")
+        .select("role, completed_onboarding")
         .eq("id", session.user.id)
         .maybeSingle();
 
       const role = profile?.role ?? null;
-
-      if (role && role in STAFF_HOME) router.replace(STAFF_HOME[role]);
-      else if (role === "customer") router.replace("/portal");
-      else router.replace("/onboarding");
+      if (role && profile?.completed_onboarding) {
+        router.replace(STAFF_HOME[role] ?? "/onboarding");
+      } else {
+        router.replace("/onboarding");
+      }
     })();
   }, [router, supabase]);
 
@@ -68,6 +74,7 @@ export default function AuthPage() {
       return;
     }
 
+    // Make sure middleware/server sees the new auth cookie
     router.refresh();
 
     const {
@@ -81,20 +88,14 @@ export default function AuthPage() {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("role")
+      .select("role, completed_onboarding")
       .eq("id", user.id)
       .maybeSingle();
 
     const role = profile?.role ?? null;
-
     router.replace(
-      role && role in STAFF_HOME
-        ? STAFF_HOME[role]
-        : role === "customer"
-          ? "/portal"
-          : redirectParam || "/onboarding",
+      role && profile?.completed_onboarding ? (STAFF_HOME[role] ?? "/onboarding") : "/onboarding",
     );
-
     setLoading(false);
   };
 
@@ -103,12 +104,6 @@ export default function AuthPage() {
     setLoading(true);
     setError("");
     setNotice("");
-
-    const origin =
-      typeof window !== "undefined"
-        ? window.location.origin
-        : process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || "";
-    const emailRedirectTo = `${origin}/confirm`;
 
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -122,9 +117,10 @@ export default function AuthPage() {
       return;
     }
 
+    // If email confirmation required, there won't be a session yet
     if (!data.session) {
       setNotice(
-        "Check your inbox for a confirmation link. After confirming, we’ll take you to onboarding."
+        "Check your inbox for a confirmation link. After confirming, we’ll take you to onboarding.",
       );
       setLoading(false);
       return;
@@ -144,14 +140,18 @@ export default function AuthPage() {
 
         <div className="flex justify-center gap-4 text-sm">
           <button
-            className={`px-3 py-1 rounded ${mode === "sign-in" ? "bg-orange-500 text-black" : "bg-neutral-800 text-neutral-300"}`}
+            className={`px-3 py-1 rounded ${
+              mode === "sign-in" ? "bg-orange-500 text-black" : "bg-neutral-800 text-neutral-300"
+            }`}
             onClick={() => setMode("sign-in")}
             disabled={loading}
           >
             Sign In
           </button>
           <button
-            className={`px-3 py-1 rounded ${mode === "sign-up" ? "bg-orange-500 text-black" : "bg-neutral-800 text-neutral-300"}`}
+            className={`px-3 py-1 rounded ${
+              mode === "sign-up" ? "bg-orange-500 text-black" : "bg-neutral-800 text-neutral-300"
+            }`}
             onClick={() => setMode("sign-up")}
             disabled={loading}
           >
@@ -201,8 +201,14 @@ export default function AuthPage() {
         <div className="text-center text-xs text-neutral-400">
           <p>
             By continuing you agree to our{" "}
-            <a href="/terms" className="text-orange-400 hover:underline">Terms</a> and{" "}
-            <a href="/privacy" className="text-orange-400 hover:underline">Privacy Policy</a>.
+            <a href="/terms" className="text-orange-400 hover:underline">
+              Terms
+            </a>{" "}
+            and{" "}
+            <a href="/privacy" className="text-orange-400 hover:underline">
+              Privacy Policy
+            </a>
+            .
           </p>
         </div>
       </div>
