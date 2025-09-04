@@ -21,7 +21,7 @@ const STAFF_HOME: Record<string, string> = {
 export default function AuthPage() {
   const router = useRouter();
   const params = useSearchParams();
-  const supabase = createClientComponentClient<Database>(); // cookie-aware client
+  const supabase = createClientComponentClient<Database>();
 
   const [mode, setMode] = useState<Mode>("sign-in");
   const [email, setEmail] = useState(params.get("email") || "");
@@ -30,10 +30,10 @@ export default function AuthPage() {
   const [notice, setNotice] = useState(params.get("notice") || "");
   const [loading, setLoading] = useState(false);
 
-  // optional redirect target for non-staff (e.g., customer portal)
-  const redirectParam = params.get("redirect") || "/dashboard";
+  // ⬇️ Default fallback is onboarding (not /portal)
+  const redirectParam = params.get("redirect") || "/onboarding";
 
-  // If already signed in, route by role immediately
+  // If already signed in, route by role
   useEffect(() => {
     (async () => {
       const {
@@ -45,13 +45,15 @@ export default function AuthPage() {
         .from("profiles")
         .select("role")
         .eq("id", session.user.id)
-        .single();
+        .maybeSingle();
 
-      const role = profile?.role ?? "customer";
-      if (role in STAFF_HOME) router.replace(STAFF_HOME[role]);
-      else router.replace(redirectParam || "/portal");
+      const role = profile?.role ?? null;
+
+      if (role && role in STAFF_HOME) router.replace(STAFF_HOME[role]);
+      else if (role === "customer") router.replace("/portal");
+      else router.replace("/onboarding");
     })();
-  }, [router, redirectParam, supabase]);
+  }, [router, supabase]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,24 +61,18 @@ export default function AuthPage() {
     setError("");
     setNotice("");
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
       setError(error.message);
       setLoading(false);
       return;
     }
 
-    // ensure server components/middleware see the new auth cookie
     router.refresh();
 
     const {
       data: { user },
     } = await supabase.auth.getUser();
-
     if (!user) {
       setError("No user in session.");
       setLoading(false);
@@ -87,10 +83,18 @@ export default function AuthPage() {
       .from("profiles")
       .select("role")
       .eq("id", user.id)
-      .single();
+      .maybeSingle();
 
-    const role = profile?.role ?? "customer";
-    router.replace(role in STAFF_HOME ? STAFF_HOME[role] : (redirectParam || "/portal"));
+    const role = profile?.role ?? null;
+
+    router.replace(
+      role && role in STAFF_HOME
+        ? STAFF_HOME[role]
+        : role === "customer"
+          ? "/portal"
+          : redirectParam || "/onboarding",
+    );
+
     setLoading(false);
   };
 
@@ -100,7 +104,6 @@ export default function AuthPage() {
     setError("");
     setNotice("");
 
-    // Make magic link land on /confirm (which then routes to onboarding/dash)
     const origin =
       typeof window !== "undefined"
         ? window.location.origin
@@ -119,7 +122,6 @@ export default function AuthPage() {
       return;
     }
 
-    // When email confirmation is required, there won't be a session yet
     if (!data.session) {
       setNotice(
         "Check your inbox for a confirmation link. After confirming, we’ll take you to onboarding."
@@ -128,7 +130,6 @@ export default function AuthPage() {
       return;
     }
 
-    // If confirmation disabled and session exists right away
     router.refresh();
     router.replace("/onboarding");
     setLoading(false);
@@ -143,22 +144,14 @@ export default function AuthPage() {
 
         <div className="flex justify-center gap-4 text-sm">
           <button
-            className={`px-3 py-1 rounded ${
-              mode === "sign-in"
-                ? "bg-orange-500 text-black"
-                : "bg-neutral-800 text-neutral-300"
-            }`}
+            className={`px-3 py-1 rounded ${mode === "sign-in" ? "bg-orange-500 text-black" : "bg-neutral-800 text-neutral-300"}`}
             onClick={() => setMode("sign-in")}
             disabled={loading}
           >
             Sign In
           </button>
           <button
-            className={`px-3 py-1 rounded ${
-              mode === "sign-up"
-                ? "bg-orange-500 text-black"
-                : "bg-neutral-800 text-neutral-300"
-            }`}
+            className={`px-3 py-1 rounded ${mode === "sign-up" ? "bg-orange-500 text-black" : "bg-neutral-800 text-neutral-300"}`}
             onClick={() => setMode("sign-up")}
             disabled={loading}
           >
@@ -166,10 +159,7 @@ export default function AuthPage() {
           </button>
         </div>
 
-        <form
-          onSubmit={mode === "sign-in" ? handleSignIn : handleSignUp}
-          className="space-y-4"
-        >
+        <form onSubmit={mode === "sign-in" ? handleSignIn : handleSignUp} className="space-y-4">
           <input
             type="email"
             placeholder="Email"
@@ -191,9 +181,7 @@ export default function AuthPage() {
           />
 
           {error && <p className="text-red-500 text-sm text-center">{error}</p>}
-          {notice && (
-            <p className="text-green-400 text-sm text-center">{notice}</p>
-          )}
+          {notice && <p className="text-green-400 text-sm text-center">{notice}</p>}
 
           <button
             type="submit"
@@ -213,14 +201,8 @@ export default function AuthPage() {
         <div className="text-center text-xs text-neutral-400">
           <p>
             By continuing you agree to our{" "}
-            <a href="/terms" className="text-orange-400 hover:underline">
-              Terms
-            </a>{" "}
-            and{" "}
-            <a href="/privacy" className="text-orange-400 hover:underline">
-              Privacy Policy
-            </a>
-            .
+            <a href="/terms" className="text-orange-400 hover:underline">Terms</a> and{" "}
+            <a href="/privacy" className="text-orange-400 hover:underline">Privacy Policy</a>.
           </p>
         </div>
       </div>

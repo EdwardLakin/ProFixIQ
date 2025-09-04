@@ -18,6 +18,8 @@ export default function PortalLayout({ children }: { children: ReactNode }) {
             <Link href="/portal/history" className="hover:text-orange-400">History</Link>
             <Link href="/portal/profile" className="hover:text-orange-400">Profile</Link>
             <Link href="/portal/settings" className="hover:text-orange-400">Settings</Link>
+            <Link href="/portal/shop" className="hover:text-orange-400">shop</Link>
+            <Link href="/portal/vehicles" className="hover:text-orange-400">vehicles</Link>
           </nav>
         </div>
       </header>

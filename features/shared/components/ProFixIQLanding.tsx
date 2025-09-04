@@ -1,6 +1,8 @@
+// features/landing/ProFixIQLanding.tsx
 "use client";
 
 import { useEffect } from "react";
+import Link from "next/link";
 import { Toaster } from "sonner";
 
 import LandingHero from "@shared/components/ui/LandingHero";
@@ -19,6 +21,20 @@ export default function ProFixIQLanding() {
   return (
     <div className="bg-black text-white">
       <Toaster position="top-center" />
+
+      {/* Quick access to the Customer Portal */}
+      <div className="w-full bg-neutral-950/60 border-b border-white/10">
+        <Container>
+          <div className="flex items-center justify-end py-3">
+            <Link
+              href="/portal"
+              className="inline-flex items-center gap-2 rounded-lg border border-orange-500/70 bg-black/30 px-3 py-1.5 text-sm font-semibold text-orange-400 hover:bg-orange-500 hover:text-black transition"
+            >
+              Customer Portal
+            </Link>
+          </div>
+        </Container>
+      </div>
 
       {/* 1) HERO */}
       <LandingHero />
