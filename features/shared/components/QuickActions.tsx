@@ -1,44 +1,42 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import React from "react";
+import Link from "next/link";
 
-type Role = "owner" | "manager" | "advisor" | "tech" | "admin";
+type Role = "owner" | "manager" | "advisor" | "tech" | "admin" | "parts";
 
 type Props = {
+  /** The current user role */
   role?: Role;
+  /** Extra classes to position the grid */
   className?: string;
 };
 
-const BASE: { label: string; path: string }[] = [
-  { label: "📸 Diagnose from Photo", path: "/tech/diagnose" },
-  { label: "🔍 Run DTC Diagnosis", path: "/tech/dtc-lookup" },
-  { label: "🧾 View Work Orders", path: "/work-orders" },
-  { label: "📋 Start Inspection", path: "/dashboard/inspections/custom-inspection" },
-  { label: "🚘 Add Vehicle", path: "/vehicles" },
-];
-
-const ADMIN_ACTIONS: typeof BASE = [
-  { label: "👤 Add Employee", path: "/dashboard/admin/create-user" },
-  { label: "🛡️ Manage Roles", path: "/dashboard/admin/roles" },
-  { label: "🏪 Manage Shops", path: "/dashboard/admin/shops" },
-  { label: "📜 Audit Logs", path: "/dashboard/admin/audit" },
+const OWNER_ROLE_LINKS: { label: string; href: string }[] = [
+  { label: "Admin Dashboard",   href: "/dashboard/admin" },
+  { label: "Advisor Dashboard", href: "/dashboard/advisor" },
+  { label: "Manager Dashboard", href: "/dashboard/manager" },
+  { label: "Tech Dashboard",    href: "/dashboard/tech" },
+  { label: "Parts Dashboard",   href: "/dashboard/parts" },
 ];
 
 export default function QuickActions({ role, className = "" }: Props) {
-  const router = useRouter();
-  const actions = role === "admin" ? ADMIN_ACTIONS : BASE;
+  // Only show these “jump to other dashboards” buttons for owners
+  if (role !== "owner") return null;
 
   return (
-    <div className={`grid grid-cols-2 sm:grid-cols-3 gap-4 ${className}`}>
-      {actions.map((a) => (
-        <button
-          key={a.path}
-          onClick={() => router.push(a.path)}
-          className="bg-surface text-accent shadow-card rounded-lg p-4 hover:shadow-lg transition text-left"
+    <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 ${className}`}>
+      {OWNER_ROLE_LINKS.map((item) => (
+        <Link
+          key={item.href}
+          href={item.href}
+          className="rounded-lg border border-white/15 bg-neutral-900 px-4 py-3
+                     text-left hover:border-orange-500 hover:-translate-y-0.5
+                     transition will-change-transform"
+          aria-label={item.label}
         >
-          {a.label}
-        </button>
+          <div className="text-white font-semibold">{item.label}</div>
+          <div className="text-xs text-neutral-400 mt-0.5">Open {item.label}</div>
+        </Link>
       ))}
     </div>
   );

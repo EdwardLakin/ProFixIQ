@@ -61,6 +61,11 @@ export default function WorkOrdersHome() {
           title="Quote Review"
           subtitle="Review and send estimates"
         />
+        <Tile
+          href="/work-orders/view"
+          title="View Work Orders"
+          subtitle="Browse and manage all work orders"
+        />
       </div>
     </div>
   );
