@@ -6,15 +6,25 @@ import type { Database } from "@shared/types/types/supabase";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-const supabase = createClient<Database>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-);
-
 type Vehicle = { year: string; make: string; model: string };
+
+// Lazily create admin client at REQUEST time (not import time)
+function getAdminSupabase() {
+  const url =
+    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const serviceKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
+
+  if (!url || !serviceKey) {
+    throw new Error("Supabase URL or Service Role key is missing");
+  }
+  return createClient<Database>(url, serviceKey);
+}
 
 export async function POST(req: Request) {
   try {
+    const supabase = getAdminSupabase();
+
     const {
       vehicle,
       workOrderLineId,
@@ -33,7 +43,6 @@ export async function POST(req: Request) {
 
     const vdesc = `${vehicle.year} ${vehicle.make} ${vehicle.model}`;
 
-    // --- Expanded, technician-grade prompt ---
     const systemPrompt = [
       `You are a master automotive diagnostic assistant summarizing a completed diagnostic conversation for a ${vdesc}.`,
       `You will produce a shop-ready entry that a service advisor can paste into the work order.`,
@@ -70,7 +79,7 @@ export async function POST(req: Request) {
 
     const chat = await openai.chat.completions.create({
       model: "gpt-4o",
-      temperature: 0.2, // tighter, consistent summaries
+      temperature: 0.2,
       messages: [
         { role: "system", content: systemPrompt },
         ...(context?.trim()
@@ -90,7 +99,6 @@ export async function POST(req: Request) {
     try {
       parsed = JSON.parse(raw);
     } catch {
-      // Handle accidental fences
       const cleaned = raw.replace(/^```json|```$/g, "");
       parsed = JSON.parse(cleaned);
     }
