@@ -3,12 +3,24 @@ import type { NextRequest } from "next/server";
 import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
+const STAFF_HOME: Record<string, string> = {
+  owner: "/dashboard/owner",
+  admin: "/dashboard/admin",
+  manager: "/dashboard/manager",
+  advisor: "/dashboard/advisor",
+  parts: "/dashboard/parts",
+  mechanic: "/dashboard/tech",
+  tech: "/dashboard/tech",
+};
+
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
   const supabase = createMiddlewareClient<Database>({ req, res });
 
   const { pathname } = req.nextUrl;
-  const { data: { session } } = await supabase.auth.getSession();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
 
   const isPublic =
     pathname === "/" ||
@@ -22,49 +34,46 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api") ||
     pathname.startsWith("/fonts") ||
-    pathname.startsWith("/BlackOpsOne-Regular.ttf") ||
     pathname === "/favicon.ico" ||
     pathname === "/logo.svg";
 
-  if (isPublic) {
-    // Optional: send logged-in users from landing to their role page or onboarding
-    if (pathname === "/" && session?.user) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", session.user.id)
-        .maybeSingle();
-
-      const role = profile?.role ?? null;
-      const to =
-        role === "owner"    ? "/dashboard/owner" :
-        role === "admin"    ? "/dashboard/admin" :
-        role === "advisor"  ? "/dashboard/advisor" :
-        role === "manager"  ? "/dashboard/manager" :
-        role === "parts"    ? "/dashboard/parts" :
-        role === "mechanic" || role === "tech" ? "/dashboard/tech" :
-        "/onboarding";
-
-      return NextResponse.redirect(new URL(to, req.url));
-    }
-    return res;
-  }
-
-  // Protected routes below this line
-  if (!session?.user) {
+  // If not logged in and hitting a protected path, send to sign-in
+  if (!isPublic && !session?.user) {
     return NextResponse.redirect(new URL("/sign-in", req.url));
   }
 
-  // If a user with no role hits a generic /dashboard, push them to onboarding
-  if (pathname === "/dashboard") {
+  // If we need role-based decisions, fetch role once
+  let role: string | null = null;
+  if (session?.user) {
     const { data: profile } = await supabase
       .from("profiles")
       .select("role")
       .eq("id", session.user.id)
       .maybeSingle();
+    role = profile?.role ?? null;
+  }
 
-    if (!profile?.role) {
-      return NextResponse.redirect(new URL("/onboarding", req.url));
+  // Landing page: send logged in users based on role
+  if (pathname === "/" && session?.user) {
+    if (!role) return NextResponse.redirect(new URL("/onboarding", req.url));
+    const staffHome = STAFF_HOME[role];
+    return NextResponse.redirect(new URL(staffHome ?? "/portal", req.url));
+  }
+
+  // Hard gate: staff never see /portal, customers never see /dashboard/*
+  if (session?.user) {
+    const isStaff = !!(role && role in STAFF_HOME);
+    if (pathname.startsWith("/portal") && isStaff) {
+      return NextResponse.redirect(new URL(STAFF_HOME[role!], req.url));
+    }
+    if (pathname.startsWith("/dashboard")) {
+      if (!role) {
+        return NextResponse.redirect(new URL("/onboarding", req.url));
+      }
+      if (!isStaff) {
+        // customers can't view dashboards
+        return NextResponse.redirect(new URL("/portal", req.url));
+      }
     }
   }
 

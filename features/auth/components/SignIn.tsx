@@ -31,7 +31,7 @@ export default function AuthPage() {
   const [loading, setLoading] = useState(false);
 
   // optional redirect target for non-staff (e.g., customer portal)
-  const redirectParam = params.get("redirect") || "/portal";
+  const redirectParam = params.get("redirect") || "/dashboard";
 
   // If already signed in, route by role immediately
   useEffect(() => {
