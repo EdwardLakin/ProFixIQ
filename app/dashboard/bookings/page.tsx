@@ -1,4 +1,6 @@
-
+// app/dashboard/bookings/page.tsx
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 import { cookies } from "next/headers";
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
