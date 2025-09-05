@@ -8,13 +8,14 @@ type WorkOrderLineInsert = TablesInsert<"work_order_lines">;
 
 export async function POST(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: { id: string } }
 ) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
   try {
-    const id = params.id;
+    const id = context.params.id;
 
+    // Load the quote line we’re authorizing
     const { data: q, error: qErr } = await supabase
       .from("work_order_quote_lines")
       .select("*")
@@ -25,7 +26,7 @@ export async function POST(
       return NextResponse.json({ error: "Quote line not found" }, { status: 404 });
     }
 
-    // 1) Create a real job line (queued/punchable)
+    // Turn it into a punchable job line
     const newLine: WorkOrderLineInsert = {
       work_order_id: q.work_order_id,
       vehicle_id: q.vehicle_id,
@@ -48,7 +49,7 @@ export async function POST(
       return NextResponse.json({ error: insErr.message }, { status: 500 });
     }
 
-    // 2) Mark quote line as converted
+    // Mark quote line as converted
     const { error: updErr } = await supabase
       .from("work_order_quote_lines")
       .update({ status: "converted", updated_at: new Date().toISOString() })

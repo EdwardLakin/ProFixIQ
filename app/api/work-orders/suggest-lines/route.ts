@@ -1,159 +1,181 @@
+// app/api/work-orders/suggest-lines/route.ts
 import "server-only";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import OpenAI from "openai";
+import { openai } from "lib/server/openai";
+
+export const runtime = "nodejs";
 
 type DB = Database;
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+type VehicleLite = {
+  id: string | null;
+  year: string | null;
+  make: string | null;
+  model: string | null;
+};
 
-export const runtime = "nodejs";
+type ReqBody =
+  | { jobId: string; vehicleId?: VehicleLite | string | null }
+  | { workOrderId: string; vehicleId?: VehicleLite | string | null };
+
+type Suggestion = {
+  name: string;
+  laborHours: number;
+  jobType: "diagnosis" | "repair" | "maintenance" | "tech-suggested";
+  notes: string;
+  aiComplaint?: string;
+  aiCause?: string;
+  aiCorrection?: string;
+};
+
+function isVehicleLite(v: unknown): v is VehicleLite {
+  if (typeof v !== "object" || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return (
+    "id" in o &&
+    "year" in o &&
+    "make" in o &&
+    "model" in o &&
+    (o.id === null || typeof o.id === "string") &&
+    (o.year === null || typeof o.year === "string") &&
+    (o.make === null || typeof o.make === "string") &&
+    (o.model === null || typeof o.model === "string")
+  );
+}
+
+function coerceSuggestion(u: unknown): Suggestion | null {
+  if (typeof u !== "object" || u === null) return null;
+  const o = u as Record<string, unknown>;
+
+  const name = typeof o.name === "string" ? o.name : null;
+  const laborHours =
+    typeof o.laborHours === "number" && Number.isFinite(o.laborHours)
+      ? o.laborHours
+      : null;
+  const jobType =
+    o.jobType === "diagnosis" ||
+    o.jobType === "repair" ||
+    o.jobType === "maintenance" ||
+    o.jobType === "tech-suggested"
+      ? o.jobType
+      : null;
+  const notes = typeof o.notes === "string" ? o.notes : "";
+
+  if (!name || laborHours === null || !jobType) return null;
+
+  const aiComplaint =
+    typeof o.aiComplaint === "string" ? o.aiComplaint : undefined;
+  const aiCause = typeof o.aiCause === "string" ? o.aiCause : undefined;
+  const aiCorrection =
+    typeof o.aiCorrection === "string" ? o.aiCorrection : undefined;
+
+  return { name, laborHours, jobType, notes, aiComplaint, aiCause, aiCorrection };
+}
 
 export async function POST(req: Request) {
   const supabase = createServerComponentClient<DB>({ cookies });
 
   try {
-    const { jobId } = (await req.json()) as { jobId?: string };
-    if (!jobId) {
-      return NextResponse.json({ error: "Missing jobId" }, { status: 400 });
+    const body = (await req.json()) as ReqBody;
+
+    // Gather context
+    let complaint: string | null = null;
+    let vehicle: VehicleLite | null = null;
+
+    if ("jobId" in body) {
+      const { data: line } = await supabase
+        .from("work_order_lines")
+        .select("complaint, vehicle_id, vehicles:vehicle_id ( year, make, model )")
+        .eq("id", body.jobId)
+        .single();
+
+      if (line?.complaint) complaint = line.complaint;
+
+      // Prefer explicit vehicleId passed in the request, else derive from the joined record
+      if (isVehicleLite(body.vehicleId)) {
+        vehicle = body.vehicleId;
+      } else if (line?.vehicles) {
+        const v = line.vehicles as unknown as { year: number | null; make: string | null; model: string | null };
+        vehicle = {
+          id: (line as unknown as { vehicle_id: string | null }).vehicle_id ?? null,
+          year: v?.year != null ? String(v.year) : null,
+          make: v?.make ?? null,
+          model: v?.model ?? null,
+        };
+      }
+    } else if ("workOrderId" in body) {
+      // Pull minimal context from the work order (first line complaint if present)
+      const { data: lines } = await supabase
+        .from("work_order_lines")
+        .select("complaint, vehicle_id")
+        .eq("work_order_id", body.workOrderId)
+        .order("created_at", { ascending: true })
+        .limit(1);
+
+      if (lines && lines.length > 0) {
+        complaint = lines[0]?.complaint ?? null;
+      }
+
+      if (isVehicleLite(body.vehicleId)) {
+        vehicle = body.vehicleId;
+      }
     }
 
-    // 1) Load job line + WO + vehicle for context
-    const { data: job } = await supabase
-      .from("work_order_lines")
-      .select("id, work_order_id, vehicle_id, complaint, job_type")
-      .eq("id", jobId)
-      .maybeSingle();
+    // Compose prompt
+    const vStr =
+      vehicle && (vehicle.make || vehicle.model || vehicle.year)
+        ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim()
+        : "Unknown vehicle";
 
-    if (!job) {
-      return NextResponse.json({ error: "Job not found" }, { status: 404 });
-    }
+    const userContext =
+      [
+        complaint ? `Complaint: ${complaint}` : null,
+        vehicle ? `Vehicle: ${vStr}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n") || "No complaint provided. Vehicle unknown.";
 
-    const { data: vehicle } = await supabase
-      .from("vehicles")
-      .select("id, year, make, model, vin")
-      .eq("id", job.vehicle_id)
-      .maybeSingle();
+    const system = [
+      "You are a service advisor assistant for an auto shop.",
+      "Return a JSON array of 3-6 suggested jobs related to the complaint and vehicle.",
+      "Each item must have fields: name (string), laborHours (number), jobType ('diagnosis'|'repair'|'maintenance'|'tech-suggested'), notes (string).",
+      "When helpful, include aiComplaint, aiCause, aiCorrection to pre-fill story text.",
+      "Keep laborHours realistic; do not exceed 8 hours for a single item.",
+      "Only output raw JSON (no markdown).",
+    ].join(" ");
 
-    const { data: wo } = await supabase
-      .from("work_orders")
-      .select("id, customer_id, notes")
-      .eq("id", job.work_order_id)
-      .maybeSingle();
-
-    // Optional: any DTCs recorded for this vehicle
-    const { data: dtcs } = await supabase
-      .from("vehicle_dtcs")
-      .select("code, description")
-      .eq("vehicle_id", job.vehicle_id)
-      .order("created_at", { ascending: false })
-      .limit(10);
-
-    // Optional: recent history on this vehicle (last 18 months)
-    const since = new Date();
-    since.setMonth(since.getMonth() - 18);
-    const { data: history } = await supabase
-      .from("work_order_lines")
-      .select("id, description, complaint, job_type, status, created_at")
-      .eq("vehicle_id", job.vehicle_id)
-      .gte("created_at", since.toISOString())
-      .order("created_at", { ascending: false })
-      .limit(25);
-
-    // 2) Ask AI for structured suggestions
-    const system = `You are a service writer assistant for an auto repair shop.
-Given a job complaint and vehicle context, suggest 3–6 actionable repair/maintenance line items.
-Return only JSON in this schema:
-[
-  {
-    "name": string,              // e.g. "Front brake pad replacement"
-    "laborHours": number,        // decimal hours estimate, e.g. 1.8
-    "jobType": "diagnosis" | "repair" | "maintenance" | "tech-suggested",
-    "notes": string              // short why/what context for the tech/advisor
-  }
-]`;
-
-    const user = {
-      jobContext: {
-        complaint: job.complaint ?? "",
-        jobType: job.job_type ?? "",
-      },
-      vehicle: vehicle
-        ? {
-            year: String(vehicle.year ?? ""),
-            make: vehicle.make ?? "",
-            model: vehicle.model ?? "",
-            vin: vehicle.vin ?? "",
-          }
-        : null,
-      dtcs: (dtcs ?? []).map((d) => `${d.code} ${d.description ?? ""}`),
-      recentHistory: (history ?? []).map((h) => ({
-        description: h.description ?? h.complaint ?? "",
-        jobType: h.job_type ?? "",
-        status: h.status ?? "",
-        when: h.created_at,
-      })),
-      workOrderNotes: wo?.notes ?? "",
-    };
-
-    const resp = await openai.chat.completions.create({
+    const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      temperature: 0.3,
-      max_tokens: 600,
+      temperature: 0.4,
       messages: [
         { role: "system", content: system },
-        {
-          role: "user",
-          content:
-            "Suggest items relevant to this context. Prefer braking items if the complaint is 'brake squeal', etc. " +
-            "If DTCs exist, include 1–2 diagnostic/confirmation steps where appropriate. " +
-            "Return ONLY valid JSON with no commentary.\n\n" +
-            JSON.stringify(user, null, 2),
-        },
+        { role: "user", content: userContext },
       ],
+      max_tokens: 500,
     });
 
-    // Try to parse JSON safely
-    const raw = resp.choices?.[0]?.message?.content ?? "[]";
-    let suggestions: Array<{
-      name: string;
-      laborHours: number;
-      jobType: "diagnosis" | "repair" | "maintenance" | "tech-suggested";
-      notes: string;
-    }> = [];
+    const raw = completion.choices[0]?.message?.content ?? "[]";
 
+    // Parse & validate
+    let parsed: unknown;
     try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        suggestions = parsed
-          .filter(
-            (x) =>
-              x &&
-              typeof x.name === "string" &&
-              typeof x.laborHours === "number" &&
-              typeof x.notes === "string"
-          )
-          .map((x) => ({
-            name: x.name,
-            laborHours: x.laborHours,
-            jobType:
-              x.jobType === "diagnosis" ||
-              x.jobType === "repair" ||
-              x.jobType === "maintenance" ||
-              x.jobType === "tech-suggested"
-                ? x.jobType
-                : "tech-suggested",
-            notes: x.notes,
-          }));
-      }
+      parsed = JSON.parse(raw);
     } catch {
-      // fallback to empty list
+      parsed = [];
     }
 
+    const suggestions: Suggestion[] = Array.isArray(parsed)
+      ? (parsed
+          .map(coerceSuggestion)
+          .filter((s): s is Suggestion => s !== null)
+          .slice(0, 6))
+      : [];
+
     return NextResponse.json({ suggestions });
-  } catch (e) {
+  } catch {
     return NextResponse.json(
       { error: "Failed to generate suggestions" },
       { status: 500 }
