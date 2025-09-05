@@ -1,2 +1,1 @@
-import { redirect } from "next/navigation";
-export default function Page() { redirect("/dashboard/work-orders"); }
+export { default } from "@/features/work-orders/app/work-orders/queue/page";
