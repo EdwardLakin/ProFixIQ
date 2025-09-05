@@ -2,7 +2,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@/shared/types/types/supabase";
+import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 
