@@ -1,10 +1,12 @@
+"use client";
+
 import { Suspense } from "react";
-import Client from "@/features/inspections/app/inspection/customer-vehicle/page";
+import FeaturePage from "@inspections/app/inspection/customer-vehicle/page"; // ← your existing page
 
 export default function Page() {
   return (
     <Suspense fallback={<div className="p-6 text-white">Loading…</div>}>
-      <Client />
+      <FeaturePage />
     </Suspense>
   );
 }

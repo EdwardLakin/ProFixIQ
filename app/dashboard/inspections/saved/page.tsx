@@ -1,10 +1,15 @@
+// app/dashboard/inspections/saved/page.tsx
+"use client";
+
 import { Suspense } from "react";
-import Client from "@/features/inspections/app/inspection/saved/page";
+import FeaturePage from "@inspections/app/inspection/saved/page";
+
+export const revalidate = 0;
 
 export default function Page() {
   return (
-    <Suspense fallback={<div className="p-6 text-white">Loading…</div>}>
-      <Client />
+    <Suspense fallback={<div className="text-sm text-neutral-400">Loading…</div>}>
+      <FeaturePage />
     </Suspense>
   );
 }

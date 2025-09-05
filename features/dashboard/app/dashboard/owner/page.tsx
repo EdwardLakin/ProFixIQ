@@ -91,13 +91,13 @@ export default function OwnerDashboardPage() {
         {/* Quick actions */}
         <div className="mt-3 flex gap-2 sm:mt-0">
           <Link
-            href="/work-orders/create"
+            href="/dashboard/work-orders/create"
             className="rounded-md bg-orange-500 px-4 py-2 font-semibold text-black transition hover:bg-orange-600"
           >
             + Create Work Order
           </Link>
           <Link
-            href="/work-orders/queue"
+            href="/dashboard/work-orders/queue"
             className="rounded-md border border-white/15 px-4 py-2 transition hover:border-orange-500"
           >
             View Queue
@@ -107,16 +107,15 @@ export default function OwnerDashboardPage() {
 
       {/* Main tiles */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Link href="/work-orders" aria-label="Work Orders">
+        <Link href="/dashboard/work-orders" aria-label="Work Orders">
           <Tile title="Work Orders" subtitle="Create, queue, review quotes" />
         </Link>
 
-        {/* stays inside dashboard layout */}
         <Link href="/dashboard/parts" aria-label="Parts">
           <Tile title="Parts" subtitle="Manage requests, inventory, suppliers" />
         </Link>
 
-        {/* NOTE: /inspections is outside dashboard layout unless we add /dashboard/inspections */}
+        {/* NOTE: /inspections is still outside dashboard unless nested under /dashboard/inspections */}
         <Link href="/inspections" aria-label="Inspections">
           <Tile title="Inspections" subtitle="View and assign inspections" />
         </Link>
@@ -133,8 +132,14 @@ export default function OwnerDashboardPage() {
           <Tile title="Settings" subtitle="Manage shop settings" />
         </Link>
 
-        <Link href="/dashboard/owner/import-customers" aria-label="Customer Import">
-          <Tile title="Customer Import" subtitle="Import customers and vehicle history" />
+        <Link
+          href="/dashboard/owner/import-customers"
+          aria-label="Customer Import"
+        >
+          <Tile
+            title="Customer Import"
+            subtitle="Import customers and vehicle history"
+          />
         </Link>
 
         <Link href="/dashboard/workspace" aria-label="Workspace">
@@ -150,7 +155,9 @@ export default function OwnerDashboardPage() {
           aria-label="Purchase Add-On"
         >
           <h2 className="text-lg font-semibold text-white">Purchase Add-On</h2>
-          <p className="mt-1 text-sm text-white/80">Add 5 more users ($500/year)</p>
+          <p className="mt-1 text-sm text-white/80">
+            Add 5 more users ($500/year)
+          </p>
         </button>
       </div>
     </div>
