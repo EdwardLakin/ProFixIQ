@@ -220,7 +220,7 @@ importers:
         specifier: ^8.5.6
         version: 8.5.6
       supabase:
-        specifier: ^2.26.9
+        specifier: ^2.39.2
         version: 2.39.2
       tailwindcss:
         specifier: ^3.4.17
