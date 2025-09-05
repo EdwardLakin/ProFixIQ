@@ -1,17 +1,16 @@
-import "server-only";
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database, TablesInsert } from "@shared/types/types/supabase";
 
 type DB = Database;
 type WorkOrderLineInsert = TablesInsert<"work_order_lines">;
 
 export async function POST(
-  _req: Request,
+  _req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const supabase = createServerComponentClient<DB>({ cookies });
+  const supabase = createRouteHandlerClient<DB>({ cookies });
 
   try {
     const id = params.id;
@@ -22,20 +21,21 @@ export async function POST(
       .eq("id", id)
       .single();
 
-    if (qErr || !q) return NextResponse.json({ error: "Quote line not found" }, { status: 404 });
+    if (qErr || !q) {
+      return NextResponse.json({ error: "Quote line not found" }, { status: 404 });
+    }
 
-    // 1) Insert a real job line (queued/punchable)
+    // 1) Create a real job line (queued/punchable)
     const newLine: WorkOrderLineInsert = {
       work_order_id: q.work_order_id,
       vehicle_id: q.vehicle_id,
       description: q.description,
       job_type: q.job_type ?? "repair",
-      status: "queued",                 // becomes visible in Tech/Advisor queues
+      status: "queued",
       labor_time: q.est_labor_hours ?? null,
       complaint: q.ai_complaint ?? q.description,
       cause: q.ai_cause ?? null,
       correction: q.ai_correction ?? null,
-      // any other columns you use: priority, tools, etc.
     };
 
     const { data: inserted, error: insErr } = await supabase
@@ -44,7 +44,9 @@ export async function POST(
       .select("id")
       .single();
 
-    if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 });
+    if (insErr) {
+      return NextResponse.json({ error: insErr.message }, { status: 500 });
+    }
 
     // 2) Mark quote line as converted
     const { error: updErr } = await supabase
@@ -52,7 +54,9 @@ export async function POST(
       .update({ status: "converted", updated_at: new Date().toISOString() })
       .eq("id", id);
 
-    if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 });
+    if (updErr) {
+      return NextResponse.json({ error: updErr.message }, { status: 500 });
+    }
 
     return NextResponse.json({ ok: true, jobLineId: inserted?.id ?? null });
   } catch {
