@@ -1,10 +1,22 @@
+// app/dashboard/inspections/[id]/page.tsx
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-// Note: importing a bracket route is fine as long as the file exists at that path.
-import FeaturePage from "@/features/inspections/app/inspection/[id]/page";
+import type { FC, ReactElement } from "react";
+import FeatureRaw from "@/features/inspections/app/inspection/[id]/page";
 
-export default function Page(props: any) {
-  // Pass through route params/search params if the feature page expects them
-  return <FeaturePage {...props} />;
+type FeatureProps = {
+  params: { id: string };
+  searchParams?: Record<string, string | string[] | undefined>;
+};
+
+// The imported feature page is a server component; give it explicit props typing
+const Feature: FC<FeatureProps> =
+  FeatureRaw as unknown as FC<FeatureProps>;
+
+export default function Page({
+  params,
+  searchParams,
+}: FeatureProps): ReactElement {
+  return <Feature params={params} searchParams={searchParams} />;
 }

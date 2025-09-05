@@ -1,10 +1,9 @@
 // app/dashboard/inspections/page.tsx
-"use client";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 import { Suspense } from "react";
 import InspectionMenuClient from "@inspections/app/inspection/InspectionMenuClient";
-
-export const revalidate = 0;
 
 export default function DashboardInspectionsPage() {
   return (
