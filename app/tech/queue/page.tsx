@@ -7,7 +7,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 import JobQueue from "@shared/components/JobQueue";
-import { getQueuedJobsForTech } from "@work-orders/lib/work-orders/getQueuedJobsForTech";
+import { getQueuedJobsForTech } from "@/features/work-orders/lib/work-orders/getQueuedJobsForTech";
 
 type JobLine = Database["public"]["Tables"]["work_order_lines"]["Row"];
 type TechOption = { id: string; full_name: string | null };
