@@ -1,27 +1,28 @@
 // app/work-orders/create/page.tsx
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
-import { insertPrioritizedJobsFromInspection } from "@work-orders/lib/work-orders/insertPrioritizedJobsFromInspection";
-
-type MenuItem = Database["public"]["Tables"]["menu_items"]["Row"];
+type DB = Database;
+type MenuItem = DB["public"]["Tables"]["menu_items"]["Row"];
 
 export default function CreateWorkOrderPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createClientComponentClient<DB>();
 
   const [vehicleId, setVehicleId] = useState<string | null>(null);
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [inspectionId, setInspectionId] = useState<string | null>(null);
 
   const [location, setLocation] = useState("");
-  const [type, setType] = useState<"inspection" | "maintenance" | "diagnosis">("inspection");
+  const [type, setType] = useState<"inspection" | "maintenance" | "diagnosis">(
+    "inspection",
+  );
   const [notes, setNotes] = useState("");
 
   // labels for UI only
@@ -35,7 +36,7 @@ export default function CreateWorkOrderPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // read query params
+  // --- Read query params -----------------------------------------------------
   useEffect(() => {
     const v = searchParams.get("vehicleId");
     const c = searchParams.get("customerId");
@@ -48,7 +49,7 @@ export default function CreateWorkOrderPage() {
     }
   }, [searchParams]);
 
-  // fetch labels & user menu items
+  // --- Fetch labels & user menu items (plus realtime) ------------------------
   useEffect(() => {
     let cancelled = false;
 
@@ -96,9 +97,7 @@ export default function CreateWorkOrderPage() {
           .order("created_at", { ascending: false });
 
         if (!cancelled) {
-          if (error) {
-            console.error("Failed to fetch menu items:", error);
-          }
+          if (error) console.error("Failed to fetch menu items:", error);
           setMenuItems(items ?? []);
         }
 
@@ -107,12 +106,7 @@ export default function CreateWorkOrderPage() {
           .channel("menu-items-create-quickpick")
           .on(
             "postgres_changes",
-            {
-              event: "*",
-              schema: "public",
-              table: "menu_items",
-              filter: `user_id=eq.${user.id}`,
-            },
+            { event: "*", schema: "public", table: "menu_items", filter: `user_id=eq.${user.id}` },
             async () => {
               const { data: refetch } = await supabase
                 .from("menu_items")
@@ -135,17 +129,17 @@ export default function CreateWorkOrderPage() {
     };
   }, [vehicleId, customerId, supabase]);
 
+  // --- Derived picks ---------------------------------------------------------
   const selectedItems = useMemo(
     () => menuItems.filter((m) => selectedIds.includes(m.id)),
     [menuItems, selectedIds],
   );
 
   function togglePick(id: string) {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
+  // --- Submit ---------------------------------------------------------------
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
@@ -176,10 +170,11 @@ export default function CreateWorkOrderPage() {
       location,
       type,
       notes,
-      user_id: user.id, // harmless if nullable
+      user_id: user.id,
     });
 
     if (insertWOError) {
+      console.error(insertWOError);
       setError("Failed to create work order.");
       setLoading(false);
       return;
@@ -191,15 +186,14 @@ export default function CreateWorkOrderPage() {
         work_order_id: newId,
         vehicle_id: vehicleId,
         user_id: user.id,
-        // Map menu item fields into your work_order_lines shape:
-        description: m.name ?? null, // primary label
+        description: m.name ?? null,
         labor_time: m.labor_time ?? null,
         complaint: m.complaint ?? null,
         cause: m.cause ?? null,
         correction: m.correction ?? null,
         tools: m.tools ?? null,
         status: "new" as const,
-        job_type: type, // optional: tie to the WO type
+        job_type: type,
       }));
 
       const { error: lineErr } = await supabase.from("work_order_lines").insert(lineRows);
@@ -209,18 +203,31 @@ export default function CreateWorkOrderPage() {
       }
     }
 
-    // 3) optional: import inspection jobs
+    // 3) OPTIONAL: import inspection jobs — call API route (server-only work)
     if (inspectionId) {
       try {
-        await insertPrioritizedJobsFromInspection(newId, inspectionId, user.id, vehicleId);
-      } catch (e) {
-        console.error("insertPrioritizedJobsFromInspection failed:", e);
+        const res = await fetch("/api/work-orders/import-from-inspection", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            workOrderId: newId,
+            inspectionId,
+            vehicleId,
+          }),
+        });
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          console.error("Import from inspection failed:", j?.error || res.statusText);
+        }
+      } catch (err) {
+        console.error("Import from inspection errored:", err);
       }
     }
 
     router.push(`/work-orders/view/${newId}`);
   }
 
+  // --- Render ---------------------------------------------------------------
   return (
     <div className="mx-auto max-w-6xl p-6 text-white">
       <h1 className="mb-6 text-2xl font-bold">Create Work Order</h1>
@@ -320,17 +327,14 @@ export default function CreateWorkOrderPage() {
                       <div className="truncate font-medium">{m.name}</div>
                       <div className="truncate text-xs text-neutral-400">
                         {typeof m.labor_time === "number" ? `${m.labor_time}h` : "—"}{" "}
-                        {m.tools ? `• Tools: ${m.tools}` : ""}{" "}
-                        {m.complaint ? `• Complaint: ${m.complaint}` : ""}
+                        {m.tools ? `• Tools: ${m.tools}` : ""} {m.complaint ? `• Complaint: ${m.complaint}` : ""}
                       </div>
                     </div>
                     <button
                       type="button"
                       onClick={() => togglePick(m.id)}
                       className={`ml-3 rounded px-3 py-1 text-sm ${
-                        picked
-                          ? "bg-neutral-700 text-white"
-                          : "bg-orange-600 text-black hover:bg-orange-700"
+                        picked ? "bg-neutral-700 text-white" : "bg-orange-600 text-black hover:bg-orange-700"
                       }`}
                     >
                       {picked ? "Remove" : "Add"}
@@ -343,8 +347,7 @@ export default function CreateWorkOrderPage() {
 
           {selectedItems.length > 0 && (
             <div className="mt-3 text-xs text-neutral-300">
-              <strong>Selected:</strong>{" "}
-              {selectedItems.map((s) => s.name).join(", ")}
+              <strong>Selected:</strong> {selectedItems.map((s) => s.name).join(", ")}
             </div>
           )}
         </aside>

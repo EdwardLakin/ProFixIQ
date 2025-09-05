@@ -1,142 +1,71 @@
-// @ai/components/Chatbot.tsx
-"use client";
-
-import { useEffect, useRef, useState } from "react";
-import { FaPaperPlane, FaRobot } from "react-icons/fa";
-import Image from "next/image";
-import Link from "next/link";
+// app/api/chatbot/route.ts
+import { NextResponse } from "next/server";
+import { openai } from "lib/server/openai";
 
 type Variant = "marketing" | "full";
 
-function systemPromptFor(variant: Variant) {
+type ChatMessage = {
+  role: "system" | "user" | "assistant";
+  content: string;
+};
+
+function guardrailSystem(variant: Variant): string {
   if (variant === "marketing") {
     return `You are TechBot for ProFixIQ on the public landing page.
 Answer ONLY questions about ProFixIQ: features, pricing, plans, roles, onboarding, and how the app works.
-Do NOT discuss private user data, shop workflows, or take actions. Keep answers brief and helpful.`;
+Refuse anything about private data, diagnostics for a specific car, or taking actions inside the product.
+Keep answers brief and helpful.`;
   }
   return `You are TechBot for ProFixIQ inside the app.
 Help with diagnostics, inspections, work orders, quotes, parts, and app navigation.
-When relevant, suggest next actions in the product. Keep answers clear and mechanic-friendly.`;
+When relevant, suggest the next action within the app. Keep answers clear and mechanic-friendly.`;
 }
 
-export default function Chatbot({ variant = "full" }: { variant?: Variant }) {
-  const [open, setOpen] = useState(false);
-  const [input, setInput] = useState("");
-  const [messages, setMessages] = useState([
-    { role: "system", content: systemPromptFor(variant) },
-  ]);
-  const [loading, setLoading] = useState(false);
-  const bottomRef = useRef<HTMLDivElement | null>(null);
+export async function POST(req: Request) {
+  try {
+    // basic payload validation
+    const body = (await req.json()) as {
+      messages?: ChatMessage[];
+      variant?: Variant;
+    };
 
-  // allow external “Ask AI” buttons to open this modal
-  useEffect(() => {
-    const handler = () => setOpen(true);
-    window.addEventListener("open-chatbot", handler as EventListener);
-    return () => window.removeEventListener("open-chatbot", handler as EventListener);
-  }, []);
+    const variant: Variant = body?.variant === "marketing" ? "marketing" : "full";
+    const messages = Array.isArray(body?.messages) ? body!.messages : [];
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    // Reinforce a fresh system message server-side (first one in array wins)
+    const system: ChatMessage = { role: "system", content: guardrailSystem(variant) };
 
-  // If variant changes (e.g. component mounted in different place),
-  // reset the system message to the correct mode.
-  useEffect(() => {
-    setMessages([{ role: "system", content: systemPromptFor(variant) }]);
-  }, [variant]);
+    // Filter only roles we allow and coerce to OpenAI format
+    const safeMsgs = [system, ...messages.filter(m => m && typeof m.content === "string")
+      .map(m => ({ role: m.role, content: m.content }))] as ChatMessage[];
 
-  const sendMessage = async () => {
-    if (!input.trim()) return;
-    const updated = [...messages, { role: "user", content: input }];
-    setMessages(updated);
-    setInput("");
-    setLoading(true);
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: safeMsgs,
+      temperature: variant === "marketing" ? 0.4 : 0.6,
+      max_tokens: 600,
+    });
 
-    try {
-      const res = await fetch("/api/chatbot", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        // pass the variant too (server can reinforce guardrails)
-        body: JSON.stringify({ messages: updated, variant }),
-      });
-      const data = await res.json();
-      setMessages([
-        ...updated,
-        { role: "assistant", content: data.reply || "Sorry, something went wrong." },
-      ]);
-    } catch {
-      setMessages([
-        ...updated,
-        { role: "assistant", content: "Connection error. Please try again." },
-      ]);
-    } finally {
-      setLoading(false);
+    const reply =
+      completion.choices?.[0]?.message?.content?.trim() ||
+      "Sorry, I couldn't generate a response.";
+
+    return NextResponse.json({ reply });
+  } catch (err: unknown) {
+    // Common helpful error texts
+    let message = "Unexpected error.";
+    if (err && typeof err === "object" && "message" in err) {
+      message = String((err as any).message);
     }
-  };
 
-  return (
-    <>
-      <button
-        id="chatbot-button"
-        onClick={() => setOpen((o) => !o)}
-        title="Ask TechBot"
-        className="fixed bottom-6 right-6 bg-orange-600 hover:bg-orange-700 text-white p-3 rounded-full shadow-lg z-50"
-      >
-        <FaRobot size={20} />
-      </button>
+    // Hide leak-y messages in production
+    if (/api key/i.test(message) || /401|403/.test(message)) {
+      message = "The assistant is not available right now.";
+    }
 
-      {open && (
-        <div className="fixed bottom-20 right-6 w-80 bg-black border border-neutral-700 text-white rounded-lg shadow-xl flex flex-col z-50">
-          <div className="flex items-center gap-2 p-3 border-b border-neutral-700 bg-neutral-900 rounded-t">
-            <Link href="/" title="Go to Home">
-              <Image src="/logo.png" alt="ProFixIQ" width={28} height={28} priority />
-            </Link>
-            <span className="font-bold text-orange-400">
-              {variant === "marketing" ? "TechBot (About ProFixIQ)" : "TechBot Assistant"}
-            </span>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-3 space-y-2 max-h-96 text-sm">
-            {messages.slice(1).map((m, i) => (
-              <div
-                key={i}
-                className={`p-2 rounded whitespace-pre-wrap ${
-                  m.role === "user"
-                    ? "bg-orange-600 text-black self-end ml-auto"
-                    : "bg-neutral-800 text-white self-start mr-auto"
-                }`}
-              >
-                {m.content}
-              </div>
-            ))}
-            <div ref={bottomRef} />
-          </div>
-
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              void sendMessage();
-            }}
-            className="flex items-center border-t border-neutral-700 p-2 bg-neutral-900"
-          >
-            <input
-              type="text"
-              className="flex-1 bg-transparent outline-none px-2 text-white placeholder-gray-400"
-              placeholder={variant === "marketing" ? "Ask about ProFixIQ…" : "Ask TechBot…"}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              disabled={loading}
-            />
-            <button
-              type="submit"
-              className="text-orange-500 hover:text-orange-400 disabled:opacity-50"
-              disabled={loading}
-            >
-              <FaPaperPlane />
-            </button>
-          </form>
-        </div>
-      )}
-    </>
-  );
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
+
+// Use Node runtime (OpenAI SDK is great here)
+export const runtime = "nodejs";
