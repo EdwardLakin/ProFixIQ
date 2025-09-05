@@ -1,21 +1,28 @@
+// app/api/work-orders/quotes/[id]/authorize/route.ts
+import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database, TablesInsert } from "@shared/types/types/supabase";
 
+export const runtime = "nodejs";
+
 type DB = Database;
 type WorkOrderLineInsert = TablesInsert<"work_order_lines">;
 
-export async function POST(
-  _req: NextRequest,
-  context: { params: { id: string } }
-) {
+export async function POST(req: NextRequest) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
   try {
-    const id = context.params.id;
+    // Extract `[id]` from the pathname .../quotes/<id>/authorize
+    const segments = req.nextUrl.pathname.split("/").filter(Boolean);
+    const id = segments[segments.length - 2]; // the segment before "authorize"
 
-    // Load the quote line we’re authorizing
+    if (!id) {
+      return NextResponse.json({ error: "Missing quote line id" }, { status: 400 });
+    }
+
+    // 1) Load the quote line we’re authorizing
     const { data: q, error: qErr } = await supabase
       .from("work_order_quote_lines")
       .select("*")
@@ -26,7 +33,7 @@ export async function POST(
       return NextResponse.json({ error: "Quote line not found" }, { status: 404 });
     }
 
-    // Turn it into a punchable job line
+    // 2) Turn it into a punchable job line
     const newLine: WorkOrderLineInsert = {
       work_order_id: q.work_order_id,
       vehicle_id: q.vehicle_id,
@@ -49,7 +56,7 @@ export async function POST(
       return NextResponse.json({ error: insErr.message }, { status: 500 });
     }
 
-    // Mark quote line as converted
+    // 3) Mark quote line as converted
     const { error: updErr } = await supabase
       .from("work_order_quote_lines")
       .update({ status: "converted", updated_at: new Date().toISOString() })
