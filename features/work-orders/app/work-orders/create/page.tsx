@@ -224,7 +224,7 @@ export default function CreateWorkOrderPage() {
       }
     }
 
-    router.push(`/work-orders/view/${newId}`);
+    router.push(`/work-orders/${newId}`);
   }
 
   // --- Render ---------------------------------------------------------------

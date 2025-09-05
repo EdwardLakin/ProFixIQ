@@ -1,82 +1,130 @@
-// app/tech/queue/page.tsx
-"use client";
+// features/work-orders/app/work-orders/queue/page.tsx
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { cookies } from "next/headers";
+import Link from "next/link";
+import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
-import JobQueue from "@shared/components/JobQueue";
-import { getQueuedJobsForTech } from "@work-orders/lib/work-orders/getQueuedJobsForTech"; // ✅ correct helper path
+type DB = Database;
+type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
+type WO   = DB["public"]["Tables"]["work_orders"]["Row"];
 
-type JobLine = Database["public"]["Tables"]["work_order_lines"]["Row"]; // ✅ DB row type
-type TechOption = { id: string; full_name: string | null };
+function rollupStatus(lines: Line[]) {
+  const s = new Set((lines ?? []).map(l => l.status ?? "awaiting"));
+  if (s.has("in_progress")) return "in_progress";
+  if (s.has("on_hold")) return "on_hold";
+  if (lines.length && lines.every(l => l.status === "completed")) return "completed";
+  return "awaiting";
+}
 
-export default function TechQueuePage() {
-  const supabase = createClientComponentClient<Database>();
-  const router = useRouter();
+export default async function QueuePage() {
+  const supabase = createServerComponentClient<DB>({ cookies });
 
-  const [jobs, setJobs] = useState<JobLine[]>([]);          // ✅ use JobLine[]
-  const [loading, setLoading] = useState(true);
-  const [tech, setTech] = useState<TechOption | null>(null);
-
-  useEffect(() => {
-    void fetchJobsAndProfile();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  async function fetchJobsAndProfile() {
-    setLoading(true);
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      setJobs([]);
-      setTech(null);
-      setLoading(false);
-      return;
-    }
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("id, full_name")
-      .eq("id", user.id)
-      .single();
-
-    if (profile) {
-      setTech({ id: profile.id, full_name: profile.full_name });
-    } else {
-      setTech(null);
-    }
-
-    // ✅ helper returns JobLine[] and takes a string | undefined
-    const result = await getQueuedJobsForTech(profile?.id);
-    setJobs(result);
-    setLoading(false);
+  // who am I
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return <div className="p-6 text-white">You must be signed in.</div>;
   }
 
-  const handleAssignTech = async (jobId: string, techId: string) => {
-    await supabase.from("work_order_lines").update({ assigned_to: techId }).eq("id", jobId);
-    void fetchJobsAndProfile();
-  };
+  // profile (shop + role)
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("shop_id, role")
+    .eq("id", user.id)
+    .maybeSingle();
 
-  if (loading) return <p className="p-4 text-white">Loading jobs...</p>;
+  if (!profile?.shop_id) {
+    return <div className="p-6 text-white">No shop linked to your profile yet.</div>;
+  }
 
-  const techOptions: TechOption[] = tech ? [tech] : [];
+  const isTech = profile.role === "tech" || profile.role === "mechanic";
+
+  // get recent WOs for the shop
+  const since = new Date();
+  since.setDate(since.getDate() - 30);
+
+  const { data: wos } = await supabase
+    .from("work_orders")
+    .select("*")
+    .eq("shop_id", profile.shop_id)
+    .gte("created_at", since.toISOString())
+    .order("created_at", { ascending: false });
+
+  if (!wos?.length) {
+    return <div className="p-6 text-white">No work orders yet.</div>;
+  }
+
+  // pull all lines for those WOs
+  const { data: lines } = await supabase
+    .from("work_order_lines")
+    .select("*")
+    .in("work_order_id", wos.map(w => w.id));
+
+  const linesByWo = new Map<string, Line[]>();
+  (lines ?? []).forEach(l => {
+    const arr = linesByWo.get(l.work_order_id!) ?? [];
+    arr.push(l);
+    linesByWo.set(l.work_order_id!, arr);
+  });
+
+  // if tech: show only WOs that contain at least one line assigned to them
+  const visibleWos: WO[] = isTech
+    ? wos.filter(wo => (linesByWo.get(wo.id) ?? []).some(l => l.assigned_to === user.id))
+    : wos;
+
+  // header counts
+  const counts = { awaiting: 0, in_progress: 0, on_hold: 0, completed: 0 };
+  for (const wo of visibleWos) {
+    const status = rollupStatus(linesByWo.get(wo.id) ?? []);
+    if (status in counts) (counts as any)[status] += 1;
+    else counts.awaiting += 1;
+  }
 
   return (
-    <div className="p-4">
-      <h1 className="mb-4 text-2xl font-bold text-white">Your Assigned Jobs</h1>
+    <div className="p-6 text-white">
+      <h1 className="text-2xl font-blackops text-orange-400 mb-4">Job Queue</h1>
 
-      <JobQueue
-        jobs={jobs}
-        techOptions={techOptions}
-        onAssignTech={handleAssignTech}
-        onView={(job) => job.work_order_id && router.push(`/work-orders/view/${job.work_order_id}`)}
-        filterTechId={tech?.id ?? null}
-        title="Assigned Job Queue"
-      />
+      <div className="grid gap-3 md:grid-cols-4 mb-6">
+        {(["awaiting","in_progress","on_hold","completed"] as const).map(s => (
+          <div key={s} className="rounded border border-neutral-800 bg-neutral-900 p-3">
+            <div className="text-neutral-400 text-xs uppercase tracking-wide">{s.replace("_"," ")}</div>
+            <div className="text-2xl font-semibold mt-1">{(counts as any)[s] ?? 0}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="space-y-2">
+        {visibleWos.map(wo => {
+          const lns = linesByWo.get(wo.id) ?? [];
+          const status = rollupStatus(lns);
+          const awaiting = lns.filter(l => l.status === "awaiting").length;
+          const inProg  = lns.filter(l => l.status === "in_progress").length;
+          const onHold  = lns.filter(l => l.status === "on_hold").length;
+          const done    = lns.filter(l => l.status === "completed").length;
+
+          return (
+            <Link
+              key={wo.id}
+              href={`/work-orders/${wo.id}`}
+              className="block rounded border border-neutral-800 bg-neutral-900 p-3 hover:border-orange-500 transition"
+            >
+              <div className="flex items-center justify-between">
+                <div className="min-w-0">
+                  <div className="font-medium truncate">WO #{wo.id.slice(0,8)}</div>
+                  <div className="text-xs text-neutral-400">
+                    {awaiting} awaiting · {inProg} in progress · {onHold} on hold · {done} completed
+                  </div>
+                </div>
+                <span className="text-xs rounded border border-neutral-700 px-2 py-1 capitalize">
+                  {status.replace("_"," ")}
+                </span>
+              </div>
+            </Link>
+          );
+        })}
+      </div>
     </div>
   );
 }
