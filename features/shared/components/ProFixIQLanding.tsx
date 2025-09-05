@@ -10,8 +10,8 @@ import FeaturesSection from "@shared/components/ui/FeaturesSection";
 import WhySection from "@shared/components/ui/WhySection";
 import PricingSection from "@shared/components/ui/PricingSection";
 import Footer from "@shared/components/ui/Footer";
-import Chatbot from "@ai/components/Chatbot";
 import Container from "@shared/components/ui/Container";
+import LandingChatbot from "@/features/landing/LandingChatbot"; // ✅ use wrapper
 
 type Interval = "monthly" | "yearly";
 
@@ -96,8 +96,8 @@ export default function ProFixIQLanding() {
         </Container>
       </section>
 
-      {/* 5) Chatbot */}
-      <Chatbot variant="marketing" />
+      {/* 5) Chatbot (marketing wrapper) */}
+      <LandingChatbot />
 
       {/* 6) Footer */}
       <Footer />

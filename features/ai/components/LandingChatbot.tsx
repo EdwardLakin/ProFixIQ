@@ -5,42 +5,22 @@ import { FaPaperPlane, FaRobot } from "react-icons/fa";
 import Image from "next/image";
 import Link from "next/link";
 
-type Variant = "marketing" | "full";
-
-function systemPromptFor(variant: Variant) {
-  if (variant === "marketing") {
-    return `You are TechBot for ProFixIQ on the public landing page.
-Answer ONLY questions about ProFixIQ: features, pricing, plans, roles, onboarding, and how the app works.
-Do NOT discuss private user data, shop workflows, or take actions. Keep answers brief and helpful.`;
-  }
-  return `You are TechBot for ProFixIQ inside the app.
-Help with diagnostics, inspections, work orders, quotes, parts, and app navigation.
-When relevant, suggest next actions in the product. Keep answers clear and mechanic-friendly.`;
-}
-
-export default function Chatbot({ variant = "full" }: { variant?: Variant }) {
+export default function LandingChatbot() {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState([
-    { role: "system", content: systemPromptFor(variant) },
+    {
+      role: "system",
+      content:
+        "You are TechBot for ProFixIQ on the public landing page. Answer ONLY questions about ProFixIQ: features, pricing, plans, roles, onboarding, and how the app works. Refuse anything about private user data or doing actions. Be concise and helpful.",
+    },
   ]);
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  // allow external “Ask AI” buttons to open this modal
-  useEffect(() => {
-    const handler = () => setOpen(true);
-    window.addEventListener("open-chatbot", handler as EventListener);
-    return () => window.removeEventListener("open-chatbot", handler as EventListener);
-  }, []);
-
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
-
-  useEffect(() => {
-    setMessages([{ role: "system", content: systemPromptFor(variant) }]);
-  }, [variant]);
 
   const sendMessage = async () => {
     if (!input.trim()) return;
@@ -53,7 +33,8 @@ export default function Chatbot({ variant = "full" }: { variant?: Variant }) {
       const res = await fetch("/api/chatbot", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: updated, variant }),
+        // Hard-enforce marketing mode on the server too
+        body: JSON.stringify({ messages: updated, variant: "marketing" }),
       });
       const data = await res.json();
       setMessages([
@@ -73,7 +54,6 @@ export default function Chatbot({ variant = "full" }: { variant?: Variant }) {
   return (
     <>
       <button
-        id="chatbot-button"
         onClick={() => setOpen((o) => !o)}
         title="Ask TechBot"
         className="fixed bottom-6 right-6 bg-orange-600 hover:bg-orange-700 text-white p-3 rounded-full shadow-lg z-50"
@@ -87,9 +67,7 @@ export default function Chatbot({ variant = "full" }: { variant?: Variant }) {
             <Link href="/" title="Go to Home">
               <Image src="/logo.png" alt="ProFixIQ" width={28} height={28} priority />
             </Link>
-            <span className="font-bold text-orange-400">
-              {variant === "marketing" ? "TechBot (About ProFixIQ)" : "TechBot Assistant"}
-            </span>
+            <span className="font-bold text-orange-400">TechBot (About ProFixIQ)</span>
           </div>
 
           <div className="flex-1 overflow-y-auto p-3 space-y-2 max-h-96 text-sm">
@@ -118,7 +96,7 @@ export default function Chatbot({ variant = "full" }: { variant?: Variant }) {
             <input
               type="text"
               className="flex-1 bg-transparent outline-none px-2 text-white placeholder-gray-400"
-              placeholder={variant === "marketing" ? "Ask about ProFixIQ…" : "Ask TechBot…"}
+              placeholder="Ask about ProFixIQ…"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               disabled={loading}
