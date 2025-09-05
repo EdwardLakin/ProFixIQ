@@ -1,7 +1,8 @@
-// app/dashboard/advisor/page.tsx
-"use client"
-import AdvisorDashboardPage from "@dashboard/app/dashboard/advisor/page";
+import FeaturePage from "@/features/dashboard/app/dashboard/advisor/page";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export default function Page() {
-  return <AdvisorDashboardPage />;
+  return <FeaturePage />;
 }
