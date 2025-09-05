@@ -1,7 +1,7 @@
-// app/work-orders/create/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
@@ -15,14 +15,13 @@ export default function CreateWorkOrderPage() {
   const searchParams = useSearchParams();
   const supabase = createClientComponentClient<DB>();
 
+  // IDs (via query params or user selection)
   const [vehicleId, setVehicleId] = useState<string | null>(null);
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [inspectionId, setInspectionId] = useState<string | null>(null);
 
-  const [location, setLocation] = useState("");
-  const [type, setType] = useState<"inspection" | "maintenance" | "diagnosis">(
-    "inspection",
-  );
+  // WO form fields
+  const [type, setType] = useState<"inspection" | "maintenance" | "diagnosis">("inspection");
   const [notes, setNotes] = useState("");
 
   // labels for UI only
@@ -36,7 +35,7 @@ export default function CreateWorkOrderPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // --- Read query params -----------------------------------------------------
+  // --- Read query params on mount -------------------------------------------
   useEffect(() => {
     const v = searchParams.get("vehicleId");
     const c = searchParams.get("customerId");
@@ -67,21 +66,26 @@ export default function CreateWorkOrderPage() {
             data ? `${data.year ?? ""} ${data.make ?? ""} ${data.model ?? ""}`.trim() : "",
           );
         }
+      } else if (!cancelled) {
+        setVehicleLabel("");
       }
 
       // customer label
       if (customerId) {
         const { data } = await supabase
           .from("customers")
-          .select("first_name, email")
+          .select("first_name, last_name, email")
           .eq("id", customerId)
           .single();
 
         if (!cancelled) {
+          const name = [data?.first_name ?? "", data?.last_name ?? ""].filter(Boolean).join(" ");
           setCustomerLabel(
-            data ? `${data.first_name ?? ""}${data.email ? ` (${data.email})` : ""}`.trim() : "",
+            data ? `${name || "Customer"}${data.email ? ` (${data.email})` : ""}`.trim() : "",
           );
         }
+      } else if (!cancelled) {
+        setCustomerLabel("");
       }
 
       // menu items for current user
@@ -161,13 +165,12 @@ export default function CreateWorkOrderPage() {
 
     const newId = uuidv4();
 
-    // 1) create the work order
+    // 1) create the work order (no location)
     const { error: insertWOError } = await supabase.from("work_orders").insert({
       id: newId,
       vehicle_id: vehicleId,
       customer_id: customerId,
       inspection_id: inspectionId,
-      location,
       type,
       notes,
       user_id: user.id,
@@ -198,7 +201,6 @@ export default function CreateWorkOrderPage() {
 
       const { error: lineErr } = await supabase.from("work_order_lines").insert(lineRows);
       if (lineErr) {
-        // not fatal; WO exists, but let the user know lines failed
         console.error("Failed to add menu items as lines:", lineErr);
       }
     }
@@ -238,59 +240,157 @@ export default function CreateWorkOrderPage() {
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_360px]">
         {/* Left: Work Order Form */}
-        <form onSubmit={handleSubmit} className="space-y-4 rounded border border-neutral-700 bg-neutral-900 p-4">
-          <div>
-            <label className="block font-medium">Location</label>
-            <input
-              type="text"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
-              placeholder="E.g., Bay 2"
-              required
-              disabled={loading}
-            />
-          </div>
+        <form onSubmit={handleSubmit} className="space-y-5 rounded border border-neutral-700 bg-neutral-900 p-4">
 
-          <div>
-            <label className="block font-medium">Work Order Type</label>
-            <select
-              value={type}
-              onChange={(e) => setType(e.target.value as typeof type)}
-              className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
-              disabled={loading}
-            >
-              <option value="inspection">Inspection</option>
-              <option value="maintenance">Maintenance</option>
-              <option value="diagnosis">Diagnosis</option>
-            </select>
-          </div>
+          {/* Customer & Vehicle pickers */}
+          <section className="rounded border border-neutral-700 p-3">
+            <h2 className="mb-3 text-lg font-semibold text-orange-400">Customer & Vehicle</h2>
 
-          <div>
-            <label className="block font-medium">Work Order Notes</label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
-              rows={3}
-              placeholder="Optional notes for technician"
-              disabled={loading}
-            />
-          </div>
+            {/* Customer */}
+            <div className="mb-3">
+              <label className="block text-sm font-medium">Customer ID</label>
+              <div className="mt-1 flex gap-2">
+                <input
+                  type="text"
+                  value={customerId ?? ""}
+                  onChange={(e) => setCustomerId(e.target.value.trim() || null)}
+                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
+                  placeholder="Paste customer ID or use picker"
+                  disabled={loading}
+                />
+                <button
+                  type="button"
+                  onClick={() => setCustomerId(null)}
+                  className="rounded border border-neutral-600 px-2 text-sm hover:bg-neutral-800"
+                  disabled={loading}
+                >
+                  Clear
+                </button>
+              </div>
+              <div className="mt-1 text-xs text-neutral-400">
+                {customerLabel || (customerId ? customerId : "No customer selected")}
+              </div>
+              {/* If you have a real picker route, wire it here */}
+              <div className="mt-1 text-xs">
+                <Link
+                  href="/dashboard/management/customers?return=/work-orders/create"
+                  className="text-orange-400 hover:underline"
+                >
+                  Browse customers →
+                </Link>
+              </div>
+            </div>
 
-          <div className="space-y-1 text-sm text-neutral-400">
-            <p>
-              <strong>Vehicle:</strong> {vehicleLabel || vehicleId || "—"}
-            </p>
-            <p>
-              <strong>Customer:</strong> {customerLabel || customerId || "—"}
-            </p>
-            {inspectionId ? (
+            {/* Vehicle */}
+            <div>
+              <label className="block text-sm font-medium">Vehicle ID</label>
+              <div className="mt-1 flex gap-2">
+                <input
+                  type="text"
+                  value={vehicleId ?? ""}
+                  onChange={(e) => setVehicleId(e.target.value.trim() || null)}
+                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
+                  placeholder="Paste vehicle ID or use picker"
+                  disabled={loading}
+                />
+                <button
+                  type="button"
+                  onClick={() => setVehicleId(null)}
+                  className="rounded border border-neutral-600 px-2 text-sm hover:bg-neutral-800"
+                  disabled={loading}
+                >
+                  Clear
+                </button>
+              </div>
+              <div className="mt-1 text-xs text-neutral-400">
+                {vehicleLabel || (vehicleId ? vehicleId : "No vehicle selected")}
+              </div>
+              <div className="mt-1 text-xs">
+                <Link
+                  href="/dashboard/parts/vehicles?return=/work-orders/create"
+                  className="text-orange-400 hover:underline"
+                >
+                  Browse vehicles →
+                </Link>
+              </div>
+            </div>
+          </section>
+
+          {/* Optional import from inspection */}
+          <section className="rounded border border-neutral-700 p-3">
+            <h2 className="mb-3 text-lg font-semibold text-orange-400">Optional: Import from Inspection</h2>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={inspectionId ?? ""}
+                onChange={(e) => setInspectionId(e.target.value.trim() || null)}
+                className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
+                placeholder="Paste inspection ID (optional)"
+                disabled={loading}
+              />
+              <button
+                type="button"
+                onClick={() => setInspectionId(null)}
+                className="rounded border border-neutral-600 px-2 text-sm hover:bg-neutral-800"
+                disabled={loading}
+              >
+                Clear
+              </button>
+            </div>
+            <div className="mt-1 text-xs">
+              <Link
+                href="/dashboard/inspections/created?return=/work-orders/create"
+                className="text-orange-400 hover:underline"
+              >
+                View recent inspections →
+              </Link>
+            </div>
+          </section>
+
+          {/* WO basics */}
+          <section className="rounded border border-neutral-700 p-3">
+            <h2 className="mb-3 text-lg font-semibold text-orange-400">Work Order</h2>
+
+            <div className="mb-3">
+              <label className="block font-medium">Type</label>
+              <select
+                value={type}
+                onChange={(e) => setType(e.target.value as typeof type)}
+                className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
+                disabled={loading}
+              >
+                <option value="inspection">Inspection</option>
+                <option value="maintenance">Maintenance</option>
+                <option value="diagnosis">Diagnosis</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block font-medium">Notes</label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
+                rows={3}
+                placeholder="Optional notes for technician"
+                disabled={loading}
+              />
+            </div>
+
+            <div className="mt-3 space-y-1 text-sm text-neutral-400">
               <p>
-                <strong>Inspection ID:</strong> {inspectionId}
+                <strong>Vehicle:</strong> {vehicleLabel || vehicleId || "—"}
               </p>
-            ) : null}
-          </div>
+              <p>
+                <strong>Customer:</strong> {customerLabel || customerId || "—"}
+              </p>
+              {inspectionId ? (
+                <p>
+                  <strong>Inspection ID:</strong> {inspectionId}
+                </p>
+              ) : null}
+            </div>
+          </section>
 
           <div className="flex items-center gap-4 pt-2">
             <button

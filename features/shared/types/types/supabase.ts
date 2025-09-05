@@ -1679,6 +1679,7 @@ export type Database = {
         Row: {
           business_name: string | null
           city: string | null
+          completed_onboarding: boolean
           created_at: string | null
           created_by: string | null
           email: string | null
@@ -1697,6 +1698,7 @@ export type Database = {
         Insert: {
           business_name?: string | null
           city?: string | null
+          completed_onboarding?: boolean
           created_at?: string | null
           created_by?: string | null
           email?: string | null
@@ -1715,6 +1717,7 @@ export type Database = {
         Update: {
           business_name?: string | null
           city?: string | null
+          completed_onboarding?: boolean
           created_at?: string | null
           created_by?: string | null
           email?: string | null
@@ -2709,6 +2712,7 @@ export type Database = {
           job_type: string | null
           labor_time: number | null
           line_status: string | null
+          notes: string | null
           on_hold_since: string | null
           parts_needed: Json | null
           parts_received: Json | null
@@ -2737,6 +2741,7 @@ export type Database = {
           job_type?: string | null
           labor_time?: number | null
           line_status?: string | null
+          notes?: string | null
           on_hold_since?: string | null
           parts_needed?: Json | null
           parts_received?: Json | null
@@ -2765,6 +2770,7 @@ export type Database = {
           job_type?: string | null
           labor_time?: number | null
           line_status?: string | null
+          notes?: string | null
           on_hold_since?: string | null
           parts_needed?: Json | null
           parts_received?: Json | null
