@@ -18,7 +18,7 @@ export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
   const supabase = createMiddlewareClient<Database>({ req, res });
 
-  const { pathname } = req.nextUrl;
+  const { pathname, search } = req.nextUrl;
   const {
     data: { session },
   } = await supabase.auth.getSession();
@@ -31,15 +31,14 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/confirm") ||
     pathname.startsWith("/signup") ||
     pathname.startsWith("/sign-in") ||
-    pathname.startsWith("/portal") || // customer portal always public
-    pathname.startsWith("/auth") ||
+    pathname.startsWith("/portal") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api") ||
     pathname.startsWith("/fonts") ||
     pathname.endsWith("/favicon.ico") ||
     pathname.endsWith("/logo.svg");
 
-  // If we need role/completion info, fetch it once
+  // Profile details (role, onboarding)
   let role: string | null = null;
   let completed = false;
 
@@ -54,14 +53,14 @@ export async function middleware(req: NextRequest) {
     completed = !!profile?.completed_onboarding;
   }
 
-  // Logged-in user hits the landing? Send to their home (or onboarding if not done)
+  // Signed-in user opening landing → send to home or onboarding
   if (pathname === "/" && session?.user) {
     const to = role && completed ? STAFF_HOME[role] ?? "/onboarding" : "/onboarding";
     return NextResponse.redirect(new URL(to, req.url));
   }
 
   if (isPublic) {
-    // If user tries to open /onboarding but they’re done, send to their home
+    // Done with onboarding? Keep them off onboarding pages
     if (pathname.startsWith("/onboarding") && session?.user && role && completed) {
       const to = STAFF_HOME[role] ?? "/dashboard";
       return NextResponse.redirect(new URL(to, req.url));
@@ -69,12 +68,14 @@ export async function middleware(req: NextRequest) {
     return res;
   }
 
-  // Protected routes below
+  // Protected routes
   if (!session?.user) {
-    return NextResponse.redirect(new URL("/sign-in", req.url));
+    const login = new URL("/sign-in", req.url);
+    login.searchParams.set("redirect", pathname + search);
+    return NextResponse.redirect(login);
   }
 
-  // If user hasn’t completed onboarding, force them there from any /dashboard* page
+  // Force onboarding for dashboard if not complete
   if (pathname.startsWith("/dashboard") && !(role && completed)) {
     return NextResponse.redirect(new URL("/onboarding", req.url));
   }
@@ -83,5 +84,10 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: [
+    "/dashboard/:path*",
+    "/work-orders/:path*",
+    "/inspections/:path*",
+    // add more protected branches here if needed
+  ],
 };
