@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { format, formatDistanceStrict } from "date-fns";
 import { toast } from "sonner";
@@ -328,13 +329,24 @@ export default function WorkOrderDetailPage() {
                   ? `${(vehicle.year ?? "").toString()} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`
                   : "—"}
               </div>
-              <div>
-                Customer:{" "}
-                {customer
-                  ? [customer.first_name ?? "", customer.last_name ?? ""]
-                      .filter(Boolean)
-                      .join(" ")
-                  : "—"}
+              <div className="flex items-center gap-2">
+                <span>
+                  Customer:{" "}
+                  {customer
+                    ? [customer.first_name ?? "", customer.last_name ?? ""]
+                        .filter(Boolean)
+                        .join(" ")
+                    : "—"}
+                </span>
+                {customer?.id && (
+                  <Link
+                    href={`/customers/${customer.id}`}
+                    className="text-xs text-orange-500 hover:underline"
+                    title="Open customer profile"
+                  >
+                    View Customer Profile →
+                  </Link>
+                )}
               </div>
             </div>
 

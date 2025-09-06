@@ -25,8 +25,11 @@ function paramToString(v: string | string[] | undefined): string | null {
 
 const statusBadge: Record<string, string> = {
   awaiting: "bg-blue-100 text-blue-800",
+  queued: "bg-blue-100 text-blue-800",
   in_progress: "bg-orange-100 text-orange-800",
   on_hold: "bg-yellow-100 text-yellow-800",
+  planned: "bg-purple-100 text-purple-800",
+  new: "bg-gray-200 text-gray-800",
   completed: "bg-green-100 text-green-800",
 };
 
@@ -108,8 +111,26 @@ export default function WorkOrderPage() {
 
   const chipClass = (s: string | null): string => {
     const key = (s ?? "awaiting") as keyof typeof statusBadge;
-    return `text-xs px-2 py-1 rounded ${statusBadge[key] ?? "bg-gray-200 text-gray-800"}`;
+    return `text-xs px-2 py-1 rounded ${
+      statusBadge[key] ?? "bg-gray-200 text-gray-800"
+    }`;
   };
+
+  // Choose a representative job id for AI suggestions:
+  // 1) in_progress, 2) awaiting/queued, 3) otherwise first line
+  const suggestedJobId: string | null = useMemo(() => {
+    if (!lines.length) return null;
+    const byStatus = (st: string) =>
+      lines.find((l) => (l.status ?? "").toLowerCase() === st)?.id ?? null;
+
+    return (
+      byStatus("in_progress") ||
+      byStatus("awaiting") ||
+      byStatus("queued") ||
+      lines[0]?.id ||
+      null
+    );
+  }, [lines]);
 
   if (!woId) {
     return <div className="p-6 text-red-500">Missing work order id.</div>;
@@ -139,9 +160,9 @@ export default function WorkOrderPage() {
                 </span>
               </div>
               <div className="mt-2 text-sm text-neutral-400">
-                Created: {wo.created_at ? format(new Date(wo.created_at), "PPpp") : "—"}
+                Created:{" "}
+                {wo.created_at ? format(new Date(wo.created_at), "PPpp") : "—"}
               </div>
-              {/* If your schema later adds a 'notes' column, you can show it here again */}
             </div>
 
             {/* Vehicle & Customer */}
@@ -152,10 +173,12 @@ export default function WorkOrderPage() {
                   {vehicle ? (
                     <>
                       <p>
-                        {(vehicle.year ?? "").toString()} {vehicle.make ?? ""} {vehicle.model ?? ""}
+                        {(vehicle.year ?? "").toString()} {vehicle.make ?? ""}{" "}
+                        {vehicle.model ?? ""}
                       </p>
                       <p className="text-sm text-neutral-400">
-                        VIN: {vehicle.vin ?? "—"} • Plate: {vehicle.license_plate ?? "—"}
+                        VIN: {vehicle.vin ?? "—"} • Plate:{" "}
+                        {vehicle.license_plate ?? "—"}
                       </p>
                     </>
                   ) : (
@@ -167,10 +190,13 @@ export default function WorkOrderPage() {
                   {customer ? (
                     <>
                       <p>
-                        {[customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") || "—"}
+                        {[customer.first_name ?? "", customer.last_name ?? ""]
+                          .filter(Boolean)
+                          .join(" ") || "—"}
                       </p>
                       <p className="text-sm text-neutral-400">
-                        {customer.phone ?? "—"} {customer.email ? `• ${customer.email}` : ""}
+                        {customer.phone ?? "—"}{" "}
+                        {customer.email ? `• ${customer.email}` : ""}
                       </p>
                     </>
                   ) : (
@@ -182,7 +208,9 @@ export default function WorkOrderPage() {
 
             {/* Lines list */}
             <div className="rounded border border-neutral-800 bg-neutral-900 p-4 text-white">
-              <h2 className="mb-3 text-lg font-semibold">Jobs in this Work Order</h2>
+              <h2 className="mb-3 text-lg font-semibold">
+                Jobs in this Work Order
+              </h2>
               {lines.length === 0 ? (
                 <p className="text-sm text-neutral-400">No lines yet.</p>
               ) : (
@@ -198,7 +226,9 @@ export default function WorkOrderPage() {
                             {ln.description || ln.complaint || "Untitled job"}
                           </div>
                           <div className="text-xs text-neutral-400">
-                            {(ln.job_type ?? "job").replaceAll("_", " ")} • Status:{" "}
+                            {(ln.job_type ?? "job").replaceAll("_", " ")} •
+                            {" "}
+                            Status:{" "}
                             {(ln.status ?? "awaiting").replaceAll("_", " ")}
                           </div>
                         </div>
@@ -215,13 +245,19 @@ export default function WorkOrderPage() {
 
           {/* RIGHT: actions */}
           <aside className="space-y-6">
-            {/* AI suggestions (uses vehicle id only, as expected by the component) */}
+            {/* AI suggestions */}
             <div className="rounded border border-neutral-800 bg-neutral-900 p-4 text-white">
-              <SuggestedQuickAdd
-                jobId={lines[0]?.id ?? ""}
-                workOrderId={wo.id}
-                vehicleId={vehicle?.id ?? null}
-              />
+              {suggestedJobId ? (
+                <SuggestedQuickAdd
+                  jobId={suggestedJobId}
+                  workOrderId={wo.id}
+                  vehicleId={vehicle?.id ?? null}
+                />
+              ) : (
+                <div className="text-sm text-neutral-400">
+                  Add a job line to enable AI suggestions.
+                </div>
+              )}
             </div>
 
             {/* Manual quick add */}

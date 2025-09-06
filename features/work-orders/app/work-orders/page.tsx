@@ -47,11 +47,6 @@ export default function WorkOrdersHome() {
           cta="+"
         />
         <Tile
-          href="/work-orders/customer"
-          title="Customer Work Order Request"
-          subtitle="Capture a customer-initiated request"
-        />
-        <Tile
           href="/work-orders/queue"
           title="Job Queue"
           subtitle="See active, paused, and in-progress jobs"
@@ -65,6 +60,11 @@ export default function WorkOrdersHome() {
           href="/work-orders/view"
           title="View Work Orders"
           subtitle="Browse and manage all work orders"
+        />
+        <Tile
+          href="/customers"
+          title="Customer Profiles"
+          subtitle="Browse customers, history, and vehicles"
         />
       </div>
     </div>
