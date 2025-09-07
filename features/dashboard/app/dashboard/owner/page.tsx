@@ -107,7 +107,7 @@ export default function OwnerDashboardPage() {
 
       {/* Main tiles */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Link href="/dashboard/work-orders" aria-label="Work Orders">
+        <Link href="/work-orders" aria-label="Work Orders">
           <Tile title="Work Orders" subtitle="Create, queue, review quotes" />
         </Link>
 
