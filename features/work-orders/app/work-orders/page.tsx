@@ -1,3 +1,4 @@
+// app/work-orders/page.tsx
 "use client";
 
 import Link from "next/link";
@@ -50,6 +51,11 @@ export default function WorkOrdersHome() {
           href="/work-orders/queue"
           title="Job Queue"
           subtitle="See active, paused, and in-progress jobs"
+        />
+        <Tile
+          href="/work-orders/editor"
+          title="Work Order Editor"
+          subtitle="Compose job lines from menu items or free-type"
         />
         <Tile
           href="/work-orders/quote-review"

@@ -1,4 +1,4 @@
-// app/work-orders/[id]/page.tsx
+// features/work-orders/app/work-orders/[id]/page.tsx
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -10,6 +10,8 @@ import { format } from "date-fns";
 import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
 import { MenuQuickAdd } from "@work-orders/components/MenuQuickAdd";
 import SuggestedQuickAdd from "@work-orders/components/SuggestedQuickAdd";
+// at the top with other imports
+import { WorkOrderInvoiceDownloadButton } from "@work-orders/components/WorkOrderInvoiceDownloadButton";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -33,6 +35,144 @@ const statusBadge: Record<string, string> = {
   completed: "bg-green-100 text-green-800",
 };
 
+/** Inline form to manually add a new work order line */
+function NewWorkOrderLineForm({
+  workOrderId,
+  vehicleId,
+  defaultJobType,
+  onCreated,
+}: {
+  workOrderId: string;
+  vehicleId: string | null;
+  defaultJobType: string | null | undefined;
+  onCreated: () => void;
+}) {
+  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  // inputs
+  const [description, setDescription] = useState("");
+  const [laborTime, setLaborTime] = useState<string>("");
+  const [jobType, setJobType] = useState<string>(defaultJobType ?? "maintenance");
+  const [complaint, setComplaint] = useState("");
+  const [cause, setCause] = useState("");
+  const [correction, setCorrection] = useState("");
+  const [tools, setTools] = useState("");
+
+  const reset = () => {
+    setDescription("");
+    setLaborTime("");
+    setComplaint("");
+    setCause("");
+    setCorrection("");
+    setTools("");
+    setJobType(defaultJobType ?? "maintenance");
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setErr(null);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    const { error } = await supabase.from("work_order_lines").insert({
+      work_order_id: workOrderId,
+      vehicle_id: vehicleId ?? null,
+      user_id: user?.id ?? null,
+      description: description || null,
+      complaint: complaint || null,
+      cause: cause || null,
+      correction: correction || null,
+      tools: tools || null,
+      labor_time: laborTime ? Number(laborTime) : null,
+      job_type: jobType || defaultJobType || null,
+      status: "awaiting", // safer default
+    });
+
+    setSaving(false);
+    if (error) {
+      setErr(error.message);
+      return;
+    }
+    reset();
+    onCreated();
+  };
+
+  return (
+    <div className="rounded border border-neutral-800 bg-neutral-950 p-3 mb-4">
+      <h3 className="font-semibold mb-2 text-white">Add New Job Line</h3>
+      {err && <div className="mb-2 text-red-400 text-sm">{err}</div>}
+      <form onSubmit={handleSubmit} className="grid gap-2">
+        <input
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          className="rounded bg-neutral-900 border border-neutral-700 p-2 text-white"
+          placeholder="Short description (e.g. 'Front brake service')"
+        />
+
+        <div className="grid gap-2 sm:grid-cols-2">
+          <input
+            inputMode="decimal"
+            value={laborTime}
+            onChange={(e) => setLaborTime(e.target.value)}
+            className="rounded bg-neutral-900 border border-neutral-700 p-2 text-white"
+            placeholder="Labor hours (e.g. 1.5)"
+          />
+          <select
+            value={jobType}
+            onChange={(e) => setJobType(e.target.value)}
+            className="rounded bg-neutral-900 border border-neutral-700 p-2 text-white"
+          >
+            <option value="maintenance">Maintenance</option>
+            <option value="diagnosis">Diagnosis</option>
+            <option value="inspection">Inspection</option>
+          </select>
+        </div>
+
+        <div className="grid gap-2 sm:grid-cols-3">
+          <input
+            value={complaint}
+            onChange={(e) => setComplaint(e.target.value)}
+            className="rounded bg-neutral-900 border border-neutral-700 p-2 text-white"
+            placeholder="Complaint"
+          />
+          <input
+            value={cause}
+            onChange={(e) => setCause(e.target.value)}
+            className="rounded bg-neutral-900 border border-neutral-700 p-2 text-white"
+            placeholder="Cause"
+          />
+          <input
+            value={correction}
+            onChange={(e) => setCorrection(e.target.value)}
+            className="rounded bg-neutral-900 border border-neutral-700 p-2 text-white"
+            placeholder="Correction"
+          />
+        </div>
+
+        <input
+          value={tools}
+          onChange={(e) => setTools(e.target.value)}
+          className="rounded bg-neutral-900 border border-neutral-700 p-2 text-white"
+          placeholder="Tools"
+        />
+
+        <button
+          type="submit"
+          disabled={saving}
+          className="mt-2 w-max rounded bg-orange-500 px-3 py-2 font-semibold text-black hover:bg-orange-600 disabled:opacity-60"
+        >
+          {saving ? "Adding…" : "Add Line"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 export default function WorkOrderPage() {
   const params = useParams();
   const woId = useMemo(() => {
@@ -47,6 +187,7 @@ export default function WorkOrderPage() {
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [showAddForm, setShowAddForm] = useState(false); // ← toggle
 
   const fetchAll = useCallback(async () => {
     if (!woId) return;
@@ -111,13 +252,10 @@ export default function WorkOrderPage() {
 
   const chipClass = (s: string | null): string => {
     const key = (s ?? "awaiting") as keyof typeof statusBadge;
-    return `text-xs px-2 py-1 rounded ${
-      statusBadge[key] ?? "bg-gray-200 text-gray-800"
-    }`;
+    return `text-xs px-2 py-1 rounded ${statusBadge[key] ?? "bg-gray-200 text-gray-800"}`;
   };
 
-  // Choose a representative job id for AI suggestions:
-  // 1) in_progress, 2) awaiting/queued, 3) otherwise first line
+  // Choose a representative job id for AI suggestions
   const suggestedJobId: string | null = useMemo(() => {
     if (!lines.length) return null;
     const byStatus = (st: string) =>
@@ -138,7 +276,8 @@ export default function WorkOrderPage() {
 
   return (
     <div className="p-4 sm:p-6">
-      <PreviousPageButton to="/work-orders/queue" />
+      <PreviousPageButton to="/work-orders" />
+
       {loading && <div className="mt-6 text-white">Loading…</div>}
 
       {!loading && !wo && (
@@ -159,9 +298,19 @@ export default function WorkOrderPage() {
                   {(wo.status ?? "awaiting").replaceAll("_", " ")}
                 </span>
               </div>
-              <div className="mt-2 text-sm text-neutral-400">
-                Created:{" "}
-                {wo.created_at ? format(new Date(wo.created_at), "PPpp") : "—"}
+              <div className="mt-2 grid gap-2 text-sm text-neutral-300 sm:grid-cols-3">
+                <div>
+                  <div className="text-neutral-400">Created</div>
+                  <div>{wo.created_at ? format(new Date(wo.created_at), "PPpp") : "—"}</div>
+                </div>
+                <div>
+                  <div className="text-neutral-400">Type</div>
+                  <div>{wo.type ?? "—"}</div>
+                </div>
+                <div>
+                  <div className="text-neutral-400">Notes</div>
+                  <div className="truncate">{(wo as any).notes ?? "—"}</div>
+                </div>
               </div>
             </div>
 
@@ -177,8 +326,7 @@ export default function WorkOrderPage() {
                         {vehicle.model ?? ""}
                       </p>
                       <p className="text-sm text-neutral-400">
-                        VIN: {vehicle.vin ?? "—"} • Plate:{" "}
-                        {vehicle.license_plate ?? "—"}
+                        VIN: {vehicle.vin ?? "—"} • Plate: {vehicle.license_plate ?? "—"}
                       </p>
                     </>
                   ) : (
@@ -195,8 +343,7 @@ export default function WorkOrderPage() {
                           .join(" ") || "—"}
                       </p>
                       <p className="text-sm text-neutral-400">
-                        {customer.phone ?? "—"}{" "}
-                        {customer.email ? `• ${customer.email}` : ""}
+                        {customer.phone ?? "—"} {customer.email ? `• ${customer.email}` : ""}
                       </p>
                     </>
                   ) : (
@@ -206,11 +353,31 @@ export default function WorkOrderPage() {
               </div>
             </div>
 
-            {/* Lines list */}
+            {/* Jobs / Lines */}
             <div className="rounded border border-neutral-800 bg-neutral-900 p-4 text-white">
-              <h2 className="mb-3 text-lg font-semibold">
-                Jobs in this Work Order
-              </h2>
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h2 className="text-lg font-semibold">Jobs in this Work Order</h2>
+
+                <button
+                  type="button"
+                  onClick={() => setShowAddForm((v) => !v)}
+                  className="rounded bg-neutral-800 border border-neutral-700 px-3 py-1.5 text-sm hover:border-orange-500"
+                  aria-expanded={showAddForm}
+                >
+                  {showAddForm ? "Hide Add Job Line" : "Add Job Line"}
+                </button>
+              </div>
+
+              {/* Manual add form (toggle) */}
+              {showAddForm && (
+                <NewWorkOrderLineForm
+                  workOrderId={wo.id}
+                  vehicleId={vehicle?.id ?? null}
+                  defaultJobType={wo.type ?? null}
+                  onCreated={() => fetchAll()}
+                />
+              )}
+
               {lines.length === 0 ? (
                 <p className="text-sm text-neutral-400">No lines yet.</p>
               ) : (
@@ -226,11 +393,17 @@ export default function WorkOrderPage() {
                             {ln.description || ln.complaint || "Untitled job"}
                           </div>
                           <div className="text-xs text-neutral-400">
-                            {(ln.job_type ?? "job").replaceAll("_", " ")} •
-                            {" "}
-                            Status:{" "}
+                            {(ln.job_type ?? "job").replaceAll("_", " ")} •{" "}
+                            {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} • Status:{" "}
                             {(ln.status ?? "awaiting").replaceAll("_", " ")}
                           </div>
+                          {(ln.complaint || ln.cause || ln.correction) && (
+                            <div className="text-xs text-neutral-400 mt-1">
+                              {ln.complaint ? `Cmpl: ${ln.complaint}  ` : ""}
+                              {ln.cause ? `| Cause: ${ln.cause}  ` : ""}
+                              {ln.correction ? `| Corr: ${ln.correction}` : ""}
+                            </div>
+                          )}
                         </div>
                         <span className={chipClass(ln.status ?? null)}>
                           {(ln.status ?? "awaiting").replaceAll("_", " ")}
@@ -242,6 +415,33 @@ export default function WorkOrderPage() {
               )}
             </div>
           </div>
+
+              {/* Invoice / Download */}
+<div className="rounded border border-neutral-800 bg-neutral-900 p-4 text-white">
+  <h3 className="mb-2 font-semibold">Invoice</h3>
+  <WorkOrderInvoiceDownloadButton
+    workOrderId={wo.id}
+    // map DB rows -> PDF “RepairLine” shape
+    lines={(lines ?? []).map((l) => ({
+      complaint: l.complaint ?? l.description ?? "",
+      cause: l.cause ?? "",
+      correction: l.correction ?? "",
+      tools: l.tools ?? "",
+      labor_time: typeof l.labor_time === "number" ? l.labor_time : 0,
+    }))}
+    vehicleInfo={{
+      year: vehicle?.year ? String(vehicle.year) : "",
+      make: vehicle?.make ?? "",
+      model: vehicle?.model ?? "",
+      vin: vehicle?.vin ?? "",
+    }}
+    customerInfo={{
+      name: [customer?.first_name ?? "", customer?.last_name ?? ""].filter(Boolean).join(" "),
+      phone: customer?.phone ?? "",
+      email: customer?.email ?? "",
+    }}
+  />
+</div>
 
           {/* RIGHT: actions */}
           <aside className="space-y-6">
@@ -260,7 +460,7 @@ export default function WorkOrderPage() {
               )}
             </div>
 
-            {/* Manual quick add */}
+            {/* Manual quick add from saved menu */}
             <div className="rounded border border-neutral-800 bg-neutral-900 p-4 text-white">
               <MenuQuickAdd workOrderId={wo.id} />
             </div>

@@ -12,6 +12,7 @@ type MenuItem = DB["public"]["Tables"]["menu_items"]["Row"];
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
 
+// Match your UI choices
 type WOType = "inspection" | "maintenance" | "diagnosis";
 
 type UploadSummary = {
@@ -22,9 +23,9 @@ type UploadSummary = {
 export default function CreateWorkOrderPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const supabase = createClientComponentClient<DB>();
+  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
-  // --- Preselects (still supported, but not required) ------------------------
+  // --- Preselects (optional) -------------------------------------------------
   const [prefillVehicleId, setPrefillVehicleId] = useState<string | null>(null);
   const [prefillCustomerId, setPrefillCustomerId] = useState<string | null>(null);
   const [inspectionId, setInspectionId] = useState<string | null>(null);
@@ -49,7 +50,7 @@ export default function CreateWorkOrderPage() {
   const [type, setType] = useState<WOType>("maintenance");
   const [notes, setNotes] = useState("");
 
-  // --- Menu items / selection (unchanged) -----------------------------------
+  // --- Menu items / selection ------------------------------------------------
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
@@ -72,12 +73,11 @@ export default function CreateWorkOrderPage() {
     if (i) setInspectionId(i);
   }, [searchParams]);
 
-  // ----- Prefill labels if ids provided --------------------------------------
+  // ----- Prefill data --------------------------------------------------------
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
-      // Prefill customer fields from ID
       if (prefillCustomerId) {
         const { data } = await supabase
           .from("customers")
@@ -93,7 +93,6 @@ export default function CreateWorkOrderPage() {
         }
       }
 
-      // Prefill vehicle fields from ID
       if (prefillVehicleId) {
         const { data } = await supabase
           .from("vehicles")
@@ -125,7 +124,6 @@ export default function CreateWorkOrderPage() {
 
         if (!cancelled) setMenuItems(items ?? []);
 
-        // realtime for that user
         const channel = supabase
           .channel("menu-items-create-quickpick")
           .on(
@@ -162,15 +160,13 @@ export default function CreateWorkOrderPage() {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
-  // ----- Helpers: create-or-get by “natural key” -----------------------------
+  // ----- Helpers -------------------------------------------------------------
   async function ensureCustomer(): Promise<CustomerRow> {
-    // If we already have an id (from prefill), load & return
     if (customerId) {
       const { data } = await supabase.from("customers").select("*").eq("id", customerId).single();
       if (data) return data;
     }
 
-    // Try to find existing by (phone || email) + name
     const query = supabase.from("customers").select("*").limit(1);
     if (custPhone) query.ilike("phone", custPhone);
     else if (custEmail) query.ilike("email", custEmail);
@@ -181,7 +177,6 @@ export default function CreateWorkOrderPage() {
       return found[0];
     }
 
-    // Insert new
     const toInsert = {
       first_name: custFirst || null,
       last_name: custLast || null,
@@ -205,7 +200,6 @@ export default function CreateWorkOrderPage() {
       if (data) return data;
     }
 
-    // Try to find an existing vehicle for this customer by VIN or plate
     let existing: VehicleRow | null = null;
     if (vin || plate) {
       const { data: maybe } = await supabase
@@ -220,7 +214,6 @@ export default function CreateWorkOrderPage() {
       return existing;
     }
 
-    // Insert new
     const toInsert = {
       customer_id: cust.id,
       vin: vin || null,
@@ -242,8 +235,6 @@ export default function CreateWorkOrderPage() {
   }
 
   async function uploadVehicleFiles(vId: string): Promise<UploadSummary> {
-    // We’ll store photos in `vehicle-photos` and docs in `vehicle-docs`,
-    // and create a row in vehicle_media for each file.
     let uploaded = 0;
     let failed = 0;
 
@@ -252,7 +243,6 @@ export default function CreateWorkOrderPage() {
     } = await supabase.auth.getUser();
     const uploader = user?.id ?? null;
 
-    // Helper to upload + insert row
     const uploadAndRecord = async (
       bucket: "vehicle-photos" | "vehicle-docs",
       f: File,
@@ -270,21 +260,12 @@ export default function CreateWorkOrderPage() {
         storage_path: key,
         uploaded_by: uploader,
       });
-      if (rowErr) {
-        failed += 1;
-      } else {
-        uploaded += 1;
-      }
+      if (rowErr) failed += 1;
+      else uploaded += 1;
     };
 
-    // Photos
-    for (const f of photoFiles) {
-      await uploadAndRecord("vehicle-photos", f, "photo");
-    }
-    // Docs
-    for (const f of docFiles) {
-      await uploadAndRecord("vehicle-docs", f, "document");
-    }
+    for (const f of photoFiles) await uploadAndRecord("vehicle-photos", f, "photo");
+    for (const f of docFiles) await uploadAndRecord("vehicle-docs", f, "document");
 
     return { uploaded, failed };
   }
@@ -297,18 +278,20 @@ export default function CreateWorkOrderPage() {
     setUploadSummary(null);
 
     try {
-      // 0) Require minimal info
       if (!custFirst && !custPhone && !custEmail) {
         throw new Error("Please enter at least a name, phone, or email for the customer.");
       }
 
-      // 1) Ensure customer + vehicle
       const cust = await ensureCustomer();
       const veh = await ensureVehicle(cust);
 
-      // 2) Create work order
-      const newId = uuidv4();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      const actorId = user?.id ?? null;
 
+      // Create WO (ensure status matches your CHECK constraint)
+      const newId = uuidv4();
       const { error: insertWOError } = await supabase.from("work_orders").insert({
         id: newId,
         vehicle_id: veh.id,
@@ -316,21 +299,18 @@ export default function CreateWorkOrderPage() {
         inspection_id: inspectionId,
         type,
         notes,
-        user_id: cust.id, // If you actually want current user id here, replace with auth user
+        user_id: actorId,
+        status: "awaiting_approval", // valid per your CHECK constraint
       });
 
       if (insertWOError) throw new Error(insertWOError.message || "Failed to create work order.");
 
-      // 3) Add any “staged” menu items as initial work_order_lines
+      // Initial lines from selected menu items (best-effort)
       if (selectedItems.length > 0) {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-
         const lineRows = selectedItems.map((m) => ({
           work_order_id: newId,
           vehicle_id: veh.id,
-          user_id: user?.id ?? null,
+          user_id: actorId,
           description: m.name ?? null,
           labor_time: m.labor_time ?? null,
           complaint: m.complaint ?? null,
@@ -340,25 +320,17 @@ export default function CreateWorkOrderPage() {
           status: "new" as const,
           job_type: type,
         }));
-
         const { error: lineErr } = await supabase.from("work_order_lines").insert(lineRows);
-        if (lineErr) {
-          // don’t fail the WO; just surface the issue
-          console.error("Failed to add menu items as lines:", lineErr);
-        }
+        if (lineErr) console.error("Failed to add menu items as lines:", lineErr);
       }
 
-      // 4) Optional: import inspection jobs
+      // Import from inspection (optional)
       if (inspectionId) {
         try {
           const res = await fetch("/api/work-orders/import-from-inspection", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              workOrderId: newId,
-              inspectionId,
-              vehicleId: veh.id,
-            }),
+            body: JSON.stringify({ workOrderId: newId, inspectionId, vehicleId: veh.id }),
           });
           if (!res.ok) {
             const j = await res.json().catch(() => null);
@@ -369,19 +341,18 @@ export default function CreateWorkOrderPage() {
         }
       }
 
-      // 5) Upload photos/docs (if any) and record in vehicle_media
+      // Upload files (optional)
       if (photoFiles.length || docFiles.length) {
         const summary = await uploadVehicleFiles(veh.id);
         setUploadSummary(summary);
       }
 
-      // 6) Go to the WO view
+      // Navigate to the new Work Order page (correct path to [id])
       router.push(`/work-orders/${newId}`);
     } catch (ex) {
       const message = ex instanceof Error ? ex.message : "Failed to create work order.";
       setError(message);
       setLoading(false);
-      return;
     }
   }
 

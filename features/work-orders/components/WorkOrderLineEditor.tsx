@@ -15,19 +15,19 @@ type WorkOrderLine = {
 
 type Props = {
   line: WorkOrderLine;
-  onUpdate: (line: WorkOrderLine) => void;
-  onDelete?: () => void;
+  /** renamed to avoid “on*” (Server Action) warning */
+  updateLine: (line: WorkOrderLine) => void;
+  deleteLine?: () => void;
 };
 
-export default function WorkOrderLineEditor(props: any) {
-  // Cast locally to keep strong typing, while avoiding Next’s serializable-props check
-  const { line, onUpdate, onDelete } = props as Props;
+export default function WorkOrderLineEditor(props: Props) {
+  const { line, updateLine, deleteLine } = props;
 
   const [localLine, setLocalLine] = useState<WorkOrderLine>(line);
 
   useEffect(() => {
-    onUpdate(localLine);
-  }, [localLine, onUpdate]);
+    updateLine(localLine);
+  }, [localLine, updateLine]);
 
   return (
     <div className="bg-white dark:bg-surface border rounded-lg p-4 mb-4 shadow-card">
@@ -114,8 +114,8 @@ export default function WorkOrderLineEditor(props: any) {
         </>
       )}
 
-      {onDelete && (
-        <button onClick={onDelete} className="mt-2 text-sm text-red-600 hover:underline">
+      {deleteLine && (
+        <button onClick={deleteLine} className="mt-2 text-sm text-red-600 hover:underline">
           Delete Line
         </button>
       )}

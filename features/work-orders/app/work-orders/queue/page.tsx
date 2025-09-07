@@ -18,20 +18,16 @@ function rollupStatus(lines: Line[]): RollupStatus {
   const s = new Set((lines ?? []).map((l) => (l.status ?? "awaiting") as RollupStatus));
   if (s.has("in_progress")) return "in_progress";
   if (s.has("on_hold")) return "on_hold";
-  if (lines.length && lines.every((l) => l.status === "completed")) return "completed";
+  if (lines.length && lines.every((l) => (l.status ?? "") === "completed")) return "completed";
   return "awaiting";
 }
 
 export default async function QueuePage() {
   const supabase = createServerComponentClient<DB>({ cookies });
 
-  // who am I
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return <div className="p-6 text-white">You must be signed in.</div>;
-  }
+  if (!user) return <div className="p-6 text-white">You must be signed in.</div>;
 
-  // profile (shop + role)
   const { data: profile } = await supabase
     .from("profiles")
     .select("shop_id, role")
@@ -44,7 +40,6 @@ export default async function QueuePage() {
 
   const isTech = profile.role === "tech" || profile.role === "mechanic";
 
-  // get recent WOs for the shop
   const since = new Date();
   since.setDate(since.getDate() - 30);
 
@@ -55,15 +50,12 @@ export default async function QueuePage() {
     .gte("created_at", since.toISOString())
     .order("created_at", { ascending: false });
 
-  if (!wos?.length) {
-    return <div className="p-6 text-white">No work orders yet.</div>;
-  }
+  if (!wos?.length) return <div className="p-6 text-white">No work orders yet.</div>;
 
-  // pull all lines for those WOs
-  const { data: lines } = await supabase
-    .from("work_order_lines")
-    .select("*")
-    .in("work_order_id", wos.map((w) => w.id));
+  const ids = wos.map((w) => w.id);
+  const { data: lines } = ids.length
+    ? await supabase.from("work_order_lines").select("*").in("work_order_id", ids)
+    : { data: [] as Line[] };
 
   const linesByWo = new Map<string, Line[]>();
   (lines ?? []).forEach((l) => {
@@ -73,17 +65,12 @@ export default async function QueuePage() {
     linesByWo.set(l.work_order_id, arr);
   });
 
-  // if tech: show only WOs that contain at least one line assigned to them
   const visibleWos: WO[] = isTech
     ? wos.filter((wo) => (linesByWo.get(wo.id) ?? []).some((l) => l.assigned_to === user.id))
     : wos;
 
-  // header counts
   const counts: Counts = { awaiting: 0, in_progress: 0, on_hold: 0, completed: 0 };
-  for (const wo of visibleWos) {
-    const status = rollupStatus(linesByWo.get(wo.id) ?? []);
-    counts[status] += 1;
-  }
+  for (const wo of visibleWos) counts[rollupStatus(linesByWo.get(wo.id) ?? [])] += 1;
 
   const statuses: RollupStatus[] = ["awaiting", "in_progress", "on_hold", "completed"];
 
@@ -106,10 +93,10 @@ export default async function QueuePage() {
         {visibleWos.map((wo) => {
           const lns = linesByWo.get(wo.id) ?? [];
           const status = rollupStatus(lns);
-          const awaiting = lns.filter((l) => l.status === "awaiting").length;
-          const inProg   = lns.filter((l) => l.status === "in_progress").length;
-          const onHold   = lns.filter((l) => l.status === "on_hold").length;
-          const done     = lns.filter((l) => l.status === "completed").length;
+          const awaiting = lns.filter((l) => (l.status ?? "") === "awaiting").length;
+          const inProg   = lns.filter((l) => (l.status ?? "") === "in_progress").length;
+          const onHold   = lns.filter((l) => (l.status ?? "") === "on_hold").length;
+          const done     = lns.filter((l) => (l.status ?? "") === "completed").length;
 
           return (
             <Link
