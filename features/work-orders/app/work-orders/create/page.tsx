@@ -194,7 +194,7 @@ export default function CreateWorkOrderPage() {
     return inserted;
   }
 
-  async function ensureVehicle(cust: CustomerRow): Promise<VehicleRow> {
+  async function ensureVehicle(cust: CustomerRow, shopId: string | null): Promise<VehicleRow> {
     if (vehicleId) {
       const { data } = await supabase.from("vehicles").select("*").eq("id", vehicleId).single();
       if (data) return data;
@@ -222,6 +222,7 @@ export default function CreateWorkOrderPage() {
       model: model || null,
       license_plate: plate || null,
       mileage: mileage ? Number(mileage) : null,
+      shop_id: shopId, // ✅ ensure vehicle is tied to the shop
     };
     const { data: inserted, error: insErr } = await supabase
       .from("vehicles")
@@ -283,12 +284,22 @@ export default function CreateWorkOrderPage() {
       }
 
       const cust = await ensureCustomer();
-      const veh = await ensureVehicle(cust);
 
+      // current user + profile (shop)
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      const actorId = user?.id ?? null;
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("shop_id")
+        .eq("id", user?.id ?? "")
+        .maybeSingle();
+
+      const shopId = profile?.shop_id ?? null;
+      if (!shopId) throw new Error("Your profile isn’t linked to a shop yet.");
+
+      const veh = await ensureVehicle(cust, shopId);
 
       // Create WO (ensure status matches your CHECK constraint)
       const newId = uuidv4();
@@ -299,8 +310,9 @@ export default function CreateWorkOrderPage() {
         inspection_id: inspectionId,
         type,
         notes,
-        user_id: actorId,
-        status: "awaiting_approval", // valid per your CHECK constraint
+        user_id: user?.id ?? null,   // ✅ authenticated user
+        shop_id: shopId,             // ✅ critical for RLS
+        status: "awaiting_approval", // ✅ valid per your constraint
       });
 
       if (insertWOError) throw new Error(insertWOError.message || "Failed to create work order.");
@@ -310,7 +322,7 @@ export default function CreateWorkOrderPage() {
         const lineRows = selectedItems.map((m) => ({
           work_order_id: newId,
           vehicle_id: veh.id,
-          user_id: actorId,
+          user_id: user?.id ?? null,
           description: m.name ?? null,
           labor_time: m.labor_time ?? null,
           complaint: m.complaint ?? null,
