@@ -2,30 +2,22 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
+import type { ComponentProps } from "react";
+
 import type { RepairLine } from "@ai/lib/parseRepairOutput";
-import _WorkOrderLineEditor from "@work-orders/components/WorkOrderLineEditor";
+import WorkOrderLineEditor from "@work-orders/components/WorkOrderLineEditor";
 import { saveWorkOrderLines } from "@work-orders/lib/saveWorkOrderLines";
 
-/**
- * IMPORTANT: Loosen the type of the imported component to avoid cross-module prop typing issues
- * during the Vercel build. This file is the one failing with:
- *   "Property 'onUpdate' does not exist on type 'IntrinsicAttributes & Props'"
- * Casting to a local callable type keeps runtime behavior and unblocks the build.
- */
-const WorkOrderLineEditor =
-  _WorkOrderLineEditor as unknown as (props: {
-    line: any;
-    onUpdate: (line: any) => void;
-    onDelete?: () => void;
-  }) => JSX.Element;
+// Infer the 'line' prop type from WorkOrderLineEditor
+type WorkOrderLine = ComponentProps<typeof WorkOrderLineEditor>["line"];
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
 );
 
-// Normalize DB status -> RepairLine["status"]
-function normalizeStatus(status: unknown): RepairLine["status"] {
+// Normalize DB status into RepairLine["status"]
+function normalizeStatus(status: any): RepairLine["status"] {
   switch (status) {
     case "unassigned":
     case "assigned":
@@ -33,7 +25,7 @@ function normalizeStatus(status: unknown): RepairLine["status"] {
     case "on_hold":
     case "completed":
       return status;
-    case "awaiting": // legacy/db value
+    case "awaiting": // DB-specific value → map to valid
       return "assigned";
     default:
       return "unassigned";
@@ -54,98 +46,86 @@ export default function LoadWorkOrderById({
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load existing lines
   useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
+    const loadLines = async () => {
       const { data, error } = await supabase
         .from("work_order_lines")
         .select("*")
-        .eq("work_order_id", workOrderId)
-        .order("created_at", { ascending: true });
-
-      if (cancelled) return;
+        .eq("work_order_id", workOrderId);
 
       if (error) {
         console.error(error);
         setError(error.message);
-        setIsLoading(false);
-        return;
+      } else {
+        const normalized: RepairLine[] = (data ?? []).map((row: any) => ({
+          ...row,
+          status: normalizeStatus(row.status),
+        }));
+        setLines(normalized);
       }
 
-      const normalized: RepairLine[] = (data ?? []).map((row: any) => ({
-        ...row,
-        status: normalizeStatus(row?.status),
-      }));
-
-      setLines(normalized);
       setIsLoading(false);
-    })();
-
-    return () => {
-      cancelled = true;
     };
+
+    void loadLines();
   }, [workOrderId]);
 
-  // Save all current lines (append pattern)
   const handleSave = async () => {
     try {
       await saveWorkOrderLines(lines, userId, vehicleId, workOrderId);
       setSaved(true);
       setError(null);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "An unknown error occurred.";
-      console.error(err);
+      if (err instanceof Error) {
+        console.error(err);
+        setError(err.message);
+      } else {
+        console.error("Unknown error:", err);
+        setError("An unknown error occurred.");
+      }
       setSaved(false);
-      setError(msg);
     }
   };
 
   const updateLine = (index: number, updatedLine: RepairLine) => {
-    setLines((prev) => {
-      const copy = [...prev];
-      copy[index] = updatedLine;
-      return copy;
-    });
+    const updated = [...lines];
+    updated[index] = updatedLine;
+    setLines(updated);
   };
 
   const deleteLine = (index: number) => {
-    setLines((prev) => prev.filter((_, i) => i !== index));
+    const updated = lines.filter((_, i) => i !== index);
+    setLines(updated);
   };
 
   if (isLoading) {
-    return <p className="p-6 text-accent">Loading work order…</p>;
+    return <p className="p-6 text-accent">Loading work order...</p>;
   }
 
   return (
-    <div className="mx-auto max-w-3xl rounded bg-surface p-6 text-accent shadow-card space-y-6">
+    <div className="max-w-3xl mx-auto p-6 bg-surface text-accent shadow-card rounded space-y-6">
       <h2 className="text-xl font-semibold">Edit Work Order #{workOrderId}</h2>
-
-      {lines.length === 0 && (
-        <p className="text-sm text-white/70">No lines yet — add some below or via quick add.</p>
-      )}
 
       {lines.map((line, index) => (
         <WorkOrderLineEditor
-          key={`${(line as any).id ?? "idx"}-${index}`}
-          line={line}
-          onUpdate={(updated) => updateLine(index, updated as RepairLine)}
-          onDelete={() => deleteLine(index)}
+          key={(line as any).id ?? index}
+          line={line as unknown as WorkOrderLine}
+          onUpdate$={(updated: WorkOrderLine) =>
+            updateLine(index, updated as unknown as RepairLine)
+          }
+          onDelete$={() => deleteLine(index)}
         />
       ))}
 
-      <div className="flex items-center gap-3">
-        <button
-          onClick={handleSave}
-          className="rounded bg-primary px-6 py-3 text-white hover:bg-primary-dark"
-        >
-          Save Changes
-        </button>
+      <button
+        onClick={handleSave}
+        className="px-6 py-3 bg-primary text-white rounded hover:bg-primary-dark"
+      >
+        Save Changes
+      </button>
 
-        {saved && <p className="text-green-500">✅ Changes saved!</p>}
-        {error && <p className="text-red-500">⚠️ {error}</p>}
-      </div>
+      {saved && <p className="text-green-500">✅ Changes saved!</p>}
+      {error && <p className="text-red-500">⚠️ {error}</p>}
     </div>
   );
 }

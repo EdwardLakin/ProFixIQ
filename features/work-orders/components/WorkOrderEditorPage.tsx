@@ -5,7 +5,7 @@ import { createBrowserClient } from "@supabase/ssr";
 import type { Database } from "@shared/types/types/supabase";
 import useVehicleInfo from "@shared/hooks/useVehicleInfo";
 import { useUser } from "@auth/hooks/useUser";
-import WorkOrderLineForm from "@work-orders/components/WorkOrderLineEditor";
+import WorkOrderLineEditor from "@work-orders/components/WorkOrderLineEditor";
 
 type MenuItem = {
   id: string;
@@ -23,7 +23,13 @@ type WorkOrderLine = {
   correction?: string;
   labor_time?: number;
   tools?: string;
-  status?: "unassigned" | "assigned" | "in_progress" | "on_hold" | "completed" | "awaiting";
+  status?:
+    | "unassigned"
+    | "assigned"
+    | "in_progress"
+    | "on_hold"
+    | "completed"
+    | "awaiting";
   hold_reason?: "parts" | "authorization" | "diagnosis_pending" | "other" | "";
 };
 
@@ -54,14 +60,16 @@ export default function WorkOrderEditorPage() {
         }
       }
     };
-    fetchMenuItems();
+    void fetchMenuItems();
   }, [user, vehicleInfo?.id, supabase]);
 
   useEffect(() => {
     if (query.trim().length > 1) {
       const q = query.toLowerCase();
       setFiltered(
-        menuItems.filter((item) => (item.complaint ?? "").toLowerCase().includes(q)),
+        menuItems.filter((item) =>
+          (item.complaint ?? "").toLowerCase().includes(q),
+        ),
       );
     } else {
       setFiltered([]);
@@ -112,21 +120,21 @@ export default function WorkOrderEditorPage() {
 
       <div className="space-y-3">
         {lines.map((line, index) => (
-  <WorkOrderLineForm
-    key={`${line.id ?? "new"}-${index}`}
-    line={line}
-    onUpdate={(updatedLine: WorkOrderLine) => {
-      const updated = [...lines];
-      updated[index] = updatedLine;
-      setLines(updated);
-    }}
-    onDelete={() => {
-      const updated = [...lines];
-      updated.splice(index, 1);
-      setLines(updated);
-    }}
-  />
-))}
+          <WorkOrderLineEditor
+            key={`${line.id ?? "new"}-${index}`}
+            line={line}
+            onUpdate$={(updatedLine: WorkOrderLine) => {
+              const updated = [...lines];
+              updated[index] = updatedLine;
+              setLines(updated);
+            }}
+            onDelete$={() => {
+              const updated = [...lines];
+              updated.splice(index, 1);
+              setLines(updated);
+            }}
+          />
+        ))}
       </div>
     </div>
   );

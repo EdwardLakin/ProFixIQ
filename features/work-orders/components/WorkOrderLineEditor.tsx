@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 
-type WorkOrderLine = {
+export type WorkOrderLine = {
   id?: string;
   complaint: string;
   cause?: string;
@@ -13,73 +13,62 @@ type WorkOrderLine = {
   tools?: string;
 };
 
-type Props = {
+export type WorkOrderLineEditorProps = {
   line: WorkOrderLine;
-  /** renamed to avoid “on*” (Server Action) warning */
-  updateLine: (line: WorkOrderLine) => void;
-  deleteLine?: () => void;
+  /** Rename per Next.js serializable-props rule */
+  onUpdate$?: (line: WorkOrderLine) => void;
+  onDelete$?: () => void;
 };
 
-export default function WorkOrderLineEditor(props: Props) {
-  const { line, updateLine, deleteLine } = props;
-
+export default function WorkOrderLineEditor({
+  line,
+  onUpdate$,
+  onDelete$,
+}: WorkOrderLineEditorProps) {
   const [localLine, setLocalLine] = useState<WorkOrderLine>(line);
 
   useEffect(() => {
-    updateLine(localLine);
-  }, [localLine, updateLine]);
+    onUpdate$?.(localLine);
+  }, [localLine, onUpdate$]);
 
   return (
     <div className="bg-white dark:bg-surface border rounded-lg p-4 mb-4 shadow-card">
-      <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-100">
-        Complaint
-      </label>
+      <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-100">Complaint</label>
       <input
         value={localLine.complaint}
         onChange={(e) => setLocalLine({ ...localLine, complaint: e.target.value })}
         className="w-full border rounded px-2 py-1 mb-3 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
       />
 
-      <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-100">
-        Cause
-      </label>
+      <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-100">Cause</label>
       <input
         value={localLine.cause || ""}
         onChange={(e) => setLocalLine({ ...localLine, cause: e.target.value })}
         className="w-full border rounded px-2 py-1 mb-3 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
       />
 
-      <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-100">
-        Correction
-      </label>
+      <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-100">Correction</label>
       <input
         value={localLine.correction || ""}
         onChange={(e) => setLocalLine({ ...localLine, correction: e.target.value })}
         className="w-full border rounded px-2 py-1 mb-3 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
       />
 
-      <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-100">
-        Labor Time (hrs)
-      </label>
+      <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-100">Labor Time (hrs)</label>
       <input
         type="number"
         value={localLine.labor_time ?? ""}
         onChange={(e) => {
-          const v = e.target.value;
-          const num = v === "" ? undefined : Number(v);
-          setLocalLine({ ...localLine, labor_time: Number.isFinite(num!) ? num : undefined });
+          const num = e.target.value === "" ? undefined : Number(e.target.value);
+          setLocalLine({ ...localLine, labor_time: Number.isFinite(num as number) ? (num as number) : undefined });
         }}
         className="w-full border rounded px-2 py-1 mb-3 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
       />
 
-      <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-100">
-        Status
-      </label>
+      <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-100">Status</label>
       <select
         value={localLine.status || "unassigned"}
-        onChange={(e) =>
-          setLocalLine({ ...localLine, status: e.target.value as WorkOrderLine["status"] })
-        }
+        onChange={(e) => setLocalLine({ ...localLine, status: e.target.value as WorkOrderLine["status"] })}
         className="w-full border rounded px-2 py-1 mb-3 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
       >
         <option value="unassigned">Unassigned</option>
@@ -92,16 +81,11 @@ export default function WorkOrderLineEditor(props: Props) {
 
       {localLine.status === "on_hold" && (
         <>
-          <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-100">
-            Hold Reason
-          </label>
+          <label className="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-100">Hold Reason</label>
           <select
             value={localLine.hold_reason || ""}
             onChange={(e) =>
-              setLocalLine({
-                ...localLine,
-                hold_reason: e.target.value as WorkOrderLine["hold_reason"],
-              })
+              setLocalLine({ ...localLine, hold_reason: e.target.value as WorkOrderLine["hold_reason"] })
             }
             className="w-full border rounded px-2 py-1 mb-3 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
           >
@@ -114,8 +98,8 @@ export default function WorkOrderLineEditor(props: Props) {
         </>
       )}
 
-      {deleteLine && (
-        <button onClick={deleteLine} className="mt-2 text-sm text-red-600 hover:underline">
+      {onDelete$ && (
+        <button onClick={onDelete$} className="mt-2 text-sm text-red-600 hover:underline">
           Delete Line
         </button>
       )}
