@@ -10,7 +10,7 @@ import type { Database } from "@shared/types/types/supabase";
 
 import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
 
-// ---------- Client islands (loaded on the client automatically) ----------
+// ---------- Client islands ----------
 const MenuQuickAdd = dynamic(
   () => import("@work-orders/components/MenuQuickAdd").then((m) => m.MenuQuickAdd),
   { loading: () => <div className="text-sm text-neutral-400">Loading quick-add…</div> },
@@ -29,13 +29,13 @@ const WorkOrderInvoiceDownloadButton = dynamic(
   { loading: () => <div className="text-sm text-neutral-400">Preparing invoice…</div> },
 );
 
-// Wrapper that calls router.refresh() after a new line is created
 const NewLineFormIsland = dynamic(
   () => import("@work-orders/components/NewLineFormIsland"),
   { loading: () => <div className="text-sm text-neutral-400">Loading form…</div> },
 );
 
 // (optional, matches your app behavior)
+
 export const revalidate = 0;
 
 // ---------- Types ----------
@@ -44,7 +44,6 @@ type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
-
 type WorkOrderWithMaybeNotes = WorkOrder & { notes?: string | null };
 
 // ---------- UI helpers ----------
@@ -63,7 +62,7 @@ function chipClass(s: string | null | undefined): string {
   return `text-xs px-2 py-1 rounded ${statusBadge[key] ?? "bg-gray-200 text-gray-800"}`;
 }
 
-// ---------- Data loader (server) ----------
+// ---------- Data loader ----------
 async function getData(id: string) {
   const supabase = createServerComponentClient<DB>({ cookies });
 
@@ -110,10 +109,13 @@ async function getData(id: string) {
 }
 
 // ---------- Page ----------
-export default async function WorkOrderPage(props: { params: { id?: string | string[] } }) {
-  const raw = props.params?.id;
-  const id = Array.isArray(raw) ? raw[0] : raw;
-  if (!id || typeof id !== "string") notFound();
+export default async function WorkOrderPage({
+  params,
+}: {
+  params: { id: string };
+}) {
+  const id = params.id;
+  if (!id) notFound();
 
   const { wo, lines = [], vehicle, customer } = await getData(id);
   if (!wo) notFound();
@@ -201,7 +203,7 @@ export default async function WorkOrderPage(props: { params: { id?: string | str
               <h2 className="text-lg font-semibold">Jobs in this Work Order</h2>
             </div>
 
-            {/* No-JS friendly toggle for new line form */}
+            {/* Add Job Line */}
             <details className="mb-4 rounded border border-neutral-800 bg-neutral-950 p-3">
               <summary className="cursor-pointer text-sm text-orange-400">Add Job Line</summary>
               <div className="mt-3">
