@@ -7,21 +7,18 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import DynamicRoleSidebar from "@shared/components/DynamicRoleSidebar";
 import Calendar from "@shared/components/ui/Calendar";
 import { TabsProvider } from "@shared/components/tabs/TabsProvider";
-import ShareBookingLink from "@dashboard/components/ShareBookingLink";
-import PunchController from "@/features/shared/components/ui/PunchController";
-import ChatDock from "@/features/chat/components/ChatDock";
 
 // Lazy-load the assistant to reduce initial bundle & avoid SSR issues
 const TechAssistant = dynamic(
   () => import("@/features/shared/components/TechAssistant"),
-  { ssr: false }
+  { ssr: false },
 );
 
 // -------------------- Roles (staff only) --------------------
 type Role = "owner" | "admin" | "manager" | "advisor" | "mechanic" | "parts";
 
 const CALENDAR_ROLES: Role[] = ["owner", "admin", "manager", "advisor"];
-const STAFF_ROLES: Role[] = ["owner", "admin", "manager", "advisor", "parts"];
+
 
 // Narrow the raw DB role into our staff-only union
 function normalizeRole(raw: string | null | undefined): Role | null {
@@ -109,16 +106,11 @@ export default function DashboardLayout({
     setCurrentWorkOrderLineId(null);
   }, []);
 
-  // Close drawers on ESC
+  // Close assistant when someone in the app dispatches our custom event
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setSidebarOpen(false);
-        setAssistantOpen(false);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    const openAssistant = () => setAssistantOpen(true);
+    window.addEventListener("open-tech-assistant" as any, openAssistant);
+    return () => window.removeEventListener("open-tech-assistant" as any, openAssistant);
   }, []);
 
   // Visibility gates
@@ -127,59 +119,15 @@ export default function DashboardLayout({
     [loadingRole, role],
   );
 
-  const showStaffTools = useMemo(
-    () => !loadingRole && role !== null && STAFF_ROLES.includes(role),
-    [loadingRole, role],
-  );
-
   return (
     <TabsProvider>
       <div className="min-h-screen bg-black text-white font-blackops">
-        {/* Header */}
-        <div className="mx-auto flex max-w-7xl items-center justify-between border-b border-neutral-800 px-4 py-3">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              aria-label="Toggle sidebar"
-              className="inline-flex items-center justify-center rounded border border-white/15 px-3 py-1 text-sm hover:border-orange-500 md:hidden"
-              onClick={() => setSidebarOpen((prev) => !prev)}
-            >
-              Menu
-            </button>
-            <h1 className="text-lg text-orange-400">
-              {loadingRole ? "Loading…" : "Dashboard"}
-            </h1>
-          </div>
-
-          {/* Header actions */}
-          <div className="flex items-center gap-3">
-            {showStaffTools && <ShareBookingLink />}
-            {showStaffTools && (
-              <div className="w-56">
-                <PunchController />
-              </div>
-            )}
-            {showStaffTools && <ChatDock />}
-
-            {/* Tech Assistant launcher */}
-            {showStaffTools && (
-              <button
-                type="button"
-                onClick={() => setAssistantOpen(true)}
-                className="rounded border border-white/15 px-3 py-1 text-sm hover:border-orange-500"
-                aria-label="Open Tech Assistant"
-                title="Open Tech Assistant"
-              >
-                Tech Assistant
-              </button>
-            )}
-          </div>
-        </div>
+        {/* NOTE: Top navbar removed by request */}
 
         <div className="flex">
           {/* Desktop sidebar */}
           <aside className="hidden w-64 shrink-0 border-r border-neutral-800 bg-neutral-900 md:block">
-            <div className="sticky top-0 h-[calc(100dvh-64px)] overflow-y-auto p-3">
+            <div className="sticky top-0 h-[calc(100dvh-0px)] overflow-y-auto p-3">
               <DynamicRoleSidebar role={role ?? undefined} />
 
               {showCalendar && (
@@ -199,7 +147,7 @@ export default function DashboardLayout({
             </div>
           </aside>
 
-          {/* Mobile drawer */}
+          {/* Mobile drawer toggle (kept; the button is likely elsewhere in your app) */}
           {sidebarOpen && (
             <div className="fixed inset-0 z-40 md:hidden">
               {/* backdrop */}

@@ -1,6 +1,7 @@
+// features/shared/components/ShiftTracker.tsx
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { formatDistanceToNow } from "date-fns";
 import type { Database } from "@shared/types/types/supabase";
@@ -8,18 +9,15 @@ import type { Database } from "@shared/types/types/supabase";
 type DB = Database;
 
 /**
- * ShiftTracker works for ALL staff roles.
- * It uses the current schema: tech_shifts (tech_id), punch_events.
- * If you later rename to staff_shifts (user_id), update the two marked spots below.
+ * Works for ALL staff roles.
+ * Uses current schema: tech_shifts (user_id), punch_events (user_id).
  */
 export default function ShiftTracker({ userId }: { userId: string }) {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
-  // UI state
   const [shiftId, setShiftId] = useState<string | null>(null);
   const [startTime, setStartTime] = useState<string | null>(null);
   const [status, setStatus] = useState<"none" | "active" | "break" | "lunch" | "ended">("none");
-  const [duration, setDuration] = useState<string>("00:00");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -27,12 +25,10 @@ export default function ShiftTracker({ userId }: { userId: string }) {
   const loadOpenShift = useCallback(async () => {
     setErr(null);
 
-    // 🔁 If you rename table/column: tech_shifts(tech_id) → staff_shifts(user_id),
-    // change .from("tech_shifts") and .eq("tech_id", userId) below.
     const { data: shift, error: sErr } = await supabase
       .from("tech_shifts")
       .select("*")
-      .eq("tech_id", userId)
+      .eq("user_id", userId)            // ← uses user_id
       .is("ended_time", null)
       .order("start_time", { ascending: false })
       .limit(1)
@@ -77,20 +73,11 @@ export default function ShiftTracker({ userId }: { userId: string }) {
     setStatus(computed as typeof status);
   }, [supabase, userId]);
 
-  // Initial load
+  // Initial load (and on user change)
   useEffect(() => {
     if (!userId) return;
     void loadOpenShift();
   }, [userId, loadOpenShift]);
-
-  // Live duration ticker
-  useEffect(() => {
-    if (!startTime || status === "none" || status === "ended") return;
-    const id = setInterval(() => {
-      setDuration(formatDistanceToNow(new Date(startTime), { includeSeconds: true }));
-    }, 1000);
-    return () => clearInterval(id);
-  }, [startTime, status]);
 
   // Helpers
   const insertPunch = useCallback(
@@ -106,7 +93,7 @@ export default function ShiftTracker({ userId }: { userId: string }) {
       if (!shiftId) return;
       await supabase.from("punch_events").insert({
         shift_id: shiftId,
-        tech_id: userId, // if you rename, use: user_id: userId
+        user_id: userId, // ← also record user on events
         type,
         timestamp: new Date().toISOString(),
       });
@@ -124,16 +111,16 @@ export default function ShiftTracker({ userId }: { userId: string }) {
       // Prevent double-start if one is already open
       const { data: existing } = await supabase
         .from("tech_shifts")
-        .select("id")
-        .eq("tech_id", userId)
+        .select("id, start_time")
+        .eq("user_id", userId)
         .is("ended_time", null)
         .limit(1)
         .maybeSingle();
 
       if (existing) {
         setShiftId(existing.id);
+        setStartTime(existing.start_time ?? null);
         setStatus("active");
-        await insertPunch("start");
         return;
       }
 
@@ -141,7 +128,7 @@ export default function ShiftTracker({ userId }: { userId: string }) {
       const { data, error } = await supabase
         .from("tech_shifts")
         .insert({
-          tech_id: userId, // if you rename, use: user_id: userId
+          user_id: userId,   // ← user_id
           start_time: now,
           status: "active",
           ended_time: null,
@@ -231,7 +218,11 @@ export default function ShiftTracker({ userId }: { userId: string }) {
 
   return (
     <div className="text-sm mt-4 space-y-2">
-      {err && <div className="rounded border border-red-500/40 bg-red-500/10 p-2 text-red-300">{err}</div>}
+      {err && (
+        <div className="rounded border border-red-500/40 bg-red-500/10 p-2 text-red-300">
+          {err}
+        </div>
+      )}
 
       <p>
         <strong>Status:</strong>{" "}
@@ -240,7 +231,8 @@ export default function ShiftTracker({ userId }: { userId: string }) {
 
       {status !== "none" && startTime && status !== "ended" && (
         <p>
-          <strong>Shift Duration:</strong> {duration}
+          <strong>Shift Duration:</strong>{" "}
+          {formatDistanceToNow(new Date(startTime), { includeSeconds: true })}
         </p>
       )}
 
