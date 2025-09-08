@@ -6,7 +6,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 import DynamicRoleSidebar from "@shared/components/DynamicRoleSidebar";
 import Calendar from "@shared/components/ui/Calendar";
-import { TabsProvider } from "@shared/context/TabsProvider";
+import { TabsProvider } from "@shared/components/tabs/TabsProvider";
 import ShareBookingLink from "@dashboard/components/ShareBookingLink";
 import PunchController from "@/features/shared/components/ui/PunchController";
 import ChatDock from "@/features/chat/components/ChatDock";
