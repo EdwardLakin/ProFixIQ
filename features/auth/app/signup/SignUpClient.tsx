@@ -1,3 +1,4 @@
+// features/auth/components/SignUpClient.tsx
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -16,13 +17,13 @@ export default function SignUpClient() {
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // ✅ Magic link goes straight to /onboarding
+  // ✅ Magic link goes to /confirm (then middleware/confirm page can route further)
   const emailRedirectTo = useMemo(() => {
     const base =
       (typeof window !== "undefined"
         ? window.location.origin
         : process.env.NEXT_PUBLIC_SITE_URL) || "https://profixiq.com";
-    return `${base.replace(/\/$/, "")}/onboarding`;
+    return `${base.replace(/\/$/, "")}/confirm`;
   }, []);
 
   // Prefill from Stripe if present
@@ -40,11 +41,11 @@ export default function SignUpClient() {
     })();
   }, [sp]);
 
-  // Already signed in? go to onboarding
+  // Already signed in? go to /dashboard (middleware handles onboarding)
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getUser();
-      if (data?.user) router.replace("/onboarding");
+      if (data?.user) router.replace("/dashboard");
     })();
   }, [router, supabase]);
 
@@ -66,14 +67,19 @@ export default function SignUpClient() {
       return;
     }
 
+    // If email confirmation is required, there won't be a session yet
     if (!data.session) {
-      setNotice("Check your email to confirm your account. After confirming, we’ll take you to onboarding.");
+      setNotice(
+        "Check your email to confirm your account. After confirming, we’ll take you to your dashboard."
+      );
       setLoading(false);
       return;
     }
 
+    // Session exists (e.g., email confirm disabled) → go to dashboard
+    router.refresh();
+    router.replace("/dashboard");
     setLoading(false);
-    router.replace("/onboarding");
   };
 
   return (

@@ -19,7 +19,7 @@ export default function AuthPage() {
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Where magic link (sign-up) should land
+  // Magic link (sign-up) redirect
   const emailRedirectTo = useMemo(() => {
     const origin =
       typeof window !== "undefined"
@@ -28,22 +28,13 @@ export default function AuthPage() {
     return `${origin || "https://profixiq.com"}/confirm`;
   }, []);
 
-  // If already signed in, route by completed_onboarding
+  // If already signed in → go to /dashboard (middleware will handle onboarding)
   useEffect(() => {
     (async () => {
       const {
         data: { session },
       } = await supabase.auth.getSession();
-      if (!session?.user) return;
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("completed_onboarding")
-        .eq("id", session.user.id)
-        .maybeSingle();
-
-      const completed = !!profile?.completed_onboarding;
-      router.replace(completed ? "/dashboard" : "/onboarding");
+      if (session?.user) router.replace("/dashboard");
     })();
   }, [router, supabase]);
 
@@ -57,34 +48,16 @@ export default function AuthPage() {
       email,
       password,
     });
+
     if (signInErr) {
       setError(signInErr.message);
       setLoading(false);
       return;
     }
 
-    // Ensure middleware/server sees the new auth cookie
+    // Ensure cookie/session is visible to server/middleware
     router.refresh();
-
-    // Check onboarding status
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      setError("No user in session.");
-      setLoading(false);
-      return;
-    }
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("completed_onboarding")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    const completed = !!profile?.completed_onboarding;
-    router.replace(completed ? "/dashboard" : "/onboarding");
-    setLoading(false);
+    router.replace("/dashboard"); // middleware decides onboarding vs dashboard
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
@@ -105,18 +78,17 @@ export default function AuthPage() {
       return;
     }
 
-    // If email confirmation required, there won't be a session yet
+    // If email confirmation is required, there won't be a session yet
     if (!data.session) {
       setNotice(
-        "Check your inbox for a confirmation link. After confirming, we’ll take you to onboarding.",
+        "Check your inbox for a confirmation link. After confirming, we’ll take you to onboarding."
       );
       setLoading(false);
       return;
     }
 
     router.refresh();
-    router.replace("/onboarding");
-    setLoading(false);
+    router.replace("/dashboard"); // middleware will route to onboarding if needed
   };
 
   return (
