@@ -4,19 +4,25 @@ import type { NextRequest } from "next/server";
 import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
-// Single home for all staff roles now.
-const STAFF_HOME = "/dashboard";
+type Role = Database["public"]["Enums"]["user_role_enum"];
+
+const STAFF_HOME: Record<Exclude<Role, "customer"> | "tech", string> = {
+  owner: "/dashboard/owner",
+  admin: "/dashboard/admin",
+  manager: "/dashboard/manager",
+  advisor: "/dashboard/advisor",
+  parts: "/dashboard/parts",
+  mechanic: "/dashboard/tech",
+  tech: "/dashboard/tech", // alias
+};
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
   const supabase = createMiddlewareClient<Database>({ req, res });
 
   const { pathname, search } = req.nextUrl;
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
 
-  // Public routes that never need auth
+  // Public routes that never require auth
   const isPublic =
     pathname === "/" ||
     pathname.startsWith("/compare-plans") ||
@@ -31,52 +37,65 @@ export async function middleware(req: NextRequest) {
     pathname.endsWith("/favicon.ico") ||
     pathname.endsWith("/logo.svg");
 
-  // Get lightweight profile gates only when logged in
+  // Session
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  // Profile bits used for routing
+  let role: Role | null = null;
   let completed = false;
+
   if (session?.user) {
     const { data: profile } = await supabase
       .from("profiles")
-      .select("completed_onboarding")
+      .select("role, completed_onboarding")
       .eq("id", session.user.id)
       .maybeSingle();
 
-    completed = !!profile?.completed_onboarding;
+    role = (profile?.role as Role | null) ?? null;
+    completed = Boolean(profile?.completed_onboarding);
   }
 
-  // Signed-in user hitting root → send to unified dashboard or onboarding
+  // If a signed-in user hits the landing page, send them somewhere useful
   if (pathname === "/" && session?.user) {
-    const to = completed ? STAFF_HOME : "/onboarding";
+    const to =
+      role && completed
+        ? STAFF_HOME[(role as Exclude<Role, "customer">)] ?? "/dashboard"
+        : "/onboarding";
     return NextResponse.redirect(new URL(to, req.url));
   }
 
+  // Public branch: also keep users off onboarding once completed
   if (isPublic) {
-    // If they already finished onboarding, keep them off onboarding pages
-    if (pathname.startsWith("/onboarding") && session?.user && completed) {
-      return NextResponse.redirect(new URL(STAFF_HOME, req.url));
+    if (pathname.startsWith("/onboarding") && session?.user && role && completed) {
+      const to =
+        STAFF_HOME[(role as Exclude<Role, "customer">)] ?? "/dashboard";
+      return NextResponse.redirect(new URL(to, req.url));
     }
     return res;
   }
 
-  // ---- Protected branches (keep these minimal) ----
-  // NOTE: We no longer protect /dashboard in middleware; the client layout/AuthGate handles that.
+  // Protected branches below here -------------------------------
+
+  // Not signed in → send to sign-in with redirect back
   if (!session?.user) {
     const login = new URL("/sign-in", req.url);
     login.searchParams.set("redirect", pathname + search);
     return NextResponse.redirect(login);
   }
 
-  // Force onboarding when visiting protected areas and onboarding not complete
-  if (!completed && (pathname.startsWith("/work-orders") || pathname.startsWith("/inspections"))) {
+  // Force onboarding completion for any /dashboard* page
+  if (pathname.startsWith("/dashboard") && !completed) {
     return NextResponse.redirect(new URL("/onboarding", req.url));
   }
 
   return res;
 }
 
-// Only protect app areas that truly require an already-established session.
-// Leave /dashboard to the client-side guard to prevent post-login "flash back".
 export const config = {
   matcher: [
+    "/dashboard/:path*",
     "/work-orders/:path*",
     "/inspections/:path*",
     // add more protected branches here if needed
