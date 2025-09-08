@@ -34,8 +34,6 @@ const NewLineFormIsland = dynamic(
   { loading: () => <div className="text-sm text-neutral-400">Loading form…</div> },
 );
 
-// (optional, matches your app behavior)
-
 export const revalidate = 0;
 
 // ---------- Types ----------
@@ -113,7 +111,7 @@ export default async function WorkOrderPage({
   params,
 }: {
   params: { id: string };
-}) {
+}): Promise<JSX.Element> {
   const id = params.id;
   if (!id) notFound();
 
@@ -137,7 +135,9 @@ export default async function WorkOrderPage({
       <div className="mt-4 rounded border border-neutral-800 bg-neutral-900 p-4">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-semibold">Work Order #{wo.id.slice(0, 8)}</h1>
-          <span className={chipClass(wo.status)}>{(wo.status ?? "awaiting").replaceAll("_", " ")}</span>
+          <span className={chipClass(wo.status)}>
+            {(wo.status ?? "awaiting").replaceAll("_", " ")}
+          </span>
         </div>
 
         <div className="mt-2 grid gap-2 text-sm text-neutral-300 sm:grid-cols-3">
