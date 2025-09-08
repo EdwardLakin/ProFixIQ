@@ -1,0 +1,5 @@
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+// Re-export the Create Work Order page inside the dashboard layout.
+export { default } from "@/features/work-orders/app/work-orders/create/page";
