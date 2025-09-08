@@ -1,4 +1,3 @@
-// features/shared/components/RoleNavManager.tsx
 "use client";
 
 import Link from "next/link";
@@ -8,22 +7,24 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 import {
-  FaClipboardList,  // work orders
-  FaUserCheck,      // assignments
-  FaWrench,         // inspections / actions
-  FaBoxes,          // parts
-  FaComments,       // messaging
-  FaCogs,           // ai assistant
+  FaClipboardList,
+  FaUserCheck,
+  FaWrench,
+  FaBoxes,
+  FaComments,
+  FaCogs,
   FaChevronDown,
   FaChevronRight,
 } from "react-icons/fa";
 import clsx from "clsx";
 
+type Role = Database["public"]["Enums"]["user_role_enum"] | null;
+
 export default function RoleNavManager() {
   const supabase = createClientComponentClient<Database>();
   const pathname = usePathname();
 
-  const [role, setRole] = useState<string | null>(null);
+  const [role, setRole] = useState<Role>(null);
   const [userId, setUserId] = useState<string | null>(null);
 
   const [ordersOpen, setOrdersOpen] = useState(true);
@@ -41,20 +42,18 @@ export default function RoleNavManager() {
       setUserId(uid);
 
       if (!uid) return;
-
       const { data: profile } = await supabase
         .from("profiles")
         .select("role")
         .eq("id", uid)
         .single();
 
-      setRole(profile?.role ?? null);
+      setRole((profile?.role as Role) ?? null);
     })();
   }, [supabase]);
 
-  // Gate: only show to manager-ish roles
   const allowed = useMemo(
-    () => new Set(["manager", "advisor", "owner", "admin"]),
+    () => new Set<Role>(["manager", "advisor", "owner", "admin"]),
     []
   );
   if (!role || !allowed.has(role)) return null;
@@ -127,19 +126,12 @@ export default function RoleNavManager() {
         open={messagingOpen}
         toggle={() => setMessagingOpen(!messagingOpen)}
       >
-        {/* Keep internal chat link if you have a page for it; otherwise you can remove this entirely
-            because ChatDock now lives in the dashboard layout header. */}
         <Link href="/messages" className={linkClass("/messages")}>
           <FaComments /> Team Messages
         </Link>
       </Section>
 
-      {/* New unified AI assistant link (replaces old /ai/chat) */}
-      <Section
-        title="AI"
-        open={aiOpen}
-        toggle={() => setAiOpen(!aiOpen)}
-      >
+      <Section title="AI" open={aiOpen} toggle={() => setAiOpen(!aiOpen)}>
         <Link href="/ai/assistant" className={linkClass("/ai/assistant")}>
           <FaCogs /> AI Assistant
         </Link>

@@ -19,29 +19,34 @@ import {
 } from "react-icons/fa";
 import { HiMenuAlt2 } from "react-icons/hi";
 
+type Role = Database["public"]["Enums"]["user_role_enum"] | null;
+
 export default function RoleNavOwner() {
   const supabase = createClientComponentClient<Database>();
 
-  const [role, setRole] = useState<string | null>(null);
+  const [role, setRole] = useState<Role>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = useState<boolean>(false);
   const [openSection, setOpenSection] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      const id = session?.user?.id ?? null;
-      if (!id) return;
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-      setUserId(id);
+      const uid = session?.user?.id ?? null;
+      if (!uid) return;
+
+      setUserId(uid);
 
       const { data: profile } = await supabase
         .from("profiles")
         .select("role")
-        .eq("id", id)
+        .eq("id", uid)
         .single();
 
-      setRole(profile?.role ?? null);
+      setRole((profile?.role as Role) ?? null);
     })();
   }, [supabase]);
 
@@ -102,7 +107,6 @@ export default function RoleNavOwner() {
           <Link href="/work-orders" className="block hover:text-orange-400">
             All Work Orders
           </Link>
-          {/* Service Menu */}
           <Link href="/menu" className="block hover:text-orange-400">
             Service Menu
           </Link>
@@ -156,7 +160,6 @@ export default function RoleNavOwner() {
           </Link>
         </NavSection>
 
-        {/* ✅ Unified AI assistant only */}
         <NavSection title="AI Tools" icon={<FaCogs />} sectionKey="ai">
           <Link href="/ai/assistant" className="block hover:text-orange-400">
             Tech Assistant

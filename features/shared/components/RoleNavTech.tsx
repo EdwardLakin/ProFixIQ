@@ -4,151 +4,62 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-
+import clsx from "clsx";
+import { FaCogs, FaChevronDown, FaChevronRight, FaTachometerAlt } from "react-icons/fa";
 import type { Database } from "@shared/types/types/supabase";
 import ShiftTracker from "@shared/components/ShiftTracker";
-import {
-  FaClipboardList,
-  FaTools,
-  FaWrench,
-  FaBoxes,
-  FaComments,
-  FaChevronDown,
-  FaChevronRight,
-  FaCogs,
-} from "react-icons/fa";
-import clsx from "clsx";
 
 export default function RoleNavTech() {
   const supabase = createClientComponentClient<Database>();
-
   const pathname = usePathname();
+
   const [role, setRole] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
 
-  const [jobOpen, setJobOpen] = useState(true);
-  const [inspectionOpen, setInspectionOpen] = useState(false);
-  const [partsOpen, setPartsOpen] = useState(false);
-  const [messagingOpen, setMessagingOpen] = useState(false);
-  const [aiOpen, setAiOpen] = useState(true);
-
   useEffect(() => {
-    const fetchRole = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const uid = session?.user?.id;
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const uid = session?.user?.id ?? null;
       if (!uid) return;
-
       setUserId(uid);
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", uid)
-        .single();
-
+      const { data: profile } = await supabase.from("profiles").select("role").eq("id", uid).single();
       setRole(profile?.role ?? null);
-    };
-
-    fetchRole();
+    })();
   }, [supabase]);
 
   if (role !== "mechanic") return null;
 
   const linkClass = (href: string) =>
-    clsx(
-      "flex items-center gap-2 px-4 py-2 rounded hover:bg-orange-600",
-      pathname === href && "bg-orange-700 text-black",
-    );
+    clsx("flex items-center gap-2 px-4 py-2 rounded hover:bg-orange-600", pathname === href && "bg-orange-700 text-black");
 
-  const sectionHeader = (title: string, open: boolean, toggle: () => void) => (
-    <button
-      onClick={toggle}
-      className="w-full flex items-center justify-between px-2 py-2 text-orange-500 font-bold"
-    >
-      <span>{title}</span>
-      {open ? <FaChevronDown /> : <FaChevronRight />}
-    </button>
-  );
+  const Toggle = ({ title }: { id: string; title: React.ReactNode }) => {
+    const [open, setOpen] = useState(true);
+    return (
+      <div>
+        <button
+          onClick={() => setOpen(!open)}
+          className="w-full flex items-center justify-between px-2 py-2 text-orange-500 font-bold"
+          aria-expanded={open}
+        >
+          <span className="flex items-center gap-2">{title}</span>
+          {open ? <FaChevronDown /> : <FaChevronRight />}
+        </button>
+        {open && (
+          <div className="pl-2 space-y-1">
+            <Link href="/dashboard" className={linkClass("/dashboard")}>Overview</Link>
+            <Link href="/ai/assistant" className={linkClass("/ai/assistant")}><FaCogs /> AI Assistant</Link>
+            <Link href="/messages" className={linkClass("/messages")}>Team Messages</Link>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <nav className="w-full md:w-64 bg-neutral-900 p-4 text-white space-y-4">
-      {/* Jobs */}
-      <div>
-        {sectionHeader("Jobs", jobOpen, () => setJobOpen(!jobOpen))}
-        {jobOpen && (
-          <div className="pl-2 space-y-1">
-            <Link href="/tech/queue" className={linkClass("/tech/queue")}>
-              <FaClipboardList /> Job Queue
-            </Link>
-            <Link
-              href="/work-orders" // "/work-orders/view" needs an id; list is safer
-              className={linkClass("/work-orders")}
-            >
-              <FaTools /> Assigned Jobs
-            </Link>
-          </div>
-        )}
-      </div>
-
-      {/* Inspections */}
-      <div>
-        {sectionHeader("Inspections", inspectionOpen, () =>
-          setInspectionOpen(!inspectionOpen),
-        )}
-        {inspectionOpen && (
-          <div className="pl-2 space-y-1">
-            <Link href="/maintenance50" className={linkClass("/maintenance50")}>
-              <FaWrench /> Maintenance 50
-            </Link>
-            <Link href="/inspection" className={linkClass("/inspection")}>
-              <FaWrench /> All Inspections
-            </Link>
-          </div>
-        )}
-      </div>
-
-      {/* Parts */}
-      <div>
-        {sectionHeader("Parts", partsOpen, () => setPartsOpen(!partsOpen))}
-        {partsOpen && (
-          <div className="pl-2 space-y-1">
-            <Link href="/parts" className={linkClass("/parts")}>
-              <FaBoxes /> Parts Dashboard
-            </Link>
-          </div>
-        )}
-      </div>
-
-      {/* AI Tools (Unified Assistant) */}
-      <div>
-        {sectionHeader("AI Tools", aiOpen, () => setAiOpen(!aiOpen))}
-        {aiOpen && (
-          <div className="pl-2 space-y-1">
-            <Link href="/ai/assistant" className={linkClass("/ai/assistant")}>
-              <FaCogs /> Tech Assistant
-            </Link>
-          </div>
-        )}
-      </div>
-
-      {/* Messaging (Chat Dock lives in the dashboard header) */}
-      <div>
-        {sectionHeader("Messaging", messagingOpen, () =>
-          setMessagingOpen(!messagingOpen),
-        )}
-        {messagingOpen && (
-          <div className="pl-2 space-y-1">
-            <Link href="/dashboard" className={linkClass("/dashboard")}>
-              <FaComments /> Open Chat (Header Dock)
-            </Link>
-          </div>
-        )}
-      </div>
-
+      <Toggle id="main" title={<><FaTachometerAlt /> Dashboard</>} />
       {userId && (
-        <div className="border-t border-gray-700 pt-4">
+        <div className="mt-6 border-t border-gray-800 pt-4">
           <h2 className="text-orange-500 font-bold mb-2">Shift Tracker</h2>
           <ShiftTracker userId={userId} />
         </div>

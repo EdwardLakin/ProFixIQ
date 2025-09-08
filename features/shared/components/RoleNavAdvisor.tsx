@@ -1,20 +1,11 @@
-// features/shared/components/RoleNavAdvisor.tsx
 "use client";
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-
-import {
-  FaClipboardList,
-  FaWrench,
-  FaComments,
-  FaCogs,
-  FaChevronDown,
-  FaChevronRight,
-} from "react-icons/fa";
 import clsx from "clsx";
+import { FaCogs, FaComments, FaChevronDown, FaChevronRight, FaTachometerAlt } from "react-icons/fa";
 import type { Database } from "@shared/types/types/supabase";
 import ShiftTracker from "@shared/components/ShiftTracker";
 
@@ -24,146 +15,73 @@ export default function RoleNavAdvisor() {
 
   const [role, setRole] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
-
-  const [openSection, setOpenSection] = useState<string | null>("workorders");
+  const [openSection, setOpenSection] = useState<string | null>("dashboard");
 
   useEffect(() => {
-    const fetchRole = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const uid = session?.user?.id;
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const uid = session?.user?.id ?? null;
       if (!uid) return;
-
       setUserId(uid);
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", uid)
-        .single();
-
+      const { data: profile } = await supabase.from("profiles").select("role").eq("id", uid).single();
       setRole(profile?.role ?? null);
-    };
-
-    fetchRole();
+    })();
   }, [supabase]);
 
   if (role !== "advisor") return null;
 
   const linkClass = (href: string) =>
-    clsx(
-      "flex items-center gap-2 px-4 py-2 rounded hover:bg-orange-600",
-      pathname === href && "bg-orange-700 text-black",
-    );
+    clsx("flex items-center gap-2 px-4 py-2 rounded hover:bg-orange-600", pathname === href && "bg-orange-700 text-black");
 
-  const toggleSection = (section: string) =>
-    setOpenSection((prev) => (prev === section ? null : section));
+  const Toggle = ({ id, title }: { id: string; title: string }) => (
+    <button
+      onClick={() => setOpenSection((prev) => (prev === id ? null : id))}
+      className="flex items-center justify-between w-full text-left text-orange-500 font-bold mb-2"
+      aria-expanded={openSection === id}
+    >
+      <span className="flex items-center gap-2">{title}</span>
+      {openSection === id ? <FaChevronDown /> : <FaChevronRight />}
+    </button>
+  );
 
   return (
     <nav className="w-full md:w-64 bg-neutral-900 p-4 text-white space-y-6 text-sm md:text-base">
-      {/* Work Orders */}
+      {/* Dashboard */}
       <div>
-        <button
-          onClick={() => toggleSection("workorders")}
-          className="flex items-center justify-between w-full text-left text-orange-500 font-bold mb-2"
-        >
-          <span className="flex items-center gap-2">
-            <FaClipboardList /> Work Orders
-          </span>
-          {openSection === "workorders" ? <FaChevronDown /> : <FaChevronRight />}
-        </button>
-        {openSection === "workorders" && (
+        <Toggle id="dashboard" title={<><FaTachometerAlt /> Dashboard</> as any} />
+        {openSection === "dashboard" && (
           <div className="space-y-1 ml-2">
-            <Link
-              href="/work-orders/create"
-              className={linkClass("/work-orders/create")}
-            >
-              <FaWrench /> Create Work Order
-            </Link>
-            <Link
-              href="/work-orders/queue"
-              className={linkClass("/work-orders/queue")}
-            >
-              <FaClipboardList /> Job Queue
-            </Link>
-            <Link href="/work-orders" className={linkClass("/work-orders")}>
-              <FaClipboardList /> All Work Orders
-            </Link>
-            <Link href="/menu" className={linkClass("/menu")}>
-              <FaWrench /> Service Menu
+            <Link href="/dashboard" className={linkClass("/dashboard")}>
+              Overview
             </Link>
           </div>
         )}
       </div>
 
-      {/* Advising */}
+      {/* AI */}
       <div>
-        <button
-          onClick={() => toggleSection("advising")}
-          className="flex items-center justify-between w-full text-left text-orange-500 font-bold mb-2"
-        >
-          <span className="flex items-center gap-2">
-            <FaWrench /> Advising
-          </span>
-          {openSection === "advising" ? <FaChevronDown /> : <FaChevronRight />}
-        </button>
-        {openSection === "advising" && (
-          <div className="space-y-1 ml-2">
-            <Link href="/inspections" className={linkClass("/inspections")}>
-              <FaClipboardList /> Inspections
-            </Link>
-            <Link
-              href="/dashboard/advisor"
-              className={linkClass("/dashboard/advisor")}
-            >
-              <FaWrench /> Advisor Dashboard
-            </Link>
-          </div>
-        )}
-      </div>
-
-      {/* AI Assistant */}
-      <div>
-        <button
-          onClick={() => toggleSection("ai")}
-          className="flex items-center justify-between w-full text-left text-orange-500 font-bold mb-2"
-        >
-          <span className="flex items-center gap-2">
-            <FaCogs /> AI Assistant
-          </span>
-          {openSection === "ai" ? <FaChevronDown /> : <FaChevronRight />}
-        </button>
+        <Toggle id="ai" title={<><FaCogs /> AI Assistant</> as any} />
         {openSection === "ai" && (
           <div className="space-y-1 ml-2">
             <Link href="/ai/assistant" className={linkClass("/ai/assistant")}>
-              <FaCogs /> Expert Assistant
+              Expert Assistant
             </Link>
           </div>
         )}
       </div>
 
-      {/* Communication (optional; if ChatDock in layout is enough, remove this block) */}
+      {/* Messaging */}
       <div>
-        <button
-          onClick={() => toggleSection("chat")}
-          className="flex items-center justify-between w-full text-left text-orange-500 font-bold mb-2"
-        >
-          <span className="flex items-center gap-2">
-            <FaComments /> Communication
-          </span>
-          {openSection === "chat" ? <FaChevronDown /> : <FaChevronRight />}
-        </button>
+        <Toggle id="chat" title={<><FaComments /> Communication</> as any} />
         {openSection === "chat" && (
           <div className="space-y-1 ml-2">
             <Link href="/messages" className={linkClass("/messages")}>
-              <FaComments /> Team Messages
+              Team Messages
             </Link>
           </div>
         )}
       </div>
 
-      {/* Shift Tracker */}
       {userId && (
         <div className="mt-6 border-t border-gray-800 pt-4">
           <h2 className="text-orange-500 font-bold mb-2">Shift Tracker</h2>
