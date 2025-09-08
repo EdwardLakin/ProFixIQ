@@ -1,107 +1,83 @@
 // components/tabs/DashboardTabs.tsx
 "use client";
 
-import { useTabs } from "@shared/context/TabsProvider";
+import { useTabs } from "@shared/components/tabs/TabsProvider";
 import { motion, AnimatePresence } from "framer-motion";
-import { Button } from "@shared/components/ui/Button";
-import { useEffect, useRef, useState } from "react";
-import Image from "next/image";
-import html2canvas from "html2canvas";
+import { useMemo } from "react";
 
 export default function DashboardTabs() {
-  const { tabs, activeTab, closeTab, closeOthers, setActiveTab } = useTabs();
-  const [previews, setPreviews] = useState<Record<string, string>>({});
-  const iframeRefs = useRef<Record<string, HTMLIFrameElement | null>>({});
+  const { tabs, activeHref, activateTab, closeTab, closeOthers, closeAll } = useTabs();
 
-  useEffect(() => {
-    tabs.forEach((tab) => {
-      if (!previews[tab.id]) {
-        const capture = async () => {
-          const iframe = iframeRefs.current[tab.id];
-          if (!iframe) return;
-          try {
-            const canvas = await html2canvas(
-              iframe.contentDocument?.body || document.body,
-            );
-            const dataUrl = canvas.toDataURL();
-            setPreviews((prev) => ({ ...prev, [tab.id]: dataUrl }));
-          } catch {
-            // Ignore capture errors
-          }
-        };
-        setTimeout(capture, 1000);
-      }
-    });
-  }, [tabs, previews]);
+  const hasTabs = tabs.length > 0;
+  const canCloseOthers = useMemo(
+    () => hasTabs && tabs.some((t) => t.href !== activeHref),
+    [hasTabs, tabs, activeHref],
+  );
 
   return (
-    <div className="w-full border-b border-neutral-800 bg-neutral-900 flex flex-col">
-      <div className="flex overflow-x-auto p-2 gap-2">
-        {tabs.map((tab) => (
-          <motion.div
-            key={tab.id}
-            className={`flex items-center rounded px-3 py-1 ${
-              tab.id === activeTab
-                ? "bg-orange-700 text-white"
-                : "bg-neutral-700 text-gray-200"
-            }`}
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-          >
-            <button
-              onClick={() => setActiveTab(tab.id)}
-              className="flex items-center gap-2"
-              title={tab.title}
+    <div className="w-full border-b border-neutral-800 bg-neutral-900">
+      {/* Tabs row */}
+      <div className="flex items-center gap-2 overflow-x-auto p-2">
+        <AnimatePresence initial={false}>
+          {tabs.map((t) => (
+            <motion.div
+              key={t.href}
+              className={[
+                "flex items-center gap-2 rounded px-3 py-1 whitespace-nowrap",
+                t.href === activeHref
+                  ? "bg-orange-700 text-white border border-orange-400"
+                  : "bg-neutral-800 text-neutral-200 border border-white/10 hover:border-orange-400/60",
+              ].join(" ")}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              layout
             >
-              {tab.thumbnail && (
-                <Image
-                  src={tab.thumbnail}
-                  alt="preview"
-                  width={32}
-                  height={20}
-                  className="rounded border border-neutral-600"
-                />
-              )}
-              <span className="truncate max-w-[120px]">{tab.title}</span>
-            </button>
-            <button
-              onClick={() => closeTab(tab.id)}
-              className="ml-2 text-sm text-red-300"
-            >
-              ✕
-            </button>
-          </motion.div>
-        ))}
-        {activeTab && (
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => closeOthers(activeTab)}
-          >
-            Close Others
-          </Button>
-        )}
-      </div>
+              <button
+                type="button"
+                onClick={() => activateTab(t.href)}
+                className="flex items-center gap-2"
+                title={t.title}
+                aria-current={t.href === activeHref ? "page" : undefined}
+              >
+                {t.icon ? <span aria-hidden className="text-lg leading-none">{t.icon}</span> : null}
+                <span className="truncate max-w-[160px]">{t.title}</span>
+              </button>
 
-      <div className="relative w-full h-[calc(100vh-120px)]">
-        {tabs.map((tab) => (
-          <AnimatePresence key={tab.id}>
-            {tab.id === activeTab && (
-              <motion.iframe
-                key={tab.id}
-                ref={(el: HTMLIFrameElement | null) => {
-                  iframeRefs.current[tab.id] = el;
-                }}
-                src={tab.url}
-                className="absolute inset-0 w-full h-full"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-              />
+              <button
+                type="button"
+                onClick={() => closeTab(t.href)}
+                className="ml-1 rounded px-1 text-xs leading-none text-red-300 hover:bg-red-900/30"
+                aria-label={`Close ${t.title}`}
+                title="Close"
+              >
+                ✕
+              </button>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+
+        {/* Actions */}
+        {hasTabs && (
+          <div className="ml-auto flex items-center gap-2">
+            {canCloseOthers && (
+              <button
+                type="button"
+                onClick={() => closeOthers(activeHref)}
+                className="rounded border border-orange-400 px-2 py-1 text-xs font-medium text-orange-300 hover:bg-orange-500/10"
+              >
+                Close Others
+              </button>
             )}
-          </AnimatePresence>
-        ))}
+            <button
+              type="button"
+              onClick={closeAll}
+              className="rounded border border-orange-400 px-2 py-1 text-xs font-medium text-orange-300 hover:bg-orange-500/10"
+            >
+              Close All
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
