@@ -1,3 +1,4 @@
+// features/dashboard/app/dashboard/layout.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -18,7 +19,6 @@ const TechAssistant = dynamic(
 type Role = "owner" | "admin" | "manager" | "advisor" | "mechanic" | "parts";
 
 const CALENDAR_ROLES: Role[] = ["owner", "admin", "manager", "advisor"];
-
 
 // Narrow the raw DB role into our staff-only union
 function normalizeRole(raw: string | null | undefined): Role | null {
@@ -108,9 +108,9 @@ export default function DashboardLayout({
 
   // Close assistant when someone in the app dispatches our custom event
   useEffect(() => {
-    const openAssistant = () => setAssistantOpen(true);
-    window.addEventListener("open-tech-assistant" as any, openAssistant);
-    return () => window.removeEventListener("open-tech-assistant" as any, openAssistant);
+    const openAssistant: EventListener = () => setAssistantOpen(true);
+    window.addEventListener("open-tech-assistant", openAssistant);
+    return () => window.removeEventListener("open-tech-assistant", openAssistant);
   }, []);
 
   // Visibility gates
