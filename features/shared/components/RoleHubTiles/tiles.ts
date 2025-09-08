@@ -26,17 +26,31 @@ export const TILES: Tile[] = [
     roles: ["advisor","manager","owner","admin"], scopes: ["work_orders","all"] },
 
   // --- Inspections ---
-  { href: "/inspection", title: "Inspection Menu", subtitle: "Perform & review inspections",
-    roles: ["advisor","manager","owner","admin","mechanic"], scopes: ["inspections","all"] },
-  { href: "/maintenance50", title: "Maintenance 50", subtitle: "Quick checklist",
-    roles: ["advisor","manager","owner","admin","mechanic"], scopes: ["inspections","all"] },
-  { href: "/inspection/custom-inspection", title: "Custom Builder", subtitle: "Design your own",
-    roles: ["advisor","manager","owner","admin"], scopes: ["inspections","all"] },
-  { href: "/inspection/saved", title: "Saved Inspections", subtitle: "Recent & drafts",
-    roles: ["advisor","manager","owner","admin"], scopes: ["inspections","all"] },
-  { href: "/inspection/templates", title: "Templates", subtitle: "Reusable inspection sets",
-    roles: ["advisor","manager","owner","admin"], scopes: ["inspections","all"] },
+{ href: "/dashboard/inspections", title: "Inspection Menu", subtitle: "Perform & review inspections",
+  roles: ["advisor","manager","owner","admin","mechanic"], scopes: ["inspections","all"] },
 
+{ href: "/dashboard/inspections/maintenance50", title: "Maintenance 50", subtitle: "Quick checklist",
+  roles: ["advisor","manager","owner","admin","mechanic"], scopes: ["inspections","all"] },
+
+{ href: "/dashboard/inspections/custom-inspection", title: "Custom Builder", subtitle: "Design your own",
+  roles: ["advisor","manager","owner","admin"], scopes: ["inspections","all"] },
+
+{ href: "/dashboard/inspections/saved", title: "Saved Inspections", subtitle: "Recent & drafts",
+  roles: ["advisor","manager","owner","admin"], scopes: ["inspections","all"] },
+
+{ href: "/dashboard/inspections/templates", title: "Templates", subtitle: "Reusable inspection sets",
+  roles: ["advisor","manager","owner","admin"], scopes: ["inspections","all"] },
+
+{ href: "/dashboard/inspections/created", title: "Created Inspections", subtitle: "All submitted inspections",
+  roles: ["advisor","manager","owner","admin"], scopes: ["inspections","all"] },
+
+{ href: "/dashboard/inspections/summary", title: "Inspection Summaries", subtitle: "Overview & results",
+  roles: ["advisor","manager","owner","admin"], scopes: ["inspections","all"] },
+
+{ href: "/dashboard/inspections/customer-vehicle", title: "Customer / Vehicle Lookup", subtitle: "Search inspections by customer or vehicle",
+  roles: ["advisor","manager","owner","admin"], scopes: ["inspections","all"] },
+
+  
   // --- Parts ---
   { href: "/parts", title: "Parts Dashboard", subtitle: "Orders & receiving",
     roles: ["parts","manager","owner","admin","advisor"], scopes: ["parts","all"] },

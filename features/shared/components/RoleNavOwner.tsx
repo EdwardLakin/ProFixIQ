@@ -6,45 +6,28 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 import ShiftTracker from "@shared/components/ShiftTracker";
-import {
-  FaTools,
-  FaCogs,
-  FaClipboardList,
-  FaBoxOpen,
-  FaRegChartBar,
-  FaUserPlus,
-  FaWrench,
-  FaChevronDown,
-  FaChevronUp,
-} from "react-icons/fa";
-import { HiMenuAlt2 } from "react-icons/hi";
+import PunchController from "@/features/shared/components/ui/PunchController";
+import { FaRegChartBar } from "react-icons/fa";
 
 type Role = Database["public"]["Enums"]["user_role_enum"] | null;
 
 export default function RoleNavOwner() {
   const supabase = createClientComponentClient<Database>();
-
   const [role, setRole] = useState<Role>(null);
   const [userId, setUserId] = useState<string | null>(null);
-  const [mobileOpen, setMobileOpen] = useState<boolean>(false);
-  const [openSection, setOpenSection] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
+      const { data: { session } } = await supabase.auth.getSession();
       const uid = session?.user?.id ?? null;
       if (!uid) return;
-
       setUserId(uid);
 
       const { data: profile } = await supabase
         .from("profiles")
         .select("role")
         .eq("id", uid)
-        .single();
+        .maybeSingle();
 
       setRole((profile?.role as Role) ?? null);
     })();
@@ -52,133 +35,47 @@ export default function RoleNavOwner() {
 
   if (role !== "owner") return null;
 
-  const toggleSection = (section: string) => {
-    setOpenSection((prev) => (prev === section ? null : section));
-  };
-
-  function NavSection(props: {
-    title: string;
-    icon: React.ReactNode;
-    sectionKey: string;
-    children: React.ReactNode;
-  }) {
-    const { title, icon, sectionKey, children } = props;
-    const isOpen = openSection === sectionKey;
-
-    return (
-      <div>
-        <button
-          onClick={() => toggleSection(sectionKey)}
-          className="flex w-full items-center justify-between text-left font-semibold text-white hover:text-orange-400"
-        >
-          <span className="flex items-center gap-2">
-            {icon}
-            {title}
-          </span>
-          {isOpen ? <FaChevronUp /> : <FaChevronDown />}
-        </button>
-        {isOpen && <div className="mt-2 space-y-1 pl-4">{children}</div>}
-      </div>
-    );
-  }
-
   return (
-    <>
-      {/* Mobile Toggle */}
-      <div className="flex items-center justify-between bg-neutral-900 p-4 text-white md:hidden">
-        <span className="text-lg font-bold text-orange-500">Menu</span>
-        <button onClick={() => setMobileOpen((v) => !v)}>
-          <HiMenuAlt2 size={28} />
-        </button>
+    <nav className="w-full space-y-6 text-white">
+      {/* Utilities */}
+      <div>
+        <h3 className="text-sm font-bold text-orange-500 mb-2">Utilities</h3>
+        <div className="space-y-2">
+          <PunchController />
+          <Link href="/ai/assistant" className="block hover:text-orange-400">Tech Assistant</Link>
+          <Link href="/messages" className="block hover:text-orange-400">Team Messages</Link>
+        </div>
       </div>
 
-      <nav
-        className={`w-full space-y-6 bg-neutral-900 p-4 text-white md:block md:w-64 ${
-          mobileOpen ? "block" : "hidden"
-        }`}
-      >
-        <NavSection title="Work Orders" icon={<FaWrench />} sectionKey="work">
-          <Link href="/work-orders/create" className="block hover:text-orange-400">
-            Create Work Order
-          </Link>
-          <Link href="/work-orders/queue" className="block hover:text-orange-400">
-            Job Queue
-          </Link>
-          <Link href="/work-orders" className="block hover:text-orange-400">
-            All Work Orders
-          </Link>
-          <Link href="/menu" className="block hover:text-orange-400">
-            Service Menu
-          </Link>
-        </NavSection>
+      {/* Inspections (routes fixed under /dashboard/inspections/...) */}
+      <div>
+        <h3 className="text-sm font-bold text-orange-500 mb-2">Inspections</h3>
+        <div className="space-y-2">
+          <Link href="/dashboard/inspections" className="block hover:text-orange-400">All Inspections</Link>
+          <Link href="/dashboard/inspections/maintenance50" className="block hover:text-orange-400">Maintenance 50</Link>
+          <Link href="/dashboard/inspections/custom-inspection" className="block hover:text-orange-400">Custom Builder</Link>
+          <Link href="/dashboard/inspections/saved" className="block hover:text-orange-400">Saved</Link>
+          <Link href="/dashboard/inspections/templates" className="block hover:text-orange-400">Templates</Link>
+        </div>
+      </div>
 
-        <NavSection title="Inspections" icon={<FaClipboardList />} sectionKey="inspection">
-          <Link href="/inspection" className="block hover:text-orange-400">
-            Inspection Menu
-          </Link>
-          <Link href="/maintenance50" className="block hover:text-orange-400">
-            Maintenance 50
-          </Link>
-          <Link href="/inspection/custom-inspection" className="block hover:text-orange-400">
-            Custom Builder
-          </Link>
-          <Link href="/inspection/saved" className="block hover:text-orange-400">
-            Saved Inspections
-          </Link>
-          <Link href="/inspection/templates" className="block hover:text-orange-400">
-            Templates
-          </Link>
-        </NavSection>
+      {/* Settings & Admin */}
+      <div>
+        <h3 className="text-sm font-bold text-orange-500 mb-2">Settings</h3>
+        <div className="space-y-2">
+          <Link href="/dashboard/owner/settings" className="block hover:text-orange-400">Owner Settings</Link>
+          <Link href="/dashboard/owner/reports" className="block hover:text-orange-400"><FaRegChartBar className="inline mr-2" />Reports</Link>
+          <Link href="/dashboard/owner/create-user" className="block hover:text-orange-400">Create User</Link>
+          <Link href="/compare-plans" className="block hover:text-orange-400">Plan & Billing</Link>
+        </div>
+      </div>
 
-        <NavSection title="Parts & Inventory" icon={<FaBoxOpen />} sectionKey="parts">
-          <Link href="/parts" className="block hover:text-orange-400">
-            Parts Dashboard
-          </Link>
-        </NavSection>
-
-        <NavSection title="Management" icon={<FaUserPlus />} sectionKey="management">
-          <Link href="/dashboard/owner/create-user" className="block hover:text-orange-400">
-            Create User
-          </Link>
-          <Link href="/dashboard/owner" className="block hover:text-orange-400">
-            Owner Dashboard
-          </Link>
-        </NavSection>
-
-        <NavSection title="Settings & Reports" icon={<FaRegChartBar />} sectionKey="settings">
-          <Link href="/dashboard/owner/reports" className="block hover:text-orange-400">
-            Reports
-          </Link>
-          <Link href="/dashboard/owner/settings" className="block hover:text-orange-400">
-            Settings
-          </Link>
-          <Link href="/dashboard/owner/import-customers" className="block hover:text-orange-400">
-            Import Customers
-          </Link>
-          <Link href="/compare-plans" className="block hover:text-orange-400">
-            Plan & Billing
-          </Link>
-        </NavSection>
-
-        <NavSection title="AI Tools" icon={<FaCogs />} sectionKey="ai">
-          <Link href="/ai/assistant" className="block hover:text-orange-400">
-            Tech Assistant
-          </Link>
-        </NavSection>
-
-        <NavSection title="Tech Tools" icon={<FaTools />} sectionKey="tech">
-          <Link href="/tech/queue" className="block hover:text-orange-400">
-            Tech Job Queue
-          </Link>
-        </NavSection>
-
-        {userId ? (
-          <div className="mt-6 border-t border-gray-800 pt-4">
-            <h2 className="mb-2 font-bold text-orange-500">Shift Tracker</h2>
-            <ShiftTracker userId={userId} />
-          </div>
-        ) : null}
-      </nav>
-    </>
+      {userId && (
+        <div className="mt-6 border-t border-gray-800 pt-4">
+          <h2 className="mb-2 font-bold text-orange-500">Shift Tracker</h2>
+          <ShiftTracker userId={userId} />
+        </div>
+      )}
+    </nav>
   );
 }

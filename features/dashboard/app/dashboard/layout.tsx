@@ -1,195 +1,152 @@
-// features/dashboard/app/dashboard/layout.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import Navbar from "@shared/components/Navbar";
-import DynamicRoleSidebar from "@shared/components/DynamicRoleSidebar";
-import Calendar from "@shared/components/ui/Calendar";
-import ShareBookingLink from "@dashboard/components/ShareBookingLink";
+import type { Database } from "@shared/types/types/supabase";
 
-// ⬇️ Use the new Tabs system we added
+import Calendar from "@shared/components/ui/Calendar";
+import DynamicRoleSidebar from "@shared/components/DynamicRoleSidebar";
+
 import { TabsProvider } from "@/features/shared/components/tabs/TabsProvider";
 import TabsBar from "@/features/shared/components/tabs/TabsBar";
+import ChatDock from "@/features/chat/components/ChatDock";
 
-type Role =
-  | "owner"
-  | "admin"
-  | "manager"
-  | "advisor"
-  | "mechanic"
-  | "parts"
-  | null;
+const TechAssistant = dynamic(
+  () => import("@/features/shared/components/TechAssistant"),
+  { ssr: false }
+);
 
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const supabase = createClientComponentClient();
+// Typed role from DB enum
+type Role = Database["public"]["Enums"]["user_role_enum"] | null;
 
-  // Role/permissions
+const CALENDAR_ROLES: ReadonlyArray<NonNullable<Role>> = [
+  "owner",
+  "admin",
+  "manager",
+  "advisor",
+];
+const STAFF_ROLES: ReadonlyArray<NonNullable<Role>> = [
+  "owner",
+  "admin",
+  "manager",
+  "advisor",
+  "parts",
+];
+
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const supabase = createClientComponentClient<Database>();
+
   const [role, setRole] = useState<Role>(null);
   const [loadingRole, setLoadingRole] = useState(true);
 
-  // User id for per-user tabs persistence
-  const [userId, setUserId] = useState<string | undefined>(undefined);
-
-  // Calendar (sidebar)
+  // calendar
   const [month, setMonth] = useState<Date>(() => new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
-  // Mobile sidebar
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  // assistant drawer
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [currentVehicle] = useState<{ year?: string; make?: string; model?: string } | null>(null);
+  const [currentWorkOrderLineId] = useState<string | null>(null);
 
+  // fetch role once
   useEffect(() => {
     let cancelled = false;
-
     (async () => {
       try {
         setLoadingRole(true);
         const {
           data: { user },
         } = await supabase.auth.getUser();
-
         if (!user) {
-          if (!cancelled) {
-            setRole(null);
-            setUserId(undefined);
-          }
+          if (!cancelled) setRole(null);
           return;
         }
-
-        if (!cancelled) setUserId(user.id);
 
         const { data: profile } = await supabase
           .from("profiles")
           .select("role")
           .eq("id", user.id)
-          .single();
+          .maybeSingle();
 
         if (!cancelled) setRole((profile?.role as Role) ?? null);
-      } catch {
-        if (!cancelled) {
-          setRole(null);
-          setUserId(undefined);
-        }
       } finally {
         if (!cancelled) setLoadingRole(false);
       }
     })();
-
     return () => {
       cancelled = true;
     };
   }, [supabase]);
 
-  const showCalendar = useMemo(() => {
-    if (loadingRole || !role) return false;
-    return ["owner", "admin", "manager", "advisor"].includes(role);
-  }, [loadingRole, role]);
+  // ESC closes assistant
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setAssistantOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
-  const showShareLink = useMemo(() => {
-    if (loadingRole || !role) return false;
-    return ["owner", "admin", "manager", "advisor", "parts"].includes(role);
-  }, [loadingRole, role]);
+  const showCalendar = useMemo(
+    () => !loadingRole && role != null && CALENDAR_ROLES.includes(role),
+    [loadingRole, role]
+  );
+
+  const showStaffTools = useMemo(
+    () => !loadingRole && role != null && STAFF_ROLES.includes(role),
+    [loadingRole, role]
+  );
 
   return (
-    <TabsProvider userId={userId}>
+    <TabsProvider>
       <div className="min-h-screen bg-black text-white font-blackops">
-        <Navbar />
-
-        {/* Header row */}
-        <div className="mx-auto flex max-w-7xl items-center justify-between border-b border-neutral-800 px-4 py-3">
-          <div className="flex items-center gap-3">
-            {/* Mobile sidebar toggle */}
-            <button
-              aria-label="Toggle sidebar"
-              className="inline-flex items-center justify-center rounded border border-orange-400/40 px-3 py-1 text-sm hover:border-orange-400 md:hidden"
-              onClick={() => setSidebarOpen((v) => !v)}
-            >
-              Menu
-            </button>
-            <h1 className="text-lg text-orange-400">
-              {loadingRole ? "Loading…" : "Dashboard"}
-            </h1>
+        {/* Tabs bar only */}
+        <div className="border-b border-neutral-800 bg-neutral-900">
+          <div className="mx-auto max-w-7xl px-3 py-2">
+            <TabsBar />
           </div>
-
-          {showShareLink && <ShareBookingLink />}
         </div>
 
-        {/* Tabs Bar (global, under header, above page content) */}
-        <TabsBar />
-
         <div className="flex">
-          {/* Desktop sidebar */}
+          {/* Sidebar with utilities/settings only */}
           <aside className="hidden w-64 shrink-0 border-r border-neutral-800 bg-neutral-900 md:block">
-            <div className="sticky top-0 h-[calc(100dvh-64px)] overflow-y-auto p-3">
-              {/* RoleNav keeps settings/utilities; CTAs live in page bodies */}
-              <DynamicRoleSidebar />
+            <div className="sticky top-0 h-[calc(100dvh-48px)] overflow-y-auto p-3">
+              <DynamicRoleSidebar role={role ?? undefined} />
 
               {showCalendar && (
                 <div className="mt-4 rounded-xl border border-neutral-800 bg-neutral-950 p-3">
-                  <h3 className="mb-2 text-sm font-semibold text-neutral-300">
-                    Calendar
-                  </h3>
+                  <h3 className="mb-2 text-sm font-semibold text-neutral-300">Calendar</h3>
                   <Calendar
                     className="shadow-inner"
                     month={month}
                     onMonthChange={setMonth}
-                    value={selectedDate}
+                    value={selectedDate ?? undefined}
                     onChange={setSelectedDate}
                   />
                 </div>
               )}
+
+              {showStaffTools && (
+                <>
+                  <div className="mt-4">
+                    <ChatDock />
+                  </div>
+                  <div className="mt-3">
+                    <button
+                      type="button"
+                      onClick={() => setAssistantOpen(true)}
+                      className="w-full rounded border border-white/15 px-3 py-2 text-sm hover:border-orange-500"
+                    >
+                      Tech Assistant
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </aside>
 
-          {/* Mobile drawer */}
-          {sidebarOpen && (
-            <div className="fixed inset-0 z-40 md:hidden">
-              <button
-                aria-label="Close sidebar"
-                className="absolute inset-0 bg-black/60"
-                onClick={() => setSidebarOpen(false)}
-              />
-              <aside
-                className="relative z-50 h-full w-72 border-r border-neutral-800 bg-neutral-900 p-3"
-                role="dialog"
-                aria-modal="true"
-              >
-                <div className="mb-3 flex items-center justify-between">
-                  <span className="text-sm text-neutral-300">Navigation</span>
-                  <button
-                    className="rounded border border-orange-400/40 px-2 py-1 text-xs hover:border-orange-400"
-                    onClick={() => setSidebarOpen(false)}
-                  >
-                    Close
-                  </button>
-                </div>
-
-                <div className="h-[calc(100dvh-96px)] overflow-y-auto pr-1">
-                  <DynamicRoleSidebar />
-                  {showCalendar && (
-                    <div className="mt-4 rounded-xl border border-neutral-800 bg-neutral-950 p-3">
-                      <h3 className="mb-2 text-sm font-semibold text-neutral-300">
-                        Calendar
-                      </h3>
-                      <Calendar
-                        className="shadow-inner"
-                        month={month}
-                        onMonthChange={setMonth}
-                        value={selectedDate}
-                        onChange={setSelectedDate}
-                      />
-                    </div>
-                  )}
-                </div>
-              </aside>
-            </div>
-          )}
-
-          {/* Main content */}
+          {/* Main */}
           <main className="flex-1 p-6">
             {loadingRole ? (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -206,6 +163,37 @@ export default function DashboardLayout({
           </main>
         </div>
       </div>
+
+      {/* Assistant Drawer */}
+      {assistantOpen && (
+        <div className="fixed inset-0 z-50">
+          <button
+            className="absolute inset-0 bg-black/60"
+            aria-label="Close assistant"
+            onClick={() => setAssistantOpen(false)}
+          />
+          <aside
+            className="absolute right-0 top-0 h-full w-full max-w-3xl bg-neutral-900 text-white border-l border-neutral-800 p-4 overflow-y-auto"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-neutral-300">Tech Assistant</h2>
+              <button
+                onClick={() => setAssistantOpen(false)}
+                className="rounded border border-white/15 px-2 py-1 text-xs hover:border-orange-500"
+              >
+                Close
+              </button>
+            </div>
+
+            <TechAssistant
+              defaultVehicle={currentVehicle ?? undefined}
+              workOrderLineId={currentWorkOrderLineId ?? undefined}
+            />
+          </aside>
+        </div>
+      )}
     </TabsProvider>
   );
 }
