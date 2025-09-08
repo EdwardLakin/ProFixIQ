@@ -4,15 +4,8 @@ import type { NextRequest } from "next/server";
 import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
-const STAFF_HOME: Record<string, string> = {
-  owner: "/dashboard/owner",
-  admin: "/dashboard/admin",
-  manager: "/dashboard/manager",
-  advisor: "/dashboard/advisor",
-  parts: "/dashboard/parts",
-  mechanic: "/dashboard/tech",
-  tech: "/dashboard/tech",
-};
+// Single home for all staff roles now.
+const STAFF_HOME = "/dashboard";
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
@@ -23,7 +16,7 @@ export async function middleware(req: NextRequest) {
     data: { session },
   } = await supabase.auth.getSession();
 
-  // Public pages
+  // Public routes that never need auth
   const isPublic =
     pathname === "/" ||
     pathname.startsWith("/compare-plans") ||
@@ -38,54 +31,52 @@ export async function middleware(req: NextRequest) {
     pathname.endsWith("/favicon.ico") ||
     pathname.endsWith("/logo.svg");
 
-  // Profile details (role, onboarding)
-  let role: string | null = null;
+  // Get lightweight profile gates only when logged in
   let completed = false;
-
   if (session?.user) {
     const { data: profile } = await supabase
       .from("profiles")
-      .select("role, completed_onboarding")
+      .select("completed_onboarding")
       .eq("id", session.user.id)
       .maybeSingle();
 
-    role = profile?.role ?? null;
     completed = !!profile?.completed_onboarding;
   }
 
-  // Signed-in user opening landing → send to home or onboarding
+  // Signed-in user hitting root → send to unified dashboard or onboarding
   if (pathname === "/" && session?.user) {
-    const to = role && completed ? STAFF_HOME[role] ?? "/onboarding" : "/onboarding";
+    const to = completed ? STAFF_HOME : "/onboarding";
     return NextResponse.redirect(new URL(to, req.url));
   }
 
   if (isPublic) {
-    // Done with onboarding? Keep them off onboarding pages
-    if (pathname.startsWith("/onboarding") && session?.user && role && completed) {
-      const to = STAFF_HOME[role] ?? "/dashboard";
-      return NextResponse.redirect(new URL(to, req.url));
+    // If they already finished onboarding, keep them off onboarding pages
+    if (pathname.startsWith("/onboarding") && session?.user && completed) {
+      return NextResponse.redirect(new URL(STAFF_HOME, req.url));
     }
     return res;
   }
 
-  // Protected routes
+  // ---- Protected branches (keep these minimal) ----
+  // NOTE: We no longer protect /dashboard in middleware; the client layout/AuthGate handles that.
   if (!session?.user) {
     const login = new URL("/sign-in", req.url);
     login.searchParams.set("redirect", pathname + search);
     return NextResponse.redirect(login);
   }
 
-  // Force onboarding for dashboard if not complete
-  if (pathname.startsWith("/dashboard") && !(role && completed)) {
+  // Force onboarding when visiting protected areas and onboarding not complete
+  if (!completed && (pathname.startsWith("/work-orders") || pathname.startsWith("/inspections"))) {
     return NextResponse.redirect(new URL("/onboarding", req.url));
   }
 
   return res;
 }
 
+// Only protect app areas that truly require an already-established session.
+// Leave /dashboard to the client-side guard to prevent post-login "flash back".
 export const config = {
   matcher: [
-    "/dashboard/:path*",
     "/work-orders/:path*",
     "/inspections/:path*",
     // add more protected branches here if needed
