@@ -4,17 +4,7 @@ import type { NextRequest } from "next/server";
 import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
-type Role = Database["public"]["Enums"]["user_role_enum"];
-
-const STAFF_HOME: Record<Exclude<Role, "customer"> | "tech", string> = {
-  owner: "/dashboard/owner",
-  admin: "/dashboard/admin",
-  manager: "/dashboard/manager",
-  advisor: "/dashboard/advisor",
-  parts: "/dashboard/parts",
-  mechanic: "/dashboard/tech",
-  tech: "/dashboard/tech", // alias
-};
+type Role = Database["public"]["Enums"]["user_role_enum"] | null;
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
@@ -37,13 +27,11 @@ export async function middleware(req: NextRequest) {
     pathname.endsWith("/favicon.ico") ||
     pathname.endsWith("/logo.svg");
 
-  // Session
   const {
     data: { session },
   } = await supabase.auth.getSession();
 
-  // Profile bits used for routing
-  let role: Role | null = null;
+  let role: Role = null;
   let completed = false;
 
   if (session?.user) {
@@ -53,43 +41,45 @@ export async function middleware(req: NextRequest) {
       .eq("id", session.user.id)
       .maybeSingle();
 
-    role = (profile?.role as Role | null) ?? null;
+    role = (profile?.role as Role) ?? null;
     completed = Boolean(profile?.completed_onboarding);
   }
 
-  // If a signed-in user hits the landing page, send them somewhere useful
-  if (pathname === "/" && session?.user) {
-    const to =
-      role && completed
-        ? STAFF_HOME[(role as Exclude<Role, "customer">)] ?? "/dashboard"
-        : "/onboarding";
-    return NextResponse.redirect(new URL(to, req.url));
+  // If hitting the root "/", decide a home:
+  if (pathname === "/") {
+    if (session?.user) {
+      const to = completed ? "/dashboard" : "/onboarding";
+      return NextResponse.redirect(new URL(to, req.url));
+    }
+    return res; // allow landing page for signed-out users
   }
 
-  // Public branch: also keep users off onboarding once completed
+  // Public routes stay public, but keep signed-in users off onboarding if already done
   if (isPublic) {
-    if (pathname.startsWith("/onboarding") && session?.user && role && completed) {
-      const to =
-        STAFF_HOME[(role as Exclude<Role, "customer">)] ?? "/dashboard";
+    if (pathname.startsWith("/onboarding") && session?.user && completed) {
+      return NextResponse.redirect(new URL("/dashboard", req.url));
+    }
+    // If a signed-in user opens /sign-in, send them to dashboard
+    if (pathname.startsWith("/sign-in") && session?.user) {
+      const to = completed ? "/dashboard" : "/onboarding";
       return NextResponse.redirect(new URL(to, req.url));
     }
     return res;
   }
 
-  // Protected branches below here -------------------------------
-
-  // Not signed in → send to sign-in with redirect back
+  // Protected branches below: require a session
   if (!session?.user) {
     const login = new URL("/sign-in", req.url);
     login.searchParams.set("redirect", pathname + search);
     return NextResponse.redirect(login);
   }
 
-  // Force onboarding completion for any /dashboard* page
+  // Force onboarding before allowing dashboard (and other protected pages if you like)
   if (pathname.startsWith("/dashboard") && !completed) {
     return NextResponse.redirect(new URL("/onboarding", req.url));
   }
 
+  // Otherwise, allow through
   return res;
 }
 
@@ -98,6 +88,8 @@ export const config = {
     "/dashboard/:path*",
     "/work-orders/:path*",
     "/inspections/:path*",
-    // add more protected branches here if needed
+    "/",
+    "/onboarding/:path*",
+    "/sign-in",
   ],
 };
