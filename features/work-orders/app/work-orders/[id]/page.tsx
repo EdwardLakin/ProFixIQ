@@ -10,15 +10,15 @@ import type { Database } from "@shared/types/types/supabase";
 
 import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
 
-// ---------- Client islands ----------
+// ---------- Client islands (loaded on the client automatically) ----------
 const MenuQuickAdd = dynamic(
   () => import("@work-orders/components/MenuQuickAdd").then((m) => m.MenuQuickAdd),
-  { ssr: false, loading: () => <div className="text-sm text-neutral-400">Loading quick-add…</div> },
+  { loading: () => <div className="text-sm text-neutral-400">Loading quick-add…</div> },
 );
 
 const SuggestedQuickAdd = dynamic(
   () => import("@work-orders/components/SuggestedQuickAdd").then((m) => m.default),
-  { ssr: false, loading: () => <div className="text-sm text-neutral-400">Loading suggestions…</div> },
+  { loading: () => <div className="text-sm text-neutral-400">Loading suggestions…</div> },
 );
 
 const WorkOrderInvoiceDownloadButton = dynamic(
@@ -26,17 +26,16 @@ const WorkOrderInvoiceDownloadButton = dynamic(
     import("@work-orders/components/WorkOrderInvoiceDownloadButton").then(
       (m) => m.WorkOrderInvoiceDownloadButton,
     ),
-  { ssr: false, loading: () => <div className="text-sm text-neutral-400">Preparing invoice…</div> },
+  { loading: () => <div className="text-sm text-neutral-400">Preparing invoice…</div> },
 );
 
-// Your wrapper that triggers router.refresh() on create
+// Wrapper that calls router.refresh() after a new line is created
 const NewLineFormIsland = dynamic(
   () => import("@work-orders/components/NewLineFormIsland"),
-  { ssr: false, loading: () => <div className="text-sm text-neutral-400">Loading form…</div> },
+  { loading: () => <div className="text-sm text-neutral-400">Loading form…</div> },
 );
 
-// optional but fine here
-
+// (optional, matches your app behavior)
 export const revalidate = 0;
 
 // ---------- Types ----------
@@ -45,6 +44,8 @@ type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
+
+type WorkOrderWithMaybeNotes = WorkOrder & { notes?: string | null };
 
 // ---------- UI helpers ----------
 const statusBadge: Record<string, string> = {
@@ -82,13 +83,21 @@ async function getData(id: string) {
 
   let vehicle: Vehicle | null = null;
   if (wo.vehicle_id) {
-    const { data: v } = await supabase.from("vehicles").select("*").eq("id", wo.vehicle_id).single();
+    const { data: v } = await supabase
+      .from("vehicles")
+      .select("*")
+      .eq("id", wo.vehicle_id)
+      .single();
     vehicle = v ?? null;
   }
 
   let customer: Customer | null = null;
   if (wo.customer_id) {
-    const { data: c } = await supabase.from("customers").select("*").eq("id", wo.customer_id).single();
+    const { data: c } = await supabase
+      .from("customers")
+      .select("*")
+      .eq("id", wo.customer_id)
+      .single();
     customer = c ?? null;
   }
 
@@ -101,19 +110,17 @@ async function getData(id: string) {
 }
 
 // ---------- Page ----------
-export default async function WorkOrderPage({
-  params,
-}: {
-  params: { id?: string | string[] };
-}) {
-  const raw = params?.id;
+export default async function WorkOrderPage(props: { params: { id?: string | string[] } }) {
+  const raw = props.params?.id;
   const id = Array.isArray(raw) ? raw[0] : raw;
   if (!id || typeof id !== "string") notFound();
 
   const { wo, lines = [], vehicle, customer } = await getData(id);
   if (!wo) notFound();
 
-  const suggJobId =
+  const notes: string | null = ((wo as WorkOrderWithMaybeNotes).notes ?? null) || null;
+
+  const suggJobId: string | null =
     lines.find((l) => (l.status ?? "").toLowerCase() === "in_progress")?.id ??
     lines.find((l) => (l.status ?? "").toLowerCase() === "awaiting")?.id ??
     lines.find((l) => (l.status ?? "").toLowerCase() === "queued")?.id ??
@@ -142,7 +149,7 @@ export default async function WorkOrderPage({
           </div>
           <div>
             <div className="text-neutral-400">Notes</div>
-            <div className="truncate">{(wo as any).notes ?? "—"}</div>
+            <div className="truncate">{notes ?? "—"}</div>
           </div>
         </div>
       </div>
@@ -173,7 +180,9 @@ export default async function WorkOrderPage({
                 {customer ? (
                   <>
                     <p>
-                      {[customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") || "—"}
+                      {[customer.first_name ?? "", customer.last_name ?? ""]
+                        .filter(Boolean)
+                        .join(" ") || "—"}
                     </p>
                     <p className="text-sm text-neutral-400">
                       {customer.phone ?? "—"} {customer.email ? `• ${customer.email}` : ""}
@@ -228,7 +237,9 @@ export default async function WorkOrderPage({
                           </div>
                         )}
                       </div>
-                      <span className={chipClass(ln.status)}>{(ln.status ?? "awaiting").replaceAll("_", " ")}</span>
+                      <span className={chipClass(ln.status)}>
+                        {(ln.status ?? "awaiting").replaceAll("_", " ")}
+                      </span>
                     </div>
                   </div>
                 ))}
@@ -241,7 +252,7 @@ export default async function WorkOrderPage({
             <h3 className="mb-2 font-semibold">Invoice</h3>
             <WorkOrderInvoiceDownloadButton
               workOrderId={wo.id}
-              lines={(lines ?? []).map((l) => ({
+              lines={lines.map((l) => ({
                 complaint: l.complaint ?? l.description ?? "",
                 cause: l.cause ?? "",
                 correction: l.correction ?? "",
@@ -267,7 +278,11 @@ export default async function WorkOrderPage({
         <aside className="space-y-6">
           <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
             {suggJobId ? (
-              <SuggestedQuickAdd jobId={suggJobId} workOrderId={wo.id} vehicleId={vehicle?.id ?? null} />
+              <SuggestedQuickAdd
+                jobId={suggJobId}
+                workOrderId={wo.id}
+                vehicleId={vehicle?.id ?? null}
+              />
             ) : (
               <div className="text-sm text-neutral-400">Add a job line to enable AI suggestions.</div>
             )}
