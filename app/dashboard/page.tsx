@@ -1,29 +1,38 @@
-// app/dashboard/page.tsx
-import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+"use client"
 
-export default async function DashboardIndex() {
-  const supabase = createServerComponentClient<Database>({ cookies });
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/sign-in");
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle();
+import NavFromTiles from "@/features/shared/components/nav/NavFromTiles";
+import { useUserRole } from "@/features/shared/hooks/useUserRole";
 
-  const role = profile?.role ?? null;
-  const dest =
-    role === "owner"   ? "/dashboard/owner"   :
-    role === "admin"   ? "/dashboard/admin"   :
-    role === "manager" ? "/dashboard/manager" :
-    role === "advisor" ? "/dashboard/advisor" :
-    role === "parts"   ? "/dashboard/parts"   :
-    role === "mechanic" || role === "tech" ? "/dashboard/tech" :
-    "/onboarding";
+// Optional role panels (kept empty for now; grow as needed)
+import AdvisorPanel from "@/features/dashboard/components/role-panels/AdvisorPanel";
+import ManagerPanel from "@/features/dashboard/components/role-panels/ManagerPanel";
+import TechPanel from "@/features/dashboard/components/role-panels/TechPanel";
+import OwnerPanel from "@/features/dashboard/components/role-panels/OwnerPanel";
+import PartsPanel from "@/features/dashboard/components/role-panels/PartsPanel";
+import AdminPanel from "@/features/dashboard/components/role-panels/AdminPanel";
 
-  redirect(dest);
+export default function DashboardHome() {
+  const { role, loading } = useUserRole();
+
+  return (
+    <div className="space-y-8">
+      {/* Role-aware CTA hub */}
+      <NavFromTiles
+        scope="all"
+        heading="Dashboard"
+        description="Quick actions matched to your role. Use the tabs bar to hop between recently opened pages."
+      />
+
+      {/* Optional role-specific widgets/panels below the CTA hub */}
+      {!loading && role === "advisor" && <AdvisorPanel />}
+      {!loading && role === "manager" && <ManagerPanel />}
+      {!loading && role === "mechanic" && <TechPanel />}
+      {!loading && role === "owner" && <OwnerPanel />}
+      {!loading && role === "parts" && <PartsPanel />}
+      {!loading && role === "admin" && <AdminPanel />}
+    </div>
+  );
 }

@@ -6,8 +6,11 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import Navbar from "@shared/components/Navbar";
 import DynamicRoleSidebar from "@shared/components/DynamicRoleSidebar";
 import Calendar from "@shared/components/ui/Calendar";
-import { TabsProvider } from "@shared/context/TabsProvider";
 import ShareBookingLink from "@dashboard/components/ShareBookingLink";
+
+// ⬇️ Use the new Tabs system we added
+import { TabsProvider } from "@/features/shared/components/tabs/TabsProvider";
+import TabsBar from "@/features/shared/components/tabs/TabsBar";
 
 type Role =
   | "owner"
@@ -29,6 +32,9 @@ export default function DashboardLayout({
   const [role, setRole] = useState<Role>(null);
   const [loadingRole, setLoadingRole] = useState(true);
 
+  // User id for per-user tabs persistence
+  const [userId, setUserId] = useState<string | undefined>(undefined);
+
   // Calendar (sidebar)
   const [month, setMonth] = useState<Date>(() => new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -45,10 +51,16 @@ export default function DashboardLayout({
         const {
           data: { user },
         } = await supabase.auth.getUser();
+
         if (!user) {
-          if (!cancelled) setRole(null);
+          if (!cancelled) {
+            setRole(null);
+            setUserId(undefined);
+          }
           return;
         }
+
+        if (!cancelled) setUserId(user.id);
 
         const { data: profile } = await supabase
           .from("profiles")
@@ -58,7 +70,10 @@ export default function DashboardLayout({
 
         if (!cancelled) setRole((profile?.role as Role) ?? null);
       } catch {
-        if (!cancelled) setRole(null);
+        if (!cancelled) {
+          setRole(null);
+          setUserId(undefined);
+        }
       } finally {
         if (!cancelled) setLoadingRole(false);
       }
@@ -80,7 +95,7 @@ export default function DashboardLayout({
   }, [loadingRole, role]);
 
   return (
-    <TabsProvider>
+    <TabsProvider userId={userId}>
       <div className="min-h-screen bg-black text-white font-blackops">
         <Navbar />
 
@@ -90,7 +105,7 @@ export default function DashboardLayout({
             {/* Mobile sidebar toggle */}
             <button
               aria-label="Toggle sidebar"
-              className="inline-flex items-center justify-center rounded border border-white/15 px-3 py-1 text-sm hover:border-orange-500 md:hidden"
+              className="inline-flex items-center justify-center rounded border border-orange-400/40 px-3 py-1 text-sm hover:border-orange-400 md:hidden"
               onClick={() => setSidebarOpen((v) => !v)}
             >
               Menu
@@ -103,11 +118,16 @@ export default function DashboardLayout({
           {showShareLink && <ShareBookingLink />}
         </div>
 
+        {/* Tabs Bar (global, under header, above page content) */}
+        <TabsBar />
+
         <div className="flex">
           {/* Desktop sidebar */}
           <aside className="hidden w-64 shrink-0 border-r border-neutral-800 bg-neutral-900 md:block">
             <div className="sticky top-0 h-[calc(100dvh-64px)] overflow-y-auto p-3">
+              {/* RoleNav keeps settings/utilities; CTAs live in page bodies */}
               <DynamicRoleSidebar />
+
               {showCalendar && (
                 <div className="mt-4 rounded-xl border border-neutral-800 bg-neutral-950 p-3">
                   <h3 className="mb-2 text-sm font-semibold text-neutral-300">
@@ -141,7 +161,7 @@ export default function DashboardLayout({
                 <div className="mb-3 flex items-center justify-between">
                   <span className="text-sm text-neutral-300">Navigation</span>
                   <button
-                    className="rounded border border-white/15 px-2 py-1 text-xs hover:border-orange-500"
+                    className="rounded border border-orange-400/40 px-2 py-1 text-xs hover:border-orange-400"
                     onClick={() => setSidebarOpen(false)}
                   >
                     Close
