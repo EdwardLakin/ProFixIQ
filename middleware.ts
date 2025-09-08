@@ -50,10 +50,17 @@ export async function middleware(req: NextRequest) {
   }
 
   if (isPublic) {
-    // Keep users who finished onboarding away from onboarding routes
+    // ✅ If you’re already signed in, keep you off the auth pages
+    if ((pathname.startsWith("/sign-in") || pathname.startsWith("/signup")) && session?.user) {
+      const to = role && completed ? "/dashboard" : "/onboarding";
+      return NextResponse.redirect(new URL(to, req.url));
+    }
+
+    // Finished onboarding? keep you off /onboarding
     if (pathname.startsWith("/onboarding") && session?.user && role && completed) {
       return NextResponse.redirect(new URL("/dashboard", req.url));
     }
+
     return res;
   }
 
@@ -64,6 +71,7 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(login);
   }
 
+  // Force onboarding inside dashboard if not complete
   if (pathname.startsWith("/dashboard") && !(role && completed)) {
     return NextResponse.redirect(new URL("/onboarding", req.url));
   }

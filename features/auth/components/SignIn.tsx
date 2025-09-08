@@ -19,19 +19,21 @@ export default function AuthPage() {
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Magic link target (for Sign Up)
+  // Where Supabase magic link should land for sign-up
   const emailRedirectTo = useMemo(() => {
     const origin =
       typeof window !== "undefined"
         ? window.location.origin
         : (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
-    return `${origin || "https://profixiq.com"}/confirm`;
+    return `${origin || "https://profixiq.com"}/onboarding`;
   }, []);
 
-  // If already signed in, send to /dashboard; middleware will fan out
+  // If already signed in, let middleware decide next step (/dashboard or /onboarding)
   useEffect(() => {
     (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       if (session?.user) router.replace("/dashboard");
     })();
   }, [router, supabase]);
@@ -41,19 +43,23 @@ export default function AuthPage() {
     setError("");
     setNotice("");
     setLoading(true);
+
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
         setError(error.message);
-        setLoading(false);
         return;
       }
-      // Make sure auth cookie is visible to middleware, then bounce
+
+      // Ensure middleware sees the fresh auth cookie
       router.refresh();
+
+      // Hand off all role/onboarding decisions to middleware
       router.replace("/dashboard");
-      // no setLoading(false) needed—component will unmount on navigation
     } catch (err) {
-      setError("Unexpected error signing in.");
+      setError(err instanceof Error ? err.message : "Unexpected error");
+    } finally {
+      // If we’re still on this page, re-enable the button
       setLoading(false);
     }
   };
@@ -63,26 +69,30 @@ export default function AuthPage() {
     setError("");
     setNotice("");
     setLoading(true);
+
     try {
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: { emailRedirectTo },
       });
+
       if (error) {
         setError(error.message);
-        setLoading(false);
         return;
       }
+
+      // If email confirmation is required, there won't be a session yet
       if (!data.session) {
-        setNotice("Check your email to confirm your account. After confirming, we’ll take you to your dashboard.");
-        setLoading(false);
+        setNotice("Check your inbox to confirm your email. We’ll take you to onboarding after confirmation.");
         return;
       }
+
       router.refresh();
-      router.replace("/dashboard");
-    } catch {
-      setError("Unexpected error creating account.");
+      router.replace("/onboarding");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unexpected error");
+    } finally {
       setLoading(false);
     }
   };
@@ -141,8 +151,12 @@ export default function AuthPage() {
             disabled={loading}
           >
             {loading
-              ? mode === "sign-in" ? "Signing In..." : "Creating Account..."
-              : mode === "sign-in" ? "Sign In" : "Sign Up"}
+              ? mode === "sign-in"
+                ? "Signing in…"
+                : "Creating account…"
+              : mode === "sign-in"
+              ? "Sign In"
+              : "Sign Up"}
           </button>
         </form>
 
