@@ -107,12 +107,10 @@ async function getData(id: string) {
 }
 
 // ---------- Page ----------
-export default async function WorkOrderPage({
-  params,
-}: {
-  params: { id: string };
-}): Promise<JSX.Element> {
-  const id = params.id;
+export default async function WorkOrderPage(
+  props: { params: { id: string } }
+): Promise<JSX.Element> {
+  const { id } = props.params;
   if (!id) notFound();
 
   const { wo, lines = [], vehicle, customer } = await getData(id);
@@ -135,9 +133,7 @@ export default async function WorkOrderPage({
       <div className="mt-4 rounded border border-neutral-800 bg-neutral-900 p-4">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-semibold">Work Order #{wo.id.slice(0, 8)}</h1>
-          <span className={chipClass(wo.status)}>
-            {(wo.status ?? "awaiting").replaceAll("_", " ")}
-          </span>
+          <span className={chipClass(wo.status)}>{(wo.status ?? "awaiting").replaceAll("_", " ")}</span>
         </div>
 
         <div className="mt-2 grid gap-2 text-sm text-neutral-300 sm:grid-cols-3">
