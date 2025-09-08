@@ -4,8 +4,6 @@ import type { NextRequest } from "next/server";
 import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
-type Role = Database["public"]["Enums"]["user_role_enum"] | null;
-
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
   const supabase = createMiddlewareClient<Database>({ req, res });
@@ -31,55 +29,54 @@ export async function middleware(req: NextRequest) {
     data: { session },
   } = await supabase.auth.getSession();
 
-  let role: Role = null;
+  // Only fetch what we use: onboarding
   let completed = false;
-
   if (session?.user) {
     const { data: profile } = await supabase
       .from("profiles")
-      .select("role, completed_onboarding")
+      .select("completed_onboarding")
       .eq("id", session.user.id)
       .maybeSingle();
-
-    role = (profile?.role as Role) ?? null;
     completed = Boolean(profile?.completed_onboarding);
   }
 
-  // If hitting the root "/", decide a home:
+  // Root route → send signed-in users to dashboard/onboarding
   if (pathname === "/") {
     if (session?.user) {
-      const to = completed ? "/dashboard" : "/onboarding";
-      return NextResponse.redirect(new URL(to, req.url));
-    }
-    return res; // allow landing page for signed-out users
-  }
-
-  // Public routes stay public, but keep signed-in users off onboarding if already done
-  if (isPublic) {
-    if (pathname.startsWith("/onboarding") && session?.user && completed) {
-      return NextResponse.redirect(new URL("/dashboard", req.url));
-    }
-    // If a signed-in user opens /sign-in, send them to dashboard
-    if (pathname.startsWith("/sign-in") && session?.user) {
-      const to = completed ? "/dashboard" : "/onboarding";
-      return NextResponse.redirect(new URL(to, req.url));
+      return NextResponse.redirect(
+        new URL(completed ? "/dashboard" : "/onboarding", req.url),
+      );
     }
     return res;
   }
 
-  // Protected branches below: require a session
+  // Public routes stay public
+  if (isPublic) {
+    // Keep completed users off onboarding
+    if (pathname.startsWith("/onboarding") && session?.user && completed) {
+      return NextResponse.redirect(new URL("/dashboard", req.url));
+    }
+    // Signed-in user opening /sign-in → go to home
+    if (pathname.startsWith("/sign-in") && session?.user) {
+      return NextResponse.redirect(
+        new URL(completed ? "/dashboard" : "/onboarding", req.url),
+      );
+    }
+    return res;
+  }
+
+  // Protected branches below require a session
   if (!session?.user) {
     const login = new URL("/sign-in", req.url);
     login.searchParams.set("redirect", pathname + search);
     return NextResponse.redirect(login);
   }
 
-  // Force onboarding before allowing dashboard (and other protected pages if you like)
+  // Force onboarding before allowing dashboard (and any other protected pages you prefer)
   if (pathname.startsWith("/dashboard") && !completed) {
     return NextResponse.redirect(new URL("/onboarding", req.url));
   }
 
-  // Otherwise, allow through
   return res;
 }
 
