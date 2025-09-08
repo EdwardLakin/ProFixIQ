@@ -26,6 +26,7 @@ function paramToString(v: string | string[] | undefined): string | null {
 }
 
 const statusBadge: Record<string, string> = {
+  awaiting_approval: "bg-blue-100 text-blue-800",
   awaiting: "bg-blue-100 text-blue-800",
   queued: "bg-blue-100 text-blue-800",
   in_progress: "bg-orange-100 text-orange-800",
