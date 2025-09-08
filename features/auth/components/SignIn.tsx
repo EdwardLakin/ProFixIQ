@@ -19,7 +19,7 @@ export default function AuthPage() {
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Magic link (sign-up) redirect
+  // Magic link target (for Sign Up)
   const emailRedirectTo = useMemo(() => {
     const origin =
       typeof window !== "undefined"
@@ -28,67 +28,63 @@ export default function AuthPage() {
     return `${origin || "https://profixiq.com"}/confirm`;
   }, []);
 
-  // If already signed in → go to /dashboard (middleware will handle onboarding)
+  // If already signed in, send to /dashboard; middleware will fan out
   useEffect(() => {
     (async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) router.replace("/dashboard");
     })();
   }, [router, supabase]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError("");
     setNotice("");
-
-    const { error: signInErr } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (signInErr) {
-      setError(signInErr.message);
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        setError(error.message);
+        setLoading(false);
+        return;
+      }
+      // Make sure auth cookie is visible to middleware, then bounce
+      router.refresh();
+      router.replace("/dashboard");
+      // no setLoading(false) needed—component will unmount on navigation
+    } catch (err) {
+      setError("Unexpected error signing in.");
       setLoading(false);
-      return;
     }
-
-    // Ensure cookie/session is visible to server/middleware
-    router.refresh();
-    router.replace("/dashboard"); // middleware decides onboarding vs dashboard
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError("");
     setNotice("");
-
-    const { data, error: signUpErr } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { emailRedirectTo },
-    });
-
-    if (signUpErr) {
-      setError(signUpErr.message);
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { emailRedirectTo },
+      });
+      if (error) {
+        setError(error.message);
+        setLoading(false);
+        return;
+      }
+      if (!data.session) {
+        setNotice("Check your email to confirm your account. After confirming, we’ll take you to your dashboard.");
+        setLoading(false);
+        return;
+      }
+      router.refresh();
+      router.replace("/dashboard");
+    } catch {
+      setError("Unexpected error creating account.");
       setLoading(false);
-      return;
     }
-
-    // If email confirmation is required, there won't be a session yet
-    if (!data.session) {
-      setNotice(
-        "Check your inbox for a confirmation link. After confirming, we’ll take you to onboarding."
-      );
-      setLoading(false);
-      return;
-    }
-
-    router.refresh();
-    router.replace("/dashboard"); // middleware will route to onboarding if needed
   };
 
   return (
@@ -100,18 +96,14 @@ export default function AuthPage() {
 
         <div className="flex justify-center gap-4 text-sm">
           <button
-            className={`px-3 py-1 rounded ${
-              mode === "sign-in" ? "bg-orange-500 text-black" : "bg-neutral-800 text-neutral-300"
-            }`}
+            className={`px-3 py-1 rounded ${mode === "sign-in" ? "bg-orange-500 text-black" : "bg-neutral-800 text-neutral-300"}`}
             onClick={() => setMode("sign-in")}
             disabled={loading}
           >
             Sign In
           </button>
           <button
-            className={`px-3 py-1 rounded ${
-              mode === "sign-up" ? "bg-orange-500 text-black" : "bg-neutral-800 text-neutral-300"
-            }`}
+            className={`px-3 py-1 rounded ${mode === "sign-up" ? "bg-orange-500 text-black" : "bg-neutral-800 text-neutral-300"}`}
             onClick={() => setMode("sign-up")}
             disabled={loading}
           >
@@ -149,26 +141,16 @@ export default function AuthPage() {
             disabled={loading}
           >
             {loading
-              ? mode === "sign-in"
-                ? "Signing In..."
-                : "Creating Account..."
-              : mode === "sign-in"
-              ? "Sign In"
-              : "Sign Up"}
+              ? mode === "sign-in" ? "Signing In..." : "Creating Account..."
+              : mode === "sign-in" ? "Sign In" : "Sign Up"}
           </button>
         </form>
 
         <div className="text-center text-xs text-neutral-400">
           <p>
             By continuing you agree to our{" "}
-            <a href="/terms" className="text-orange-400 hover:underline">
-              Terms
-            </a>{" "}
-            and{" "}
-            <a href="/privacy" className="text-orange-400 hover:underline">
-              Privacy Policy
-            </a>
-            .
+            <a href="/terms" className="text-orange-400 hover:underline">Terms</a> and{" "}
+            <a href="/privacy" className="text-orange-400 hover:underline">Privacy Policy</a>.
           </p>
         </div>
       </div>
