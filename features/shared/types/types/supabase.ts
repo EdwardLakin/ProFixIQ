@@ -12,31 +12,6 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "12.2.3 (519615d)"
   }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       activity_logs: {
@@ -1784,6 +1759,7 @@ export type Database = {
           profile_id: string | null
           shift_id: string | null
           timestamp: string
+          user_id: string | null
         }
         Insert: {
           created_at?: string | null
@@ -1793,6 +1769,7 @@ export type Database = {
           profile_id?: string | null
           shift_id?: string | null
           timestamp?: string
+          user_id?: string | null
         }
         Update: {
           created_at?: string | null
@@ -1802,6 +1779,7 @@ export type Database = {
           profile_id?: string | null
           shift_id?: string | null
           timestamp?: string
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -1809,6 +1787,13 @@ export type Database = {
             columns: ["shift_id"]
             isOneToOne: false
             referencedRelation: "tech_shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "punch_events_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -2483,8 +2468,8 @@ export type Database = {
           id: string
           start_time: string
           status: string
-          tech_id: string | null
           type: string
+          user_id: string | null
         }
         Insert: {
           created_at?: string | null
@@ -2492,8 +2477,8 @@ export type Database = {
           id?: string
           start_time?: string
           status: string
-          tech_id?: string | null
           type: string
+          user_id?: string | null
         }
         Update: {
           created_at?: string | null
@@ -2501,10 +2486,18 @@ export type Database = {
           id?: string
           start_time?: string
           status?: string
-          tech_id?: string | null
           type?: string
+          user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "tech_shifts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       template_items: {
         Row: {
@@ -3180,6 +3173,29 @@ export type Database = {
           },
         ]
       }
+      v_shift_rollups: {
+        Row: {
+          shift_id: string | null
+          user_id: string | null
+          worked_seconds: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "punch_events_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "tech_shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "punch_events_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       can_manage_profile: {
@@ -3261,6 +3277,14 @@ export type Database = {
     }
     Enums: {
       plan_t: "free" | "diy" | "pro" | "pro_plus"
+      punch_event_type:
+        | "start"
+        | "break_start"
+        | "break_end"
+        | "lunch_start"
+        | "lunch_end"
+        | "end"
+      shift_status: "active" | "ended"
       user_role_enum:
         | "owner"
         | "admin"
@@ -3394,12 +3418,18 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       plan_t: ["free", "diy", "pro", "pro_plus"],
+      punch_event_type: [
+        "start",
+        "break_start",
+        "break_end",
+        "lunch_start",
+        "lunch_end",
+        "end",
+      ],
+      shift_status: ["active", "ended"],
       user_role_enum: [
         "owner",
         "admin",

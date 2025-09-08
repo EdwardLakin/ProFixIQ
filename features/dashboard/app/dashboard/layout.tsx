@@ -1,3 +1,4 @@
+// features/dashboard/app/dashboard/layout.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -8,48 +9,43 @@ import type { Database } from "@shared/types/types/supabase";
 import Calendar from "@shared/components/ui/Calendar";
 import DynamicRoleSidebar from "@shared/components/DynamicRoleSidebar";
 
+// Tabs (single source)
 import { TabsProvider } from "@/features/shared/components/tabs/TabsProvider";
 import TabsBar from "@/features/shared/components/tabs/TabsBar";
 import ChatDock from "@/features/chat/components/ChatDock";
 
+// Lazy to avoid SSR issues
 const TechAssistant = dynamic(
   () => import("@/features/shared/components/TechAssistant"),
   { ssr: false }
 );
 
-// Typed role from DB enum
-type Role = Database["public"]["Enums"]["user_role_enum"] | null;
+// ---- Types ----
+// Use a staff-only union here so <DynamicRoleSidebar role={...} /> is always correct.
+type StaffRole = "owner" | "admin" | "manager" | "advisor" | "mechanic" | "parts";
+type Role = StaffRole | null;
 
-const CALENDAR_ROLES: ReadonlyArray<NonNullable<Role>> = [
-  "owner",
-  "admin",
-  "manager",
-  "advisor",
-];
-const STAFF_ROLES: ReadonlyArray<NonNullable<Role>> = [
-  "owner",
-  "admin",
-  "manager",
-  "advisor",
-  "parts",
-];
+// Roles that can see calendar / staff tools
+const CALENDAR_ROLES: readonly StaffRole[] = ["owner", "admin", "manager", "advisor"] as const;
+const STAFF_ROLES: readonly StaffRole[] = ["owner", "admin", "manager", "advisor", "parts"] as const;
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = createClientComponentClient<Database>();
 
+  // ---- Role state ----
   const [role, setRole] = useState<Role>(null);
   const [loadingRole, setLoadingRole] = useState(true);
 
-  // calendar
+  // ---- Calendar state ----
   const [month, setMonth] = useState<Date>(() => new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
-  // assistant drawer
+  // ---- Assistant drawer ----
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [currentVehicle] = useState<{ year?: string; make?: string; model?: string } | null>(null);
   const [currentWorkOrderLineId] = useState<string | null>(null);
 
-  // fetch role once
+  // Fetch user role once (narrow to staff-only)
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -69,7 +65,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           .eq("id", user.id)
           .maybeSingle();
 
-        if (!cancelled) setRole((profile?.role as Role) ?? null);
+        const raw = profile?.role ?? null;
+        const narrowed: Role =
+          raw === "owner" ||
+          raw === "admin" ||
+          raw === "manager" ||
+          raw === "advisor" ||
+          raw === "mechanic" ||
+          raw === "parts"
+            ? raw
+            : null;
+
+        if (!cancelled) setRole(narrowed);
       } finally {
         if (!cancelled) setLoadingRole(false);
       }
@@ -89,19 +96,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, []);
 
   const showCalendar = useMemo(
-    () => !loadingRole && role != null && CALENDAR_ROLES.includes(role),
-    [loadingRole, role]
+    () => !loadingRole && !!role && CALENDAR_ROLES.includes(role),
+    [loadingRole, role],
   );
 
   const showStaffTools = useMemo(
-    () => !loadingRole && role != null && STAFF_ROLES.includes(role),
-    [loadingRole, role]
+    () => !loadingRole && !!role && STAFF_ROLES.includes(role),
+    [loadingRole, role],
   );
 
   return (
     <TabsProvider>
       <div className="min-h-screen bg-black text-white font-blackops">
-        {/* Tabs bar only */}
+        {/* Top: Tabs bar only (no global navbar) */}
         <div className="border-b border-neutral-800 bg-neutral-900">
           <div className="mx-auto max-w-7xl px-3 py-2">
             <TabsBar />
@@ -109,9 +116,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
 
         <div className="flex">
-          {/* Sidebar with utilities/settings only */}
+          {/* Sidebar with utilities / settings */}
           <aside className="hidden w-64 shrink-0 border-r border-neutral-800 bg-neutral-900 md:block">
             <div className="sticky top-0 h-[calc(100dvh-48px)] overflow-y-auto p-3">
+              {/* Role-based sidebar (already trimmed to utilities per your role-nav files) */}
               <DynamicRoleSidebar role={role ?? undefined} />
 
               {showCalendar && (
@@ -146,7 +154,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
           </aside>
 
-          {/* Main */}
+          {/* Main content */}
           <main className="flex-1 p-6">
             {loadingRole ? (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -177,7 +185,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             role="dialog"
             aria-modal="true"
           >
-            <div className="flex items-center justify-between mb-3">
+            <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-semibold text-neutral-300">Tech Assistant</h2>
               <button
                 onClick={() => setAssistantOpen(false)}
@@ -186,7 +194,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 Close
               </button>
             </div>
-
             <TechAssistant
               defaultVehicle={currentVehicle ?? undefined}
               workOrderLineId={currentWorkOrderLineId ?? undefined}

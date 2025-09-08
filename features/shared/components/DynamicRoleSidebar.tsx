@@ -1,3 +1,4 @@
+// features/shared/components/DynamicRoleSidebar.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -11,37 +12,52 @@ import RoleNavAdvisor from "@shared/components/RoleNavAdvisor";
 import RoleNavOwner from "@shared/components/RoleNavOwner";
 import RoleNavParts from "@shared/components/RoleNavParts";
 
-// Single source of truth for roles
-type DbRole = Database["public"]["Enums"]["user_role_enum"];
-type Props = { role?: DbRole };
+// Staff-only roles (exclude "customer")
+type Role = "owner" | "admin" | "manager" | "advisor" | "mechanic" | "parts";
+type DbRole = Database["public"]["Enums"]["user_role_enum"] | null | undefined;
 
-export default function DynamicRoleSidebar({ role }: Props): JSX.Element | null {
+export type DynamicRoleSidebarProps = {
+  /** If provided, we won't fetch the role from Supabase */
+  role?: Role;
+};
+
+function normalizeRole(raw: DbRole): Role | null {
+  switch (raw) {
+    case "owner":
+    case "admin":
+    case "manager":
+    case "advisor":
+    case "mechanic":
+    case "parts":
+      return raw;
+    default:
+      return null;
+  }
+}
+
+export default function DynamicRoleSidebar({ role }: DynamicRoleSidebarProps): JSX.Element | null {
   const supabase = createClientComponentClient<Database>();
-  const [detectedRole, setDetectedRole] = useState<DbRole | null>(null);
+  const [detectedRole, setDetectedRole] = useState<Role | null>(null);
 
-  // if parent didn't provide a role, fetch once
+  // If no prop provided, fetch once from Supabase
   useEffect(() => {
     if (role) return;
+
     let mounted = true;
-
     (async () => {
-      try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        const uid = session?.user?.id;
-        if (!uid || !mounted) return;
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const uid = session?.user?.id;
+      if (!uid || !mounted) return;
 
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", uid)
-          .maybeSingle();
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", uid)
+        .maybeSingle();
 
-        if (mounted) setDetectedRole((profile?.role as DbRole) ?? null);
-      } catch {
-        if (mounted) setDetectedRole(null);
-      }
+      if (mounted) setDetectedRole(normalizeRole(profile?.role));
     })();
 
     return () => {
@@ -49,7 +65,7 @@ export default function DynamicRoleSidebar({ role }: Props): JSX.Element | null 
     };
   }, [role, supabase]);
 
-  const effectiveRole: DbRole | null = role ?? detectedRole;
+  const effectiveRole: Role | null = role ?? detectedRole;
   if (!effectiveRole) return null;
 
   switch (effectiveRole) {
@@ -66,7 +82,6 @@ export default function DynamicRoleSidebar({ role }: Props): JSX.Element | null 
     case "parts":
       return <RoleNavParts />;
     default:
-      // Any role not in the staff set (e.g., if a future enum value appears)
       return null;
   }
 }
