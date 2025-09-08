@@ -4,11 +4,9 @@ import type { NextRequest } from "next/server";
 import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
-// Strongly typed role from your DB enum
-type Role = Database["public"]["Enums"]["user_role_enum"] | null;
+type UserRole = Database["public"]["Enums"]["user_role_enum"];
 
 export async function middleware(req: NextRequest) {
-  // Important: pass the *same* response object to Supabase so it can refresh cookies.
   const res = NextResponse.next();
   const supabase = createMiddlewareClient<Database>({ req, res });
 
@@ -17,18 +15,13 @@ export async function middleware(req: NextRequest) {
     data: { session },
   } = await supabase.auth.getSession();
 
-  // Normalize auth routes: we will only use /sign-in (not /auth)
-  const SIGN_IN_ROUTE = "/sign-in";
-  const DASHBOARD_HOME = "/dashboard";
-
-  // Public routes that never require auth
   const isPublic =
     pathname === "/" ||
     pathname.startsWith("/compare-plans") ||
     pathname.startsWith("/subscribe") ||
     pathname.startsWith("/confirm") ||
     pathname.startsWith("/signup") ||
-    pathname.startsWith("/sign-in") || // ← auth page stays public
+    pathname.startsWith("/sign-in") ||
     pathname.startsWith("/portal") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api") ||
@@ -36,9 +29,9 @@ export async function middleware(req: NextRequest) {
     pathname.endsWith("/favicon.ico") ||
     pathname.endsWith("/logo.svg");
 
-  // Read role & onboarding when logged in
-  let role: Role = null;
+  let role: UserRole | null = null;
   let completed = false;
+
   if (session?.user) {
     const { data: profile } = await supabase
       .from("profiles")
@@ -46,51 +39,38 @@ export async function middleware(req: NextRequest) {
       .eq("id", session.user.id)
       .maybeSingle();
 
-    role = (profile?.role as Role) ?? null;
+    role = profile?.role ?? null;
     completed = !!profile?.completed_onboarding;
   }
 
-  // 1) Signed-in user hits landing → go to dashboard
+  // Signed-in user hitting landing → go to dashboard or onboarding
   if (pathname === "/" && session?.user) {
-    return NextResponse.redirect(new URL(DASHBOARD_HOME, req.url));
+    const to = role && completed ? "/dashboard" : "/onboarding";
+    return NextResponse.redirect(new URL(to, req.url));
   }
 
-  // 2) Already signed-in user visiting /sign-in → send to dashboard
-  if (pathname.startsWith(SIGN_IN_ROUTE) && session?.user) {
-    return NextResponse.redirect(new URL(DASHBOARD_HOME, req.url));
-  }
-
-  // 3) Public routes pass through (with one exception below)
   if (isPublic) {
-    // If they finished onboarding, keep them off /onboarding
-    if (pathname.startsWith("/onboarding") && session?.user && completed) {
-      return NextResponse.redirect(new URL(DASHBOARD_HOME, req.url));
+    // Keep users who finished onboarding away from onboarding routes
+    if (pathname.startsWith("/onboarding") && session?.user && role && completed) {
+      return NextResponse.redirect(new URL("/dashboard", req.url));
     }
     return res;
   }
 
-  // 4) Protected routes (matched by config below)
-  // Not logged in → send to sign-in with return URL
+  // Protected branches
   if (!session?.user) {
-    const login = new URL(SIGN_IN_ROUTE, req.url);
+    const login = new URL("/sign-in", req.url);
     login.searchParams.set("redirect", pathname + search);
     return NextResponse.redirect(login);
   }
 
-  // 5) Force onboarding only for dashboard branch
-  if (pathname.startsWith("/dashboard") && !completed) {
+  if (pathname.startsWith("/dashboard") && !(role && completed)) {
     return NextResponse.redirect(new URL("/onboarding", req.url));
   }
 
-  // Otherwise, allow the request
   return res;
 }
 
 export const config = {
-  matcher: [
-    "/dashboard/:path*",
-    "/work-orders/:path*",
-    "/inspections/:path*",
-    // add more protected branches here if needed
-  ],
+  matcher: ["/dashboard/:path*", "/work-orders/:path*", "/inspections/:path*"],
 };
