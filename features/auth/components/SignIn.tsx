@@ -8,16 +8,6 @@ import type { Database } from "@shared/types/types/supabase";
 
 type Mode = "sign-in" | "sign-up";
 
-const STAFF_HOME: Record<string, string> = {
-  owner: "/dashboard/owner",
-  admin: "/dashboard/admin",
-  manager: "/dashboard/manager",
-  advisor: "/dashboard/advisor",
-  parts: "/dashboard/parts",
-  mechanic: "/dashboard/tech",
-  tech: "/dashboard/tech",
-};
-
 export default function AuthPage() {
   const router = useRouter();
   const supabase = createClientComponentClient<Database>();
@@ -29,7 +19,7 @@ export default function AuthPage() {
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // For sign-up: where magic link should land
+  // Where magic link (sign-up) should land
   const emailRedirectTo = useMemo(() => {
     const origin =
       typeof window !== "undefined"
@@ -38,7 +28,7 @@ export default function AuthPage() {
     return `${origin || "https://profixiq.com"}/confirm`;
   }, []);
 
-  // If already signed in, route by role/completed_onboarding
+  // If already signed in, route by completed_onboarding
   useEffect(() => {
     (async () => {
       const {
@@ -48,16 +38,12 @@ export default function AuthPage() {
 
       const { data: profile } = await supabase
         .from("profiles")
-        .select("role, completed_onboarding")
+        .select("completed_onboarding")
         .eq("id", session.user.id)
         .maybeSingle();
 
-      const role = profile?.role ?? null;
-      if (role && profile?.completed_onboarding) {
-        router.replace(STAFF_HOME[role] ?? "/onboarding");
-      } else {
-        router.replace("/onboarding");
-      }
+      const completed = !!profile?.completed_onboarding;
+      router.replace(completed ? "/dashboard" : "/onboarding");
     })();
   }, [router, supabase]);
 
@@ -67,16 +53,20 @@ export default function AuthPage() {
     setError("");
     setNotice("");
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      setError(error.message);
+    const { error: signInErr } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    if (signInErr) {
+      setError(signInErr.message);
       setLoading(false);
       return;
     }
 
-    // Make sure middleware/server sees the new auth cookie
+    // Ensure middleware/server sees the new auth cookie
     router.refresh();
 
+    // Check onboarding status
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -88,14 +78,12 @@ export default function AuthPage() {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("role, completed_onboarding")
+      .select("completed_onboarding")
       .eq("id", user.id)
       .maybeSingle();
 
-    const role = profile?.role ?? null;
-    router.replace(
-      role && profile?.completed_onboarding ? (STAFF_HOME[role] ?? "/onboarding") : "/onboarding",
-    );
+    const completed = !!profile?.completed_onboarding;
+    router.replace(completed ? "/dashboard" : "/onboarding");
     setLoading(false);
   };
 
@@ -105,14 +93,14 @@ export default function AuthPage() {
     setError("");
     setNotice("");
 
-    const { data, error } = await supabase.auth.signUp({
+    const { data, error: signUpErr } = await supabase.auth.signUp({
       email,
       password,
       options: { emailRedirectTo },
     });
 
-    if (error) {
-      setError(error.message);
+    if (signUpErr) {
+      setError(signUpErr.message);
       setLoading(false);
       return;
     }
