@@ -1,4 +1,3 @@
-// app/dashboard/layout.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -18,28 +17,46 @@ const TechAssistant = dynamic(
   { ssr: false }
 );
 
-// roles that can see certain header items
-const CALENDAR_ROLES = ["owner", "admin", "manager", "advisor"];
-const STAFF_ROLES = ["owner", "admin", "manager", "advisor", "parts"];
+// -------------------- Roles (staff only) --------------------
+type Role = "owner" | "admin" | "manager" | "advisor" | "mechanic" | "parts";
+
+const CALENDAR_ROLES: Role[] = ["owner", "admin", "manager", "advisor"];
+const STAFF_ROLES: Role[] = ["owner", "admin", "manager", "advisor", "parts"];
+
+// Narrow the raw DB role into our staff-only union
+function normalizeRole(raw: string | null | undefined): Role | null {
+  if (!raw) return null;
+  if (
+    raw === "owner" ||
+    raw === "admin" ||
+    raw === "manager" ||
+    raw === "advisor" ||
+    raw === "mechanic" ||
+    raw === "parts"
+  ) {
+    return raw;
+  }
+  return null;
+}
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
-}) {
+}): JSX.Element {
   const supabase = createClientComponentClient();
 
   // ---- Role state ----
-  const [role, setRole] = useState<string | null>(null);
-  const [loadingRole, setLoadingRole] = useState(true);
+  const [role, setRole] = useState<Role | null>(null);
+  const [loadingRole, setLoadingRole] = useState<boolean>(true);
 
   // ---- Calendar state ----
   const [month, setMonth] = useState<Date>(() => new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
   // ---- UI state ----
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
+  const [assistantOpen, setAssistantOpen] = useState<boolean>(false);
 
   // ---- Assistant context (seed vehicle + WO line) ----
   const [currentVehicle, setCurrentVehicle] = useState<{
@@ -57,6 +74,7 @@ export default function DashboardLayout({
     (async () => {
       try {
         setLoadingRole(true);
+
         const {
           data: { user },
         } = await supabase.auth.getUser();
@@ -71,7 +89,9 @@ export default function DashboardLayout({
           .eq("id", user.id)
           .single();
 
-        if (!cancelled) setRole(profile?.role ?? null);
+        if (!cancelled) {
+          setRole(normalizeRole(profile?.role ?? null));
+        }
       } catch {
         if (!cancelled) setRole(null);
       } finally {
@@ -85,10 +105,8 @@ export default function DashboardLayout({
 
   // Demo context seed (replace with your own selection/route/DB logic)
   useEffect(() => {
-    // Example: seed a known vehicle + example work order line
-    // Replace this with: read from router params, page state, or Supabase fetch.
     setCurrentVehicle({ year: "2016", make: "Ford", model: "F-150" });
-    setCurrentWorkOrderLineId(null); // or "uuid-of-work-order-line"
+    setCurrentWorkOrderLineId(null);
   }, []);
 
   // Close drawers on ESC
@@ -105,12 +123,12 @@ export default function DashboardLayout({
 
   // Visibility gates
   const showCalendar = useMemo(
-    () => !loadingRole && !!role && CALENDAR_ROLES.includes(role),
+    () => !loadingRole && role !== null && CALENDAR_ROLES.includes(role),
     [loadingRole, role],
   );
 
   const showStaffTools = useMemo(
-    () => !loadingRole && !!role && STAFF_ROLES.includes(role),
+    () => !loadingRole && role !== null && STAFF_ROLES.includes(role),
     [loadingRole, role],
   );
 
