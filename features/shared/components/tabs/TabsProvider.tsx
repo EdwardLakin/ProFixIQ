@@ -32,6 +32,7 @@ export function TabsProvider({ children, userId }: { children: React.ReactNode; 
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeHref, setActiveHref] = useState<string>("");
 
+  // Load persisted tabs
   useEffect(() => {
     try {
       const raw = localStorage.getItem(storageKey(userId));
@@ -40,15 +41,21 @@ export function TabsProvider({ children, userId }: { children: React.ReactNode; 
         setTabs(parsed.tabs ?? []);
         setActiveHref(parsed.activeHref ?? "");
       }
-    } catch {}
+    } catch {
+      // ignore
+    }
   }, [userId]);
 
+  // Persist changes
   useEffect(() => {
     try {
       localStorage.setItem(storageKey(userId), JSON.stringify({ tabs, activeHref }));
-    } catch {}
+    } catch {
+      // ignore
+    }
   }, [tabs, activeHref, userId]);
 
+  // Auto-open a tab whenever the route changes (and wants to be shown)
   const lastPath = useRef<string>("");
   useEffect(() => {
     if (!pathname || pathname === lastPath.current) return;

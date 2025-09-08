@@ -5,7 +5,7 @@ import { useTabs } from "./TabsProvider";
 export default function TabsBar(): JSX.Element {
   const { tabs, activeHref, activateTab, closeTab, closeOthers, closeAll } = useTabs();
 
-  if (!tabs.length) return <div className="border-b border-neutral-800" />;
+  if (!tabs.length) return <div className="border-b border-neutral-800 bg-neutral-950 h-10" />;
 
   return (
     <div className="border-b border-neutral-800 bg-neutral-950 px-2">

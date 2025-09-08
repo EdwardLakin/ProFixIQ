@@ -21,15 +21,15 @@ export default function ShiftTracker({ userId }: { userId: string }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  /** Load the currently open shift (ended_time IS NULL) and derive status from latest punch. */
+  /** Load the currently open shift (end_time IS NULL) and derive status from latest punch. */
   const loadOpenShift = useCallback(async () => {
     setErr(null);
 
     const { data: shift, error: sErr } = await supabase
       .from("tech_shifts")
       .select("*")
-      .eq("user_id", userId)            // ← uses user_id
-      .is("ended_time", null)
+      .eq("user_id", userId)
+      .is("end_time", null) // ✅ use end_time
       .order("start_time", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -70,7 +70,7 @@ export default function ShiftTracker({ userId }: { userId: string }) {
         ? "ended"
         : "active";
 
-    setStatus(computed as typeof status);
+    setStatus(computed);
   }, [supabase, userId]);
 
   // Initial load (and on user change)
@@ -93,7 +93,7 @@ export default function ShiftTracker({ userId }: { userId: string }) {
       if (!shiftId) return;
       await supabase.from("punch_events").insert({
         shift_id: shiftId,
-        user_id: userId, // ← also record user on events
+        user_id: userId,
         type,
         timestamp: new Date().toISOString(),
       });
@@ -113,7 +113,7 @@ export default function ShiftTracker({ userId }: { userId: string }) {
         .from("tech_shifts")
         .select("id, start_time")
         .eq("user_id", userId)
-        .is("ended_time", null)
+        .is("end_time", null) // ✅ use end_time
         .limit(1)
         .maybeSingle();
 
@@ -128,10 +128,10 @@ export default function ShiftTracker({ userId }: { userId: string }) {
       const { data, error } = await supabase
         .from("tech_shifts")
         .insert({
-          user_id: userId,   // ← user_id
+          user_id: userId,
           start_time: now,
           status: "active",
-          ended_time: null,
+          end_time: null, // ✅ initialize as null if you like (optional)
         })
         .select()
         .single();
@@ -142,8 +142,9 @@ export default function ShiftTracker({ userId }: { userId: string }) {
       setStartTime(data.start_time ?? now);
       setStatus("active");
       await insertPunch("start");
-    } catch (e: any) {
-      setErr(e?.message ?? "Failed to start shift");
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Failed to start shift";
+      setErr(message);
     } finally {
       setBusy(false);
     }
@@ -158,7 +159,7 @@ export default function ShiftTracker({ userId }: { userId: string }) {
       const now = new Date().toISOString();
       const { error } = await supabase
         .from("tech_shifts")
-        .update({ end_time: now, ended_time: now, status: "ended" })
+        .update({ end_time: now, status: "ended" }) // ✅ no ended_time
         .eq("id", shiftId);
 
       if (error) throw error;
@@ -167,8 +168,9 @@ export default function ShiftTracker({ userId }: { userId: string }) {
       setShiftId(null);
       setStartTime(null);
       setStatus("ended");
-    } catch (e: any) {
-      setErr(e?.message ?? "Failed to end shift");
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Failed to end shift";
+      setErr(message);
     } finally {
       setBusy(false);
     }
@@ -188,8 +190,9 @@ export default function ShiftTracker({ userId }: { userId: string }) {
         await supabase.from("tech_shifts").update({ status: "break" }).eq("id", shiftId);
         setStatus("break");
       }
-    } catch (e: any) {
-      setErr(e?.message ?? "Failed to toggle break");
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Failed to toggle break";
+      setErr(message);
     } finally {
       setBusy(false);
     }
@@ -209,8 +212,9 @@ export default function ShiftTracker({ userId }: { userId: string }) {
         await supabase.from("tech_shifts").update({ status: "lunch" }).eq("id", shiftId);
         setStatus("lunch");
       }
-    } catch (e: any) {
-      setErr(e?.message ?? "Failed to toggle lunch");
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Failed to toggle lunch";
+      setErr(message);
     } finally {
       setBusy(false);
     }
