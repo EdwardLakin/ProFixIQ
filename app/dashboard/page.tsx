@@ -1,8 +1,5 @@
 "use client"
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
 import NavFromTiles from "@/features/shared/components/nav/NavFromTiles";
 import { useUserRole } from "@/features/shared/hooks/useUserRole";
 
