@@ -34,14 +34,13 @@ export default function WorkOrdersView(): JSX.Element {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
-  const [status, setStatus] = useState<string>(""); // all
+  const [status, setStatus] = useState<string>("");
   const [err, setErr] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
     setErr(null);
 
-    // Include customer/vehicle snippets for display
     let query = supabase
       .from("work_orders")
       .select(
@@ -64,7 +63,6 @@ export default function WorkOrdersView(): JSX.Element {
       return;
     }
 
-    // simple client-side search
     const qlc = q.trim().toLowerCase();
     const filtered =
       qlc.length === 0
@@ -95,10 +93,12 @@ export default function WorkOrdersView(): JSX.Element {
   useEffect(() => {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status]); // reload when status changes
+  }, [status]);
 
   const chip = (s: string | null | undefined) =>
-    `text-xs px-2 py-1 rounded ${statusBadge[(s ?? "awaiting") as keyof typeof statusBadge] ?? "bg-gray-200 text-gray-800"}`;
+    `text-xs px-2 py-1 rounded ${
+      statusBadge[(s ?? "awaiting") as keyof typeof statusBadge] ?? "bg-gray-200 text-gray-800"
+    }`;
 
   async function handleDelete(id: string) {
     if (!confirm("Delete this work order? This cannot be undone.")) return;
@@ -107,6 +107,8 @@ export default function WorkOrdersView(): JSX.Element {
     const prev = rows;
     setRows((r) => r.filter((x) => x.id !== id));
 
+    // If FKs block deletion, remove child rows first (no transaction client-side)
+    await supabase.from("work_order_lines").delete().eq("work_order_id", id);
     const { error } = await supabase.from("work_orders").delete().eq("id", id);
     if (error) {
       alert("Failed to delete: " + error.message);
@@ -177,7 +179,6 @@ export default function WorkOrdersView(): JSX.Element {
                     href={`/work-orders/${r.id}`}
                     className="font-medium underline underline-offset-2 decoration-neutral-600 hover:decoration-orange-500"
                   >
-                    {/* Prefer human-friendly id if present */}
                     {r.custom_id ? r.custom_id : `#${r.id.slice(0, 8)}`}
                   </Link>
                   {r.custom_id && (
@@ -185,13 +186,13 @@ export default function WorkOrdersView(): JSX.Element {
                       #{r.id.slice(0, 6)}
                     </span>
                   )}
-                  <span className={chip(r.status)}>{(r.status ?? "awaiting").replaceAll("_", " ")}</span>
+                  <span className={chip(r.status)}>
+                    {(r.status ?? "awaiting").replaceAll("_", " ")}
+                  </span>
                 </div>
                 <div className="text-sm text-neutral-300 truncate">
                   {r.customers
-                    ? `${[r.customers.first_name ?? "", r.customers.last_name ?? ""]
-                        .filter(Boolean)
-                        .join(" ")}`
+                    ? `${[r.customers.first_name ?? "", r.customers.last_name ?? ""].filter(Boolean).join(" ")}`
                     : "—"}{" "}
                   •{" "}
                   {r.vehicles

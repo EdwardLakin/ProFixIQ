@@ -1,3 +1,4 @@
+// features/work-orders/app/work-orders/[id]/page.tsx
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -56,12 +57,12 @@ export default function WorkOrderPage(): JSX.Element {
     if (!woId) return;
     setLoading(true);
 
-    // 1) Work order
+    // 1) Work order (use maybeSingle to avoid throwing)
     const { data: woRow, error: woErr } = await supabase
       .from("work_orders")
       .select("*")
       .eq("id", woId)
-      .single();
+      .maybeSingle();
 
     if (woErr || !woRow) {
       console.error("Work order not found:", woErr?.message);
@@ -88,7 +89,7 @@ export default function WorkOrderPage(): JSX.Element {
         .from("vehicles")
         .select("*")
         .eq("id", woRow.vehicle_id)
-        .single();
+        .maybeSingle();
       setVehicle(v ?? null);
     } else {
       setVehicle(null);
@@ -100,7 +101,7 @@ export default function WorkOrderPage(): JSX.Element {
         .from("customers")
         .select("*")
         .eq("id", woRow.customer_id)
-        .single();
+        .maybeSingle();
       setCustomer(c ?? null);
     } else {
       setCustomer(null);

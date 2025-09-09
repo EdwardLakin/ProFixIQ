@@ -304,41 +304,67 @@ export default function CreateWorkOrderPage() {
 
       const veh = await ensureVehicle(cust, shopId);
 
+      // 🔢 Compute a human-friendly custom_id like TU0001 (creator initials)
+      const fullName =
+        (user?.user_metadata?.full_name as string | undefined)?.trim() ||
+        (user?.email?.split("@")[0] ?? "WO");
+      const initials = fullName
+        .split(/[\s._-]+/)
+        .filter(Boolean)
+        .map((w) => w[0]!.toUpperCase())
+        .join("")
+        .slice(0, 3) || "WO";
+
+      const { data: last } = await supabase
+        .from("work_orders")
+        .select("custom_id")
+        .ilike("custom_id", `${initials}%`)
+        .order("custom_id", { ascending: false })
+        .limit(1);
+
+      const nextNum = (() => {
+        const prev = last?.[0]?.custom_id ?? "";
+        const m = prev.match(/^([A-Z]+)(\d{4,})$/);
+        const n = m ? parseInt(m[2], 10) + 1 : 1;
+        return String(n).padStart(4, "0");
+      })();
+      const customId = `${initials}${nextNum}`;
+
       // Create WO (status valid per your constraint)
       const newId = uuidv4();
       const { error: insertWOError } = await supabase.from("work_orders").insert({
         id: newId,
+        custom_id: customId,            // ✅ store human-friendly id
         vehicle_id: veh.id,
         customer_id: cust.id,
         inspection_id: inspectionId,
-        // type removed from WO itself previously per your request;
+        // type is not stored on WO
         notes,
-        user_id: user?.id ?? null, // authenticated user
-        shop_id: shopId, // critical for RLS
+        user_id: user?.id ?? null,      // authenticated user
+        shop_id: shopId,                // critical for RLS
         status: "awaiting_approval",
       });
 
       if (insertWOError) throw new Error(insertWOError.message || "Failed to create work order.");
 
       // Initial lines from selected menu items (best-effort)
-      // Initial lines from selected menu items (best-effort)
-if (selectedItems.length > 0) {
-  const lineRows = selectedItems.map((m) => ({
-    work_order_id: newId,
-    vehicle_id: veh.id,
-    user_id: user?.id ?? null,
-    description: m.name ?? null,
-    labor_time: m.labor_time ?? null,
-    complaint: m.complaint ?? null,
-    cause: m.cause ?? null,
-    correction: m.correction ?? null,
-    tools: m.tools ?? null,
-    status: "new" as const,
-    job_type: type,
-  }));
-  const { error: lineErr } = await supabase.from("work_order_lines").insert(lineRows);
-  if (lineErr) console.error("Failed to add menu items as lines:", lineErr);
-}
+      if (selectedItems.length > 0) {
+        const lineRows = selectedItems.map((m) => ({
+          work_order_id: newId,
+          vehicle_id: veh.id,
+          user_id: user?.id ?? null,
+          description: m.name ?? null,
+          labor_time: m.labor_time ?? null,
+          complaint: m.complaint ?? null,
+          cause: m.cause ?? null,
+          correction: m.correction ?? null,
+          tools: m.tools ?? null,
+          status: "new" as const,
+          job_type: type, // seed from selector
+        }));
+        const { error: lineErr } = await supabase.from("work_order_lines").insert(lineRows);
+        if (lineErr) console.error("Failed to add menu items as lines:", lineErr);
+      }
 
       // Import from inspection (optional)
       if (inspectionId) {
@@ -366,7 +392,6 @@ if (selectedItems.length > 0) {
       // ✅ Email a customer portal sign-up link if selected
       if (sendInvite && custEmail) {
         try {
-          // Build a simple portal link (adjust path as needed)
           const origin =
             typeof window !== "undefined"
               ? window.location.origin
@@ -375,7 +400,6 @@ if (selectedItems.length > 0) {
             custEmail,
           )}`;
 
-          // Call your Supabase Edge Function (create it server-side)
           const { error: fnErr } = await supabase.functions.invoke("send-portal-invite", {
             body: {
               email: custEmail,
@@ -474,7 +498,7 @@ if (selectedItems.length > 0) {
                 </div>
               </div>
 
-              {/* ✅ Invite checkbox exactly as requested */}
+              {/* ✅ Invite checkbox exactly as requested (under Email) */}
               <div className="mt-1 flex items-center gap-2 text-xs text-neutral-300">
                 <input
                   id="send-invite"
@@ -580,7 +604,7 @@ if (selectedItems.length > 0) {
               </div>
             </section>
 
-            {/* Work Order (type select kept ONLY to seed line job_type from menu picks) */}
+            {/* Work Order (type select only seeds line job_type for menu picks) */}
             <section>
               <h2 className="mb-2 text-lg font-semibold">Work Order</h2>
               <div className="grid grid-cols-1 gap-3">
