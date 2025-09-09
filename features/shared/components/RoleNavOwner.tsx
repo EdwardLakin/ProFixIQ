@@ -6,7 +6,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 import ShiftTracker from "@shared/components/ShiftTracker";
-import PunchController from "@/features/shared/components/ui/PunchController";
+
 import { FaRegChartBar } from "react-icons/fa";
 
 type Role = Database["public"]["Enums"]["user_role_enum"] | null;
@@ -41,23 +41,11 @@ export default function RoleNavOwner() {
       <div>
         <h3 className="text-sm font-bold text-orange-500 mb-2">Utilities</h3>
         <div className="space-y-2">
-          <PunchController />
           <Link href="/ai/assistant" className="block hover:text-orange-400">Tech Assistant</Link>
           <Link href="/messages" className="block hover:text-orange-400">Team Messages</Link>
         </div>
       </div>
 
-      {/* Inspections (routes fixed under /dashboard/inspections/...) */}
-      <div>
-        <h3 className="text-sm font-bold text-orange-500 mb-2">Inspections</h3>
-        <div className="space-y-2">
-          <Link href="/dashboard/inspections" className="block hover:text-orange-400">All Inspections</Link>
-          <Link href="/dashboard/inspections/maintenance50" className="block hover:text-orange-400">Maintenance 50</Link>
-          <Link href="/dashboard/inspections/custom-inspection" className="block hover:text-orange-400">Custom Builder</Link>
-          <Link href="/dashboard/inspections/saved" className="block hover:text-orange-400">Saved</Link>
-          <Link href="/dashboard/inspections/templates" className="block hover:text-orange-400">Templates</Link>
-        </div>
-      </div>
 
       {/* Settings & Admin */}
       <div>

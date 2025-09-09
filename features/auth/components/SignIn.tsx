@@ -47,11 +47,18 @@ export default function AuthPage() {
     })();
   }, [router, supabase]);
 
-  const goHome = async () => {
-    // Give middleware a chance to see the new cookie/session
-    await router.replace("/dashboard");
-    router.refresh();
-  };
+  // Small helper to ensure middleware sees the new cookie before we navigate
+  async function waitForSession(maxMs = 1500): Promise<boolean> {
+    const started = Date.now();
+    while (Date.now() - started < maxMs) {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session?.user) return true;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return false;
+  }
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,12 +78,16 @@ export default function AuthPage() {
       return;
     }
 
+    // Wait briefly for the session cookie to be available to middleware
+    await waitForSession();
+    router.refresh();
+
     // Confirm session exists on the client
     const {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) {
-      setError("Signed in, but no session is visible yet. Try again.");
+      setError("Signed in, but the session isn’t ready yet. Please try again.");
       setLoading(false);
       return;
     }
@@ -98,7 +109,8 @@ export default function AuthPage() {
       await router.replace(redirect);
       router.refresh();
     } else {
-      await goHome();
+      await router.replace(profile?.completed_onboarding ? "/dashboard" : "/onboarding");
+      router.refresh();
     }
 
     setLoading(false);
@@ -130,8 +142,9 @@ export default function AuthPage() {
       return;
     }
 
-    await router.replace("/onboarding");
+    await waitForSession();
     router.refresh();
+    await router.replace("/onboarding");
     setLoading(false);
   };
 
