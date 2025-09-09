@@ -4,6 +4,10 @@ import { Inter, Black_Ops_One } from "next/font/google";
 import Link from "next/link";
 import Providers from "./providers";
 
+// ⬇️ add these
+import { TabsProvider } from "@/features/shared/components/tabs/TabsProvider";
+import TabsBar from "@/features/shared/components/tabs/TabsBar";
+
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const blackOps = Black_Ops_One({
   weight: "400",
@@ -31,8 +35,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </div>
           </header>
 
-          {/* Push content below fixed header */}
-          <main className="pt-16">{children}</main>
+          {/* Push content below fixed header + show tabs globally */}
+          <div className="pt-16">
+            <TabsProvider>
+              <TabsBar />
+              <main>{children}</main>
+            </TabsProvider>
+          </div>
         </Providers>
       </body>
     </html>
