@@ -41,7 +41,7 @@ export default function WorkOrdersView(): JSX.Element {
     setLoading(true);
     setErr(null);
 
-    // Base query: include customer/vehicle snippets for display
+    // Include customer/vehicle snippets for display
     let query = supabase
       .from("work_orders")
       .select(
@@ -64,7 +64,7 @@ export default function WorkOrdersView(): JSX.Element {
       return;
     }
 
-    // simple client-side search over a few fields
+    // simple client-side search
     const qlc = q.trim().toLowerCase();
     const filtered =
       qlc.length === 0
@@ -75,14 +75,16 @@ export default function WorkOrdersView(): JSX.Element {
               .join(" ")
               .toLowerCase();
             const plate = r.vehicles?.license_plate?.toLowerCase() ?? "";
-            const yearMakeModel = [r.vehicles?.year ?? "", r.vehicles?.make ?? "", r.vehicles?.model ?? ""]
+            const ymm = [r.vehicles?.year ?? "", r.vehicles?.make ?? "", r.vehicles?.model ?? ""]
               .join(" ")
               .toLowerCase();
+            const cid = (r.custom_id ?? "").toLowerCase();
             return (
               r.id.toLowerCase().includes(qlc) ||
+              cid.includes(qlc) ||
               name.includes(qlc) ||
               plate.includes(qlc) ||
-              yearMakeModel.includes(qlc)
+              ymm.includes(qlc)
             );
           });
 
@@ -127,7 +129,7 @@ export default function WorkOrdersView(): JSX.Element {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && load()}
-            placeholder="Search name, plate, YMM, id…"
+            placeholder="Search id, custom id, name, plate, YMM…"
             className="rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-sm"
           />
           <select
@@ -175,8 +177,14 @@ export default function WorkOrdersView(): JSX.Element {
                     href={`/work-orders/${r.id}`}
                     className="font-medium underline underline-offset-2 decoration-neutral-600 hover:decoration-orange-500"
                   >
-                    #{r.id.slice(0, 8)}
+                    {/* Prefer human-friendly id if present */}
+                    {r.custom_id ? r.custom_id : `#${r.id.slice(0, 8)}`}
                   </Link>
+                  {r.custom_id && (
+                    <span className="text-[10px] rounded border border-neutral-700 px-1 py-0.5 text-neutral-300">
+                      #{r.id.slice(0, 6)}
+                    </span>
+                  )}
                   <span className={chip(r.status)}>{(r.status ?? "awaiting").replaceAll("_", " ")}</span>
                 </div>
                 <div className="text-sm text-neutral-300 truncate">

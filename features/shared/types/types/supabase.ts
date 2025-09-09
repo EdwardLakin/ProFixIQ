@@ -2996,6 +2996,7 @@ export type Database = {
         Row: {
           assigned_tech: string | null
           created_at: string | null
+          custom_id: string | null
           customer_id: string | null
           customer_name: string | null
           id: string
@@ -3018,6 +3019,7 @@ export type Database = {
         Insert: {
           assigned_tech?: string | null
           created_at?: string | null
+          custom_id?: string | null
           customer_id?: string | null
           customer_name?: string | null
           id?: string
@@ -3040,6 +3042,7 @@ export type Database = {
         Update: {
           assigned_tech?: string | null
           created_at?: string | null
+          custom_id?: string | null
           customer_id?: string | null
           customer_name?: string | null
           id?: string

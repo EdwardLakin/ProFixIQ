@@ -1,4 +1,3 @@
-// features/work-orders/app/work-orders/[id]/page.tsx
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -26,7 +25,6 @@ function paramToString(v: string | string[] | undefined): string | null {
   return Array.isArray(v) ? v[0] ?? null : v;
 }
 
-// --- UI helpers ---
 const statusBadge: Record<string, string> = {
   awaiting_approval: "bg-blue-100 text-blue-800",
   awaiting: "bg-blue-100 text-blue-800",
@@ -37,31 +35,6 @@ const statusBadge: Record<string, string> = {
   new: "bg-gray-200 text-gray-800",
   completed: "bg-green-100 text-green-800",
 };
-
-const JOB_TYPE_PRIORITY: Record<string, number> = {
-  diagnosis: 0,
-  inspection: 1,
-  maintenance: 2,
-  repair: 3,
-};
-
-function jobTypePriority(t: string | null | undefined) {
-  return t ? JOB_TYPE_PRIORITY[t] ?? 99 : 99;
-}
-
-const STATUS_ORDER: Record<string, number> = {
-  in_progress: 0,
-  awaiting: 1,
-  queued: 2,
-  unassigned: 3,
-  assigned: 4,
-  on_hold: 5,
-  completed: 6,
-};
-
-function statusPriority(s: string | null | undefined) {
-  return s ? STATUS_ORDER[s] ?? 50 : 50;
-}
 
 export default function WorkOrderPage(): JSX.Element {
   const params = useParams();
@@ -101,31 +74,13 @@ export default function WorkOrderPage(): JSX.Element {
     }
     setWo(woRow);
 
-    // 2) Lines (fetch, then sort by priority)
+    // 2) Lines
     const { data: lineRows } = await supabase
       .from("work_order_lines")
       .select("*")
       .eq("work_order_id", woRow.id)
       .order("created_at", { ascending: true });
-
-    const sorted = [...(lineRows ?? [])].sort((a, b) => {
-      // Primary: job_type priority
-      const jt = jobTypePriority(a.job_type);
-      const ju = jobTypePriority(b.job_type);
-      if (jt !== ju) return jt - ju;
-
-      // Secondary: status priority (in_progress → awaiting → … → completed)
-      const sa = statusPriority(a.status);
-      const sb = statusPriority(b.status);
-      if (sa !== sb) return sa - sb;
-
-      // Tertiary: created_at ascending (already ordered, but keep stable)
-      const ta = a.created_at ? +new Date(a.created_at) : 0;
-      const tb = b.created_at ? +new Date(b.created_at) : 0;
-      return ta - tb;
-    });
-
-    setLines(sorted);
+    setLines(lineRows ?? []);
 
     // 3) Vehicle
     if (woRow.vehicle_id) {
@@ -178,6 +133,19 @@ export default function WorkOrderPage(): JSX.Element {
     );
   }, [lines]);
 
+  // Sort / group lines by job_type priority: diagnosis, inspection, maintenance, repair
+  const sortedLines = useMemo(() => {
+    const priority = { diagnosis: 1, inspection: 2, maintenance: 3, repair: 4 } as Record<string, number>;
+    return [...lines].sort((a, b) => {
+      const pa = priority[(a.job_type ?? "repair").toString()] ?? 999;
+      const pb = priority[(b.job_type ?? "repair").toString()] ?? 999;
+      if (pa !== pb) return pa - pb;
+      const ta = (a.created_at ? new Date(a.created_at).getTime() : 0);
+      const tb = (b.created_at ? new Date(b.created_at).getTime() : 0);
+      return ta - tb;
+    });
+  }, [lines]);
+
   if (!woId) {
     return <div className="p-6 text-red-500">Missing work order id.</div>;
   }
@@ -203,7 +171,7 @@ export default function WorkOrderPage(): JSX.Element {
             <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
               <div className="flex items-center justify-between">
                 <h1 className="text-2xl font-semibold">
-                  Work Order #{wo.id.slice(0, 8)}
+                  Work Order {wo.custom_id ?? `#${wo.id.slice(0, 8)}`}
                 </h1>
                 <span className={chipClass(wo.status ?? null)}>
                   {(wo.status ?? "awaiting").replaceAll("_", " ")}
@@ -215,12 +183,12 @@ export default function WorkOrderPage(): JSX.Element {
                   <div>{wo.created_at ? format(new Date(wo.created_at), "PPpp") : "—"}</div>
                 </div>
                 <div>
-                  <div className="text-neutral-400">Type</div>
-                  <div>{wo.type ?? "—"}</div>
-                </div>
-                <div>
                   <div className="text-neutral-400">Notes</div>
                   <div className="truncate">{notes ?? "—"}</div>
+                </div>
+                <div>
+                  <div className="text-neutral-400">WO ID</div>
+                  <div className="truncate">{wo.id}</div>
                 </div>
               </div>
             </div>
@@ -278,21 +246,20 @@ export default function WorkOrderPage(): JSX.Element {
                 </button>
               </div>
 
-              {/* Manual add form (toggle) */}
               {showAddForm && (
                 <NewWorkOrderLineForm
                   workOrderId={wo.id}
                   vehicleId={vehicle?.id ?? null}
-                  defaultJobType={(wo.type as "inspection" | "maintenance" | "diagnosis" | "repair") ?? null}
+                  defaultJobType={null}
                   onCreated={() => fetchAll()}
                 />
               )}
 
-              {lines.length === 0 ? (
+              {sortedLines.length === 0 ? (
                 <p className="text-sm text-neutral-400">No lines yet.</p>
               ) : (
                 <div className="space-y-2">
-                  {lines.map((ln) => (
+                  {sortedLines.map((ln) => (
                     <div
                       key={ln.id}
                       className="rounded border border-neutral-800 bg-neutral-950 p-3"
@@ -303,7 +270,7 @@ export default function WorkOrderPage(): JSX.Element {
                             {ln.description || ln.complaint || "Untitled job"}
                           </div>
                           <div className="text-xs text-neutral-400">
-                            {(ln.job_type ?? "job").replaceAll("_", " ")} •{" "}
+                            {(ln.job_type ?? "job").toString().replaceAll("_", " ")} •{" "}
                             {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} • Status:{" "}
                             {(ln.status ?? "awaiting").replaceAll("_", " ")}
                           </div>

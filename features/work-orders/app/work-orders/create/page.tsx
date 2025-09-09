@@ -36,6 +36,7 @@ export default function CreateWorkOrderPage() {
   const [custLast, setCustLast] = useState("");
   const [custPhone, setCustPhone] = useState("");
   const [custEmail, setCustEmail] = useState("");
+  const [sendInvite, setSendInvite] = useState<boolean>(false); // ✅ NEW
 
   // --- Vehicle form ----------------------------------------------------------
   const [vehicleId, setVehicleId] = useState<string | null>(null);
@@ -47,7 +48,7 @@ export default function CreateWorkOrderPage() {
   const [mileage, setMileage] = useState<string>("");
 
   // --- WO basics -------------------------------------------------------------
-  const [type, setType] = useState<WOType>("maintenance");
+  const [type, setType] = useState<WOType>("maintenance"); // used to seed line job_type from menu picks
   const [notes, setNotes] = useState("");
 
   // --- Menu items / selection ------------------------------------------------
@@ -62,6 +63,7 @@ export default function CreateWorkOrderPage() {
   // --- UI state --------------------------------------------------------------
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [inviteNotice, setInviteNotice] = useState<string>(""); // ✅ optional notice
 
   // ----- Read query params (optional) ----------------------------------------
   useEffect(() => {
@@ -276,6 +278,7 @@ export default function CreateWorkOrderPage() {
     e.preventDefault();
     setLoading(true);
     setError("");
+    setInviteNotice("");
     setUploadSummary(null);
 
     try {
@@ -301,40 +304,41 @@ export default function CreateWorkOrderPage() {
 
       const veh = await ensureVehicle(cust, shopId);
 
-      // Create WO (ensure status matches your CHECK constraint)
+      // Create WO (status valid per your constraint)
       const newId = uuidv4();
       const { error: insertWOError } = await supabase.from("work_orders").insert({
         id: newId,
         vehicle_id: veh.id,
         customer_id: cust.id,
         inspection_id: inspectionId,
-        type,
+        // type removed from WO itself previously per your request;
         notes,
-        user_id: user?.id ?? null,   // ✅ authenticated user
-        shop_id: shopId,             // ✅ critical for RLS
-        status: "awaiting_approval", // ✅ valid per your constraint
+        user_id: user?.id ?? null, // authenticated user
+        shop_id: shopId, // critical for RLS
+        status: "awaiting_approval",
       });
 
       if (insertWOError) throw new Error(insertWOError.message || "Failed to create work order.");
 
       // Initial lines from selected menu items (best-effort)
-      if (selectedItems.length > 0) {
-        const lineRows = selectedItems.map((m) => ({
-          work_order_id: newId,
-          vehicle_id: veh.id,
-          user_id: user?.id ?? null,
-          description: m.name ?? null,
-          labor_time: m.labor_time ?? null,
-          complaint: m.complaint ?? null,
-          cause: m.cause ?? null,
-          correction: m.correction ?? null,
-          tools: m.tools ?? null,
-          status: "new" as const,
-          job_type: type,
-        }));
-        const { error: lineErr } = await supabase.from("work_order_lines").insert(lineRows);
-        if (lineErr) console.error("Failed to add menu items as lines:", lineErr);
-      }
+      // Initial lines from selected menu items (best-effort)
+if (selectedItems.length > 0) {
+  const lineRows = selectedItems.map((m) => ({
+    work_order_id: newId,
+    vehicle_id: veh.id,
+    user_id: user?.id ?? null,
+    description: m.name ?? null,
+    labor_time: m.labor_time ?? null,
+    complaint: m.complaint ?? null,
+    cause: m.cause ?? null,
+    correction: m.correction ?? null,
+    tools: m.tools ?? null,
+    status: "new" as const,
+    job_type: type,
+  }));
+  const { error: lineErr } = await supabase.from("work_order_lines").insert(lineRows);
+  if (lineErr) console.error("Failed to add menu items as lines:", lineErr);
+}
 
       // Import from inspection (optional)
       if (inspectionId) {
@@ -359,6 +363,39 @@ export default function CreateWorkOrderPage() {
         setUploadSummary(summary);
       }
 
+      // ✅ Email a customer portal sign-up link if selected
+      if (sendInvite && custEmail) {
+        try {
+          // Build a simple portal link (adjust path as needed)
+          const origin =
+            typeof window !== "undefined"
+              ? window.location.origin
+              : (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
+          const portalUrl = `${origin || "https://profixiq.com"}/portal/signup?email=${encodeURIComponent(
+            custEmail,
+          )}`;
+
+          // Call your Supabase Edge Function (create it server-side)
+          const { error: fnErr } = await supabase.functions.invoke("send-portal-invite", {
+            body: {
+              email: custEmail,
+              customer_id: cust.id,
+              portal_url: portalUrl,
+            },
+          });
+
+          if (fnErr) {
+            console.warn("send-portal-invite failed:", fnErr);
+            setInviteNotice("Work order created. Failed to send invite email (logged).");
+          } else {
+            setInviteNotice("Work order created. Invite email queued to the customer.");
+          }
+        } catch (e) {
+          console.warn("send-portal-invite threw:", e);
+          setInviteNotice("Work order created. Failed to send invite email (caught).");
+        }
+      }
+
       // Navigate to the new Work Order page (correct path to [id])
       router.push(`/work-orders/${newId}`);
     } catch (ex) {
@@ -380,11 +417,16 @@ export default function CreateWorkOrderPage() {
           Uploaded {uploadSummary.uploaded} file(s){uploadSummary.failed ? `, ${uploadSummary.failed} failed` : ""}.
         </div>
       )}
+      {inviteNotice && (
+        <div className="mb-4 rounded bg-neutral-800 px-4 py-2 text-neutral-200 text-sm">
+          {inviteNotice}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit}>
         <div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_360px]">
           {/* LEFT: Form */}
-          <div className="space-y-6 rounded border border-neutral-700 bg-neutral-900 p-4">
+          <div className="space-y-6 rounded border border-orange-400 bg-neutral-900 p-4">
             {/* Customer */}
             <section>
               <h2 className="mb-2 text-lg font-semibold">Customer</h2>
@@ -430,6 +472,19 @@ export default function CreateWorkOrderPage() {
                     disabled={loading}
                   />
                 </div>
+              </div>
+
+              {/* ✅ Invite checkbox exactly as requested */}
+              <div className="mt-1 flex items-center gap-2 text-xs text-neutral-300">
+                <input
+                  id="send-invite"
+                  type="checkbox"
+                  checked={sendInvite}
+                  onChange={(e) => setSendInvite(e.target.checked)}
+                  className="h-4 w-4"
+                  disabled={loading}
+                />
+                <label htmlFor="send-invite">Email a customer portal sign-up link</label>
               </div>
             </section>
 
@@ -525,12 +580,12 @@ export default function CreateWorkOrderPage() {
               </div>
             </section>
 
-            {/* Work Order */}
+            {/* Work Order (type select kept ONLY to seed line job_type from menu picks) */}
             <section>
               <h2 className="mb-2 text-lg font-semibold">Work Order</h2>
               <div className="grid grid-cols-1 gap-3">
                 <div>
-                  <label className="block text-sm">Type</label>
+                  <label className="block text-sm">Default job type for added menu items</label>
                   <select
                     value={type}
                     onChange={(e) => setType(e.target.value as WOType)}
@@ -607,7 +662,7 @@ export default function CreateWorkOrderPage() {
           </div>
 
           {/* RIGHT: Quick Add from Service Menu */}
-          <aside className="rounded border border-neutral-700 bg-neutral-900 p-4">
+          <aside className="rounded border border-orange-400 bg-neutral-900 p-4">
             <h2 className="mb-3 text-lg font-semibold text-orange-400">Service Menu</h2>
             {menuItems.length === 0 ? (
               <p className="text-sm text-neutral-400">No saved items yet. Add some in /menu.</p>
@@ -639,9 +694,13 @@ export default function CreateWorkOrderPage() {
               </ul>
             )}
 
-            {selectedItems.length > 0 && (
+            {selectedIds.length > 0 && (
               <div className="mt-3 text-xs text-neutral-300">
-                <strong>Selected:</strong> {selectedItems.map((s) => s.name).join(", ")}
+                <strong>Selected:</strong>{" "}
+                {menuItems
+                  .filter((m) => selectedIds.includes(m.id))
+                  .map((s) => s.name)
+                  .join(", ")}
               </div>
             )}
           </aside>
