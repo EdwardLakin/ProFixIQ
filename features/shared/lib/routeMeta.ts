@@ -45,7 +45,6 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   // AI & Messaging (support both routes to avoid 404 from mismatched links)
   "/ai/assistant":  { title: () => "AI Assistant",  icon: "🤖", showInTabs: true },
   "/chat":          { title: () => "Team Chat",     icon: "💬", showInTabs: true },
-  "/messages":      { title: () => "Team Messages", icon: "💬", showInTabs: true },
 
   // ----- Routes that should NOT appear in Tabs -----
   "/":              { title: () => "Home",           showInTabs: false },
