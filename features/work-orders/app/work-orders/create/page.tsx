@@ -1,4 +1,3 @@
-// features/work-orders/app/work-orders/create/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -36,7 +35,7 @@ export default function CreateWorkOrderPage() {
   const [custLast, setCustLast] = useState("");
   const [custPhone, setCustPhone] = useState("");
   const [custEmail, setCustEmail] = useState("");
-  const [sendInvite, setSendInvite] = useState<boolean>(false); // ✅ NEW
+  const [sendInvite, setSendInvite] = useState<boolean>(false); // invite toggle
 
   // --- Vehicle form ----------------------------------------------------------
   const [vehicleId, setVehicleId] = useState<string | null>(null);
@@ -63,7 +62,7 @@ export default function CreateWorkOrderPage() {
   // --- UI state --------------------------------------------------------------
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [inviteNotice, setInviteNotice] = useState<string>(""); // ✅ optional notice
+  const [inviteNotice, setInviteNotice] = useState<string>("");
 
   // ----- Read query params (optional) ----------------------------------------
   useEffect(() => {
@@ -304,44 +303,17 @@ export default function CreateWorkOrderPage() {
 
       const veh = await ensureVehicle(cust, shopId);
 
-      // 🔢 Compute a human-friendly custom_id like TU0001 (creator initials)
-      const fullName =
-        (user?.user_metadata?.full_name as string | undefined)?.trim() ||
-        (user?.email?.split("@")[0] ?? "WO");
-      const initials = fullName
-        .split(/[\s._-]+/)
-        .filter(Boolean)
-        .map((w) => w[0]!.toUpperCase())
-        .join("")
-        .slice(0, 3) || "WO";
-
-      const { data: last } = await supabase
-        .from("work_orders")
-        .select("custom_id")
-        .ilike("custom_id", `${initials}%`)
-        .order("custom_id", { ascending: false })
-        .limit(1);
-
-      const nextNum = (() => {
-        const prev = last?.[0]?.custom_id ?? "";
-        const m = prev.match(/^([A-Z]+)(\d{4,})$/);
-        const n = m ? parseInt(m[2], 10) + 1 : 1;
-        return String(n).padStart(4, "0");
-      })();
-      const customId = `${initials}${nextNum}`;
-
       // Create WO (status valid per your constraint)
       const newId = uuidv4();
       const { error: insertWOError } = await supabase.from("work_orders").insert({
         id: newId,
-        custom_id: customId,            // ✅ store human-friendly id
         vehicle_id: veh.id,
         customer_id: cust.id,
         inspection_id: inspectionId,
-        // type is not stored on WO
+        // type removed from WO itself previously per your request;
         notes,
-        user_id: user?.id ?? null,      // authenticated user
-        shop_id: shopId,                // critical for RLS
+        user_id: user?.id ?? null, // authenticated user
+        shop_id: shopId, // critical for RLS
         status: "awaiting_approval",
       });
 
@@ -360,7 +332,7 @@ export default function CreateWorkOrderPage() {
           correction: m.correction ?? null,
           tools: m.tools ?? null,
           status: "new" as const,
-          job_type: type, // seed from selector
+          job_type: type,
         }));
         const { error: lineErr } = await supabase.from("work_order_lines").insert(lineRows);
         if (lineErr) console.error("Failed to add menu items as lines:", lineErr);
@@ -392,6 +364,7 @@ export default function CreateWorkOrderPage() {
       // ✅ Email a customer portal sign-up link if selected
       if (sendInvite && custEmail) {
         try {
+          // Build a simple portal link (adjust path as needed)
           const origin =
             typeof window !== "undefined"
               ? window.location.origin
@@ -400,7 +373,7 @@ export default function CreateWorkOrderPage() {
             custEmail,
           )}`;
 
-          const { error: fnErr } = await supabase.functions.invoke("send-portal-invite", {
+        const { error: fnErr } = await supabase.functions.invoke("send-portal-invite", {
             body: {
               email: custEmail,
               customer_id: cust.id,
@@ -495,20 +468,19 @@ export default function CreateWorkOrderPage() {
                     placeholder="jane@example.com"
                     disabled={loading}
                   />
+                  {/* Moved right under the email field */}
+                  <div className="mt-1 flex items-center gap-2 text-xs text-neutral-300">
+                    <input
+                      id="send-invite"
+                      type="checkbox"
+                      checked={sendInvite}
+                      onChange={(e) => setSendInvite(e.target.checked)}
+                      className="h-4 w-4"
+                      disabled={loading}
+                    />
+                    <label htmlFor="send-invite">Email a customer portal sign-up link</label>
+                  </div>
                 </div>
-              </div>
-
-              {/* ✅ Invite checkbox exactly as requested (under Email) */}
-              <div className="mt-1 flex items-center gap-2 text-xs text-neutral-300">
-                <input
-                  id="send-invite"
-                  type="checkbox"
-                  checked={sendInvite}
-                  onChange={(e) => setSendInvite(e.target.checked)}
-                  className="h-4 w-4"
-                  disabled={loading}
-                />
-                <label htmlFor="send-invite">Email a customer portal sign-up link</label>
               </div>
             </section>
 
@@ -604,7 +576,7 @@ export default function CreateWorkOrderPage() {
               </div>
             </section>
 
-            {/* Work Order (type select only seeds line job_type for menu picks) */}
+            {/* Work Order (type select kept ONLY to seed line job_type from menu picks) */}
             <section>
               <h2 className="mb-2 text-lg font-semibold">Work Order</h2>
               <div className="grid grid-cols-1 gap-3">
