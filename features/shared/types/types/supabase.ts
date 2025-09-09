@@ -3276,6 +3276,7 @@ export type Database = {
       }
     }
     Enums: {
+      job_type_enum: "diagnosis" | "inspection" | "maintenance" | "repair"
       plan_t: "free" | "diy" | "pro" | "pro_plus"
       punch_event_type:
         | "start"
@@ -3420,6 +3421,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      job_type_enum: ["diagnosis", "inspection", "maintenance", "repair"],
       plan_t: ["free", "diy", "pro", "pro_plus"],
       punch_event_type: [
         "start",

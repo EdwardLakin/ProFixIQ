@@ -7,7 +7,9 @@ import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 type InsertLine = DB["public"]["Tables"]["work_order_lines"]["Insert"];
-type WOJobType = "inspection" | "maintenance" | "diagnosis";
+
+// Include all supported job types
+type WOJobType = "diagnosis" | "inspection" | "maintenance" | "repair";
 
 export function NewWorkOrderLineForm(props: {
   workOrderId: string;
@@ -23,7 +25,7 @@ export function NewWorkOrderLineForm(props: {
   const [correction, setCorrection] = useState("");
   const [labor, setLabor] = useState<string>("");
   const [status, setStatus] = useState<InsertLine["status"]>("awaiting");
-  const [jobType, setJobType] = useState<string | null>(defaultJobType ?? null);
+  const [jobType, setJobType] = useState<WOJobType | null>(defaultJobType ?? null);
   const [tools, setTools] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -49,7 +51,8 @@ export function NewWorkOrderLineForm(props: {
       tools: tools || null,
       labor_time: labor ? Number(labor) : null,
       status: status ?? "awaiting",
-      job_type: jobType,
+      // Cast to DB insert type while keeping our WOJobType safety
+      job_type: (jobType as InsertLine["job_type"]) ?? null,
     };
 
     const { error } = await supabase.from("work_order_lines").insert(payload);
@@ -127,13 +130,14 @@ export function NewWorkOrderLineForm(props: {
           <label className="block text-xs text-neutral-400 mb-1">Job type</label>
           <select
             value={jobType ?? ""}
-            onChange={(e) => setJobType(e.target.value || null)}
+            onChange={(e) => setJobType((e.target.value || null) as WOJobType | null)}
             className="w-full rounded border border-neutral-700 bg-neutral-900 p-2"
           >
             <option value="">—</option>
-            <option value="maintenance">Maintenance</option>
             <option value="diagnosis">Diagnosis</option>
             <option value="inspection">Inspection</option>
+            <option value="maintenance">Maintenance</option>
+            <option value="repair">Repair</option>
           </select>
         </div>
         <div className="sm:col-span-2">

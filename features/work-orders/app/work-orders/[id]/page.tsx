@@ -26,6 +26,7 @@ function paramToString(v: string | string[] | undefined): string | null {
   return Array.isArray(v) ? v[0] ?? null : v;
 }
 
+// --- UI helpers ---
 const statusBadge: Record<string, string> = {
   awaiting_approval: "bg-blue-100 text-blue-800",
   awaiting: "bg-blue-100 text-blue-800",
@@ -36,6 +37,31 @@ const statusBadge: Record<string, string> = {
   new: "bg-gray-200 text-gray-800",
   completed: "bg-green-100 text-green-800",
 };
+
+const JOB_TYPE_PRIORITY: Record<string, number> = {
+  diagnosis: 0,
+  inspection: 1,
+  maintenance: 2,
+  repair: 3,
+};
+
+function jobTypePriority(t: string | null | undefined) {
+  return t ? JOB_TYPE_PRIORITY[t] ?? 99 : 99;
+}
+
+const STATUS_ORDER: Record<string, number> = {
+  in_progress: 0,
+  awaiting: 1,
+  queued: 2,
+  unassigned: 3,
+  assigned: 4,
+  on_hold: 5,
+  completed: 6,
+};
+
+function statusPriority(s: string | null | undefined) {
+  return s ? STATUS_ORDER[s] ?? 50 : 50;
+}
 
 export default function WorkOrderPage(): JSX.Element {
   const params = useParams();
@@ -75,13 +101,31 @@ export default function WorkOrderPage(): JSX.Element {
     }
     setWo(woRow);
 
-    // 2) Lines
+    // 2) Lines (fetch, then sort by priority)
     const { data: lineRows } = await supabase
       .from("work_order_lines")
       .select("*")
       .eq("work_order_id", woRow.id)
       .order("created_at", { ascending: true });
-    setLines(lineRows ?? []);
+
+    const sorted = [...(lineRows ?? [])].sort((a, b) => {
+      // Primary: job_type priority
+      const jt = jobTypePriority(a.job_type);
+      const ju = jobTypePriority(b.job_type);
+      if (jt !== ju) return jt - ju;
+
+      // Secondary: status priority (in_progress → awaiting → … → completed)
+      const sa = statusPriority(a.status);
+      const sb = statusPriority(b.status);
+      if (sa !== sb) return sa - sb;
+
+      // Tertiary: created_at ascending (already ordered, but keep stable)
+      const ta = a.created_at ? +new Date(a.created_at) : 0;
+      const tb = b.created_at ? +new Date(b.created_at) : 0;
+      return ta - tb;
+    });
+
+    setLines(sorted);
 
     // 3) Vehicle
     if (woRow.vehicle_id) {
@@ -219,7 +263,7 @@ export default function WorkOrderPage(): JSX.Element {
               </div>
             </div>
 
-            {/* Jobs / Lines */}
+            {/* Jobs / Lines (sorted by job_type priority) */}
             <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold">Jobs in this Work Order</h2>
@@ -239,7 +283,7 @@ export default function WorkOrderPage(): JSX.Element {
                 <NewWorkOrderLineForm
                   workOrderId={wo.id}
                   vehicleId={vehicle?.id ?? null}
-                  defaultJobType={(wo.type as "inspection" | "maintenance" | "diagnosis") ?? null}
+                  defaultJobType={(wo.type as "inspection" | "maintenance" | "diagnosis" | "repair") ?? null}
                   onCreated={() => fetchAll()}
                 />
               )}
