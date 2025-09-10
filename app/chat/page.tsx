@@ -1,3 +1,4 @@
+// app/chat/[chatId]/page.client.tsx (or wherever this component lives)
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -9,21 +10,36 @@ type DB = Database;
 type MessageRow = DB["public"]["Tables"]["messages"]["Row"];
 type Profile = DB["public"]["Tables"]["profiles"]["Row"];
 
-export default function ChatThreadPage() {
+// Normalize useParams() value to a single string
+function paramToString(v: string | string[] | undefined): string {
+  if (!v) return "";
+  return Array.isArray(v) ? v[0] ?? "" : v;
+}
+
+// Defensive helper: turn an unknown JSON value into string[]
+function toStringArray(v: unknown): string[] {
+  if (Array.isArray(v)) return v.map((x) => String(x));
+  return [];
+}
+
+export default function ChatThreadPage(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
-  const params = useParams();
-  const chatId = String(params?.chatId ?? "");
+  const p = useParams();
+  const chatId = paramToString((p as Record<string, string | string[] | undefined>)?.chatId);
 
   const [me, setMe] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageRow[]>([]);
-  const [participants, setParticipants] = useState<Pick<Profile, "id" | "full_name">[]>([]);
+  const [participants, setParticipants] = useState<Array<Pick<Profile, "id" | "full_name">>>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // who am I?
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       setMe(user?.id ?? null);
     })();
   }, [supabase]);
@@ -31,8 +47,10 @@ export default function ChatThreadPage() {
   // Load history + participants
   useEffect(() => {
     let mounted = true;
+
     (async () => {
       setLoading(true);
+
       const { data, error } = await supabase
         .from("messages")
         .select("*")
@@ -49,11 +67,13 @@ export default function ChatThreadPage() {
       }
 
       const rows = data as MessageRow[];
+
+      // collect unique participant ids (senders + recipients)
       const ids = new Set<string>();
-      rows.forEach((m) => {
+      for (const m of rows) {
         if (m.sender_id) ids.add(m.sender_id);
-        (m.recipients ?? []).forEach((r) => ids.add(String(r)));
-      });
+        for (const r of toStringArray(m.recipients)) ids.add(r);
+      }
 
       const { data: profs } = await supabase
         .from("profiles")
@@ -62,15 +82,17 @@ export default function ChatThreadPage() {
 
       if (mounted) {
         setMessages(rows);
-        setParticipants((profs ?? []) as any);
+        setParticipants((profs ?? []) as Array<Pick<Profile, "id" | "full_name">>);
         setLoading(false);
       }
     })();
 
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [supabase, chatId]);
 
-  // Realtime updates for this chat
+  // Realtime: new messages for this chat
   useEffect(() => {
     const channel = supabase
       .channel(`thread-${chatId}`)
@@ -78,23 +100,26 @@ export default function ChatThreadPage() {
         "postgres_changes",
         { schema: "public", table: "messages", event: "INSERT", filter: `chat_id=eq.${chatId}` },
         (payload) => {
+          // payload.new is a row from public.messages
           const row = payload.new as MessageRow;
           setMessages((prev) => [...prev, row]);
-        }
+        },
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [supabase, chatId]);
 
-  async function send() {
+  async function send(): Promise<void> {
     if (!me || sending) return;
     const text = inputRef.current?.value?.trim();
     if (!text) return;
 
     // keep recipients from the latest message (simple convention)
     const latest = messages[messages.length - 1];
-    const recipients = (latest?.recipients ?? []) as string[];
+    const recipients: string[] = latest ? toStringArray(latest.recipients) : [];
 
     setSending(true);
     try {
