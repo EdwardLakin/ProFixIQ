@@ -1,4 +1,4 @@
-// fea// features/shared/components/RoleNavOwner.tsx
+// features/shared/components/RoleNavOwner.tsx
 "use client";
 
 import Link from "next/link";
@@ -7,8 +7,11 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 import ShiftTracker from "@shared/components/ShiftTracker";
-import { FaCogs, FaRegChartBar, FaUserPlus } from "react-icons/fa";
+import { FaCogs, FaRegChartBar, FaUserPlus, FaComments } from "react-icons/fa";
 import { HiMenuAlt2 } from "react-icons/hi";
+
+// ✅ mobile-only chat drawer
+import ChatDock from "@/features/chat/components/ChatDock";
 
 type Role = Database["public"]["Enums"]["user_role_enum"] | null;
 
@@ -53,6 +56,26 @@ export default function RoleNavOwner() {
           mobileOpen ? "block" : "hidden"
         }`}
       >
+        {/* ---- Team Messages (restored) ---- */}
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-sm font-semibold text-neutral-300">
+            <FaComments /> Team Messages
+          </div>
+
+          {/* Desktop → open the full /chat page (tabs-friendly) */}
+          <div className="hidden md:block">
+            <Link href="/chat" className="block hover:text-orange-400">
+              Open Messages
+            </Link>
+          </div>
+
+          {/* Mobile → use the ChatDock drawer */}
+          <div className="md:hidden">
+            {/* ChatDock renders its own trigger buttons (Chat / New) */}
+            <ChatDock />
+          </div>
+        </div>
+
         {/* ---- AI Tools ---- */}
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-sm font-semibold text-neutral-300">
@@ -60,19 +83,6 @@ export default function RoleNavOwner() {
           </div>
           <Link href="/ai/assistant" className="block hover:text-orange-400">
             Tech Assistant
-          </Link>
-        </div>
-
-        {/* ---- Scheduling Client (new tile) ---- */}
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 text-sm font-semibold text-neutral-300">
-            Scheduling
-          </div>
-          <Link
-            href="/dashboard/admin/schedulingclient"
-            className="block hover:text-orange-400"
-          >
-            Scheduling Client
           </Link>
         </div>
 

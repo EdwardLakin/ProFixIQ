@@ -394,6 +394,38 @@ export type Database = {
         }
         Relationships: []
       }
+      customer_portal_invites: {
+        Row: {
+          created_at: string | null
+          customer_id: string
+          email: string
+          id: string
+          token: string
+        }
+        Insert: {
+          created_at?: string | null
+          customer_id: string
+          email: string
+          id?: string
+          token: string
+        }
+        Update: {
+          created_at?: string | null
+          customer_id?: string
+          email?: string
+          id?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_portal_invites_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customer_quotes: {
         Row: {
           created_at: string | null
@@ -1230,26 +1262,47 @@ export type Database = {
       }
       messages: {
         Row: {
+          attachments: Json
           chat_id: string | null
           content: string
           conversation_id: string | null
+          created_at: string
+          deleted_at: string | null
+          edited_at: string | null
           id: string
+          metadata: Json
+          recipients: string[]
+          reply_to: string | null
           sender_id: string | null
           sent_at: string | null
         }
         Insert: {
+          attachments?: Json
           chat_id?: string | null
           content: string
           conversation_id?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          edited_at?: string | null
           id?: string
+          metadata?: Json
+          recipients?: string[]
+          reply_to?: string | null
           sender_id?: string | null
           sent_at?: string | null
         }
         Update: {
+          attachments?: Json
           chat_id?: string | null
           content?: string
           conversation_id?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          edited_at?: string | null
           id?: string
+          metadata?: Json
+          recipients?: string[]
+          reply_to?: string | null
           sender_id?: string | null
           sent_at?: string | null
         }
@@ -1266,6 +1319,20 @@ export type Database = {
             columns: ["conversation_id"]
             isOneToOne: false
             referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_reply_to_fkey"
+            columns: ["reply_to"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_sender_id_fkey"
+            columns: ["sender_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -1685,6 +1752,7 @@ export type Database = {
           email: string | null
           full_name: string | null
           id: string
+          last_active_at: string | null
           phone: string | null
           plan: Database["public"]["Enums"]["plan_t"] | null
           postal_code: string | null
@@ -1704,6 +1772,7 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id: string
+          last_active_at?: string | null
           phone?: string | null
           plan?: Database["public"]["Enums"]["plan_t"] | null
           postal_code?: string | null
@@ -1723,6 +1792,7 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id?: string
+          last_active_at?: string | null
           phone?: string | null
           plan?: Database["public"]["Enums"]["plan_t"] | null
           postal_code?: string | null
@@ -3257,12 +3327,20 @@ export type Database = {
         Args: { _shop: string }
         Returns: boolean
       }
+      mark_active: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
       seed_default_hours: {
         Args: { shop_id: string }
         Returns: undefined
       }
       set_authenticated: {
         Args: { uid: string }
+        Returns: undefined
+      }
+      set_last_active_now: {
+        Args: Record<PropertyKey, never>
         Returns: undefined
       }
       set_limit: {

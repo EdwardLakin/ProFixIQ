@@ -1,111 +1,240 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import RecipientPickerModal from "@/features/shared/chat/components/RecipientPickerModal";
 
-import ChatDock from "@/features/chat/components/ChatDock";
-import ShiftTracker from "@shared/components/ShiftTracker";
-import { FaComments, FaRobot, FaChartBar, FaUserPlus, FaCogs, FaCreditCard } from "react-icons/fa";
+type DB = Database;
+type MessageRow = DB["public"]["Tables"]["messages"]["Row"];
 
-type Db = Database;
-type Role = Db["public"]["Enums"]["user_role_enum"] | null;
+type Conversation = {
+  chatId: string;
+  recipients: string[]; // user ids (excluding me or including me — we will dedupe for display)
+  groupName?: string;
+};
 
-export default function RoleNavOwner() {
-  const supabase = createClientComponentClient<Db>();
-  const [role, setRole] = useState<Role>(null);
-  const [userId, setUserId] = useState<string>("");
+export default function ChatDock() {
+  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const [open, setOpen] = useState(false);
 
+  // auth
+  const [me, setMe] = useState<string | null>(null);
+
+  // current conversation
+  const [conv, setConv] = useState<Conversation | null>(null);
+
+  // message list
+  const [messages, setMessages] = useState<MessageRow[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // compose
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [sending, setSending] = useState(false);
+
+  // recipient picker
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  // load current user id
   useEffect(() => {
     (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      const uid = session?.user?.id ?? "";
-      if (!uid) return;
-      setUserId(uid);
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", uid)
-        .maybeSingle();
-
-      setRole((profile?.role as Role) ?? null);
+      const { data: { user } } = await supabase.auth.getUser();
+      setMe(user?.id ?? null);
     })();
   }, [supabase]);
 
-  // Only render for owners
-  if (role !== "owner") return null;
+  // subscribe to realtime messages for the active chat
+  useEffect(() => {
+    if (!conv?.chatId) return;
+
+    const channel = supabase
+      .channel(`messages-${conv.chatId}`)
+      .on(
+        "postgres_changes",
+        { schema: "public", table: "messages", event: "INSERT", filter: `chat_id=eq.${conv.chatId}` },
+        (payload) => {
+          const row = payload.new as MessageRow;
+          setMessages((prev) => [...prev, row].sort(sortByCreated));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase, conv?.chatId]);
+
+  // helper: sort newest last
+  function sortByCreated(a: MessageRow, b: MessageRow) {
+    const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+    const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+    return ta - tb;
+  }
+
+  // load history when a conversation is set
+  const loadMessages = useCallback(async (chatId: string) => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("messages")
+      .select("*")
+      .eq("chat_id", chatId)
+      .order("created_at", { ascending: true });
+
+    if (!error) setMessages((data ?? []) as MessageRow[]);
+    setLoading(false);
+  }, [supabase]);
+
+  // start a conversation from the picker
+  const onStartChat = useCallback(async (userIds: string[], groupName?: string) => {
+    if (!me || userIds.length === 0) return;
+
+    const chatId = crypto.randomUUID();
+    const recipients = Array.from(new Set(userIds));
+
+    // Set active conversation and load (will be empty initially)
+    setConv({ chatId, recipients, groupName });
+    setPickerOpen(false);
+
+    // Optionally seed a system message for the thread start (comment out if undesired)
+    await supabase.from("messages").insert({
+      chat_id: chatId,
+      sender_id: me,
+      recipients,
+      content: groupName ? `Started group chat: ${groupName}` : "Started conversation",
+    });
+
+    await loadMessages(chatId);
+    setOpen(true);
+  }, [me, supabase, loadMessages]);
+
+  // send a new message
+  const send = useCallback(async () => {
+    if (!conv?.chatId || !me || sending) return;
+    const text = inputRef.current?.value?.trim();
+    if (!text) return;
+
+    setSending(true);
+    try {
+      const { error } = await supabase.from("messages").insert({
+        chat_id: conv.chatId,
+        sender_id: me,
+        recipients: conv.recipients,
+        content: text,
+      });
+      if (!error && inputRef.current) inputRef.current.value = "";
+    } finally {
+      setSending(false);
+    }
+  }, [conv, me, supabase, sending]);
+
+  // UI helpers
+  const title = useMemo(() => {
+    if (!conv) return "New Message";
+    if (conv.groupName) return conv.groupName;
+    return `Chat (${conv.recipients.length} recipient${conv.recipients.length === 1 ? "" : "s"})`;
+  }, [conv]);
 
   return (
-    <nav className="space-y-6">
-      {/* UTILITIES */}
-      <section>
-        <h3 className="mb-2 text-xs font-semibold tracking-wide text-neutral-400">UTILITIES</h3>
-
-        {/* Tech Assistant (opens drawer in /app/dashboard/layout.tsx) */}
+    <>
+      {/* Dock trigger */}
+      <div className="flex gap-2">
         <button
           type="button"
-          onClick={() => window.dispatchEvent(new CustomEvent("open-tech-assistant"))}
-          className="mb-2 flex w-full items-center justify-between rounded border border-white/15 bg-neutral-800 px-3 py-2 text-sm hover:border-orange-500"
+          className="rounded bg-orange-600 px-3 py-1.5 font-semibold text-black hover:bg-orange-700"
+          onClick={() => setPickerOpen(true)}
         >
-          <span className="flex items-center gap-2">
-            <FaRobot /> Tech Assistant
-          </span>
+          New
         </button>
+        <button
+          type="button"
+          className="rounded border border-neutral-700 px-3 py-1.5 text-sm text-white hover:bg-neutral-800"
+          onClick={() => setOpen((v) => !v)}
+        >
+          {open ? "Close Chat" : "Open Chat"}
+        </button>
+      </div>
 
-        {/* Team Chat (inline drawer via ChatDock) */}
-        <div className="rounded border border-white/15 bg-neutral-800 p-2">
-          <div className="mb-2 flex items-center gap-2 text-sm text-neutral-200">
-            <FaComments /> Team Chat
+      {/* Drawer */}
+      {open && (
+        <div className="fixed bottom-4 right-4 z-[120] w-[min(420px,95vw)] overflow-hidden rounded-md border border-neutral-800 bg-neutral-900 shadow-xl">
+          <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-2">
+            <div className="font-semibold text-neutral-200">{title}</div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
+                onClick={() => setPickerOpen(true)}
+              >
+                Change…
+              </button>
+              <button
+                type="button"
+                className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
+                onClick={() => setOpen(false)}
+              >
+                ×
+              </button>
+            </div>
           </div>
-          <ChatDock />
+
+          <div className="max-h-[50vh] overflow-auto p-3">
+            {loading ? (
+              <div className="text-neutral-400">Loading…</div>
+            ) : messages.length === 0 ? (
+              <div className="text-neutral-500">No messages yet.</div>
+            ) : (
+              <ul className="space-y-2">
+                {messages.map((m) => {
+                  const mine = m.sender_id === me;
+                  return (
+                    <li key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                      <div
+                        className={`max-w-[80%] whitespace-pre-wrap rounded px-3 py-2 text-sm ${
+                          mine ? "bg-orange-600 text-black" : "bg-neutral-800 text-white"
+                        }`}
+                        title={m.created_at ?? ""}
+                      >
+                        {m.content ?? ""}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 border-t border-neutral-800 p-2">
+            <input
+              ref={inputRef}
+              className="flex-1 rounded border border-neutral-700 bg-neutral-800 px-3 py-2 text-white"
+              placeholder={conv ? "Type a message…" : "Pick recipients to start…"}
+              disabled={!conv || sending}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void send();
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="rounded bg-orange-600 px-3 py-2 font-semibold text-black disabled:opacity-60"
+              onClick={() => void send()}
+              disabled={!conv || sending}
+            >
+              {sending ? "Sending…" : "Send"}
+            </button>
+          </div>
         </div>
-      </section>
-
-      {/* SETTINGS */}
-      <section>
-        <h3 className="mb-2 mt-4 text-xs font-semibold tracking-wide text-neutral-400">SETTINGS</h3>
-
-        <ul className="space-y-1 text-sm">
-          <li>
-            <Link href="/dashboard/owner/settings" className="block rounded px-3 py-2 hover:bg-neutral-800">
-              <span className="inline-flex items-center gap-2">
-                <FaCogs /> Owner Settings
-              </span>
-            </Link>
-          </li>
-          <li>
-            <Link href="/dashboard/owner/reports" className="block rounded px-3 py-2 hover:bg-neutral-800">
-              <span className="inline-flex items-center gap-2">
-                <FaChartBar /> Reports
-              </span>
-            </Link>
-          </li>
-          <li>
-            <Link href="/dashboard/owner/create-user" className="block rounded px-3 py-2 hover:bg-neutral-800">
-              <span className="inline-flex items-center gap-2">
-                <FaUserPlus /> Create User
-              </span>
-            </Link>
-          </li>
-          <li>
-            <Link href="/compare-plans" className="block rounded px-3 py-2 hover:bg-neutral-800">
-              <span className="inline-flex items-center gap-2">
-                <FaCreditCard /> Plan &amp; Billing
-              </span>
-            </Link>
-          </li>
-        </ul>
-      </section>
-
-      {/* SHIFT TRACKER */}
-      {userId && (
-        <section className="mt-6 border-t border-neutral-800 pt-4">
-          <h3 className="mb-2 text-xs font-semibold tracking-wide text-neutral-400">SHIFT TRACKER</h3>
-          <ShiftTracker userId={userId} />
-        </section>
       )}
-    </nav>
+
+      {/* Recipient picker modal */}
+      <RecipientPickerModal
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onStartChat={(ids, groupName) => onStartChat(ids, groupName)}
+        allowGroup={true}
+      />
+    </>
   );
 }
