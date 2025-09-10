@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import debounce from "lodash/debounce";
+import debounce from "lodash-es/debounce";
 
 type DB = Database;
 type Profile = Pick<
