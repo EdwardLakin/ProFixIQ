@@ -1,3 +1,4 @@
+// features/ai/hooks/useTechAssistant.ts
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -5,7 +6,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 /** Minimal chat message shape used by the UI and API */
 export type ChatMessage = {
   role: "user" | "assistant";
-  content: string | (TextPart | ImagePart)[];
+  content: string;
 };
 
 /** Vehicle shape (permissive so you can pass partials/undefineds) */
@@ -22,19 +23,12 @@ type AssistantOptions = {
   defaultContext?: string;
 };
 
-/** OpenAI-compatible message parts for multimodal */
-type TextPart = { type: "text"; text: string };
-type ImagePart = { type: "image_url"; image_url: { url: string } };
-
-/** Browser-safe: File → data URL */
+/** Small helper: convert a File → data URL (base64) */
 async function fileToDataUrl(file: File): Promise<string> {
-  const reader = new FileReader();
-  const p = new Promise<string>((resolve, reject) => {
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error ?? new Error("Failed to read file"));
-  });
-  reader.readAsDataURL(file);
-  return p;
+  const buf = await file.arrayBuffer();
+  const b64 = Buffer.from(buf).toString("base64");
+  const mime = file.type || "image/jpeg";
+  return `data:${mime};base64,${b64}`;
 }
 
 /** Read our server-sent events stream and invoke callbacks */
@@ -52,15 +46,15 @@ async function readSseStream(
 
     buffer += decoder.decode(value, { stream: true });
 
-    // Process SSE lines separated by \n\n
+    // Process complete events
     let idx: number;
     while ((idx = buffer.indexOf("\n\n")) !== -1) {
-      const raw = buffer.slice(0, idx).trim();
+      const event = buffer.slice(0, idx).trim();
       buffer = buffer.slice(idx + 2);
 
-      if (!raw || raw.startsWith(":")) continue; // keepalive/comment
+      if (!event || event.startsWith(":")) continue;
 
-      const line = raw.startsWith("data:") ? raw.slice(5).trim() : raw;
+      const line = event.startsWith("data:") ? event.slice(5).trim() : event;
       if (!line) continue;
 
       try {
@@ -69,16 +63,13 @@ async function readSseStream(
           | { type: "done" }
           | { type: "error"; error: string };
 
-        if ("type" in payload) {
-          if (payload.type === "chunk") onChunk(payload.content);
-          if (payload.type === "error") throw new Error(payload.error);
-          if (payload.type === "done") return;
-          continue;
-        }
+        if (payload.type === "chunk") onChunk(payload.content);
+        if (payload.type === "error") throw new Error(payload.error);
+        if (payload.type === "done") return;
       } catch {
-        // Not JSON? treat as raw chunk
+        // If not JSON (or custom), treat as raw text
+        onChunk(line);
       }
-      onChunk(line);
     }
   }
 }
@@ -97,11 +88,6 @@ async function postJSON(
   });
 }
 
-/**
- * Unified assistant hook: chat, DTC, photo — with streaming.
- * Also provides an `exportToWorkOrder` helper to summarize the whole
- * conversation and update a work order line on the server.
- */
 export function useTechAssistant(opts?: AssistantOptions) {
   // Conversation state
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -112,7 +98,7 @@ export function useTechAssistant(opts?: AssistantOptions) {
 
   // UI state
   const [sending, setSending] = useState(false);
-  const [partial, setPartial] = useState<string>(""); // streaming buffer
+  const [partial, setPartial] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
 
   // Abort controller for cancel
@@ -134,10 +120,10 @@ export function useTechAssistant(opts?: AssistantOptions) {
       setSending(true);
       setPartial("");
 
-      // include conversation + context + vehicle in the payload
       const body = {
         ...payload,
         vehicle,
+        context,
         messages,
       };
 
@@ -151,21 +137,25 @@ export function useTechAssistant(opts?: AssistantOptions) {
           throw new Error(txt || "Stream failed.");
         }
 
-        // Begin streaming & buffering
         let accum = "";
         await readSseStream(res.body, (chunk) => {
           setPartial((prev) => prev + chunk);
           accum += chunk;
         });
 
-        // Commit the full assistant message
         const assistantMsg: ChatMessage = { role: "assistant", content: accum };
         setMessages((m) => [...m, assistantMsg]);
-      } catch (e: any) {
-        if (e?.name === "AbortError") {
-          setError("Request cancelled.");
+      } catch (err: unknown) {
+        if (err instanceof Error) {
+          if (err.name === "AbortError") {
+            setError("Request cancelled.");
+          } else {
+            setError(err.message || "Failed to stream assistant.");
+          }
+        } else if (typeof err === "string") {
+          setError(err);
         } else {
-          setError(e?.message || "Failed to stream assistant.");
+          setError("Failed to stream assistant.");
         }
       } finally {
         setSending(false);
@@ -173,7 +163,7 @@ export function useTechAssistant(opts?: AssistantOptions) {
         abortRef.current = null;
       }
     },
-    [messages, vehicle, canSend],
+    [messages, vehicle, context, canSend],
   );
 
   /** Public: send plain chat text */
@@ -181,11 +171,10 @@ export function useTechAssistant(opts?: AssistantOptions) {
     async (text: string) => {
       const trimmed = (text || "").trim();
       if (!trimmed) return;
-      // push user message locally first
       setMessages((m) => [...m, { role: "user", content: trimmed }]);
-      await streamToAssistant({ prompt: trimmed, context });
+      await streamToAssistant({ prompt: trimmed });
     },
-    [streamToAssistant, context],
+    [streamToAssistant],
   );
 
   /** Public: send a DTC for the assistant to analyze */
@@ -195,45 +184,36 @@ export function useTechAssistant(opts?: AssistantOptions) {
       if (!code) return;
       setMessages((m) => [
         ...m,
-        { role: "user", content: `DTC: ${code}${note ? `\nNote: ${note}` : ""}` },
+        { role: "user", content: `DTC: ${code}\n${note ? `Note: ${note}` : ""}` },
       ]);
-      await streamToAssistant({ dtcCode: code, context });
+      await streamToAssistant({ dtcCode: code });
     },
-    [streamToAssistant, context],
+    [streamToAssistant],
   );
 
   /** Public: send a photo (image file) + optional note */
   const sendPhoto = useCallback(
     async (file: File, note?: string) => {
       if (!file) return;
-      const image_data = await fileToDataUrl(file);
-
-      // Push a multimodal user message: optional text + image
       setMessages((m) => [
         ...m,
         {
           role: "user",
-          content: [
-            ...(note?.trim()
-              ? [{ type: "text", text: `Photo note: ${note.trim()}` } as const]
-              : []),
-            { type: "image_url", image_url: { url: image_data } } as const,
-          ],
+          content: `Uploaded a photo.${note ? `\nNote: ${note}` : ""}`,
         },
       ]);
-
-      // No extra payload needed—the server reads the multimodal message we just appended
-      await streamToAssistant({ context });
+      const image_data = await fileToDataUrl(file);
+      await streamToAssistant({ image_data });
     },
     [streamToAssistant],
   );
 
-  /** Cancel an in-flight request (if any) */
+  /** Cancel an in-flight request */
   const cancel = useCallback(() => {
     abortRef.current?.abort();
   }, []);
 
-  /** Reset conversation and any partial stream */
+  /** Reset conversation */
   const resetConversation = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
@@ -242,13 +222,7 @@ export function useTechAssistant(opts?: AssistantOptions) {
     setError(null);
   }, []);
 
-  /**
-   * Summarize the full conversation and export to a work order line.
-   * The backend will:
-   *  - Summarize the chat into cause/correction + estimated labor
-   *  - Update the given work_order_line
-   *  - Return { cause, correction, estimatedLaborTime }
-   */
+  /** Summarize and export to work order line */
   const exportToWorkOrder = useCallback(
     async (workOrderLineId: string) => {
       if (!workOrderLineId) throw new Error("Missing work order line id.");
@@ -257,7 +231,6 @@ export function useTechAssistant(opts?: AssistantOptions) {
       const res = await postJSON("/api/assistant/export", {
         vehicle,
         messages,
-        context,
         workOrderLineId,
       });
 
@@ -271,26 +244,22 @@ export function useTechAssistant(opts?: AssistantOptions) {
         estimatedLaborTime: number | null;
       };
     },
-    [messages, vehicle, canSend, context],
+    [messages, vehicle, canSend],
   );
 
   return {
-    // data
     vehicle,
     context,
     messages,
     partial,
 
-    // setters
     setVehicle,
     setContext,
     setMessages,
 
-    // status
     sending,
     error,
 
-    // actions
     sendChat,
     sendDtc,
     sendPhoto,
