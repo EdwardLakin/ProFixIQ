@@ -10,7 +10,8 @@ type DB = Database;
 
 /**
  * Works for ALL staff roles.
- * Uses current schema: tech_shifts (user_id), punch_events (user_id).
+ * Uses current schema: tech_shifts (user_id, start_time, end_time, status),
+ *                      punch_events (shift_id, user_id, type, timestamp).
  */
 export default function ShiftTracker({ userId }: { userId: string }) {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
@@ -29,7 +30,7 @@ export default function ShiftTracker({ userId }: { userId: string }) {
       .from("tech_shifts")
       .select("*")
       .eq("user_id", userId)
-      .is("end_time", null) // ✅ use end_time
+      .is("end_time", null)           // ✅ uses end_time
       .order("start_time", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -66,8 +67,6 @@ export default function ShiftTracker({ userId }: { userId: string }) {
         ? "break"
         : lastPunch?.type === "lunch_start"
         ? "lunch"
-        : shift.status === "ended"
-        ? "ended"
         : "active";
 
     setStatus(computed);
@@ -113,7 +112,7 @@ export default function ShiftTracker({ userId }: { userId: string }) {
         .from("tech_shifts")
         .select("id, start_time")
         .eq("user_id", userId)
-        .is("end_time", null) // ✅ use end_time
+        .is("end_time", null)         // ✅ uses end_time
         .limit(1)
         .maybeSingle();
 
@@ -131,7 +130,7 @@ export default function ShiftTracker({ userId }: { userId: string }) {
           user_id: userId,
           start_time: now,
           status: "active",
-          end_time: null, // ✅ initialize as null if you like (optional)
+          end_time: null,             // ✅ initialize end_time to null
         })
         .select()
         .single();
@@ -159,7 +158,7 @@ export default function ShiftTracker({ userId }: { userId: string }) {
       const now = new Date().toISOString();
       const { error } = await supabase
         .from("tech_shifts")
-        .update({ end_time: now, status: "ended" }) // ✅ no ended_time
+        .update({ end_time: now, status: "ended" }) // ✅ writes end_time
         .eq("id", shiftId);
 
       if (error) throw error;

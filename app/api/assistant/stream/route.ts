@@ -27,37 +27,14 @@ function hasVehicle(v?: Vehicle): v is Vehicle {
   return !!v?.year && !!v?.make && !!v?.model;
 }
 
-/** 🔧 Expanded, reasoning-rich system prompt */
+/** Diagnostic-forward system prompt */
 function systemFor(vehicle: Vehicle) {
   const vdesc = `${vehicle.year} ${vehicle.make} ${vehicle.model}`;
   return [
     `You are a top-level automotive diagnostic assistant working on a ${vdesc}.`,
-    `Your goal is to help a technician reach a correct diagnosis fast and safely.`,
-    ``,
-    `Style & Output`,
-    `- Be concise but complete; use **Markdown** with clear sections.`,
-    `- Favor checklists and stepwise flows a tech can follow in the bay.`,
-    `- When appropriate, include **Estimated Labor Time** (hrs) and call out special tools.`,
-    ``,
-    `Reasoning Rules`,
-    `- Always ground advice in measurements, symptoms, and test results the user provides.`,
-    `- If critical info is missing (scan data, DTCs, fuel trims, volt/ohm/psi, scope captures), ask for it explicitly.`,
-    `- Where possible, reference typical **spec ranges** (e.g., voltage drop < 0.2V, MAP kPa ranges, fuel pressure, resistance).`,
-    `- Prefer **decision trees**: explain why a measurement points to path A vs path B.`,
-    `- If multiple faults are plausible, list top 2–3 hypotheses with the **discriminator test** for each.`,
-    `- If an image is included, identify the component(s), visible failure modes, and what to inspect/measure next.`,
-    `- For DTCs, give a brief decode, common root causes, and an ordered test plan (non-invasive → invasive).`,
-    `- When readings conflict with expected specs, propose **sanity checks** (meter leads, grounds, reference voltage, tool settings).`,
-    `- Consider TSBs, software updates, known pattern failures when relevant (mention to "check TSBs").`,
-    `- Never invent numbers or facts. If unsure, say what to verify next.`,
-    ``,
-    `Structure your replies with headings like:`,
-    `**Complaint / Context** — short recap`,
-    `**Observations / Data** — echo the key numbers the user gave`,
-    `**Likely Causes** — ranked list with a one-liner why`,
-    `**Next Tests** — bullet list with exact meter hookups, engine state (KOEO/KOER), and expected specs`,
-    `**Recommended Fix** — concise corrective action(s)`,
-    `**Estimated Labor Time** — hours with a sensible range`,
+    `Be concise, practical, and measurement-driven. Use **Markdown** sections.`,
+    `Ask for missing critical data (scan data, trims, volts/ohms/psi, scope captures).`,
+    `Prefer decision trees and exact meter hookups. Never invent numbers.`,
   ].join("\n");
 }
 
@@ -70,9 +47,16 @@ function toOpenAIMessage(m: ClientMessage): ChatCompletionMessageParam {
 
 export async function POST(req: Request) {
   try {
+    if (!process.env.OPENAI_API_KEY) {
+      return new NextResponse(`data: ${JSON.stringify({ type: "error", error: "OPENAI_API_KEY is not set" })}\n\n`, {
+        status: 500,
+        headers: sseHeaders,
+      });
+    }
+
     const body = (await req.json()) as Body;
     if (!hasVehicle(body.vehicle)) {
-      return new NextResponse(JSON.stringify({ error: "Missing vehicle info." }), {
+      return new NextResponse(`data: ${JSON.stringify({ type: "error", error: "Missing vehicle info." })}\n\n`, {
         status: 400,
         headers: sseHeaders,
       });
@@ -94,9 +78,10 @@ export async function POST(req: Request) {
     // The OpenAI SDK exposes a web ReadableStream for SSE.
     const rs: ReadableStream = completion.toReadableStream();
     return new NextResponse(rs, { headers: sseHeaders });
-  } catch (err) {
+  } catch (err: any) {
     console.error("assistant/stream error:", err);
-    return new NextResponse(JSON.stringify({ error: "Assistant failed." }), {
+    const msg = typeof err?.message === "string" ? err.message : "Assistant failed.";
+    return new NextResponse(`data: ${JSON.stringify({ type: "error", error: msg })}\n\n`, {
       status: 500,
       headers: sseHeaders,
     });

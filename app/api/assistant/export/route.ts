@@ -23,6 +23,10 @@ function getAdminSupabase() {
 
 export async function POST(req: Request) {
   try {
+    if (!process.env.OPENAI_API_KEY) {
+      return NextResponse.json({ error: "OPENAI_API_KEY is not set" }, { status: 500 });
+    }
+
     const supabase = getAdminSupabase();
 
     const {
@@ -45,36 +49,8 @@ export async function POST(req: Request) {
 
     const systemPrompt = [
       `You are a master automotive diagnostic assistant summarizing a completed diagnostic conversation for a ${vdesc}.`,
-      `You will produce a shop-ready entry that a service advisor can paste into the work order.`,
-      ``,
-      `STYLE & TONE`,
-      `- Write like an experienced technician. Be concise, specific, and professional.`,
-      `- Prefer concrete observations over theory. If a measurement exists in the chat, include it (voltage, ohms, pressure, trims, codes, freeze-frame).`,
-      `- Avoid speculation, marketing language, or long background explanations.`,
-      ``,
-      `CONTENT RULES`,
-      `- Read the full conversation and pull only the facts, test steps, and results.`,
-      `- If multiple tests were performed, reflect the logical flow (what was checked and what that implied).`,
-      `- If a part failed, state why (e.g., "fuel pressure 34 psi (spec 55–62), pump power and ground verified").`,
-      `- If the final fix is conditional (e.g., intermittent), say so.`,
-      ``,
-      `OUTPUT FORMAT`,
-      `Return ONLY a JSON object with this exact shape (no prose, no code fences):`,
-      `{ "cause": string, "correction": string, "estimatedLaborTime": number | null }`,
-      `- "cause": 1–2 sentences naming the root cause with key evidence/measurements.`,
-      `- "correction": clear, past-tense work performed and any calibration/programming/learning steps.`,
-      `- "estimatedLaborTime": realistic decimal hours (e.g., 1.3). If genuinely unknown, use null.`,
-      ``,
-      `LABOR ESTIMATING GUIDANCE (not to be output verbatim)`,
-      `- Simple sensor/connector R&R with access underhood: 0.4–0.9 h.`,
-      `- Fuel pump or in-tank module: 1.2–3.0 h (vehicle dependent).`,
-      `- Intake/throttle/EGR cleaning & relearn: 0.6–1.2 h.`,
-      `- Charging/starting diagnosis & repair: 0.7–1.5 h.`,
-      `Pick a number that matches the work implied by the chat; do not exceed what the described repair reasonably takes.`,
-      ``,
-      `VALIDATION`,
-      `- Do not invent readings. Only include measurements that appear in the conversation.`,
-      `- If the conversation never reached a confirmed fix, set "estimatedLaborTime" to null and make "correction" a recommended next action.`,
+      `Return ONLY JSON: { "cause": string, "correction": string, "estimatedLaborTime": number | null }`,
+      `Be concise, specific, and grounded in the provided chat messages.`,
     ].join("\n");
 
     const chat = await openai.chat.completions.create({

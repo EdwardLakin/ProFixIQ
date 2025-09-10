@@ -64,6 +64,43 @@ export default function CreateWorkOrderPage() {
   const [error, setError] = useState("");
   const [inviteNotice, setInviteNotice] = useState<string>("");
 
+  // Helpers: initials + custom id
+  function getInitials(first?: string | null, last?: string | null, fallback?: string | null): string {
+    const f = (first ?? "").trim();
+    const l = (last ?? "").trim();
+    if (f || l) return `${f[0] ?? ""}${l[0] ?? ""}`.toUpperCase() || "WO";
+    // fallback from full name or email local part
+    const fb = (fallback ?? "").trim();
+    if (fb.includes(" ")) {
+      const parts = fb.split(/\s+/);
+      return `${parts[0]?.[0] ?? ""}${parts[1]?.[0] ?? ""}`.toUpperCase() || "WO";
+    }
+    if (fb.includes("@")) return fb.split("@")[0].slice(0, 2).toUpperCase() || "WO";
+    return (fb.slice(0, 2).toUpperCase() || "WO");
+  }
+
+  async function generateCustomId(prefix: string): Promise<string> {
+    const p = prefix.replace(/[^A-Z]/g, "").slice(0, 3) || "WO";
+    // pull a few recent with this prefix and find the max numeric tail
+    const { data } = await supabase
+      .from("work_orders")
+      .select("custom_id")
+      .ilike("custom_id", `${p}%`)
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    let max = 0;
+    (data ?? []).forEach((r) => {
+      const m = (r.custom_id ?? "").match(/^([A-Z]+)(\d{1,})$/i);
+      if (m && m[1].toUpperCase() === p) {
+        const n = parseInt(m[2], 10);
+        if (!Number.isNaN(n)) max = Math.max(max, n);
+      }
+    });
+    const next = (max + 1).toString().padStart(4, "0");
+    return `${p}${next}`;
+  }
+
   // ----- Read query params (optional) ----------------------------------------
   useEffect(() => {
     const v = searchParams.get("vehicleId");
@@ -151,11 +188,6 @@ export default function CreateWorkOrderPage() {
       cancelled = true;
     };
   }, [prefillCustomerId, prefillVehicleId, supabase]);
-
-  const selectedItems = useMemo(
-    () => menuItems.filter((m) => selectedIds.includes(m.id)),
-    [menuItems, selectedIds],
-  );
 
   function togglePick(id: string) {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -287,14 +319,14 @@ export default function CreateWorkOrderPage() {
 
       const cust = await ensureCustomer();
 
-      // current user + profile (shop)
+      // current user + profile (shop & name)
       const {
         data: { user },
       } = await supabase.auth.getUser();
 
       const { data: profile } = await supabase
         .from("profiles")
-        .select("shop_id")
+        .select("shop_id, first_name, last_name, full_name")
         .eq("id", user?.id ?? "")
         .maybeSingle();
 
@@ -303,39 +335,47 @@ export default function CreateWorkOrderPage() {
 
       const veh = await ensureVehicle(cust, shopId);
 
-      // Create WO (status valid per your constraint)
+      // Build custom_id like TU0001 based on creator initials
+      const initials = getInitials(profile?.first_name, profile?.last_name, profile?.full_name ?? user?.email ?? null);
+      const customId = await generateCustomId(initials);
+
+      // Create WO
       const newId = uuidv4();
       const { error: insertWOError } = await supabase.from("work_orders").insert({
         id: newId,
+        custom_id: customId,            // ✅ set human-friendly id
         vehicle_id: veh.id,
         customer_id: cust.id,
         inspection_id: inspectionId,
-        // type removed from WO itself previously per your request;
+        // type removed from WO record per your design
         notes,
-        user_id: user?.id ?? null, // authenticated user
-        shop_id: shopId, // critical for RLS
+        user_id: user?.id ?? null,
+        shop_id: shopId,
         status: "awaiting_approval",
       });
 
       if (insertWOError) throw new Error(insertWOError.message || "Failed to create work order.");
 
       // Initial lines from selected menu items (best-effort)
-      if (selectedItems.length > 0) {
-        const lineRows = selectedItems.map((m) => ({
-          work_order_id: newId,
-          vehicle_id: veh.id,
-          user_id: user?.id ?? null,
-          description: m.name ?? null,
-          labor_time: m.labor_time ?? null,
-          complaint: m.complaint ?? null,
-          cause: m.cause ?? null,
-          correction: m.correction ?? null,
-          tools: m.tools ?? null,
-          status: "new" as const,
-          job_type: type,
-        }));
-        const { error: lineErr } = await supabase.from("work_order_lines").insert(lineRows);
-        if (lineErr) console.error("Failed to add menu items as lines:", lineErr);
+      if (selectedIds.length > 0) {
+        const selectedItems = menuItems.filter((m) => selectedIds.includes(m.id));
+        if (selectedItems.length) {
+          const lineRows = selectedItems.map((m) => ({
+            work_order_id: newId,
+            vehicle_id: veh.id,
+            user_id: user?.id ?? null,
+            description: m.name ?? null,
+            labor_time: m.labor_time ?? null,
+            complaint: m.complaint ?? null,
+            cause: m.cause ?? null,
+            correction: m.correction ?? null,
+            tools: m.tools ?? null,
+            status: "new" as const,
+            job_type: type,
+          }));
+          const { error: lineErr } = await supabase.from("work_order_lines").insert(lineRows);
+          if (lineErr) console.error("Failed to add menu items as lines:", lineErr);
+        }
       }
 
       // Import from inspection (optional)
@@ -351,7 +391,7 @@ export default function CreateWorkOrderPage() {
             console.error("Import from inspection failed:", j?.error || res.statusText);
           }
         } catch (err) {
-          console.error("Import from inspection errored:", err);
+        console.error("Import from inspection errored:", err);
         }
       }
 
@@ -361,24 +401,17 @@ export default function CreateWorkOrderPage() {
         setUploadSummary(summary);
       }
 
-      // ✅ Email a customer portal sign-up link if selected
+      // Email a customer portal sign-up link (optional)
       if (sendInvite && custEmail) {
         try {
-          // Build a simple portal link (adjust path as needed)
           const origin =
             typeof window !== "undefined"
               ? window.location.origin
               : (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
-          const portalUrl = `${origin || "https://profixiq.com"}/portal/signup?email=${encodeURIComponent(
-            custEmail,
-          )}`;
+          const portalUrl = `${origin || "https://profixiq.com"}/portal/signup?email=${encodeURIComponent(custEmail)}`;
 
-        const { error: fnErr } = await supabase.functions.invoke("send-portal-invite", {
-            body: {
-              email: custEmail,
-              customer_id: cust.id,
-              portal_url: portalUrl,
-            },
+          const { error: fnErr } = await supabase.functions.invoke("send-portal-invite", {
+            body: { email: custEmail, customer_id: cust.id, portal_url: portalUrl },
           });
 
           if (fnErr) {
@@ -393,7 +426,7 @@ export default function CreateWorkOrderPage() {
         }
       }
 
-      // Navigate to the new Work Order page (correct path to [id])
+      // Navigate to the new Work Order page
       router.push(`/work-orders/${newId}`);
     } catch (ex) {
       const message = ex instanceof Error ? ex.message : "Failed to create work order.";
@@ -468,7 +501,7 @@ export default function CreateWorkOrderPage() {
                     placeholder="jane@example.com"
                     disabled={loading}
                   />
-                  {/* Moved right under the email field */}
+                  {/* Moved directly under Email */}
                   <div className="mt-1 flex items-center gap-2 text-xs text-neutral-300">
                     <input
                       id="send-invite"

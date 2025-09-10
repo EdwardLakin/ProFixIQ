@@ -47,69 +47,73 @@ export default function AuthPage() {
     })();
   }, [router, supabase]);
 
-  // Helper: wait until the session is actually present on the client
-  async function waitForSession(timeoutMs = 6000, intervalMs = 150): Promise<boolean> {
-    const start = Date.now();
-    while (Date.now() - start < timeoutMs) {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) return true;
-      await new Promise((r) => setTimeout(r, intervalMs));
-    }
-    return false;
-  }
+  // Stronger "go" that ensures the session is visible to RSC/middleware
+  const go = async (href: string) => {
+    // Confirm cookie/session is persisted before navigating
+    await supabase.auth.getSession();
+    await router.push(href);
+    router.refresh();
+
+    // Fallback for stubborn client caches (rare)
+    setTimeout(() => {
+      if (typeof window !== "undefined" && window.location.pathname !== href) {
+        window.location.assign(href);
+      }
+    }, 50);
+  };
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (loading) return;               // 🚫 no double taps
     setLoading(true);
     setError("");
     setNotice("");
 
-    const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
+    const { error: signInErr } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
     if (signInErr) {
+      console.error("[signIn] error:", signInErr);
       setError(signInErr.message || "Sign in failed.");
       setLoading(false);
       return;
     }
 
-    // Wait for the auth cookie/session to propagate
-    const ok = await waitForSession();
-    if (!ok) {
-      setError("Signed in, but session not ready yet. Please try again.");
+    // Confirm session exists on the client
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setError("Signed in, but no session is visible yet. Try again.");
       setLoading(false);
       return;
     }
 
-    // Decide destination (respect ?redirect= when onboarding is complete)
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    let to = "/dashboard";
+    // Optional: look up onboarding state here (middleware also guards this)
+    const { data: profile, error: profErr } = await supabase
+      .from("profiles")
+      .select("completed_onboarding")
+      .eq("id", user.id)
+      .maybeSingle();
 
-    if (user) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("completed_onboarding")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      const redirect = sp.get("redirect");
-      if (profile?.completed_onboarding) {
-        to = redirect || "/dashboard";
-      } else {
-        to = "/onboarding";
-      }
+    if (profErr) {
+      console.warn("[profile lookup] warning:", profErr);
     }
 
-    // Navigate once; keep loading true until navigation kicks in
-    router.replace(to);
-    router.refresh();
+    // Respect ?redirect=/foo if present and user finished onboarding
+    const redirect = sp.get("redirect");
+    if (redirect && profile?.completed_onboarding) {
+      await go(redirect);
+    } else {
+      await go(profile?.completed_onboarding ? "/dashboard" : "/onboarding");
+    }
+
+    setLoading(false);
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (loading) return;
     setLoading(true);
     setError("");
     setNotice("");
@@ -121,20 +125,21 @@ export default function AuthPage() {
     });
 
     if (signUpErr) {
+      console.error("[signUp] error:", signUpErr);
       setError(signUpErr.message || "Sign up failed.");
       setLoading(false);
       return;
     }
 
-    // If email confirmation required, there won't be a session yet
+    // If email confirmation is required, there won’t be a session yet
     if (!data.session) {
       setNotice("Check your inbox to confirm your email. We’ll take you to onboarding after that.");
       setLoading(false);
       return;
     }
 
-    router.replace("/onboarding");
-    router.refresh();
+    await go("/onboarding");
+    setLoading(false);
   };
 
   return (
@@ -149,7 +154,6 @@ export default function AuthPage() {
             className={`px-3 py-1 rounded ${mode === "sign-in" ? "bg-orange-500 text-black" : "bg-neutral-800 text-neutral-300"}`}
             onClick={() => setMode("sign-in")}
             disabled={loading}
-            type="button"
           >
             Sign In
           </button>
@@ -157,7 +161,6 @@ export default function AuthPage() {
             className={`px-3 py-1 rounded ${mode === "sign-up" ? "bg-orange-500 text-black" : "bg-neutral-800 text-neutral-300"}`}
             onClick={() => setMode("sign-up")}
             disabled={loading}
-            type="button"
           >
             Sign Up
           </button>

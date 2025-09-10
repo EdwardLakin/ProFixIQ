@@ -10,7 +10,6 @@ const TechAssistant = dynamic(
 );
 
 export default function TechAssistantPage() {
-  // Optional: seed vehicle or WO line here if you want
   const [vehicle] = useState<{ year?: string; make?: string; model?: string } | null>(null);
   const [workOrderLineId] = useState<string | null>(null);
 

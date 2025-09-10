@@ -1,5 +1,6 @@
-import React from "react";
-import { useRouter } from "next/router";
+"use client";
+
+import { useRouter } from "next/navigation";
 
 export default function AIAssistantPanel() {
   const router = useRouter();
@@ -15,7 +16,7 @@ export default function AIAssistantPanel() {
           </p>
         </div>
         <button
-          onClick={() => router.push("/techbot")}
+          onClick={() => router.push("/ai/assistant")}
           className="mt-4 sm:mt-0 bg-accent text-white px-4 py-2 rounded shadow hover:bg-accent/90 transition"
         >
           Open TechBot

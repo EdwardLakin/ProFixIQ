@@ -1,4 +1,3 @@
-// features/work-orders/app/work-orders/view/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -107,12 +106,18 @@ export default function WorkOrdersView(): JSX.Element {
     const prev = rows;
     setRows((r) => r.filter((x) => x.id !== id));
 
-    // If FKs block deletion, remove child rows first (no transaction client-side)
-    await supabase.from("work_order_lines").delete().eq("work_order_id", id);
+    // Delete children first to avoid FK blocking
+    const { error: lineErr } = await supabase.from("work_order_lines").delete().eq("work_order_id", id);
+    if (lineErr) {
+      alert("Failed to delete job lines: " + lineErr.message);
+      setRows(prev);
+      return;
+    }
+
     const { error } = await supabase.from("work_orders").delete().eq("id", id);
     if (error) {
       alert("Failed to delete: " + error.message);
-      setRows(prev); // revert
+      setRows(prev);
     }
   }
 

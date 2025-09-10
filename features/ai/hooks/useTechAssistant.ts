@@ -5,7 +5,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 /** Minimal chat message shape used by the UI and API */
 export type ChatMessage = {
   role: "user" | "assistant";
-  content: string;
+  content: string | (TextPart | ImagePart)[];
 };
 
 /** Vehicle shape (permissive so you can pass partials/undefineds) */
@@ -22,12 +22,19 @@ type AssistantOptions = {
   defaultContext?: string;
 };
 
-/** Small helper: convert a File → data URL (base64) */
+/** OpenAI-compatible message parts for multimodal */
+type TextPart = { type: "text"; text: string };
+type ImagePart = { type: "image_url"; image_url: { url: string } };
+
+/** Browser-safe: File → data URL */
 async function fileToDataUrl(file: File): Promise<string> {
-  const buf = await file.arrayBuffer();
-  const b64 = Buffer.from(buf).toString("base64");
-  const mime = file.type || "image/jpeg";
-  return `data:${mime};base64,${b64}`;
+  const reader = new FileReader();
+  const p = new Promise<string>((resolve, reject) => {
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error ?? new Error("Failed to read file"));
+  });
+  reader.readAsDataURL(file);
+  return p;
 }
 
 /** Read our server-sent events stream and invoke callbacks */
@@ -45,17 +52,15 @@ async function readSseStream(
 
     buffer += decoder.decode(value, { stream: true });
 
-    // We emit events as lines beginning with "data: {...}\n\n"
+    // Process SSE lines separated by \n\n
     let idx: number;
-    // process complete events
     while ((idx = buffer.indexOf("\n\n")) !== -1) {
-      const event = buffer.slice(0, idx).trim();
+      const raw = buffer.slice(0, idx).trim();
       buffer = buffer.slice(idx + 2);
 
-      // Skip comments / keepalive
-      if (!event || event.startsWith(":")) continue;
+      if (!raw || raw.startsWith(":")) continue; // keepalive/comment
 
-      const line = event.startsWith("data:") ? event.slice(5).trim() : event;
+      const line = raw.startsWith("data:") ? raw.slice(5).trim() : raw;
       if (!line) continue;
 
       try {
@@ -64,13 +69,16 @@ async function readSseStream(
           | { type: "done" }
           | { type: "error"; error: string };
 
-        if (payload.type === "chunk") onChunk(payload.content);
-        if (payload.type === "error") throw new Error(payload.error);
-        if (payload.type === "done") return;
+        if ("type" in payload) {
+          if (payload.type === "chunk") onChunk(payload.content);
+          if (payload.type === "error") throw new Error(payload.error);
+          if (payload.type === "done") return;
+          continue;
+        }
       } catch {
-        // If not JSON (or custom), treat it as raw chunk text
-        onChunk(line);
+        // Not JSON? treat as raw chunk
       }
+      onChunk(line);
     }
   }
 }
@@ -130,7 +138,6 @@ export function useTechAssistant(opts?: AssistantOptions) {
       const body = {
         ...payload,
         vehicle,
-        context,
         messages,
       };
 
@@ -166,7 +173,7 @@ export function useTechAssistant(opts?: AssistantOptions) {
         abortRef.current = null;
       }
     },
-    [messages, vehicle, context, canSend],
+    [messages, vehicle, canSend],
   );
 
   /** Public: send plain chat text */
@@ -176,9 +183,9 @@ export function useTechAssistant(opts?: AssistantOptions) {
       if (!trimmed) return;
       // push user message locally first
       setMessages((m) => [...m, { role: "user", content: trimmed }]);
-      await streamToAssistant({ prompt: trimmed });
+      await streamToAssistant({ prompt: trimmed, context });
     },
-    [streamToAssistant],
+    [streamToAssistant, context],
   );
 
   /** Public: send a DTC for the assistant to analyze */
@@ -188,27 +195,35 @@ export function useTechAssistant(opts?: AssistantOptions) {
       if (!code) return;
       setMessages((m) => [
         ...m,
-        { role: "user", content: `DTC: ${code}\n${note ? `Note: ${note}` : ""}` },
+        { role: "user", content: `DTC: ${code}${note ? `\nNote: ${note}` : ""}` },
       ]);
-      await streamToAssistant({ dtcCode: code });
+      await streamToAssistant({ dtcCode: code, context });
     },
-    [streamToAssistant],
+    [streamToAssistant, context],
   );
 
   /** Public: send a photo (image file) + optional note */
   const sendPhoto = useCallback(
     async (file: File, note?: string) => {
       if (!file) return;
-      // Add a local user message describing the upload
+      const image_data = await fileToDataUrl(file);
+
+      // Push a multimodal user message: optional text + image
       setMessages((m) => [
         ...m,
         {
           role: "user",
-          content: `Uploaded a photo.${note ? `\nNote: ${note}` : ""}`,
+          content: [
+            ...(note?.trim()
+              ? [{ type: "text", text: `Photo note: ${note.trim()}` } as const]
+              : []),
+            { type: "image_url", image_url: { url: image_data } } as const,
+          ],
         },
       ]);
-      const image_data = await fileToDataUrl(file);
-      await streamToAssistant({ image_data });
+
+      // No extra payload needed—the server reads the multimodal message we just appended
+      await streamToAssistant({ context });
     },
     [streamToAssistant],
   );
@@ -242,6 +257,7 @@ export function useTechAssistant(opts?: AssistantOptions) {
       const res = await postJSON("/api/assistant/export", {
         vehicle,
         messages,
+        context,
         workOrderLineId,
       });
 
@@ -255,7 +271,7 @@ export function useTechAssistant(opts?: AssistantOptions) {
         estimatedLaborTime: number | null;
       };
     },
-    [messages, vehicle, canSend],
+    [messages, vehicle, canSend, context],
   );
 
   return {
@@ -268,7 +284,7 @@ export function useTechAssistant(opts?: AssistantOptions) {
     // setters
     setVehicle,
     setContext,
-    setMessages, // exposed in case you need to seed conversation programmatically
+    setMessages,
 
     // status
     sending,
