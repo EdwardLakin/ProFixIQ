@@ -1,4 +1,3 @@
-// app/chat/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -9,42 +8,30 @@ import RecipientPickerModal from "@/features/shared/chat/components/RecipientPic
 
 type DB = Database;
 type MessageRow = DB["public"]["Tables"]["messages"]["Row"];
-type Profile = DB["public"]["Tables"]["profiles"]["Row"];
+type ProfileRow = DB["public"]["Tables"]["profiles"]["Row"];
 
 type ListItem = {
-  chatId: string; // always a string here (we coerce)
+  chatId: string;
   lastMessage: MessageRow;
-  otherUserIds: string[];
-  otherUsers: Array<Pick<Profile, "id" | "full_name" | "role">>;
+  otherUsers: Array<Pick<ProfileRow, "id" | "full_name" | "role">>;
 };
-
-// Defensive helper: turn an unknown JSON value into string[]
-function toStringArray(v: unknown): string[] {
-  if (Array.isArray(v)) return v.map((x) => String(x));
-  return [];
-}
 
 export default function ChatListPage(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const [me, setMe] = useState<string | null>(null);
   const [items, setItems] = useState<ListItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [pickerOpen, setPickerOpen] = useState<boolean>(false);
 
-  // who am I?
   useEffect(() => {
     (async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const { data: { user } } = await supabase.auth.getUser();
       setMe(user?.id ?? null);
     })();
   }, [supabase]);
 
-  // Load latest messages and dedupe by chat_id (newest first)
   useEffect(() => {
     let mounted = true;
-
     (async () => {
       setLoading(true);
 
@@ -62,23 +49,18 @@ export default function ChatListPage(): JSX.Element {
         return;
       }
 
-      // Deduplicate by chat_id (keep the newest row for each chat)
-      const seen = new Set<string>();
-      const latestPer: MessageRow[] = [];
+      // newest message per non-null chat_id
+      const latestPer = new Map<string, MessageRow>();
       for (const m of data as MessageRow[]) {
-        const safeChatId = m.chat_id ?? ""; // null-safe
-        if (!safeChatId) continue;
-        if (!seen.has(safeChatId)) {
-          seen.add(safeChatId);
-          latestPer.push(m);
-        }
+        if (!m.chat_id) continue;
+        if (!latestPer.has(m.chat_id)) latestPer.set(m.chat_id, m);
       }
 
-      // Collect all user ids we need to label the conversations
       const ids = new Set<string>();
-      for (const m of latestPer) {
+      for (const m of latestPer.values()) {
         if (m.sender_id) ids.add(m.sender_id);
-        for (const r of toStringArray(m.recipients)) ids.add(r);
+        const recips = Array.isArray(m.recipients) ? m.recipients.map(String) : [];
+        for (const r of recips) ids.add(r);
       }
 
       const { data: profs } = await supabase
@@ -86,37 +68,30 @@ export default function ChatListPage(): JSX.Element {
         .select("id, full_name, role")
         .in("id", Array.from(ids));
 
-      const profMap = new Map(
-        (profs ?? []).map((p) => [p.id, { id: p.id, full_name: p.full_name, role: p.role }]),
-      );
+      const profMap = new Map<string, Pick<ProfileRow, "id" | "full_name" | "role">>();
+      for (const p of (profs ?? [])) {
+        profMap.set(p.id, { id: p.id, full_name: p.full_name, role: p.role });
+      }
 
-      const list: ListItem[] = latestPer.map((last) => {
-        const safeChatId = last.chat_id ?? ""; // enforce string
-        const rawOther = new Set<string>([
+      const list: ListItem[] = Array.from(latestPer.values()).map((last) => {
+        // chat_id is non-null by construction above
+        const chatId = last.chat_id as string;
+
+        const all = new Set<string>([
+          ...(Array.isArray(last.recipients) ? last.recipients.map(String) : []),
           ...(last.sender_id ? [last.sender_id] : []),
-          ...toStringArray(last.recipients),
         ]);
 
-        const otherUserIds = me
-          ? Array.from(rawOther).filter((x) => x !== me)
-          : Array.from(rawOther);
-
-        const otherUsers = otherUserIds
+        const otherIds = me ? Array.from(all).filter((x) => x !== me) : Array.from(all);
+        const otherUsers = otherIds
           .map((id) => profMap.get(id))
-          .filter(Boolean) as Array<Pick<Profile, "id" | "full_name" | "role">>;
+          .filter((v): v is NonNullable<typeof v> => Boolean(v));
 
-        return {
-          chatId: safeChatId,
-          lastMessage: last,
-          otherUserIds,
-          otherUsers,
-        };
+        return { chatId, lastMessage: last, otherUsers };
       });
 
-      if (mounted) {
-        setItems(list);
-        setLoading(false);
-      }
+      if (mounted) setItems(list);
+      setLoading(false);
     })();
 
     return () => {
@@ -124,36 +99,32 @@ export default function ChatListPage(): JSX.Element {
     };
   }, [supabase, me]);
 
-  // Realtime: refresh list on new messages
   useEffect(() => {
-    const channel = supabase
+    const ch = supabase
       .channel("messages-list")
-      .on(
-        "postgres_changes",
-        { schema: "public", table: "messages", event: "INSERT" },
-        () => {
-          // Keep it simple: reload the page list
-          location.reload();
-        },
-      )
+      .on("postgres_changes", { schema: "public", table: "messages", event: "INSERT" }, () => {
+        window.location.reload();
+      })
       .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(ch); };
   }, [supabase]);
 
   async function handleStartChat(userIds: string[], groupName?: string): Promise<void> {
-    if (!me || userIds.length === 0) return;
-    const chatId = crypto.randomUUID();
-    await supabase.from("messages").insert({
-      chat_id: chatId,
-      sender_id: me,
-      recipients: userIds,
-      content: groupName ? `Started group chat: ${groupName}` : "Started conversation",
-    });
-    window.location.href = `/chat/${chatId}`;
-  }
+  if (userIds.length === 0) return;
+
+  const { data, error } = await supabase.rpc("chat_post_message", {
+    _recipients: userIds,
+    _content:
+      groupName && groupName.trim().length > 0
+        ? `Started group: ${groupName.trim()}`
+        : "Started conversation",
+    // _chat_id: omitted on purpose (new/reused thread decided server-side)
+  });
+
+  if (error || !data) return;
+  const chatId: string = String(data);
+  window.location.href = `/chat/${chatId}`;
+}
 
   return (
     <div className="mx-auto max-w-3xl p-4 text-white">
@@ -162,7 +133,6 @@ export default function ChatListPage(): JSX.Element {
         <button
           className="rounded bg-orange-600 px-3 py-2 font-semibold text-black hover:bg-orange-700"
           onClick={() => setPickerOpen(true)}
-          type="button"
         >
           New Conversation
         </button>
@@ -177,7 +147,6 @@ export default function ChatListPage(): JSX.Element {
       ) : (
         <ul className="divide-y divide-neutral-800 rounded border border-neutral-800 bg-neutral-900">
           {items.map(({ chatId, lastMessage, otherUsers }) => {
-            const safeChatId = chatId ?? ""; // extra safety
             const title =
               otherUsers.length > 0
                 ? otherUsers.map((u) => u.full_name ?? "User").join(", ")
@@ -185,8 +154,8 @@ export default function ChatListPage(): JSX.Element {
             const preview = (lastMessage.content ?? "").slice(0, 160);
 
             return (
-              <li key={safeChatId} className="p-3 hover:bg-neutral-800/60">
-                <Link href={`/chat/${safeChatId}`} className="block">
+              <li key={chatId} className="p-3 hover:bg-neutral-800/60">
+                <Link href={`/chat/${chatId}`} className="block">
                   <div className="font-medium">{title}</div>
                   <div className="mt-1 truncate text-sm text-neutral-400">{preview || "…"}</div>
                 </Link>

@@ -3275,6 +3275,14 @@ export type Database = {
         Args: { target_profile_id: string }
         Returns: boolean
       }
+      chat_participants_key: {
+        Args: { _recipients: string[]; _sender: string }
+        Returns: string
+      }
+      chat_post_message: {
+        Args: { _chat_id?: string; _content: string; _recipients: string[] }
+        Returns: string
+      }
       check_plan_limit: {
         Args: { _feature: string }
         Returns: boolean
