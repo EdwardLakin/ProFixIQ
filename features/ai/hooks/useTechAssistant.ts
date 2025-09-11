@@ -1,4 +1,3 @@
-// features/ai/hooks/useTechAssistant.ts
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -26,12 +25,18 @@ type AssistantOptions = {
 /** Small helper: convert a File → data URL (base64) */
 async function fileToDataUrl(file: File): Promise<string> {
   const buf = await file.arrayBuffer();
+  // If your bundler doesn’t polyfill Buffer on the client, replace with FileReader
   const b64 = Buffer.from(buf).toString("base64");
   const mime = file.type || "image/jpeg";
   return `data:${mime};base64,${b64}`;
 }
 
-/** Read our server-sent events stream and invoke callbacks */
+/** Read our server-sent events stream and invoke callbacks.
+ *  Supports:
+ *    • Your custom JSON envelope: {type:"chunk"|"done"|"error", ...}
+ *    • OpenAI Chat Completions SSE: choices[0].delta.content (and friends)
+ *    • Raw text fallback
+ */
 async function readSseStream(
   body: ReadableStream<Uint8Array>,
   onChunk: (text: string) => void,
@@ -46,30 +51,63 @@ async function readSseStream(
 
     buffer += decoder.decode(value, { stream: true });
 
-    // Process complete events
+    // Process complete SSE events (separated by blank line)
     let idx: number;
     while ((idx = buffer.indexOf("\n\n")) !== -1) {
       const event = buffer.slice(0, idx).trim();
       buffer = buffer.slice(idx + 2);
 
-      if (!event || event.startsWith(":")) continue;
+      if (!event || event.startsWith(":")) continue; // heartbeat/comment
 
+      // Support both "data: ..." and raw lines
       const line = event.startsWith("data:") ? event.slice(5).trim() : event;
-      if (!line) continue;
 
+      // OpenAI sends this sentinel when complete
+      if (line === "[DONE]") return;
+
+      // Try to parse JSON; if it fails, treat as raw text
+      let obj: any;
       try {
-        const payload = JSON.parse(line) as
-          | { type: "chunk"; content: string }
-          | { type: "done" }
-          | { type: "error"; error: string };
-
-        if (payload.type === "chunk") onChunk(payload.content);
-        if (payload.type === "error") throw new Error(payload.error);
-        if (payload.type === "done") return;
+        obj = JSON.parse(line);
       } catch {
-        // If not JSON (or custom), treat as raw text
         onChunk(line);
+        continue;
       }
+
+      // 1) Your custom envelope
+      if (obj && typeof obj === "object") {
+        if (obj.type === "chunk" && typeof obj.content === "string") {
+          onChunk(obj.content);
+          continue;
+        }
+        if (obj.type === "error" && typeof obj.error === "string") {
+          throw new Error(obj.error);
+        }
+        if (obj.type === "done") {
+          return;
+        }
+      }
+
+      // 2) OpenAI Chat Completions stream shapes
+      // token deltas
+      const delta = obj?.choices?.[0]?.delta;
+      if (delta?.content) {
+        onChunk(String(delta.content));
+        continue;
+      }
+      // occasionally a full message arrives at the end
+      const full = obj?.choices?.[0]?.message?.content;
+      if (full) {
+        onChunk(String(full));
+        continue;
+      }
+      // finish signal (stop when finish_reason appears)
+      const finish = obj?.choices?.[0]?.finish_reason;
+      if (finish) {
+        return;
+      }
+
+      // 3) Anything else -> ignore quietly
     }
   }
 }

@@ -13,3 +13,5 @@ sendgrid.env
 .env*.local
 .env.local
 .env.local.bak
+.env.local
+.env.local.bak
