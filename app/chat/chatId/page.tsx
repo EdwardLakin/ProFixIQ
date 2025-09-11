@@ -103,7 +103,7 @@ export default function ChatThreadPage(): JSX.Element {
     return () => { supabase.removeChannel(ch); };
   }, [supabase, chatId]);
 
-  // send message via RPC
+  // send message via RPC (append to THIS chat)
   async function send(): Promise<void> {
     if (!me || sending) return;
     const text = inputRef.current?.value?.trim();
@@ -117,7 +117,7 @@ export default function ChatThreadPage(): JSX.Element {
       const { error } = await supabase.rpc("chat_post_message", {
         _recipients: recipients,
         _content: text,
-        _chat_id: chatId,
+        _chat_id: chatId, // append to current thread
       });
       if (!error && inputRef.current) inputRef.current.value = "";
     } finally {
@@ -125,7 +125,7 @@ export default function ChatThreadPage(): JSX.Element {
     }
   }
 
-  // start new/reuse via RPC (from inside thread)
+  // start new/reuse (from inside the thread) — omit _chat_id
   async function handleStartChat(userIds: string[], groupName?: string): Promise<void> {
     const { data, error } = await supabase.rpc("chat_post_message", {
       _recipients: userIds,
@@ -133,11 +133,10 @@ export default function ChatThreadPage(): JSX.Element {
         groupName && groupName.trim().length > 0
           ? `Started group: ${groupName.trim()}`
           : "Started conversation",
-      _chat_id: null as unknown as string | undefined,
+      // intentionally omitted: _chat_id
     });
     if (error || !data) return;
-    const newId: string = String(data);
-    window.location.href = `/chat/${newId}`;
+    window.location.href = `/chat/${String(data)}`;
   }
 
   const title =

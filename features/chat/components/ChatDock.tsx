@@ -1,3 +1,4 @@
+// features/shared/chat/components/ChatDock.tsx
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -10,32 +11,34 @@ type MessageRow = DB["public"]["Tables"]["messages"]["Row"];
 
 type Conversation = {
   chatId: string;
-  recipients: string[]; // user ids
+  recipients: string[];         // user IDs (excluding duplicates)
   groupName?: string;
 };
 
 export default function ChatDock(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+
+  // dock open/close
   const [open, setOpen] = useState<boolean>(false);
 
-  // auth
+  // auth identity
   const [me, setMe] = useState<string | null>(null);
 
   // active conversation
   const [conv, setConv] = useState<Conversation | null>(null);
 
-  // messages
+  // messages in the active conversation
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
 
-  // compose
+  // composer
   const inputRef = useRef<HTMLInputElement>(null);
   const [sending, setSending] = useState<boolean>(false);
 
   // recipient picker
   const [pickerOpen, setPickerOpen] = useState<boolean>(false);
 
-  // who am I
+  // who am I?
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -43,30 +46,7 @@ export default function ChatDock(): JSX.Element {
     })();
   }, [supabase]);
 
-  // realtime updates for current thread
-  useEffect(() => {
-    if (!conv?.chatId) return;
-
-    const ch = supabase
-      .channel(`messages-${conv.chatId}`)
-      .on(
-        "postgres_changes",
-        { schema: "public", table: "messages", event: "INSERT", filter: `chat_id=eq.${conv.chatId}` },
-        (payload) => {
-          const row = payload.new as MessageRow;
-          setMessages((prev) => [...prev, row].sort((a, b) => {
-            const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
-            const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
-            return ta - tb;
-          }));
-        }
-      )
-      .subscribe();
-
-    return () => { supabase.removeChannel(ch); };
-  }, [supabase, conv?.chatId]);
-
-  // load history for a thread
+  // helper: load entire message history for a chat
   const loadMessages = useCallback(async (chatId: string): Promise<void> => {
     setLoading(true);
     const { data, error } = await supabase
@@ -79,32 +59,52 @@ export default function ChatDock(): JSX.Element {
     setLoading(false);
   }, [supabase]);
 
-  // Start conversation via RPC (server decides reuse/new)
+  // realtime subscription for the active chat
+  useEffect(() => {
+    if (!conv?.chatId) return;
+    const channel = supabase
+      .channel(`dock-thread-${conv.chatId}`)
+      .on(
+        "postgres_changes",
+        { schema: "public", table: "messages", event: "INSERT", filter: `chat_id=eq.${conv.chatId}` },
+        (payload) => {
+          const row = payload.new as MessageRow;
+          setMessages((prev) => [...prev, row]);
+        },
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [supabase, conv?.chatId]);
+
+  // Start a new (or reuse an existing) conversation via RPC
   const onStartChat = useCallback(
     async (userIds: string[], groupName?: string): Promise<void> => {
-      if (!me || userIds.length === 0) return;
+      if (userIds.length === 0) return;
 
+      // Use RPC; omit _chat_id so the function can reuse or create a thread.
       const { data, error } = await supabase.rpc("chat_post_message", {
-        _recipients: userIds,
+        _recipients: Array.from(new Set(userIds)),
         _content:
           groupName && groupName.trim().length > 0
             ? `Started group: ${groupName.trim()}`
             : "Started conversation",
-        _chat_id: null as unknown as string | undefined,
+        // do NOT pass _chat_id here
       });
 
       if (error || !data) return;
+      const chatId: string = String(data);
 
-      const chatId = String(data);
-      setConv({ chatId, recipients: userIds, groupName });
-      await loadMessages(chatId);
+      // Set active conversation, close picker, load history, open dock
+      setConv({ chatId, recipients: Array.from(new Set(userIds)), groupName });
       setPickerOpen(false);
+      await loadMessages(chatId);
       setOpen(true);
     },
-    [me, supabase, loadMessages]
+    [supabase, loadMessages],
   );
 
-  // Send message via RPC
+  // Send a message into the active conversation via RPC
   const send = useCallback(async (): Promise<void> => {
     if (!conv?.chatId || !me || sending) return;
     const text = inputRef.current?.value?.trim();
@@ -115,23 +115,24 @@ export default function ChatDock(): JSX.Element {
       const { error } = await supabase.rpc("chat_post_message", {
         _recipients: conv.recipients,
         _content: text,
-        _chat_id: conv.chatId,
+        _chat_id: conv.chatId, // append to this conversation
       });
       if (!error && inputRef.current) inputRef.current.value = "";
     } finally {
       setSending(false);
     }
-  }, [conv, me, supabase, sending]);
+  }, [supabase, conv, me, sending]);
 
-  const title = useMemo(() => {
-    if (!conv) return "New Message";
-    if (conv.groupName) return conv.groupName;
-    return `Chat (${conv.recipients.length} recipient${conv.recipients.length === 1 ? "" : "s"})`;
-  }, [conv]);
+  // UI title
+  const title = conv
+    ? (conv.groupName && conv.groupName.trim().length > 0
+        ? conv.groupName
+        : `Chat (${conv.recipients.length} recipient${conv.recipients.length === 1 ? "" : "s"})`)
+    : "New Message";
 
   return (
     <>
-      {/* Triggers */}
+      {/* Dock triggers */}
       <div className="flex gap-2">
         <button
           type="button"
@@ -223,11 +224,11 @@ export default function ChatDock(): JSX.Element {
         </div>
       )}
 
-      {/* Recipient picker */}
+      {/* Recipient picker modal (wrapper is already `use client`) */}
       <RecipientPickerModal
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
-        onStartChat={(ids, groupName) => onStartChat(ids, groupName)}
+        onStartChat={onStartChat}
         allowGroup
       />
     </>

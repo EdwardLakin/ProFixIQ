@@ -23,7 +23,7 @@ export default function ChatListPage(): JSX.Element {
   const [loading, setLoading] = useState<boolean>(true);
   const [pickerOpen, setPickerOpen] = useState<boolean>(false);
 
-  // me
+  // who am I?
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -105,10 +105,12 @@ export default function ChatListPage(): JSX.Element {
         window.location.reload();
       })
       .subscribe();
-    return () => { supabase.removeChannel(ch); };
+    return () => {
+      supabase.removeChannel(ch);
+    };
   }, [supabase]);
 
-  // start chat via RPC
+  // Start a chat via RPC — omit _chat_id to allow create/reuse
   async function handleStartChat(userIds: string[], groupName?: string): Promise<void> {
     if (userIds.length === 0) return;
 
@@ -118,7 +120,7 @@ export default function ChatListPage(): JSX.Element {
         groupName && groupName.trim().length > 0
           ? `Started group: ${groupName.trim()}`
           : "Started conversation",
-      _chat_id: null as unknown as string | undefined,
+      // intentionally omitted: _chat_id
     });
 
     if (error || !data) return;
