@@ -17,13 +17,11 @@ export type Vehicle = {
 };
 
 type AssistantOptions = {
-  /** Seed the hook with an initial vehicle (optional) */
   defaultVehicle?: Vehicle;
-  /** Seed the hook with an initial context/complaint/notes (optional) */
   defaultContext?: string;
 };
 
-/** Small helper: convert a File → data URL (base64) */
+/** File → data URL (base64) */
 async function fileToDataUrl(file: File): Promise<string> {
   const buf = await file.arrayBuffer();
   const b64 = Buffer.from(buf).toString("base64");
@@ -31,21 +29,11 @@ async function fileToDataUrl(file: File): Promise<string> {
   return `data:${mime};base64,${b64}`;
 }
 
-/** POST JSON helper with abort support */
-async function postJSON(
-  url: string,
-  data: unknown,
-  signal?: AbortSignal,
-): Promise<Response> {
-  return fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-    signal,
-  });
-}
-
-/** Read our server-sent events stream and invoke callbacks */
+/**
+ * Read an SSE stream from OpenAI and extract text deltas.
+ * We handle both raw text and the JSON chunks OpenAI emits:
+ *   { choices: [{ delta: { content: "..." } }] }
+ */
 async function readSseStream(
   body: ReadableStream<Uint8Array>,
   onChunk: (text: string) => void,
@@ -60,61 +48,55 @@ async function readSseStream(
 
     buffer += decoder.decode(value, { stream: true });
 
-    // Process complete SSE events (double newline–separated)
+    // Process complete SSE events (separated by blank line)
     let idx: number;
     while ((idx = buffer.indexOf("\n\n")) !== -1) {
-      const eventBlock = buffer.slice(0, idx).trim();
+      const raw = buffer.slice(0, idx).trim();
       buffer = buffer.slice(idx + 2);
 
-      if (!eventBlock) continue;
-      // Ignore SSE comments:
-      // : keepalive
-      if (eventBlock.startsWith(":")) continue;
+      if (!raw || raw.startsWith(":")) continue;
 
-      // Prefer "data:" if present; fall back to whole block
-      const line = eventBlock.startsWith("data:")
-        ? eventBlock.slice(5).trim()
-        : eventBlock;
+      const line = raw.startsWith("data:") ? raw.slice(5).trim() : raw;
 
-      if (!line) continue;
-
-      // Ignore OpenAI end-of-stream sentinel and explicit event headers
+      // OpenAI ends with [DONE]
       if (line === "[DONE]") return;
-      if (line.startsWith("event:")) continue;
 
-      // If backend emits JSON envelope {type, content}, handle it
+      // Try to parse OpenAI's JSON event
       try {
-        const payload = JSON.parse(line) as
-          | { type: "chunk"; content: string }
-          | { type: "done" }
-          | { type: "error"; error: string };
+        const obj = JSON.parse(line) as any;
+        const piece =
+          obj?.choices?.[0]?.delta?.content ??
+          obj?.choices?.[0]?.text ??
+          "";
 
-        if ((payload as any).type === "chunk") {
-          onChunk((payload as any).content ?? "");
+        if (typeof piece === "string" && piece.length > 0) {
+          onChunk(piece);
           continue;
         }
-        if ((payload as any).type === "error") {
-          throw new Error((payload as any).error || "Stream error");
-        }
-        if ((payload as any).type === "done") {
-          return;
-        }
-        // If it was JSON but not our envelope, fall through to append raw
       } catch {
-        // Not JSON → treat as raw assistant token
+        // Not JSON → treat as plain text
       }
 
+      // Fallback: emit as-is (preserve spacing)
       onChunk(line);
     }
   }
 }
 
+/** POST JSON helper with abort support */
+async function postJSON(url: string, data: unknown, signal?: AbortSignal): Promise<Response> {
+  return fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+    signal,
+  });
+}
+
 export function useTechAssistant(opts?: AssistantOptions) {
   // Conversation state
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [vehicle, setVehicle] = useState<Vehicle | undefined>(
-    opts?.defaultVehicle,
-  );
+  const [vehicle, setVehicle] = useState<Vehicle | undefined>(opts?.defaultVehicle);
   const [context, setContext] = useState<string>(opts?.defaultContext ?? "");
 
   // UI state
@@ -125,9 +107,10 @@ export function useTechAssistant(opts?: AssistantOptions) {
   // Abort controller for cancel
   const abortRef = useRef<AbortController | null>(null);
 
-  const canSend = useMemo(() => {
-    return Boolean(vehicle?.year && vehicle?.make && vehicle?.model);
-  }, [vehicle]);
+  const canSend = useMemo(
+    () => Boolean(vehicle?.year && vehicle?.make && vehicle?.model),
+    [vehicle],
+  );
 
   /** internal: open SSE stream and append an assistant message as it arrives */
   const streamToAssistant = useCallback(
@@ -160,11 +143,12 @@ export function useTechAssistant(opts?: AssistantOptions) {
 
         let accum = "";
         await readSseStream(res.body, (chunk) => {
+          // Preserve markdown/newlines from the model
           setPartial((prev) => prev + chunk);
           accum += chunk;
         });
 
-        const assistantMsg: ChatMessage = { role: "assistant", content: accum };
+        const assistantMsg: ChatMessage = { role: "assistant", content: accum.trim() };
         setMessages((m) => [...m, assistantMsg]);
       } catch (err: unknown) {
         if (err instanceof Error) {
@@ -205,7 +189,7 @@ export function useTechAssistant(opts?: AssistantOptions) {
       if (!code) return;
       setMessages((m) => [
         ...m,
-        { role: "user", content: `DTC: ${code}\n${note ? `Note: ${note}` : ""}` },
+        { role: "user", content: `DTC: ${code}${note ? `\nNote: ${note}` : ""}` },
       ]);
       await streamToAssistant({ dtcCode: code });
     },
@@ -218,10 +202,7 @@ export function useTechAssistant(opts?: AssistantOptions) {
       if (!file) return;
       setMessages((m) => [
         ...m,
-        {
-          role: "user",
-          content: `Uploaded a photo.${note ? `\nNote: ${note}` : ""}`,
-        },
+        { role: "user", content: `Uploaded a photo.${note ? `\nNote: ${note}` : ""}` },
       ]);
       const image_data = await fileToDataUrl(file);
       await streamToAssistant({ image_data });

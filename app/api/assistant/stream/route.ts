@@ -1,11 +1,9 @@
 // app/api/assistant/stream/route.ts
-export const runtime = "edge";
-
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 type Vehicle = { year: string; make: string; model: string };
 type TextPart = { type: "text"; text: string };
@@ -19,7 +17,7 @@ interface Body {
   messages?: ClientMessage[];
 }
 
-const sseHeaders = {
+const sseHeaders: Record<string, string> = {
   "Content-Type": "text/event-stream; charset=utf-8",
   "Cache-Control": "no-cache, no-transform",
   Connection: "keep-alive",
@@ -33,29 +31,39 @@ function systemFor(vehicle: Vehicle): string {
   const vdesc = `${vehicle.year} ${vehicle.make} ${vehicle.model}`;
   return [
     `You are a top-level automotive diagnostic assistant working on a ${vdesc}.`,
-    `Goal: give a technician the next actionable steps, safely and succinctly.`,
+    `Your goal is to help a technician reach a correct diagnosis fast and safely.`,
     ``,
-    `Response Modes`,
-    `- **Procedure mode (default when the user asks "how to replace / procedure / steps")**:`,
-    `  Return ONLY a short, numbered procedure (6–12 steps) with key safety notes and any known torque values/specs. No long preamble, no sections. ≤ 200 words.`,
-    `- **Brief diagnostic mode (all other questions)**:`,
-    `  Use compact Markdown sections: Complaint, Likely Causes (≤3), Next Tests (bulleted, concrete hookups/specs), and Recommended Fix. Keep it tight (≤ 220 words).`,
+    `Style & Output`,
+    `- Be concise but complete; use **Markdown** with clear sections.`,
+    `- Favor checklists and stepwise flows a tech can follow in the bay.`,
+    `- When appropriate, include **Estimated Labor Time** (hrs) and call out special tools.`,
     ``,
-    `General Rules`,
-    `- Never invent specs; if unsure, say "verify spec for this VIN/engine".`,
-    `- Ask for missing critical data only when it truly blocks the next step (DTCs, key readings, scope captures).`,
-    `- Prefer checklists and stepwise flows a tech can follow in-bay.`,
+    `Reasoning Rules`,
+    `- Ground advice in measurements, symptoms, and test results the user provides.`,
+    `- If critical info is missing (scan data, DTCs, fuel trims, volt/ohm/psi, scope captures), ask for it explicitly.`,
+    `- Where possible, reference typical **spec ranges** and decision trees.`,
+    `- Consider TSBs, software updates, and pattern failures; never invent numbers.`,
+    ``,
+    `Structure replies with headings like:`,
+    `**Complaint / Context**`,
+    `**Observations / Data**`,
+    `**Likely Causes**`,
+    `**Next Tests**`,
+    `**Recommended Fix**`,
+    `**Estimated Labor Time**`,
   ].join("\n");
 }
 
 function toOpenAIMessage(m: ClientMessage): ChatCompletionMessageParam {
-  if (Array.isArray(m.content)) return { role: "user", content: m.content };
-  return { role: m.role, content: m.content };
+  return Array.isArray(m.content)
+    ? { role: "user", content: m.content }
+    : { role: m.role, content: m.content };
 }
 
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as Body;
+    const body: Body = await req.json();
+
     if (!hasVehicle(body.vehicle)) {
       return new NextResponse(JSON.stringify({ error: "Missing vehicle info." }), {
         status: 400,
@@ -63,61 +71,41 @@ export async function POST(req: Request) {
       });
     }
 
-    const messages = (body.messages ?? []).map(toOpenAIMessage);
+    const userMessages = (body.messages ?? []).map(toOpenAIMessage);
+
+    // ⛔️ Do not let the model answer only to a system prompt.
+    if (userMessages.length === 0) {
+      return new NextResponse(JSON.stringify({ error: "Please ask a question to start." }), {
+        status: 400,
+        headers: sseHeaders,
+      });
+    }
+
     const withSystem: ChatCompletionMessageParam[] = [
       { role: "system", content: systemFor(body.vehicle) },
-      ...messages,
+      ...userMessages,
     ];
 
     const completion = await openai.chat.completions.create({
-  model: "gpt-4o",
-  temperature: 0.3,          // crisper, less wordy
-  max_tokens: 380,            // hard ceiling on length
-  presence_penalty: 0,        // avoid topic wandering
-  frequency_penalty: 0.2,     // reduce repetition
-  messages: withSystem,
-  stream: true,
-});
-
-    const encoder = new TextEncoder();
-
-    const stream = new ReadableStream<Uint8Array>({
-      async start(controller) {
-        // Keep-alive heartbeat (every 15s)
-        const hb = setInterval(() => {
-          controller.enqueue(encoder.encode(`: ping\n\n`));
-        }, 15000);
-
-        try {
-          for await (const chunk of completion) {
-            // Typical delta content for chat.completions:
-            const piece = chunk.choices?.[0]?.delta?.content ?? "";
-            if (piece) {
-              controller.enqueue(encoder.encode(`data: ${piece}\n\n`));
-            }
-
-            // If the API signals finish_reason, end the stream
-            const finish = chunk.choices?.[0]?.finish_reason;
-            if (finish) break;
-          }
-
-          // Signal end of stream to EventSource
-          controller.enqueue(encoder.encode(`event: done\ndata: [DONE]\n\n`));
-        } catch (err) {
-          const msg =
-            err instanceof Error ? err.message : typeof err === "string" ? err : "Stream error";
-          controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify(msg)}\n\n`));
-        } finally {
-          clearInterval(hb);
-          controller.close();
-        }
-      },
+      model: "gpt-4o",
+      temperature: 0.6,
+      messages: withSystem,
+      stream: true,
     });
 
-    return new NextResponse(stream, { headers: sseHeaders });
-  } catch (err) {
+    // Pipe OpenAI's ReadableStream straight through as SSE
+    const rs: ReadableStream = completion.toReadableStream();
+    return new NextResponse(rs, { headers: sseHeaders });
+  } catch (err: unknown) {
+    console.error("assistant/stream error:", err);
+
     const msg =
-      err instanceof Error ? err.message : typeof err === "string" ? err : "Assistant failed.";
+      err instanceof Error
+        ? err.message
+        : typeof err === "string"
+        ? err
+        : "Assistant failed.";
+
     return new NextResponse(JSON.stringify({ error: msg }), {
       status: 500,
       headers: sseHeaders,
