@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import RecipientPickerModal from "@/features/shared/chat/components/RecipientPickerModal";
+import RecipientPickerModal from "@/features/shared/chat/components/RecipientPickerModalWrapper";
 
 type DB = Database;
 type MessageRow = DB["public"]["Tables"]["messages"]["Row"];
@@ -20,8 +20,8 @@ function toStringArray(v: unknown): string[] {
 
 export default function ChatThreadPage(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
-  const p = useParams();
-  const chatId = paramToString((p as Record<string, string | string[] | undefined>)?.chatId);
+  const params = useParams();
+  const chatId = paramToString((params as Record<string, string | string[] | undefined>)?.chatId);
 
   const [me, setMe] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageRow[]>([]);
@@ -31,6 +31,7 @@ export default function ChatThreadPage(): JSX.Element {
   const [pickerOpen, setPickerOpen] = useState<boolean>(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // me
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -38,6 +39,7 @@ export default function ChatThreadPage(): JSX.Element {
     })();
   }, [supabase]);
 
+  // history + participants
   useEffect(() => {
     let mounted = true;
 
@@ -60,7 +62,6 @@ export default function ChatThreadPage(): JSX.Element {
       }
 
       const rows = data as MessageRow[];
-
       const ids = new Set<string>();
       for (const m of rows) {
         if (m.sender_id) ids.add(m.sender_id);
@@ -85,6 +86,7 @@ export default function ChatThreadPage(): JSX.Element {
     return () => { mounted = false; };
   }, [supabase, chatId]);
 
+  // realtime
   useEffect(() => {
     const ch = supabase
       .channel(`thread-${chatId}`)
@@ -101,6 +103,7 @@ export default function ChatThreadPage(): JSX.Element {
     return () => { supabase.removeChannel(ch); };
   }, [supabase, chatId]);
 
+  // send message via RPC
   async function send(): Promise<void> {
     if (!me || sending) return;
     const text = inputRef.current?.value?.trim();
@@ -122,20 +125,20 @@ export default function ChatThreadPage(): JSX.Element {
     }
   }
 
-  
-async function handleStartChat(userIds: string[], groupName?: string): Promise<void> {
-  const { data, error } = await supabase.rpc("chat_post_message", {
-    _recipients: userIds,
-    _content:
-      groupName && groupName.trim().length > 0
-        ? `Started group: ${groupName.trim()}`
-        : "Started conversation",
-    // _chat_id: omitted to let the RPC create/reuse a thread
-  });
-  if (error || !data) return;
-  const newId: string = String(data);
-  window.location.href = `/chat/${newId}`;
-}
+  // start new/reuse via RPC (from inside thread)
+  async function handleStartChat(userIds: string[], groupName?: string): Promise<void> {
+    const { data, error } = await supabase.rpc("chat_post_message", {
+      _recipients: userIds,
+      _content:
+        groupName && groupName.trim().length > 0
+          ? `Started group: ${groupName.trim()}`
+          : "Started conversation",
+      _chat_id: null as unknown as string | undefined,
+    });
+    if (error || !data) return;
+    const newId: string = String(data);
+    window.location.href = `/chat/${newId}`;
+  }
 
   const title =
     participants.length > 0
@@ -169,7 +172,7 @@ async function handleStartChat(userIds: string[], groupName?: string): Promise<v
                     className={`max-w-[80%] whitespace-pre-wrap rounded px-3 py-2 text-sm ${
                       mine ? "bg-orange-600 text-black" : "bg-neutral-800 text-white"
                     }`}
-                    title={m.created_at ?? undefined}
+                    title={m.created_at ?? ""}
                   >
                     {m.content ?? ""}
                   </div>

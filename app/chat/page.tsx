@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import RecipientPickerModal from "@/features/shared/chat/components/RecipientPickerModal";
+import RecipientPickerModal from "@/features/shared/chat/components/RecipientPickerModalWrapper";
 
 type DB = Database;
 type MessageRow = DB["public"]["Tables"]["messages"]["Row"];
@@ -23,6 +23,7 @@ export default function ChatListPage(): JSX.Element {
   const [loading, setLoading] = useState<boolean>(true);
   const [pickerOpen, setPickerOpen] = useState<boolean>(false);
 
+  // me
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -30,6 +31,7 @@ export default function ChatListPage(): JSX.Element {
     })();
   }, [supabase]);
 
+  // newest message per chat_id
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -49,7 +51,6 @@ export default function ChatListPage(): JSX.Element {
         return;
       }
 
-      // newest message per non-null chat_id
       const latestPer = new Map<string, MessageRow>();
       for (const m of data as MessageRow[]) {
         if (!m.chat_id) continue;
@@ -74,14 +75,11 @@ export default function ChatListPage(): JSX.Element {
       }
 
       const list: ListItem[] = Array.from(latestPer.values()).map((last) => {
-        // chat_id is non-null by construction above
         const chatId = last.chat_id as string;
-
         const all = new Set<string>([
           ...(Array.isArray(last.recipients) ? last.recipients.map(String) : []),
           ...(last.sender_id ? [last.sender_id] : []),
         ]);
-
         const otherIds = me ? Array.from(all).filter((x) => x !== me) : Array.from(all);
         const otherUsers = otherIds
           .map((id) => profMap.get(id))
@@ -99,6 +97,7 @@ export default function ChatListPage(): JSX.Element {
     };
   }, [supabase, me]);
 
+  // live refresh on new message
   useEffect(() => {
     const ch = supabase
       .channel("messages-list")
@@ -109,22 +108,23 @@ export default function ChatListPage(): JSX.Element {
     return () => { supabase.removeChannel(ch); };
   }, [supabase]);
 
+  // start chat via RPC
   async function handleStartChat(userIds: string[], groupName?: string): Promise<void> {
-  if (userIds.length === 0) return;
+    if (userIds.length === 0) return;
 
-  const { data, error } = await supabase.rpc("chat_post_message", {
-    _recipients: userIds,
-    _content:
-      groupName && groupName.trim().length > 0
-        ? `Started group: ${groupName.trim()}`
-        : "Started conversation",
-    // _chat_id: omitted on purpose (new/reused thread decided server-side)
-  });
+    const { data, error } = await supabase.rpc("chat_post_message", {
+      _recipients: userIds,
+      _content:
+        groupName && groupName.trim().length > 0
+          ? `Started group: ${groupName.trim()}`
+          : "Started conversation",
+      _chat_id: null as unknown as string | undefined,
+    });
 
-  if (error || !data) return;
-  const chatId: string = String(data);
-  window.location.href = `/chat/${chatId}`;
-}
+    if (error || !data) return;
+    const chatId: string = String(data);
+    window.location.href = `/chat/${chatId}`;
+  }
 
   return (
     <div className="mx-auto max-w-3xl p-4 text-white">

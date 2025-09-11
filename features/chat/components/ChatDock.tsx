@@ -3,39 +3,39 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import RecipientPickerModal from "@/features/shared/chat/components/RecipientPickerModal";
+import RecipientPickerModal from "@/features/shared/chat/components/RecipientPickerModalWrapper";
 
 type DB = Database;
 type MessageRow = DB["public"]["Tables"]["messages"]["Row"];
 
 type Conversation = {
   chatId: string;
-  recipients: string[]; // user ids (excluding me or including me — we will dedupe for display)
+  recipients: string[]; // user ids
   groupName?: string;
 };
 
-export default function ChatDock() {
+export default function ChatDock(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState<boolean>(false);
 
   // auth
   const [me, setMe] = useState<string | null>(null);
 
-  // current conversation
+  // active conversation
   const [conv, setConv] = useState<Conversation | null>(null);
 
-  // message list
+  // messages
   const [messages, setMessages] = useState<MessageRow[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState<boolean>(false);
 
   // compose
   const inputRef = useRef<HTMLInputElement>(null);
-  const [sending, setSending] = useState(false);
+  const [sending, setSending] = useState<boolean>(false);
 
   // recipient picker
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState<boolean>(false);
 
-  // load current user id
+  // who am I
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -43,36 +43,31 @@ export default function ChatDock() {
     })();
   }, [supabase]);
 
-  // subscribe to realtime messages for the active chat
+  // realtime updates for current thread
   useEffect(() => {
     if (!conv?.chatId) return;
 
-    const channel = supabase
+    const ch = supabase
       .channel(`messages-${conv.chatId}`)
       .on(
         "postgres_changes",
         { schema: "public", table: "messages", event: "INSERT", filter: `chat_id=eq.${conv.chatId}` },
         (payload) => {
           const row = payload.new as MessageRow;
-          setMessages((prev) => [...prev, row].sort(sortByCreated));
+          setMessages((prev) => [...prev, row].sort((a, b) => {
+            const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+            const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+            return ta - tb;
+          }));
         }
       )
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(ch); };
   }, [supabase, conv?.chatId]);
 
-  // helper: sort newest last
-  function sortByCreated(a: MessageRow, b: MessageRow) {
-    const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
-    const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
-    return ta - tb;
-  }
-
-  // load history when a conversation is set
-  const loadMessages = useCallback(async (chatId: string) => {
+  // load history for a thread
+  const loadMessages = useCallback(async (chatId: string): Promise<void> => {
     setLoading(true);
     const { data, error } = await supabase
       .from("messages")
@@ -84,42 +79,43 @@ export default function ChatDock() {
     setLoading(false);
   }, [supabase]);
 
-  // start a conversation from the picker
-  const onStartChat = useCallback(async (userIds: string[], groupName?: string) => {
-    if (!me || userIds.length === 0) return;
+  // Start conversation via RPC (server decides reuse/new)
+  const onStartChat = useCallback(
+    async (userIds: string[], groupName?: string): Promise<void> => {
+      if (!me || userIds.length === 0) return;
 
-    const chatId = crypto.randomUUID();
-    const recipients = Array.from(new Set(userIds));
+      const { data, error } = await supabase.rpc("chat_post_message", {
+        _recipients: userIds,
+        _content:
+          groupName && groupName.trim().length > 0
+            ? `Started group: ${groupName.trim()}`
+            : "Started conversation",
+        _chat_id: null as unknown as string | undefined,
+      });
 
-    // Set active conversation and load (will be empty initially)
-    setConv({ chatId, recipients, groupName });
-    setPickerOpen(false);
+      if (error || !data) return;
 
-    // Optionally seed a system message for the thread start (comment out if undesired)
-    await supabase.from("messages").insert({
-      chat_id: chatId,
-      sender_id: me,
-      recipients,
-      content: groupName ? `Started group chat: ${groupName}` : "Started conversation",
-    });
+      const chatId = String(data);
+      setConv({ chatId, recipients: userIds, groupName });
+      await loadMessages(chatId);
+      setPickerOpen(false);
+      setOpen(true);
+    },
+    [me, supabase, loadMessages]
+  );
 
-    await loadMessages(chatId);
-    setOpen(true);
-  }, [me, supabase, loadMessages]);
-
-  // send a new message
-  const send = useCallback(async () => {
+  // Send message via RPC
+  const send = useCallback(async (): Promise<void> => {
     if (!conv?.chatId || !me || sending) return;
     const text = inputRef.current?.value?.trim();
     if (!text) return;
 
     setSending(true);
     try {
-      const { error } = await supabase.from("messages").insert({
-        chat_id: conv.chatId,
-        sender_id: me,
-        recipients: conv.recipients,
-        content: text,
+      const { error } = await supabase.rpc("chat_post_message", {
+        _recipients: conv.recipients,
+        _content: text,
+        _chat_id: conv.chatId,
       });
       if (!error && inputRef.current) inputRef.current.value = "";
     } finally {
@@ -127,7 +123,6 @@ export default function ChatDock() {
     }
   }, [conv, me, supabase, sending]);
 
-  // UI helpers
   const title = useMemo(() => {
     if (!conv) return "New Message";
     if (conv.groupName) return conv.groupName;
@@ -136,7 +131,7 @@ export default function ChatDock() {
 
   return (
     <>
-      {/* Dock trigger */}
+      {/* Triggers */}
       <div className="flex gap-2">
         <button
           type="button"
@@ -228,12 +223,12 @@ export default function ChatDock() {
         </div>
       )}
 
-      {/* Recipient picker modal */}
+      {/* Recipient picker */}
       <RecipientPickerModal
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
         onStartChat={(ids, groupName) => onStartChat(ids, groupName)}
-        allowGroup={true}
+        allowGroup
       />
     </>
   );

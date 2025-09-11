@@ -7,7 +7,9 @@
     "lint": "eslint . --ext .ts,.tsx",
     "typecheck": "tsc --noEmit",
     "typecheck:watch": "tsc --noEmit --watch",
-    "prepare": "husky"
+    "prepare": "husky",
+    "typegen": "pnpm dlx supabase gen types typescript --project-id scjjkmuwadwkaaqjoigx --schema public > features/shared/types/types/supabase.ts"
+
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx}": [
