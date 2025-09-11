@@ -1,3 +1,4 @@
+// app/api/assistant/stream/route.ts
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
@@ -7,6 +8,7 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 type Vehicle = { year: string; make: string; model: string };
 type TextPart = { type: "text"; text: string };
 type ImagePart = { type: "image_url"; image_url: { url: string } };
+
 type ClientMessage =
   | { role: "user" | "assistant" | "system"; content: string }
   | { role: "user"; content: (TextPart | ImagePart)[] };
@@ -14,7 +16,7 @@ type ClientMessage =
 interface Body {
   vehicle?: Vehicle;
   messages?: ClientMessage[];
-  // optional extras your hook may send
+  // optional helpers passed from the client hook
   prompt?: string;
   dtcCode?: string;
   image_data?: string;
@@ -45,22 +47,29 @@ function systemFor(vehicle: Vehicle): string {
     `Reasoning Rules`,
     `- Always ground advice in measurements, symptoms, and test results the user provides.`,
     `- If critical info is missing (scan data, DTCs, fuel trims, volt/ohm/psi, scope captures), ask for it explicitly.`,
-    `- Prefer **decision trees** with discriminator tests.`,
+    `- Where possible, reference typical **spec ranges** (e.g., voltage drop < 0.2V, MAP kPa ranges, fuel pressure, resistance).`,
+    `- Prefer **decision trees**: explain why a measurement points to path A vs path B.`,
+    `- If multiple faults are plausible, list top 2–3 hypotheses with the **discriminator test** for each.`,
+    `- If an image is included, identify the component(s), visible failure modes, and what to inspect/measure next.`,
     `- For DTCs, give a brief decode, common root causes, and an ordered test plan (non-invasive → invasive).`,
-    `- Never invent numbers or facts; propose what to verify next.`,
+    `- When readings conflict with expected specs, propose **sanity checks** (meter leads, grounds, reference voltage, tool settings).`,
+    `- Consider TSBs, software updates, known pattern failures when relevant (mention to "check TSBs").`,
+    `- Never invent numbers or facts. If unsure, say what to verify next.`,
     ``,
-    `Headings you should use:`,
-    `**Complaint / Context**`,
-    `**Observations / Data**`,
-    `**Likely Causes**`,
-    `**Next Tests**`,
-    `**Recommended Fix**`,
-    `**Estimated Labor Time**`,
+    `Structure your replies with headings like:`,
+    `**Complaint / Context** — short recap`,
+    `**Observations / Data** — echo the key numbers the user gave`,
+    `**Likely Causes** — ranked list with a one-liner why`,
+    `**Next Tests** — bullet list with exact meter hookups, engine state (KOEO/KOER), and expected specs`,
+    `**Recommended Fix** — concise corrective action(s)`,
+    `**Estimated Labor Time** — hours with a sensible range`,
   ].join("\n");
 }
 
 function toOpenAIMessage(m: ClientMessage): ChatCompletionMessageParam {
-  if (Array.isArray(m.content)) return { role: "user", content: m.content };
+  if (Array.isArray(m.content)) {
+    return { role: "user", content: m.content };
+  }
   return { role: m.role, content: m.content };
 }
 
@@ -75,106 +84,44 @@ export async function POST(req: Request) {
       });
     }
 
-    // Build messages
-    const base: ChatCompletionMessageParam[] = [
+    // Build final message list (system + client messages + optional helpers)
+    const baseMessages = (body.messages ?? []).map(toOpenAIMessage);
+
+    const helperMessages: ChatCompletionMessageParam[] = [];
+    if (body.prompt) helperMessages.push({ role: "user", content: body.prompt });
+    if (body.dtcCode) helperMessages.push({ role: "user", content: `DTC: ${body.dtcCode}` });
+    if (body.image_data) {
+      helperMessages.push({
+        role: "user",
+        content: [{ type: "image_url", image_url: { url: body.image_data } }],
+      });
+    }
+    if (body.context?.trim()) {
+      helperMessages.push({ role: "user", content: `Context:\n${body.context}` });
+    }
+
+    const withSystem: ChatCompletionMessageParam[] = [
       { role: "system", content: systemFor(body.vehicle) },
-      ...(body.messages ?? []).map(toOpenAIMessage),
+      ...baseMessages,
+      ...helperMessages,
     ];
 
-    // If the hook sent convenience fields, append them as user turns
-    if (body.context?.trim()) {
-      base.push({ role: "user", content: `Context:\n${body.context.trim()}` });
-    }
-    if (body.dtcCode) {
-      base.push({ role: "user", content: `DTC: ${body.dtcCode}` });
-    }
-    if (body.image_data) {
-      base.push({
-        role: "user",
-        content: [{ type: "text", text: "Photo:" }, { type: "image_url", image_url: { url: body.image_data } }],
-      } as any);
-    }
-    if (body.prompt?.trim()) {
-      base.push({ role: "user", content: body.prompt.trim() });
-    }
-
-    // Ask OpenAI for a streamed completion
+    // Create a streaming completion and pipe its ReadableStream as-is to the client
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
       temperature: 0.6,
-      messages: base,
+      messages: withSystem,
       stream: true,
     });
 
-    // Transform OpenAI's JSON SSE → plain text SSE
-    const stream = new ReadableStream({
-      async start(controller) {
-        const encoder = new TextEncoder();
-
-        // SDK gives us a web ReadableStream of JSON lines
-        const reader = completion.toReadableStream().getReader();
-        const decoder = new TextDecoder();
-        let buf = "";
-
-        const flush = (text: string) => {
-          controller.enqueue(encoder.encode(`data: ${text}\n\n`));
-        };
-
-        try {
-          while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-
-            buf += decoder.decode(value, { stream: true });
-
-            let idx: number;
-            while ((idx = buf.indexOf("\n")) !== -1) {
-              const line = buf.slice(0, idx).trim();
-              buf = buf.slice(idx + 1);
-
-              if (!line || line.startsWith(":")) continue;
-
-              // OpenAI uses "data: ..." lines already; strip the prefix if present
-              const payload = line.startsWith("data:")
-                ? line.slice(5).trim()
-                : line;
-
-              if (payload === "[DONE]") {
-                flush("[DONE]");
-                controller.close();
-                return;
-              }
-
-              // Extract delta.content if available; otherwise ignore
-              try {
-                const json = JSON.parse(payload);
-                const piece =
-                  json?.choices?.[0]?.delta?.content ??
-                  json?.choices?.[0]?.text ??
-                  "";
-
-                if (piece) flush(piece);
-              } catch {
-                // Non-JSON (shouldn't happen) → pass through
-                flush(payload);
-              }
-            }
-          }
-
-          // end just in case
-          flush("[DONE]");
-          controller.close();
-        } catch (e) {
-          flush(JSON.stringify({ type: "error", error: (e as Error).message || "stream failed" }));
-          controller.close();
-        }
-      },
-    });
-
-    return new NextResponse(stream, { headers: sseHeaders });
-  } catch (err: any) {
-    console.error("assistant/stream error:", err);
-    return new NextResponse(JSON.stringify({ error: err?.message ?? "Assistant failed." }), {
+    const rs: ReadableStream<Uint8Array> = completion.toReadableStream();
+    return new NextResponse(rs, { headers: sseHeaders });
+  } catch (err) {
+    // Keep error typed
+    const msg =
+      err instanceof Error ? err.message : typeof err === "string" ? err : "Assistant failed.";
+    console.error("assistant/stream error:", msg);
+    return new NextResponse(JSON.stringify({ error: msg }), {
       status: 500,
       headers: sseHeaders,
     });

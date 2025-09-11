@@ -18,21 +18,18 @@ type ParsedSummary = {
 function getAdminSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
-
-  if (!url || !serviceKey) {
-    throw new Error("Supabase URL or Service Role key is missing");
-  }
+  if (!url || !serviceKey) throw new Error("Supabase URL or Service Role key is missing");
   return createClient<Database>(url, serviceKey);
 }
 
-function isParsedSummary(v: any): v is ParsedSummary {
-  return (
-    v &&
-    typeof v === "object" &&
-    typeof v.cause === "string" &&
-    typeof v.correction === "string" &&
-    (v.estimatedLaborTime === null || (typeof v.estimatedLaborTime === "number" && isFinite(v.estimatedLaborTime)))
-  );
+function isParsedSummary(v: unknown): v is ParsedSummary {
+  if (typeof v !== "object" || v === null) return false;
+  const obj = v as Record<string, unknown>;
+  const causeOk = typeof obj.cause === "string";
+  const correctionOk = typeof obj.correction === "string";
+  const elt = obj.estimatedLaborTime;
+  const eltOk = elt === null || (typeof elt === "number" && Number.isFinite(elt));
+  return causeOk && correctionOk && eltOk;
 }
 
 export async function POST(req: Request) {
@@ -43,12 +40,14 @@ export async function POST(req: Request) {
 
     const supabase = getAdminSupabase();
 
-    const { vehicle, workOrderLineId, messages, context } = (await req.json()) as {
+    const payload = (await req.json()) as {
       vehicle: Vehicle;
       workOrderLineId: string;
       messages: { role: "system" | "user" | "assistant"; content: string }[];
       context?: string;
     };
+
+    const { vehicle, workOrderLineId, messages, context } = payload;
 
     if (!vehicle?.year || !vehicle?.make || !vehicle?.model || !workOrderLineId) {
       return NextResponse.json({ error: "Missing inputs" }, { status: 400 });
@@ -69,15 +68,11 @@ export async function POST(req: Request) {
     const chat = await openai.chat.completions.create({
       model: "gpt-4o",
       temperature: 0.2,
-      // Ask for strict JSON
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: systemPrompt },
         ...(context?.trim() ? [{ role: "user" as const, content: `Context:\n${context}` }] : []),
-        ...messages.map((m) => ({
-          role: m.role as "system" | "user" | "assistant",
-          content: m.content,
-        })),
+        ...messages.map((m) => ({ role: m.role, content: m.content })),
         { role: "user", content: "Return ONLY the JSON object." },
       ],
       max_tokens: 400,
@@ -85,23 +80,23 @@ export async function POST(req: Request) {
 
     const raw = chat.choices?.[0]?.message?.content ?? "{}";
 
-    let parsed: ParsedSummary;
+    // Parse safely without `any`
+    let parsedUnknown: unknown;
     try {
-      parsed = JSON.parse(raw) as ParsedSummary;
-    } catch (e) {
-      // Last-ditch cleanup if the model ever sneaks in fences
+      parsedUnknown = JSON.parse(raw);
+    } catch {
       const cleaned = raw.replace(/^\s*```json\s*|\s*```\s*$/g, "");
-      parsed = JSON.parse(cleaned) as ParsedSummary;
+      parsedUnknown = JSON.parse(cleaned);
     }
 
-    if (!isParsedSummary(parsed)) {
+    if (!isParsedSummary(parsedUnknown)) {
       return NextResponse.json(
         { error: "Model returned invalid JSON shape", raw },
         { status: 502 },
       );
     }
 
-    const { cause, correction, estimatedLaborTime } = parsed;
+    const { cause, correction, estimatedLaborTime } = parsedUnknown;
 
     const { error } = await supabase
       .from("work_order_lines")
@@ -109,7 +104,7 @@ export async function POST(req: Request) {
         cause,
         correction,
         labor_time:
-          typeof estimatedLaborTime === "number" && isFinite(estimatedLaborTime)
+          typeof estimatedLaborTime === "number" && Number.isFinite(estimatedLaborTime)
             ? estimatedLaborTime
             : null,
       })
@@ -120,7 +115,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "DB update failed" }, { status: 500 });
     }
 
-    return NextResponse.json(parsed);
+    return NextResponse.json(parsedUnknown);
   } catch (err) {
     console.error("assistant/export error:", err);
     return NextResponse.json({ error: "Export failed" }, { status: 500 });
