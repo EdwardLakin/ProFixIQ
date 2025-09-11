@@ -1,4 +1,3 @@
-// features/ai/hooks/useTechAssistant.ts
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
