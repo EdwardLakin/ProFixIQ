@@ -10,3 +10,4 @@ sendgrid.env
 .next
 .next
 .vercel
+.env*.local
