@@ -1,335 +1,122 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
-import Link from "next/link";
+import { useState } from "react";
+import UsersList from "@/features/admin/components/UsersList";
 
-type Role = "owner" | "admin" | "manager" | "advisor" | "mechanic";
-type Plan = "free" | "diy" | "pro" | "pro_plus";
-type Profile = Database["public"]["Tables"]["profiles"]["Row"];
+type Payload = {
+  email: string;
+  password: string;
+  full_name?: string | null;
+  role?: string | null;       // user_role enum string
+  shop_id?: string | null;
+  phone?: string | null;
+};
 
-export default function CreateUserPage() {
-  const supabase = createClientComponentClient<Database>();
-
-  const [data, setData] = useState({
-    full_name: "",
+export default function CreateUserPage(): JSX.Element {
+  const [form, setForm] = useState<Payload>({
     email: "",
+    password: "",
+    full_name: "",
+    role: "mechanic",
+    shop_id: null,
     phone: "",
-    tempPassword: "",
-    role: "mechanic" as Role,
-    plan: "free" as Plan,
   });
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const [users, setUsers] = useState<Profile[]>([]);
-  const [editingUserId, setEditingUserId] = useState<string | null>(null);
-  const [editFields, setEditFields] = useState<{
-    full_name: string;
-    email: string;
-    role: Role;
-  } | null>(null);
-  const [filterRole, setFilterRole] = useState<Role | "all">("all");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-
-  // Pagination
-  const USERS_PER_PAGE = 10;
-  const [currentPage, setCurrentPage] = useState(1);
-
-  const fetchUsers = async () => {
-    const { data, error } = await supabase.from("profiles").select("*");
-    if (!error) setUsers(data || []);
-  };
-
-  useEffect(() => {
-    fetchUsers();
-  }, []);
-
-  const handleCreateUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    setSuccess("");
-
-    const { data: user, error: signUpError } =
-      await supabase.auth.admin.createUser({
-        email: data.email,
-        password: data.tempPassword,
-        email_confirm: true,
+  async function submit(): Promise<void> {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/create-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
       });
-
-    if (signUpError || !user.user?.id) {
-      setError(signUpError?.message || "Failed to create user.");
-      return;
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        throw new Error(t || "Failed to create user.");
+      }
+      // Clear sensitive fields; UsersList will refresh via realtime
+      setForm((f) => ({ ...f, email: "", password: "", full_name: "", phone: "" }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unexpected error");
+    } finally {
+      setSubmitting(false);
     }
-
-    const { error: profileError } = await supabase.from("profiles").insert({
-      id: user.user.id,
-      full_name: data.full_name,
-      email: data.email,
-      phone: data.phone,
-      role: data.role,
-      plan: data.plan,
-      created_at: new Date().toISOString(),
-      shop_id: null,
-      business_name: null,
-      shop_name: null,
-    });
-
-    if (profileError) {
-      setError(profileError.message);
-    } else {
-      setSuccess(`${data.role} user created successfully!`);
-      setData({
-        full_name: "",
-        email: "",
-        phone: "",
-        tempPassword: "",
-        role: "mechanic",
-        plan: "free",
-      });
-      fetchUsers();
-    }
-  };
-
-  const handleUpdate = async (id: string) => {
-    if (!editFields) return;
-    const { error } = await supabase
-      .from("profiles")
-      .update(editFields)
-      .eq("id", id);
-    if (!error) {
-      setEditingUserId(null);
-      setEditFields(null);
-      fetchUsers();
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this user?")) return;
-    const { error } = await supabase.from("profiles").delete().eq("id", id);
-    if (!error) fetchUsers();
-  };
-
-  const filteredUsers = users.filter(
-    (user) =>
-      (filterRole === "all" || user.role === filterRole) &&
-      (user.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        user.email?.toLowerCase().includes(searchQuery.toLowerCase())),
-  );
-
-  const paginatedUsers = filteredUsers.slice(
-    (currentPage - 1) * USERS_PER_PAGE,
-    currentPage * USERS_PER_PAGE,
-  );
+  }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto text-white font-blackops">
-      <div className="mb-4">
-        <Link
-          href="/dashboard/owner"
-          className="text-orange-500 hover:underline"
-        >
-          ← Back to Dashboard
-        </Link>
+    <div className="p-4 sm:p-6 text-white">
+      <h1 className="mb-4 font-header text-2xl">Create User</h1>
+
+      <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4 sm:p-6">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <input
+            className="input text-white"
+            placeholder="Full Name"
+            value={form.full_name ?? ""}
+            onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+          />
+          <input
+            className="input text-white"
+            placeholder="Phone"
+            value={form.phone ?? ""}
+            onChange={(e) => setForm({ ...form, phone: e.target.value })}
+          />
+          <input
+            className="input text-white"
+            placeholder="User Email"
+            value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
+          />
+          <input
+            className="input text-white"
+            placeholder="Temporary Password"
+            type="password"
+            value={form.password}
+            onChange={(e) => setForm({ ...form, password: e.target.value })}
+          />
+          <select
+            className="input text-white"
+            value={form.role ?? ""}
+            onChange={(e) => setForm({ ...form, role: e.target.value })}
+          >
+            {/* adjust to your user_role enum values */}
+            <option value="owner">Owner</option>
+            <option value="admin">Admin</option>
+            <option value="manager">Manager</option>
+            <option value="service_writer">Service Writer</option>
+            <option value="mechanic">Mechanic</option>
+            <option value="advisor">Advisor</option>
+            <option value="guest">Guest</option>
+          </select>
+          <input
+            className="input text-white"
+            placeholder="Shop ID (optional)"
+            value={form.shop_id ?? ""}
+            onChange={(e) => setForm({ ...form, shop_id: e.target.value || null })}
+          />
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => void submit()}
+            disabled={submitting}
+            className="btn btn-orange disabled:opacity-60"
+          >
+            {submitting ? "Creating…" : "Create User"}
+          </button>
+          {error && (
+            <div className="text-sm text-red-300">
+              {error}
+            </div>
+          )}
+        </div>
       </div>
 
-      <h1 className="text-3xl text-orange-500 mb-4">Create User</h1>
-
-      <form onSubmit={handleCreateUser} className="space-y-3 mb-8">
-        <input
-          type="text"
-          placeholder="Full Name"
-          value={data.full_name}
-          onChange={(e) => setData({ ...data, full_name: e.target.value })}
-          className="w-full p-2 rounded bg-gray-800 border border-orange-500"
-        />
-        <input
-          type="text"
-          placeholder="Phone"
-          value={data.phone}
-          onChange={(e) => setData({ ...data, phone: e.target.value })}
-          className="w-full p-2 rounded bg-gray-800 border border-orange-500"
-        />
-        <input
-          type="email"
-          required
-          placeholder="User Email"
-          value={data.email}
-          onChange={(e) => setData({ ...data, email: e.target.value })}
-          className="w-full p-2 rounded bg-gray-800 border border-orange-500"
-        />
-        <input
-          type="text"
-          required
-          placeholder="Temporary Password"
-          value={data.tempPassword}
-          onChange={(e) => setData({ ...data, tempPassword: e.target.value })}
-          className="w-full p-2 rounded bg-gray-800 border border-orange-500"
-        />
-        <select
-          value={data.role}
-          onChange={(e) => setData({ ...data, role: e.target.value as Role })}
-          className="w-full p-2 rounded bg-gray-800 border border-orange-500"
-        >
-          <option value="mechanic">Mechanic</option>
-          <option value="advisor">Advisor</option>
-          <option value="manager">Manager</option>
-          <option value="admin">Admin</option>
-          <option value="owner">Owner</option>
-        </select>
-
-        <button
-          type="submit"
-          className="bg-orange-500 hover:bg-orange-600 text-black font-bold py-2 px-4 rounded"
-        >
-          Create User
-        </button>
-
-        {error && <p className="text-red-500">{error}</p>}
-        {success && <p className="text-green-500">{success}</p>}
-      </form>
-
-      <div className="flex justify-between items-center mb-4">
-        <select
-          value={filterRole}
-          onChange={(e) => setFilterRole(e.target.value as Role | "all")}
-          className="p-2 bg-gray-900 border border-orange-500 rounded text-white"
-        >
-          <option value="all">All Roles</option>
-          <option value="mechanic">Mechanic</option>
-          <option value="advisor">Advisor</option>
-          <option value="manager">Manager</option>
-          <option value="admin">Admin</option>
-          <option value="owner">Owner</option>
-        </select>
-        <input
-          type="text"
-          placeholder="Search users..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="ml-2 p-2 rounded bg-gray-900 border border-orange-500"
-        />
-      </div>
-
-      {filteredUsers.length === 0 ? (
-        <p className="text-gray-400">No users match your filters.</p>
-      ) : (
-        <>
-          <div className="space-y-2">
-            {paginatedUsers.map((user) => (
-              <div
-                key={user.id}
-                className="flex flex-col md:flex-row md:items-center justify-between bg-gray-800 p-4 rounded border border-orange-700"
-              >
-                {editingUserId === user.id ? (
-                  <div className="flex flex-col md:flex-row gap-2 w-full md:items-center">
-                    <input
-                      type="text"
-                      value={editFields?.full_name || ""}
-                      onChange={(e) =>
-                        setEditFields({
-                          ...editFields!,
-                          full_name: e.target.value,
-                        })
-                      }
-                      className="p-2 rounded bg-gray-900 border border-orange-500 w-full md:w-48"
-                    />
-                    <input
-                      type="text"
-                      value={editFields?.email || ""}
-                      onChange={(e) =>
-                        setEditFields({ ...editFields!, email: e.target.value })
-                      }
-                      className="p-2 rounded bg-gray-900 border border-orange-500 w-full md:w-64"
-                    />
-                    <select
-                      value={editFields?.role || ""}
-                      onChange={(e) =>
-                        setEditFields({
-                          ...editFields!,
-                          role: e.target.value as Role,
-                        })
-                      }
-                      className="p-2 bg-gray-900 border border-orange-500 rounded"
-                    >
-                      <option value="mechanic">Mechanic</option>
-                      <option value="advisor">Advisor</option>
-                      <option value="manager">Manager</option>
-                      <option value="admin">Admin</option>
-                      <option value="owner">Owner</option>
-                    </select>
-                    <div className="flex gap-2 ml-auto">
-                      <button
-                        onClick={() => handleUpdate(user.id)}
-                        className="bg-green-600 text-white px-3 py-1 rounded"
-                      >
-                        Save
-                      </button>
-                      <button
-                        onClick={() => {
-                          setEditingUserId(null);
-                          setEditFields(null);
-                        }}
-                        className="bg-gray-600 text-white px-3 py-1 rounded"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-col md:flex-row justify-between w-full md:items-center">
-                    <p>
-                      <span className="text-orange-400">{user.full_name}</span>{" "}
-                      – {user.email} ({user.role})
-                    </p>
-                    <div className="flex gap-2 mt-2 md:mt-0">
-                      <button
-                        onClick={() => {
-                          setEditingUserId(user.id);
-                          setEditFields({
-                            full_name: user.full_name || "",
-                            email: user.email || "",
-                            role: user.role as Role,
-                          });
-                        }}
-                        className="bg-blue-600 text-white px-3 py-1 rounded"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(user.id)}
-                        className="bg-red-600 text-white px-3 py-1 rounded"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-
-          <div className="flex justify-center gap-4 mt-6">
-            {currentPage > 1 && (
-              <button
-                onClick={() => setCurrentPage((p) => p - 1)}
-                className="text-orange-500 hover:underline"
-              >
-                ← Prev
-              </button>
-            )}
-            {currentPage * USERS_PER_PAGE < filteredUsers.length && (
-              <button
-                onClick={() => setCurrentPage((p) => p + 1)}
-                className="text-orange-500 hover:underline"
-              >
-                Next →
-              </button>
-            )}
-          </div>
-        </>
-      )}
+      {/* Live list below the form */}
+      <UsersList />
     </div>
   );
 }
