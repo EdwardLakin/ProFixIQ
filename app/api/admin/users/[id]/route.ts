@@ -1,11 +1,17 @@
-// app/api/admin/users/[id]/route.ts
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const service = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const supabase = createClient<Database>(url, service);
+/** Create admin client only when a request comes in */
+function getAdminSupabase() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const service = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !service) {
+    // Keep message explicit but short; prevents top-level eval at build.
+    throw new Error("SUPABASE envs missing (URL or SERVICE_ROLE_KEY).");
+  }
+  return createClient<Database>(url, service);
+}
 
 // ✅ PUT /api/admin/users/:id
 export const PUT = async (req: NextRequest, context: unknown) => {
@@ -13,6 +19,8 @@ export const PUT = async (req: NextRequest, context: unknown) => {
   const { id } = params;
 
   try {
+    const supabase = getAdminSupabase();
+
     const body = (await req.json()) as {
       full_name?: string | null;
       role?: Database["public"]["Enums"]["user_role_enum"] | null;
@@ -44,13 +52,15 @@ export const DELETE = async (_req: NextRequest, context: unknown) => {
   const { id } = params;
 
   try {
+    const supabase = getAdminSupabase();
+
     if (!id) return NextResponse.json({ error: "Missing user id" }, { status: 400 });
 
-    // Remove profile row
+    // Delete profile row
     const { error: profileErr } = await supabase.from("profiles").delete().eq("id", id);
     if (profileErr) return NextResponse.json({ error: profileErr.message }, { status: 500 });
 
-    // Remove Supabase Auth user
+    // Delete auth user
     const { error: authErr } = await supabase.auth.admin.deleteUser(id);
     if (authErr) {
       return NextResponse.json(
