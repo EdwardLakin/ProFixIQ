@@ -22,7 +22,6 @@ function isAssetPath(pathname: string): boolean {
     pathname.startsWith("/fonts") ||
     pathname.endsWith("/favicon.ico") ||
     pathname.endsWith(".svg") ||
-    // static assets (images, css, js, maps, etc.)
     /\.(png|jpg|jpeg|gif|webp|ico|css|js|map)$/i.test(pathname)
   );
 }
@@ -38,23 +37,19 @@ export async function middleware(req: NextRequest) {
     return res;
   }
 
-  // Session (ok if null for public pages)
+  // Session
   const {
     data: { session },
   } = await supabase.auth.getSession();
 
-  // ----------------------------
-  // Coming Soon allowlist (root)
-  // ----------------------------
+  // ----- Coming Soon allowlist on "/" -----
   if (pathname === "/") {
-    // Not signed in -> take them straight to /sign-in, then to /dashboard
     if (!session?.user) {
       const login = new URL("/sign-in", req.url);
       login.searchParams.set("redirect", "/dashboard");
       return NextResponse.redirect(login);
     }
 
-    // Signed in: enforce allowlist on the landing page
     const allowList = (process.env.ALLOWLIST_EMAILS ?? "")
       .split(",")
       .map((e) => e.trim().toLowerCase())
@@ -65,33 +60,28 @@ export async function middleware(req: NextRequest) {
     if (!allow.has(email)) {
       return NextResponse.rewrite(new URL("/coming-soon", req.url));
     }
-    // If allowlisted, we’ll fall through to profile checks below
+    // fall through to profile check below
   }
 
-  // ------------------------------------
-  // Public pages (auth/marketing/etc.)
-  // ------------------------------------
+  // Public pages
   if (PUBLIC_PATHS.has(pathname)) {
-    // Keep signed-in users off auth pages
     if ((pathname === "/sign-in" || pathname === "/signup") && session?.user) {
       return NextResponse.redirect(new URL("/dashboard", req.url));
     }
     return res;
   }
 
-  // ------------------------------------
-  // Protected application routes
-  // ------------------------------------
+  // Protected app
   if (!session?.user) {
     const login = new URL("/sign-in", req.url);
-    // preserve original destination
     login.searchParams.set("redirect", `${pathname}${req.nextUrl.search}`);
     return NextResponse.redirect(login);
   }
 
-  // Fetch profile (role + completed_onboarding)
+  // Read profile; if it fails, do NOT force onboarding
   let role: UserRole | null = null;
   let completed = false;
+  let gotProfile = false;
 
   try {
     const { data: profile } = await supabase
@@ -100,34 +90,29 @@ export async function middleware(req: NextRequest) {
       .eq("id", session.user.id)
       .maybeSingle();
 
-    role = profile?.role ?? null;
-    completed = !!profile?.completed_onboarding;
+    if (profile) {
+      gotProfile = true;
+      role = profile.role ?? null;
+      completed = !!profile.completed_onboarding;
+    }
   } catch {
-    // If this fails (RLS/latency), treat as unknowns; do not hard-block.
+    gotProfile = false; // treat as unknown
   }
 
-  // If user hits "/" (and passed allowlist), choose where to send them.
+  // If you land on "/" (and passed allowlist) choose destination
   if (pathname === "/") {
-    // Use role in the decision so it isn't "declared and never used"
-    // Policy: they must have a role AND be completed to reach dashboard.
-    const to = role && completed ? "/dashboard" : "/onboarding";
+    const to = gotProfile && role && completed ? "/dashboard" : "/onboarding";
     return NextResponse.redirect(new URL(to, req.url));
   }
 
-  // Gate onboarding INSIDE the app: if they’re trying to use dashboard without completing it
-  if (pathname.startsWith("/dashboard") && role && completed === false) {
-    return NextResponse.redirect(new URL("/onboarding", req.url));
-  }
-
-  // If they have no role yet (new account), send them to onboarding as well
-  if (pathname.startsWith("/dashboard") && !role) {
+  // Only gate dashboard when we positively know onboarding is incomplete
+  if (pathname.startsWith("/dashboard") && gotProfile && role && completed === false) {
     return NextResponse.redirect(new URL("/onboarding", req.url));
   }
 
   return res;
 }
 
-// Run middleware on root + app sections + public auth/marketing routes
 export const config = {
   matcher: [
     "/",

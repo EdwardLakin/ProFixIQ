@@ -1,3 +1,4 @@
+// features/shared/components/TechAssistant.tsx
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
@@ -52,14 +53,10 @@ export default function TechAssistant({
     /^P0\d{3}$/i.test(dtc.trim());
 
   // small helpers
-  const inputBase =
-    "w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 " +
-    "text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-orange-500";
-
   const VehicleInputs = (
-    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
       <input
-        className={inputBase}
+        className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-400"
         aria-label="Vehicle year"
         placeholder="Year"
         value={vehicle?.year ?? ""}
@@ -68,7 +65,7 @@ export default function TechAssistant({
         }
       />
       <input
-        className={inputBase}
+        className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-400"
         aria-label="Vehicle make"
         placeholder="Make"
         value={vehicle?.make ?? ""}
@@ -77,7 +74,7 @@ export default function TechAssistant({
         }
       />
       <input
-        className={inputBase}
+        className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-400"
         aria-label="Vehicle model"
         placeholder="Model"
         value={vehicle?.model ?? ""}
@@ -94,7 +91,7 @@ export default function TechAssistant({
       <form onSubmit={onSubmit} className="flex gap-2">
         <input
           ref={inputRef}
-          className={`${inputBase}`}
+          className="flex-1 rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-400"
           placeholder="Ask the assistant…"
           aria-label="Ask the assistant"
           disabled={sending}
@@ -112,7 +109,7 @@ export default function TechAssistant({
       {/* DTC / Notes / Photo / Reset / Cancel */}
       <div className="flex flex-wrap items-center gap-2">
         <input
-          className={`${inputBase} w-32 sm:w-28`}
+          className="w-28 rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-400"
           placeholder="DTC (e.g. P0131)"
           aria-label="DTC input"
           value={dtc}
@@ -120,14 +117,13 @@ export default function TechAssistant({
           disabled={sending}
         />
         <input
-          className={`${inputBase} min-w-40 flex-1`}
+          className="min-w-48 flex-1 rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-400"
           placeholder="Optional notes (symptoms, readings, conditions)"
           aria-label="DTC notes"
           value={note}
           onChange={(e) => setNote(e.target.value)}
           disabled={sending}
         />
-
         <button
           className="rounded bg-neutral-800 px-3 py-2 text-sm hover:bg-neutral-700 disabled:opacity-60"
           disabled={sending || !dtcValid}
@@ -166,7 +162,6 @@ export default function TechAssistant({
         >
           Reset
         </button>
-
         <button
           className="rounded bg-red-600/80 px-3 py-2 text-sm text-white hover:bg-red-600 disabled:opacity-60"
           onClick={cancel}
@@ -179,43 +174,40 @@ export default function TechAssistant({
       </div>
 
       {!dtcValid && dtc.length > 0 && (
-        <div className=" -mt-1 text-xs text-red-400">Enter a valid OBD-II code (e.g. P0131).</div>
+        <div className="text-xs text-red-400 -mt-1">
+          Enter a valid OBD-II code (e.g. P0131).
+        </div>
       )}
     </>
   );
 
   const Conversation = (
-    <div
-      className={
-        // On phones, cap to ~55vh so the keyboard doesn’t cover it; on md+ keep the taller max.
-        "space-y-3 overflow-y-auto rounded border border-neutral-800 bg-neutral-900 p-3 " +
-        "max-h-[55vh] md:max-h-[560px]"
-      }
-    >
+    <div className="rounded border border-neutral-800 bg-neutral-900 p-3 overflow-y-auto max-h-[560px] space-y-3">
       {messages.map((m, i) => {
         const isUser = m.role === "user";
         const bubbleBase =
-          "max-w-[85%] whitespace-pre-wrap break-words rounded px-3 py-2 text-sm";
+          "max-w-[85%] rounded px-3 py-2 text-sm whitespace-pre-wrap break-words";
         const bubbleClass = isUser
           ? "ml-auto bg-orange-600 text-black"
           : "mr-auto bg-neutral-700 text-neutral-100";
         const content = m.content;
 
         return (
-          <div key={i} className={`${bubbleBase} ${bubbleClass} font-header`}>
+          <div key={i} className={`${bubbleBase} ${bubbleClass}`}>
             {content}
           </div>
         );
       })}
 
-      {!!partial && (
-        <div className="mr-auto max-w-[85%] rounded bg-neutral-700 px-3 py-2 text-sm text-neutral-100 opacity-90 font-header">
-          {partial || "Assistant is typing…"}
+      {/* Always show a typing bubble while sending, even if partial is still empty */}
+      {(sending || partial.length > 0) && (
+        <div className="max-w-[85%] mr-auto rounded px-3 py-2 text-sm bg-neutral-700 text-neutral-100 opacity-90">
+          {partial.length > 0 ? partial : "Assistant is typing…"}
         </div>
       )}
 
-      {messages.length === 0 && !partial && (
-        <div className="text-xs text-neutral-400 font-header">
+      {messages.length === 0 && !sending && partial.length === 0 && (
+        <div className="text-xs text-neutral-400">
           Start by entering the vehicle, then ask a question, paste a DTC, or send a photo.
         </div>
       )}
@@ -223,17 +215,16 @@ export default function TechAssistant({
   );
 
   return (
-    <div className="grid grid-cols-1 gap-4 text-sm text-white md:grid-cols-2 md:gap-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm text-white">
       {/* LEFT: Inputs */}
-      <div className="space-y-4 md:space-y-6">
-        <h2 className="text-lg font-header text-orange-500">Tech Assistant</h2>
-
+      <div className="space-y-4">
         {/* Vehicle */}
         {VehicleInputs}
 
         {/* Context */}
         <textarea
-          className={`${inputBase} h-24 sm:h-28`}
+          className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-400"
+          rows={3}
           placeholder="Context/observations (DMM readings, symptoms, conditions, etc.)"
           value={context}
           onChange={(e) => setContext(e.target.value)}
@@ -245,14 +236,14 @@ export default function TechAssistant({
 
         {/* Error */}
         {error && (
-          <div className="rounded border border-red-600 bg-red-950/40 px-3 py-2 text-red-200">
+          <div className="rounded border border-red-600 bg-red-950/40 text-red-200 px-3 py-2">
             {error}
           </div>
         )}
 
         {/* Export to Work Order */}
         {workOrderLineId && (
-          <div className="pt-1 sm:pt-2">
+          <div className="pt-2">
             <button
               className="rounded bg-purple-600 px-3 py-2 text-sm font-semibold hover:bg-purple-700 disabled:opacity-60"
               disabled={sending}
@@ -264,9 +255,8 @@ export default function TechAssistant({
                       res.estimatedLaborTime ?? "—"
                     }h`,
                   );
-                } catch (e: unknown) {
-                  const msg = e instanceof Error ? e.message : "Export failed";
-                  alert(msg);
+                } catch (e: any) {
+                  alert(e?.message ?? "Export failed");
                 }
               }}
             >

@@ -1,3 +1,7 @@
+// app/api/assistant/stream/route.ts
+export const runtime = "edge";
+export const dynamic = "force-dynamic";
+
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
@@ -18,11 +22,11 @@ interface Body {
   context?: string;
 }
 
-const sseHeaders = {
+const sseHeaders: Record<string, string> = {
   "Content-Type": "text/event-stream; charset=utf-8",
   "Cache-Control": "no-cache, no-transform",
   Connection: "keep-alive",
-  // helps some proxies avoid buffering
+  "Transfer-Encoding": "chunked",
   "X-Accel-Buffering": "no",
 };
 
@@ -34,8 +38,8 @@ function systemFor(v: Vehicle, context?: string): string {
   const ctx = context?.trim() ? `\nContext:\n${context.trim()}` : "";
   return [
     `You are a master automotive technician assistant for a ${vdesc}.`,
-    `Write concise **Markdown**. No greetings; answer directly.`,
-    `Sections: **Summary** • **Procedure** (numbered) • **Notes/Cautions**.`,
+    `Be concise and use Markdown. No greetings; answer directly.`,
+    `Sections: **Summary**, **Procedure** (numbered), **Notes/Cautions**.`,
     ctx,
   ].join("\n");
 }
@@ -44,89 +48,63 @@ function toOpenAIMessage(m: ClientMessage): ChatCompletionMessageParam {
   return Array.isArray(m.content) ? { role: "user", content: m.content } : m;
 }
 
+const enc = (s: string) => new TextEncoder().encode(s);
+const lineSafe = (s: unknown) => String(s).replace(/[\r\n]+/g, " ");
+
 export async function POST(req: Request) {
   try {
     if (!process.env.OPENAI_API_KEY) {
-      return new NextResponse("Missing OPENAI_API_KEY", { status: 500, headers: sseHeaders });
+      return new NextResponse(
+        `event: error\ndata: Server missing OPENAI_API_KEY\n\nevent: done\ndata: [DONE]\n\n`,
+        { headers: sseHeaders, status: 500 },
+      );
     }
 
     const body: Body = await req.json();
     if (!hasVehicle(body.vehicle)) {
-      return new NextResponse("Missing vehicle info.", { status: 400, headers: sseHeaders });
+      return new NextResponse(
+        `event: error\ndata: Missing vehicle info (year, make, model)\n\nevent: done\ndata: [DONE]\n\n`,
+        { headers: sseHeaders, status: 400 },
+      );
     }
 
-    const withSystem: ChatCompletionMessageParam[] = [
+    const messages: ChatCompletionMessageParam[] = [
       { role: "system", content: systemFor(body.vehicle, body.context) },
       ...(body.messages ?? []).map(toOpenAIMessage),
     ];
 
-    const upstream = await openai.chat.completions.create({
+    const completion = await openai.chat.completions.create({
       model: "gpt-4o",
       temperature: 0.5,
       stream: true,
-      messages: withSystem,
+      messages,
     });
 
-    // Convert OpenAI JSON SSE → plain text SSE:  data: <text>\n\n
-    const encoder = new TextEncoder();
-    const decoder = new TextDecoder();
-    const reader = upstream.toReadableStream().getReader();
-
-    let buffer = "";
-    const out = new ReadableStream<Uint8Array>({
+    const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
         try {
-          while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-
-            let idx: number;
-            while ((idx = buffer.indexOf("\n\n")) !== -1) {
-              const raw = buffer.slice(0, idx).trim();
-              buffer = buffer.slice(idx + 2);
-              if (!raw || raw.startsWith(":")) continue;
-
-              const line = raw.startsWith("data:") ? raw.slice(5).trim() : raw;
-              if (line === "[DONE]") continue;
-
-              // Extract delta.content if this line is JSON; otherwise pass through
-              let chunk = "";
-              try {
-                const obj = JSON.parse(line) as {
-                  choices?: Array<{ delta?: { content?: string }; text?: string }>;
-                };
-                chunk =
-                  obj?.choices?.[0]?.delta?.content ??
-                  obj?.choices?.[0]?.text ??
-                  "";
-              } catch {
-                chunk = line;
-              }
-
-              if (chunk) {
-                controller.enqueue(encoder.encode(`data: ${chunk}\n\n`));
-              }
-            }
+          // Stream plain text lines:  data: <text>\n\n
+          for await (const part of completion) {
+            const delta = part.choices?.[0]?.delta?.content ?? "";
+            if (delta) controller.enqueue(enc(`data: ${delta}\n\n`));
           }
-        } finally {
-          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.enqueue(enc(`event: done\ndata: [DONE]\n\n`));
+          controller.close();
+        } catch (err) {
+          controller.enqueue(
+            enc(`event: error\ndata: ${lineSafe((err as Error).message)}\n\n`),
+          );
+          controller.enqueue(enc(`event: done\ndata: [DONE]\n\n`));
           controller.close();
         }
       },
     });
 
-    return new NextResponse(out, { headers: sseHeaders });
+    return new NextResponse(stream, { headers: sseHeaders });
   } catch (err) {
-    console.error("assistant/stream error:", err);
-    const encoder = new TextEncoder();
-    const fallback = new ReadableStream<Uint8Array>({
-      start(c) {
-        c.enqueue(encoder.encode(`data: **Error:** Assistant failed to reply.\n\n`));
-        c.enqueue(encoder.encode("data: [DONE]\n\n"));
-        c.close();
-      },
-    });
-    return new NextResponse(fallback, { headers: sseHeaders, status: 200 });
+    return new NextResponse(
+      `event: error\ndata: ${lineSafe((err as Error).message)}\n\nevent: done\ndata: [DONE]\n\n`,
+      { headers: sseHeaders, status: 500 },
+    );
   }
 }
