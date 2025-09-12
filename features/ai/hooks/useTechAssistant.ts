@@ -12,23 +12,20 @@ export type Vehicle = {
 
 type AssistantOptions = { defaultVehicle?: Vehicle; defaultContext?: string };
 
-// Joins streaming chunks while preserving natural spacing.
-// Only inserts a space when the last char of `prev` and the
-// first char of `next` are BOTH alphanumeric (avoids "a**"
-// or ",*" cases in Markdown).
+// Join streaming chunks while preserving natural spacing.
+// Only insert a space when BOTH prev's last char and next's first char are alphanumeric.
 function mergeChunks(prev: string, next: string): string {
   if (!next) return prev;
   if (!prev) return next;
-
   const last = prev[prev.length - 1] ?? "";
   const first = next[0] ?? "";
   const isWord = (c: string) => /[A-Za-z0-9]/.test(c);
+  return isWord(last) && isWord(first) ? prev + " " + next : prev + next;
+}
 
-  // If model splits "...brake" + "pads..." → add a space
-  if (isWord(last) && isWord(first)) {
-    return prev + " " + next;
-  }
-  return prev + next;
+// Remove annoying trailing “done” artifacts some proxies/models append.
+function stripTrailingMarkers(s: string): string {
+  return s.replace(/\s*(?:event:\s*)?done\s*$/i, "").replace(/\s*\[DONE]\s*$/i, "");
 }
 
 async function fileToDataUrl(file: File): Promise<string> {
@@ -72,7 +69,6 @@ async function readSseStream(
           "";
         if (piece) onChunk(piece);
       } catch {
-        // If the server ever sends plain text, still render it
         onChunk(line);
       }
     }
@@ -115,6 +111,7 @@ export function useTechAssistant(opts?: AssistantOptions) {
       setSending(true);
       setPartial("");
 
+      // include conversation + followUp hint
       const body = { ...payload, vehicle, context, messages };
       const ctrl = new AbortController();
       abortRef.current = ctrl;
@@ -127,14 +124,13 @@ export function useTechAssistant(opts?: AssistantOptions) {
         }
 
         let accum = "";
-          await readSseStream(res.body, (chunk) => {
-            // live bubble
-          setPartial((prev) => mergeChunks(prev, chunk));
-            // final message
-          accum = mergeChunks(accum, chunk);
+        await readSseStream(res.body, (chunk) => {
+          setPartial((prev) => mergeChunks(prev, chunk));  // live bubble
+          accum = mergeChunks(accum, chunk);               // final message
         });
 
-        const assistantMsg: ChatMessage = { role: "assistant", content: accum.trim() };
+        const clean = stripTrailingMarkers(accum.trim());
+        const assistantMsg: ChatMessage = { role: "assistant", content: clean };
         setMessages((m) => [...m, assistantMsg]);
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Failed to stream assistant.";
@@ -153,7 +149,8 @@ export function useTechAssistant(opts?: AssistantOptions) {
       const trimmed = text.trim();
       if (!trimmed) return;
       setMessages((m) => [...m, { role: "user", content: trimmed }]);
-      await streamToAssistant({}); // messages already contains the user turn
+      // Mark it as a follow-up when there’s already assistant context
+      await streamToAssistant({ followUp: true });
     },
     [streamToAssistant],
   );
@@ -166,7 +163,7 @@ export function useTechAssistant(opts?: AssistantOptions) {
         ...m,
         { role: "user", content: `DTC: ${code}${note ? `\nNote: ${note}` : ""}` },
       ]);
-      await streamToAssistant({});
+      await streamToAssistant({ followUp: true });
     },
     [streamToAssistant],
   );
@@ -179,12 +176,8 @@ export function useTechAssistant(opts?: AssistantOptions) {
         { role: "user", content: `Uploaded a photo.${note ? `\nNote: ${note}` : ""}` },
       ]);
       const image_data = await fileToDataUrl(file);
-      // add a lightweight hint turn that includes the image as a user part
-      setMessages((m) => [
-        ...m,
-        { role: "user", content: `[image sent]\n${note ?? ""}` },
-      ]);
-      await streamToAssistant({ image_data });
+      setMessages((m) => [...m, { role: "user", content: `[image sent]\n${note ?? ""}` }]);
+      await streamToAssistant({ image_data, followUp: true });
     },
     [streamToAssistant],
   );

@@ -1,4 +1,3 @@
-// app/api/assistant/stream/route.ts
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
@@ -20,6 +19,7 @@ interface Body {
   vehicle?: Vehicle;
   messages?: ClientMessage[];
   context?: string;
+  followUp?: boolean;
 }
 
 const sseHeaders: Record<string, string> = {
@@ -38,8 +38,14 @@ function systemFor(v: Vehicle, context?: string): string {
   const ctx = context?.trim() ? `\nContext:\n${context.trim()}` : "";
   return [
     `You are a master automotive technician assistant for a ${vdesc}.`,
-    `Be concise and use Markdown. No greetings; answer directly.`,
-    `Sections: **Summary**, **Procedure** (numbered), **Notes/Cautions**.`,
+    `Rules:`,
+    `- Answer in clear Markdown bullet points and numbered steps.`,
+    `- Always structure output as sections:`,
+    `  • **Summary** (short, 1–2 sentences)`,
+    `  • **Procedure** (numbered list of steps)`,
+    `  • **Notes/Cautions** (bulleted list, if needed)`,
+    `- Do not include trailing words like "done", "event: done", or extra markers.`,
+    `- If this is a follow-up question, build on the previous conversation without repeating the full answer.`,
     ctx,
   ].join("\n");
 }
@@ -73,6 +79,15 @@ export async function POST(req: Request) {
       ...(body.messages ?? []).map(toOpenAIMessage),
     ];
 
+    // If marked as follow-up, add a tiny reminder so the model avoids repeating itself.
+    if (body.followUp) {
+      messages.push({
+        role: "system",
+        content:
+          "This is a follow-up. Do not repeat your full prior answer; only add concise, new, relevant details.",
+      });
+    }
+
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
       temperature: 0.5,
@@ -83,7 +98,6 @@ export async function POST(req: Request) {
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
         try {
-          // Stream plain text lines:  data: <text>\n\n
           for await (const part of completion) {
             const delta = part.choices?.[0]?.delta?.content ?? "";
             if (delta) controller.enqueue(enc(`data: ${delta}\n\n`));
