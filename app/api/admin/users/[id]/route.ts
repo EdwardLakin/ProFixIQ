@@ -1,4 +1,3 @@
-// app/api/admin/users/[id]/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
@@ -6,14 +5,15 @@ import type { Database } from "@shared/types/types/supabase";
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const service = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-// One client is fine here (App Route runs per request on server)
+// One client per request scope
 const supabase = createClient<Database>(url, service);
-
-type Params = { params: { id: string } };
 
 // PUT /api/admin/users/:id
 // Body: { full_name?: string, role?: Database["public"]["Enums"]["user_role_enum"] }
-export async function PUT(req: Request, { params }: Params) {
+export async function PUT(
+  req: Request,
+  { params }: { params: { id: string } }
+) {
   try {
     const { id } = params;
     const body = (await req.json()) as {
@@ -49,7 +49,10 @@ export async function PUT(req: Request, { params }: Params) {
 
 // DELETE /api/admin/users/:id
 // Deletes profile row AND the Supabase Auth user.
-export async function DELETE(_req: Request, { params }: Params) {
+export async function DELETE(
+  _req: Request,
+  { params }: { params: { id: string } }
+) {
   try {
     const { id } = params;
     if (!id) {
@@ -57,7 +60,10 @@ export async function DELETE(_req: Request, { params }: Params) {
     }
 
     // Delete profile row first (id is FK to auth.user)
-    const { error: profileErr } = await supabase.from("profiles").delete().eq("id", id);
+    const { error: profileErr } = await supabase
+      .from("profiles")
+      .delete()
+      .eq("id", id);
     if (profileErr) {
       return NextResponse.json({ error: profileErr.message }, { status: 500 });
     }
@@ -65,11 +71,15 @@ export async function DELETE(_req: Request, { params }: Params) {
     // Delete auth user (requires service role key)
     const { error: authErr } = await supabase.auth.admin.deleteUser(id);
     if (authErr) {
-      // Not fatal for DB consistency (profile is already gone), but report it
       return NextResponse.json(
-        { ok: false, warning: "Profile deleted but failed to delete auth user", error: authErr.message },
-        { status: 207 }, // Multi-Status
-      );
+        {
+          ok: false,
+          warning:
+            "Profile deleted but failed to delete auth user",
+          error: authErr.message,
+        },
+        { status: 207 }
+      ); // Multi-Status
     }
 
     return NextResponse.json({ ok: true });
