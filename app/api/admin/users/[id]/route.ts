@@ -1,21 +1,20 @@
+// app/api/admin/users/[id]/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const service = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-// One client per request scope
 const supabase = createClient<Database>(url, service);
 
 // PUT /api/admin/users/:id
 // Body: { full_name?: string, role?: Database["public"]["Enums"]["user_role_enum"] }
 export async function PUT(
   req: Request,
-  { params }: { params: { id: string } }
+  ctx: { params: { id: string } }
 ) {
   try {
-    const { id } = params;
+    const { id } = ctx.params;
     const body = (await req.json()) as {
       full_name?: string | null;
       role?: Database["public"]["Enums"]["user_role_enum"] | null;
@@ -48,38 +47,29 @@ export async function PUT(
 }
 
 // DELETE /api/admin/users/:id
-// Deletes profile row AND the Supabase Auth user.
 export async function DELETE(
   _req: Request,
-  { params }: { params: { id: string } }
+  ctx: { params: { id: string } }
 ) {
   try {
-    const { id } = params;
+    const { id } = ctx.params;
     if (!id) {
       return NextResponse.json({ error: "Missing user id" }, { status: 400 });
     }
 
-    // Delete profile row first (id is FK to auth.user)
-    const { error: profileErr } = await supabase
-      .from("profiles")
-      .delete()
-      .eq("id", id);
+    // Delete profile row first
+    const { error: profileErr } = await supabase.from("profiles").delete().eq("id", id);
     if (profileErr) {
       return NextResponse.json({ error: profileErr.message }, { status: 500 });
     }
 
-    // Delete auth user (requires service role key)
+    // Then delete auth user
     const { error: authErr } = await supabase.auth.admin.deleteUser(id);
     if (authErr) {
       return NextResponse.json(
-        {
-          ok: false,
-          warning:
-            "Profile deleted but failed to delete auth user",
-          error: authErr.message,
-        },
-        { status: 207 }
-      ); // Multi-Status
+        { ok: false, warning: "Profile deleted but failed to delete auth user", error: authErr.message },
+        { status: 207 },
+      );
     }
 
     return NextResponse.json({ ok: true });
