@@ -6,22 +6,15 @@ import type { Database } from "@shared/types/types/supabase";
 
 type UserRole = Database["public"]["Enums"]["user_role_enum"];
 
-function parseAllowlist(env: string | undefined): Set<string> {
-  return new Set(
-    (env ?? "")
-      .split(",")
-      .map((s) => s.trim().toLowerCase())
-      .filter(Boolean),
-  );
-}
-
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
   const supabase = createMiddlewareClient<Database>({ req, res });
 
   const { pathname, search } = req.nextUrl;
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
 
-  // Public assets/routes that must keep working
   const isPublic =
     pathname === "/" ||
     pathname.startsWith("/compare-plans") ||
@@ -30,58 +23,63 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/signup") ||
     pathname.startsWith("/sign-in") ||
     pathname.startsWith("/portal") ||
-    pathname.startsWith("/coming-soon") || // <- allow the lock page itself
     pathname.startsWith("/_next") ||
-    pathname.startsWith("/api/public") ||  // optional: keep a public API area
+    pathname.startsWith("/api") ||
     pathname.startsWith("/fonts") ||
     pathname.endsWith("/favicon.ico") ||
     pathname.endsWith("/logo.svg");
 
-  // Read current session (email) for allowlist check
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  let role: UserRole | null = null;
+  let completed = false;
 
-  const allow = parseAllowlist(process.env.ALLOWLIST_EMAILS);
-  const userEmail = session?.user?.email?.toLowerCase() ?? null;
-  const isAllowlisted = userEmail ? allow.has(userEmail) : false;
+  if (session?.user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role, completed_onboarding")
+      .eq("id", session.user.id)
+      .maybeSingle();
 
-  // If not allowlisted and not on a public path → send to Coming Soon
-  if (!isAllowlisted && !isPublic) {
-    const to = new URL("/coming-soon", req.url);
-    // keep where they were trying to go (nice when you later open access)
-    to.searchParams.set("next", pathname + search);
-    return NextResponse.redirect(to);
+    role = profile?.role ?? null;
+    completed = !!profile?.completed_onboarding;
   }
 
-  // ----- From here down = your original logic (applies only when allowlisted) -----
+  // --- Landing handling ---
+  // If NOT signed in: go straight to /sign-in (so you don't have to click Dashboard)
+  // After login, we'll redirect to /dashboard (see redirect param).
+  if (pathname === "/" && !session?.user) {
+    const login = new URL("/sign-in", req.url);
+    login.searchParams.set("redirect", "/dashboard");
+    return NextResponse.redirect(login);
+  }
 
-  // If an allowlisted signed-in user lands on "/", route them to app
+  // If signed in but NOT allowlisted: show Coming Soon
   if (pathname === "/" && session?.user) {
-    // fetch role + onboarding state
-    let role: UserRole | null = null;
-    let completed = false;
-    if (session.user) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role, completed_onboarding")
-        .eq("id", session.user.id)
-        .maybeSingle();
-      role = profile?.role ?? null;
-      completed = !!profile?.completed_onboarding;
-    }
+    const allow = new Set(
+      (process.env.ALLOWLIST_EMAILS ?? "")
+        .split(",")
+        .map((e) => e.trim().toLowerCase())
+        .filter(Boolean),
+    );
 
-    const to = role && completed ? "/dashboard" : "/onboarding";
-    return NextResponse.redirect(new URL(to, req.url));
+    const email = (session.user.email ?? "").toLowerCase();
+    if (!allow.has(email)) {
+      return NextResponse.rewrite(new URL("/coming-soon", req.url));
+    }
+    // allowlisted + signed in: fall through to app
   }
 
-  // If the path is public, allow it (with small QoL redirects)
   if (isPublic) {
-    // Keep signed-in users off auth pages
+    // ✅ If you’re already signed in, keep you off the auth pages
     if ((pathname.startsWith("/sign-in") || pathname.startsWith("/signup")) && session?.user) {
-      const to = new URL("/dashboard", req.url);
-      return NextResponse.redirect(to);
+      const to = role && completed ? "/dashboard" : "/onboarding";
+      return NextResponse.redirect(new URL(to, req.url));
     }
+
+    // Finished onboarding? keep you off /onboarding
+    if (pathname.startsWith("/onboarding") && session?.user && role && completed) {
+      return NextResponse.redirect(new URL("/dashboard", req.url));
+    }
+
     return res;
   }
 
@@ -92,17 +90,7 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(login);
   }
 
-  // Force onboarding when entering dashboard without completion
-  let role: UserRole | null = null;
-  let completed = false;
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role, completed_onboarding")
-    .eq("id", session.user.id)
-    .maybeSingle();
-  role = profile?.role ?? null;
-  completed = !!profile?.completed_onboarding;
-
+  // Force onboarding inside dashboard if not complete
   if (pathname.startsWith("/dashboard") && !(role && completed)) {
     return NextResponse.redirect(new URL("/onboarding", req.url));
   }
@@ -110,9 +98,6 @@ export async function middleware(req: NextRequest) {
   return res;
 }
 
-// Run middleware on app pages; keep static assets skipped.
 export const config = {
-  matcher: [
-    "/((?!_next/static|_next/image|favicon.ico).*)",
-  ],
+  matcher: ["/dashboard/:path*", "/work-orders/:path*", "/inspections/:path*"],
 };
