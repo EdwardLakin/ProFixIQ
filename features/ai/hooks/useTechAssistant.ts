@@ -12,9 +12,20 @@ export type Vehicle = {
 
 type AssistantOptions = { defaultVehicle?: Vehicle; defaultContext?: string };
 
+// Joins streaming chunks while preserving natural spacing.
+// Only inserts a space when the last char of `prev` and the
+// first char of `next` are BOTH alphanumeric (avoids "a**"
+// or ",*" cases in Markdown).
 function mergeChunks(prev: string, next: string): string {
+  if (!next) return prev;
   if (!prev) return next;
-  if (/\w$/.test(prev) && /^\w/.test(next)) {
+
+  const last = prev[prev.length - 1] ?? "";
+  const first = next[0] ?? "";
+  const isWord = (c: string) => /[A-Za-z0-9]/.test(c);
+
+  // If model splits "...brake" + "pads..." → add a space
+  if (isWord(last) && isWord(first)) {
     return prev + " " + next;
   }
   return prev + next;
@@ -117,7 +128,9 @@ export function useTechAssistant(opts?: AssistantOptions) {
 
         let accum = "";
           await readSseStream(res.body, (chunk) => {
+            // live bubble
           setPartial((prev) => mergeChunks(prev, chunk));
+            // final message
           accum = mergeChunks(accum, chunk);
         });
 
