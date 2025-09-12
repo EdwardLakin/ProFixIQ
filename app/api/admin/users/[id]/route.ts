@@ -7,13 +7,12 @@ const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const service = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient<Database>(url, service);
 
-// PUT /api/admin/users/:id
-export const PUT = async (
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) => {
+// ✅ PUT /api/admin/users/:id
+export const PUT = async (req: NextRequest, context: unknown) => {
+  const { params } = context as { params: { id: string } };
+  const { id } = params;
+
   try {
-    const { id } = params;
     const body = (await req.json()) as {
       full_name?: string | null;
       role?: Database["public"]["Enums"]["user_role_enum"] | null;
@@ -39,18 +38,19 @@ export const PUT = async (
   }
 };
 
-// DELETE /api/admin/users/:id
-export const DELETE = async (
-  _req: NextRequest,
-  { params }: { params: { id: string } }
-) => {
+// ✅ DELETE /api/admin/users/:id
+export const DELETE = async (_req: NextRequest, context: unknown) => {
+  const { params } = context as { params: { id: string } };
+  const { id } = params;
+
   try {
-    const { id } = params;
     if (!id) return NextResponse.json({ error: "Missing user id" }, { status: 400 });
 
+    // Remove profile row
     const { error: profileErr } = await supabase.from("profiles").delete().eq("id", id);
     if (profileErr) return NextResponse.json({ error: profileErr.message }, { status: 500 });
 
+    // Remove Supabase Auth user
     const { error: authErr } = await supabase.auth.admin.deleteUser(id);
     if (authErr) {
       return NextResponse.json(
@@ -58,6 +58,7 @@ export const DELETE = async (
         { status: 207 }
       );
     }
+
     return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
