@@ -1,40 +1,38 @@
+// app/api/admin/users/[id]/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 
-type DB = Database;
-type UserRole = DB["public"]["Enums"]["user_role_enum"];
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const service = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-function getAdminSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-  return createClient<DB>(url, serviceKey);
-}
+// One client is fine here (App Route runs per request on server)
+const supabase = createClient<Database>(url, service);
 
-// -------- PUT /api/admin/users/[id] --------
-export async function PUT(
-  req: Request,
-  { params }: { params: { id: string } }
-) {
+type Params = { params: { id: string } };
+
+// PUT /api/admin/users/:id
+// Body: { full_name?: string, role?: Database["public"]["Enums"]["user_role_enum"] }
+export async function PUT(req: Request, { params }: Params) {
   try {
-    const id = params.id;
+    const { id } = params;
     const body = (await req.json()) as {
-      full_name?: string;
-      phone?: string | null;
-      role?: UserRole | null;
+      full_name?: string | null;
+      role?: Database["public"]["Enums"]["user_role_enum"] | null;
     };
 
     if (!id) {
-      return NextResponse.json({ error: "Missing id" }, { status: 400 });
+      return NextResponse.json({ error: "Missing user id" }, { status: 400 });
+    }
+    if (body.full_name == null && body.role == null) {
+      return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
     }
 
-    const supabase = getAdminSupabase();
     const { error } = await supabase
       .from("profiles")
       .update({
-        full_name: body.full_name ?? null,
-        phone: body.phone ?? null,
-        role: body.role ?? null,
+        ...(body.full_name !== undefined ? { full_name: body.full_name } : {}),
+        ...(body.role !== undefined ? { role: body.role } : {}),
       })
       .eq("id", id);
 
@@ -43,50 +41,40 @@ export async function PUT(
     }
 
     return NextResponse.json({ ok: true });
-  } catch (e: unknown) {
+  } catch (e) {
     const err = e as Error;
-    return NextResponse.json(
-      { error: err.message || "Unexpected error" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
 
-// -------- DELETE /api/admin/users/[id] --------
-export async function DELETE(
-  _req: Request,
-  { params }: { params: { id: string } }
-) {
+// DELETE /api/admin/users/:id
+// Deletes profile row AND the Supabase Auth user.
+export async function DELETE(_req: Request, { params }: Params) {
   try {
-    const id = params.id;
+    const { id } = params;
     if (!id) {
-      return NextResponse.json({ error: "Missing id" }, { status: 400 });
+      return NextResponse.json({ error: "Missing user id" }, { status: 400 });
     }
 
-    const supabase = getAdminSupabase();
-
-    // 1) Delete from auth.users
-    const { error: authErr } = await supabase.auth.admin.deleteUser(id);
-    if (authErr) {
-      return NextResponse.json({ error: authErr.message }, { status: 500 });
-    }
-
-    // 2) Delete profile row (cascading if FK exists)
-    const { error: profileErr } = await supabase
-      .from("profiles")
-      .delete()
-      .eq("id", id);
-
+    // Delete profile row first (id is FK to auth.user)
+    const { error: profileErr } = await supabase.from("profiles").delete().eq("id", id);
     if (profileErr) {
       return NextResponse.json({ error: profileErr.message }, { status: 500 });
     }
 
+    // Delete auth user (requires service role key)
+    const { error: authErr } = await supabase.auth.admin.deleteUser(id);
+    if (authErr) {
+      // Not fatal for DB consistency (profile is already gone), but report it
+      return NextResponse.json(
+        { ok: false, warning: "Profile deleted but failed to delete auth user", error: authErr.message },
+        { status: 207 }, // Multi-Status
+      );
+    }
+
     return NextResponse.json({ ok: true });
-  } catch (e: unknown) {
+  } catch (e) {
     const err = e as Error;
-    return NextResponse.json(
-      { error: err.message || "Unexpected error" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
