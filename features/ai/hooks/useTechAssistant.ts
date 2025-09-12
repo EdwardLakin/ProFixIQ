@@ -12,6 +12,14 @@ export type Vehicle = {
 
 type AssistantOptions = { defaultVehicle?: Vehicle; defaultContext?: string };
 
+function mergeChunks(prev: string, next: string): string {
+  if (!prev) return next;
+  if (/\w$/.test(prev) && /^\w/.test(next)) {
+    return prev + " " + next;
+  }
+  return prev + next;
+}
+
 async function fileToDataUrl(file: File): Promise<string> {
   const buf = await file.arrayBuffer();
   const b64 = Buffer.from(buf).toString("base64");
@@ -108,9 +116,9 @@ export function useTechAssistant(opts?: AssistantOptions) {
         }
 
         let accum = "";
-        await readSseStream(res.body, (chunk) => {
-          setPartial((prev) => prev + chunk);
-          accum += chunk;
+          await readSseStream(res.body, (chunk) => {
+          setPartial((prev) => mergeChunks(prev, chunk));
+          accum = mergeChunks(accum, chunk);
         });
 
         const assistantMsg: ChatMessage = { role: "assistant", content: accum.trim() };
