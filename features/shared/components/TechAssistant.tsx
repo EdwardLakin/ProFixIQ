@@ -7,6 +7,9 @@ import {
   type Vehicle,
 } from "@/features/ai/hooks/useTechAssistant";
 
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
 export default function TechAssistant({
   defaultVehicle,
   workOrderLineId,
@@ -190,19 +193,47 @@ export default function TechAssistant({
         const bubbleClass = isUser
           ? "ml-auto bg-orange-600 text-black"
           : "mr-auto bg-neutral-700 text-neutral-100";
-        const content = m.content;
 
+        // Assistant → render Markdown (GFM lists, headings, bold, etc.)
+        if (!isUser) {
+          return (
+            <div key={i} className={`${bubbleBase} ${bubbleClass}`}>
+              <div className="prose prose-invert prose-sm markdown">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    li: ({ children }) => <li className="my-0.5">{children}</li>,
+                    ul: ({ children }) => <ul className="list-disc pl-5 my-2">{children}</ul>,
+                    ol: ({ children }) => <ol className="list-decimal pl-5 my-2">{children}</ol>,
+                    h2: ({ children }) => <h2 className="text-base font-semibold mt-2 mb-1">{children}</h2>,
+                    h3: ({ children }) => <h3 className="text-sm font-semibold mt-2 mb-1">{children}</h3>,
+                    p:  ({ children }) => <p className="my-1">{children}</p>,
+                    strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                  }}
+                >
+                  {m.content}
+                </ReactMarkdown>
+              </div>
+            </div>
+          );
+        }
+
+        // User → plain text bubble
         return (
           <div key={i} className={`${bubbleBase} ${bubbleClass}`}>
-            {content}
+            {m.content}
           </div>
         );
       })}
 
-      {/* Always show a typing bubble while sending, even if partial is still empty */}
+      {/* Streaming bubble (Markdown too) */}
       {(sending || partial.length > 0) && (
         <div className="max-w-[85%] mr-auto rounded px-3 py-2 text-sm bg-neutral-700 text-neutral-100 opacity-90">
-          {partial.length > 0 ? partial : "Assistant is typing…"}
+          <div className="prose prose-invert prose-sm markdown">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {partial.length > 0 ? partial : "Assistant is typing…"}
+            </ReactMarkdown>
+          </div>
         </div>
       )}
 

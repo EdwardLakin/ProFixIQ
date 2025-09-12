@@ -12,8 +12,7 @@ export type Vehicle = {
 
 type AssistantOptions = { defaultVehicle?: Vehicle; defaultContext?: string };
 
-// Join streaming chunks while preserving natural spacing.
-// Only insert a space when BOTH prev's last char and next's first char are alphanumeric.
+// Join streaming chunks while preserving natural spacing between words.
 function mergeChunks(prev: string, next: string): string {
   if (!next) return prev;
   if (!prev) return next;
@@ -23,9 +22,13 @@ function mergeChunks(prev: string, next: string): string {
   return isWord(last) && isWord(first) ? prev + " " + next : prev + next;
 }
 
-// Remove annoying trailing “done” artifacts some proxies/models append.
-function stripTrailingMarkers(s: string): string {
-  return s.replace(/\s*(?:event:\s*)?done\s*$/i, "").replace(/\s*\[DONE]\s*$/i, "");
+// 🔹 NEW: a tiny nudge we’ll append to every user turn
+const FOLLOWUP_NUDGE =
+  "Format with headings + bullet/numbered lists and line breaks. If this is a follow-up, answer only the new question; do not repeat the entire prior procedure. Do not include transport markers like 'event: done'.";
+
+function wrapUserQuestion(text: string): string {
+  // keep it short so we don’t drown out the actual question
+  return `Question:\n${text}\n\n${FOLLOWUP_NUDGE}`;
 }
 
 async function fileToDataUrl(file: File): Promise<string> {
@@ -35,7 +38,7 @@ async function fileToDataUrl(file: File): Promise<string> {
   return `data:${mime};base64,${b64}`;
 }
 
-/** Parse OpenAI native SSE (data: {choices:[{delta:{content:"..."}}]} / [DONE]) */
+/** Parse OpenAI native SSE (data: {choices:[{delta:{content}}]} / [DONE]) */
 async function readSseStream(
   body: ReadableStream<Uint8Array>,
   onChunk: (text: string) => void,
@@ -111,7 +114,6 @@ export function useTechAssistant(opts?: AssistantOptions) {
       setSending(true);
       setPartial("");
 
-      // include conversation + followUp hint
       const body = { ...payload, vehicle, context, messages };
       const ctrl = new AbortController();
       abortRef.current = ctrl;
@@ -125,12 +127,11 @@ export function useTechAssistant(opts?: AssistantOptions) {
 
         let accum = "";
         await readSseStream(res.body, (chunk) => {
-          setPartial((prev) => mergeChunks(prev, chunk));  // live bubble
-          accum = mergeChunks(accum, chunk);               // final message
+          setPartial((prev) => mergeChunks(prev, chunk));
+          accum = mergeChunks(accum, chunk);
         });
 
-        const clean = stripTrailingMarkers(accum.trim());
-        const assistantMsg: ChatMessage = { role: "assistant", content: clean };
+        const assistantMsg: ChatMessage = { role: "assistant", content: accum.trim() };
         setMessages((m) => [...m, assistantMsg]);
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Failed to stream assistant.";
@@ -144,40 +145,38 @@ export function useTechAssistant(opts?: AssistantOptions) {
     [messages, vehicle, context, canSend],
   );
 
+  /** Plain chat */
   const sendChat = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed) return;
-      setMessages((m) => [...m, { role: "user", content: trimmed }]);
-      // Mark it as a follow-up when there’s already assistant context
-      await streamToAssistant({ followUp: true });
+      // 🔹 wrap the user's turn so follow-ups stay concise
+      setMessages((m) => [...m, { role: "user", content: wrapUserQuestion(trimmed) }]);
+      await streamToAssistant({});
     },
     [streamToAssistant],
   );
 
+  /** DTC analysis */
   const sendDtc = useCallback(
     async (dtcCode: string, note?: string) => {
       const code = dtcCode.trim().toUpperCase();
       if (!code) return;
-      setMessages((m) => [
-        ...m,
-        { role: "user", content: `DTC: ${code}${note ? `\nNote: ${note}` : ""}` },
-      ]);
-      await streamToAssistant({ followUp: true });
+      const turn = `DTC: ${code}${note ? `\nNote: ${note}` : ""}\n\n${FOLLOWUP_NUDGE}`;
+      setMessages((m) => [...m, { role: "user", content: turn }]);
+      await streamToAssistant({});
     },
     [streamToAssistant],
   );
 
+  /** Photo + optional note */
   const sendPhoto = useCallback(
     async (file: File, note?: string) => {
       if (!file) return;
-      setMessages((m) => [
-        ...m,
-        { role: "user", content: `Uploaded a photo.${note ? `\nNote: ${note}` : ""}` },
-      ]);
       const image_data = await fileToDataUrl(file);
-      setMessages((m) => [...m, { role: "user", content: `[image sent]\n${note ?? ""}` }]);
-      await streamToAssistant({ image_data, followUp: true });
+      const turn = `Photo provided.${note ? `\nNote: ${note}` : ""}\n\n${FOLLOWUP_NUDGE}`;
+      setMessages((m) => [...m, { role: "user", content: turn }]);
+      await streamToAssistant({ image_data });
     },
     [streamToAssistant],
   );
