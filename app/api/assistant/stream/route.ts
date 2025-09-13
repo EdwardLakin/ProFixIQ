@@ -1,4 +1,3 @@
-// app/api/assistant/stream/route.ts
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
@@ -9,8 +8,6 @@ import type { ChatCompletionMessageParam } from "openai/resources/chat/completio
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 type Vehicle = { year: string; make: string; model: string };
-
-// Multi-modal parts we may receive from the client (text + image)
 type TextPart = { type: "text"; text: string };
 type ImagePart = { type: "image_url"; image_url: { url: string } };
 
@@ -22,8 +19,7 @@ interface Body {
   vehicle?: Vehicle;
   messages?: ClientMessage[];
   context?: string;
-  /** optional data URL (base64 image) we attach as a trailing user turn */
-  image_data?: string;
+  image_data?: string; // optional base64 from client
 }
 
 const sseHeaders: Record<string, string> = {
@@ -31,52 +27,61 @@ const sseHeaders: Record<string, string> = {
   "Cache-Control": "no-cache, no-transform",
   Connection: "keep-alive",
   "X-Accel-Buffering": "no",
-  // (chunked is implicit on edge; keeping responses streamy)
 };
 
-// Guard: basic presence of Y/M/M
 const hasVehicle = (v?: Vehicle): v is Vehicle =>
   Boolean(v?.year && v?.make && v?.model);
 
-// Strip any accidental transport tokens the model might echo
+// remove any transport tokens if the model ever echoes them
 const sanitize = (s: string) =>
-  String(s).replace(/\b(event:\s*done|data:\s*\[DONE\])\b/gi, "");
+  s.replace(/\b(event:\s*done|data:\s*\[DONE\])\b/gi, "");
 
-// Safer single-line log
-const lineSafe = (s: unknown) => String(s).replace(/[\r\n]+/g, " ");
-
-// Strong output contract: headings + lists, focused follow-ups
 function systemFor(v: Vehicle, context?: string): string {
   const vdesc = `${v.year} ${v.make} ${v.model}`;
   const ctx = context?.trim() ? `\nContext:\n${context.trim()}` : "";
+
   return [
     `You are a master automotive technician assistant for a ${vdesc}.`,
-    `Always answer in clean **Markdown**.`,
-    `Formatting contract (MANDATORY):`,
-    `- Start with proper headings and line breaks.`,
-    `- Use this structure where applicable:`,
-    `  ### Summary`,
-    `  - 1–3 concise bullets`,
-    `  `,
-    `  ### Procedure`,
-    `  1. Step`,
-    `  2. Step`,
-    `  3. Step`,
-    `  `,
-    `  ### Notes / Cautions`,
-    `  - Bulleted cautions, specs, tips`,
-    `Behavior for follow-ups (CRITICAL):`,
-    `- Focus ONLY on the latest user request. Do not repeat the full procedure if the question is narrow (e.g., torque spec, a single disassembly).`,
-    `- Give realistic ranges as “Typical” only if you’re not certain; otherwise instruct where to confirm in OE service info (VIN/trim).`,
+    `Always reply in **clean Markdown** with proper line breaks.`,
+
+    // Default structured procedure format
+    `When asked for procedures, use exactly these sections:`,
+    `### Summary`,
+    `- 1–2 bullets`,
+    ``,
+    `### Procedure`,
+    `1. Step`,
+    `2. Step`,
+    `3. Step`,
+    ``,
+    `### Notes / Cautions`,
+    `- Bulleted list of cautions/specs`,
+
+    // 👇 NEW: specs/torque table directive
+    ``,
+    `When the latest question asks for a spec (e.g., **torque**, **gap**, **pressure**, **size**, **voltage**, **resistance**):`,
+    `- Answer concisely using a **Markdown table** first, then (only if needed) a 1–2 bullet note.`,
+    `- Table columns: **Item** | **Spec** | **Notes**.`,
+    `- Include units and **both metric and imperial** where relevant (e.g., 30 N·m (22 ft·lb)).`,
+    `- If an exact OE number depends on VIN/engine/trim, give a **Typical** range and say “Verify in OE service info” plus where to find it.`,
+    ``,
+
+    `Follow-up behavior (CRITICAL):`,
+    `- Answer **only the latest question**. Do not repeat earlier procedures unless explicitly requested.`,
     `- Never include transport markers like "event: done" or "[DONE]".`,
     ctx,
   ].join("\n");
 }
 
-// Normalize client message into OpenAI shape
 function toOpenAIMessage(m: ClientMessage): ChatCompletionMessageParam {
   return Array.isArray(m.content) ? { role: "user", content: m.content } : m;
 }
+
+const enc = (s: string) => new TextEncoder().encode(s);
+const lineSafe = (s: unknown) => String(s).replace(/[\r\n]+/g, " ");
+
+// Simple detector to nudge formatting for spec questions
+const SPEC_RE = /\b(torque|spec|specs|gap|clearance|pressure|size|voltage|resistance|ohms|amp|current|psi|bar|kpa|nm|ft[-\s]?lb)\b/i;
 
 export async function POST(req: Request) {
   try {
@@ -95,31 +100,53 @@ export async function POST(req: Request) {
       );
     }
 
-    // Build the conversation with our system preface
-    const base: ChatCompletionMessageParam[] = [
+    // Base conversation
+    const baseMessages: ChatCompletionMessageParam[] = [
       { role: "system", content: systemFor(body.vehicle, body.context) },
       ...(body.messages ?? []).map(toOpenAIMessage),
     ];
 
-    // If we received an ad-hoc image data URL for the *latest* user turn,
-    // add a trailing user message that contains the image for vision models.
-    if (body.image_data && /^data:image\/\w+;base64,/.test(body.image_data)) {
-      base.push({
-        role: "user",
-        content: [{ type: "image_url", image_url: { url: body.image_data } }],
-      } as ChatCompletionMessageParam);
+    // Wrap the latest user turn so the model focuses on it,
+    // and inject a **table format hint** for spec-type questions.
+    const lastUserIndex = [...(body.messages ?? [])]
+      .map((m, i) => ({ m, i }))
+      .reverse()
+      .find((x) => !Array.isArray(x.m.content) && x.m.role === "user")?.i;
+
+    let messages = baseMessages;
+    if (typeof lastUserIndex === "number") {
+      const last = baseMessages[lastUserIndex + 1]; // +1 because we prefixed system
+      if (last && last.role === "user" && typeof last.content === "string") {
+        const isSpec = SPEC_RE.test(last.content);
+        const extra =
+          isSpec
+            ? [
+                ``,
+                `Format for this question:`,
+                `- Start with a **Markdown table** using columns: Item | Spec | Notes.`,
+                `- Include metric + imperial units where relevant.`,
+                `- Keep it concise; no repeated background.`,
+              ].join("\n")
+            : [
+                ``,
+                `Format for this question:`,
+                `- Use headings and bullet/numbered lists.`,
+                `- Do not repeat prior content.`,
+              ].join("\n");
+
+        const wrapped = [`Question: ${last.content.trim()}`, extra].join("\n");
+        messages = baseMessages.slice();
+        messages[lastUserIndex + 1] = { role: "user", content: wrapped };
+      }
     }
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
-      temperature: 0.5,
+      temperature: 0.4,
       stream: true,
-      messages: base,
+      messages,
     });
 
-    const enc = (s: string) => new TextEncoder().encode(s);
-
-    // Stream “plain text SSE” lines like:  data: <text>\n\n
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
         try {
@@ -130,9 +157,7 @@ export async function POST(req: Request) {
           controller.enqueue(enc(`event: done\ndata: [DONE]\n\n`));
           controller.close();
         } catch (err) {
-          controller.enqueue(
-            enc(`event: error\ndata: ${lineSafe((err as Error).message)}\n\n`),
-          );
+          controller.enqueue(enc(`event: error\ndata: ${lineSafe((err as Error).message)}\n\n`));
           controller.enqueue(enc(`event: done\ndata: [DONE]\n\n`));
           controller.close();
         }
