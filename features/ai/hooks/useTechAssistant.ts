@@ -36,8 +36,7 @@ async function readSseStream(
       const line = raw.startsWith("data:") ? raw.slice(5).trim() : raw;
       if (line === "[DONE]") return;
 
-      // We stream plain text (already de-SSE'd server-side), so pass through
-      onChunk(line);
+      onChunk(line); // pass through verbatim
     }
   }
 }
@@ -59,14 +58,13 @@ function normalizeMarkdown(src: string): string {
   s = s.replace(/^\s*(event:\s*done|data:\s*\[DONE\])\s*$/gmi, "");
 
   // Ensure a space after heading hashes and a blank line after headings
-  // e.g. "###Summary" -> "### Summary\n\n"
   s = s.replace(/(#{1,6})([^\s#])/g, "$1 $2");
   s = s.replace(/^(#{1,6} .+)\s*$/gm, "$1\n");
 
-  // Convert common bullets if the model used unicode bullets
+  // Convert common bullet glyphs to Markdown dashes
   s = s.replace(/[•·]\s*/g, "- ");
 
-  // Collapse triple+ newlines to at most double (clean but keeps spacing)
+  // Collapse triple+ newlines to at most double
   s = s.replace(/\n{3,}/g, "\n\n");
 
   return s.trim();
@@ -103,6 +101,29 @@ export function useTechAssistant(opts?: AssistantOptions) {
       const ctrl = new AbortController();
       abortRef.current = ctrl;
 
+      // ---- micro-batch scheduler (smooth typing) ----
+      let pending = "";
+      let accum = "";
+      let flushTimer: number | null = null;
+
+      const startFlusher = () => {
+        if (flushTimer !== null) return;
+        flushTimer = window.setInterval(() => {
+          if (pending.length === 0) return;
+          // append pending to live bubble and to final accumulator
+          setPartial((prev) => prev + pending);
+          accum += pending;
+          pending = "";
+        }, 50); // ~20fps feels natural; adjust if you want slower/faster typing
+      };
+      const stopFlusher = () => {
+        if (flushTimer !== null) {
+          window.clearInterval(flushTimer);
+          flushTimer = null;
+        }
+      };
+      // -----------------------------------------------
+
       try {
         const res = await postJSON("/api/assistant/stream", body, ctrl.signal);
         if (!res.ok || !res.body) {
@@ -110,12 +131,19 @@ export function useTechAssistant(opts?: AssistantOptions) {
           throw new Error(txt || "Stream failed.");
         }
 
-        let accum = "";
+        startFlusher();
+
         await readSseStream(res.body, (chunk) => {
-          // 🚫 no space-guessing: just append verbatim
-          setPartial((prev) => prev + chunk);
-          accum += chunk;
+          // no space guessing — keep the raw stream
+          pending += chunk;
         });
+
+        // final flush: push any leftover pending text
+        if (pending.length) {
+          setPartial((prev) => prev + pending);
+          accum += pending;
+          pending = "";
+        }
 
         const final = normalizeMarkdown(accum);
         const assistantMsg: ChatMessage = { role: "assistant", content: final };
@@ -124,6 +152,7 @@ export function useTechAssistant(opts?: AssistantOptions) {
         const msg = e instanceof Error ? e.message : "Failed to stream assistant.";
         setError(msg);
       } finally {
+        stopFlusher();
         setSending(false);
         setPartial("");
         abortRef.current = null;
@@ -158,12 +187,10 @@ export function useTechAssistant(opts?: AssistantOptions) {
   const sendPhoto = useCallback(
     async (file: File, note?: string) => {
       if (!file) return;
-      // Show a lightweight anchor turn so the tech sees the upload in the flow
       setMessages((m) => [
         ...m,
         { role: "user", content: `Uploaded a photo.${note ? `\nNote: ${note}` : ""}` },
       ]);
-      // Convert to data URL (base64) and pass as payload; route handles vision
       const buf = await file.arrayBuffer();
       const b64 = Buffer.from(buf).toString("base64");
       const mime = file.type || "image/jpeg";

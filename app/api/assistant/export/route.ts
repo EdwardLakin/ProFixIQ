@@ -1,236 +1,134 @@
-"use client";
+import { NextResponse } from "next/server";
+import OpenAI from "openai";
+import { createClient } from "@supabase/supabase-js";
+import type { Database } from "@shared/types/types/supabase";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-export type ChatMessage = { role: "user" | "assistant"; content: string };
+// ---- Types ----
+type Vehicle = { year: string; make: string; model: string };
 
-export type Vehicle = {
-  year?: string | null;
-  make?: string | null;
-  model?: string | null;
+type ParsedSummary = {
+  cause: string;
+  correction: string;
+  estimatedLaborTime: number | null;
 };
 
-type AssistantOptions = { defaultVehicle?: Vehicle; defaultContext?: string };
-
-/** Stream reader for our plain-text SSE (lines like `data: <chunk>\n\n`) */
-async function readSseStream(
-  body: ReadableStream<Uint8Array>,
-  onChunk: (text: string) => void,
-): Promise<void> {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-
-    let sep: number;
-    while ((sep = buffer.indexOf("\n\n")) !== -1) {
-      const raw = buffer.slice(0, sep).trim();
-      buffer = buffer.slice(sep + 2);
-      if (!raw || raw.startsWith(":")) continue;
-
-      const line = raw.startsWith("data:") ? raw.slice(5).trim() : raw;
-      if (line === "[DONE]") return;
-
-      onChunk(line); // pass through verbatim
-    }
+// ---- Supabase (admin) ----
+function getAdminSupabase() {
+  const url =
+    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const service =
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
+  if (!url || !service) {
+    throw new Error("Supabase URL or Service Role key is missing");
   }
+  return createClient<Database>(url, service);
 }
 
-async function postJSON(url: string, data: unknown, signal?: AbortSignal): Promise<Response> {
-  return fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-    signal,
-  });
+// type guard for returned JSON
+function isParsedSummary(v: unknown): v is ParsedSummary {
+  if (!v || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  const causeOk = typeof o.cause === "string";
+  const correctionOk = typeof o.correction === "string";
+  const elt = o.estimatedLaborTime;
+  const eltOk = elt === null || (typeof elt === "number" && Number.isFinite(elt));
+  return causeOk && correctionOk && eltOk;
 }
 
-/** Final pass to make the message render like ChatGPT-style Markdown */
-function normalizeMarkdown(src: string): string {
-  let s = src;
+// ---- Route ----
+export async function POST(req: Request) {
+  try {
+    if (!process.env.OPENAI_API_KEY) {
+      return NextResponse.json(
+        { error: "OPENAI_API_KEY is not set" },
+        { status: 500 },
+      );
+    }
 
-  // Remove any accidental transport markers
-  s = s.replace(/^\s*(event:\s*done|data:\s*\[DONE\])\s*$/gmi, "");
+    const supabase = getAdminSupabase();
 
-  // Ensure a space after heading hashes and a blank line after headings
-  s = s.replace(/(#{1,6})([^\s#])/g, "$1 $2");
-  s = s.replace(/^(#{1,6} .+)\s*$/gm, "$1\n");
+    const payload = (await req.json()) as {
+      vehicle: Vehicle;
+      workOrderLineId: string;
+      messages: { role: "system" | "user" | "assistant"; content: string }[];
+      context?: string;
+    };
 
-  // Convert common bullet glyphs to Markdown dashes
-  s = s.replace(/[•·]\s*/g, "- ");
+    const { vehicle, workOrderLineId, messages, context } = payload;
 
-  // Collapse triple+ newlines to at most double
-  s = s.replace(/\n{3,}/g, "\n\n");
+    if (!vehicle?.year || !vehicle?.make || !vehicle?.model || !workOrderLineId) {
+      return NextResponse.json({ error: "Missing inputs" }, { status: 400 });
+    }
 
-  return s.trim();
-}
+    const vdesc = `${vehicle.year} ${vehicle.make} ${vehicle.model}`;
 
-export function useTechAssistant(opts?: AssistantOptions) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [vehicle, setVehicle] = useState<Vehicle | undefined>(opts?.defaultVehicle);
-  const [context, setContext] = useState<string>(opts?.defaultContext ?? "");
+    const systemPrompt = [
+      `You are summarizing a completed diagnostic conversation for a ${vdesc}.`,
+      `Return **ONLY** a single JSON object with exactly:`,
+      `{"cause": string, "correction": string, "estimatedLaborTime": number | null}`,
+      `- "cause": one-sentence root cause.`,
+      `- "correction": one- or two-sentence repair performed / recommended.`,
+      `- "estimatedLaborTime": hours as a number (e.g., 1.2), or null if unknown.`,
+      `No extra keys. No markdown. No prose.`,
+    ].join("\n");
 
-  const [sending, setSending] = useState(false);
-  const [partial, setPartial] = useState<string>("");
-  const [error, setError] = useState<string | null>(null);
+    const chat = await openai.chat.completions.create({
+      model: "gpt-4o",
+      temperature: 0.2,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: systemPrompt },
+        ...(context?.trim()
+          ? [{ role: "user" as const, content: `Context:\n${context}` }]
+          : []),
+        ...messages.map((m) => ({ role: m.role, content: m.content })),
+        { role: "user", content: "Return ONLY the JSON object." },
+      ],
+      max_tokens: 400,
+    });
 
-  const abortRef = useRef<AbortController | null>(null);
+    const raw = chat.choices?.[0]?.message?.content ?? "{}";
 
-  const canSend = useMemo(
-    () => Boolean(vehicle?.year && vehicle?.make && vehicle?.model),
-    [vehicle],
-  );
+    // try parsing; also handle fenced JSON
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      const cleaned = raw.replace(/^\s*```json\s*|\s*```\s*$/g, "");
+      parsed = JSON.parse(cleaned);
+    }
 
-  const streamToAssistant = useCallback(
-    async (payload: Record<string, unknown>) => {
-      if (!canSend) {
-        setError("Please provide vehicle info (year, make, model).");
-        return;
-      }
+    if (!isParsedSummary(parsed)) {
+      return NextResponse.json(
+        { error: "Model returned invalid JSON shape", raw },
+        { status: 502 },
+      );
+    }
 
-      setError(null);
-      setSending(true);
-      setPartial("");
+    const { cause, correction, estimatedLaborTime } = parsed;
 
-      const body = { ...payload, vehicle, context, messages };
-      const ctrl = new AbortController();
-      abortRef.current = ctrl;
+    const { error } = await supabase
+      .from("work_order_lines")
+      .update({
+        cause,
+        correction,
+        labor_time:
+          typeof estimatedLaborTime === "number" && Number.isFinite(estimatedLaborTime)
+            ? estimatedLaborTime
+            : null,
+      })
+      .eq("id", workOrderLineId);
 
-      // ---- micro-batch scheduler (smooth typing) ----
-      let pending = "";
-      let accum = "";
-      let flushTimer: number | null = null;
+    if (error) {
+      console.error("Supabase update error:", error);
+      return NextResponse.json({ error: "DB update failed" }, { status: 500 });
+    }
 
-      const startFlusher = () => {
-        if (flushTimer !== null) return;
-        flushTimer = window.setInterval(() => {
-          if (pending.length === 0) return;
-          // append pending to live bubble and to final accumulator
-          setPartial((prev) => prev + pending);
-          accum += pending;
-          pending = "";
-        }, 50); // ~20fps feels natural; adjust if you want slower/faster typing
-      };
-      const stopFlusher = () => {
-        if (flushTimer !== null) {
-          window.clearInterval(flushTimer);
-          flushTimer = null;
-        }
-      };
-      // -----------------------------------------------
-
-      try {
-        const res = await postJSON("/api/assistant/stream", body, ctrl.signal);
-        if (!res.ok || !res.body) {
-          const txt = await res.text().catch(() => "");
-          throw new Error(txt || "Stream failed.");
-        }
-
-        startFlusher();
-
-        await readSseStream(res.body, (chunk) => {
-          // no space guessing — keep the raw stream
-          pending += chunk;
-        });
-
-        // final flush: push any leftover pending text
-        if (pending.length) {
-          setPartial((prev) => prev + pending);
-          accum += pending;
-          pending = "";
-        }
-
-        const final = normalizeMarkdown(accum);
-        const assistantMsg: ChatMessage = { role: "assistant", content: final };
-        setMessages((m) => [...m, assistantMsg]);
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "Failed to stream assistant.";
-        setError(msg);
-      } finally {
-        stopFlusher();
-        setSending(false);
-        setPartial("");
-        abortRef.current = null;
-      }
-    },
-    [messages, vehicle, context, canSend],
-  );
-
-  const sendChat = useCallback(
-    async (text: string) => {
-      const trimmed = text.trim();
-      if (!trimmed) return;
-      setMessages((m) => [...m, { role: "user", content: trimmed }]);
-      await streamToAssistant({});
-    },
-    [streamToAssistant],
-  );
-
-  const sendDtc = useCallback(
-    async (dtcCode: string, note?: string) => {
-      const code = dtcCode.trim().toUpperCase();
-      if (!code) return;
-      setMessages((m) => [
-        ...m,
-        { role: "user", content: `DTC: ${code}${note ? `\nNote: ${note}` : ""}` },
-      ]);
-      await streamToAssistant({});
-    },
-    [streamToAssistant],
-  );
-
-  const sendPhoto = useCallback(
-    async (file: File, note?: string) => {
-      if (!file) return;
-      setMessages((m) => [
-        ...m,
-        { role: "user", content: `Uploaded a photo.${note ? `\nNote: ${note}` : ""}` },
-      ]);
-      const buf = await file.arrayBuffer();
-      const b64 = Buffer.from(buf).toString("base64");
-      const mime = file.type || "image/jpeg";
-      const image_data = `data:${mime};base64,${b64}`;
-      await streamToAssistant({ image_data, note });
-    },
-    [streamToAssistant],
-  );
-
-  const cancel = useCallback(() => abortRef.current?.abort(), []);
-  const resetConversation = useCallback(() => {
-    abortRef.current?.abort();
-    abortRef.current = null;
-    setMessages([]);
-    setPartial("");
-    setError(null);
-  }, []);
-
-  const exportToWorkOrder = useCallback(
-    async (workOrderLineId: string) => {
-      if (!workOrderLineId) throw new Error("Missing work order line id.");
-      if (!canSend) throw new Error("Provide vehicle info before exporting.");
-
-      const res = await postJSON("/api/assistant/export", { vehicle, messages, workOrderLineId });
-      if (!res.ok) throw new Error((await res.text().catch(() => "")) || "Export failed.");
-
-      return (await res.json()) as {
-        cause: string;
-        correction: string;
-        estimatedLaborTime: number | null;
-      };
-    },
-    [messages, vehicle, canSend],
-  );
-
-  return {
-    vehicle, context, messages, partial,
-    setVehicle, setContext, setMessages,
-    sending, error,
-    sendChat, sendDtc, sendPhoto,
-    exportToWorkOrder, resetConversation, cancel,
-  };
+    return NextResponse.json(parsed);
+  } catch (err) {
+    console.error("assistant/export error:", err);
+    return NextResponse.json({ error: "Export failed" }, { status: 500 });
+  }
 }
