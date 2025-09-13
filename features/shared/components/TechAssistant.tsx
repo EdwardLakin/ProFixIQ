@@ -1,3 +1,4 @@
+// features/shared/components/TechAssistant.tsx
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
@@ -5,16 +6,16 @@ import {
   useTechAssistant,
   type Vehicle,
 } from "@/features/ai/hooks/useTechAssistant";
+
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-
-const LS_KEY = "profixiq:ta:v1";
 
 export default function TechAssistant({
   defaultVehicle,
   workOrderLineId,
 }: {
   defaultVehicle?: Vehicle;
+  /** If provided, shows an “Export to Work Order” button */
   workOrderLineId?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -26,38 +27,11 @@ export default function TechAssistant({
   const {
     vehicle, setVehicle,
     context, setContext,
-    messages, setMessages,
-    sending, error,
+    messages, sending, partial, error,
     sendChat, sendDtc, sendPhoto,
     exportToWorkOrder,
     resetConversation, cancel,
   } = useTechAssistant();
-
-  /* ---------- persist/restore (vehicle, context, messages) ---------- */
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(LS_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as {
-        vehicle?: Vehicle;
-        context?: string;
-        messages?: { role: "user" | "assistant"; content: string }[];
-      };
-      if (parsed.vehicle) setVehicle(parsed.vehicle);
-      if (typeof parsed.context === "string") setContext(parsed.context);
-      if (Array.isArray(parsed.messages) && parsed.messages.length > 0) {
-        setMessages(parsed.messages);
-      }
-    } catch {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    try {
-      const payload = JSON.stringify({ vehicle, context, messages });
-      localStorage.setItem(LS_KEY, payload);
-    } catch {}
-  }, [vehicle, context, messages]);
 
   // Seed default vehicle once (but don't clobber a restored vehicle)
   useEffect(() => {
@@ -199,6 +173,12 @@ export default function TechAssistant({
           Cancel
         </button>
       </div>
+
+      {!dtcValid && dtc.length > 0 && (
+        <div className="text-xs text-red-400 -mt-1">
+          Enter a valid OBD-II code (e.g. P0131).
+        </div>
+      )}
     </>
   );
 
@@ -226,6 +206,13 @@ export default function TechAssistant({
                     h3: ({ children }) => <h3 className="text-sm font-semibold mt-2 mb-1">{children}</h3>,
                     p:  ({ children }) => <p className="my-1">{children}</p>,
                     strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                    table: ({ children }) => (
+                      <div className="overflow-x-auto">
+                        <table className="my-2 w-full border-collapse">{children}</table>
+                      </div>
+                    ),
+                    th: ({ children }) => <th className="border px-2 py-1 text-left">{children}</th>,
+                    td: ({ children }) => <td className="border px-2 py-1">{children}</td>,
                   }}
                 >
                   {m.content}
@@ -242,7 +229,17 @@ export default function TechAssistant({
         );
       })}
 
-      {messages.length === 0 && !sending && (
+      {(sending || partial.length > 0) && (
+        <div className="max-w-[85%] mr-auto rounded px-3 py-2 text-sm bg-neutral-700 text-neutral-100 opacity-90">
+          <div className="prose prose-invert prose-sm markdown">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {partial.length > 0 ? partial : "Assistant is typing…"}
+            </ReactMarkdown>
+          </div>
+        </div>
+      )}
+
+      {messages.length === 0 && !sending && partial.length === 0 && (
         <div className="text-xs text-neutral-400">
           Start by entering the vehicle, then ask a question, paste a DTC, or send a photo.
         </div>

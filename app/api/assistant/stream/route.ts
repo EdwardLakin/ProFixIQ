@@ -32,9 +32,9 @@ const sseHeaders: Record<string, string> = {
 const hasVehicle = (v?: Vehicle): v is Vehicle =>
   Boolean(v?.year && v?.make && v?.model);
 
-// strip any accidental control tokens from model output
+// simple sanitize for any accidental transport tokens in model text
 const sanitize = (s: string) =>
-  s.replace(/\b(event:\s*done|data:\s*\[DONE\])\b/gi, "").trim();
+  s.replace(/\b(event:\s*done|data:\s*\[DONE\])\b/gi, "");
 
 function systemFor(v: Vehicle, context?: string): string {
   const vdesc = `${v.year} ${v.make} ${v.model}`;
@@ -42,17 +42,24 @@ function systemFor(v: Vehicle, context?: string): string {
 
   return [
     `You are a master automotive technician assistant for a ${vdesc}.`,
-    `Style (match ChatGPT):`,
-    `- Use plain **Markdown** with normal spacing.`,
-    `- Put a blank line between paragraphs/sections.`,
-    `- Prefer bullet lists and numbered steps.`,
-    `- Use clear headings: “### Summary”, “### Procedure”, “### Notes / Cautions”.`,
-
-    `Follow-ups:`,
-    `- Answer ONLY the latest question; do not repeat previous procedures unless asked.`,
-    `- For torque/specs: provide typical ranges only if widely known and label them "Typical". Otherwise say to verify in OE service info (VIN/engine/trim) and where to find it.`,
-
-    `Do **not** include any transport markers like "event: done" or "data: [DONE]".`,
+    `Always answer in clean **Markdown** with proper newlines and spacing.`,
+    `When the user asks for procedures, structure exactly as:`,
+    `### Summary`,
+    `- 1–2 bullets, concise`,
+    ``,
+    `### Procedure`,
+    `1. Step`,
+    `2. Step`,
+    `3. Step`,
+    ``,
+    `### Notes / Cautions`,
+    `- Bulleted cautions/specs/checks`,
+    ``,
+    `If the user asks for torque/spec values, include a compact Markdown table`,
+    `with headers **Component** | **Torque Spec** (or unit/spec column that fits).`,
+    ``,
+    `Follow-up behavior: answer ONLY the latest question without reprinting the full prior procedure unless it was explicitly requested.`,
+    `Do **not** include transport markers like "event: done" or "data: [DONE]".`,
     ctx,
   ].join("\n");
 }
@@ -74,6 +81,7 @@ export async function POST(req: Request) {
     }
 
     const body = (await req.json()) as Body;
+
     if (!hasVehicle(body.vehicle)) {
       return new NextResponse(
         `event: error\ndata: Missing vehicle info (year, make, model)\n\nevent: done\ndata: [DONE]\n\n`,
@@ -88,7 +96,7 @@ export async function POST(req: Request) {
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
-      temperature: 0.5,
+      temperature: 0.4,
       stream: true,
       messages,
     });

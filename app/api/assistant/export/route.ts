@@ -1,123 +1,151 @@
-// app/api/assistant/export/route.ts
+export const runtime = "edge";
+export const dynamic = "force-dynamic";
+
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
-import { createClient } from "@supabase/supabase-js";
-import type { Database } from "@shared/types/types/supabase";
+import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 type Vehicle = { year: string; make: string; model: string };
+type TextPart = { type: "text"; text: string };
+type ImagePart = { type: "image_url"; image_url: { url: string } };
 
-type ParsedSummary = {
-  cause: string;
-  correction: string;
-  estimatedLaborTime: number | null;
+type ClientMessage =
+  | { role: "user" | "assistant" | "system"; content: string }
+  | { role: "user"; content: (TextPart | ImagePart)[] };
+
+interface Body {
+  vehicle?: Vehicle;
+  messages?: ClientMessage[];
+  context?: string;
+  /** NEW: base64 data URL for photo uploads */
+  image_data?: string;
+  /** Optional helper text to accompany the image */
+  image_note?: string;
+}
+
+const sseHeaders: Record<string, string> = {
+  "Content-Type": "text/event-stream; charset=utf-8",
+  "Cache-Control": "no-cache, no-transform",
+  Connection: "keep-alive",
+  "Transfer-Encoding": "chunked",
+  "X-Accel-Buffering": "no",
 };
 
-// Lazily create admin client at REQUEST time (not import time)
-function getAdminSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
-  if (!url || !serviceKey) throw new Error("Supabase URL or Service Role key is missing");
-  return createClient<Database>(url, serviceKey);
+const hasVehicle = (v?: Vehicle): v is Vehicle =>
+  Boolean(v?.year && v?.make && v?.model);
+
+// Remove any accidental transport tokens that might slip through
+const sanitize = (s: string) =>
+  s.replace(/\b(event:\s*done|data:\s*\[DONE\])\b/gi, "").trim();
+
+function systemFor(v: Vehicle, context?: string): string {
+  const vdesc = `${v.year} ${v.make} ${v.model}`;
+  const ctx = context?.trim() ? `\nContext:\n${context.trim()}` : "";
+
+  return [
+    `You are a master automotive technician assistant for a ${vdesc}.`,
+    `Formatting rules (VERY IMPORTANT):`,
+    `- Use **Markdown**. Headings and bullet/numbered lists must include line breaks.`,
+    `- Output sections in this order when the user asks for procedures:`,
+    `  ### Summary`,
+    `  - (1–2 bullets, concise)`,
+    `  `,
+    `  ### Procedure`,
+    `  1. Step`,
+    `  2. Step`,
+    `  3. Step`,
+    `  `,
+    `  ### Notes / Cautions`,
+    `  - Bullet list of cautions, specs, or checks`,
+    `- Do **NOT** include trailing markers like "event: done", "data: [DONE]", or any transport metadata.`,
+    ``,
+    `Follow-up behavior (CRITICAL):`,
+    `- Focus ONLY on the user's latest question.`,
+    `- If the latest question is narrow (e.g., torque spec, single step, tool size), answer just that with a short heading and bullet(s).`,
+    `- Do **not** repeat the entire procedure unless the user asked for it again.`,
+    `- For specs: provide typical ranges only if commonly known and clearly label them as "Typical". If the exact spec is required, say to verify in OE service info (VIN/engine/trim) and where to find it.`,
+    ``,
+    `Safety & accuracy:`,
+    `- Prefer checks and decision points the tech can follow.`,
+    `- If unsure of a number, say what to verify next. Never invent exact figures.`,
+    ctx,
+  ].join("\n");
 }
 
-function isParsedSummary(v: unknown): v is ParsedSummary {
-  if (typeof v !== "object" || v === null) return false;
-  const obj = v as Record<string, unknown>;
-  const causeOk = typeof obj.cause === "string";
-  const correctionOk = typeof obj.correction === "string";
-  const elt = obj.estimatedLaborTime;
-  const eltOk = elt === null || (typeof elt === "number" && Number.isFinite(elt));
-  return causeOk && correctionOk && eltOk;
+function toOpenAIMessage(m: ClientMessage): ChatCompletionMessageParam {
+  return Array.isArray(m.content) ? { role: "user", content: m.content } : m;
 }
+
+const enc = (s: string) => new TextEncoder().encode(s);
+const lineSafe = (s: unknown) => String(s).replace(/[\r\n]+/g, " ");
 
 export async function POST(req: Request) {
   try {
     if (!process.env.OPENAI_API_KEY) {
-      return NextResponse.json({ error: "OPENAI_API_KEY is not set" }, { status: 500 });
-    }
-
-    const supabase = getAdminSupabase();
-
-    const payload = (await req.json()) as {
-      vehicle: Vehicle;
-      workOrderLineId: string;
-      messages: { role: "system" | "user" | "assistant"; content: string }[];
-      context?: string;
-    };
-
-    const { vehicle, workOrderLineId, messages, context } = payload;
-
-    if (!vehicle?.year || !vehicle?.make || !vehicle?.model || !workOrderLineId) {
-      return NextResponse.json({ error: "Missing inputs" }, { status: 400 });
-    }
-
-    const vdesc = `${vehicle.year} ${vehicle.make} ${vehicle.model}`;
-
-    const systemPrompt = [
-      `You are a master automotive diagnostic assistant summarizing a completed diagnostic conversation for a ${vdesc}.`,
-      `Return ONLY a single JSON object with this exact shape:`,
-      `{"cause": string, "correction": string, "estimatedLaborTime": number | null}`,
-      `- "cause": one-sentence root cause.`,
-      `- "correction": one- or two-sentence repair performed / recommended.`,
-      `- "estimatedLaborTime": hours as a number (e.g., 1.2), or null if unknown.`,
-      `No extra keys, no markdown, no prose.`,
-    ].join("\n");
-
-    const chat = await openai.chat.completions.create({
-      model: "gpt-4o",
-      temperature: 0.2,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: systemPrompt },
-        ...(context?.trim() ? [{ role: "user" as const, content: `Context:\n${context}` }] : []),
-        ...messages.map((m) => ({ role: m.role, content: m.content })),
-        { role: "user", content: "Return ONLY the JSON object." },
-      ],
-      max_tokens: 400,
-    });
-
-    const raw = chat.choices?.[0]?.message?.content ?? "{}";
-
-    // Parse safely without `any`
-    let parsedUnknown: unknown;
-    try {
-      parsedUnknown = JSON.parse(raw);
-    } catch {
-      const cleaned = raw.replace(/^\s*```json\s*|\s*```\s*$/g, "");
-      parsedUnknown = JSON.parse(cleaned);
-    }
-
-    if (!isParsedSummary(parsedUnknown)) {
-      return NextResponse.json(
-        { error: "Model returned invalid JSON shape", raw },
-        { status: 502 },
+      return new NextResponse(
+        `event: error\ndata: Server missing OPENAI_API_KEY\n\nevent: done\ndata: [DONE]\n\n`,
+        { headers: sseHeaders, status: 500 },
       );
     }
 
-    const { cause, correction, estimatedLaborTime } = parsedUnknown;
-
-    const { error } = await supabase
-      .from("work_order_lines")
-      .update({
-        cause,
-        correction,
-        labor_time:
-          typeof estimatedLaborTime === "number" && Number.isFinite(estimatedLaborTime)
-            ? estimatedLaborTime
-            : null,
-      })
-      .eq("id", workOrderLineId);
-
-    if (error) {
-      console.error("Supabase update error:", error);
-      return NextResponse.json({ error: "DB update failed" }, { status: 500 });
+    const body: Body = await req.json();
+    if (!hasVehicle(body.vehicle)) {
+      return new NextResponse(
+        `event: error\ndata: Missing vehicle info (year, make, model)\n\nevent: done\ndata: [DONE]\n\n`,
+        { headers: sseHeaders, status: 400 },
+      );
     }
 
-    return NextResponse.json(parsedUnknown);
+    // Build message list
+    const base: ChatCompletionMessageParam[] = [
+      { role: "system", content: systemFor(body.vehicle, body.context) },
+      ...(body.messages ?? []).map(toOpenAIMessage),
+    ];
+
+    // If an image was uploaded, append a multi-modal user message
+    if (body.image_data) {
+      const note = (body.image_note ?? "").trim();
+      const multimodal: ClientMessage = {
+        role: "user",
+        content: [
+          ...(note ? [{ type: "text", text: `Photo note: ${note}` } as TextPart] : []),
+          { type: "image_url", image_url: { url: body.image_data } } as ImagePart,
+        ],
+      };
+      base.push(toOpenAIMessage(multimodal));
+    }
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      temperature: 0.5,
+      stream: true,
+      messages: base,
+    });
+
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        try {
+          for await (const part of completion) {
+            const delta = part.choices?.[0]?.delta?.content ?? "";
+            if (delta) controller.enqueue(enc(`data: ${sanitize(delta)}\n\n`));
+          }
+          controller.enqueue(enc(`event: done\ndata: [DONE]\n\n`));
+          controller.close();
+        } catch (err) {
+          controller.enqueue(enc(`event: error\ndata: ${lineSafe((err as Error).message)}\n\n`));
+          controller.enqueue(enc(`event: done\ndata: [DONE]\n\n`));
+          controller.close();
+        }
+      },
+    });
+
+    return new NextResponse(stream, { headers: sseHeaders });
   } catch (err) {
-    console.error("assistant/export error:", err);
-    return NextResponse.json({ error: "Export failed" }, { status: 500 });
+    return new NextResponse(
+      `event: error\ndata: ${lineSafe((err as Error).message)}\n\nevent: done\ndata: [DONE]\n\n`,
+      { headers: sseHeaders, status: 500 },
+    );
   }
 }

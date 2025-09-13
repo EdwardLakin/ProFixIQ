@@ -1,4 +1,3 @@
-// features/ai/hooks/useTechAssistant.ts
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -13,37 +12,14 @@ export type Vehicle = {
 
 type AssistantOptions = { defaultVehicle?: Vehicle; defaultContext?: string };
 
-/** Join stream chunks while preserving natural spacing between words. */
+// Join streaming chunks while keeping natural spacing between words
 function mergeChunks(prev: string, next: string): string {
   if (!next) return prev;
   if (!prev) return next;
-  const last = prev.at(-1) ?? "";
+  const last = prev[prev.length - 1] ?? "";
   const first = next[0] ?? "";
   const isWord = (c: string) => /[A-Za-z0-9]/.test(c);
   return isWord(last) && isWord(first) ? prev + " " + next : prev + next;
-}
-
-/** Light cleanup to make Markdown render like ChatGPT. */
-function normalizeMarkdown(s: string): string {
-  let out = s;
-
-  // Ensure headings start on their own lines
-  out = out.replace(/\s*#{2,6}\s*/g, (m) => `\n${m.trim()} `);
-
-  // Ensure list bullets/numbers have preceding line breaks
-  out = out.replace(/(?:^|\S)\s*[-•]\s/g, (m) => `${m.startsWith("\n") ? "" : "\n"}- `);
-  out = out.replace(/(?:^|\n)(\d+)\.\s*/g, (_m, n) => `\n${n}. `);
-
-  // Collapse over-tight punctuation like ".-" or ":-" into ". " / ": "
-  out = out.replace(/([.:;!?,])-(\S)/g, "$1 $2");
-
-  // Remove any stray transport tokens that might slip through
-  out = out.replace(/\b(event:\s*done|data:\s*\[DONE\])\b/gi, "");
-
-  // Trim and de-dupe blank lines a bit
-  out = out.replace(/\n{3,}/g, "\n\n").trim();
-
-  return out;
 }
 
 async function fileToDataUrl(file: File): Promise<string> {
@@ -53,7 +29,7 @@ async function fileToDataUrl(file: File): Promise<string> {
   return `data:${mime};base64,${b64}`;
 }
 
-/** Parse OpenAI-native SSE (`data: {choices:[{delta:{content}}]}` / `[DONE]`). */
+/** Parse native OpenAI SSE stream (data: {...}/[DONE]) and surface text chunks */
 async function readSseStream(
   body: ReadableStream<Uint8Array>,
   onChunk: (text: string) => void,
@@ -82,12 +58,9 @@ async function readSseStream(
           choices?: Array<{ delta?: { content?: string }; text?: string }>;
         };
         const piece =
-          obj?.choices?.[0]?.delta?.content ??
-          obj?.choices?.[0]?.text ??
-          "";
+          obj?.choices?.[0]?.delta?.content ?? obj?.choices?.[0]?.text ?? "";
         if (piece) onChunk(piece);
       } catch {
-        // If the server ever sends plain text, still render it
         onChunk(line);
       }
     }
@@ -119,8 +92,9 @@ export function useTechAssistant(opts?: AssistantOptions) {
     [vehicle],
   );
 
+  /** Core streamer; accepts optional payload like { image_data, image_note } */
   const streamToAssistant = useCallback(
-    async (payload: Record<string, unknown>) => {
+    async (payload: Record<string, unknown> = {}) => {
       if (!canSend) {
         setError("Please provide vehicle info (year, make, model).");
         return;
@@ -143,14 +117,11 @@ export function useTechAssistant(opts?: AssistantOptions) {
 
         let accum = "";
         await readSseStream(res.body, (chunk) => {
-          // live bubble grows inside the right-hand assistant message
           setPartial((prev) => mergeChunks(prev, chunk));
-          // keep a final assembled copy to commit as one message
           accum = mergeChunks(accum, chunk);
         });
 
-        const finalized = normalizeMarkdown(accum.trim());
-        const assistantMsg: ChatMessage = { role: "assistant", content: finalized };
+        const assistantMsg: ChatMessage = { role: "assistant", content: accum.trim() };
         setMessages((m) => [...m, assistantMsg]);
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Failed to stream assistant.";
@@ -164,16 +135,18 @@ export function useTechAssistant(opts?: AssistantOptions) {
     [messages, vehicle, context, canSend],
   );
 
+  /** Plain chat */
   const sendChat = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed) return;
       setMessages((m) => [...m, { role: "user", content: trimmed }]);
-      await streamToAssistant({});
+      await streamToAssistant();
     },
     [streamToAssistant],
   );
 
+  /** DTC helper */
   const sendDtc = useCallback(
     async (dtcCode: string, note?: string) => {
       const code = dtcCode.trim().toUpperCase();
@@ -182,21 +155,25 @@ export function useTechAssistant(opts?: AssistantOptions) {
         ...m,
         { role: "user", content: `DTC: ${code}${note ? `\nNote: ${note}` : ""}` },
       ]);
-      await streamToAssistant({});
+      await streamToAssistant();
     },
     [streamToAssistant],
   );
 
+  /** PHOTO: send a visible note to the chat and pass base64 image to the server */
   const sendPhoto = useCallback(
     async (file: File, note?: string) => {
       if (!file) return;
-      // Let the thread know a photo was sent (useful context)
+
+      // Show an anchor message in the chat
       setMessages((m) => [
         ...m,
         { role: "user", content: `Uploaded a photo.${note ? `\nNote: ${note}` : ""}` },
       ]);
+
+      // Convert to data URL and pass to server (this is what OpenAI expects for images)
       const image_data = await fileToDataUrl(file);
-      await streamToAssistant({ image_data });
+      await streamToAssistant({ image_data, image_note: note ?? "" });
     },
     [streamToAssistant],
   );
@@ -210,6 +187,7 @@ export function useTechAssistant(opts?: AssistantOptions) {
     setError(null);
   }, []);
 
+  /** Export summarization */
   const exportToWorkOrder = useCallback(
     async (workOrderLineId: string) => {
       if (!workOrderLineId) throw new Error("Missing work order line id.");
@@ -228,20 +206,10 @@ export function useTechAssistant(opts?: AssistantOptions) {
   );
 
   return {
-    vehicle,
-    context,
-    messages,
-    partial,
-    setVehicle,
-    setContext,
-    setMessages,
-    sending,
-    error,
-    sendChat,
-    sendDtc,
-    sendPhoto,
-    exportToWorkOrder,
-    resetConversation,
-    cancel,
+    vehicle, context, messages, partial,
+    setVehicle, setContext, setMessages,
+    sending, error,
+    sendChat, sendDtc, sendPhoto,
+    exportToWorkOrder, resetConversation, cancel,
   };
 }
