@@ -36,9 +36,14 @@ export default function TechAssistant({
     resetConversation, cancel,
   } = useTechAssistant();
 
-  // Seed default vehicle once
+  // Seed default vehicle once (but don't clobber a restored vehicle)
   useEffect(() => {
-    if (defaultVehicle && !vehicle) setVehicle(defaultVehicle);
+    if (
+      defaultVehicle &&
+      (!vehicle || (!vehicle.year && !vehicle.make && !vehicle.model))
+    ) {
+      setVehicle(defaultVehicle);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultVehicle]);
 
