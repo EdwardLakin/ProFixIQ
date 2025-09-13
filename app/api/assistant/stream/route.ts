@@ -29,13 +29,12 @@ const sseHeaders: Record<string, string> = {
   "X-Accel-Buffering": "no",
 };
 
-const enc = (s: string) => new TextEncoder().encode(s);
-const lineSafe = (s: unknown) => String(s).replace(/[\r\n]+/g, " ");
-const sanitize = (s: string) =>
-  s.replace(/\b(event:\s*done|data:\s*\[DONE\])\b/gi, "").trim();
-
 const hasVehicle = (v?: Vehicle): v is Vehicle =>
   Boolean(v?.year && v?.make && v?.model);
+
+// strip any accidental control tokens from model output
+const sanitize = (s: string) =>
+  s.replace(/\b(event:\s*done|data:\s*\[DONE\])\b/gi, "").trim();
 
 function systemFor(v: Vehicle, context?: string): string {
   const vdesc = `${v.year} ${v.make} ${v.model}`;
@@ -43,31 +42,17 @@ function systemFor(v: Vehicle, context?: string): string {
 
   return [
     `You are a master automotive technician assistant for a ${vdesc}.`,
-    `Formatting rules (VERY IMPORTANT):`,
-    `- Use **Markdown**. Headings and bullet/numbered lists must include line breaks.`,
-    `- Put a BLANK LINE between sections and between a heading and its list.`,
-    `- Output sections in this order when the user asks for procedures:`,
-    `  ### Summary`,
-    `  - (1–2 bullets, concise)`,
-    ``,
-    `  ### Procedure`,
-    `  1. Step`,
-    `  2. Step`,
-    `  3. Step`,
-    ``,
-    `  ### Notes / Cautions`,
-    `  - Bullet list of cautions, specs, or checks`,
-    `- Do **NOT** include trailing markers like "event: done", "data: [DONE]", or any transport metadata.`,
-    ``,
-    `Follow-up behavior (CRITICAL):`,
-    `- Focus ONLY on the user's latest question.`,
-    `- If the latest question is narrow (e.g., torque spec, single step, tool size), answer just that with a short heading and bullet(s).`,
-    `- Do **not** repeat the entire procedure unless the user asked for it again.`,
-    `- For specs: provide typical ranges only if commonly known and clearly label them as "Typical".`,
-    ``,
-    `Safety & accuracy:`,
-    `- Prefer checks and decision points the tech can follow.`,
-    `- use educated estimations for values and figures. Never invent exact figures.`,
+    `Style (match ChatGPT):`,
+    `- Use plain **Markdown** with normal spacing.`,
+    `- Put a blank line between paragraphs/sections.`,
+    `- Prefer bullet lists and numbered steps.`,
+    `- Use clear headings: “### Summary”, “### Procedure”, “### Notes / Cautions”.`,
+
+    `Follow-ups:`,
+    `- Answer ONLY the latest question; do not repeat previous procedures unless asked.`,
+    `- For torque/specs: provide typical ranges only if widely known and label them "Typical". Otherwise say to verify in OE service info (VIN/engine/trim) and where to find it.`,
+
+    `Do **not** include any transport markers like "event: done" or "data: [DONE]".`,
     ctx,
   ].join("\n");
 }
@@ -75,6 +60,9 @@ function systemFor(v: Vehicle, context?: string): string {
 function toOpenAIMessage(m: ClientMessage): ChatCompletionMessageParam {
   return Array.isArray(m.content) ? { role: "user", content: m.content } : m;
 }
+
+const enc = (s: string) => new TextEncoder().encode(s);
+const lineSafe = (s: unknown) => String(s).replace(/[\r\n]+/g, " ");
 
 export async function POST(req: Request) {
   try {
