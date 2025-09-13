@@ -1,3 +1,4 @@
+// features/ai/hooks/useTechAssistant.ts
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -12,6 +13,39 @@ export type Vehicle = {
 
 type AssistantOptions = { defaultVehicle?: Vehicle; defaultContext?: string };
 
+/** Join stream chunks while preserving natural spacing between words. */
+function mergeChunks(prev: string, next: string): string {
+  if (!next) return prev;
+  if (!prev) return next;
+  const last = prev.at(-1) ?? "";
+  const first = next[0] ?? "";
+  const isWord = (c: string) => /[A-Za-z0-9]/.test(c);
+  return isWord(last) && isWord(first) ? prev + " " + next : prev + next;
+}
+
+/** Light cleanup to make Markdown render like ChatGPT. */
+function normalizeMarkdown(s: string): string {
+  let out = s;
+
+  // Ensure headings start on their own lines
+  out = out.replace(/\s*#{2,6}\s*/g, (m) => `\n${m.trim()} `);
+
+  // Ensure list bullets/numbers have preceding line breaks
+  out = out.replace(/(?:^|\S)\s*[-•]\s/g, (m) => `${m.startsWith("\n") ? "" : "\n"}- `);
+  out = out.replace(/(?:^|\n)(\d+)\.\s*/g, (_m, n) => `\n${n}. `);
+
+  // Collapse over-tight punctuation like ".-" or ":-" into ". " / ": "
+  out = out.replace(/([.:;!?,])-(\S)/g, "$1 $2");
+
+  // Remove any stray transport tokens that might slip through
+  out = out.replace(/\b(event:\s*done|data:\s*\[DONE\])\b/gi, "");
+
+  // Trim and de-dupe blank lines a bit
+  out = out.replace(/\n{3,}/g, "\n\n").trim();
+
+  return out;
+}
+
 async function fileToDataUrl(file: File): Promise<string> {
   const buf = await file.arrayBuffer();
   const b64 = Buffer.from(buf).toString("base64");
@@ -19,41 +53,7 @@ async function fileToDataUrl(file: File): Promise<string> {
   return `data:${mime};base64,${b64}`;
 }
 
-/** Merge streaming chunks while preserving natural spacing (ChatGPT-like). */
-function mergeChunks(prev: string, next: string): string {
-  if (!next) return prev;
-  if (!prev) return next;
-
-  const last = prev.at(-1) ?? "";
-  const first = next[0] ?? "";
-  const isWord = (c: string) => /[A-Za-z0-9]/.test(c);
-
-  // word join
-  if (isWord(last) && isWord(first)) return prev + " " + next;
-  // "###Summary" / "##Heading" join
-  if ((prev.endsWith("###") || prev.endsWith("##") || prev.endsWith("#")) && isWord(first))
-    return prev + " " + next;
-  // "-Step" or "*Note"
-  if ((last === "-" || last === "*") && isWord(first)) return prev + " " + next;
-  // sentence continuation
-  if (last === "." && isWord(first)) return prev + " " + next;
-
-  return prev + next;
-}
-
-/** Final tidy pass so Markdown renders like ChatGPT output. */
-function normalizeMarkdown(s: string): string {
-  let out = s;
-  // Ensure space after headings: "###Summary" -> "### Summary"
-  out = out.replace(/(#{1,6})([A-Za-z0-9])/g, "$1 $2");
-  // Ensure "-Step"/"*Step" -> "- Step"
-  out = out.replace(/(^|\n)([\-\*])([A-Za-z0-9])/g, "$1$2 $3");
-  // Blank line before headings
-  out = out.replace(/([^\n])\n(#{1,6}\s)/g, "$1\n\n$2");
-  return out;
-}
-
-/** Parse OpenAI native SSE lines and surface delta text */
+/** Parse OpenAI-native SSE (`data: {choices:[{delta:{content}}]}` / `[DONE]`). */
 async function readSseStream(
   body: ReadableStream<Uint8Array>,
   onChunk: (text: string) => void,
@@ -87,6 +87,7 @@ async function readSseStream(
           "";
         if (piece) onChunk(piece);
       } catch {
+        // If the server ever sends plain text, still render it
         onChunk(line);
       }
     }
@@ -141,13 +142,15 @@ export function useTechAssistant(opts?: AssistantOptions) {
         }
 
         let accum = "";
-          await readSseStream(res.body, (chunk) => {
-          const mergedLive = mergeChunks(partial.length ? partial : "", chunk);
-          setPartial(normalizeMarkdown(mergedLive));
-          accum = normalizeMarkdown(mergeChunks(accum, chunk));
+        await readSseStream(res.body, (chunk) => {
+          // live bubble grows inside the right-hand assistant message
+          setPartial((prev) => mergeChunks(prev, chunk));
+          // keep a final assembled copy to commit as one message
+          accum = mergeChunks(accum, chunk);
         });
 
-        const assistantMsg: ChatMessage = { role: "assistant", content: accum.trim() };
+        const finalized = normalizeMarkdown(accum.trim());
+        const assistantMsg: ChatMessage = { role: "assistant", content: finalized };
         setMessages((m) => [...m, assistantMsg]);
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Failed to stream assistant.";
@@ -158,7 +161,7 @@ export function useTechAssistant(opts?: AssistantOptions) {
         abortRef.current = null;
       }
     },
-    [messages, vehicle, context, canSend, partial],
+    [messages, vehicle, context, canSend],
   );
 
   const sendChat = useCallback(
@@ -187,12 +190,12 @@ export function useTechAssistant(opts?: AssistantOptions) {
   const sendPhoto = useCallback(
     async (file: File, note?: string) => {
       if (!file) return;
+      // Let the thread know a photo was sent (useful context)
       setMessages((m) => [
         ...m,
         { role: "user", content: `Uploaded a photo.${note ? `\nNote: ${note}` : ""}` },
       ]);
       const image_data = await fileToDataUrl(file);
-      setMessages((m) => [...m, { role: "user", content: `[image sent]\n${note ?? ""}` }]);
       await streamToAssistant({ image_data });
     },
     [streamToAssistant],
@@ -225,10 +228,20 @@ export function useTechAssistant(opts?: AssistantOptions) {
   );
 
   return {
-    vehicle, context, messages, partial,
-    setVehicle, setContext, setMessages,
-    sending, error,
-    sendChat, sendDtc, sendPhoto,
-    exportToWorkOrder, resetConversation, cancel,
+    vehicle,
+    context,
+    messages,
+    partial,
+    setVehicle,
+    setContext,
+    setMessages,
+    sending,
+    error,
+    sendChat,
+    sendDtc,
+    sendPhoto,
+    exportToWorkOrder,
+    resetConversation,
+    cancel,
   };
 }

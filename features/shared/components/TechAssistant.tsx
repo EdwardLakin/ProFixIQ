@@ -1,4 +1,3 @@
-// features/shared/components/TechAssistant.tsx
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
@@ -6,35 +5,59 @@ import {
   useTechAssistant,
   type Vehicle,
 } from "@/features/ai/hooks/useTechAssistant";
-
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+
+const LS_KEY = "profixiq:ta:v1";
 
 export default function TechAssistant({
   defaultVehicle,
   workOrderLineId,
 }: {
   defaultVehicle?: Vehicle;
-  /** If provided, shows an “Export to Work Order” button */
   workOrderLineId?: string;
 }) {
-  // refs
   const inputRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // local UI state
   const [dtc, setDtc] = useState("");
   const [note, setNote] = useState("");
 
-  // hook
   const {
     vehicle, setVehicle,
     context, setContext,
-    messages, sending, partial, error,
+    messages, setMessages,
+    sending, error,
     sendChat, sendDtc, sendPhoto,
     exportToWorkOrder,
     resetConversation, cancel,
   } = useTechAssistant();
+
+  /* ---------- persist/restore (vehicle, context, messages) ---------- */
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as {
+        vehicle?: Vehicle;
+        context?: string;
+        messages?: { role: "user" | "assistant"; content: string }[];
+      };
+      if (parsed.vehicle) setVehicle(parsed.vehicle);
+      if (typeof parsed.context === "string") setContext(parsed.context);
+      if (Array.isArray(parsed.messages) && parsed.messages.length > 0) {
+        setMessages(parsed.messages);
+      }
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    try {
+      const payload = JSON.stringify({ vehicle, context, messages });
+      localStorage.setItem(LS_KEY, payload);
+    } catch {}
+  }, [vehicle, context, messages]);
 
   // Seed default vehicle once (but don't clobber a restored vehicle)
   useEffect(() => {
@@ -47,7 +70,6 @@ export default function TechAssistant({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultVehicle]);
 
-  // handlers
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     const text = inputRef.current?.value?.trim();
@@ -60,7 +82,6 @@ export default function TechAssistant({
     /^([PBUC])\d{4}$/i.test(dtc.trim()) ||
     /^P0\d{3}$/i.test(dtc.trim());
 
-  // small helpers
   const VehicleInputs = (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
       <input
@@ -95,7 +116,6 @@ export default function TechAssistant({
 
   const ControlsRow = (
     <>
-      {/* Chat input */}
       <form onSubmit={onSubmit} className="flex gap-2">
         <input
           ref={inputRef}
@@ -114,7 +134,6 @@ export default function TechAssistant({
         </button>
       </form>
 
-      {/* DTC / Notes / Photo / Reset / Cancel */}
       <div className="flex flex-wrap items-center gap-2">
         <input
           className="w-28 rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-400"
@@ -180,12 +199,6 @@ export default function TechAssistant({
           Cancel
         </button>
       </div>
-
-      {!dtcValid && dtc.length > 0 && (
-        <div className="text-xs text-red-400 -mt-1">
-          Enter a valid OBD-II code (e.g. P0131).
-        </div>
-      )}
     </>
   );
 
@@ -199,7 +212,6 @@ export default function TechAssistant({
           ? "ml-auto bg-orange-600 text-black"
           : "mr-auto bg-neutral-700 text-neutral-100";
 
-        // Assistant → render Markdown (GFM lists, headings, bold, etc.)
         if (!isUser) {
           return (
             <div key={i} className={`${bubbleBase} ${bubbleClass}`}>
@@ -223,7 +235,6 @@ export default function TechAssistant({
           );
         }
 
-        // User → plain text bubble
         return (
           <div key={i} className={`${bubbleBase} ${bubbleClass}`}>
             {m.content}
@@ -231,18 +242,7 @@ export default function TechAssistant({
         );
       })}
 
-      {/* Streaming bubble (Markdown too) */}
-      {(sending || partial.length > 0) && (
-        <div className="max-w-[85%] mr-auto rounded px-3 py-2 text-sm bg-neutral-700 text-neutral-100 opacity-90">
-          <div className="prose prose-invert prose-sm markdown">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {partial.length > 0 ? partial : "Assistant is typing…"}
-            </ReactMarkdown>
-          </div>
-        </div>
-      )}
-
-      {messages.length === 0 && !sending && partial.length === 0 && (
+      {messages.length === 0 && !sending && (
         <div className="text-xs text-neutral-400">
           Start by entering the vehicle, then ask a question, paste a DTC, or send a photo.
         </div>
@@ -252,12 +252,9 @@ export default function TechAssistant({
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm text-white">
-      {/* LEFT: Inputs */}
       <div className="space-y-4">
-        {/* Vehicle */}
         {VehicleInputs}
 
-        {/* Context */}
         <textarea
           className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-400"
           rows={3}
@@ -267,17 +264,14 @@ export default function TechAssistant({
           aria-label="Context"
         />
 
-        {/* Controls */}
         {ControlsRow}
 
-        {/* Error */}
         {error && (
           <div className="rounded border border-red-600 bg-red-950/40 text-red-200 px-3 py-2">
             {error}
           </div>
         )}
 
-        {/* Export to Work Order */}
         {workOrderLineId && (
           <div className="pt-2">
             <button
@@ -302,7 +296,6 @@ export default function TechAssistant({
         )}
       </div>
 
-      {/* RIGHT: Conversation */}
       <div>{Conversation}</div>
     </div>
   );
