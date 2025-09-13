@@ -12,24 +12,7 @@ export type Vehicle = {
 
 type AssistantOptions = { defaultVehicle?: Vehicle; defaultContext?: string };
 
-// Join streaming chunks while keeping natural spacing between words
-function mergeChunks(prev: string, next: string): string {
-  if (!next) return prev;
-  if (!prev) return next;
-  const last = prev[prev.length - 1] ?? "";
-  const first = next[0] ?? "";
-  const isWord = (c: string) => /[A-Za-z0-9]/.test(c);
-  return isWord(last) && isWord(first) ? prev + " " + next : prev + next;
-}
-
-async function fileToDataUrl(file: File): Promise<string> {
-  const buf = await file.arrayBuffer();
-  const b64 = Buffer.from(buf).toString("base64");
-  const mime = file.type || "image/jpeg";
-  return `data:${mime};base64,${b64}`;
-}
-
-/** Parse native OpenAI SSE stream (data: {...}/[DONE]) and surface text chunks */
+/** Stream reader for our plain-text SSE (lines like `data: <chunk>\n\n`) */
 async function readSseStream(
   body: ReadableStream<Uint8Array>,
   onChunk: (text: string) => void,
@@ -44,25 +27,17 @@ async function readSseStream(
 
     buffer += decoder.decode(value, { stream: true });
 
-    let idx: number;
-    while ((idx = buffer.indexOf("\n\n")) !== -1) {
-      const raw = buffer.slice(0, idx).trim();
-      buffer = buffer.slice(idx + 2);
+    let sep: number;
+    while ((sep = buffer.indexOf("\n\n")) !== -1) {
+      const raw = buffer.slice(0, sep).trim();
+      buffer = buffer.slice(sep + 2);
       if (!raw || raw.startsWith(":")) continue;
 
       const line = raw.startsWith("data:") ? raw.slice(5).trim() : raw;
       if (line === "[DONE]") return;
 
-      try {
-        const obj = JSON.parse(line) as {
-          choices?: Array<{ delta?: { content?: string }; text?: string }>;
-        };
-        const piece =
-          obj?.choices?.[0]?.delta?.content ?? obj?.choices?.[0]?.text ?? "";
-        if (piece) onChunk(piece);
-      } catch {
-        onChunk(line);
-      }
+      // We stream plain text (already de-SSE'd server-side), so pass through
+      onChunk(line);
     }
   }
 }
@@ -74,6 +49,27 @@ async function postJSON(url: string, data: unknown, signal?: AbortSignal): Promi
     body: JSON.stringify(data),
     signal,
   });
+}
+
+/** Final pass to make the message render like ChatGPT-style Markdown */
+function normalizeMarkdown(src: string): string {
+  let s = src;
+
+  // Remove any accidental transport markers
+  s = s.replace(/^\s*(event:\s*done|data:\s*\[DONE\])\s*$/gmi, "");
+
+  // Ensure a space after heading hashes and a blank line after headings
+  // e.g. "###Summary" -> "### Summary\n\n"
+  s = s.replace(/(#{1,6})([^\s#])/g, "$1 $2");
+  s = s.replace(/^(#{1,6} .+)\s*$/gm, "$1\n");
+
+  // Convert common bullets if the model used unicode bullets
+  s = s.replace(/[•·]\s*/g, "- ");
+
+  // Collapse triple+ newlines to at most double (clean but keeps spacing)
+  s = s.replace(/\n{3,}/g, "\n\n");
+
+  return s.trim();
 }
 
 export function useTechAssistant(opts?: AssistantOptions) {
@@ -92,9 +88,8 @@ export function useTechAssistant(opts?: AssistantOptions) {
     [vehicle],
   );
 
-  /** Core streamer; accepts optional payload like { image_data, image_note } */
   const streamToAssistant = useCallback(
-    async (payload: Record<string, unknown> = {}) => {
+    async (payload: Record<string, unknown>) => {
       if (!canSend) {
         setError("Please provide vehicle info (year, make, model).");
         return;
@@ -117,11 +112,13 @@ export function useTechAssistant(opts?: AssistantOptions) {
 
         let accum = "";
         await readSseStream(res.body, (chunk) => {
-          setPartial((prev) => mergeChunks(prev, chunk));
-          accum = mergeChunks(accum, chunk);
+          // 🚫 no space-guessing: just append verbatim
+          setPartial((prev) => prev + chunk);
+          accum += chunk;
         });
 
-        const assistantMsg: ChatMessage = { role: "assistant", content: accum.trim() };
+        const final = normalizeMarkdown(accum);
+        const assistantMsg: ChatMessage = { role: "assistant", content: final };
         setMessages((m) => [...m, assistantMsg]);
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Failed to stream assistant.";
@@ -135,18 +132,16 @@ export function useTechAssistant(opts?: AssistantOptions) {
     [messages, vehicle, context, canSend],
   );
 
-  /** Plain chat */
   const sendChat = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed) return;
       setMessages((m) => [...m, { role: "user", content: trimmed }]);
-      await streamToAssistant();
+      await streamToAssistant({});
     },
     [streamToAssistant],
   );
 
-  /** DTC helper */
   const sendDtc = useCallback(
     async (dtcCode: string, note?: string) => {
       const code = dtcCode.trim().toUpperCase();
@@ -155,25 +150,25 @@ export function useTechAssistant(opts?: AssistantOptions) {
         ...m,
         { role: "user", content: `DTC: ${code}${note ? `\nNote: ${note}` : ""}` },
       ]);
-      await streamToAssistant();
+      await streamToAssistant({});
     },
     [streamToAssistant],
   );
 
-  /** PHOTO: send a visible note to the chat and pass base64 image to the server */
   const sendPhoto = useCallback(
     async (file: File, note?: string) => {
       if (!file) return;
-
-      // Show an anchor message in the chat
+      // Show a lightweight anchor turn so the tech sees the upload in the flow
       setMessages((m) => [
         ...m,
         { role: "user", content: `Uploaded a photo.${note ? `\nNote: ${note}` : ""}` },
       ]);
-
-      // Convert to data URL and pass to server (this is what OpenAI expects for images)
-      const image_data = await fileToDataUrl(file);
-      await streamToAssistant({ image_data, image_note: note ?? "" });
+      // Convert to data URL (base64) and pass as payload; route handles vision
+      const buf = await file.arrayBuffer();
+      const b64 = Buffer.from(buf).toString("base64");
+      const mime = file.type || "image/jpeg";
+      const image_data = `data:${mime};base64,${b64}`;
+      await streamToAssistant({ image_data, note });
     },
     [streamToAssistant],
   );
@@ -187,7 +182,6 @@ export function useTechAssistant(opts?: AssistantOptions) {
     setError(null);
   }, []);
 
-  /** Export summarization */
   const exportToWorkOrder = useCallback(
     async (workOrderLineId: string) => {
       if (!workOrderLineId) throw new Error("Missing work order line id.");

@@ -1,151 +1,236 @@
-export const runtime = "edge";
-export const dynamic = "force-dynamic";
+"use client";
 
-import { NextResponse } from "next/server";
-import OpenAI from "openai";
-import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
+import { useCallback, useMemo, useRef, useState } from "react";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+export type ChatMessage = { role: "user" | "assistant"; content: string };
 
-type Vehicle = { year: string; make: string; model: string };
-type TextPart = { type: "text"; text: string };
-type ImagePart = { type: "image_url"; image_url: { url: string } };
-
-type ClientMessage =
-  | { role: "user" | "assistant" | "system"; content: string }
-  | { role: "user"; content: (TextPart | ImagePart)[] };
-
-interface Body {
-  vehicle?: Vehicle;
-  messages?: ClientMessage[];
-  context?: string;
-  /** NEW: base64 data URL for photo uploads */
-  image_data?: string;
-  /** Optional helper text to accompany the image */
-  image_note?: string;
-}
-
-const sseHeaders: Record<string, string> = {
-  "Content-Type": "text/event-stream; charset=utf-8",
-  "Cache-Control": "no-cache, no-transform",
-  Connection: "keep-alive",
-  "Transfer-Encoding": "chunked",
-  "X-Accel-Buffering": "no",
+export type Vehicle = {
+  year?: string | null;
+  make?: string | null;
+  model?: string | null;
 };
 
-const hasVehicle = (v?: Vehicle): v is Vehicle =>
-  Boolean(v?.year && v?.make && v?.model);
+type AssistantOptions = { defaultVehicle?: Vehicle; defaultContext?: string };
 
-// Remove any accidental transport tokens that might slip through
-const sanitize = (s: string) =>
-  s.replace(/\b(event:\s*done|data:\s*\[DONE\])\b/gi, "").trim();
+/** Stream reader for our plain-text SSE (lines like `data: <chunk>\n\n`) */
+async function readSseStream(
+  body: ReadableStream<Uint8Array>,
+  onChunk: (text: string) => void,
+): Promise<void> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
 
-function systemFor(v: Vehicle, context?: string): string {
-  const vdesc = `${v.year} ${v.make} ${v.model}`;
-  const ctx = context?.trim() ? `\nContext:\n${context.trim()}` : "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
 
-  return [
-    `You are a master automotive technician assistant for a ${vdesc}.`,
-    `Formatting rules (VERY IMPORTANT):`,
-    `- Use **Markdown**. Headings and bullet/numbered lists must include line breaks.`,
-    `- Output sections in this order when the user asks for procedures:`,
-    `  ### Summary`,
-    `  - (1–2 bullets, concise)`,
-    `  `,
-    `  ### Procedure`,
-    `  1. Step`,
-    `  2. Step`,
-    `  3. Step`,
-    `  `,
-    `  ### Notes / Cautions`,
-    `  - Bullet list of cautions, specs, or checks`,
-    `- Do **NOT** include trailing markers like "event: done", "data: [DONE]", or any transport metadata.`,
-    ``,
-    `Follow-up behavior (CRITICAL):`,
-    `- Focus ONLY on the user's latest question.`,
-    `- If the latest question is narrow (e.g., torque spec, single step, tool size), answer just that with a short heading and bullet(s).`,
-    `- Do **not** repeat the entire procedure unless the user asked for it again.`,
-    `- For specs: provide typical ranges only if commonly known and clearly label them as "Typical". If the exact spec is required, say to verify in OE service info (VIN/engine/trim) and where to find it.`,
-    ``,
-    `Safety & accuracy:`,
-    `- Prefer checks and decision points the tech can follow.`,
-    `- If unsure of a number, say what to verify next. Never invent exact figures.`,
-    ctx,
-  ].join("\n");
-}
+    buffer += decoder.decode(value, { stream: true });
 
-function toOpenAIMessage(m: ClientMessage): ChatCompletionMessageParam {
-  return Array.isArray(m.content) ? { role: "user", content: m.content } : m;
-}
+    let sep: number;
+    while ((sep = buffer.indexOf("\n\n")) !== -1) {
+      const raw = buffer.slice(0, sep).trim();
+      buffer = buffer.slice(sep + 2);
+      if (!raw || raw.startsWith(":")) continue;
 
-const enc = (s: string) => new TextEncoder().encode(s);
-const lineSafe = (s: unknown) => String(s).replace(/[\r\n]+/g, " ");
+      const line = raw.startsWith("data:") ? raw.slice(5).trim() : raw;
+      if (line === "[DONE]") return;
 
-export async function POST(req: Request) {
-  try {
-    if (!process.env.OPENAI_API_KEY) {
-      return new NextResponse(
-        `event: error\ndata: Server missing OPENAI_API_KEY\n\nevent: done\ndata: [DONE]\n\n`,
-        { headers: sseHeaders, status: 500 },
-      );
+      onChunk(line); // pass through verbatim
     }
-
-    const body: Body = await req.json();
-    if (!hasVehicle(body.vehicle)) {
-      return new NextResponse(
-        `event: error\ndata: Missing vehicle info (year, make, model)\n\nevent: done\ndata: [DONE]\n\n`,
-        { headers: sseHeaders, status: 400 },
-      );
-    }
-
-    // Build message list
-    const base: ChatCompletionMessageParam[] = [
-      { role: "system", content: systemFor(body.vehicle, body.context) },
-      ...(body.messages ?? []).map(toOpenAIMessage),
-    ];
-
-    // If an image was uploaded, append a multi-modal user message
-    if (body.image_data) {
-      const note = (body.image_note ?? "").trim();
-      const multimodal: ClientMessage = {
-        role: "user",
-        content: [
-          ...(note ? [{ type: "text", text: `Photo note: ${note}` } as TextPart] : []),
-          { type: "image_url", image_url: { url: body.image_data } } as ImagePart,
-        ],
-      };
-      base.push(toOpenAIMessage(multimodal));
-    }
-
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
-      temperature: 0.5,
-      stream: true,
-      messages: base,
-    });
-
-    const stream = new ReadableStream<Uint8Array>({
-      async start(controller) {
-        try {
-          for await (const part of completion) {
-            const delta = part.choices?.[0]?.delta?.content ?? "";
-            if (delta) controller.enqueue(enc(`data: ${sanitize(delta)}\n\n`));
-          }
-          controller.enqueue(enc(`event: done\ndata: [DONE]\n\n`));
-          controller.close();
-        } catch (err) {
-          controller.enqueue(enc(`event: error\ndata: ${lineSafe((err as Error).message)}\n\n`));
-          controller.enqueue(enc(`event: done\ndata: [DONE]\n\n`));
-          controller.close();
-        }
-      },
-    });
-
-    return new NextResponse(stream, { headers: sseHeaders });
-  } catch (err) {
-    return new NextResponse(
-      `event: error\ndata: ${lineSafe((err as Error).message)}\n\nevent: done\ndata: [DONE]\n\n`,
-      { headers: sseHeaders, status: 500 },
-    );
   }
+}
+
+async function postJSON(url: string, data: unknown, signal?: AbortSignal): Promise<Response> {
+  return fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+    signal,
+  });
+}
+
+/** Final pass to make the message render like ChatGPT-style Markdown */
+function normalizeMarkdown(src: string): string {
+  let s = src;
+
+  // Remove any accidental transport markers
+  s = s.replace(/^\s*(event:\s*done|data:\s*\[DONE\])\s*$/gmi, "");
+
+  // Ensure a space after heading hashes and a blank line after headings
+  s = s.replace(/(#{1,6})([^\s#])/g, "$1 $2");
+  s = s.replace(/^(#{1,6} .+)\s*$/gm, "$1\n");
+
+  // Convert common bullet glyphs to Markdown dashes
+  s = s.replace(/[•·]\s*/g, "- ");
+
+  // Collapse triple+ newlines to at most double
+  s = s.replace(/\n{3,}/g, "\n\n");
+
+  return s.trim();
+}
+
+export function useTechAssistant(opts?: AssistantOptions) {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [vehicle, setVehicle] = useState<Vehicle | undefined>(opts?.defaultVehicle);
+  const [context, setContext] = useState<string>(opts?.defaultContext ?? "");
+
+  const [sending, setSending] = useState(false);
+  const [partial, setPartial] = useState<string>("");
+  const [error, setError] = useState<string | null>(null);
+
+  const abortRef = useRef<AbortController | null>(null);
+
+  const canSend = useMemo(
+    () => Boolean(vehicle?.year && vehicle?.make && vehicle?.model),
+    [vehicle],
+  );
+
+  const streamToAssistant = useCallback(
+    async (payload: Record<string, unknown>) => {
+      if (!canSend) {
+        setError("Please provide vehicle info (year, make, model).");
+        return;
+      }
+
+      setError(null);
+      setSending(true);
+      setPartial("");
+
+      const body = { ...payload, vehicle, context, messages };
+      const ctrl = new AbortController();
+      abortRef.current = ctrl;
+
+      // ---- micro-batch scheduler (smooth typing) ----
+      let pending = "";
+      let accum = "";
+      let flushTimer: number | null = null;
+
+      const startFlusher = () => {
+        if (flushTimer !== null) return;
+        flushTimer = window.setInterval(() => {
+          if (pending.length === 0) return;
+          // append pending to live bubble and to final accumulator
+          setPartial((prev) => prev + pending);
+          accum += pending;
+          pending = "";
+        }, 50); // ~20fps feels natural; adjust if you want slower/faster typing
+      };
+      const stopFlusher = () => {
+        if (flushTimer !== null) {
+          window.clearInterval(flushTimer);
+          flushTimer = null;
+        }
+      };
+      // -----------------------------------------------
+
+      try {
+        const res = await postJSON("/api/assistant/stream", body, ctrl.signal);
+        if (!res.ok || !res.body) {
+          const txt = await res.text().catch(() => "");
+          throw new Error(txt || "Stream failed.");
+        }
+
+        startFlusher();
+
+        await readSseStream(res.body, (chunk) => {
+          // no space guessing — keep the raw stream
+          pending += chunk;
+        });
+
+        // final flush: push any leftover pending text
+        if (pending.length) {
+          setPartial((prev) => prev + pending);
+          accum += pending;
+          pending = "";
+        }
+
+        const final = normalizeMarkdown(accum);
+        const assistantMsg: ChatMessage = { role: "assistant", content: final };
+        setMessages((m) => [...m, assistantMsg]);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Failed to stream assistant.";
+        setError(msg);
+      } finally {
+        stopFlusher();
+        setSending(false);
+        setPartial("");
+        abortRef.current = null;
+      }
+    },
+    [messages, vehicle, context, canSend],
+  );
+
+  const sendChat = useCallback(
+    async (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      setMessages((m) => [...m, { role: "user", content: trimmed }]);
+      await streamToAssistant({});
+    },
+    [streamToAssistant],
+  );
+
+  const sendDtc = useCallback(
+    async (dtcCode: string, note?: string) => {
+      const code = dtcCode.trim().toUpperCase();
+      if (!code) return;
+      setMessages((m) => [
+        ...m,
+        { role: "user", content: `DTC: ${code}${note ? `\nNote: ${note}` : ""}` },
+      ]);
+      await streamToAssistant({});
+    },
+    [streamToAssistant],
+  );
+
+  const sendPhoto = useCallback(
+    async (file: File, note?: string) => {
+      if (!file) return;
+      setMessages((m) => [
+        ...m,
+        { role: "user", content: `Uploaded a photo.${note ? `\nNote: ${note}` : ""}` },
+      ]);
+      const buf = await file.arrayBuffer();
+      const b64 = Buffer.from(buf).toString("base64");
+      const mime = file.type || "image/jpeg";
+      const image_data = `data:${mime};base64,${b64}`;
+      await streamToAssistant({ image_data, note });
+    },
+    [streamToAssistant],
+  );
+
+  const cancel = useCallback(() => abortRef.current?.abort(), []);
+  const resetConversation = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setMessages([]);
+    setPartial("");
+    setError(null);
+  }, []);
+
+  const exportToWorkOrder = useCallback(
+    async (workOrderLineId: string) => {
+      if (!workOrderLineId) throw new Error("Missing work order line id.");
+      if (!canSend) throw new Error("Provide vehicle info before exporting.");
+
+      const res = await postJSON("/api/assistant/export", { vehicle, messages, workOrderLineId });
+      if (!res.ok) throw new Error((await res.text().catch(() => "")) || "Export failed.");
+
+      return (await res.json()) as {
+        cause: string;
+        correction: string;
+        estimatedLaborTime: number | null;
+      };
+    },
+    [messages, vehicle, canSend],
+  );
+
+  return {
+    vehicle, context, messages, partial,
+    setVehicle, setContext, setMessages,
+    sending, error,
+    sendChat, sendDtc, sendPhoto,
+    exportToWorkOrder, resetConversation, cancel,
+  };
 }
