@@ -1,3 +1,4 @@
+// app/api/assistant/stream/route.ts
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,7 @@ interface Body {
   vehicle?: Vehicle;
   messages?: ClientMessage[];
   context?: string;
-  image_data?: string; // optional base64 from client
+  image_data?: string | null; // base64 data URL from client (optional)
 }
 
 const sseHeaders: Record<string, string> = {
@@ -32,43 +33,32 @@ const sseHeaders: Record<string, string> = {
 const hasVehicle = (v?: Vehicle): v is Vehicle =>
   Boolean(v?.year && v?.make && v?.model);
 
-// remove any transport tokens if the model ever echoes them
+// scrub accidental transport tokens
 const sanitize = (s: string) =>
   s.replace(/\b(event:\s*done|data:\s*\[DONE\])\b/gi, "");
 
 function systemFor(v: Vehicle, context?: string): string {
   const vdesc = `${v.year} ${v.make} ${v.model}`;
   const ctx = context?.trim() ? `\nContext:\n${context.trim()}` : "";
-
   return [
     `You are a master automotive technician assistant for a ${vdesc}.`,
-    `Always reply in **clean Markdown** with proper line breaks.`,
-
-    // Default structured procedure format
-    `When asked for procedures, use exactly these sections:`,
-    `### Summary`,
-    `- 1–2 bullets`,
-    ``,
-    `### Procedure`,
-    `1. Step`,
-    `2. Step`,
-    `3. Step`,
-    ``,
-    `### Notes / Cautions`,
-    `- Bulleted list of cautions/specs`,
-
-    // 👇 NEW: specs/torque table directive
-    ``,
-    `When the latest question asks for a spec (e.g., **torque**, **gap**, **pressure**, **size**, **voltage**, **resistance**):`,
-    `- Answer concisely using a **Markdown table** first, then (only if needed) a 1–2 bullet note.`,
-    `- Table columns: **Item** | **Spec** | **Notes**.`,
-    `- Include units and **both metric and imperial** where relevant (e.g., 30 N·m (22 ft·lb)).`,
-    `- If an exact OE number depends on VIN/engine/trim, give a **Typical** range and say “Verify in OE service info” plus where to find it.`,
-    ``,
-
-    `Follow-up behavior (CRITICAL):`,
-    `- Answer **only the latest question**. Do not repeat earlier procedures unless explicitly requested.`,
-    `- Never include transport markers like "event: done" or "[DONE]".`,
+    `Formatting rules (IMPORTANT):`,
+    `- Use **Markdown** with clear bullets and numbered steps.`,
+    `- Sections (when procedure is requested):`,
+    `  ### Summary`,
+    `  - two bullets max`,
+    `  ### Procedure`,
+    `  1. step`,
+    `  2. step`,
+    `  ### Notes / Cautions`,
+    `  - bullets`,
+    `- For specs/torque, use a **table** where helpful:`,
+    `  | Item | Spec/Range | Notes |`,
+    `  |---|---|---|`,
+    `Follow-ups (CRITICAL):`,
+    `- Answer only the new question; *do not* repeat prior sections unless asked.`,
+    `- If user asks “how to disassemble”, don’t re-summarize diagnosis; give the disassembly steps directly.`,
+    `Don’t include trailing markers like "done" or transport metadata.`,
     ctx,
   ].join("\n");
 }
@@ -77,98 +67,74 @@ function toOpenAIMessage(m: ClientMessage): ChatCompletionMessageParam {
   return Array.isArray(m.content) ? { role: "user", content: m.content } : m;
 }
 
-const enc = (s: string) => new TextEncoder().encode(s);
-const lineSafe = (s: unknown) => String(s).replace(/[\r\n]+/g, " ");
-
-// Simple detector to nudge formatting for spec questions
-const SPEC_RE = /\b(torque|spec|specs|gap|clearance|pressure|size|voltage|resistance|ohms|amp|current|psi|bar|kpa|nm|ft[-\s]?lb)\b/i;
-
 export async function POST(req: Request) {
   try {
     if (!process.env.OPENAI_API_KEY) {
-      return new NextResponse(
-        `event: error\ndata: Missing OPENAI_API_KEY\n\nevent: done\ndata: [DONE]\n\n`,
-        { headers: sseHeaders, status: 500 },
-      );
+      return new NextResponse(`event: error\ndata: Missing OPENAI_API_KEY\n\n`, {
+        headers: sseHeaders,
+        status: 500,
+      });
     }
 
     const body: Body = await req.json();
+
     if (!hasVehicle(body.vehicle)) {
-      return new NextResponse(
-        `event: error\ndata: Missing vehicle info (year, make, model)\n\nevent: done\ndata: [DONE]\n\n`,
-        { headers: sseHeaders, status: 400 },
-      );
+      return new NextResponse(`event: error\ndata: Missing vehicle (year/make/model)\n\n`, {
+        headers: sseHeaders,
+        status: 400,
+      });
     }
 
-    // Base conversation
-    const baseMessages: ChatCompletionMessageParam[] = [
+    // Build message list with a clear system prompt
+    const base: ChatCompletionMessageParam[] = [
       { role: "system", content: systemFor(body.vehicle, body.context) },
       ...(body.messages ?? []).map(toOpenAIMessage),
     ];
 
-    // Wrap the latest user turn so the model focuses on it,
-    // and inject a **table format hint** for spec-type questions.
-    const lastUserIndex = [...(body.messages ?? [])]
-      .map((m, i) => ({ m, i }))
-      .reverse()
-      .find((x) => !Array.isArray(x.m.content) && x.m.role === "user")?.i;
-
-    let messages = baseMessages;
-    if (typeof lastUserIndex === "number") {
-      const last = baseMessages[lastUserIndex + 1]; // +1 because we prefixed system
-      if (last && last.role === "user" && typeof last.content === "string") {
-        const isSpec = SPEC_RE.test(last.content);
-        const extra =
-          isSpec
-            ? [
-                ``,
-                `Format for this question:`,
-                `- Start with a **Markdown table** using columns: Item | Spec | Notes.`,
-                `- Include metric + imperial units where relevant.`,
-                `- Keep it concise; no repeated background.`,
-              ].join("\n")
-            : [
-                ``,
-                `Format for this question:`,
-                `- Use headings and bullet/numbered lists.`,
-                `- Do not repeat prior content.`,
-              ].join("\n");
-
-        const wrapped = [`Question: ${last.content.trim()}`, extra].join("\n");
-        messages = baseMessages.slice();
-        messages[lastUserIndex + 1] = { role: "user", content: wrapped };
-      }
+    // If an image was provided for this turn, attach a multimodal "user" message
+    if (body.image_data) {
+      base.push({
+        role: "user",
+        content: [
+          { type: "text", text: "Photo for reference (consider this in your answer)." },
+          { type: "image_url", image_url: { url: body.image_data } },
+        ],
+      });
     }
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
-      temperature: 0.4,
+      temperature: 0.5,
+      messages: base,
       stream: true,
-      messages,
     });
 
-    const stream = new ReadableStream<Uint8Array>({
+    // Convert OpenAI JSON SSE → plain text "data: <chunk>\n\n"
+    const enc = (s: string) => new TextEncoder().encode(s);
+    const out = new ReadableStream<Uint8Array>({
       async start(controller) {
         try {
           for await (const part of completion) {
-            const delta = part.choices?.[0]?.delta?.content ?? "";
-            if (delta) controller.enqueue(enc(`data: ${sanitize(delta)}\n\n`));
+            const chunk = part.choices?.[0]?.delta?.content ?? "";
+            if (chunk) controller.enqueue(enc(`data: ${sanitize(chunk)}\n\n`));
           }
-          controller.enqueue(enc(`event: done\ndata: [DONE]\n\n`));
+          controller.enqueue(enc(`event: done\ndata: [DONE]\n\n`)); // end-of-stream signal
           controller.close();
         } catch (err) {
-          controller.enqueue(enc(`event: error\ndata: ${lineSafe((err as Error).message)}\n\n`));
+          const msg = err instanceof Error ? err.message : String(err);
+          controller.enqueue(enc(`event: error\ndata: ${msg}\n\n`));
           controller.enqueue(enc(`event: done\ndata: [DONE]\n\n`));
           controller.close();
         }
       },
     });
 
-    return new NextResponse(stream, { headers: sseHeaders });
+    return new NextResponse(out, { headers: sseHeaders });
   } catch (err) {
-    return new NextResponse(
-      `event: error\ndata: ${lineSafe((err as Error).message)}\n\nevent: done\ndata: [DONE]\n\n`,
-      { headers: sseHeaders, status: 500 },
-    );
+    const msg = err instanceof Error ? err.message : String(err);
+    return new NextResponse(`event: error\ndata: ${msg}\n\n`, {
+      headers: sseHeaders,
+      status: 500,
+    });
   }
 }
