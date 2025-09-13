@@ -29,43 +29,40 @@ const sseHeaders: Record<string, string> = {
   "X-Accel-Buffering": "no",
 };
 
-const hasVehicle = (v?: Vehicle): v is Vehicle =>
-  Boolean(v?.year && v?.make && v?.model);
-
-// Simple guard that strips any accidental control tokens
+const enc = (s: string) => new TextEncoder().encode(s);
+const lineSafe = (s: unknown) => String(s).replace(/[\r\n]+/g, " ");
 const sanitize = (s: string) =>
   s.replace(/\b(event:\s*done|data:\s*\[DONE\])\b/gi, "").trim();
+
+const hasVehicle = (v?: Vehicle): v is Vehicle =>
+  Boolean(v?.year && v?.make && v?.model);
 
 function systemFor(v: Vehicle, context?: string): string {
   const vdesc = `${v.year} ${v.make} ${v.model}`;
   const ctx = context?.trim() ? `\nContext:\n${context.trim()}` : "";
-
   return [
     `You are a master automotive technician assistant for a ${vdesc}.`,
     `Formatting rules (VERY IMPORTANT):`,
-    `- Use **Markdown**. Headings and bullet/numbered lists must include line breaks.`,
-    `- Output sections in this order when the user asks for procedures:`,
+    `- Use **Markdown** with headings and bullet/numbered lists (real line breaks).`,
+    `- For procedures, output sections in this order:`,
     `  ### Summary`,
-    `  - (1–2 bullets, concise)`,
+    `  - 1–2 concise bullets`,
     `  `,
     `  ### Procedure`,
     `  1. Step`,
     `  2. Step`,
-    `  3. Step`,
     `  `,
     `  ### Notes / Cautions`,
-    `  - Bullet list of cautions, specs, or checks`,
-    `- Do **NOT** include trailing markers like "event: done", "data: [DONE]", or any transport metadata.`,
+    `  - Bullets for cautions/specs/checks`,
+    `- Do **NOT** include transport markers like "event: done" or "data: [DONE]".`,
     ``,
     `Follow-up behavior (CRITICAL):`,
-    `- Focus ONLY on the user's latest question.`,
-    `- If the latest question is narrow (e.g., torque spec, single step, tool size), answer just that with a short heading and bullet(s).`,
-    `- Do **not** repeat the entire procedure unless the user asked for it again.`,
-    `- For specs: provide typical ranges only if commonly known and clearly label them as "Typical". If the exact spec is required, say to verify in OE service info (VIN/engine/trim) and where to find it.`,
+    `- Focus only on the latest question.`,
+    `- If it’s narrow (torque, tool size, single step), answer just that with a short heading and bullets.`,
+    `- Don’t repeat the entire procedure unless asked.`,
+    `- If exact specs may vary, label ranges as **Typical** and note to verify in OE service info (VIN/engine/trim).`,
     ``,
-    `Safety & accuracy:`,
-    `- Prefer checks and decision points the tech can follow.`,
-    `- If unsure of a number, say what to verify next. Never invent exact figures.`,
+    `Safety & accuracy: prefer decision points; never invent exact figures.`,
     ctx,
   ].join("\n");
 }
@@ -73,9 +70,6 @@ function systemFor(v: Vehicle, context?: string): string {
 function toOpenAIMessage(m: ClientMessage): ChatCompletionMessageParam {
   return Array.isArray(m.content) ? { role: "user", content: m.content } : m;
 }
-
-const enc = (s: string) => new TextEncoder().encode(s);
-const lineSafe = (s: unknown) => String(s).replace(/[\r\n]+/g, " ");
 
 export async function POST(req: Request) {
   try {
@@ -86,7 +80,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const body: Body = await req.json();
+    const body = (await req.json()) as Body;
     if (!hasVehicle(body.vehicle)) {
       return new NextResponse(
         `event: error\ndata: Missing vehicle info (year, make, model)\n\nevent: done\ndata: [DONE]\n\n`,
@@ -116,9 +110,7 @@ export async function POST(req: Request) {
           controller.enqueue(enc(`event: done\ndata: [DONE]\n\n`));
           controller.close();
         } catch (err) {
-          controller.enqueue(
-            enc(`event: error\ndata: ${lineSafe((err as Error).message)}\n\n`),
-          );
+          controller.enqueue(enc(`event: error\ndata: ${lineSafe((err as Error).message)}\n\n`));
           controller.enqueue(enc(`event: done\ndata: [DONE]\n\n`));
           controller.close();
         }

@@ -12,23 +12,14 @@ export type Vehicle = {
 
 type AssistantOptions = { defaultVehicle?: Vehicle; defaultContext?: string };
 
-// Join streaming chunks while preserving natural spacing between words.
+// Merge streaming chunks while preserving natural spacing.
 function mergeChunks(prev: string, next: string): string {
   if (!next) return prev;
   if (!prev) return next;
   const last = prev[prev.length - 1] ?? "";
   const first = next[0] ?? "";
   const isWord = (c: string) => /[A-Za-z0-9]/.test(c);
-  return isWord(last) && isWord(first) ? prev + " " + next : prev + next;
-}
-
-// 🔹 NEW: a tiny nudge we’ll append to every user turn
-const FOLLOWUP_NUDGE =
-  "Format with headings + bullet/numbered lists and line breaks. If this is a follow-up, answer only the new question; do not repeat the entire prior procedure. Do not include transport markers like 'event: done'.";
-
-function wrapUserQuestion(text: string): string {
-  // keep it short so we don’t drown out the actual question
-  return `Question:\n${text}\n\n${FOLLOWUP_NUDGE}`;
+  return isWord(last) && isWord(first) ? `${prev} ${next}` : prev + next;
 }
 
 async function fileToDataUrl(file: File): Promise<string> {
@@ -38,7 +29,6 @@ async function fileToDataUrl(file: File): Promise<string> {
   return `data:${mime};base64,${b64}`;
 }
 
-/** Parse OpenAI native SSE (data: {choices:[{delta:{content}}]} / [DONE]) */
 async function readSseStream(
   body: ReadableStream<Uint8Array>,
   onChunk: (text: string) => void,
@@ -46,30 +36,22 @@ async function readSseStream(
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
-
     buffer += decoder.decode(value, { stream: true });
-
     let idx: number;
     while ((idx = buffer.indexOf("\n\n")) !== -1) {
       const raw = buffer.slice(0, idx).trim();
       buffer = buffer.slice(idx + 2);
       if (!raw || raw.startsWith(":")) continue;
-
       const line = raw.startsWith("data:") ? raw.slice(5).trim() : raw;
-      if (line === "[DONE]") return;
-
+      if (line === "[DONE]" || line === "event: done") return;
       try {
         const obj = JSON.parse(line) as {
           choices?: Array<{ delta?: { content?: string }; text?: string }>;
         };
-        const piece =
-          obj?.choices?.[0]?.delta?.content ??
-          obj?.choices?.[0]?.text ??
-          "";
+        const piece = obj?.choices?.[0]?.delta?.content ?? obj?.choices?.[0]?.text ?? "";
         if (piece) onChunk(piece);
       } catch {
         onChunk(line);
@@ -115,6 +97,7 @@ export function useTechAssistant(opts?: AssistantOptions) {
       setPartial("");
 
       const body = { ...payload, vehicle, context, messages };
+
       const ctrl = new AbortController();
       abortRef.current = ctrl;
 
@@ -131,7 +114,12 @@ export function useTechAssistant(opts?: AssistantOptions) {
           accum = mergeChunks(accum, chunk);
         });
 
-        const assistantMsg: ChatMessage = { role: "assistant", content: accum.trim() };
+        const cleaned = accum
+          .replace(/\bevent:\s*done\b/gi, "")
+          .replace(/\bdata:\s*\[DONE\]\b/gi, "")
+          .trim();
+
+        const assistantMsg: ChatMessage = { role: "assistant", content: cleaned };
         setMessages((m) => [...m, assistantMsg]);
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Failed to stream assistant.";
@@ -145,37 +133,37 @@ export function useTechAssistant(opts?: AssistantOptions) {
     [messages, vehicle, context, canSend],
   );
 
-  /** Plain chat */
   const sendChat = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed) return;
-      // 🔹 wrap the user's turn so follow-ups stay concise
-      setMessages((m) => [...m, { role: "user", content: wrapUserQuestion(trimmed) }]);
+      setMessages((m) => [...m, { role: "user", content: trimmed }]);
       await streamToAssistant({});
     },
     [streamToAssistant],
   );
 
-  /** DTC analysis */
   const sendDtc = useCallback(
     async (dtcCode: string, note?: string) => {
       const code = dtcCode.trim().toUpperCase();
       if (!code) return;
-      const turn = `DTC: ${code}${note ? `\nNote: ${note}` : ""}\n\n${FOLLOWUP_NUDGE}`;
-      setMessages((m) => [...m, { role: "user", content: turn }]);
+      setMessages((m) => [
+        ...m,
+        { role: "user", content: `DTC: ${code}${note ? `\nNote: ${note}` : ""}` },
+      ]);
       await streamToAssistant({});
     },
     [streamToAssistant],
   );
 
-  /** Photo + optional note */
   const sendPhoto = useCallback(
     async (file: File, note?: string) => {
       if (!file) return;
+      setMessages((m) => [
+        ...m,
+        { role: "user", content: `Uploaded a photo.${note ? `\nNote: ${note}` : ""}` },
+      ]);
       const image_data = await fileToDataUrl(file);
-      const turn = `Photo provided.${note ? `\nNote: ${note}` : ""}\n\n${FOLLOWUP_NUDGE}`;
-      setMessages((m) => [...m, { role: "user", content: turn }]);
       await streamToAssistant({ image_data });
     },
     [streamToAssistant],
@@ -208,10 +196,20 @@ export function useTechAssistant(opts?: AssistantOptions) {
   );
 
   return {
-    vehicle, context, messages, partial,
-    setVehicle, setContext, setMessages,
-    sending, error,
-    sendChat, sendDtc, sendPhoto,
-    exportToWorkOrder, resetConversation, cancel,
+    vehicle,
+    context,
+    messages,
+    partial,
+    setVehicle,
+    setContext,
+    setMessages,
+    sending,
+    error,
+    sendChat,
+    sendDtc,
+    sendPhoto,
+    exportToWorkOrder,
+    resetConversation,
+    cancel,
   };
 }
