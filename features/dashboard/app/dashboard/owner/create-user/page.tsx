@@ -2,12 +2,15 @@
 
 import { useState } from "react";
 import UsersList from "@/features/admin/components/UsersList";
+import type { Database } from "@shared/types/types/supabase";
+
+type UserRole = Database["public"]["Enums"]["user_role_enum"];
 
 type Payload = {
   email: string;
   password: string;
   full_name?: string | null;
-  role?: string | null;       // user_role enum string
+  role?: UserRole | null;
   shop_id?: string | null;
   phone?: string | null;
 };
@@ -28,16 +31,27 @@ export default function CreateUserPage(): JSX.Element {
     setSubmitting(true);
     setError(null);
     try {
+      const body: Payload = {
+        email: form.email.trim().toLowerCase(),
+        password: form.password.trim(),
+        full_name: (form.full_name ?? "").trim() || null,
+        role: form.role ?? null,
+        shop_id: (form.shop_id ?? "")?.trim() || null,
+        phone: (form.phone ?? "")?.trim() || null,
+      };
+
       const res = await fetch("/api/admin/create-user", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(body),
       });
+
       if (!res.ok) {
         const t = await res.text().catch(() => "");
         throw new Error(t || "Failed to create user.");
       }
-      // Clear sensitive fields; UsersList will refresh via realtime
+
+      // Clear sensitive fields; UsersList below shows the new user
       setForm((f) => ({ ...f, email: "", password: "", full_name: "", phone: "" }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unexpected error");
@@ -80,16 +94,14 @@ export default function CreateUserPage(): JSX.Element {
           <select
             className="input text-white"
             value={form.role ?? ""}
-            onChange={(e) => setForm({ ...form, role: e.target.value })}
+            onChange={(e) => setForm({ ...form, role: e.target.value as UserRole })}
           >
-            {/* adjust to your user_role enum values */}
+            {/* Ensure these match your user_role_enum */}
             <option value="owner">Owner</option>
             <option value="admin">Admin</option>
             <option value="manager">Manager</option>
-            <option value="service_writer">Service Writer</option>
             <option value="mechanic">Mechanic</option>
             <option value="advisor">Advisor</option>
-            <option value="guest">Guest</option>
           </select>
           <input
             className="input text-white"
@@ -107,11 +119,7 @@ export default function CreateUserPage(): JSX.Element {
           >
             {submitting ? "Creating…" : "Create User"}
           </button>
-          {error && (
-            <div className="text-sm text-red-300">
-              {error}
-            </div>
-          )}
+          {error && <div className="text-sm text-red-300">{error}</div>}
         </div>
       </div>
 
