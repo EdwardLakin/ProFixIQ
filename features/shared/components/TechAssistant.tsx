@@ -6,7 +6,6 @@ import {
   useTechAssistant,
   type Vehicle,
 } from "@/features/ai/hooks/useTechAssistant";
-
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -18,12 +17,15 @@ export default function TechAssistant({
   /** If provided, shows an “Export to Work Order” button */
   workOrderLineId?: string;
 }) {
+  // refs
   const inputRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // local UI state
   const [dtc, setDtc] = useState("");
   const [note, setNote] = useState("");
 
+  // hook
   const {
     vehicle, setVehicle,
     context, setContext,
@@ -35,15 +37,13 @@ export default function TechAssistant({
 
   // Seed default vehicle once (but don't clobber a restored vehicle)
   useEffect(() => {
-    if (
-      defaultVehicle &&
-      (!vehicle || (!vehicle.year && !vehicle.make && !vehicle.model))
-    ) {
+    if (defaultVehicle && (!vehicle || (!vehicle.year && !vehicle.make && !vehicle.model))) {
       setVehicle(defaultVehicle);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultVehicle]);
 
+  // handlers
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     const text = inputRef.current?.value?.trim();
@@ -56,6 +56,7 @@ export default function TechAssistant({
     /^([PBUC])\d{4}$/i.test(dtc.trim()) ||
     /^P0\d{3}$/i.test(dtc.trim());
 
+  // Vehicle inputs
   const VehicleInputs = (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
       <input
@@ -88,8 +89,10 @@ export default function TechAssistant({
     </div>
   );
 
+  // Top controls
   const ControlsRow = (
     <>
+      {/* Chat input */}
       <form onSubmit={onSubmit} className="flex gap-2">
         <input
           ref={inputRef}
@@ -108,6 +111,7 @@ export default function TechAssistant({
         </button>
       </form>
 
+      {/* DTC / Notes / Photo / Reset / Cancel */}
       <div className="flex flex-wrap items-center gap-2">
         <input
           className="w-28 rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-400"
@@ -182,37 +186,32 @@ export default function TechAssistant({
     </>
   );
 
+  // Conversation column
   const Conversation = (
     <div className="rounded border border-neutral-800 bg-neutral-900 p-3 overflow-y-auto max-h-[560px] space-y-3">
       {messages.map((m, i) => {
         const isUser = m.role === "user";
-        const bubbleBase =
+        const base =
           "max-w-[85%] rounded px-3 py-2 text-sm whitespace-pre-wrap break-words";
-        const bubbleClass = isUser
+        const bubble = isUser
           ? "ml-auto bg-orange-600 text-black"
           : "mr-auto bg-neutral-700 text-neutral-100";
 
         if (!isUser) {
+          // Assistant → Markdown bubble
           return (
-            <div key={i} className={`${bubbleBase} ${bubbleClass}`}>
+            <div key={i} className={`${base} ${bubble}`}>
               <div className="prose prose-invert prose-sm markdown">
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
                   components={{
-                    li: ({ children }) => <li className="my-0.5">{children}</li>,
-                    ul: ({ children }) => <ul className="list-disc pl-5 my-2">{children}</ul>,
-                    ol: ({ children }) => <ol className="list-decimal pl-5 my-2">{children}</ol>,
-                    h2: ({ children }) => <h2 className="text-base font-semibold mt-2 mb-1">{children}</h2>,
-                    h3: ({ children }) => <h3 className="text-sm font-semibold mt-2 mb-1">{children}</h3>,
-                    p:  ({ children }) => <p className="my-1">{children}</p>,
+                    h2: ({ children }) => <h2 className="text-lg font-bold mt-3 mb-2">{children}</h2>,
+                    h3: ({ children }) => <h3 className="text-base font-semibold mt-2 mb-1">{children}</h3>,
+                    ul: ({ children }) => <ul className="list-disc pl-6 my-2 space-y-1">{children}</ul>,
+                    ol: ({ children }) => <ol className="list-decimal pl-6 my-2 space-y-1">{children}</ol>,
+                    li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+                    p:  ({ children }) => <p className="my-2">{children}</p>,
                     strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-                    table: ({ children }) => (
-                      <div className="overflow-x-auto">
-                        <table className="my-2 w-full border-collapse">{children}</table>
-                      </div>
-                    ),
-                    th: ({ children }) => <th className="border px-2 py-1 text-left">{children}</th>,
-                    td: ({ children }) => <td className="border px-2 py-1">{children}</td>,
                   }}
                 >
                   {m.content}
@@ -222,13 +221,15 @@ export default function TechAssistant({
           );
         }
 
+        // User → plain text bubble
         return (
-          <div key={i} className={`${bubbleBase} ${bubbleClass}`}>
+          <div key={i} className={`${base} ${bubble}`}>
             {m.content}
           </div>
         );
       })}
 
+      {/* Streaming bubble (Markdown too) */}
       {(sending || partial.length > 0) && (
         <div className="max-w-[85%] mr-auto rounded px-3 py-2 text-sm bg-neutral-700 text-neutral-100 opacity-90">
           <div className="prose prose-invert prose-sm markdown">
@@ -249,6 +250,7 @@ export default function TechAssistant({
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm text-white">
+      {/* LEFT */}
       <div className="space-y-4">
         {VehicleInputs}
 
@@ -293,6 +295,7 @@ export default function TechAssistant({
         )}
       </div>
 
+      {/* RIGHT */}
       <div>{Conversation}</div>
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -12,10 +12,55 @@ export type Vehicle = {
 
 type AssistantOptions = { defaultVehicle?: Vehicle; defaultContext?: string };
 
-/** Stream reader for our plain-text SSE (lines like `data: <chunk>\n\n`) */
+/* ---------- small utils ---------- */
+
+const STORE_KEY = "tech-asst:v1";
+
+function safeParse<T>(s: string | null, fallback: T): T {
+  try {
+    return s ? (JSON.parse(s) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+// Only insert a space if alphanumerics are touching across chunk boundary
+function mergeChunks(prev: string, next: string): string {
+  if (!next) return prev;
+  if (!prev) return next;
+  const last = prev.charAt(prev.length - 1);
+  const first = next.charAt(0);
+  const isWord = (c: string) => /[A-Za-z0-9]/.test(c);
+  return isWord(last) && isWord(first) ? prev + " " + next : prev + next;
+}
+
+// Final Markdown tidy pass (very conservative)
+function normalizeMarkdown(s: string): string {
+  let out = s;
+
+  // Remove any transport leftovers
+  out = out.replace(/\b(?:event:\s*done|data:\s*\[DONE\])\b/gi, "");
+
+  // Ensure headings start on their own line
+  out = out.replace(/([^\n])\s*(#{2,4}\s+)/g, (_m, a, h) => `${a}\n\n${h}`);
+
+  // Convert inline " - " list items smashed by streaming into real bullets
+  out = out.replace(/([^\n])\s*-\s+/g, (_m, a) => `${a}\n- `);
+
+  // When numbers got glued into text, nudge them to a new line list
+  out = out.replace(/(\n|^)\s*(\d+)\.\s*(?=[A-Za-z])/g, (_m, _nl, n) => `\n${n}. `);
+
+  // Collapse 3+ newlines to 2
+  out = out.replace(/\n{3,}/g, "\n\n");
+
+  // Trim trailing whitespace
+  return out.trim();
+}
+
+// Read OpenAI-ish "plain text SSE": lines like `data: <text>\n\n`
 async function readSseStream(
   body: ReadableStream<Uint8Array>,
-  onChunk: (text: string) => void,
+  onChunk: (txt: string) => void,
 ): Promise<void> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -27,18 +72,27 @@ async function readSseStream(
 
     buffer += decoder.decode(value, { stream: true });
 
-    let sep: number;
-    while ((sep = buffer.indexOf("\n\n")) !== -1) {
-      const raw = buffer.slice(0, sep).trim();
-      buffer = buffer.slice(sep + 2);
-      if (!raw || raw.startsWith(":")) continue;
+    let idx: number;
+    while ((idx = buffer.indexOf("\n\n")) !== -1) {
+      const packet = buffer.slice(0, idx).trim();
+      buffer = buffer.slice(idx + 2);
+      if (!packet || packet.startsWith(":")) continue;
 
-      const line = raw.startsWith("data:") ? raw.slice(5).trim() : raw;
-      if (line === "[DONE]") return;
-
-      onChunk(line); // pass through verbatim
+      // Accept either "data: ..." or plain text
+      const line = packet.startsWith("data:") ? packet.slice(5).trim() : packet;
+      if (line === "[DONE]" || /event:\s*done/i.test(packet)) return;
+      onChunk(line);
     }
   }
+}
+
+async function fileToDataUrl(file: File): Promise<string> {
+  const buf = await file.arrayBuffer();
+  const b64 = typeof Buffer !== "undefined"
+    ? Buffer.from(buf).toString("base64")
+    : btoa(String.fromCharCode(...new Uint8Array(buf)));
+  const mime = file.type || "image/jpeg";
+  return `data:${mime};base64,${b64}`;
 }
 
 async function postJSON(url: string, data: unknown, signal?: AbortSignal): Promise<Response> {
@@ -50,25 +104,7 @@ async function postJSON(url: string, data: unknown, signal?: AbortSignal): Promi
   });
 }
 
-/** Final pass to make the message render like ChatGPT-style Markdown */
-function normalizeMarkdown(src: string): string {
-  let s = src;
-
-  // Remove any accidental transport markers
-  s = s.replace(/^\s*(event:\s*done|data:\s*\[DONE\])\s*$/gmi, "");
-
-  // Ensure a space after heading hashes and a blank line after headings
-  s = s.replace(/(#{1,6})([^\s#])/g, "$1 $2");
-  s = s.replace(/^(#{1,6} .+)\s*$/gm, "$1\n");
-
-  // Convert common bullet glyphs to Markdown dashes
-  s = s.replace(/[•·]\s*/g, "- ");
-
-  // Collapse triple+ newlines to at most double
-  s = s.replace(/\n{3,}/g, "\n\n");
-
-  return s.trim();
-}
+/* ---------- the hook ---------- */
 
 export function useTechAssistant(opts?: AssistantOptions) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -81,18 +117,49 @@ export function useTechAssistant(opts?: AssistantOptions) {
 
   const abortRef = useRef<AbortController | null>(null);
 
+  // ---- load persisted session once ----
+  useEffect(() => {
+    const boot = safeParse<{ v?: Vehicle; c?: string; m?: ChatMessage[] }>(
+      typeof window !== "undefined" ? localStorage.getItem(STORE_KEY) : null,
+      {},
+    );
+    if (boot.m?.length) setMessages(boot.m);
+    if (boot.c != null) setContext(boot.c);
+    if (boot.v && (!vehicle || (!vehicle.year && !vehicle.make && !vehicle.model))) {
+      setVehicle(boot.v);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ---- persist session (debounced-ish) ----
+  const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (persistTimer.current) clearTimeout(persistTimer.current);
+    persistTimer.current = setTimeout(() => {
+      try {
+        localStorage.setItem(
+          STORE_KEY,
+          JSON.stringify({ v: vehicle, c: context, m: messages }),
+        );
+      } catch { /* ignore quota */ }
+    }, 200);
+    return () => {
+      if (persistTimer.current) clearTimeout(persistTimer.current);
+    };
+  }, [vehicle, context, messages]);
+
   const canSend = useMemo(
     () => Boolean(vehicle?.year && vehicle?.make && vehicle?.model),
     [vehicle],
   );
 
+  // ---- micro-batch streaming → smoother typing bubble ----
   const streamToAssistant = useCallback(
     async (payload: Record<string, unknown>) => {
       if (!canSend) {
         setError("Please provide vehicle info (year, make, model).");
         return;
       }
-
       setError(null);
       setSending(true);
       setPartial("");
@@ -101,60 +168,56 @@ export function useTechAssistant(opts?: AssistantOptions) {
       const ctrl = new AbortController();
       abortRef.current = ctrl;
 
-      // ---- micro-batch scheduler (smooth typing) ----
-      let pending = "";
+      // micro-batch state
       let accum = "";
-      let flushTimer: number | null = null;
-
-      const startFlusher = () => {
-        if (flushTimer !== null) return;
-        flushTimer = window.setInterval(() => {
-          if (pending.length === 0) return;
-          // append pending to live bubble and to final accumulator
-          setPartial((prev) => prev + pending);
-          accum += pending;
-          pending = "";
-        }, 50); // ~20fps feels natural; adjust if you want slower/faster typing
-      };
-      const stopFlusher = () => {
-        if (flushTimer !== null) {
-          window.clearInterval(flushTimer);
+      let liveBuf = "";
+      let flushTimer: ReturnType<typeof setTimeout> | null = null;
+      const scheduleFlush = () => {
+        if (flushTimer) return;
+        flushTimer = setTimeout(() => {
+          setPartial((p) => mergeChunks(p, liveBuf));
+          liveBuf = "";
           flushTimer = null;
-        }
+        }, 40); // ~25fps feel
       };
-      // -----------------------------------------------
 
       try {
         const res = await postJSON("/api/assistant/stream", body, ctrl.signal);
         if (!res.ok || !res.body) {
-          const txt = await res.text().catch(() => "");
-          throw new Error(txt || "Stream failed.");
+          const t = await res.text().catch(() => "");
+          throw new Error(t || "Stream failed.");
         }
-
-        startFlusher();
 
         await readSseStream(res.body, (chunk) => {
-          // no space guessing — keep the raw stream
-          pending += chunk;
+          // collect into micro-batch buffer for smoother UI
+          liveBuf = mergeChunks(liveBuf, chunk);
+          scheduleFlush();
+          // keep full transcript, with same spacing guard
+          accum = mergeChunks(accum, chunk);
         });
 
-        // final flush: push any leftover pending text
-        if (pending.length) {
-          setPartial((prev) => prev + pending);
-          accum += pending;
-          pending = "";
+        // do a final flush of the micro-batch
+        if (flushTimer) {
+          clearTimeout(flushTimer);
+          flushTimer = null;
+        }
+        if (liveBuf) {
+          setPartial((p) => mergeChunks(p, liveBuf));
+          liveBuf = "";
         }
 
-        const final = normalizeMarkdown(accum);
-        const assistantMsg: ChatMessage = { role: "assistant", content: final };
-        setMessages((m) => [...m, assistantMsg]);
+        // Final tidy for the saved assistant message
+        const finalMsg: ChatMessage = {
+          role: "assistant",
+          content: normalizeMarkdown(accum),
+        };
+        setMessages((m) => [...m, finalMsg]);
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Failed to stream assistant.";
         setError(msg);
       } finally {
-        stopFlusher();
         setSending(false);
-        setPartial("");
+        setPartial(""); // collapse typing bubble
         abortRef.current = null;
       }
     },
@@ -187,15 +250,13 @@ export function useTechAssistant(opts?: AssistantOptions) {
   const sendPhoto = useCallback(
     async (file: File, note?: string) => {
       if (!file) return;
+      // drop a small anchor message for the transcript
       setMessages((m) => [
         ...m,
         { role: "user", content: `Uploaded a photo.${note ? `\nNote: ${note}` : ""}` },
       ]);
-      const buf = await file.arrayBuffer();
-      const b64 = Buffer.from(buf).toString("base64");
-      const mime = file.type || "image/jpeg";
-      const image_data = `data:${mime};base64,${b64}`;
-      await streamToAssistant({ image_data, note });
+      const image_data = await fileToDataUrl(file);
+      await streamToAssistant({ image_data });
     },
     [streamToAssistant],
   );
@@ -213,10 +274,8 @@ export function useTechAssistant(opts?: AssistantOptions) {
     async (workOrderLineId: string) => {
       if (!workOrderLineId) throw new Error("Missing work order line id.");
       if (!canSend) throw new Error("Provide vehicle info before exporting.");
-
       const res = await postJSON("/api/assistant/export", { vehicle, messages, workOrderLineId });
       if (!res.ok) throw new Error((await res.text().catch(() => "")) || "Export failed.");
-
       return (await res.json()) as {
         cause: string;
         correction: string;
