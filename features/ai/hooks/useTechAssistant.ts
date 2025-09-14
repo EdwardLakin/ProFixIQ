@@ -1,7 +1,6 @@
-// features/ai/hooks/useTechAssistant.ts
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -12,6 +11,12 @@ export type Vehicle = {
 };
 
 type AssistantOptions = { defaultVehicle?: Vehicle; defaultContext?: string };
+
+const LS_KEYS = {
+  vehicle: "assistant:vehicle",
+  messages: "assistant:messages",
+  context: "assistant:context",
+} as const;
 
 async function fileToDataUrl(file: File): Promise<string> {
   const buf = await file.arrayBuffer();
@@ -35,11 +40,36 @@ export function useTechAssistant(opts?: AssistantOptions) {
   const [context, setContext] = useState<string>(opts?.defaultContext ?? "");
 
   const [sending, setSending] = useState(false);
-  const [partial, setPartial] = useState<string>(""); // kept for UI compatibility (typing bubble)
+  const [partial, setPartial] = useState<string>(""); // kept for UI typing bubble
   const [error, setError] = useState<string | null>(null);
 
   const lastImageRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Restore persisted thread on mount
+  useEffect(() => {
+    try {
+      const vRaw = localStorage.getItem(LS_KEYS.vehicle);
+      const mRaw = localStorage.getItem(LS_KEYS.messages);
+      const cRaw = localStorage.getItem(LS_KEYS.context);
+      if (vRaw) setVehicle(JSON.parse(vRaw) as Vehicle);
+      if (mRaw) setMessages(JSON.parse(mRaw) as ChatMessage[]);
+      if (cRaw) setContext(cRaw);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Persist on change
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_KEYS.vehicle, JSON.stringify(vehicle ?? {}));
+      localStorage.setItem(LS_KEYS.messages, JSON.stringify(messages));
+      localStorage.setItem(LS_KEYS.context, context);
+    } catch {
+      // ignore
+    }
+  }, [vehicle, messages, context]);
 
   const canSend = useMemo(
     () => Boolean(vehicle?.year && vehicle?.make && vehicle?.model),
@@ -55,7 +85,7 @@ export function useTechAssistant(opts?: AssistantOptions) {
 
       setError(null);
       setSending(true);
-      setPartial("Assistant is thinking…");
+      setPartial("…");
 
       const ctrl = new AbortController();
       abortRef.current = ctrl;
@@ -68,7 +98,6 @@ export function useTechAssistant(opts?: AssistantOptions) {
           image_data: lastImageRef.current ?? null,
           ...payload,
         };
-
         const res = await postJSON("/api/assistant/answer", body, ctrl.signal);
         if (!res.ok) {
           const txt = await res.text().catch(() => "");
@@ -89,7 +118,7 @@ export function useTechAssistant(opts?: AssistantOptions) {
       } finally {
         setSending(false);
         setPartial("");
-        lastImageRef.current = null; // clear the one-time photo hint
+        lastImageRef.current = null;
         abortRef.current = null;
       }
     },
@@ -106,19 +135,6 @@ export function useTechAssistant(opts?: AssistantOptions) {
     [ask],
   );
 
-  const sendDtc = useCallback(
-    async (dtcCode: string, note?: string) => {
-      const code = dtcCode.trim().toUpperCase();
-      if (!code) return;
-      setMessages((m) => [
-        ...m,
-        { role: "user", content: `DTC: ${code}${note ? `\nNote: ${note}` : ""}` },
-      ]);
-      await ask();
-    },
-    [ask],
-  );
-
   const sendPhoto = useCallback(
     async (file: File, note?: string) => {
       if (!file) return;
@@ -126,7 +142,10 @@ export function useTechAssistant(opts?: AssistantOptions) {
       lastImageRef.current = image_data;
       setMessages((m) => [
         ...m,
-        { role: "user", content: `Uploaded a photo.${note ? `\nNote: ${note}` : ""}` },
+        {
+          role: "user",
+          content: `Attached a photo.${note ? `\nNote: ${note}` : ""}`,
+        },
       ]);
       await ask();
     },
@@ -134,6 +153,7 @@ export function useTechAssistant(opts?: AssistantOptions) {
   );
 
   const cancel = useCallback(() => abortRef.current?.abort(), []);
+
   const resetConversation = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
@@ -141,6 +161,14 @@ export function useTechAssistant(opts?: AssistantOptions) {
     setPartial("");
     setError(null);
     lastImageRef.current = null;
+    try {
+      localStorage.removeItem(LS_KEYS.messages);
+      // keep vehicle/context unless you want them cleared too:
+      // localStorage.removeItem(LS_KEYS.vehicle);
+      // localStorage.removeItem(LS_KEYS.context);
+    } catch {
+      // ignore
+    }
   }, []);
 
   const exportToWorkOrder = useCallback(
@@ -171,7 +199,6 @@ export function useTechAssistant(opts?: AssistantOptions) {
     sending,
     error,
     sendChat,
-    sendDtc,
     sendPhoto,
     exportToWorkOrder,
     resetConversation,

@@ -1,39 +1,33 @@
-// app/layout.tsx
 import "./globals.css";
-import { Inter, Black_Ops_One, Roboto_Condensed } from "next/font/google";
-import Link from "next/link";
 import Providers from "./providers";
+import Link from "next/link";
+import { Roboto, Black_Ops_One } from "next/font/google";
 
-// Tabs (global)
-import { TabsProvider } from "@/features/shared/components/tabs/TabsProvider";
-import TabsBar from "@/features/shared/components/tabs/TabsBar";
-
-// Fonts → expose as CSS variables for Tailwind to consume
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
+// Fonts
+const roboto = Roboto({
+  weight: ["400"], // Regular
+  subsets: ["latin"],
+  variable: "--font-roboto",
+});
 const blackOps = Black_Ops_One({
   weight: "400",
   subsets: ["latin"],
   variable: "--font-blackops",
-  display: "swap",
 });
-const robotoCondensed = Roboto_Condensed({
-  subsets: ["latin"],
-  weight: ["400", "700"],
-  variable: "--font-roboto-condensed",
-  display: "swap",
-});
+
+// Tabs (unchanged from your app)
+import { TabsProvider } from "@/features/shared/components/tabs/TabsProvider";
+import TabsBar from "@/features/shared/components/tabs/TabsBar";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body
-        className={`${inter.variable} ${blackOps.variable} ${robotoCondensed.variable} ${inter.className} bg-black text-white`}
-      >
+      <body className={`${roboto.variable} ${blackOps.variable} ${roboto.className} bg-black text-white`}>
         <Providers>
-          {/* Site navbar */}
+          {/* Navbar */}
           <header className="fixed top-0 left-0 right-0 z-20 bg-black/80 backdrop-blur border-b border-white/10">
             <div className="mx-auto max-w-7xl px-4 py-3 flex items-center justify-between">
-              <Link href="/" className="tracking-wide font-blackops text-orange-400">
+              <Link href="/" className="tracking-wide font-header text-orange-400">
                 ProFixIQ
               </Link>
               <nav className="hidden sm:flex gap-4 text-sm text-gray-300">
@@ -45,7 +39,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </div>
           </header>
 
-          {/* Content below fixed header + global tabs */}
+          {/* Push content below header + global tabs */}
           <div className="pt-16">
             <TabsProvider>
               <TabsBar />

@@ -16,7 +16,7 @@ interface Body {
   vehicle?: Vehicle;
   messages?: ClientMessage[];
   context?: string;
-  image_data?: string | null; // optional base64 data URL for photos
+  image_data?: string | null; // base64 data URL for photos (optional)
 }
 
 const sanitize = (s: string) =>
@@ -25,30 +25,29 @@ const sanitize = (s: string) =>
 const hasVehicle = (v?: Vehicle): v is Vehicle =>
   Boolean(v?.year && v?.make && v?.model);
 
+// System prompt focused on bullet/numbered Markdown and follow-up discipline
 function systemFor(v: Vehicle, context?: string): string {
   const vdesc = `${v.year} ${v.make} ${v.model}`;
-  const ctx = context?.trim() ? `\nContext:\n${context.trim()}` : "";
-
+  const ctx = context?.trim() ? `\nContext (shop notes):\n${context.trim()}` : "";
   return [
     `You are a master automotive technician assistant for a ${vdesc}.`,
+    `Write clean **Markdown** only (no code fences). Use real headings and line breaks.`,
     ``,
-    `Always read the entire conversation and use the latest vehicle details + context.`,
-    `When the user asks a follow-up, answer **only the new question** and do not repeat prior procedures unless the user asks.`,
-    `If specs vary by VIN/trim, label numbers as **Typical** and advise verifying in OE service info.`,
+    `Format rules:`,
+    `- For broad diagnosis/repair:`,
+    `  ### Summary`,
+    `  - 1–3 concise bullets`,
+    `  `,
+    `  ### Procedure`,
+    `  1. Step`,
+    `  2. Step`,
+    `  3. Step`,
+    `  `,
+    `  ### Notes / Cautions`,
+    `  - Short bullets (typical specs, cautions, decision points)`,
+    `- For narrow follow-ups (e.g., torque spec, one step), answer **only the new question** with a short heading + bullets. Do **not** repeat earlier sections.`,
     ``,
-    `Write **clean Markdown** ONLY (no code fences). Use headings and line breaks.`,
-    `For broad diagnosis/repair, structure as:`,
-    `### Summary`,
-    `- 1–3 concise bullets`,
-    ``,
-    `### Procedure`,
-    `1. Step`,
-    `2. Step`,
-    `3. Step`,
-    ``,
-    `### Notes / Cautions`,
-    `- Short bullets (specs, cautions, checks)`,
-    ``,
+    `If a spec varies by trim/VIN, label numbers as **Typical** and tell where to verify in OE service info.`,
     `Never include transport markers like "event: done" or "[DONE]".`,
     ctx,
   ].join("\n");
@@ -61,13 +60,10 @@ function toOpenAIMessage(m: ClientMessage): ChatCompletionMessageParam {
 export async function POST(req: Request) {
   try {
     if (!process.env.OPENAI_API_KEY) {
-      return NextResponse.json(
-        { error: "Missing OPENAI_API_KEY" },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: "Missing OPENAI_API_KEY" }, { status: 500 });
     }
 
-    const body = (await req.json()) as Body;
+    const body: Body = await req.json();
 
     if (!hasVehicle(body.vehicle)) {
       return NextResponse.json(
@@ -81,16 +77,14 @@ export async function POST(req: Request) {
       ...(body.messages ?? []).map(toOpenAIMessage),
     ];
 
-    // If a photo was uploaded this turn, add a compact hint turn including the image (typed, no 'any').
     if (body.image_data?.startsWith("data:")) {
-      const photoTurn: { role: "user"; content: (TextPart | ImagePart)[] } = {
+      messages.push({
         role: "user",
         content: [
-          { type: "text", text: "Photo uploaded (use for context)." },
+          { type: "text", text: "Photo uploaded (use if relevant)." },
           { type: "image_url", image_url: { url: body.image_data } },
         ],
-      };
-      messages.push(photoTurn);
+      } as ChatCompletionMessageParam);
     }
 
     const completion = await openai.chat.completions.create({
