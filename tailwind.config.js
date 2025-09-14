@@ -11,7 +11,10 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        // These read the vars set by next/font in app/layout.tsx
+        // use next/font css vars (see layout.tsx below)
+        roboto: ["var(--font-roboto-condensed)", "ui-sans-serif", "system-ui", "sans-serif"],
+        blackops: ["var(--font-blackops)", "cursive"],
+        // keep your existing stacks if you still use them elsewhere
         sans: ['var(--font-inter)', "ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Roboto", "Helvetica", "Arial", "sans-serif"],
         header: ['var(--font-blackops)', "var(--font-inter)", "ui-sans-serif", "system-ui", "sans-serif"],
       },
