@@ -5,9 +5,7 @@ import type { ChatCompletionMessageParam } from "openai/resources/chat/completio
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// ---------- Types ----------
 type Vehicle = { year: string; make: string; model: string };
-
 type TextPart = { type: "text"; text: string };
 type ImagePart = { type: "image_url"; image_url: { url: string } };
 
@@ -22,66 +20,76 @@ interface Body {
   image_data?: string | null;
 }
 
-// ---------- Helpers ----------
 const sanitize = (s: string) =>
   String(s).replace(/\b(event:\s*done|data:\s*\[DONE\])\b/gi, "").trim();
 
 const hasVehicle = (v?: Vehicle): v is Vehicle =>
   Boolean(v?.year && v?.make && v?.model);
 
-const toOpenAIMessage = (m: ClientMessage): ChatCompletionMessageParam =>
-  Array.isArray(m.content) ? { role: "user", content: m.content } : m;
+// --- Follow-up detection rules ---------------------------------------------
 
-// Single, authoritative system prompt.
-// First turn = full guide. Follow-ups = expand/answer only the new question.
+/** Follow-up mode if there is ANY assistant message already present. */
+function isFollowUpThread(ms?: ClientMessage[]): boolean {
+  return Boolean(ms?.some((m) => m.role === "assistant"));
+}
+
+/** Allow the user to force a brand new topic. */
+function userRequestedNewTopic(ms?: ClientMessage[]): boolean {
+  if (!ms?.length) return false;
+  const last = ms[ms.length - 1];
+  if (typeof last?.content !== "string") return false;
+  const t = last.content.toLowerCase().trim();
+  return (
+    t.startsWith("new topic") ||
+    t.startsWith("start over") ||
+    t.startsWith("reset topic") ||
+    t.startsWith("different vehicle") ||
+    t.startsWith("new vehicle")
+  );
+}
+
+// --- Prompt scaffolding -----------------------------------------------------
+
 function systemFor(v: Vehicle, context?: string): string {
   const vdesc = `${v.year} ${v.make} ${v.model}`;
-  const ctx = context?.trim() ? `\nContext:\n${context.trim()}` : "";
+  const ctx = context?.trim()
+    ? `\nUser Notes / Context (treat as facts unless contradicted):\n${context.trim()}`
+    : "";
 
   return [
     `You are a master automotive technician assistant for a ${vdesc}.`,
+    `Write clean **Markdown** ONLY (no code fences). Use headings and real line breaks.`,
     ``,
-    `OUTPUT & FORMAT (CRITICAL)`,
-    `- Write clean **Markdown only** (no code fences). Use real line breaks.`,
-    `- Prefer short paragraphs, bullet lists, and numbered steps.`,
-    `- Headings: use "###" level for section titles.`,
-    ``,
-    `FIRST QUESTION (broad diagnostic/repair):`,
-    `- Provide a compact, technician-ready guide in this exact order:`,
+    `INITIAL QUESTION (first answer only):`,
+    `- For broad diagnosis/repair:`,
     `  ### Summary`,
-    `  - 1–3 bullets on problem/goal`,
-    `  `,
-    `  ### Tools & Prep`,
-    `  - Tools (bullets)`,
-    `  - Parts (bullets; include “if needed”)`,
-    `  - Safety (bullets)`,
+    `  - 1–3 concise bullets`,
     `  `,
     `  ### Procedure`,
-    `  1. Step name — brief action. Include **torque specs inline** where relevant (caliper bolts, bracket bolts, wheel lugs, etc.).`,
-    `  2. Step name — brief action.`,
-    `  3. Step name — brief action.`,
-    `  `,
-    `  ### Verification / Tests`,
-    `  - Checks/road test/scan tool as applicable`,
+    `  1. Step`,
+    `  2. Step`,
+    `  3. Step`,
     `  `,
     `  ### Notes / Cautions`,
-    `  - Warnings, typical specs, what to double-check in OE info`,
+    `  - Short bullets (specs, cautions, checks)`,
     ``,
-    `FOLLOW-UPS (CRITICAL):`,
-    `- Treat follow-up messages as a **continuation** of the same job.`,
-    `- **Do NOT** repeat prior sections (no re-stating Summary/Tools unless specifically asked).`,
-    `- Answer only the **new question** and expand the relevant step(s) with exact details and **torque specs inline**.`,
-    `- If user asks "what first" / "next step" → provide a short priority checklist (3–5 bullets) referencing earlier guidance.`,
-    `- If the user wants a specific torque/spec that can vary by VIN/trim, give a **Typical** range and say to verify in OE service info.`,
+    `FOLLOW-UP MODE (all turns AFTER your first reply):`,
+    `- Answer **only** the user's latest question. **Do not** repeat previous sections.`,
+    `- If the ask is removal/installation, include a **compact numbered procedure** and **typical torque specs** relevant to that operation.`,
+    `- Mark variable specs as **Typical** and advise verifying in OE service info.`,
+    `- If the user asks “what next” or “what first”, return a short **priority checklist** not a full re-diagnosis.`,
+    `- Prefer bullets and short sentences. Avoid re-stating prior Summary/Procedure.`,
     ``,
-    `GENERAL SAFETY & CLARITY:`,
-    `- Use checklists and decision points when uncertain.`,
-    `- Never include transport markers like "event: done" or "[DONE]".`,
+    `Never include transport markers like "event: done" or "[DONE]".`,
     ctx,
   ].join("\n");
 }
 
-// ---------- Route ----------
+function toOpenAIMessage(m: ClientMessage): ChatCompletionMessageParam {
+  return Array.isArray(m.content) ? { role: "user", content: m.content } : m;
+}
+
+// --- Route ------------------------------------------------------------------
 export async function POST(req: Request) {
   try {
     if (!process.env.OPENAI_API_KEY) {
@@ -97,34 +105,51 @@ export async function POST(req: Request) {
       );
     }
 
-    // Build conversation for a single, clean completion
+    // Determine conversation mode
+    const newTopic = userRequestedNewTopic(body.messages);
+    const followUpMode = !newTopic && isFollowUpThread(body.messages);
+
+    // Build system message with mode baked in
+    const baseSystem = systemFor(body.vehicle, body.context);
+
+    const followUpAddendum = followUpMode
+      ? [
+          ``,
+          `You are in **FOLLOW-UP MODE**. Constraints to enforce:`,
+          `- Answer **only** the latest user message.`,
+          `- Do **not** re-print earlier Summary/Procedure/Notes.`,
+          `- Be specific and compact. Include typical torque/specs if applicable.`,
+        ].join("\n")
+      : "";
+
     const messages: ChatCompletionMessageParam[] = [
-      { role: "system", content: systemFor(body.vehicle, body.context) },
+      { role: "system", content: `${baseSystem}${followUpAddendum}` },
       ...(body.messages ?? []).map(toOpenAIMessage),
     ];
 
-    // If a photo was uploaded this turn, include a concise hint + the image
-    if (body.image_data && body.image_data.startsWith("data:")) {
-      const imgMsg: ChatCompletionMessageParam = {
+    if (body.image_data?.startsWith("data:")) {
+      messages.push({
         role: "user",
         content: [
-          { type: "text", text: "Photo uploaded (use for context where helpful)." },
+          { type: "text", text: "Photo uploaded (use only if relevant to the latest question)." },
           { type: "image_url", image_url: { url: body.image_data } },
         ],
-      };
-      messages.push(imgMsg);
+      } as any);
     }
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
-      temperature: 0.35,
-      max_tokens: 1100,
+      // Tighter for follow-ups to reduce drift & repetition
+      temperature: followUpMode ? 0.2 : 0.35,
+      top_p: 0.9,
+      frequency_penalty: 0.7, // discourage repeating prior phrasing
+      presence_penalty: 0.0,
+      max_tokens: 900,
       messages,
     });
 
     const raw = completion.choices?.[0]?.message?.content ?? "";
     const text = sanitize(raw);
-
     return NextResponse.json({ text });
   } catch (err) {
     console.error("assistant/answer error:", err);
