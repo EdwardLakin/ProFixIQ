@@ -1,23 +1,25 @@
 // app/api/assistant/answer/route.ts
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
-import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
+import type {
+  ChatCompletionMessageParam,
+  ChatCompletionContentPart,
+} from "openai/resources/chat/completions";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 type Vehicle = { year: string; make: string; model: string };
-type TextPart = { type: "text"; text: string };
-type ImagePart = { type: "image_url"; image_url: { url: string } };
 
+// Client payload
 type ClientMessage =
   | { role: "user" | "assistant" | "system"; content: string }
-  | { role: "user"; content: (TextPart | ImagePart)[] };
+  | { role: "user"; content: ChatCompletionContentPart[] };
 
 interface Body {
   vehicle?: Vehicle;
   messages?: ClientMessage[];
   context?: string;
-  image_data?: string | null; // optional base64 data URL for photos
+  image_data?: string | null; // data URL (base64) for photo, optional
 }
 
 const sanitize = (s: string) =>
@@ -58,7 +60,7 @@ function toOpenAIMessage(m: ClientMessage): ChatCompletionMessageParam {
   return Array.isArray(m.content) ? { role: "user", content: m.content } : m;
 }
 
-export async function POST(req: Request) {
+export async function POST(req: Request): Promise<NextResponse<{ text?: string; error?: string }>> {
   try {
     if (!process.env.OPENAI_API_KEY) {
       return NextResponse.json(
@@ -84,20 +86,18 @@ export async function POST(req: Request) {
 
     // If a photo was uploaded this turn, add a compact hint turn including the image.
     if (body.image_data?.startsWith("data:")) {
-      messages.push({
-        role: "user",
-        content: [
-          { type: "text", text: "Photo uploaded (use for context)." },
-          { type: "image_url", image_url: { url: body.image_data } },
-        ],
-      } as any);
+      const parts: ChatCompletionContentPart[] = [
+        { type: "text", text: "Photo uploaded (use for context)." },
+        { type: "image_url", image_url: { url: body.image_data } },
+      ];
+      const photoMsg: ChatCompletionMessageParam = { role: "user", content: parts };
+      messages.push(photoMsg);
     }
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
       temperature: 0.4,
       messages,
-      // no stream — get one clean Markdown block
       max_tokens: 900,
     });
 
