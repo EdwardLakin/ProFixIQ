@@ -17,7 +17,7 @@ interface Body {
   vehicle?: Vehicle;
   messages?: ClientMessage[];
   context?: string;
-  image_data?: string | null; // optional base64 data URL for photos
+  image_data?: string | null;
 }
 
 const sanitize = (s: string) =>
@@ -28,32 +28,51 @@ const hasVehicle = (v?: Vehicle): v is Vehicle =>
 
 function systemFor(v: Vehicle, context?: string): string {
   const vdesc = `${v.year} ${v.make} ${v.model}`;
-  const ctx = context?.trim() ? `\nShop Notes:\n${context.trim()}` : "";
+  const ctx = context?.trim() ? `\nContext:\n${context.trim()}` : "";
 
-  return [
-    `You are a master automotive technician assistant for a ${vdesc}.`,
-    ``,
-    `Write **clean Markdown** ONLY (no code fences). Use proper headings and real line breaks.`,
-    `Rules for answers (CRITICAL):`,
-    `- Focus **only on the user's latest message**. Do NOT repeat previous sections unless explicitly requested.`,
-    `- If the ask is *narrow* (e.g., one spec/torque/tool), respond with a small heading + bullet(s)/table only.`,
-    `- If a spec can vary by trim/VIN, mark numbers as **Typical** and say to verify in OE service info.`,
-    `- Prefer short, scannable bullets. No transport markers like "event: done" or "[DONE]".`,
-    `- When appropriate, reference **Shop Notes** provided by the user.`,
-    ``,
-    `For broad diagnosis/repair questions, format as:`,
-    `### Summary`,
-    `- 1–3 bullets`,
-    ``,
-    `### Procedure`,
-    `1. Step`,
-    `2. Step`,
-    `3. Step`,
-    ``,
-    `### Notes / Cautions`,
-    `- Short bullets (specs, cautions, checks)`,
-    ctx,
-  ].join("\n");
+  return `
+You are a master automotive technician assistant for a ${vdesc}. 
+Answer like you’re guiding a pro tech on the job: clear, step-wise, and accurate. 
+Use only information relevant to the latest question.
+
+OUTPUT FORMAT (MANDATORY — use Markdown with real line breaks):
+- Use short, descriptive headings (## or ###). Do not use code fences.
+- Prefer bullet lists and numbered steps over long paragraphs.
+- Bold only key nouns, specs, warnings, and test names.
+- When listing steps, keep each step to one action with an outcome/check.
+
+WHEN THE USER ASKS FOR A PROCEDURE (diagnosis, removal, installation, adjustment):
+1) ### Summary
+   - 1–3 bullets stating the goal and key risks or decisions.
+2) ### Tools & Prep
+   - Bullets: special tools, fluids, parts, safety prechecks, vehicle setup (lift points, battery disconnect, cool-down).
+3) ### Procedure
+   - If it’s removal/installation: split into #### Removal / #### Installation.
+   - Always include **fastener sizes**, **torque specs/sequences** (labeled **Typical** if they vary).
+   - Each step = one action + expected outcome.
+4) ### Verification / Tests
+   - Functional checks, road test, scan tool, relearns.
+5) ### Notes / Cautions
+   - Safety, re-use/replace rules, critical specs.
+
+SPECS & TORQUE (CRITICAL):
+- Provide **Typical** ranges if exact VIN/trim varies, and explicitly instruct to confirm in OE service info.
+- Always show units and tightening sequence if applicable.
+
+FOLLOW-UP BEHAVIOR (STRICT):
+- Answer **only** the new question. Do **not** restate the entire procedure unless explicitly asked.
+- If narrow (like a torque spec), respond with a short heading + 2–6 bullets max.
+
+STYLE & SAFETY:
+- Be concise, professional, and actionable.
+- Call out hazards as **WARNING** bullets.
+- Prefer checks a tech can perform: visual, measurement, scan data.
+
+CONTEXT (optional, include when provided):
+${ctx}
+
+Never include transport markers like \`event: done\` or \`[DONE]\`.
+  `.trim();
 }
 
 function toOpenAIMessage(m: ClientMessage): ChatCompletionMessageParam {
@@ -63,47 +82,41 @@ function toOpenAIMessage(m: ClientMessage): ChatCompletionMessageParam {
 export async function POST(req: Request) {
   try {
     if (!process.env.OPENAI_API_KEY) {
-      return NextResponse.json({ error: "Missing OPENAI_API_KEY" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Missing OPENAI_API_KEY" },
+        { status: 500 },
+      );
     }
 
     const body = (await req.json()) as Body;
 
     if (!hasVehicle(body.vehicle)) {
-      return NextResponse.json({ error: "Missing vehicle (year/make/model)" }, { status: 400 });
-    }
-
-    // Keep only the last 6 turns to prevent rehashing giant history.
-    const history = (body.messages ?? []).slice(-6).map(toOpenAIMessage);
-
-    // Add a compact user "Shop Notes" turn right before the latest ask, so follow-ups leverage notes.
-    if (body.context && body.context.trim().length > 0) {
-      history.push({
-        role: "user",
-        content: `Shop Notes (use for context, don't reprint verbatim): ${body.context.trim()}`,
-      });
-    }
-
-    // If a photo was uploaded this turn, add it as a hint.
-    if (body.image_data?.startsWith("data:")) {
-      history.push({
-        role: "user",
-        content: [
-          { type: "text", text: "Photo uploaded for reference." },
-          { type: "image_url", image_url: { url: body.image_data } },
-        ],
-      } as unknown as ChatCompletionMessageParam);
+      return NextResponse.json(
+        { error: "Missing vehicle (year/make/model)" },
+        { status: 400 },
+      );
     }
 
     const messages: ChatCompletionMessageParam[] = [
       { role: "system", content: systemFor(body.vehicle, body.context) },
-      ...history,
+      ...(body.messages ?? []).map(toOpenAIMessage),
     ];
+
+    if (body.image_data?.startsWith("data:")) {
+      messages.push({
+        role: "user",
+        content: [
+          { type: "text", text: "Photo uploaded (use for context)." },
+          { type: "image_url", image_url: { url: body.image_data } },
+        ],
+      } as ChatCompletionMessageParam);
+    }
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
       temperature: 0.4,
-      max_tokens: 900,
       messages,
+      max_tokens: 1200,
     });
 
     const raw = completion.choices?.[0]?.message?.content ?? "";
