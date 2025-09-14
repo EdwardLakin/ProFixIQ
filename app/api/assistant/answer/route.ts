@@ -1,10 +1,6 @@
-// app/api/assistant/answer/route.ts
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
-import type {
-  ChatCompletionMessageParam,
-  ChatCompletionContentPart,
-} from "openai/resources/chat/completions";
+import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -29,14 +25,10 @@ const sanitize = (s: string) =>
 const hasVehicle = (v?: Vehicle): v is Vehicle =>
   Boolean(v?.year && v?.make && v?.model);
 
-// --- Follow-up detection rules ---------------------------------------------
-
-/** Follow-up mode if there is ANY assistant message already present. */
+// Follow-up detection rules
 function isFollowUpThread(ms?: ClientMessage[]): boolean {
   return Boolean(ms?.some((m) => m.role === "assistant"));
 }
-
-/** Allow the user to force a brand new topic. */
 function userRequestedNewTopic(ms?: ClientMessage[]): boolean {
   if (!ms?.length) return false;
   const last = ms[ms.length - 1];
@@ -50,8 +42,6 @@ function userRequestedNewTopic(ms?: ClientMessage[]): boolean {
     t.startsWith("new vehicle")
   );
 }
-
-// --- Prompt scaffolding -----------------------------------------------------
 
 function systemFor(v: Vehicle, context?: string): string {
   const vdesc = `${v.year} ${v.make} ${v.model}`;
@@ -92,7 +82,6 @@ function toOpenAIMessage(m: ClientMessage): ChatCompletionMessageParam {
   return Array.isArray(m.content) ? { role: "user", content: m.content } : m;
 }
 
-// --- Route ------------------------------------------------------------------
 export async function POST(req: Request) {
   try {
     if (!process.env.OPENAI_API_KEY) {
@@ -114,7 +103,6 @@ export async function POST(req: Request) {
 
     // Build system message with mode baked in
     const baseSystem = systemFor(body.vehicle, body.context);
-
     const followUpAddendum = followUpMode
       ? [
           ``,
@@ -130,21 +118,21 @@ export async function POST(req: Request) {
       ...(body.messages ?? []).map(toOpenAIMessage),
     ];
 
-    // Properly typed photo hint (no `any`)
     if (body.image_data?.startsWith("data:")) {
-      const photoParts: ChatCompletionContentPart[] = [
-        { type: "text", text: "Photo uploaded (use only if relevant to the latest question)." },
-        { type: "image_url", image_url: { url: body.image_data } },
-      ];
-      messages.push({ role: "user", content: photoParts });
+      messages.push({
+        role: "user",
+        content: [
+          { type: "text", text: "Photo uploaded (use only if relevant to the latest question)." },
+          { type: "image_url", image_url: { url: body.image_data } },
+        ],
+      } as unknown as ChatCompletionMessageParam);
     }
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
-      // Tighter for follow-ups to reduce drift & repetition
       temperature: followUpMode ? 0.2 : 0.35,
       top_p: 0.9,
-      frequency_penalty: 0.7, // discourage repeating prior phrasing
+      frequency_penalty: 0.7,
       presence_penalty: 0.0,
       max_tokens: 900,
       messages,

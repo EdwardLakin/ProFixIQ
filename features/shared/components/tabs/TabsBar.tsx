@@ -1,4 +1,3 @@
-// features/shared/components/tabs/TabsBar.tsx
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
@@ -19,7 +18,7 @@ export default function TabsBar(): JSX.Element {
               <motion.div
                 key={t.href}
                 layout
-                className={`group relative inline-flex items-center gap-2 rounded-md border-2 px-2.5 py-1.5 text-sm transition-colors ${
+                className={`group relative inline-flex items-center gap-2 rounded-md border-2 px-2.5 py-1.5 text-sm ${
                   active
                     ? "border-orange-400 bg-neutral-900"
                     : "border-orange-400/40 hover:border-orange-400"
@@ -27,17 +26,18 @@ export default function TabsBar(): JSX.Element {
                 initial={{ opacity: 0, scale: 0.96 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.96 }}
+                transition={{ type: "spring", stiffness: 400, damping: 30, mass: 0.2 }}
               >
-                {/* Button area (title only; icons removed) */}
                 <button
                   onClick={() => activateTab(t.href)}
                   className="flex items-center gap-1 outline-none"
                   title={t.title}
                 >
-                  <span className="truncate max-w-[200px]">{t.title}</span>
+                  {/* Icon (optional) */}
+                  {t.icon ? <span className="opacity-80">{t.icon}</span> : null}
+                  <span className="truncate max-w-[200px] font-header tracking-wide">{t.title}</span>
                 </button>
 
-                {/* Close button */}
                 <button
                   onClick={() => closeTab(t.href)}
                   className="rounded px-1 text-xs text-neutral-400 hover:text-white"
@@ -46,7 +46,6 @@ export default function TabsBar(): JSX.Element {
                   ✕
                 </button>
 
-                {/* Active underline (spring driven) */}
                 {active && (
                   <motion.div
                     layoutId="active-underline"
@@ -63,13 +62,15 @@ export default function TabsBar(): JSX.Element {
         <div className="ml-auto flex items-center gap-2">
           <button
             onClick={() => closeOthers(activeHref)}
-            className="rounded-md border-2 border-orange-400/40 px-2 py-1 text-xs text-orange-100 hover:border-orange-400"
+            className="rounded-md border-2 border-orange-400/40 px-2 py-1 text-xs text-orange-100 hover:border-orange-400 font-header"
+            title="Close all except current"
           >
             Close Others
           </button>
           <button
             onClick={closeAll}
-            className="rounded-md border-2 border-orange-400/40 px-2 py-1 text-xs text-orange-100 hover:border-orange-400"
+            className="rounded-md border-2 border-orange-400/40 px-2 py-1 text-xs text-orange-100 hover:border-orange-400 font-header"
+            title="Close all tabs"
           >
             Close All
           </button>

@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { metaFor } from "@/features/shared/lib/routeMeta";
 
 type Tab = { href: string; title: string; icon?: string };
+
 type TabsContextValue = {
   tabs: Tab[];
   activeHref: string;
@@ -16,55 +17,63 @@ type TabsContextValue = {
 };
 
 const TabsCtx = createContext<TabsContextValue | null>(null);
-export const useTabs = () => {
+
+export const useTabs = (): TabsContextValue => {
   const ctx = useContext(TabsCtx);
   if (!ctx) throw new Error("useTabs must be used inside <TabsProvider>");
   return ctx;
 };
 
-const keyFor = (uid?: string) => `dash-tabs:${uid ?? "anon"}`;
+function storageKey(userId?: string) {
+  return `dash-tabs:${userId ?? "anon"}`;
+}
 
-export function TabsProvider({ children, userId }: { children: React.ReactNode; userId?: string }) {
+type PersistShape = { tabs: Tab[]; activeHref: string };
+
+export function TabsProvider({
+  children,
+  userId,
+}: {
+  children: React.ReactNode;
+  userId?: string;
+}) {
   const pathname = usePathname();
   const router = useRouter();
-
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeHref, setActiveHref] = useState<string>("");
 
-  // Load persisted tabs for this user
+  // ---- Load persisted tabs once
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(keyFor(userId));
+      const raw = localStorage.getItem(storageKey(userId));
       if (raw) {
-        const parsed = JSON.parse(raw) as { tabs: Tab[]; activeHref?: string };
-        setTabs(Array.isArray(parsed.tabs) ? parsed.tabs : []);
-        setActiveHref(typeof parsed.activeHref === "string" ? parsed.activeHref : "");
-      } else {
-        setTabs([]);
-        setActiveHref("");
+        const parsed = JSON.parse(raw) as Partial<PersistShape>;
+        if (Array.isArray(parsed.tabs)) setTabs(parsed.tabs);
+        if (typeof parsed.activeHref === "string") setActiveHref(parsed.activeHref);
       }
     } catch {
       // ignore
     }
   }, [userId]);
 
-  // Persist changes for this user
+  // ---- Persist changes
   useEffect(() => {
     try {
-      localStorage.setItem(keyFor(userId), JSON.stringify({ tabs, activeHref }));
+      const data: PersistShape = { tabs, activeHref };
+      localStorage.setItem(storageKey(userId), JSON.stringify(data));
     } catch {
       // ignore
     }
   }, [tabs, activeHref, userId]);
 
-  // Cross-tab sync (keep multiple browser windows consistent)
+  // ---- Keep in sync if localStorage is changed in another tab
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
-      if (e.key !== keyFor(userId) || !e.newValue) return;
+      if (e.key !== storageKey(userId) || !e.newValue) return;
       try {
-        const { tabs: t, activeHref: a } = JSON.parse(e.newValue) as { tabs: Tab[]; activeHref?: string };
-        setTabs(Array.isArray(t) ? t : []);
-        if (typeof a === "string") setActiveHref(a);
+        const parsed = JSON.parse(e.newValue) as PersistShape;
+        setTabs(parsed.tabs ?? []);
+        setActiveHref(parsed.activeHref ?? "");
       } catch {
         // ignore
       }
@@ -73,7 +82,7 @@ export function TabsProvider({ children, userId }: { children: React.ReactNode; 
     return () => window.removeEventListener("storage", onStorage);
   }, [userId]);
 
-  // Auto-open current route as a tab when the route changes (if eligible)
+  // ---- Auto-open a tab on route change (if route wants to appear)
   const lastPath = useRef<string>("");
   useEffect(() => {
     if (!pathname || pathname === lastPath.current) return;
@@ -84,8 +93,10 @@ export function TabsProvider({ children, userId }: { children: React.ReactNode; 
       setActiveHref(pathname);
       return;
     }
-
-    setTabs((prev) => (prev.some((t) => t.href === pathname) ? prev : [...prev, { href: pathname, title, icon }]));
+    setTabs((prev) => {
+      if (prev.some((t) => t.href === pathname)) return prev;
+      return [...prev, { href: pathname, title, icon }];
+    });
     setActiveHref(pathname);
   }, [pathname]);
 
@@ -93,6 +104,7 @@ export function TabsProvider({ children, userId }: { children: React.ReactNode; 
     () => ({
       tabs,
       activeHref,
+
       openTab: (href) => {
         const { title, icon, show } = metaFor(href);
         if (!show) {
@@ -104,30 +116,28 @@ export function TabsProvider({ children, userId }: { children: React.ReactNode; 
         setActiveHref(href);
         router.push(href);
       },
+
       activateTab: (href) => {
         setActiveHref(href);
         router.push(href);
       },
+
       closeTab: (href) => {
-        setTabs((prev) => {
-          const nextTabs = prev.filter((t) => t.href !== href);
-          if (activeHref === href) {
-            const next = nextTabs.slice(-1)[0]?.href ?? "/dashboard";
-            setActiveHref(next);
-            router.push(next);
-          }
-          return nextTabs;
-        });
+        setTabs((prev) => prev.filter((t) => t.href !== href));
+        if (activeHref === href) {
+          const remaining = tabs.filter((t) => t.href !== href);
+          const next = remaining.length ? remaining[remaining.length - 1].href : "/dashboard";
+          setActiveHref(next);
+          router.push(next);
+        }
       },
+
       closeOthers: (href) => {
-        setTabs((prev) => {
-          const keep = prev.find((t) => t.href === href);
-          const nextTabs = keep ? [keep] : [];
-          setActiveHref(keep?.href ?? "/dashboard");
-          router.push(keep?.href ?? "/dashboard");
-          return nextTabs;
-        });
+        setTabs((prev) => prev.filter((t) => t.href === href));
+        setActiveHref(href);
+        router.push(href);
       },
+
       closeAll: () => {
         setTabs([]);
         setActiveHref("/dashboard");

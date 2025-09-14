@@ -10,21 +10,37 @@ export type Vehicle = {
   model?: string | null;
 };
 
-type AssistantOptions = {
-  defaultVehicle?: Vehicle;
-  defaultContext?: string;
-  /** Optional explicit storage key; if omitted, caller should pass a tab-scoped key. */
-  storageKey?: string;
-};
+type AssistantOptions = { defaultVehicle?: Vehicle; defaultContext?: string };
 
-type PersistedState = {
+type PersistedThread = {
   vehicle?: Vehicle;
   context?: string;
   messages?: ChatMessage[];
 };
 
+const THREAD_KEY = "assistant:thread";
+
+function saveThread(state: PersistedThread) {
+  try {
+    localStorage.setItem(THREAD_KEY, JSON.stringify(state));
+  } catch {
+    /* ignore */
+  }
+}
+
+function loadThread(): PersistedThread | null {
+  try {
+    const raw = localStorage.getItem(THREAD_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as PersistedThread;
+  } catch {
+    return null;
+  }
+}
+
 async function fileToDataUrl(file: File): Promise<string> {
   const buf = await file.arrayBuffer();
+  // eslint-disable-next-line no-undef
   const b64 = Buffer.from(buf).toString("base64");
   const mime = file.type || "image/jpeg";
   return `data:${mime};base64,${b64}`;
@@ -40,51 +56,39 @@ async function postJSON(url: string, data: unknown, signal?: AbortSignal): Promi
 }
 
 export function useTechAssistant(opts?: AssistantOptions) {
-  // State
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [vehicle, setVehicle] = useState<Vehicle | undefined>(opts?.defaultVehicle);
   const [context, setContext] = useState<string>(opts?.defaultContext ?? "");
 
   const [sending, setSending] = useState(false);
-  const [partial, setPartial] = useState<string>("");
+  const [partial, setPartial] = useState<string>(""); // kept for typing bubble parity
   const [error, setError] = useState<string | null>(null);
 
   const lastImageRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  // Initial restore
+  useEffect(() => {
+    const restored = loadThread();
+    if (restored) {
+      if (restored.vehicle) setVehicle(restored.vehicle);
+      if (typeof restored.context === "string") setContext(restored.context);
+      if (Array.isArray(restored.messages)) setMessages(restored.messages);
+    }
+    // Seed defaults only if nothing restored
+    if (!restored && opts?.defaultVehicle) setVehicle(opts.defaultVehicle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist on change
+  useEffect(() => {
+    saveThread({ vehicle, context, messages });
+  }, [vehicle, context, messages]);
+
   const canSend = useMemo(
     () => Boolean(vehicle?.year && vehicle?.make && vehicle?.model),
     [vehicle],
   );
-
-  // -------- Persistence (per-tab) ----------
-  const storageKey = opts?.storageKey ?? "assistant:state:global";
-
-  // Load once
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(storageKey);
-      if (!raw) return;
-      const saved = JSON.parse(raw) as PersistedState;
-      if (saved.vehicle) setVehicle(saved.vehicle);
-      if (typeof saved.context === "string") setContext(saved.context);
-      if (Array.isArray(saved.messages)) setMessages(saved.messages);
-    } catch {
-      // ignore parse errors
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storageKey]);
-
-  // Save on change (throttling not required; chat changes are infrequent)
-  useEffect(() => {
-    const payload: PersistedState = { vehicle, context, messages };
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(payload));
-    } catch {
-      // ignore storage quota errors
-    }
-  }, [storageKey, vehicle, context, messages]);
-  // -----------------------------------------
 
   const ask = useCallback(
     async (payload: Record<string, unknown> = {}) => {
@@ -92,7 +96,6 @@ export function useTechAssistant(opts?: AssistantOptions) {
         setError("Please provide vehicle info (year, make, model).");
         return;
       }
-
       setError(null);
       setSending(true);
       setPartial("Assistant is thinking…");
@@ -168,13 +171,8 @@ export function useTechAssistant(opts?: AssistantOptions) {
     setPartial("");
     setError(null);
     lastImageRef.current = null;
-    // also clear persisted state for this tab
-    try {
-      localStorage.removeItem(storageKey);
-    } catch {
-      // ignore
-    }
-  }, [storageKey]);
+    saveThread({ vehicle, context, messages: [] }); // keep vehicle/context, clear messages
+  }, [vehicle, context]);
 
   const exportToWorkOrder = useCallback(
     async (workOrderLineId: string) => {
