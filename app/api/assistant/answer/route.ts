@@ -5,7 +5,9 @@ import type { ChatCompletionMessageParam } from "openai/resources/chat/completio
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+// ---------- Types ----------
 type Vehicle = { year: string; make: string; model: string };
+
 type TextPart = { type: "text"; text: string };
 type ImagePart = { type: "image_url"; image_url: { url: string } };
 
@@ -20,55 +22,66 @@ interface Body {
   image_data?: string | null;
 }
 
+// ---------- Helpers ----------
 const sanitize = (s: string) =>
   String(s).replace(/\b(event:\s*done|data:\s*\[DONE\])\b/gi, "").trim();
 
 const hasVehicle = (v?: Vehicle): v is Vehicle =>
   Boolean(v?.year && v?.make && v?.model);
 
+const toOpenAIMessage = (m: ClientMessage): ChatCompletionMessageParam =>
+  Array.isArray(m.content) ? { role: "user", content: m.content } : m;
+
+// Single, authoritative system prompt.
+// First turn = full guide. Follow-ups = expand/answer only the new question.
 function systemFor(v: Vehicle, context?: string): string {
   const vdesc = `${v.year} ${v.make} ${v.model}`;
   const ctx = context?.trim() ? `\nContext:\n${context.trim()}` : "";
-  return `
-You are a master automotive technician assistant for a ${vdesc}.
-Answer like you’re guiding a working tech: clear, step-wise, and accurate. Use Markdown only (no code fences).
 
-When the user asks for **procedures**:
-### Summary
-- 1–3 bullets (goal, key risk/decision)
-
-### Tools & Prep
-- Special tools, fluids, parts, lift/battery steps, safety
-
-### Procedure
-- If removal/installation: use #### Removal / #### Installation
-- Include **fastener sizes**, **torque values** (mark **Typical** if they vary), and sequences
-- Each step = one action + expected outcome/check
-
-### Verification / Tests
-- Functional checks, road test, scan-tool, relearns
-
-### Notes / Cautions
-- Safety, re-use/replace rules, critical specs
-
-Follow-ups (CRITICAL):
-- Answer **only the latest question**. Do **not** repeat earlier procedures unless asked.
-- For narrow asks (e.g. one torque): a short heading + 2–6 bullets max.
-
-Specs & Safety:
-- If a value can vary, mark as **Typical** and instruct to confirm in OE info (VIN/trim).
-- Always show units; call out hazards as **WARNING** bullets.
-
-${ctx}
-
-Never include transport markers like "event: done" or "[DONE]".
-`.trim();
+  return [
+    `You are a master automotive technician assistant for a ${vdesc}.`,
+    ``,
+    `OUTPUT & FORMAT (CRITICAL)`,
+    `- Write clean **Markdown only** (no code fences). Use real line breaks.`,
+    `- Prefer short paragraphs, bullet lists, and numbered steps.`,
+    `- Headings: use "###" level for section titles.`,
+    ``,
+    `FIRST QUESTION (broad diagnostic/repair):`,
+    `- Provide a compact, technician-ready guide in this exact order:`,
+    `  ### Summary`,
+    `  - 1–3 bullets on problem/goal`,
+    `  `,
+    `  ### Tools & Prep`,
+    `  - Tools (bullets)`,
+    `  - Parts (bullets; include “if needed”)`,
+    `  - Safety (bullets)`,
+    `  `,
+    `  ### Procedure`,
+    `  1. Step name — brief action. Include **torque specs inline** where relevant (caliper bolts, bracket bolts, wheel lugs, etc.).`,
+    `  2. Step name — brief action.`,
+    `  3. Step name — brief action.`,
+    `  `,
+    `  ### Verification / Tests`,
+    `  - Checks/road test/scan tool as applicable`,
+    `  `,
+    `  ### Notes / Cautions`,
+    `  - Warnings, typical specs, what to double-check in OE info`,
+    ``,
+    `FOLLOW-UPS (CRITICAL):`,
+    `- Treat follow-up messages as a **continuation** of the same job.`,
+    `- **Do NOT** repeat prior sections (no re-stating Summary/Tools unless specifically asked).`,
+    `- Answer only the **new question** and expand the relevant step(s) with exact details and **torque specs inline**.`,
+    `- If user asks "what first" / "next step" → provide a short priority checklist (3–5 bullets) referencing earlier guidance.`,
+    `- If the user wants a specific torque/spec that can vary by VIN/trim, give a **Typical** range and say to verify in OE service info.`,
+    ``,
+    `GENERAL SAFETY & CLARITY:`,
+    `- Use checklists and decision points when uncertain.`,
+    `- Never include transport markers like "event: done" or "[DONE]".`,
+    ctx,
+  ].join("\n");
 }
 
-function toOpenAIMessage(m: ClientMessage): ChatCompletionMessageParam {
-  return Array.isArray(m.content) ? { role: "user", content: m.content } : m;
-}
-
+// ---------- Route ----------
 export async function POST(req: Request) {
   try {
     if (!process.env.OPENAI_API_KEY) {
@@ -76,57 +89,42 @@ export async function POST(req: Request) {
     }
 
     const body = (await req.json()) as Body;
+
     if (!hasVehicle(body.vehicle)) {
-      return NextResponse.json({ error: "Missing vehicle (year/make/model)" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing vehicle (year/make/model)" },
+        { status: 400 },
+      );
     }
 
-    // Build transcript
+    // Build conversation for a single, clean completion
     const messages: ChatCompletionMessageParam[] = [
       { role: "system", content: systemFor(body.vehicle, body.context) },
       ...(body.messages ?? []).map(toOpenAIMessage),
     ];
 
-    // If a photo was uploaded this turn, hint it in-line
-    if (body.image_data?.startsWith("data:")) {
-      messages.push({
+    // If a photo was uploaded this turn, include a concise hint + the image
+    if (body.image_data && body.image_data.startsWith("data:")) {
+      const imgMsg: ChatCompletionMessageParam = {
         role: "user",
         content: [
-          { type: "text", text: "Photo uploaded (use for context)." },
+          { type: "text", text: "Photo uploaded (use for context where helpful)." },
           { type: "image_url", image_url: { url: body.image_data } },
         ],
-      });
+      };
+      messages.push(imgMsg);
     }
-
-    // === FOLLOW-UP GUARD (forces answer to the last user turn) ===
-    const lastUser = [...(body.messages ?? [])]
-      .reverse()
-      .find(m => m.role === "user" && typeof m.content === "string") as
-      | { role: "user"; content: string }
-      | undefined;
-
-    if (lastUser?.content) {
-      messages.push({
-        role: "system",
-        content:
-          `Respond **only** to the following last user turn. ` +
-          `Do not restate previous procedures unless explicitly requested. ` +
-          `Keep the answer as focused and short as possible for this ask.\n\n` +
-          `Last user message:\n"""${lastUser.content.trim()}"""`,
-      });
-    }
-    // ============================================================
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
-      temperature: 0.25,          // tighter, reduces rambles
-      max_tokens: 700,            // keeps follow-ups concise
-      frequency_penalty: 0.3,     // discourages repetition
-      presence_penalty: 0.0,
+      temperature: 0.35,
+      max_tokens: 1100,
       messages,
     });
 
     const raw = completion.choices?.[0]?.message?.content ?? "";
     const text = sanitize(raw);
+
     return NextResponse.json({ text });
   } catch (err) {
     console.error("assistant/answer error:", err);
