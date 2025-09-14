@@ -22,40 +22,58 @@ export const useTabs = () => {
   return ctx;
 };
 
-function storageKey(userId?: string) {
-  return `dash-tabs:${userId ?? "anon"}`;
-}
+const keyFor = (uid?: string) => `dash-tabs:${uid ?? "anon"}`;
 
 export function TabsProvider({ children, userId }: { children: React.ReactNode; userId?: string }) {
   const pathname = usePathname();
   const router = useRouter();
+
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeHref, setActiveHref] = useState<string>("");
 
-  // Load persisted tabs
+  // Load persisted tabs for this user
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(storageKey(userId));
+      const raw = localStorage.getItem(keyFor(userId));
       if (raw) {
         const parsed = JSON.parse(raw) as { tabs: Tab[]; activeHref?: string };
-        setTabs(parsed.tabs ?? []);
-        setActiveHref(parsed.activeHref ?? "");
+        setTabs(Array.isArray(parsed.tabs) ? parsed.tabs : []);
+        setActiveHref(typeof parsed.activeHref === "string" ? parsed.activeHref : "");
+      } else {
+        setTabs([]);
+        setActiveHref("");
       }
     } catch {
       // ignore
     }
   }, [userId]);
 
-  // Persist changes
+  // Persist changes for this user
   useEffect(() => {
     try {
-      localStorage.setItem(storageKey(userId), JSON.stringify({ tabs, activeHref }));
+      localStorage.setItem(keyFor(userId), JSON.stringify({ tabs, activeHref }));
     } catch {
       // ignore
     }
   }, [tabs, activeHref, userId]);
 
-  // Auto-open a tab whenever the route changes (and wants to be shown)
+  // Cross-tab sync (keep multiple browser windows consistent)
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== keyFor(userId) || !e.newValue) return;
+      try {
+        const { tabs: t, activeHref: a } = JSON.parse(e.newValue) as { tabs: Tab[]; activeHref?: string };
+        setTabs(Array.isArray(t) ? t : []);
+        if (typeof a === "string") setActiveHref(a);
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [userId]);
+
+  // Auto-open current route as a tab when the route changes (if eligible)
   const lastPath = useRef<string>("");
   useEffect(() => {
     if (!pathname || pathname === lastPath.current) return;
@@ -66,10 +84,8 @@ export function TabsProvider({ children, userId }: { children: React.ReactNode; 
       setActiveHref(pathname);
       return;
     }
-    setTabs((prev) => {
-      if (prev.some((t) => t.href === pathname)) return prev;
-      return [...prev, { href: pathname, title, icon }];
-    });
+
+    setTabs((prev) => (prev.some((t) => t.href === pathname) ? prev : [...prev, { href: pathname, title, icon }]));
     setActiveHref(pathname);
   }, [pathname]);
 
@@ -93,17 +109,24 @@ export function TabsProvider({ children, userId }: { children: React.ReactNode; 
         router.push(href);
       },
       closeTab: (href) => {
-        setTabs((prev) => prev.filter((t) => t.href !== href));
-        if (activeHref === href) {
-          const next = tabs.filter((t) => t.href !== href).slice(-1)[0]?.href ?? "/dashboard";
-          setActiveHref(next);
-          router.push(next);
-        }
+        setTabs((prev) => {
+          const nextTabs = prev.filter((t) => t.href !== href);
+          if (activeHref === href) {
+            const next = nextTabs.slice(-1)[0]?.href ?? "/dashboard";
+            setActiveHref(next);
+            router.push(next);
+          }
+          return nextTabs;
+        });
       },
       closeOthers: (href) => {
-        setTabs((prev) => prev.filter((t) => t.href === href));
-        setActiveHref(href);
-        router.push(href);
+        setTabs((prev) => {
+          const keep = prev.find((t) => t.href === href);
+          const nextTabs = keep ? [keep] : [];
+          setActiveHref(keep?.href ?? "/dashboard");
+          router.push(keep?.href ?? "/dashboard");
+          return nextTabs;
+        });
       },
       closeAll: () => {
         setTabs([]);

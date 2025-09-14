@@ -3,6 +3,7 @@ import "./globals.css";
 import { Roboto, Black_Ops_One } from "next/font/google";
 import Providers from "./providers";
 import AppShell from "@/features/shared/components/AppShell";
+import TabsBridge from "@/features/shared/components/tabs/TabsBridge"; // ⬅️ NEW
 
 // Fonts: body → Roboto, headers/buttons → Black Ops One
 const roboto = Roboto({
@@ -16,10 +17,6 @@ const blackOps = Black_Ops_One({
   variable: "--font-blackops",
 });
 
-// Tabs (browser-in-browser)
-import { TabsProvider } from "@/features/shared/components/tabs/TabsProvider";
-import TabsBar from "@/features/shared/components/tabs/TabsBar";
-
 export const metadata = {
   title: "ProFixIQ",
   description: "Tech tools for modern shops",
@@ -32,11 +29,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Providers>
           {/* Global app shell (desktop header + mobile shell) */}
           <AppShell>
-            {/* Global tabs with persistence */}
-            <TabsProvider>
-              <TabsBar />
+            {/* Tabs with user-scoped persistence */}
+            <TabsBridge>
               <main>{children}</main>
-            </TabsProvider>
+            </TabsBridge>
           </AppShell>
         </Providers>
       </body>
