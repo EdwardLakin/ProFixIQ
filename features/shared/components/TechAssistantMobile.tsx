@@ -1,10 +1,14 @@
+// features/shared/components/TechAssistantMobile.tsx
 "use client";
 
-import { FormEvent, useMemo, useRef, useState } from "react";
+import { FormEvent, useMemo, useRef, useEffect } from "react";
 import {
   useTechAssistant,
   type Vehicle,
 } from "@/features/ai/hooks/useTechAssistant";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { useDebouncedAutoSave } from "@/features/shared/hooks/useDebouncedAutoSave";
 
 export default function TechAssistantMobile({
   defaultVehicle,
@@ -12,17 +16,14 @@ export default function TechAssistantMobile({
 }: {
   defaultVehicle?: Vehicle;
   workOrderLineId?: string;
-}) {
+}): JSX.Element {
   const {
     vehicle, setVehicle,
     context, setContext,
     messages, partial, sending, error,
-    sendChat, sendDtc, sendPhoto,
-    exportToWorkOrder, resetConversation, 
+    sendChat, sendPhoto,
+    exportToWorkOrder, resetConversation,
   } = useTechAssistant({ defaultVehicle });
-
-  // local UI
-  const [dtc, setDtc] = useState("");
 
   // refs
   const chatInputRef = useRef<HTMLInputElement>(null);
@@ -37,7 +38,7 @@ export default function TechAssistantMobile({
     "w-full rounded bg-neutral-900 border border-neutral-700 text-white " +
     "placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-orange-500";
 
-  // handlers
+  // composer submit
   const onChatSubmit = (e: FormEvent) => {
     e.preventDefault();
     const text = chatInputRef.current?.value?.trim();
@@ -46,12 +47,21 @@ export default function TechAssistantMobile({
     if (chatInputRef.current) chatInputRef.current.value = "";
   };
 
-  const dtcValid =
-    /^([PBUC])\d{4}$/i.test(dtc.trim()) || /^P0\d{3}$/i.test(dtc.trim());
+  // ---- Debounced auto-save of context to localStorage ----
+  useDebouncedAutoSave(context, 800, (draft) => {
+    localStorage.setItem("assistant:context", draft);
+  });
+
+  // Restore saved context on mount
+  useEffect(() => {
+    const saved = localStorage.getItem("assistant:context");
+    if (saved) setContext(saved);
+  }, [setContext]);
+  // --------------------------------------------------------
 
   return (
     <div className="flex h-[calc(100vh-5rem)] flex-col text-white md:hidden">
-      {/* Header / vehicle fields (collapsible look) */}
+      {/* Header / vehicle fields */}
       <div className="space-y-2 p-3 pb-0">
         <div className="text-base font-header text-orange-500">Tech Assistant</div>
         <div className="grid grid-cols-3 gap-2">
@@ -95,25 +105,61 @@ export default function TechAssistantMobile({
         <div className="space-y-3">
           {messages.map((m, i) => {
             const mine = m.role === "user";
+            if (mine) {
+              return (
+                <div key={i} className="flex justify-end">
+                  <div className="max-w-[85%] whitespace-pre-wrap break-words rounded px-3 py-2 text-sm bg-orange-600 text-black font-sans">
+                    {m.content}
+                  </div>
+                </div>
+              );
+            }
+            // Assistant → Markdown with black bubble & softer white text
             return (
-              <div
-                key={i}
-                className={`max-w-[85%] whitespace-pre-wrap break-words rounded px-3 py-2 text-sm font-header ${
-                  mine ? "ml-auto bg-orange-600 text-black" : "mr-auto bg-neutral-800 text-white"
-                }`}
-              >
-                {m.content}
+              <div key={i} className="flex justify-start">
+                <div className="max-w-[85%] whitespace-pre-wrap break-words rounded px-3 py-2 text-sm bg-black text-neutral-200">
+                  <div className="prose prose-invert prose-sm">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        h2: ({ children }) => (
+                          <h2 className="text-base font-header tracking-wide mt-2 mb-1">
+                            {children}
+                          </h2>
+                        ),
+                        h3: ({ children }) => (
+                          <h3 className="text-sm font-header tracking-wide mt-2 mb-1">
+                            {children}
+                          </h3>
+                        ),
+                        li: ({ children }) => <li className="my-0.5">{children}</li>,
+                        ul: ({ children }) => <ul className="list-disc pl-5 my-2">{children}</ul>,
+                        ol: ({ children }) => <ol className="list-decimal pl-5 my-2">{children}</ol>,
+                        p: ({ children }) => <p className="my-1">{children}</p>,
+                        strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                      }}
+                    >
+                      {m.content}
+                    </ReactMarkdown>
+                  </div>
+                </div>
               </div>
             );
           })}
           {!!partial && (
-            <div className="mr-auto max-w-[85%] rounded bg-neutral-800 px-3 py-2 text-sm text-white opacity-90 font-header">
-              {partial}
+            <div className="flex justify-start">
+              <div className="max-w-[85%] rounded bg-black px-3 py-2 text-sm text-neutral-300 opacity-90">
+                <div className="prose prose-invert prose-sm">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {partial}
+                  </ReactMarkdown>
+                </div>
+              </div>
             </div>
           )}
           {messages.length === 0 && !partial && (
             <div className="text-xs text-neutral-400 font-header">
-              Start by entering the vehicle, then ask a question, paste a DTC, or send a photo.
+              Enter year, make, model, add context, then ask a question or attach a photo.
             </div>
           )}
         </div>
@@ -123,25 +169,9 @@ export default function TechAssistantMobile({
 
       {/* Sticky composer (safe-area aware) */}
       <div className="sticky bottom-0 z-10 border-t border-neutral-800 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/70">
-        {/* DTC / Photo / Reset row */}
+        {/* Attach / Reset row */}
         <div className="flex items-center gap-2 px-3 pt-2">
-          <input
-            className={`${inputBase} w-28`}
-            placeholder="DTC (P0131)"
-            value={dtc}
-            onChange={(e) => setDtc(e.target.value.toUpperCase())}
-            disabled={sending}
-          />
-          <button
-            type="button"
-            className="rounded bg-neutral-800 px-3 py-2 text-sm hover:bg-neutral-700 disabled:opacity-60"
-            disabled={sending || !dtcValid}
-            onClick={() => sendDtc(dtc.trim().toUpperCase())}
-          >
-            Analyze
-          </button>
-
-          <label className="rounded bg-neutral-800 px-3 py-2 text-sm hover:bg-neutral-700">
+          <label className="rounded bg-neutral-800 px-3 py-2 text-sm hover:bg-neutral-700 cursor-pointer font-header">
             <input
               ref={photoRef}
               type="file"
@@ -157,12 +187,12 @@ export default function TechAssistantMobile({
               }}
               disabled={sending}
             />
-            Photo
+            Attach Photo
           </label>
 
           <button
             type="button"
-            className="rounded bg-neutral-800 px-3 py-2 text-sm hover:bg-neutral-700 disabled:opacity-60"
+            className="rounded bg-neutral-800 px-3 py-2 text-sm hover:bg-neutral-700 disabled:opacity-60 font-header"
             onClick={resetConversation}
             disabled={sending}
           >
@@ -171,7 +201,10 @@ export default function TechAssistantMobile({
         </div>
 
         {/* Chat row */}
-        <form onSubmit={onChatSubmit} className="flex items-center gap-2 px-3 py-2 pb-[calc(env(safe-area-inset-bottom))]">
+        <form
+          onSubmit={onChatSubmit}
+          className="flex items-center gap-2 px-3 py-2 pb-[calc(env(safe-area-inset-bottom))]"
+        >
           <input
             ref={chatInputRef}
             className={`${inputBase} flex-1 py-3`}
@@ -180,7 +213,7 @@ export default function TechAssistantMobile({
           />
           <button
             type="submit"
-            className="rounded bg-orange-600 px-4 py-3 text-sm font-semibold text-black hover:bg-orange-700 disabled:opacity-60"
+            className="rounded bg-orange-600 px-4 py-3 text-sm font-header text-black hover:bg-orange-700 disabled:opacity-60"
             disabled={sending || !canSend}
           >
             {sending ? "…" : "Send"}
@@ -199,7 +232,7 @@ export default function TechAssistantMobile({
       {workOrderLineId && (
         <div className="px-3 pb-3">
           <button
-            className="w-full rounded bg-purple-600 px-3 py-3 text-sm font-semibold hover:bg-purple-700 disabled:opacity-60"
+            className="w-full rounded bg-purple-600 px-3 py-3 text-sm font-header hover:bg-purple-700 disabled:opacity-60"
             disabled={sending}
             onClick={async () => {
               try {
