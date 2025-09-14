@@ -2,8 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Keep things fast & clean; next/font loads Inter + Black Ops for us. */
-
 /* Global look */
 html {
   scroll-behavior: smooth;
@@ -12,8 +10,8 @@ html {
 }
 body { @apply bg-background text-white antialiased; }
 
-/* Optional utility if you ever want to force Black Ops without Tailwind's font-header */
-.font-blackops { font-family: var(--font-blackops), var(--font-inter), ui-sans-serif, system-ui, sans-serif; }
+/* Optional utility: force Black Ops */
+.font-blackops { font-family: var(--font-blackops), var(--font-roboto), ui-sans-serif, system-ui, sans-serif; }
 
 /* Inputs + small UX bits */
 .input {
@@ -38,7 +36,7 @@ input, textarea, select { color: white; }
 ::-webkit-scrollbar-thumb { background: #ff6a00; border-radius: 8px; }
 ::-webkit-scrollbar-track { background: #1a1a1a; }
 
-/* Light button utilities remain compatible with your Button component */
+/* Buttons / cards */
 .btn { @apply inline-flex items-center justify-center px-4 py-2 font-semibold rounded transition-colors; }
 .btn-orange { @apply bg-orange-500 hover:bg-orange-600 text-black; }
 .btn-outline { @apply border border-white text-white hover:bg-white hover:text-black; }
