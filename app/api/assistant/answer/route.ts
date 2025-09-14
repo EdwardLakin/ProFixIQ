@@ -29,50 +29,40 @@ const hasVehicle = (v?: Vehicle): v is Vehicle =>
 function systemFor(v: Vehicle, context?: string): string {
   const vdesc = `${v.year} ${v.make} ${v.model}`;
   const ctx = context?.trim() ? `\nContext:\n${context.trim()}` : "";
-
   return `
-You are a master automotive technician assistant for a ${vdesc}. 
-Answer like you’re guiding a pro tech on the job: clear, step-wise, and accurate. 
-Use only information relevant to the latest question.
+You are a master automotive technician assistant for a ${vdesc}.
+Answer like you’re guiding a working tech: clear, step-wise, and accurate. Use Markdown only (no code fences).
 
-OUTPUT FORMAT (MANDATORY — use Markdown with real line breaks):
-- Use short, descriptive headings (## or ###). Do not use code fences.
-- Prefer bullet lists and numbered steps over long paragraphs.
-- Bold only key nouns, specs, warnings, and test names.
-- When listing steps, keep each step to one action with an outcome/check.
+When the user asks for **procedures**:
+### Summary
+- 1–3 bullets (goal, key risk/decision)
 
-WHEN THE USER ASKS FOR A PROCEDURE (diagnosis, removal, installation, adjustment):
-1) ### Summary
-   - 1–3 bullets stating the goal and key risks or decisions.
-2) ### Tools & Prep
-   - Bullets: special tools, fluids, parts, safety prechecks, vehicle setup (lift points, battery disconnect, cool-down).
-3) ### Procedure
-   - If it’s removal/installation: split into #### Removal / #### Installation.
-   - Always include **fastener sizes**, **torque specs/sequences** (labeled **Typical** if they vary).
-   - Each step = one action + expected outcome.
-4) ### Verification / Tests
-   - Functional checks, road test, scan tool, relearns.
-5) ### Notes / Cautions
-   - Safety, re-use/replace rules, critical specs.
+### Tools & Prep
+- Special tools, fluids, parts, lift/battery steps, safety
 
-SPECS & TORQUE (CRITICAL):
-- Provide **Typical** ranges if exact VIN/trim varies, and explicitly instruct to confirm in OE service info.
-- Always show units and tightening sequence if applicable.
+### Procedure
+- If removal/installation: use #### Removal / #### Installation
+- Include **fastener sizes**, **torque values** (mark **Typical** if they vary), and sequences
+- Each step = one action + expected outcome/check
 
-FOLLOW-UP BEHAVIOR (STRICT):
-- Answer **only** the new question. Do **not** restate the entire procedure unless explicitly asked.
-- If narrow (like a torque spec), respond with a short heading + 2–6 bullets max.
+### Verification / Tests
+- Functional checks, road test, scan-tool, relearns
 
-STYLE & SAFETY:
-- Be concise, professional, and actionable.
-- Call out hazards as **WARNING** bullets.
-- Prefer checks a tech can perform: visual, measurement, scan data.
+### Notes / Cautions
+- Safety, re-use/replace rules, critical specs
 
-CONTEXT (optional, include when provided):
+Follow-ups (CRITICAL):
+- Answer **only the latest question**. Do **not** repeat earlier procedures unless asked.
+- For narrow asks (e.g. one torque): a short heading + 2–6 bullets max.
+
+Specs & Safety:
+- If a value can vary, mark as **Typical** and instruct to confirm in OE info (VIN/trim).
+- Always show units; call out hazards as **WARNING** bullets.
+
 ${ctx}
 
-Never include transport markers like \`event: done\` or \`[DONE]\`.
-  `.trim();
+Never include transport markers like "event: done" or "[DONE]".
+`.trim();
 }
 
 function toOpenAIMessage(m: ClientMessage): ChatCompletionMessageParam {
@@ -82,26 +72,21 @@ function toOpenAIMessage(m: ClientMessage): ChatCompletionMessageParam {
 export async function POST(req: Request) {
   try {
     if (!process.env.OPENAI_API_KEY) {
-      return NextResponse.json(
-        { error: "Missing OPENAI_API_KEY" },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: "Missing OPENAI_API_KEY" }, { status: 500 });
     }
 
     const body = (await req.json()) as Body;
-
     if (!hasVehicle(body.vehicle)) {
-      return NextResponse.json(
-        { error: "Missing vehicle (year/make/model)" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Missing vehicle (year/make/model)" }, { status: 400 });
     }
 
+    // Build transcript
     const messages: ChatCompletionMessageParam[] = [
       { role: "system", content: systemFor(body.vehicle, body.context) },
       ...(body.messages ?? []).map(toOpenAIMessage),
     ];
 
+    // If a photo was uploaded this turn, hint it in-line
     if (body.image_data?.startsWith("data:")) {
       messages.push({
         role: "user",
@@ -109,19 +94,39 @@ export async function POST(req: Request) {
           { type: "text", text: "Photo uploaded (use for context)." },
           { type: "image_url", image_url: { url: body.image_data } },
         ],
-      } as ChatCompletionMessageParam);
+      });
     }
+
+    // === FOLLOW-UP GUARD (forces answer to the last user turn) ===
+    const lastUser = [...(body.messages ?? [])]
+      .reverse()
+      .find(m => m.role === "user" && typeof m.content === "string") as
+      | { role: "user"; content: string }
+      | undefined;
+
+    if (lastUser?.content) {
+      messages.push({
+        role: "system",
+        content:
+          `Respond **only** to the following last user turn. ` +
+          `Do not restate previous procedures unless explicitly requested. ` +
+          `Keep the answer as focused and short as possible for this ask.\n\n` +
+          `Last user message:\n"""${lastUser.content.trim()}"""`,
+      });
+    }
+    // ============================================================
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
-      temperature: 0.4,
+      temperature: 0.25,          // tighter, reduces rambles
+      max_tokens: 700,            // keeps follow-ups concise
+      frequency_penalty: 0.3,     // discourages repetition
+      presence_penalty: 0.0,
       messages,
-      max_tokens: 1200,
     });
 
     const raw = completion.choices?.[0]?.message?.content ?? "";
     const text = sanitize(raw);
-
     return NextResponse.json({ text });
   } catch (err) {
     console.error("assistant/answer error:", err);
