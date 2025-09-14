@@ -7,7 +7,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 import ShiftTracker from "@shared/components/ShiftTracker";
-import { FaCogs, FaRegChartBar, FaUserPlus, FaComments } from "react-icons/fa";
+import { FaCogs, FaRegChartBar, FaUserPlus, } from "react-icons/fa";
 import { HiMenuAlt2 } from "react-icons/hi";
 
 // ✅ mobile-only chat drawer
@@ -56,11 +56,6 @@ export default function RoleNavOwner() {
           mobileOpen ? "block" : "hidden"
         }`}
       >
-        {/* ---- Team Messages (restored) ---- */}
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 text-sm font-semibold text-neutral-300">
-            <FaComments /> Team Messages
-          </div>
 
           {/* Desktop → open the full /chat page (tabs-friendly) */}
           <div className="hidden md:block">
@@ -74,7 +69,7 @@ export default function RoleNavOwner() {
             {/* ChatDock renders its own trigger buttons (Chat / New) */}
             <ChatDock />
           </div>
-        </div>
+        
 
         {/* ---- AI Tools ---- */}
         <div className="space-y-1">
