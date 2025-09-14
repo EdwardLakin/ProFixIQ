@@ -1,7 +1,10 @@
 // app/api/assistant/answer/route.ts
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
-import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
+import type {
+  ChatCompletionMessageParam,
+  ChatCompletionContentPart,
+} from "openai/resources/chat/completions";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -127,14 +130,13 @@ export async function POST(req: Request) {
       ...(body.messages ?? []).map(toOpenAIMessage),
     ];
 
+    // Properly typed photo hint (no `any`)
     if (body.image_data?.startsWith("data:")) {
-      messages.push({
-        role: "user",
-        content: [
-          { type: "text", text: "Photo uploaded (use only if relevant to the latest question)." },
-          { type: "image_url", image_url: { url: body.image_data } },
-        ],
-      } as any);
+      const photoParts: ChatCompletionContentPart[] = [
+        { type: "text", text: "Photo uploaded (use only if relevant to the latest question)." },
+        { type: "image_url", image_url: { url: body.image_data } },
+      ];
+      messages.push({ role: "user", content: photoParts });
     }
 
     const completion = await openai.chat.completions.create({
