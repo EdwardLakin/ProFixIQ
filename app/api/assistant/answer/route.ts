@@ -1,4 +1,3 @@
-// app/api/assistant/answer/route.ts
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
@@ -17,7 +16,7 @@ interface Body {
   vehicle?: Vehicle;
   messages?: ClientMessage[];
   context?: string;
-  image_data?: string | null;
+  image_data?: string | null; // optional base64 data URL for photos
 }
 
 const sanitize = (s: string) =>
@@ -32,8 +31,13 @@ function systemFor(v: Vehicle, context?: string): string {
 
   return [
     `You are a master automotive technician assistant for a ${vdesc}.`,
-    `Write **clean Markdown only** (no code fences). Use headings and real line breaks.`,
-    `If the user asks a broad question, structure as:`,
+    ``,
+    `Always read the entire conversation and use the latest vehicle details + context.`,
+    `When the user asks a follow-up, answer **only the new question** and do not repeat prior procedures unless the user asks.`,
+    `If specs vary by VIN/trim, label numbers as **Typical** and advise verifying in OE service info.`,
+    ``,
+    `Write **clean Markdown** ONLY (no code fences). Use headings and line breaks.`,
+    `For broad diagnosis/repair, structure as:`,
     `### Summary`,
     `- 1–3 concise bullets`,
     ``,
@@ -45,8 +49,6 @@ function systemFor(v: Vehicle, context?: string): string {
     `### Notes / Cautions`,
     `- Short bullets (specs, cautions, checks)`,
     ``,
-    `If this is a **follow-up**, answer ONLY the latest user question. Do not repeat previous procedures.`,
-    `If a spec varies by trim/VIN, label as **Typical** and advise confirming in OE service info.`,
     `Never include transport markers like "event: done" or "[DONE]".`,
     ctx,
   ].join("\n");
@@ -59,55 +61,49 @@ function toOpenAIMessage(m: ClientMessage): ChatCompletionMessageParam {
 export async function POST(req: Request) {
   try {
     if (!process.env.OPENAI_API_KEY) {
-      return NextResponse.json({ error: "Missing OPENAI_API_KEY" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Missing OPENAI_API_KEY" },
+        { status: 500 },
+      );
     }
 
     const body = (await req.json()) as Body;
+
     if (!hasVehicle(body.vehicle)) {
-      return NextResponse.json({ error: "Missing vehicle (year/make/model)" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing vehicle (year/make/model)" },
+        { status: 400 },
+      );
     }
-
-    const history = (body.messages ?? []).map(toOpenAIMessage);
-
-    // Find the latest user message (this is what we want answered).
-    const lastUser = [...history].reverse().find((m) => m.role === "user");
-    const latestQuestion =
-      typeof lastUser?.content === "string" ? lastUser.content.trim() : "(no text)";
-
-    // Keep a small amount of context to stay on topic, but not enough to cause repeats.
-    // (system + last 6 turns)
-    const trimmedHistory = history.slice(-6);
 
     const messages: ChatCompletionMessageParam[] = [
       { role: "system", content: systemFor(body.vehicle, body.context) },
-      ...trimmedHistory,
+      ...(body.messages ?? []).map(toOpenAIMessage),
     ];
 
+    // If a photo was uploaded this turn, add a compact hint turn including the image (typed, no 'any').
     if (body.image_data?.startsWith("data:")) {
-      messages.push({
+      const photoTurn: { role: "user"; content: (TextPart | ImagePart)[] } = {
         role: "user",
         content: [
-          { type: "text", text: "Photo uploaded (use for context if relevant)." },
+          { type: "text", text: "Photo uploaded (use for context)." },
           { type: "image_url", image_url: { url: body.image_data } },
         ],
-      });
+      };
+      messages.push(photoTurn);
     }
-
-    // Final “pin” turn so the model focuses ONLY on this question
-    messages.push({
-      role: "user",
-      content: `Latest question to answer only:\n${latestQuestion}`,
-    });
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
-      temperature: 0.35,
-      max_tokens: 900,
+      temperature: 0.4,
       messages,
+      max_tokens: 900,
     });
 
     const raw = completion.choices?.[0]?.message?.content ?? "";
-    return NextResponse.json({ text: sanitize(raw) });
+    const text = sanitize(raw);
+
+    return NextResponse.json({ text });
   } catch (err) {
     console.error("assistant/answer error:", err);
     return NextResponse.json({ error: "Assistant failed" }, { status: 500 });

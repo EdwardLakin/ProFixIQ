@@ -1,4 +1,3 @@
-// features/shared/components/TechAssistant.tsx
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
@@ -16,7 +15,8 @@ export default function TechAssistant({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const [dtc, setDtc] = useState("");
+
+  const [dtc, setDtc] = useState(""); // kept for validation helper on codes inside chat
   const [note, setNote] = useState("");
 
   const {
@@ -53,11 +53,12 @@ export default function TechAssistant({
     if (inputRef.current) inputRef.current.value = "";
   };
 
-  const dtcValid = /^([PBUC])\d{4}$/i.test(dtc.trim()) || /^P0\d{3}$/i.test(dtc.trim());
+  const dtcValid =
+    /^([PBUC])\d{4}$/i.test(dtc.trim()) || /^P0\d{3}$/i.test(dtc.trim());
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm text-white font-roboto">
-      {/* LEFT */}
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm text-white">
+      {/* LEFT: Inputs */}
       <div className="space-y-4">
         {/* Vehicle */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -87,19 +88,21 @@ export default function TechAssistant({
           />
         </div>
 
-        {/* Notes / Context */}
-        <div className="text-xs uppercase tracking-wide text-neutral-400 font-blackops">Notes / Context</div>
-        <textarea
-          className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-400"
-          rows={3}
-          placeholder="Context/observations (readings, symptoms, conditions)"
-          value={context}
-          onChange={(e) => setContext(e.target.value)}
-        />
+        {/* Context */}
+        <div>
+          <div className="mb-1 text-[11px] tracking-wide uppercase text-neutral-400 font-blackops">Notes / Context</div>
+          <textarea
+            className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-400"
+            rows={3}
+            placeholder="Context/observations (readings, symptoms, conditions)"
+            value={context}
+            onChange={(e) => setContext(e.target.value)}
+          />
+        </div>
 
-        {/* Controls */}
+        {/* Attach / Reset / Cancel */}
         <div className="flex flex-wrap items-center gap-2">
-          <label className="rounded bg-neutral-800 px-3 py-2 text-sm hover:bg-neutral-700 cursor-pointer disabled:opacity-60 font-blackops">
+          <label className="rounded bg-neutral-800 px-3 py-2 text-sm hover:bg-neutral-700 cursor-pointer disabled:opacity-60">
             <input
               ref={fileRef}
               type="file"
@@ -117,7 +120,6 @@ export default function TechAssistant({
             Attach Photo
           </label>
 
-          {/* Optional local note next to photo (kept if you still want it) */}
           <input
             className="min-w-48 flex-1 rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-400"
             placeholder="Optional note for this photo"
@@ -126,28 +128,8 @@ export default function TechAssistant({
             disabled={sending}
           />
 
-          {/* Keep DTC analyzer hidden or remove if not needed */}
-          <div className="hidden">
-            <input
-              className="w-28 rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-400"
-              placeholder="DTC (e.g. P0131)"
-              value={dtc}
-              onChange={(e) => setDtc(e.target.value.toUpperCase())}
-              disabled={sending}
-            />
-            <button
-              className="rounded bg-neutral-800 px-3 py-2 text-sm hover:bg-neutral-700 disabled:opacity-60 font-blackops"
-              disabled={sending || !dtcValid}
-              onClick={() => sendDtc(dtc.trim().toUpperCase(), note)}
-              type="button"
-              title={!dtcValid ? "Enter a valid DTC (e.g. P0131)" : "Analyze DTC"}
-            >
-              Analyze DTC
-            </button>
-          </div>
-
           <button
-            className="rounded bg-neutral-800 px-3 py-2 text-sm hover:bg-neutral-700 disabled:opacity-60 font-blackops"
+            className="rounded bg-neutral-800 px-3 py-2 text-sm hover:bg-neutral-700 disabled:opacity-60"
             onClick={resetConversation}
             type="button"
             disabled={sending}
@@ -156,7 +138,7 @@ export default function TechAssistant({
             Reset
           </button>
           <button
-            className="rounded bg-red-600/80 px-3 py-2 text-sm text-white hover:bg-red-600 disabled:opacity-60 font-blackops"
+            className="rounded bg-red-600/80 px-3 py-2 text-sm text-white hover:bg-red-600 disabled:opacity-60"
             onClick={cancel}
             type="button"
             disabled={!sending}
@@ -166,7 +148,30 @@ export default function TechAssistant({
           </button>
         </div>
 
-        {/* Ask row (bottom of inputs) */}
+        {/* Optional helper: enter a DTC as a message */}
+        <div className="flex items-center gap-2">
+          <input
+            className="w-32 rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-400"
+            placeholder="DTC (e.g. P0131)"
+            value={dtc}
+            onChange={(e) => setDtc(e.target.value.toUpperCase())}
+            disabled={sending}
+          />
+          <button
+            className="rounded bg-neutral-800 px-3 py-2 text-sm hover:bg-neutral-700 disabled:opacity-60"
+            disabled={sending || !dtcValid}
+            onClick={() => sendDtc(dtc.trim().toUpperCase())}
+            type="button"
+            title={!dtcValid ? "Enter a valid DTC (e.g. P0131)" : "Send DTC"}
+          >
+            Send DTC
+          </button>
+          {!dtcValid && dtc.length > 0 && (
+            <div className="text-xs text-red-400">Enter a valid OBD-II code (e.g. P0131).</div>
+          )}
+        </div>
+
+        {/* Composer at the very bottom */}
         <form onSubmit={onSubmit} className="flex gap-2">
           <input
             ref={inputRef}
@@ -175,7 +180,7 @@ export default function TechAssistant({
             disabled={sending}
           />
           <button
-            className="rounded bg-accent px-3 py-2 text-sm font-blackops text-black hover:shadow-glow disabled:opacity-60"
+            className="rounded bg-orange-600 px-3 py-2 text-sm font-semibold text-black hover:bg-orange-700 disabled:opacity-60"
             disabled={sending}
             type="submit"
           >
@@ -183,11 +188,10 @@ export default function TechAssistant({
           </button>
         </form>
 
-        {/* Export to Work Order */}
         {workOrderLineId && (
           <div className="pt-2">
             <button
-              className="rounded bg-purple-600 px-3 py-2 text-sm font-blackops hover:bg-purple-700 disabled:opacity-60"
+              className="rounded bg-purple-600 px-3 py-2 text-sm font-semibold hover:bg-purple-700 disabled:opacity-60"
               disabled={sending}
               onClick={async () => {
                 try {
@@ -195,7 +199,7 @@ export default function TechAssistant({
                   alert(
                     `Exported:\nCause: ${res.cause}\nCorrection: ${res.correction}\nLabor: ${
                       res.estimatedLaborTime ?? "—"
-                    }h`
+                    }h`,
                   );
                 } catch (e: unknown) {
                   const msg = e instanceof Error ? e.message : "Export failed";
@@ -213,27 +217,27 @@ export default function TechAssistant({
       <div className="rounded border border-neutral-800 bg-neutral-900 p-3 overflow-y-auto max-h-[560px] space-y-3">
         {messages.map((m, i) => {
           const mine = m.role === "user";
-          const bubble = "max-w-[85%] rounded px-3 py-2 text-sm whitespace-pre-wrap break-words";
+          const bubble =
+            "max-w-[85%] rounded px-3 py-2 text-sm whitespace-pre-wrap break-words";
           return mine ? (
-            <div key={i} className="flex justify-end">
-              <div className={`${bubble} bg-accent text-black font-blackops`}>{m.content}</div>
+            <div key={i} className="flex justify-start">
+              <div className={`${bubble} bg-accent text-black font-header`}>{m.content}</div>
             </div>
           ) : (
             <div key={i} className="flex justify-start">
-              <div className={`${bubble} bg-black text-neutral-100`}>
-                <div className="prose prose-invert prose-sm font-roboto">
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    components={{
-                      h2: ({ children }) => <h2 className="font-blackops text-base mt-1 mb-1">{children}</h2>,
-                      h3: ({ children }) => <h3 className="font-blackops text-sm mt-1 mb-1">{children}</h3>,
-                      strong: ({ children }) => <strong className="font-blackops">{children}</strong>,
-                      li: ({ children }) => <li className="my-0.5">{children}</li>,
-                      ul: ({ children }) => <ul className="list-disc pl-5 my-2">{children}</ul>,
-                      ol: ({ children }) => <ol className="list-decimal pl-5 my-2">{children}</ol>,
-                      p: ({ children }) => <p className="my-1">{children}</p>,
-                    }}
-                  >
+              {/* Softer, high-contrast reading bubble */}
+              <div className={`${bubble} bg-black text-neutral-200`}>
+                <div
+                  className={[
+                    "prose prose-invert prose-sm max-w-none",
+                    // tighter spacing + clearer headings on dark
+                    "prose-headings:font-header prose-headings:text-neutral-100",
+                    "prose-p:my-1 prose-ul:my-2 prose-ol:my-2",
+                    "prose-li:my-1 prose-strong:text-neutral-100",
+                    "prose-hr:my-3",
+                  ].join(" ")}
+                >
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
                     {m.content}
                   </ReactMarkdown>
                 </div>
@@ -244,8 +248,8 @@ export default function TechAssistant({
 
         {(sending || partial.length > 0) && (
           <div className="flex justify-start">
-            <div className="max-w-[85%] rounded px-3 py-2 text-sm bg-black text-neutral-100 opacity-90">
-              <div className="prose prose-invert prose-sm font-roboto">
+            <div className="max-w-[85%] rounded px-3 py-2 text-sm bg-black text-neutral-300 opacity-90">
+              <div className="prose prose-invert prose-sm max-w-none">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
                   {partial.length > 0 ? partial : "Assistant is typing…"}
                 </ReactMarkdown>
@@ -255,7 +259,9 @@ export default function TechAssistant({
         )}
 
         {messages.length === 0 && !sending && partial.length === 0 && (
-          <div className="text-xs text-neutral-400">Enter vehicle details, then ask a question, paste a DTC, or send a photo.</div>
+          <div className="text-xs text-neutral-400">
+            Enter vehicle details, then ask a question, paste a DTC, or send a photo.
+          </div>
         )}
       </div>
     </div>
