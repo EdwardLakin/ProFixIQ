@@ -10,13 +10,18 @@ export type Vehicle = {
   model?: string | null;
 };
 
-type AssistantOptions = { defaultVehicle?: Vehicle; defaultContext?: string };
+type AssistantOptions = {
+  defaultVehicle?: Vehicle;
+  defaultContext?: string;
+  /** Optional explicit storage key; if omitted, caller should pass a tab-scoped key. */
+  storageKey?: string;
+};
 
-const LS_KEYS = {
-  vehicle: "assistant:vehicle",
-  messages: "assistant:messages",
-  context: "assistant:context",
-} as const;
+type PersistedState = {
+  vehicle?: Vehicle;
+  context?: string;
+  messages?: ChatMessage[];
+};
 
 async function fileToDataUrl(file: File): Promise<string> {
   const buf = await file.arrayBuffer();
@@ -35,46 +40,51 @@ async function postJSON(url: string, data: unknown, signal?: AbortSignal): Promi
 }
 
 export function useTechAssistant(opts?: AssistantOptions) {
+  // State
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [vehicle, setVehicle] = useState<Vehicle | undefined>(opts?.defaultVehicle);
   const [context, setContext] = useState<string>(opts?.defaultContext ?? "");
 
   const [sending, setSending] = useState(false);
-  const [partial, setPartial] = useState<string>(""); // kept for UI typing bubble
+  const [partial, setPartial] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
 
   const lastImageRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Restore persisted thread on mount
-  useEffect(() => {
-    try {
-      const vRaw = localStorage.getItem(LS_KEYS.vehicle);
-      const mRaw = localStorage.getItem(LS_KEYS.messages);
-      const cRaw = localStorage.getItem(LS_KEYS.context);
-      if (vRaw) setVehicle(JSON.parse(vRaw) as Vehicle);
-      if (mRaw) setMessages(JSON.parse(mRaw) as ChatMessage[]);
-      if (cRaw) setContext(cRaw);
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  // Persist on change
-  useEffect(() => {
-    try {
-      localStorage.setItem(LS_KEYS.vehicle, JSON.stringify(vehicle ?? {}));
-      localStorage.setItem(LS_KEYS.messages, JSON.stringify(messages));
-      localStorage.setItem(LS_KEYS.context, context);
-    } catch {
-      // ignore
-    }
-  }, [vehicle, messages, context]);
-
   const canSend = useMemo(
     () => Boolean(vehicle?.year && vehicle?.make && vehicle?.model),
     [vehicle],
   );
+
+  // -------- Persistence (per-tab) ----------
+  const storageKey = opts?.storageKey ?? "assistant:state:global";
+
+  // Load once
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as PersistedState;
+      if (saved.vehicle) setVehicle(saved.vehicle);
+      if (typeof saved.context === "string") setContext(saved.context);
+      if (Array.isArray(saved.messages)) setMessages(saved.messages);
+    } catch {
+      // ignore parse errors
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey]);
+
+  // Save on change (throttling not required; chat changes are infrequent)
+  useEffect(() => {
+    const payload: PersistedState = { vehicle, context, messages };
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(payload));
+    } catch {
+      // ignore storage quota errors
+    }
+  }, [storageKey, vehicle, context, messages]);
+  // -----------------------------------------
 
   const ask = useCallback(
     async (payload: Record<string, unknown> = {}) => {
@@ -85,7 +95,7 @@ export function useTechAssistant(opts?: AssistantOptions) {
 
       setError(null);
       setSending(true);
-      setPartial("…");
+      setPartial("Assistant is thinking…");
 
       const ctrl = new AbortController();
       abortRef.current = ctrl;
@@ -98,6 +108,7 @@ export function useTechAssistant(opts?: AssistantOptions) {
           image_data: lastImageRef.current ?? null,
           ...payload,
         };
+
         const res = await postJSON("/api/assistant/answer", body, ctrl.signal);
         if (!res.ok) {
           const txt = await res.text().catch(() => "");
@@ -142,10 +153,7 @@ export function useTechAssistant(opts?: AssistantOptions) {
       lastImageRef.current = image_data;
       setMessages((m) => [
         ...m,
-        {
-          role: "user",
-          content: `Attached a photo.${note ? `\nNote: ${note}` : ""}`,
-        },
+        { role: "user", content: `Uploaded a photo.${note ? `\nNote: ${note}` : ""}` },
       ]);
       await ask();
     },
@@ -153,7 +161,6 @@ export function useTechAssistant(opts?: AssistantOptions) {
   );
 
   const cancel = useCallback(() => abortRef.current?.abort(), []);
-
   const resetConversation = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
@@ -161,15 +168,13 @@ export function useTechAssistant(opts?: AssistantOptions) {
     setPartial("");
     setError(null);
     lastImageRef.current = null;
+    // also clear persisted state for this tab
     try {
-      localStorage.removeItem(LS_KEYS.messages);
-      // keep vehicle/context unless you want them cleared too:
-      // localStorage.removeItem(LS_KEYS.vehicle);
-      // localStorage.removeItem(LS_KEYS.context);
+      localStorage.removeItem(storageKey);
     } catch {
       // ignore
     }
-  }, []);
+  }, [storageKey]);
 
   const exportToWorkOrder = useCallback(
     async (workOrderLineId: string) => {

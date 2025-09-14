@@ -1,10 +1,11 @@
-// features/shared/components/TechAssistant.tsx
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useTechAssistant, type Vehicle } from "@/features/ai/hooks/useTechAssistant";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { useDebouncedAutoSave } from "@/features/shared/hooks/useDebouncedAutoSave";
+import { useTabScopedStorageKey } from "@/features/shared/hooks/useTabScopedStorageKey";
 
 export default function TechAssistant({
   defaultVehicle,
@@ -13,11 +14,7 @@ export default function TechAssistant({
   defaultVehicle?: Vehicle;
   workOrderLineId?: string;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  const [noteForPhoto, setNoteForPhoto] = useState("");
+  const storageKey = useTabScopedStorageKey("assistant:state");
 
   const {
     vehicle, setVehicle,
@@ -25,9 +22,13 @@ export default function TechAssistant({
     messages, sending, partial, error,
     sendChat, sendPhoto,
     exportToWorkOrder, resetConversation, cancel,
-  } = useTechAssistant({ defaultVehicle });
+  } = useTechAssistant({ defaultVehicle, storageKey });
 
-  // Seed default vehicle once (without clobbering restored vehicle)
+  const inputRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [note] = useState("");
+
+  // Seed default vehicle once (without clobbering restored)
   useEffect(() => {
     if (defaultVehicle && (!vehicle || (!vehicle.year && !vehicle.make && !vehicle.model))) {
       setVehicle(defaultVehicle);
@@ -35,15 +36,15 @@ export default function TechAssistant({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultVehicle]);
 
-  // Auto-scroll to latest
+  // Debounced auto-save of context (on top of full-state save)
+  useDebouncedAutoSave(context, 800, (draft) => {
+    try { localStorage.setItem(`${storageKey}:context`, draft); } catch {}
+  });
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, partial, sending]);
-
-  const canSend = useMemo(
-    () => Boolean(vehicle?.year && vehicle?.make && vehicle?.model),
-    [vehicle],
-  );
+    const saved = localStorage.getItem(`${storageKey}:context`);
+    if (saved) setContext(saved);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey]);
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -53,20 +54,13 @@ export default function TechAssistant({
     if (inputRef.current) inputRef.current.value = "";
   };
 
-  const inputBase =
-    "w-full rounded bg-neutral-900 border border-neutral-700 text-white " +
-    "placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-orange-500";
-
   return (
-    <div className="space-y-6 text-white">
-      <h1 className="font-header text-xl text-orange-400">Tech Assistant</h1>
-
-      {/* CARD: Vehicle + Notes + Attach (stacked) */}
-      <div className="rounded-lg border border-white/10 bg-black/40 backdrop-blur p-4">
-        <div className="mb-2 text-xs font-header tracking-wide text-orange-400">Vehicle</div>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm text-white">
+      {/* LEFT */}
+      <div className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <input
-            className={`${inputBase} py-2`}
+            className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-400"
             placeholder="Year"
             value={vehicle?.year ?? ""}
             onChange={(e) =>
@@ -74,7 +68,7 @@ export default function TechAssistant({
             }
           />
           <input
-            className={`${inputBase} py-2`}
+            className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-400"
             placeholder="Make"
             value={vehicle?.make ?? ""}
             onChange={(e) =>
@@ -82,7 +76,7 @@ export default function TechAssistant({
             }
           />
           <input
-            className={`${inputBase} py-2`}
+            className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-400"
             placeholder="Model"
             value={vehicle?.model ?? ""}
             onChange={(e) =>
@@ -91,15 +85,15 @@ export default function TechAssistant({
           />
         </div>
 
-        <div className="mt-4 mb-2 text-xs font-header tracking-wide text-orange-400">Notes</div>
         <textarea
-          className={`${inputBase} h-28`}
-          placeholder="Shop notes / context (symptoms, readings, conditions). The assistant will use this."
+          className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-400"
+          rows={3}
+          placeholder="Context/observations (readings, symptoms, conditions)"
           value={context}
           onChange={(e) => setContext(e.target.value)}
         />
 
-        <div className="mt-4 mb-2 text-xs font-header tracking-wide text-orange-400">Attach</div>
+        {/* Buttons */}
         <div className="flex flex-wrap items-center gap-2">
           <label className="rounded bg-neutral-800 px-3 py-2 text-sm hover:bg-neutral-700 cursor-pointer disabled:opacity-60">
             <input
@@ -110,27 +104,20 @@ export default function TechAssistant({
               onChange={(e) => {
                 const f = e.target.files?.[0];
                 if (!f) return;
-                void sendPhoto(f, noteForPhoto).finally(() => {
+                void sendPhoto(f, note).finally(() => {
                   if (fileRef.current) fileRef.current.value = "";
-                  setNoteForPhoto("");
                 });
               }}
               disabled={sending}
             />
             Attach Photo
           </label>
-          <input
-            className={`${inputBase} min-w-48 flex-1`}
-            placeholder="Optional note for this photo"
-            value={noteForPhoto}
-            onChange={(e) => setNoteForPhoto(e.target.value)}
-            disabled={sending}
-          />
           <button
             className="rounded bg-neutral-800 px-3 py-2 text-sm hover:bg-neutral-700 disabled:opacity-60"
             onClick={resetConversation}
             type="button"
             disabled={sending}
+            title="Reset conversation"
           >
             Reset
           </button>
@@ -139,114 +126,101 @@ export default function TechAssistant({
             onClick={cancel}
             type="button"
             disabled={!sending}
+            title="Cancel current request"
           >
             Cancel
           </button>
         </div>
+
+        {error && (
+          <div className="rounded border border-red-600 bg-red-950/40 text-red-200 px-3 py-2">
+            {error}
+          </div>
+        )}
+
+        {workOrderLineId && (
+          <div className="pt-2">
+            <button
+              className="rounded bg-purple-600 px-3 py-2 text-sm font-semibold hover:bg-purple-700 disabled:opacity-60"
+              disabled={sending}
+              onClick={async () => {
+                try {
+                  const res = await exportToWorkOrder(workOrderLineId);
+                  alert(
+                    `Exported:\nCause: ${res.cause}\nCorrection: ${res.correction}\nLabor: ${
+                      res.estimatedLaborTime ?? "—"
+                    }h`,
+                  );
+                } catch (e) {
+                  const msg = e instanceof Error ? e.message : "Export failed";
+                  alert(msg);
+                }
+              }}
+            >
+              Summarize & Export to Work Order
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* CARD: Conversation (stacked below) */}
-      <div className="rounded-lg border border-white/10 bg-black/40 backdrop-blur">
-        <div
-          ref={scrollRef}
-          className="max-h-[60vh] overflow-y-auto p-4 space-y-3"
+      {/* RIGHT: Conversation */}
+      <div className="rounded border border-neutral-800 bg-neutral-900 p-3 overflow-y-auto max-h-[560px] space-y-3">
+        {messages.map((m, i) => {
+          const mine = m.role === "user";
+          const bubble =
+            "max-w-[85%] rounded px-3 py-2 text-sm whitespace-pre-wrap break-words";
+          return mine ? (
+            <div key={i} className="flex justify-end">
+              <div className={`${bubble} bg-orange-600 text-black`}>{m.content}</div>
+            </div>
+          ) : (
+            <div key={i} className="flex justify-start">
+              <div className={`${bubble} bg-black text-neutral-200`}>
+                <div className="prose prose-invert prose-sm">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+
+        {(sending || partial.length > 0) && (
+          <div className="flex justify-start">
+            <div className="max-w-[85%] rounded px-3 py-2 text-sm bg-black text-neutral-200 opacity-90">
+              <div className="prose prose-invert prose-sm">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {partial.length > 0 ? partial : "Assistant is typing…"}
+                </ReactMarkdown>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {messages.length === 0 && !sending && partial.length === 0 && (
+          <div className="text-xs text-neutral-400">
+            Enter vehicle details, then ask a question or attach a photo.
+          </div>
+        )}
+      </div>
+
+      {/* Composer pinned to bottom of LEFT column on desktop */}
+      <form onSubmit={onSubmit} className="md:col-span-2 flex gap-2">
+        <input
+          ref={inputRef}
+          className="flex-1 rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-400"
+          placeholder="Ask the assistant…"
+          aria-label="Ask the assistant"
+          disabled={sending}
+        />
+        <button
+          className="rounded bg-orange-600 px-3 py-2 text-sm font-header text-black hover:bg-orange-700 disabled:opacity-60"
+          disabled={sending}
+          type="submit"
+          title="Send"
         >
-          {messages.map((m, i) => {
-            const mine = m.role === "user";
-            const bubble =
-              "max-w-[95%] rounded px-3 py-2 text-sm whitespace-pre-wrap break-words";
-            return mine ? (
-              <div key={i} className="flex justify-end">
-                <div className={`${bubble} bg-orange-600 text-black font-header`}>
-                  {m.content}
-                </div>
-              </div>
-            ) : (
-              <div key={i} className="flex justify-start">
-                <div className={`${bubble} bg-neutral-900 text-neutral-200`}>
-                  <div className="prose prose-invert prose-sm !text-neutral-200">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        li: ({ children }) => <li className="my-0.5">{children}</li>,
-                        ul: ({ children }) => <ul className="list-disc pl-5 my-1">{children}</ul>,
-                        ol: ({ children }) => <ol className="list-decimal pl-5 my-1">{children}</ol>,
-                        h3: ({ children }) => <h3 className="text-sm font-header text-white mt-2 mb-1">{children}</h3>,
-                        p:  ({ children }) => <p className="my-1">{children}</p>,
-                        strong: ({ children }) => <strong className="font-semibold text-white">{children}</strong>,
-                      }}
-                    >
-                      {m.content}
-                    </ReactMarkdown>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-
-          {(sending || partial.length > 0) && (
-            <div className="flex justify-start">
-              <div className="max-w-[95%] rounded px-3 py-2 text-sm bg-neutral-900 text-neutral-300 opacity-90">
-                {partial.length > 0 ? partial : "Assistant is thinking…"}
-              </div>
-            </div>
-          )}
-
-          {messages.length === 0 && !sending && partial.length === 0 && (
-            <div className="text-xs text-neutral-400">
-              Enter vehicle + notes, then ask a question or attach a photo.
-            </div>
-          )}
-        </div>
-
-        {/* Composer pinned to the bottom of the conversation card */}
-        <form onSubmit={onSubmit} className="border-t border-white/10 p-3 flex gap-2">
-          <input
-            ref={inputRef}
-            className={`${inputBase} flex-1 py-3`}
-            placeholder={canSend ? "Ask the assistant…" : "Enter year, make, model first"}
-            disabled={sending}
-          />
-          <button
-            className="rounded bg-orange-600 px-4 py-3 text-sm font-header text-black hover:bg-orange-700 disabled:opacity-60"
-            disabled={sending || !canSend}
-            type="submit"
-          >
-            {sending ? "…" : "Send"}
-          </button>
-        </form>
-      </div>
-
-      {/* Export to Work Order (optional) */}
-      {workOrderLineId && (
-        <div>
-          <button
-            className="rounded bg-purple-600 px-3 py-2 text-sm font-semibold hover:bg-purple-700 disabled:opacity-60"
-            disabled={sending}
-            onClick={async () => {
-              try {
-                const res = await exportToWorkOrder(workOrderLineId);
-                alert(
-                  `Exported:\nCause: ${res.cause}\nCorrection: ${res.correction}\nLabor: ${
-                    res.estimatedLaborTime ?? "—"
-                  }h`,
-                );
-              } catch (e: unknown) {
-                alert(e instanceof Error ? e.message : "Export failed");
-              }
-            }}
-          >
-            Summarize & Export to Work Order
-          </button>
-        </div>
-      )}
-
-      {/* Error */}
-      {error && (
-        <div className="rounded border border-red-600 bg-red-950/40 text-red-200 px-3 py-2">
-          {error}
-        </div>
-      )}
+          {sending ? "…" : "Send"}
+        </button>
+      </form>
     </div>
   );
 }
