@@ -78,7 +78,7 @@ export default function CreateWorkOrderPage() {
       return `${parts[0]?.[0] ?? ""}${parts[1]?.[0] ?? ""}`.toUpperCase() || "WO";
     }
     if (fb.includes("@")) return fb.split("@")[0].slice(0, 2).toUpperCase() || "WO";
-    return (fb.slice(0, 2).toUpperCase() || "WO");
+    return fb.slice(0, 2).toUpperCase() || "WO";
   }
 
   async function generateCustomId(prefix: string): Promise<string> {
@@ -103,6 +103,35 @@ export default function CreateWorkOrderPage() {
     return `${p}${next}`;
   }
 
+  // NEW: auto-heal helper to ensure profile.shop_id is set
+  async function getOrLinkShopId(userId: string): Promise<string | null> {
+    // read current profile (must include shop_id)
+    const { data: profile, error: profErr } = await supabase
+      .from("profiles")
+      .select("id, shop_id")
+      .eq("id", userId)
+      .maybeSingle();
+    if (profErr) throw profErr;
+
+    if (profile?.shop_id) return profile.shop_id;
+
+    // try to find a shop owned by this user
+    const { data: ownedShop, error: shopErr } = await supabase
+      .from("shops")
+      .select("id")
+      .eq("owner_id", userId)
+      .maybeSingle();
+    if (shopErr) throw shopErr;
+
+    if (!ownedShop?.id) return null;
+
+    // write it back to profile so it stays fixed
+    const { error: updErr } = await supabase.from("profiles").update({ shop_id: ownedShop.id }).eq("id", userId);
+    if (updErr) throw updErr;
+
+    return ownedShop.id;
+  }
+
   // ----- Read query params (optional) ----------------------------------------
   useEffect(() => {
     const v = searchParams.get("vehicleId");
@@ -119,11 +148,7 @@ export default function CreateWorkOrderPage() {
 
     (async () => {
       if (prefillCustomerId) {
-        const { data } = await supabase
-          .from("customers")
-          .select("*")
-          .eq("id", prefillCustomerId)
-          .single();
+        const { data } = await supabase.from("customers").select("*").eq("id", prefillCustomerId).single();
         if (!cancelled && data) {
           setCustomerId(data.id);
           setCustFirst(data.first_name ?? "");
@@ -134,11 +159,7 @@ export default function CreateWorkOrderPage() {
       }
 
       if (prefillVehicleId) {
-        const { data } = await supabase
-          .from("vehicles")
-          .select("*")
-          .eq("id", prefillVehicleId)
-          .single();
+        const { data } = await supabase.from("vehicles").select("*").eq("id", prefillVehicleId).single();
         if (!cancelled && data) {
           setVehicleId(data.id);
           setVin(data.vin ?? "");
@@ -189,7 +210,24 @@ export default function CreateWorkOrderPage() {
     return () => {
       cancelled = true;
     };
-  }, [prefillCustomerId, prefillVehicleId, supabase, setCustomerId, setCustFirst, setCustLast, setCustPhone, setCustEmail, setVehicleId, setVin, setYear, setMake, setModel, setPlate, setMileage, setMenuItems]);
+  }, [
+    prefillCustomerId,
+    prefillVehicleId,
+    supabase,
+    setCustomerId,
+    setCustFirst,
+    setCustLast,
+    setCustPhone,
+    setCustEmail,
+    setVehicleId,
+    setVin,
+    setYear,
+    setMake,
+    setModel,
+    setPlate,
+    setMileage,
+    setMenuItems,
+  ]);
 
   function togglePick(id: string) {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -218,11 +256,7 @@ export default function CreateWorkOrderPage() {
       phone: custPhone || null,
       email: custEmail || null,
     };
-    const { data: inserted, error: insErr } = await supabase
-      .from("customers")
-      .insert(toInsert)
-      .select("*")
-      .single();
+    const { data: inserted, error: insErr } = await supabase.from("customers").insert(toInsert).select("*").single();
 
     if (insErr || !inserted) throw new Error(insErr?.message ?? "Failed to create customer");
     setCustomerId(inserted.id);
@@ -259,11 +293,7 @@ export default function CreateWorkOrderPage() {
       mileage: mileage ? Number(mileage) : null,
       shop_id: shopId, // ✅ ensure vehicle is tied to the shop
     };
-    const { data: inserted, error: insErr } = await supabase
-      .from("vehicles")
-      .insert(toInsert)
-      .select("*")
-      .single();
+    const { data: inserted, error: insErr } = await supabase.from("vehicles").insert(toInsert).select("*").single();
 
     if (insErr || !inserted) throw new Error(insErr?.message ?? "Failed to create vehicle");
     setVehicleId(inserted.id);
@@ -321,37 +351,43 @@ export default function CreateWorkOrderPage() {
 
       const cust = await ensureCustomer();
 
-      // current user + profile (shop & name)
+      // current user + profile (names)
       const {
         data: { user },
       } = await supabase.auth.getUser();
+      if (!user?.id) throw new Error("Not signed in.");
 
-      const { data: profile } = await supabase
+      const { data: profileNames } = await supabase
         .from("profiles")
-        .select("shop_id, first_name, last_name, full_name")
-        .eq("id", user?.id ?? "")
+        .select("first_name, last_name, full_name")
+        .eq("id", user.id)
         .maybeSingle();
 
-      const shopId = profile?.shop_id ?? null;
+      // ✅ ensure we actually have a shop_id (auto-heal if needed)
+      const shopId = await getOrLinkShopId(user.id);
       if (!shopId) throw new Error("Your profile isn’t linked to a shop yet.");
 
       const veh = await ensureVehicle(cust, shopId);
 
       // Build custom_id like TU0001 based on creator initials
-      const initials = getInitials(profile?.first_name, profile?.last_name, profile?.full_name ?? user?.email ?? null);
+      const initials = getInitials(
+        profileNames?.first_name,
+        profileNames?.last_name,
+        profileNames?.full_name ?? user.email ?? null,
+      );
       const customId = await generateCustomId(initials);
 
       // Create WO
       const newId = uuidv4();
       const { error: insertWOError } = await supabase.from("work_orders").insert({
         id: newId,
-        custom_id: customId,            // ✅ set human-friendly id
+        custom_id: customId, // ✅ set human-friendly id
         vehicle_id: veh.id,
         customer_id: cust.id,
         inspection_id: inspectionId,
         // type removed from WO record per your design
         notes,
-        user_id: user?.id ?? null,
+        user_id: user.id,
         shop_id: shopId,
         status: "awaiting_approval",
       });
@@ -365,7 +401,7 @@ export default function CreateWorkOrderPage() {
           const lineRows = selectedItems.map((m) => ({
             work_order_id: newId,
             vehicle_id: veh.id,
-            user_id: user?.id ?? null,
+            user_id: user.id,
             description: m.name ?? null,
             labor_time: m.labor_time ?? null,
             complaint: m.complaint ?? null,
@@ -450,9 +486,7 @@ export default function CreateWorkOrderPage() {
         </div>
       )}
       {inviteNotice && (
-        <div className="mb-4 rounded bg-neutral-800 px-4 py-2 text-neutral-200 text-sm">
-          {inviteNotice}
-        </div>
+        <div className="mb-4 rounded bg-neutral-800 px-4 py-2 text-neutral-200 text-sm">{inviteNotice}</div>
       )}
 
       <form onSubmit={handleSubmit}>
@@ -503,7 +537,7 @@ export default function CreateWorkOrderPage() {
                     placeholder="jane@example.com"
                     disabled={loading}
                   />
-                  {/* Moved directly under Email */}
+                  {/* Invite toggle under Email */}
                   <div className="mt-1 flex items-center gap-2 text-xs text-neutral-300">
                     <input
                       id="send-invite"
@@ -706,8 +740,8 @@ export default function CreateWorkOrderPage() {
                       <div className="min-w-0">
                         <div className="truncate font-medium">{m.name}</div>
                         <div className="truncate text-xs text-neutral-400">
-                          {typeof m.labor_time === "number" ? `${m.labor_time}h` : "—"}{" "}
-                          {m.tools ? `• Tools: ${m.tools}` : ""} {m.complaint ? `• Complaint: ${m.complaint}` : ""}
+                          {typeof m.labor_time === "number" ? `${m.labor_time}h` : "—"} {m.tools ? `• Tools: ${m.tools}` : ""}{" "}
+                          {m.complaint ? `• Complaint: ${m.complaint}` : ""}
                         </div>
                       </div>
                       <button
