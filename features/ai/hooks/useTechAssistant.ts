@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTabState } from "@/features/shared/hooks/useTabState";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -12,38 +13,16 @@ export type Vehicle = {
 
 type AssistantOptions = { defaultVehicle?: Vehicle; defaultContext?: string };
 
-type PersistedThread = {
-  vehicle?: Vehicle;
-  context?: string;
-  messages?: ChatMessage[];
-};
+// ---- Helpers ---------------------------------------------------------------
 
-const THREAD_KEY = "assistant:thread";
-
-function saveThread(state: PersistedThread) {
-  try {
-    localStorage.setItem(THREAD_KEY, JSON.stringify(state));
-  } catch {
-    /* ignore */
-  }
-}
-
-function loadThread(): PersistedThread | null {
-  try {
-    const raw = localStorage.getItem(THREAD_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as PersistedThread;
-  } catch {
-    return null;
-  }
-}
-
-async function fileToDataUrl(file: File): Promise<string> {
-  const buf = await file.arrayBuffer();
-  // eslint-disable-next-line no-undef
-  const b64 = Buffer.from(buf).toString("base64");
-  const mime = file.type || "image/jpeg";
-  return `data:${mime};base64,${b64}`;
+// Browser-safe: turn a File into a data URL (no Buffer usage)
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onerror = () => reject(fr.error || new Error("Failed to read file"));
+    fr.onload = () => resolve(String(fr.result));
+    fr.readAsDataURL(file);
+  });
 }
 
 async function postJSON(url: string, data: unknown, signal?: AbortSignal): Promise<Response> {
@@ -55,35 +34,29 @@ async function postJSON(url: string, data: unknown, signal?: AbortSignal): Promi
   });
 }
 
+// ---- Hook ------------------------------------------------------------------
 export function useTechAssistant(opts?: AssistantOptions) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [vehicle, setVehicle] = useState<Vehicle | undefined>(opts?.defaultVehicle);
-  const [context, setContext] = useState<string>(opts?.defaultContext ?? "");
+  // Per-tab persisted state (scoped by route via useTabsScopedStorageKey inside useTabState)
+  const [vehicle, setVehicle] = useTabState<Vehicle>("assistant:vehicle", opts?.defaultVehicle ?? {});
+  const [context, setContext] = useTabState<string>("assistant:context", opts?.defaultContext ?? "");
+  const [messages, setMessages] = useTabState<ChatMessage[]>("assistant:messages", []);
 
   const [sending, setSending] = useState(false);
-  const [partial, setPartial] = useState<string>(""); // kept for typing bubble parity
+  const [partial, setPartial] = useState<string>(""); // typing bubble
   const [error, setError] = useState<string | null>(null);
 
   const lastImageRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Initial restore
+  // Seed defaults only if this tab has nothing yet.
   useEffect(() => {
-    const restored = loadThread();
-    if (restored) {
-      if (restored.vehicle) setVehicle(restored.vehicle);
-      if (typeof restored.context === "string") setContext(restored.context);
-      if (Array.isArray(restored.messages)) setMessages(restored.messages);
-    }
-    // Seed defaults only if nothing restored
-    if (!restored && opts?.defaultVehicle) setVehicle(opts.defaultVehicle);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    const emptyVehicle =
+      !vehicle?.year && !vehicle?.make && !vehicle?.model && !!opts?.defaultVehicle;
+    if (emptyVehicle) setVehicle(opts!.defaultVehicle!);
 
-  // Persist on change
-  useEffect(() => {
-    saveThread({ vehicle, context, messages });
-  }, [vehicle, context, messages]);
+    if (!context && opts?.defaultContext) setContext(opts.defaultContext);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // run once on mount
 
   const canSend = useMemo(
     () => Boolean(vehicle?.year && vehicle?.make && vehicle?.model),
@@ -136,7 +109,7 @@ export function useTechAssistant(opts?: AssistantOptions) {
         abortRef.current = null;
       }
     },
-    [messages, vehicle, context, canSend],
+    [messages, vehicle, context, canSend, setMessages],
   );
 
   const sendChat = useCallback(
@@ -146,7 +119,7 @@ export function useTechAssistant(opts?: AssistantOptions) {
       setMessages((m) => [...m, { role: "user", content: trimmed }]);
       await ask();
     },
-    [ask],
+    [ask, setMessages],
   );
 
   const sendPhoto = useCallback(
@@ -160,10 +133,12 @@ export function useTechAssistant(opts?: AssistantOptions) {
       ]);
       await ask();
     },
-    [ask],
+    [ask, setMessages],
   );
 
   const cancel = useCallback(() => abortRef.current?.abort(), []);
+
+  // Clear only messages for this tab; keep vehicle/context
   const resetConversation = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
@@ -171,8 +146,9 @@ export function useTechAssistant(opts?: AssistantOptions) {
     setPartial("");
     setError(null);
     lastImageRef.current = null;
-    saveThread({ vehicle, context, messages: [] }); // keep vehicle/context, clear messages
-  }, [vehicle, context]);
+  }, [setMessages]);
+
+  const canExport = canSend && messages.length > 0;
 
   const exportToWorkOrder = useCallback(
     async (workOrderLineId: string) => {
@@ -206,5 +182,6 @@ export function useTechAssistant(opts?: AssistantOptions) {
     exportToWorkOrder,
     resetConversation,
     cancel,
+    canExport,
   };
 }

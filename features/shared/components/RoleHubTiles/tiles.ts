@@ -82,8 +82,4 @@ export const TILES: Tile[] = [
     roles: ["owner","admin","manager","advisor","mechanic","parts"], scopes: ["all"] },
   { href: "/tech/queue", title: "Tech Job Queue", subtitle: "My assigned work",
     roles: ["mechanic","manager","owner","admin"], scopes: ["tech","all"] },
-
-  // --- Messaging (optional) ---
-  { href: "/messages", title: "Team Messages", subtitle: "Internal comms",
-    roles: ["owner","admin","manager","advisor","mechanic","parts"], scopes: ["all"] },
-];
+]
