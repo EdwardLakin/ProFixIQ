@@ -4,13 +4,38 @@ import { useEffect, useState } from "react";
 
 type Suggestion = {
   name: string;
-  laborHours: number;
+  laborHours: number | null; // ← allow null in our TS shape
   jobType: "diagnosis" | "repair" | "maintenance" | "tech-suggested";
   notes: string;
   aiComplaint?: string;
   aiCause?: string;
   aiCorrection?: string;
 };
+
+function asSuggestions(input: any): Suggestion[] {
+  if (!Array.isArray(input)) return [];
+  return input.map((raw) => {
+    const name = typeof raw?.name === "string" && raw.name.trim() ? raw.name.trim() : "Suggested item";
+    const hours = Number(raw?.laborHours);
+    const jobType =
+      raw?.jobType === "diagnosis" ||
+      raw?.jobType === "repair" ||
+      raw?.jobType === "maintenance" ||
+      raw?.jobType === "tech-suggested"
+        ? raw.jobType
+        : "maintenance"; // sane default
+    const notes = typeof raw?.notes === "string" ? raw.notes : "";
+    return {
+      name,
+      laborHours: Number.isFinite(hours) ? hours : null,
+      jobType,
+      notes,
+      aiComplaint: typeof raw?.aiComplaint === "string" ? raw.aiComplaint : undefined,
+      aiCause: typeof raw?.aiCause === "string" ? raw.aiCause : undefined,
+      aiCorrection: typeof raw?.aiCorrection === "string" ? raw.aiCorrection : undefined,
+    } as Suggestion;
+  });
+}
 
 export default function SuggestedQuickAdd({
   jobId,
@@ -35,9 +60,9 @@ export default function SuggestedQuickAdd({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ jobId }),
       });
-      const j = await res.json();
-      if (!res.ok) throw new Error(j?.error || "Failed");
-      setItems(j.suggestions ?? []);
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j?.error || "Failed to load suggestions");
+      setItems(asSuggestions(j?.suggestions));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load suggestions");
       setItems([]);
@@ -48,6 +73,7 @@ export default function SuggestedQuickAdd({
 
   useEffect(() => {
     if (jobId) void fetchSuggestions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobId]);
 
   async function addQuote(s: Suggestion) {
@@ -63,7 +89,7 @@ export default function SuggestedQuickAdd({
             {
               description: s.name,
               jobType: s.jobType,
-              estLaborHours: s.laborHours,
+              estLaborHours: s.laborHours ?? 0, // ← safe default
               notes: s.notes,
               aiComplaint: s.aiComplaint,
               aiCause: s.aiCause,
@@ -90,7 +116,7 @@ export default function SuggestedQuickAdd({
         <button
           onClick={fetchSuggestions}
           disabled={loading}
-          className="text-xs px-2 py-1 rounded border border-neutral-700 hover:bg-neutral-800"
+          className="text-xs px-2 py-1 rounded border border-neutral-700 hover:bg-neutral-800 disabled:opacity-60"
         >
           {loading ? "Thinking…" : "Regenerate"}
         </button>
@@ -104,15 +130,13 @@ export default function SuggestedQuickAdd({
             key={s.name}
             onClick={() => addQuote(s)}
             disabled={adding === s.name}
-            className="text-left border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 rounded p-3"
+            className="text-left border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 rounded p-3 disabled:opacity-60"
           >
             <div className="font-medium">{s.name}</div>
             <div className="text-xs text-neutral-400">
-              {s.jobType} • {s.laborHours.toFixed(1)}h
+              {s.jobType} • {typeof s.laborHours === "number" ? s.laborHours.toFixed(1) : "—"}h
             </div>
-            {s.notes && (
-              <div className="text-xs text-neutral-500 mt-1">{s.notes}</div>
-            )}
+            {s.notes && <div className="text-xs text-neutral-500 mt-1">{s.notes}</div>}
           </button>
         ))}
 
@@ -123,4 +147,3 @@ export default function SuggestedQuickAdd({
     </div>
   );
 }
-
