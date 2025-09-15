@@ -11,6 +11,7 @@ import { MenuQuickAdd } from "@work-orders/components/MenuQuickAdd";
 import SuggestedQuickAdd from "@work-orders/components/SuggestedQuickAdd";
 import { WorkOrderInvoiceDownloadButton } from "@work-orders/components/WorkOrderInvoiceDownloadButton";
 import { NewWorkOrderLineForm } from "@work-orders/components/NewWorkOrderLineForm";
+import { useTabState } from "@/features/shared/hooks/useTabState"; // ⬅️ NEW
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -50,7 +51,10 @@ export default function WorkOrderPage(): JSX.Element {
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [showAddForm, setShowAddForm] = useState(false);
+
+  // Persist only UI toggle per-tab
+  const [showAddForm, setShowAddForm] = useTabState<boolean>("showAddForm", false); // ⬅️ CHANGED
+
   const [viewError, setViewError] = useState<string | null>(null);
 
   const fetchAll = useCallback(async () => {

@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { useTabState } from "@/features/shared/hooks/useTabState";
 
 type DB = Database;
 type MenuItem = DB["public"]["Tables"]["menu_items"]["Row"];
@@ -25,44 +26,45 @@ export default function CreateWorkOrderPage() {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   // --- Preselects (optional) -------------------------------------------------
-  const [prefillVehicleId, setPrefillVehicleId] = useState<string | null>(null);
-  const [prefillCustomerId, setPrefillCustomerId] = useState<string | null>(null);
-  const [inspectionId, setInspectionId] = useState<string | null>(null);
+  const [prefillVehicleId, setPrefillVehicleId] = useTabState<string | null>("prefillVehicleId", null);
+  const [prefillCustomerId, setPrefillCustomerId] = useTabState<string | null>("prefillCustomerId", null);
+  const [inspectionId, setInspectionId] = useTabState<string | null>("inspectionId", null);
 
   // --- Customer form ---------------------------------------------------------
-  const [customerId, setCustomerId] = useState<string | null>(null);
-  const [custFirst, setCustFirst] = useState("");
-  const [custLast, setCustLast] = useState("");
-  const [custPhone, setCustPhone] = useState("");
-  const [custEmail, setCustEmail] = useState("");
-  const [sendInvite, setSendInvite] = useState<boolean>(false); // invite toggle
+  const [customerId, setCustomerId] = useTabState<string | null>("customerId", null);
+  const [custFirst, setCustFirst] = useTabState("custFirst", "");
+  const [custLast, setCustLast] = useTabState("custLast", "");
+  const [custPhone, setCustPhone] = useTabState("custPhone", "");
+  const [custEmail, setCustEmail] = useTabState("custEmail", "");
+  const [sendInvite, setSendInvite] = useTabState<boolean>("sendInvite", false); // invite toggle
 
   // --- Vehicle form ----------------------------------------------------------
-  const [vehicleId, setVehicleId] = useState<string | null>(null);
-  const [vin, setVin] = useState("");
-  const [year, setYear] = useState<string>("");
-  const [make, setMake] = useState("");
-  const [model, setModel] = useState("");
-  const [plate, setPlate] = useState("");
-  const [mileage, setMileage] = useState<string>("");
+  const [vehicleId, setVehicleId] = useTabState<string | null>("vehicleId", null);
+  const [vin, setVin] = useTabState("vin", "");
+  const [year, setYear] = useTabState<string>("year", "");
+  const [make, setMake] = useTabState("make", "");
+  const [model, setModel] = useTabState("model", "");
+  const [plate, setPlate] = useTabState("plate", "");
+  const [mileage, setMileage] = useTabState<string>("mileage", "");
 
   // --- WO basics -------------------------------------------------------------
-  const [type, setType] = useState<WOType>("maintenance"); // used to seed line job_type from menu picks
-  const [notes, setNotes] = useState("");
+  const [type, setType] = useTabState<WOType>("type", "maintenance"); // used to seed line job_type from menu picks
+  const [notes, setNotes] = useTabState("notes", "");
 
   // --- Menu items / selection ------------------------------------------------
-  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [menuItems, setMenuItems] = useTabState<MenuItem[]>("menuItems", []);
+  const [selectedIds, setSelectedIds] = useTabState<string[]>("selectedIds", []);
 
   // --- Uploads ---------------------------------------------------------------
+  // NOTE: File objects are not JSON-serializable; keep these in volatile state
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [docFiles, setDocFiles] = useState<File[]>([]);
   const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(null);
 
   // --- UI state --------------------------------------------------------------
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [inviteNotice, setInviteNotice] = useState<string>("");
+  const [loading, setLoading] = useTabState("loading", false);
+  const [error, setError] = useTabState("error", "");
+  const [inviteNotice, setInviteNotice] = useTabState<string>("inviteNotice", "");
 
   // Helpers: initials + custom id
   function getInitials(first?: string | null, last?: string | null, fallback?: string | null): string {
@@ -109,7 +111,7 @@ export default function CreateWorkOrderPage() {
     if (v) setPrefillVehicleId(v);
     if (c) setPrefillCustomerId(c);
     if (i) setInspectionId(i);
-  }, [searchParams]);
+  }, [searchParams, setPrefillVehicleId, setPrefillCustomerId, setInspectionId]);
 
   // ----- Prefill data --------------------------------------------------------
   useEffect(() => {
@@ -187,7 +189,7 @@ export default function CreateWorkOrderPage() {
     return () => {
       cancelled = true;
     };
-  }, [prefillCustomerId, prefillVehicleId, supabase]);
+  }, [prefillCustomerId, prefillVehicleId, supabase, setCustomerId, setCustFirst, setCustLast, setCustPhone, setCustEmail, setVehicleId, setVin, setYear, setMake, setModel, setPlate, setMileage, setMenuItems]);
 
   function togglePick(id: string) {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -391,7 +393,7 @@ export default function CreateWorkOrderPage() {
             console.error("Import from inspection failed:", j?.error || res.statusText);
           }
         } catch (err) {
-        console.error("Import from inspection errored:", err);
+          console.error("Import from inspection errored:", err);
         }
       }
 

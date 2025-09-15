@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useTabState } from "@/features/shared/hooks/useTabState";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
@@ -13,13 +13,11 @@ export type Vehicle = {
 
 type AssistantOptions = { defaultVehicle?: Vehicle; defaultContext?: string };
 
-// ---- Helpers ---------------------------------------------------------------
-
-// Browser-safe: turn a File into a data URL (no Buffer usage)
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
+// Browser-safe: convert File → data URL using FileReader
+async function fileToDataUrl(file: File): Promise<string> {
+  return await new Promise<string>((resolve, reject) => {
     const fr = new FileReader();
-    fr.onerror = () => reject(fr.error || new Error("Failed to read file"));
+    fr.onerror = () => reject(fr.error);
     fr.onload = () => resolve(String(fr.result));
     fr.readAsDataURL(file);
   });
@@ -34,29 +32,19 @@ async function postJSON(url: string, data: unknown, signal?: AbortSignal): Promi
   });
 }
 
-// ---- Hook ------------------------------------------------------------------
 export function useTechAssistant(opts?: AssistantOptions) {
-  // Per-tab persisted state (scoped by route via useTabsScopedStorageKey inside useTabState)
-  const [vehicle, setVehicle] = useTabState<Vehicle>("assistant:vehicle", opts?.defaultVehicle ?? {});
-  const [context, setContext] = useTabState<string>("assistant:context", opts?.defaultContext ?? "");
+  // 🔒 Route-scoped persistence (per tab) — these survive tab switches:
+  const [vehicle, setVehicle]   = useTabState<Vehicle | undefined>("assistant:vehicle", opts?.defaultVehicle);
+  const [context, setContext]   = useTabState<string>("assistant:context", opts?.defaultContext ?? "");
   const [messages, setMessages] = useTabState<ChatMessage[]>("assistant:messages", []);
 
+  // Ephemeral UI state
   const [sending, setSending] = useState(false);
-  const [partial, setPartial] = useState<string>(""); // typing bubble
-  const [error, setError] = useState<string | null>(null);
+  const [partial, setPartial] = useState<string>("");
+  const [error, setError]     = useState<string | null>(null);
 
   const lastImageRef = useRef<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
-
-  // Seed defaults only if this tab has nothing yet.
-  useEffect(() => {
-    const emptyVehicle =
-      !vehicle?.year && !vehicle?.make && !vehicle?.model && !!opts?.defaultVehicle;
-    if (emptyVehicle) setVehicle(opts!.defaultVehicle!);
-
-    if (!context && opts?.defaultContext) setContext(opts.defaultContext);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // run once on mount
+  const abortRef     = useRef<AbortController | null>(null);
 
   const canSend = useMemo(
     () => Boolean(vehicle?.year && vehicle?.make && vehicle?.model),
@@ -90,7 +78,6 @@ export function useTechAssistant(opts?: AssistantOptions) {
           const txt = await res.text().catch(() => "");
           throw new Error(txt || "Request failed.");
         }
-
         const data = (await res.json()) as { text?: string; error?: string };
         if (data.error) throw new Error(data.error);
 
@@ -138,17 +125,15 @@ export function useTechAssistant(opts?: AssistantOptions) {
 
   const cancel = useCallback(() => abortRef.current?.abort(), []);
 
-  // Clear only messages for this tab; keep vehicle/context
+  // Clear just the thread; keep vehicle/context (and keep them persisted)
   const resetConversation = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
-    setMessages([]);
+    setMessages([]);     // persisted per tab → immediately clears on this route
     setPartial("");
     setError(null);
     lastImageRef.current = null;
   }, [setMessages]);
-
-  const canExport = canSend && messages.length > 0;
 
   const exportToWorkOrder = useCallback(
     async (workOrderLineId: string) => {
@@ -182,6 +167,5 @@ export function useTechAssistant(opts?: AssistantOptions) {
     exportToWorkOrder,
     resetConversation,
     cancel,
-    canExport,
   };
 }
