@@ -39,11 +39,11 @@ export default function SignaturePad(rawProps: any) {
         <SignatureCanvas
           ref={sigRef}
           penColor="black"
-          backgroundColor="white"
           canvasProps={{
             width: 400,
             height: 200,
             className: "border border-gray-300 rounded-md",
+            style: { backgroundColor: "white" }, // ✅ put backgroundColor here
           }}
         />
 
