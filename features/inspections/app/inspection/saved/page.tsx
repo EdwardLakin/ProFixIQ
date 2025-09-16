@@ -1,9 +1,7 @@
-// features/inspections/app/inspection/saved/page.tsx
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { createClient } from "@supabase/supabase-js";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
 import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
@@ -11,15 +9,10 @@ import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
 type DB = Database;
 type InspectionRow = DB["public"]["Tables"]["inspections"]["Row"];
 
-const supabase = createClient<DB>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-);
-
 export default function SavedInspectionsPage() {
+  const supabase = createClientComponentClient<DB>();
   const [inspections, setInspections] = useState<InspectionRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const router = useRouter();
 
   useEffect(() => {
     const fetchInspections = async () => {
@@ -36,11 +29,7 @@ export default function SavedInspectionsPage() {
       setLoading(false);
     };
     fetchInspections();
-  }, []);
-
-  const handleClick = (id: string) => {
-    router.push(`/inspection/${id}`);
-  };
+  }, [supabase]);
 
   return (
     <div className="min-h-screen bg-black text-white px-4 py-6">
@@ -63,22 +52,21 @@ export default function SavedInspectionsPage() {
             const created =
               insp.created_at ? format(new Date(insp.created_at), "PPpp") : "—";
 
-            // Many schemas model status as a boolean "completed"
             const status =
               (insp as { completed?: boolean | null }).completed === true
                 ? "completed"
                 : "in_progress";
 
             return (
-              <button
+              <a
                 key={insp.id}
-                onClick={() => handleClick(insp.id)}
+                href={`/inspection/${insp.id}`}
                 className="block w-full cursor-pointer rounded-md bg-white/10 p-4 text-left transition hover:bg-white/20"
               >
                 <h2 className="text-lg font-bold text-orange-300">{title}</h2>
                 <p className="text-sm text-white/80">Created: {created}</p>
                 <p className="text-sm capitalize text-white/70">Status: {status}</p>
-              </button>
+              </a>
             );
           })}
         </div>

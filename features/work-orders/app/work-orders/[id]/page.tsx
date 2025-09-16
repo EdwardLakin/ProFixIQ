@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
@@ -120,6 +120,7 @@ function LazyInvoice({
 // ---------- Page ----------
 export default function WorkOrderPage(): JSX.Element {
   const params = useParams();
+  const router = useRouter();
   const woId = useMemo(() => {
     const raw = (params as ParamsShape)?.id;
     return paramToString(raw);
@@ -416,7 +417,7 @@ export default function WorkOrderPage(): JSX.Element {
             <div className="sticky bottom-3 z-10 mt-4 rounded border border-neutral-800 bg-neutral-900/95 p-3 backdrop-blur">
               <div className="flex flex-wrap items-center gap-2">
                 <button
-                  onClick={() => window.location.assign(`/work-orders/${wo.id}/quote-review`)}
+                  onClick={() => router.push(`/work-orders/quote-review?woId=${wo.id}`)} // ✅ fixed route
                   className="rounded bg-orange-500 px-3 py-2 font-semibold text-black hover:bg-orange-600"
                 >
                   Review Quote
@@ -443,7 +444,12 @@ export default function WorkOrderPage(): JSX.Element {
                       .update({ status: "queued" })
                       .eq("id", wo.id);
                     if (error) alert(error.message);
-                    else alert("Moved to Queue");
+                    else {
+                      alert("Moved to Queue");
+                      // optionally jump to the queue page if it exists:
+                      // router.push("/work-orders/queue");
+                      await fetchAll();
+                    }
                   }}
                   className="rounded border border-neutral-700 px-3 py-2 hover:border-orange-500"
                 >
@@ -467,6 +473,79 @@ export default function WorkOrderPage(): JSX.Element {
                 </ErrorBoundary>
               </div>
             )}
+
+            {/* Start inspections from this WO */}
+<div className="rounded border border-neutral-800 bg-neutral-900 p-4">
+  <div className="mb-2 font-semibold text-orange-400">Start an Inspection</div>
+  <div className="flex flex-wrap gap-2">
+    <button
+      className="rounded bg-zinc-800 px-3 py-2 text-sm hover:bg-zinc-700"
+      onClick={async () => {
+        const res = await fetch("/api/inspection/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            customer: {
+              first_name: customer?.first_name ?? "",
+              last_name: customer?.last_name ?? "",
+              phone: customer?.phone ?? "",
+              email: customer?.email ?? "",
+            },
+            vehicle: {
+              year: String(vehicle?.year ?? ""),
+              make: vehicle?.make ?? "",
+              model: vehicle?.model ?? "",
+              vin: vehicle?.vin ?? "",
+              license_plate: vehicle?.license_plate ?? "",
+              mileage: String(vehicle?.mileage ?? ""),
+              color: "",
+            },
+          }),
+        });
+        const j = await res.json();
+        if (!res.ok) return alert(j?.error || "Failed to start inspection.");
+        // Send to your existing maintenance50 screen with the new ID
+        window.location.assign(`/inspection/maintenance50?inspectionId=${j.inspectionId}`);
+      }}
+    >
+      Gas – Maintenance/Inspection
+    </button>
+
+    <button
+      className="rounded bg-zinc-800 px-3 py-2 text-sm hover:bg-zinc-700"
+      onClick={async () => {
+        const res = await fetch("/api/inspection/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            customer: {
+              first_name: customer?.first_name ?? "",
+              last_name: customer?.last_name ?? "",
+              phone: customer?.phone ?? "",
+              email: customer?.email ?? "",
+            },
+            vehicle: {
+              year: String(vehicle?.year ?? ""),
+              make: vehicle?.make ?? "",
+              model: vehicle?.model ?? "",
+              vin: vehicle?.vin ?? "",
+              license_plate: vehicle?.license_plate ?? "",
+              mileage: String(vehicle?.mileage ?? ""),
+              color: "",
+            },
+          }),
+        });
+        const j = await res.json();
+        if (!res.ok) return alert(j?.error || "Failed to start inspection.");
+        // Route could be the same page with diesel-specific sections,
+        // or a “diesel” variant once you split templates.
+        window.location.assign(`/inspection/maintenance50?inspectionId=${j.inspectionId}&fuel=diesel`);
+      }}
+    >
+      Diesel – Maintenance/Inspection
+    </button>
+  </div>
+</div>
 
             {/* Quick add menu (front-desk friendly) */}
             <div className="rounded border border-neutral-800 bg-neutral-900 p-4">

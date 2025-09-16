@@ -1,7 +1,7 @@
 // features/inspections/app/inspection/summary/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
@@ -15,7 +15,7 @@ import QuoteViewer from "@quotes/components/QuoteViewer";
 import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
 import HomeButton from "@shared/components/ui/HomeButton";
 
-// ✅ use the shared inspections types (not masterInspectionList)
+// ✅ shared inspections types
 import type {
   InspectionItem,
   InspectionSection,
@@ -35,59 +35,71 @@ export default function SummaryPage() {
   const [quoteLines, setQuoteLines] = useState<QuoteLine[]>([]);
   const [summaryText, setSummaryText] = useState("");
   const [workOrderId, setWorkOrderId] = useState<string | null>(
-    workOrderIdFromUrl || null,
+    workOrderIdFromUrl || null
   );
   const [isAddingToWorkOrder, setIsAddingToWorkOrder] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
-  // Generate AI summary + quote once sections exist
+  // Prevent duplicate generation on re-renders
+  const didGenRef = useRef(false);
+
+  // Generate AI summary + quote once sections exist (single-run guard)
   useEffect(() => {
+    if (didGenRef.current) return;
     if (session.sections.length === 0) return;
+    didGenRef.current = true;
 
     (async () => {
-      const allItems: InspectionItem[] = session.sections.flatMap(
-        (s: InspectionSection) => s.items,
-      );
+      try {
+        const allItems: InspectionItem[] = session.sections.flatMap(
+          (s: InspectionSection) => s.items
+        );
 
-      const { summary, quote } = await generateQuoteFromInspection(allItems);
+        const { summary, quote } = await generateQuoteFromInspection(allItems);
 
-      setSummaryText(summary);
-      setQuoteLines(quote);
+        setSummaryText(summary);
+        setQuoteLines(quote);
 
-      // ✅ normalize into QuoteLineItem[] for the store (no extra fields)
-      updateQuoteLines(
-        quote.map(
-          (line): QuoteLineItem => ({
-            id: uuidv4(),
-            name: line.description,
-            description: line.description,
-            notes: "",
-            status: "fail",
-            laborHours: line.hours ?? 0,
-            price: line.total ?? 0,
-            part: { name: "", price: 0 },
-            photoUrls: [],
-          }),
-        ),
-      );
+        // Normalize into QuoteLineItem[] for the store
+        updateQuoteLines(
+          quote.map(
+            (line): QuoteLineItem => ({
+              id: uuidv4(),
+              name: line.description,
+              description: line.description,
+              notes: "",
+              status: "fail",
+              laborHours: line.hours ?? 0,
+              price: line.total ?? 0,
+              part: { name: "", price: 0 },
+              photoUrls: [],
+            })
+          )
+        );
 
-      if (inspectionId) {
-        await supabase
-          .from("inspections")
-          .update({ quote, summary })
-          .eq("id", inspectionId);
+        if (inspectionId) {
+          await supabase
+            .from("inspections")
+            .update({ quote, summary })
+            .eq("id", inspectionId);
+        }
+      } catch (err) {
+        console.error("Quote generation failed:", err);
       }
     })();
-  }, [session.sections, inspectionId, supabase, updateQuoteLines]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.sections.length, inspectionId]);
 
   const handleFieldChange = (
     sectionIndex: number,
     itemIndex: number,
     field: keyof InspectionItem,
-    value: string,
+    value: string
   ) => {
-    // Type-safe update for known fields
     if (field === "status") {
-      updateItem(sectionIndex, itemIndex, { status: value as InspectionItem["status"] });
+      updateItem(sectionIndex, itemIndex, {
+        status: value as InspectionItem["status"],
+      });
     } else if (field === "notes") {
       updateItem(sectionIndex, itemIndex, { notes: value });
     } else if (field === "value") {
@@ -100,8 +112,8 @@ export default function SummaryPage() {
   const hasFailedItems = session.sections.some((section: InspectionSection) =>
     section.items.some(
       (item: InspectionItem) =>
-        item.status === "fail" || item.status === "recommend",
-    ),
+        item.status === "fail" || item.status === "recommend"
+    )
   );
 
   const createWorkOrderIfNoneExists = async (): Promise<string | null> => {
@@ -116,9 +128,7 @@ export default function SummaryPage() {
           id: newId,
           vehicle_id: session.vehicleId ?? null,
           inspection_id: inspectionId ?? null,
-          created_at: new Date().toISOString(),
-          status: "queued", // keep with your schema
-          location: (session as any).location ?? "unspecified",
+          status: "queued",
         } as Database["public"]["Tables"]["work_orders"]["Insert"],
       ]);
 
@@ -133,50 +143,62 @@ export default function SummaryPage() {
 
   const handleAddToWorkOrder = async () => {
     setIsAddingToWorkOrder(true);
-    const id = await createWorkOrderIfNoneExists();
-    if (!id || !inspectionId) {
+    try {
+      const id = await createWorkOrderIfNoneExists();
+      if (!id || !inspectionId) return;
+
+      const response = await fetch("/api/work-orders/from-inspection", {
+        method: "POST",
+        body: JSON.stringify({
+          inspectionId,
+          workOrderId: id,
+          vehicleId: session.vehicleId,
+        }),
+      });
+
+      if (!response.ok) throw new Error("Failed to add jobs to work order.");
+
+      // Notify WO pages listening for refresh
+      window.dispatchEvent(new CustomEvent("wo:line-added"));
+
+      // Optional: jump straight to the WO page
+      // router.push(`/work-orders/${id}`);
+
+      alert("Jobs added to work order successfully!");
+    } catch (e) {
+      console.error(e);
+      alert(
+        e instanceof Error ? e.message : "Failed to add jobs to work order."
+      );
+    } finally {
       setIsAddingToWorkOrder(false);
-      return;
     }
-
-    const response = await fetch("/api/work-orders/from-inspection", {
-      method: "POST",
-      body: JSON.stringify({
-        inspectionId,
-        workOrderId: id,
-        vehicleId: session.vehicleId,
-      }),
-    });
-
-    alert(
-      response.ok
-        ? "Jobs added to work order successfully!"
-        : "Failed to add jobs to work order.",
-    );
-    setIsAddingToWorkOrder(false);
   };
 
   const handleSubmit = async () => {
     try {
-      // generateInspectionPDF returns Uint8Array
+      setDownloading(true);
       const pdfBytes: Uint8Array = await generateInspectionPDF(session);
       const blob = new Blob([pdfBytes as BlobPart], {
         type: "application/pdf",
       });
 
+      const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
-      link.href = window.URL.createObjectURL(blob);
+      link.href = url;
       link.download = "inspection_summary.pdf";
       link.click();
+      URL.revokeObjectURL(url);
 
       localStorage.removeItem("inspectionCustomer");
       localStorage.removeItem("inspectionVehicle");
 
-      alert("Inspection submitted and PDF downloaded.");
       router.push("/inspection/menu");
     } catch (error) {
       console.error("Submission error:", error);
       alert("Failed to submit inspection.");
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -199,8 +221,7 @@ export default function SummaryPage() {
         <h2 className="mb-2 mt-4 text-xl font-bold">Vehicle Info</h2>
         <p>
           Year/Make/Model: {(session as any).vehicle?.year}{" "}
-          {(session as any).vehicle?.make}{" "}
-          {(session as any).vehicle?.model}
+          {(session as any).vehicle?.make} {(session as any).vehicle?.model}
         </p>
         <p>VIN: {(session as any).vehicle?.vin}</p>
         <p>License Plate: {(session as any).vehicle?.license_plate}</p>
@@ -218,7 +239,9 @@ export default function SummaryPage() {
             <div className="space-y-6 p-4">
               {section.items.map((item: InspectionItem, itemIndex: number) => (
                 <div key={itemIndex} className="space-y-2 border-b pb-4">
-                  <div className="font-semibold">{item.item ?? (item as any).name}</div>
+                  <div className="font-semibold">
+                    {item.item ?? (item as any).name}
+                  </div>
 
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
                     <label className="flex flex-col">
@@ -231,7 +254,7 @@ export default function SummaryPage() {
                             sectionIndex,
                             itemIndex,
                             "status",
-                            e.target.value,
+                            e.target.value
                           )
                         }
                       >
@@ -253,7 +276,7 @@ export default function SummaryPage() {
                             sectionIndex,
                             itemIndex,
                             "notes",
-                            e.target.value,
+                            e.target.value
                           )
                         }
                       />
@@ -269,7 +292,7 @@ export default function SummaryPage() {
                             sectionIndex,
                             itemIndex,
                             "value",
-                            e.target.value,
+                            e.target.value
                           )
                         }
                       />
@@ -285,7 +308,7 @@ export default function SummaryPage() {
                             sectionIndex,
                             itemIndex,
                             "unit",
-                            e.target.value,
+                            e.target.value
                           )
                         }
                       />
@@ -309,7 +332,7 @@ export default function SummaryPage() {
               ))}
             </div>
           </div>
-        ),
+        )
       )}
 
       {/* Quote viewer from AI */}
@@ -323,7 +346,7 @@ export default function SummaryPage() {
       {hasFailedItems && (
         <button
           onClick={handleAddToWorkOrder}
-          disabled={isAddingToWorkOrder}
+          disabled={!hasFailedItems || isAddingToWorkOrder}
           className="mt-4 w-full rounded-md bg-orange-600 py-3 text-lg font-bold text-white disabled:opacity-60"
         >
           {isAddingToWorkOrder
@@ -334,9 +357,10 @@ export default function SummaryPage() {
 
       <button
         onClick={handleSubmit}
-        className="mt-4 w-full rounded-md bg-green-600 py-3 text-lg font-bold text-white"
+        disabled={downloading}
+        className="mt-4 w-full rounded-md bg-green-600 py-3 text-lg font-bold text-white disabled:opacity-60"
       >
-        Submit Inspection
+        {downloading ? "Preparing PDF…" : "Submit Inspection"}
       </button>
     </div>
   );
