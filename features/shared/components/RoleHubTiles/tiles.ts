@@ -26,30 +26,32 @@ export const TILES: Tile[] = [
     roles: ["advisor","manager","owner","admin"], scopes: ["work_orders","all"] },
 
   // --- Inspections ---
-{ href: "/inspections", title: "Inspection Menu", subtitle: "Perform & review inspections",
-  roles: ["advisor","manager","owner","admin","mechanic"], scopes: ["inspections","all"] },
+  { href: "/inspections", title: "Inspection Menu", subtitle: "Perform & review inspections",
+    roles: ["advisor","manager","owner","admin","mechanic"], scopes: ["inspections","all"] },
 
-{ href: "/inspections/maintenance50", title: "Maintenance 50", subtitle: "Quick checklist",
-  roles: ["advisor","manager","owner","admin","mechanic"], scopes: ["inspections","all"] },
+  { href: "/inspections/maintenance50", title: "Maintenance 50", subtitle: "Quick checklist",
+    roles: ["advisor","manager","owner","admin","mechanic"], scopes: ["inspections","all"] },
 
-{ href: "/inspections/custom-inspection", title: "Custom Builder", subtitle: "Design your own",
-  roles: ["advisor","manager","owner","admin"], scopes: ["inspections","all"] },
+  // NEW: Air-brake version
+  { href: "/inspections/maintenance50-air", title: "Maintenance 50 – Air", subtitle: "CVIP-style (air brakes)",
+    roles: ["advisor","manager","owner","admin","mechanic"], scopes: ["inspections","all"] },
 
-{ href: "/inspections/saved", title: "Saved Inspections", subtitle: "Recent & drafts",
-  roles: ["advisor","manager","owner","admin"], scopes: ["inspections","all"] },
+  { href: "/inspections/custom-inspection", title: "Custom Builder", subtitle: "Design your own",
+    roles: ["advisor","manager","owner","admin"], scopes: ["inspections","all"] },
 
-{ href: "/inspections/templates", title: "Templates", subtitle: "Reusable inspection sets",
-  roles: ["advisor","manager","owner","admin"], scopes: ["inspections","all"] },
+  { href: "/inspections/saved", title: "Saved Inspections", subtitle: "Recent & drafts",
+    roles: ["advisor","manager","owner","admin"], scopes: ["inspections","all"] },
 
-{ href: "/inspections/created", title: "Created Inspections", subtitle: "All submitted inspections",
-  roles: ["advisor","manager","owner","admin"], scopes: ["inspections","all"] },
+  { href: "/inspections/templates", title: "Templates", subtitle: "Reusable inspection sets",
+    roles: ["advisor","manager","owner","admin"], scopes: ["inspections","all"] },
 
-{ href: "/inspections/summary", title: "Inspection Summaries", subtitle: "Overview & results",
-  roles: ["advisor","manager","owner","admin"], scopes: ["inspections","all"] },
+  { href: "/inspections/created", title: "Created Inspections", subtitle: "All submitted inspections",
+    roles: ["advisor","manager","owner","admin"], scopes: ["inspections","all"] },
 
-{ href: "/inspections/customer-vehicle", title: "Customer / Vehicle Lookup", subtitle: "Search inspections by customer or vehicle",
-  roles: ["advisor","manager","owner","admin"], scopes: ["inspections","all"] },
+  { href: "/inspections/summary", title: "Inspection Summaries", subtitle: "Overview & results",
+    roles: ["advisor","manager","owner","admin"], scopes: ["inspections","all"] },
 
+  // REMOVED: Customer / Vehicle Lookup tile
 
   // --- Parts ---
   { href: "/parts", title: "Parts Dashboard", subtitle: "Orders & receiving",
@@ -66,6 +68,9 @@ export const TILES: Tile[] = [
     roles: ["owner","admin"], scopes: ["management","all"] },
   { href: "/dashboard/owner", title: "Owner Dashboard", subtitle: "KPIs & controls",
     roles: ["owner","admin"], scopes: ["management","all"] },
+  { href: "/dashboard/admin/SchedulingClient", title: "Scheduling", subtitle: "Calendar & bookings",
+    roles: ["owner","admin","manager","advisor"], scopes: ["management","all"] },
+
 
   // --- Settings & Reports ---
   { href: "/dashboard/owner/reports", title: "Reports", subtitle: "Business insights",
@@ -78,8 +83,6 @@ export const TILES: Tile[] = [
     roles: ["owner","admin"], scopes: ["settings","all"] },
 
   // --- AI & Tech ---
-  { href: "/ai/assistant", title: "AI Assistant", subtitle: "Unified expert help",
-    roles: ["owner","admin","manager","advisor","mechanic","parts"], scopes: ["all"] },
   { href: "/tech/queue", title: "Tech Job Queue", subtitle: "My assigned work",
     roles: ["mechanic","manager","owner","admin"], scopes: ["tech","all"] },
-]
+];
