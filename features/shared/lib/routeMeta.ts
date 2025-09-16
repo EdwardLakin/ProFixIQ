@@ -77,7 +77,7 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   "/dashboard/owner/settings":    { title: () => "Owner Settings", icon: "⚙️", roles: ["owner"] },
 
   // Scheduling (Admin)
-  "/dashboard/admin/SchedulingClient":  { title: () => "Scheduling",     icon: "📅", roles: ["owner", "admin"] },
+  "/dashboard/admin/scheduling":  { title: () => "Scheduling",     icon: "📅", roles: ["owner", "admin"] },
 
   // AI & Messaging
   "/ai/assistant": { title: () => "AI Assistant", icon: "🤖", roles: ["owner", "admin", "service", "tech"] },
