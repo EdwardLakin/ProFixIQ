@@ -1,4 +1,4 @@
-// features/inspections/lib/inspection/types.ts
+
 
 /** ---------- Item / Section ---------- */
 export type InspectionItemStatus = "ok" | "fail" | "na" | "recommend";
