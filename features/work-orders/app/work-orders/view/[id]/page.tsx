@@ -28,6 +28,7 @@ type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 
 const statusBadge: Record<string, string> = {
   awaiting: "bg-blue-100 text-blue-800",
+  awaiting_approval: "bg-blue-100 text-blue-800", // ← added to match new flow
   in_progress: "bg-orange-100 text-orange-800",
   on_hold: "bg-yellow-100 text-yellow-800",
   completed: "bg-green-100 text-green-800",
@@ -139,12 +140,17 @@ export default function WorkOrderDetailPage() {
     fetchData();
   }, [fetchData]);
 
+  // Refresh when other parts of the app announce a new/updated line
+  useEffect(() => {
+    const handler = () => fetchData();
+    window.addEventListener("wo:line-added", handler);
+    return () => window.removeEventListener("wo:line-added", handler);
+  }, [fetchData]);
+
   useEffect(() => {
     const t = setInterval(() => {
       if (line?.punched_in_at && !line?.punched_out_at) {
-        setDuration(
-          formatDistanceStrict(new Date(), new Date(line.punched_in_at)),
-        );
+        setDuration(formatDistanceStrict(new Date(), new Date(line.punched_in_at)));
       }
     }, 10_000);
     return () => clearInterval(t);
@@ -214,21 +220,35 @@ export default function WorkOrderDetailPage() {
       return;
     }
 
-    const { data: jobs, error: jobsError } = await supabase
+    // Try tech-suggested first; if none, fall back to non-completed items
+    const { data: techSuggested, error: tsErr } = await supabase
       .from("work_order_lines")
       .select("*")
       .eq("work_order_id", line.work_order_id)
       .eq("job_type", "tech-suggested");
 
-    if (jobsError || !jobs?.length) {
-      toast.error("Failed to fetch tech-suggested jobs.");
+    let jobs = techSuggested ?? [];
+    if (tsErr) console.warn("tech-suggested fetch error:", tsErr);
+
+    if (!jobs.length) {
+      const { data: fallback, error: fbErr } = await supabase
+        .from("work_order_lines")
+        .select("*")
+        .eq("work_order_id", line.work_order_id)
+        .neq("status", "completed");
+      if (fbErr) {
+        toast.error("Failed to fetch jobs for quote.");
+        return;
+      }
+      jobs = fallback ?? [];
+    }
+
+    if (!jobs.length) {
+      toast.error("No jobs found to include in the quote.");
       return;
     }
 
-    const pdfBytes = await generateQuotePDFBytes(
-      jobs,
-      jobs[0]?.vehicle_id ?? "",
-    );
+    const pdfBytes = await generateQuotePDFBytes(jobs, jobs[0]?.vehicle_id ?? "");
     const fileName = `quote-${line.work_order_id}.pdf`;
 
     const { error: uploadError } = await supabase.storage
@@ -291,7 +311,7 @@ export default function WorkOrderDetailPage() {
       });
     }
 
-    toast.success("Quote PDF sent to customer and saved");
+    toast.success("Quote PDF saved" + (customerEmail ? " and emailed to customer" : ""));
   };
 
   const badgeClass =
@@ -435,7 +455,7 @@ export default function WorkOrderDetailPage() {
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-semibold">Job: {line.id}</h1>
             <span className={`text-sm px-2 py-1 rounded ${badgeClass}`}>
-              {(line.status ?? "awaiting").replace("_", " ")}
+              {(line.status ?? "awaiting").replaceAll("_", " ")}
             </span>
           </div>
 
@@ -547,7 +567,7 @@ export default function WorkOrderDetailPage() {
 
                       <div className="flex items-center gap-2">
                         <span className={`text-xs px-2 py-1 rounded ${jobBadge}`}>
-                          {(job.status ?? "awaiting").replace("_", " ")}
+                          {(job.status ?? "awaiting").replaceAll("_", " ")}
                         </span>
 
                         {activeJobId === null && !job.punched_in_at && (

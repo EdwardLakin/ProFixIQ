@@ -1,4 +1,3 @@
-// features/work-orders/components/NewWorkOrderLineForm.tsx
 "use client";
 
 import { useState } from "react";
@@ -8,7 +7,7 @@ import type { Database } from "@shared/types/types/supabase";
 type DB = Database;
 type InsertLine = DB["public"]["Tables"]["work_order_lines"]["Insert"];
 
-// Include all supported job types
+// Keep in sync with your DB check constraint
 type WOJobType = "diagnosis" | "inspection" | "maintenance" | "repair";
 
 export function NewWorkOrderLineForm(props: {
@@ -26,11 +25,15 @@ export function NewWorkOrderLineForm(props: {
   const [labor, setLabor] = useState<string>("");
   const [status, setStatus] = useState<InsertLine["status"]>("awaiting");
   const [jobType, setJobType] = useState<WOJobType | null>(defaultJobType ?? null);
-  const [tools, setTools] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const canSave = complaint.trim().length > 0 && !!workOrderId;
+
+  function normalizeJobType(t: WOJobType | null): InsertLine["job_type"] {
+    const allowed: WOJobType[] = ["diagnosis", "inspection", "maintenance", "repair"];
+    return (t && (allowed as string[]).includes(t)) ? (t as InsertLine["job_type"]) : null;
+  }
 
   async function addLine() {
     if (!canSave) return;
@@ -48,22 +51,24 @@ export function NewWorkOrderLineForm(props: {
       complaint: complaint || null,
       cause: cause || null,
       correction: correction || null,
-      tools: tools || null,
       labor_time: labor ? Number(labor) : null,
       status: status ?? "awaiting",
-      // Cast to DB insert type while keeping our WOJobType safety
-      job_type: (jobType as InsertLine["job_type"]) ?? null,
+      job_type: normalizeJobType(jobType),
     };
 
     const { error } = await supabase.from("work_order_lines").insert(payload);
     if (error) {
-      setErr(error.message);
+      // friendlier copy for job_type check constraint issues
+      if (/(job_type).*check/i.test(error.message)) {
+        setErr("This job type isn’t allowed by the database. Pick another type or ask an admin to enable it.");
+      } else {
+        setErr(error.message);
+      }
     } else {
       setComplaint("");
       setCause("");
       setCorrection("");
       setLabor("");
-      setTools("");
       setStatus("awaiting");
       setJobType(defaultJobType ?? null);
       onCreated?.();
@@ -139,15 +144,6 @@ export function NewWorkOrderLineForm(props: {
             <option value="maintenance">Maintenance</option>
             <option value="repair">Repair</option>
           </select>
-        </div>
-        <div className="sm:col-span-2">
-          <label className="block text-xs text-neutral-400 mb-1">Tools</label>
-          <input
-            value={tools}
-            onChange={(e) => setTools(e.target.value)}
-            className="w-full rounded border border-neutral-700 bg-neutral-900 p-2"
-            placeholder="Tools or equipment needed"
-          />
         </div>
       </div>
 

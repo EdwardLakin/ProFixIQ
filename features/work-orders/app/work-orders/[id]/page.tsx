@@ -67,6 +67,56 @@ const statusBadge: Record<string, string> = {
   completed: "bg-green-100 text-green-800",
 };
 
+// ---------- Lazy Invoice (prevents pre-render crashes) ----------
+function LazyInvoice({
+  woId,
+  lines,
+  vehicle,
+  customer,
+}: {
+  woId: string;
+  lines: WorkOrderLine[];
+  vehicle: Vehicle | null;
+  customer: Customer | null;
+}) {
+  const [open, setOpen] = useState(false);
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="px-4 py-2 bg-blue-700 text-white rounded hover:bg-blue-800"
+      >
+        Generate / Download Invoice PDF
+      </button>
+    );
+  }
+
+  return (
+    <WorkOrderInvoiceDownloadButton
+      workOrderId={woId}
+      lines={(lines ?? []).filter(Boolean).map((l) => ({
+        complaint: l.complaint ?? l.description ?? "",
+        cause: l.cause ?? "",
+        correction: l.correction ?? "",
+        tools: l.tools ?? "",
+        labor_time: typeof l.labor_time === "number" ? l.labor_time : 0,
+      }))}
+      vehicleInfo={{
+        year: vehicle?.year ? String(vehicle.year) : "",
+        make: vehicle?.make ?? "",
+        model: vehicle?.model ?? "",
+        vin: vehicle?.vin ?? "",
+      }}
+      customerInfo={{
+        name: [customer?.first_name ?? "", customer?.last_name ?? ""].filter(Boolean).join(" "),
+        phone: customer?.phone ?? "",
+        email: customer?.email ?? "",
+      }}
+    />
+  );
+}
+
 // ---------- Page ----------
 export default function WorkOrderPage(): JSX.Element {
   const params = useParams();
@@ -83,6 +133,9 @@ export default function WorkOrderPage(): JSX.Element {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [viewError, setViewError] = useState<string | null>(null);
+
+  // profile/role (for tech-only AI panel)
+  const [profileRole, setProfileRole] = useState<string | null>(null);
 
   // Persist UI toggle per-tab
   const [showAddForm, setShowAddForm] = useTabState<boolean>("showAddForm", false);
@@ -103,7 +156,7 @@ export default function WorkOrderPage(): JSX.Element {
 
         if (woErr) throw woErr;
 
-        // retry once if just-created and replication lag
+        // retry a bit for just-created rows
         if (!woRow && retry < 2) {
           setTimeout(() => void fetchAll(retry + 1), 500);
           return;
@@ -146,6 +199,14 @@ export default function WorkOrderPage(): JSX.Element {
           if (cErr) throw cErr;
           setCustomer(c ?? null);
         } else setCustomer(null);
+
+        // profile role (for AI gating)
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", (await supabase.auth.getUser()).data.user?.id ?? "")
+          .maybeSingle();
+        setProfileRole(prof?.role ?? null);
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "Failed to load work order.";
         setViewError(msg);
@@ -161,6 +222,13 @@ export default function WorkOrderPage(): JSX.Element {
     void fetchAll();
   }, [fetchAll]);
 
+  // 🔔 Listen for "wo:line-added" to refresh
+  useEffect(() => {
+    const handler = () => fetchAll();
+    window.addEventListener("wo:line-added", handler);
+    return () => window.removeEventListener("wo:line-added", handler);
+  }, [fetchAll]);
+
   // ----- Helpers -----
   const chipClass = (s: string | null): string => {
     const key = (s ?? "awaiting").toLowerCase().replaceAll(" ", "_");
@@ -173,6 +241,8 @@ export default function WorkOrderPage(): JSX.Element {
       lines.find((l) => (l.status ?? "").toLowerCase() === st)?.id ?? null;
     return byStatus("in_progress") || byStatus("awaiting") || byStatus("queued") || lines[0]?.id || null;
   }, [lines]);
+
+  const isTech = (profileRole ?? "").toLowerCase() === "tech";
 
   if (!woId) {
     return <div className="p-6 text-red-500">Missing work order id.</div>;
@@ -334,47 +404,71 @@ export default function WorkOrderPage(): JSX.Element {
               )}
             </div>
 
-            {/* Invoice */}
+            {/* Invoice (lazy) */}
             <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
               <h3 className="mb-2 font-semibold">Invoice</h3>
               <ErrorBoundary>
-                <WorkOrderInvoiceDownloadButton
-                  workOrderId={wo.id}
-                  lines={(lines ?? []).map((l) => ({
-                    complaint: l.complaint ?? l.description ?? "",
-                    cause: l.cause ?? "",
-                    correction: l.correction ?? "",
-                    tools: l.tools ?? "",
-                    labor_time: typeof l.labor_time === "number" ? l.labor_time : 0,
-                  }))}
-                  vehicleInfo={{
-                    year: vehicle?.year ? String(vehicle.year) : "",
-                    make: vehicle?.make ?? "",
-                    model: vehicle?.model ?? "",
-                    vin: vehicle?.vin ?? "",
-                  }}
-                  customerInfo={{
-                    name: [customer?.first_name ?? "", customer?.last_name ?? ""].filter(Boolean).join(" "),
-                    phone: customer?.phone ?? "",
-                    email: customer?.email ?? "",
-                  }}
-                />
+                <LazyInvoice woId={wo.id} lines={lines} vehicle={vehicle} customer={customer} />
               </ErrorBoundary>
+            </div>
+
+            {/* Sticky progress actions */}
+            <div className="sticky bottom-3 z-10 mt-4 rounded border border-neutral-800 bg-neutral-900/95 p-3 backdrop-blur">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => window.location.assign(`/work-orders/${wo.id}/quote-review`)}
+                  className="rounded bg-orange-500 px-3 py-2 font-semibold text-black hover:bg-orange-600"
+                >
+                  Review Quote
+                </button>
+
+                <button
+                  onClick={async () => {
+                    const { error } = await supabase
+                      .from("work_orders")
+                      .update({ status: "awaiting_approval" })
+                      .eq("id", wo.id);
+                    if (error) alert(error.message);
+                    else alert("Marked as awaiting customer approval");
+                  }}
+                  className="rounded border border-neutral-700 px-3 py-2 hover:border-orange-500"
+                >
+                  Mark Awaiting Approval
+                </button>
+
+                <button
+                  onClick={async () => {
+                    const { error } = await supabase
+                      .from("work_orders")
+                      .update({ status: "queued" })
+                      .eq("id", wo.id);
+                    if (error) alert(error.message);
+                    else alert("Moved to Queue");
+                  }}
+                  className="rounded border border-neutral-700 px-3 py-2 hover:border-orange-500"
+                >
+                  Queue Work
+                </button>
+              </div>
             </div>
           </div>
 
           {/* RIGHT */}
           <aside className="space-y-6">
-            <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
-              <ErrorBoundary>
-                {suggestedJobId ? (
-                  <SuggestedQuickAdd jobId={suggestedJobId} workOrderId={wo.id} vehicleId={vehicle?.id ?? null} />
-                ) : (
-                  <div className="text-sm text-neutral-400">Add a job line to enable AI suggestions.</div>
-                )}
-              </ErrorBoundary>
-            </div>
+            {/* Show AI suggestions only for techs */}
+            {isTech && (
+              <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
+                <ErrorBoundary>
+                  {suggestedJobId ? (
+                    <SuggestedQuickAdd jobId={suggestedJobId} workOrderId={wo.id} vehicleId={vehicle?.id ?? null} />
+                  ) : (
+                    <div className="text-sm text-neutral-400">Add a job line to enable AI suggestions.</div>
+                  )}
+                </ErrorBoundary>
+              </div>
+            )}
 
+            {/* Quick add menu (front-desk friendly) */}
             <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
               <ErrorBoundary>
                 <MenuQuickAdd workOrderId={wo.id} />
