@@ -161,6 +161,9 @@ importers:
       remark-gfm:
         specifier: 4.0.1
         version: 4.0.1
+      signature_pad:
+        specifier: ^5.1.0
+        version: 5.1.0
       sonner:
         specifier: ^2.0.6
         version: 2.0.7(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
@@ -3377,6 +3380,9 @@ packages:
 
   signature_pad@2.3.2:
     resolution: {integrity: sha512-peYXLxOsIY6MES2TrRLDiNg2T++8gGbpP2yaC+6Ohtxr+a2dzoaqWosWDY9sWqTAAk6E/TyQO+LJw9zQwyu5kA==}
+
+  signature_pad@5.1.0:
+    resolution: {integrity: sha512-h9rIm0vZggb/wWiajLzrH0Md+YntTHIo2dUFm6mfYAIItD75yzpiIHa1HcRA9NhQqPBix2KF8TIIA9vaokomBw==}
 
   simple-swizzle@0.2.2:
     resolution: {integrity: sha512-JA//kQgZtbuY83m+xT+tXJkmJncGMTFT+C+g2h2R9uxkYIrE2yy9sgmcLhCnw57/WSD+Eh3J97FPEDFnbXnDUg==}
@@ -7559,6 +7565,8 @@ snapshots:
   signal-exit@4.1.0: {}
 
   signature_pad@2.3.2: {}
+
+  signature_pad@5.1.0: {}
 
   simple-swizzle@0.2.2:
     dependencies:
