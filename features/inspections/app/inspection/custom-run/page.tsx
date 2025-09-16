@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
-import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -16,12 +15,12 @@ import useInspectionSession from "@inspections/hooks/useInspectionSession";
 import { handleTranscriptFn } from "@inspections/lib/inspection/handleTranscript";
 import { interpretCommand } from "@inspections/components/inspection/interpretCommand";
 
-import {
-  type ParsedCommand,
-  type InspectionItemStatus,
-  type InspectionStatus,
-  type InspectionSection,
-  type InspectionItem,
+import type {
+  ParsedCommand,
+  InspectionItemStatus,
+  InspectionStatus,
+  InspectionSection,
+  InspectionItem,
 } from "@inspections/lib/inspection/types";
 
 import { SaveInspectionButton } from "@inspections/components/inspection/SaveInspectionButton";
@@ -29,8 +28,9 @@ import FinishInspectionButton from "@inspections/components/inspection/FinishIns
 
 import { generateAxleLayout } from "@inspections/lib/inspection/generateAxleLayout";
 import { axlesToSections } from "@inspections/lib/inspection/axleAdapters";
+import { buildInspectionFromSelections } from "@inspections/lib/inspection/buildFromSelections";
 
-/** SpeechRecognition constructor without touching global typings */
+/** Resolve the SR constructor without touching global typings */
 type SRConstructor = new () => SpeechRecognition;
 function resolveSR(): SRConstructor | undefined {
   if (typeof window === "undefined") return undefined;
@@ -41,27 +41,124 @@ function resolveSR(): SRConstructor | undefined {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? undefined;
 }
 
-type DB = Database;
+/* ------------------------------------------------------------------ */
+/* Unit hints + Axles renderer                                        */
+/* ------------------------------------------------------------------ */
+
+function unitHint(label: string, mode: "metric" | "imperial") {
+  const l = label.toLowerCase();
+  if (l.includes("tread") || l.includes("lining") || l.includes("pad")) return mode === "metric" ? "mm" : "in";
+  if (l.includes("pressure")) return mode === "metric" ? "kPa" : "psi";
+  if (l.includes("push rod")) return mode === "metric" ? "mm" : "in";
+  if (l.includes("wheel torque")) return mode === "metric" ? "N·m" : "ft·lb";
+  if (l.includes("rotor") || l.includes("drum")) return mode === "metric" ? "mm" : "in";
+  return "";
+}
+
+const AXLE_RE = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
+type AxleRow = {
+  axle: string;
+  metric: string;
+  left?: string | number | null;
+  right?: string | number | null;
+  leftIdx?: number;
+  rightIdx?: number;
+  unit?: string | null;
+};
+
+function AxlesSection({
+  section,
+  sectionIndex,
+  unitMode,
+  updateItem,
+}: {
+  section: InspectionSection;
+  sectionIndex: number;
+  unitMode: "metric" | "imperial";
+  updateItem: (sectionIdx: number, itemIdx: number, patch: Partial<InspectionItem>) => void;
+}) {
+  const map = new Map<string, AxleRow>();
+  section.items.forEach((it, idx) => {
+    const m = (it.item ?? "").match(AXLE_RE);
+    if (!m?.groups) return;
+    const axle = m.groups.axle.trim();
+    const side = m.groups.side as "Left" | "Right";
+    const metric = m.groups.metric.trim();
+    const key = `${axle}::${metric}`;
+    const row = map.get(key) ?? { axle, metric };
+    if (side === "Left") {
+      row.left = (it.value as any) ?? "";
+      row.leftIdx = idx;
+    } else {
+      row.right = (it.value as any) ?? "";
+      row.rightIdx = idx;
+    }
+    row.unit = it.unit ?? unitHint(it.item ?? "", unitMode);
+    map.set(key, row);
+  });
+  const rows = Array.from(map.values());
+
+  return (
+    <div className="space-y-3 rounded border border-zinc-700 bg-zinc-900 p-3">
+      {rows.map((r, i) => (
+        <div key={i} className="rounded bg-zinc-950/70 p-3">
+          <div className="mb-2 text-sm font-semibold text-orange-300">
+            {r.axle} — {r.metric}
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-zinc-400">Left</label>
+              <input
+                className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white"
+                value={String(r.left ?? "")}
+                onChange={(e) =>
+                  r.leftIdx != null && updateItem(sectionIndex, r.leftIdx, { value: e.target.value })
+                }
+                placeholder="Value"
+              />
+            </div>
+            <div className="text-center text-xs text-zinc-400">
+              {r.unit || unitHint(`${r.axle} Left ${r.metric}`, unitMode)}
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-zinc-400">Right</label>
+              <input
+                className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white"
+                value={String(r.right ?? "")}
+                onChange={(e) =>
+                  r.rightIdx != null && updateItem(sectionIndex, r.rightIdx, { value: e.target.value })
+                }
+                placeholder="Value"
+              />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Page                                                               */
+/* ------------------------------------------------------------------ */
 
 export default function CustomRunPage() {
+  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
   const searchParams = useSearchParams();
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
-  // Units + vehicle type selection
+  // UI state
   const [unit, setUnit] = useState<"metric" | "imperial">("metric");
-  const [vehicleType, setVehicleType] = useState<"car" | "truck" | "bus" | "trailer">(
-    (searchParams.get("vehicleType") as any) || "truck",
-  );
-
-  // Voice state
   const [isListening, setIsListening] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [, setTranscript] = useState("");
+
+  // SR
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
-  // Header info
-  const templateName = searchParams.get("template") || "Custom Inspection (Axle Layout)";
+  // Header
+  const templateName = searchParams.get("template") || "Custom Inspection Run";
 
+  // These can be passed on the URL; default blanks are ok per your types
   const customer = {
     first_name: searchParams.get("first_name") || "",
     last_name: searchParams.get("last_name") || "",
@@ -72,7 +169,6 @@ export default function CustomRunPage() {
     province: searchParams.get("province") || "",
     postal_code: searchParams.get("postal_code") || "",
   };
-
   const vehicle = {
     year: searchParams.get("year") || "",
     make: searchParams.get("make") || "",
@@ -81,11 +177,50 @@ export default function CustomRunPage() {
     license_plate: searchParams.get("license_plate") || "",
     mileage: searchParams.get("mileage") || "",
     color: searchParams.get("color") || "",
-    unit_number: searchParams.get("unit_number") || "",
-    odometer: searchParams.get("odometer") || "",
   };
 
-  // Initial session (empty sections; we inject axles next)
+  // Builder selections (produced by your builder UI)
+  // Expect a JSON string under ?selections= and optional ?vehicleType=
+  const selectionsParam = searchParams.get("selections"); // base64 or json
+  const vehicleTypeParam = (searchParams.get("vehicleType") as "car" | "truck" | "bus" | "trailer" | null) || null;
+
+  const builtSections = useMemo<InspectionSection[]>(() => {
+    // Try to parse selections; if absent, start empty
+    let selections: Record<string, string[]> = {};
+    try {
+      if (selectionsParam) {
+        // allow plain JSON or base64 JSON
+        const raw =
+          selectionsParam.startsWith("{") || selectionsParam.startsWith("[")
+            ? selectionsParam
+            : atob(selectionsParam);
+        selections = JSON.parse(raw);
+      }
+    } catch {
+      selections = {};
+    }
+
+    const axleOpt = vehicleTypeParam ? { vehicleType: vehicleTypeParam } : null;
+    const built = buildInspectionFromSelections({
+      selections,
+      axle: axleOpt,
+      extraServiceItems: [],
+    });
+
+    // If the caller wants a *pure* axle layout without the flat “Axles” section,
+    // convert to CVIP-style multi-sections:
+    if (axleOpt) {
+      const axles = generateAxleLayout(axleOpt.vehicleType);
+      const axleSections = axlesToSections(axles);
+      // Replace the “Axles” section (if present) with the expanded set
+      const rest = built.filter((s) => s.title !== "Axles");
+      return [...axleSections, ...rest];
+    }
+
+    return built;
+  }, [selectionsParam, vehicleTypeParam]);
+
+  // Initial session (empty; we’ll inject sections after mount)
   const initialSession = useMemo(
     () => ({
       id: uuidv4(),
@@ -99,7 +234,7 @@ export default function CustomRunPage() {
       vehicle,
       sections: [],
     }),
-    [templateName], // eslint-disable-line react-hooks/exhaustive-deps
+    [templateName] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const {
@@ -114,43 +249,25 @@ export default function CustomRunPage() {
     addQuoteLine,
   } = useInspectionSession(initialSession);
 
-  // Start session once
+  // start session once
   useEffect(() => {
     startSession(initialSession);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** Build axle sections for the current vehicle type */
-  const buildAxleSections = (type: "car" | "truck" | "bus" | "trailer"): InspectionSection[] => {
-    const axles = generateAxleLayout(type);
-    return axlesToSections(axles);
-  };
-
-  /** Replace any existing axle sections with freshly generated ones */
-  const injectAxleSections = (type: "car" | "truck" | "bus" | "trailer") => {
-    if (!session) return;
-    const axleSections = buildAxleSections(type);
-
-    // Treat anything titled exactly like the generated axle titles as axle sections
-    const axleTitles = new Set(axleSections.map((s) => s.title));
-    const nonAxle = (session.sections ?? []).filter((s) => !axleTitles.has(s.title));
-    const merged = [...axleSections, ...nonAxle];
-
-    updateInspection({ sections: merged });
-  };
-
-  // Inject axles when session is ready (initial) and whenever vehicleType changes
+  // inject built sections once session exists
   useEffect(() => {
     if (!session) return;
-    injectAxleSections(vehicleType);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.id, vehicleType]);
+    if ((session.sections?.length ?? 0) === 0 && builtSections.length > 0) {
+      updateInspection({ sections: builtSections });
+    }
+  }, [session, builtSections, updateInspection]);
 
-  // Voice → commands
-  const handleTranscript = async (text: string) => {
+  // voice handling
+  const onTranscript = async (text: string) => {
     setTranscript(text);
-    const commands: ParsedCommand[] = await interpretCommand(text);
-    for (const cmd of commands) {
+    const cmds: ParsedCommand[] = await interpretCommand(text);
+    for (const cmd of cmds) {
       await handleTranscriptFn({
         command: cmd,
         session,
@@ -162,7 +279,6 @@ export default function CustomRunPage() {
     }
   };
 
-  // Start SR
   const startListening = () => {
     const SR = resolveSR();
     if (!SR) {
@@ -176,7 +292,7 @@ export default function CustomRunPage() {
     recognition.onresult = (event: SpeechRecognitionEvent) => {
       const last = event.results.length - 1;
       const t = event.results[last][0].transcript;
-      handleTranscript(t);
+      onTranscript(t);
     };
     recognition.onerror = (event: Event & { error: string }) => {
       console.error("Speech recognition error:", event.error);
@@ -186,82 +302,76 @@ export default function CustomRunPage() {
     setIsListening(true);
   };
 
-  if (!session || !session.sections || session.sections.length === 0) {
-    return <div className="p-4 text-white">Loading inspection…</div>;
+  // Save as Template → inspection_templates
+  async function saveAsTemplate() {
+    const user = (await supabase.auth.getUser()).data.user;
+    if (!user) return alert("Please sign in to save a template.");
+
+    const name = prompt("Template name?", templateName || "Custom Template") || "Custom Template";
+    const payload: Database["public"]["Tables"]["inspection_templates"]["Insert"] = {
+      user_id: user.id,
+      template_name: name,
+      sections: (session?.sections ?? []) as any,
+      description: "Saved from Custom Run page",
+      vehicle_type: vehicleTypeParam,
+      tags: ["custom", "run"],
+      is_public: false,
+    };
+
+    const { error } = await supabase.from("inspection_templates").insert(payload);
+    if (error) {
+      console.error(error);
+      alert("Failed to save template.");
+    } else {
+      alert("Template saved.");
+    }
   }
 
-  /* ------------------------------- UI helpers ------------------------------ */
+  if (!session || !session.sections || session.sections.length === 0) {
+    return <div className="text-white p-4">Loading inspection…</div>;
+  }
 
-  const defaultUnitFor = (label: string): string => {
-    const l = label.toLowerCase();
-    if (/pressure|psi/.test(l)) return "psi";
-    if (/tread|lining|pad|mm/.test(l)) return "mm";
-    if (/push\s*rod/.test(l)) return unit === "metric" ? "mm" : "in";
-    if (/torque/.test(l)) return "ft·lb";
-    return unit === "metric" ? "" : "";
-  };
-
-  const unitHint = (item: InspectionItem) => {
-    if (item.unit && item.unit.length) return item.unit;
-    return defaultUnitFor(item.item ?? item.name ?? "");
-  };
-
-  /* ------------------------------- Header ---------------------------------- */
-
+  // simple header card (same style used on 50 pages)
   function HeaderCard() {
     return (
       <div className="mb-5 rounded-lg border border-zinc-700 bg-zinc-900 p-4 text-white">
         <h1 className="mb-3 text-center text-2xl font-bold">{templateName}</h1>
-
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {/* Vehicle */}
           <div className="rounded-md border border-zinc-700 p-3">
             <div className="mb-2 text-sm font-semibold text-orange-400">Vehicle Information</div>
             <div className="grid grid-cols-2 gap-2 text-sm">
               <label className="opacity-70">VIN</label>
-              <div className="truncate">{vehicle.vin || "—"}</div>
-
-              <label className="opacity-70">Unit #</label>
-              <div>{vehicle.unit_number || "—"}</div>
-
+              <div className="truncate">{session.vehicle?.vin || "—"}</div>
               <label className="opacity-70">Year</label>
-              <div>{vehicle.year || "—"}</div>
-
+              <div>{session.vehicle?.year || "—"}</div>
               <label className="opacity-70">Make</label>
-              <div>{vehicle.make || "—"}</div>
-
+              <div>{session.vehicle?.make || "—"}</div>
               <label className="opacity-70">Model</label>
-              <div>{vehicle.model || "—"}</div>
-
-              <label className="opacity-70">Odometer</label>
-              <div>{vehicle.odometer || vehicle.mileage || "—"}</div>
-
+              <div>{session.vehicle?.model || "—"}</div>
               <label className="opacity-70">Plate</label>
-              <div>{vehicle.license_plate || "—"}</div>
-
+              <div>{session.vehicle?.license_plate || "—"}</div>
+              <label className="opacity-70">Mileage</label>
+              <div>{session.vehicle?.mileage || "—"}</div>
               <label className="opacity-70">Color</label>
-              <div>{vehicle.color || "—"}</div>
+              <div>{session.vehicle?.color || "—"}</div>
             </div>
           </div>
-
           {/* Customer */}
           <div className="rounded-md border border-zinc-700 p-3">
             <div className="mb-2 text-sm font-semibold text-orange-400">Customer Information</div>
             <div className="grid grid-cols-2 gap-2 text-sm">
               <label className="opacity-70">Name</label>
               <div>
-                {[customer.first_name, customer.last_name].filter(Boolean).join(" ") || "—"}
+                {[session.customer?.first_name, session.customer?.last_name].filter(Boolean).join(" ") || "—"}
               </div>
-
               <label className="opacity-70">Phone</label>
-              <div>{customer.phone || "—"}</div>
-
+              <div>{session.customer?.phone || "—"}</div>
               <label className="opacity-70">Email</label>
-              <div className="truncate">{customer.email || "—"}</div>
-
+              <div className="truncate">{session.customer?.email || "—"}</div>
               <label className="opacity-70">Address</label>
               <div className="col-span-1 truncate">
-                {[customer.address, customer.city, customer.province, customer.postal_code]
+                {[session.customer?.address, session.customer?.city, session.customer?.province, session.customer?.postal_code]
                   .filter(Boolean)
                   .join(", ") || "—"}
               </div>
@@ -272,51 +382,10 @@ export default function CustomRunPage() {
     );
   }
 
-  /* ------------------------- Save as Template action ----------------------- */
-
-  async function handleSaveAsTemplate() {
-    try {
-      const { data: auth } = await supabase.auth.getUser();
-      const userId = auth.user?.id;
-      if (!userId) {
-        alert("Please sign in to save templates.");
-        return;
-      }
-
-      const defaultName = `${templateName} — ${new Date().toLocaleDateString()}`;
-      const templateNameInput =
-        window.prompt("Template name:", defaultName)?.trim() || defaultName;
-
-      const description =
-        window.prompt("Optional description (or leave blank):", "")?.trim() || null;
-
-      const payload: DB["public"]["Tables"]["inspection_templates"]["Insert"] = {
-        user_id: userId,
-        template_name: templateNameInput,
-        sections: session.sections as any, // stored JSON
-        description,
-        tags: ["custom", vehicleType],
-        vehicle_type: vehicleType,
-        is_public: false,
-      };
-
-      const { error } = await supabase.from("inspection_templates").insert(payload);
-      if (error) throw error;
-
-      alert("Saved! Find it under Templates.");
-    } catch (e: any) {
-      console.error(e);
-      alert(e?.message ?? "Failed to save template.");
-    }
-  }
-
-  /* -------------------------------- Render --------------------------------- */
-
   return (
     <div className="px-4 pb-14">
       <HeaderCard />
 
-      {/* Controls */}
       <div className="mb-4 flex flex-wrap items-center justify-center gap-3">
         <StartListeningButton
           isListening={isListening}
@@ -349,32 +418,12 @@ export default function CustomRunPage() {
           Unit: {unit === "metric" ? "Metric" : "Imperial"}
         </button>
 
-        <select
-          value={vehicleType}
-          onChange={(e) => setVehicleType(e.target.value as any)}
-          className="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-white"
-          title="Vehicle Type (regenerates axle sections)"
-        >
-          <option value="car">Car (Hydraulic)</option>
-          <option value="truck">Truck (Air)</option>
-          <option value="bus">Bus (Air)</option>
-          <option value="trailer">Trailer (Air)</option>
-        </select>
-
         <button
-          onClick={handleSaveAsTemplate}
-          className="rounded bg-orange-600 px-3 py-2 font-semibold text-white hover:bg-orange-500"
-          title="Save current sections as a reusable template"
+          onClick={saveAsTemplate}
+          className="rounded bg-amber-600 px-3 py-2 text-white hover:bg-amber-500"
         >
           Save as Template
         </button>
-
-        <Link
-          href="/inspection/templates"
-          className="rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-white hover:bg-zinc-800"
-        >
-          View Templates
-        </Link>
       </div>
 
       <ProgressTracker
@@ -384,121 +433,127 @@ export default function CustomRunPage() {
         totalItems={session.sections[session.currentSectionIndex]?.items.length || 0}
       />
 
-      {/* Sections */}
-      {session.sections.map((section: InspectionSection, sectionIndex: number) => (
-        <div
-          key={sectionIndex}
-          className="mb-8 rounded-lg border border-zinc-800 bg-zinc-900 p-4"
-        >
-          <div className="mb-2 flex items-end justify-between">
-            <h2 className="text-xl font-semibold text-orange-400">{section.title}</h2>
-            <span className="text-xs text-zinc-400">Enter mm / in / psi / ft·lb as applicable.</span>
-          </div>
+      {session.sections.map((section: InspectionSection, sectionIndex: number) => {
+        const isAxles = section.title === "Axles" || /(steer|drive|trailer)/i.test(section.title);
 
-          {section.items.map((item: InspectionItem, itemIndex: number) => {
-            const selected = (val: InspectionItemStatus) => item.status === val;
+        return (
+          <div key={sectionIndex} className="mb-8 rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+            <div className="mb-2 flex items-end justify-between">
+              <h2 className="text-xl font-semibold text-orange-400">{section.title}</h2>
+              {isAxles ? (
+                <span className="text-xs text-zinc-400">Enter mm / in / kPa / psi / N·m / ft·lb</span>
+              ) : null}
+            </div>
 
-            const onStatusClick = (val: InspectionItemStatus) => {
-              updateItem(sectionIndex, itemIndex, { status: val });
+            {isAxles ? (
+              <AxlesSection
+                section={section}
+                sectionIndex={sectionIndex}
+                unitMode={unit}
+                updateItem={updateItem}
+              />
+            ) : (
+              section.items.map((item: InspectionItem, itemIndex: number) => {
+                const selected = (val: InspectionItemStatus) => item.status === val;
+                const onStatusClick = (val: InspectionItemStatus) => {
+                  updateItem(sectionIndex, itemIndex, { status: val });
+                  if ((val === "fail" || val === "recommend") && item.item) {
+                    addQuoteLine({
+                      item: item.item,
+                      description: item.notes || "",
+                      status: val,
+                      value: item.value || "",
+                      notes: item.notes || "",
+                      laborTime: 0.5,
+                      laborRate: 0,
+                      parts: [],
+                      totalCost: 0,
+                      editable: true,
+                      source: "inspection",
+                      id: "",
+                      name: "",
+                      price: 0,
+                      partName: "",
+                    });
+                  }
+                };
 
-              if ((val === "fail" || val === "recommend") && (item.item || item.name)) {
-                addQuoteLine({
-                  item: item.item || (item as any).name || "Inspection Item",
-                  description: item.notes || "",
-                  status: val,
-                  value: item.value ?? "",
-                  notes: item.notes ?? "",
-                  laborTime: 0.5,
-                  laborRate: 0,
-                  parts: [],
-                  totalCost: 0,
-                  editable: true,
-                  source: "inspection",
-                  id: "",
-                  name: "",
-                  price: 0,
-                  partName: "",
-                });
-              }
-            };
+                return (
+                  <div key={itemIndex} className="mb-3 rounded border border-zinc-800 bg-zinc-950 p-3">
+                    <div className="mb-2 flex items-start justify-between gap-3">
+                      <h3 className="min-w-0 truncate text-base font-medium text-white">
+                        {item.item ?? (item as any).name ?? "Item"}
+                      </h3>
+                      <div className="flex shrink-0 flex-wrap gap-1">
+                        {(["ok", "fail", "na", "recommend"] as InspectionItemStatus[]).map((val) => (
+                          <button
+                            key={val}
+                            onClick={() => onStatusClick(val)}
+                            className={
+                              "rounded px-2 py-1 text-xs " +
+                              (selected(val)
+                                ? val === "ok"
+                                  ? "bg-green-600 text-white"
+                                  : val === "fail"
+                                  ? "bg-red-600 text-white"
+                                  : val === "na"
+                                  ? "bg-yellow-500 text-white"
+                                  : "bg-blue-500 text-white"
+                                : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700")
+                            }
+                          >
+                            {val.toUpperCase()}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
 
-            return (
-              <div key={itemIndex} className="mb-3 rounded border border-zinc-800 bg-zinc-950 p-3">
-                <div className="mb-2 flex items-start justify-between gap-3">
-                  <h3 className="min-w-0 truncate text-base font-medium text-white">
-                    {item.item ?? (item as any).name ?? "Item"}
-                  </h3>
-                  <div className="flex shrink-0 flex-wrap gap-1">
-                    {(["ok", "fail", "na", "recommend"] as InspectionItemStatus[]).map((val) => (
-                      <button
-                        key={val}
-                        onClick={() => onStatusClick(val)}
-                        className={
-                          "rounded px-2 py-1 text-xs " +
-                          (selected(val)
-                            ? val === "ok"
-                              ? "bg-green-600 text-white"
-                              : val === "fail"
-                              ? "bg-red-600 text-white"
-                              : val === "na"
-                              ? "bg-yellow-500 text-white"
-                              : "bg-blue-500 text-white"
-                            : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700")
-                        }
-                      >
-                        {val.toUpperCase()}
-                      </button>
-                    ))}
+                    <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto]">
+                      <input
+                        value={(item.value as string) ?? ""}
+                        onChange={(e) => updateItem(sectionIndex, itemIndex, { value: e.target.value })}
+                        placeholder="Value"
+                        className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400"
+                      />
+                      <input
+                        value={item.unit ?? unitHint(item.item || "", unit)}
+                        onChange={(e) => updateItem(sectionIndex, itemIndex, { unit: e.target.value })}
+                        placeholder="Unit"
+                        className="sm:w-28 w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400"
+                      />
+                      <input
+                        value={item.notes ?? ""}
+                        onChange={(e) => updateItem(sectionIndex, itemIndex, { notes: e.target.value })}
+                        placeholder="Notes"
+                        className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400 sm:col-span-1 col-span-1"
+                      />
+                    </div>
+
+                    {(item.status === "fail" || item.status === "recommend") && (
+                      <PhotoUploadButton
+                        photoUrls={item.photoUrls || []}
+                        onChange={(urls: string[]) => {
+                          updateItem(sectionIndex, itemIndex, { photoUrls: urls });
+                        }}
+                      />
+                    )}
+
+                    {Array.isArray(item.recommend) && item.recommend.length > 0 ? (
+                      <p className="mt-2 text-xs text-yellow-400">
+                        <strong>Recommended:</strong> {item.recommend.join(", ")}
+                      </p>
+                    ) : null}
                   </div>
-                </div>
+                );
+              })
+            )}
+          </div>
+        );
+      })}
 
-                {/* Value / Unit / Notes */}
-                <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto]">
-                  <input
-                    value={(item.value as string | number | null) ?? ""}
-                    onChange={(e) => updateItem(sectionIndex, itemIndex, { value: e.target.value })}
-                    placeholder="Value"
-                    className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400"
-                  />
-                  <input
-                    value={item.unit ?? ""}
-                    onChange={(e) => updateItem(sectionIndex, itemIndex, { unit: e.target.value })}
-                    placeholder={unitHint(item) || "Unit"}
-                    className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400 sm:w-28"
-                  />
-                  <input
-                    value={item.notes ?? ""}
-                    onChange={(e) => updateItem(sectionIndex, itemIndex, { notes: e.target.value })}
-                    placeholder="Notes"
-                    className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400"
-                  />
-                </div>
-
-                {(item.status === "fail" || item.status === "recommend") && (
-                  <PhotoUploadButton
-                    photoUrls={item.photoUrls || []}
-                    onChange={(urls: string[]) => {
-                      updateItem(sectionIndex, itemIndex, { photoUrls: urls });
-                    }}
-                  />
-                )}
-
-                {Array.isArray(item.recommend) && item.recommend.length > 0 ? (
-                  <p className="mt-2 text-xs text-yellow-400">
-                    <strong>Recommended:</strong> {item.recommend.join(", ")}
-                  </p>
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
-      ))}
-
-      {/* Footer actions */}
       <div className="mt-8 flex items-center justify-between gap-4">
         <SaveInspectionButton />
         <FinishInspectionButton />
-        <div className="text-xs text-zinc-400">P = PASS, F = FAIL, NA = Not Applicable</div>
       </div>
     </div>
   );

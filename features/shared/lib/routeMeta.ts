@@ -45,7 +45,7 @@ export const ROUTE_META: Record<string, RouteMeta> = {
 
   // OPTIONAL (singular) detail route you mentioned:
   // If you created /work-order/view/[id], include it too. Hidden from tabs.
-  "/work-order/view/[id]": {
+  "/work-orders/view/[id]": {
     title: (href) => `Work Order ${href.split("/").pop()?.slice(0, 8) ?? "…"}`,
     icon: "🔧",
     showInTabs: false,
@@ -57,7 +57,7 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   "/inspection":                   { title: () => "Inspection Menu",      icon: "📝", roles: ["owner", "admin", "service", "tech"] },
   "/maintenance50":                { title: () => "Maintenance 50",       icon: "🧰", roles: ["owner", "admin", "service", "tech"] },
   // NEW: Maintenance 50 (Air)
-  "/inspection/maintenance50-air": { title: () => "Maintenance 50 (Air)", icon: "🧰", roles: ["owner", "admin", "service", "tech"] },
+  "/maintenance50-air": { title: () => "Maintenance 50 (Air)", icon: "🧰", roles: ["owner", "admin", "service", "tech"] },
 
   "/inspection/custom-inspection": { title: () => "Custom Builder",       icon: "🧩", roles: ["owner", "admin", "service", "tech"] },
   "/inspection/saved":             { title: () => "Saved Inspections",    icon: "💾", roles: ["owner", "admin", "service", "tech"] },
@@ -77,7 +77,7 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   "/dashboard/owner/settings":    { title: () => "Owner Settings", icon: "⚙️", roles: ["owner"] },
 
   // Scheduling (Admin)
-  "/dashboard/admin/scheduling":  { title: () => "Scheduling",     icon: "📅", roles: ["owner", "admin"] },
+  "/dashboard/admin/SchedulingClient":  { title: () => "Scheduling",     icon: "📅", roles: ["owner", "admin"] },
 
   // AI & Messaging
   "/ai/assistant": { title: () => "AI Assistant", icon: "🤖", roles: ["owner", "admin", "service", "tech"] },
