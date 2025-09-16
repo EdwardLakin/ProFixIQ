@@ -12,7 +12,6 @@ import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
 import InspectionGroupList from "@inspections/components/InspectionGroupList";
 import type { InspectionCategory } from "@inspections/lib/inspection/types";
 import { toInspectionCategories } from "@inspections/lib/inspection/normalize";
-
 import useVoiceGenerate from "@inspections/hooks/useVoiceGenerate";
 import { MicrophoneIcon } from "@heroicons/react/24/solid";
 
@@ -25,11 +24,9 @@ const DRAFT_KEY = "customInspectionDraft:v1";
 export default function CustomInspectionPage() {
   const supabase = createClientComponentClient<DB>();
 
-  // ---- Authoring state ------------------------------------------------------
+  // --- Authoring state
   const [prompt, setPrompt] = useState("");
   const [sections, setSections] = useState<InspectionCategory[]>([]);
-
-  // Template metadata
   const [templateName, setTemplateName] = useState("");
   const [description, setDescription] = useState("");
   const [vehicleType, setVehicleType] = useState("");
@@ -46,7 +43,7 @@ export default function CustomInspectionPage() {
   const [loadingGen, setLoadingGen] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // ---- Auth + load my recent templates -------------------------------------
+  // Auth + load my recent templates
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -63,7 +60,7 @@ export default function CustomInspectionPage() {
     })();
   }, [supabase]);
 
-  // ---- Autosave draft to localStorage (debounced) ---------------------------
+  // Autosave → localStorage
   const draftJson = useMemo(
     () =>
       JSON.stringify({
@@ -85,7 +82,7 @@ export default function CustomInspectionPage() {
     return () => clearTimeout(id);
   }, [draftJson]);
 
-  // Resume draft on mount
+  // Resume draft
   useEffect(() => {
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
@@ -109,7 +106,7 @@ export default function CustomInspectionPage() {
     } catch { /* ignore */ }
   }, []);
 
-  // ---- Generate sections from a prompt -------------------------------------
+  // Generate sections from a prompt
   async function generateInspection() {
     if (!prompt.trim()) return;
     setLoadingGen(true);
@@ -121,6 +118,11 @@ export default function CustomInspectionPage() {
       });
       const json: unknown = await res.json();
       setSections(toInspectionCategories((json as any)?.categories));
+      if (!templateName.trim()) {
+        // quick sensible default
+        setTemplateName("Custom Inspection");
+      }
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
       console.error("Generate failed:", err);
     } finally {
@@ -135,14 +137,14 @@ export default function CustomInspectionPage() {
     await generateInspection();
   }
 
-  // Voice capture (live updates prompt; final triggers generation)
+  // Voice capture
   const { listening, start, stop } = useVoiceGenerate({
     live: (t) => setPrompt(t),
     onFinal: (t) => void generateFromText(t),
     autoStopMs: 1200,
   });
 
-  // ---- Save template to DB --------------------------------------------------
+  // Save template
   async function saveTemplate() {
     if (!userId) return alert("Not signed in.");
     if (!templateName.trim()) return alert("Template name is required.");
@@ -184,7 +186,7 @@ export default function CustomInspectionPage() {
     }
   }
 
-  // ---- Load/Delete existing templates --------------------------------------
+  // Load/Delete existing templates
   function loadTemplate(t: Pick<TemplatesRow, "id" | "template_name" | "sections">) {
     setTemplateName(t.template_name ?? "");
     setSections(toInspectionCategories(t.sections as unknown));
@@ -201,132 +203,258 @@ export default function CustomInspectionPage() {
     setSaved(prev => prev.filter(x => x.id !== id));
   }
 
-  // ---- Render ---------------------------------------------------------------
+  // ---------------- UI ----------------
   return (
     <div className="min-h-screen px-4 py-6 text-white">
-      <div className="mb-4 flex items-center justify-between">
-        <PreviousPageButton to="/inspection" />
-        <h1 className="text-3xl font-bold">Custom Inspection</h1>
-      </div>
-
-      {/* Prompt → Generate */}
-      <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
-        <label className="mb-2 block text-sm font-semibold text-neutral-300">
-          Describe what to include
-        </label>
-        <Textarea
-          className="w-full text-black"
-          rows={4}
-          placeholder="e.g. brakes, lights, fluids…"
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-        />
-
-        <div className="mt-3 flex items-center gap-2">
-          <Button onClick={generateInspection} disabled={loadingGen}>
-            {loadingGen ? "Generating…" : "Generate Sections"}
-          </Button>
-
-          <button
-            type="button"
-            onClick={() => (listening ? stop() : start())}
-            className={
-              "rounded border px-3 py-2 text-sm transition " +
-              (listening
-                ? "border-red-500 text-red-400"
-                : "border-white/20 text-white hover:border-orange-500")
-            }
-            title={listening ? "Stop voice" : "Speak prompt"}
-            aria-pressed={listening}
-          >
-            <span className="inline-flex items-center gap-2">
-              <MicrophoneIcon className="h-4 w-4" />
-              {listening ? "Listening…" : "Use Voice"}
-            </span>
-          </button>
-        </div>
-      </div>
-
-      {/* Template meta */}
-      <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-2">
-        <Input
-          className="text-black"
-          placeholder="Template name"
-          value={templateName}
-          onChange={(e) => setTemplateName(e.target.value)}
-        />
-        <Input
-          className="text-black"
-          placeholder="Vehicle type (optional)"
-          value={vehicleType}
-          onChange={(e) => setVehicleType(e.target.value)}
-        />
-        <Input
-          className="text-black md:col-span-2"
-          placeholder="Tags (comma-separated)"
-          value={tags}
-          onChange={(e) => setTags(e.target.value)}
-        />
-        <Textarea
-          className="text-black md:col-span-2"
-          rows={3}
-          placeholder="Description (optional)"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-        />
-        <label className="flex items-center gap-2 md:col-span-2">
-          <input
-            type="checkbox"
-            checked={isPublic}
-            onChange={(e) => setIsPublic(e.target.checked)}
-          />
-          <span>Share template publicly</span>
-        </label>
-      </div>
-
-      {/* Sections editor */}
-      {sections.length > 0 && (
-        <div className="mt-6">
-          <InspectionGroupList
-            categories={sections}
-            editable
-            onChange={(next) => setSections(next)}
-          />
-          <div className="mt-4 flex gap-3">
-            <Button onClick={saveTemplate} disabled={saving}>
-              {saving ? "Saving…" : "Save Template"}
-            </Button>
+      {/* Header */}
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <PreviousPageButton to="/inspection" />
+          <div>
+            <h1 className="text-2xl font-semibold">
+              {templateName || "New Inspection Template"}
+            </h1>
+            <p className="text-sm text-neutral-400">
+              Build a checklist with AI, then fine-tune sections and save.
+            </p>
           </div>
         </div>
-      )}
 
-      {/* Saved templates list */}
-      {saved.length > 0 && (
-        <div className="mt-10">
-          <h2 className="mb-2 text-2xl font-semibold text-white">Saved Templates</h2>
-          <ul className="space-y-2">
-            {saved.map((t) => (
-              <li
-                key={t.id}
-                className="flex flex-col gap-2 rounded border border-neutral-800 bg-neutral-900 p-4 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div>
-                  <div className="font-medium">{t.template_name}</div>
-                  <div className="text-xs text-neutral-400">
-                    {t.created_at ? new Date(t.created_at).toLocaleString() : "—"}
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Button onClick={() => loadTemplate(t)}>Load</Button>
-                  <Button variant="destructive" onClick={() => deleteTemplate(t.id)}>
-                    Delete
-                  </Button>
-                </div>
-              </li>
-            ))}
-          </ul>
+        <div className="flex items-center gap-2">
+          <label className="flex select-none items-center gap-2 rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs">
+            <input
+              type="checkbox"
+              className="accent-orange-500"
+              checked={isPublic}
+              onChange={(e) => setIsPublic(e.target.checked)}
+            />
+            Share publicly
+          </label>
+          <Button onClick={saveTemplate} disabled={saving || sections.length === 0}>
+            {saving ? "Saving…" : "Save Template"}
+          </Button>
         </div>
-      )}
+      </div>
+
+      {/* Two-column layout */}
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+        {/* LEFT: Builder */}
+        <div className="space-y-6">
+          {/* Generate card */}
+          <div className="rounded-xl border border-neutral-800 bg-neutral-900">
+            <div className="border-b border-neutral-800 p-4">
+              <h2 className="text-lg font-semibold">Generate with AI</h2>
+              <p className="text-sm text-neutral-400">
+                Tell us what to include (e.g., “brakes, tires, lights, fluids”).
+              </p>
+            </div>
+
+            <div className="p-4 space-y-3">
+              <Textarea
+                className="w-full text-black"
+                rows={4}
+                placeholder="Describe sections/items you want in this inspection…"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+              />
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Button onClick={generateInspection} disabled={loadingGen}>
+                  {loadingGen ? "Generating…" : "Generate Sections"}
+                </Button>
+
+                <button
+                  type="button"
+                  onClick={() => (listening ? stop() : start())}
+                  className={
+                    "rounded border px-3 py-2 text-sm transition " +
+                    (listening
+                      ? "border-red-500 text-red-400"
+                      : "border-white/20 text-white hover:border-orange-500")
+                  }
+                  title={listening ? "Stop voice" : "Speak prompt"}
+                  aria-pressed={listening}
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <MicrophoneIcon className="h-4 w-4" />
+                    {listening ? "Listening…" : "Use Voice"}
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Meta card */}
+          <div className="rounded-xl border border-neutral-800 bg-neutral-900">
+            <div className="border-b border-neutral-800 p-4">
+              <h2 className="text-lg font-semibold">Template details</h2>
+            </div>
+            <div className="grid gap-3 p-4 md:grid-cols-2">
+              <Input
+                className="text-black md:col-span-2"
+                placeholder="Template name"
+                value={templateName}
+                onChange={(e) => setTemplateName(e.target.value)}
+              />
+              <Input
+                className="text-black"
+                placeholder="Vehicle type (optional)"
+                value={vehicleType}
+                onChange={(e) => setVehicleType(e.target.value)}
+              />
+              <Input
+                className="text-black"
+                placeholder="Tags (comma-separated)"
+                value={tags}
+                onChange={(e) => setTags(e.target.value)}
+              />
+              <Textarea
+                className="text-black md:col-span-2"
+                rows={3}
+                placeholder="Description (optional)"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Sections editor */}
+          {sections.length > 0 && (
+            <div className="rounded-xl border border-neutral-800 bg-neutral-900">
+              <div className="border-b border-neutral-800 p-4">
+                <h2 className="text-lg font-semibold">
+                  Sections ({sections.length})
+                </h2>
+                <p className="text-sm text-neutral-400">
+                  Drag, rename, or edit items in each group.
+                </p>
+              </div>
+              <div className="p-4">
+                <InspectionGroupList
+                  categories={sections}
+                  editable
+                  onChange={(next) => setSections(next)}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Spacer to avoid sticky overlap */}
+          <div className="h-20" />
+        </div>
+
+        {/* RIGHT: Preview / Saved */}
+        <aside className="space-y-6">
+          {/* Preview card */}
+          <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+            <h3 className="mb-2 text-sm font-semibold text-neutral-300">
+              Preview
+            </h3>
+            <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
+              <div className="text-lg font-medium">
+                {templateName || "Untitled template"}
+              </div>
+              <div className="mt-1 text-xs text-neutral-400">
+                {vehicleType ? `Vehicle: ${vehicleType} • ` : ""}
+                {isPublic ? "Public" : "Private"}
+              </div>
+              {description ? (
+                <p className="mt-3 text-sm text-neutral-300">{description}</p>
+              ) : null}
+              <div className="mt-3 text-xs text-neutral-400">
+                {sections.length} section{sections.length === 1 ? "" : "s"} •{" "}
+                {sections.reduce((n, s) => n + (s.items?.length ?? 0), 0)} item
+                {sections.reduce((n, s) => n + (s.items?.length ?? 0), 0) === 1 ? "" : "s"}
+              </div>
+              {tags && (
+                <div className="mt-3 flex flex-wrap gap-1">
+                  {tags
+                    .split(",")
+                    .map((t) => t.trim())
+                    .filter(Boolean)
+                    .map((t) => (
+                      <span
+                        key={t}
+                        className="rounded border border-neutral-700 bg-neutral-800 px-2 py-0.5 text-[11px] text-neutral-300"
+                      >
+                        #{t}
+                      </span>
+                    ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Saved list */}
+          <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
+            <h3 className="mb-3 text-sm font-semibold text-neutral-300">
+              My recent templates
+            </h3>
+            {saved.length === 0 ? (
+              <p className="text-xs text-neutral-500">No saved templates yet.</p>
+            ) : (
+              <ul className="space-y-2">
+                {saved.slice(0, 8).map((t) => (
+                  <li
+                    key={t.id}
+                    className="flex items-center justify-between rounded border border-neutral-800 bg-neutral-950 p-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium">
+                        {t.template_name}
+                      </div>
+                      <div className="text-[11px] text-neutral-500">
+                        {t.created_at
+                          ? new Date(t.created_at).toLocaleString()
+                          : "—"}
+                      </div>
+                    </div>
+                    <div className="ml-3 flex shrink-0 items-center gap-2">
+                      <button
+                        className="rounded border border-neutral-700 px-2 py-1 text-xs hover:border-orange-500"
+                        onClick={() => loadTemplate(t)}
+                      >
+                        Load
+                      </button>
+                      <button
+                        className="rounded border border-red-600/60 px-2 py-1 text-xs text-red-300 hover:border-red-500"
+                        onClick={() => deleteTemplate(t.id)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </aside>
+      </div>
+
+      {/* Sticky action bar */}
+      <div className="fixed inset-x-0 bottom-0 z-10 border-t border-neutral-800 bg-neutral-950/95 backdrop-blur">
+        <div className="mx-auto max-w-screen-2xl px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-xs text-neutral-400">
+              {sections.length} section{sections.length === 1 ? "" : "s"} •{" "}
+              {sections.reduce((n, s) => n + (s.items?.length ?? 0), 0)} item
+              {sections.reduce((n, s) => n + (s.items?.length ?? 0), 0) === 1 ? "" : "s"} in template
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                className="rounded border border-neutral-700 px-3 py-2 text-sm hover:border-orange-500"
+                onClick={() => localStorage.removeItem(DRAFT_KEY)}
+                title="Clear draft from this device"
+              >
+                Clear draft
+              </button>
+              <Button onClick={saveTemplate} disabled={saving || sections.length === 0}>
+                {saving ? "Saving…" : "Save Template"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

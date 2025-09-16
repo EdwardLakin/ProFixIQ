@@ -36,36 +36,59 @@ function resolveSR(): SRConstructor | undefined {
 }
 
 /* ------------------------------------------------------------------ */
-/* CVIP-style helpers (Hydraulic)                                      */
+/* CVIP-style helpers (Air Brake)                                      */
 /* ------------------------------------------------------------------ */
 
-function buildHydraulicMeasurementSection(): InspectionSection {
+function buildAirMeasurementSection(): InspectionSection {
   const items: InspectionItem[] = [
-    // Tire tread depths
+    // --- System Basics ---
+    { item: "Compressor Build Time (85 → 100 PSI)", unit: "sec", value: "", notes: "" },
+    { item: "Governor Cut-In Pressure", unit: "PSI", value: "", notes: "" },
+    { item: "Governor Cut-Out Pressure", unit: "PSI", value: "", notes: "" },
+    { item: "Reservoir Moisture / Oil Present", value: "", unit: "", notes: "" },
+
+    // --- Static / Applied Leakage (tractor unit alone) ---
+    { item: "Static Leakage (no brake applied, 1 min)", unit: "PSI/min", value: "", notes: "" },
+    { item: "Applied Leakage (full service, 1 min)", unit: "PSI/min", value: "", notes: "" },
+
+    // --- Warnings / Spring Application ---
+    { item: "Low Air Warning Activation", unit: "PSI", value: "", notes: "" },
+    { item: "Spring Brake Application (protection) Activation", unit: "PSI", value: "", notes: "" },
+
+    // --- ABS / Dryer / Lines ---
+    { item: "ABS Lamp Bulb Check (on → out)", value: "", unit: "", notes: "" },
+    { item: "Air Dryer / Filter Condition", value: "", unit: "", notes: "" },
+    { item: "Lines & Fittings – Leaks/Chafing", value: "", unit: "", notes: "" },
+    { item: "Gladhands / Couplers / Seals (if equipped)", value: "", unit: "", notes: "" },
+
+    // --- Push-Rod Stroke (service brakes) ---
+    // Use measured stroke; you can compare to class max off-line if desired.
+    { item: "FL Brake Chamber Push-Rod Stroke", unit: "in", value: "", notes: "" },
+    { item: "FR Brake Chamber Push-Rod Stroke", unit: "in", value: "", notes: "" },
+    { item: "RL Brake Chamber Push-Rod Stroke", unit: "in", value: "", notes: "" },
+    { item: "RR Brake Chamber Push-Rod Stroke", unit: "in", value: "", notes: "" },
+
+    // --- Linings / Drums ---
+    { item: "FL Lining Remaining", unit: "mm", value: "", notes: "" },
+    { item: "FR Lining Remaining", unit: "mm", value: "", notes: "" },
+    { item: "RL Lining Remaining", unit: "mm", value: "", notes: "" },
+    { item: "RR Lining Remaining", unit: "mm", value: "", notes: "" },
+    { item: "FL Drum / Rotor Condition", unit: "", value: "", notes: "" },
+    { item: "FR Drum / Rotor Condition", unit: "", value: "", notes: "" },
+    { item: "RL Drum / Rotor Condition", unit: "", value: "", notes: "" },
+    { item: "RR Drum / Rotor Condition", unit: "", value: "", notes: "" },
+
+    // --- Tires / Wheel Torque (after road test) ---
     { item: "LF Tire Tread", unit: "mm", value: "", notes: "" },
     { item: "RF Tire Tread", unit: "mm", value: "", notes: "" },
     { item: "LR Tire Tread (Outer)", unit: "mm", value: "", notes: "" },
     { item: "LR Tire Tread (Inner)", unit: "mm", value: "", notes: "" },
     { item: "RR Tire Tread (Outer)", unit: "mm", value: "", notes: "" },
     { item: "RR Tire Tread (Inner)", unit: "mm", value: "", notes: "" },
-
-    // Brake pad thicknesses
-    { item: "LF Brake Pad Thickness", unit: "mm", value: "", notes: "" },
-    { item: "RF Brake Pad Thickness", unit: "mm", value: "", notes: "" },
-    { item: "LR Brake Pad Thickness", unit: "mm", value: "", notes: "" },
-    { item: "RR Brake Pad Thickness", unit: "mm", value: "", notes: "" },
-
-    // Rotor condition/thickness
-    { item: "LF Rotor Condition / Thickness", unit: "mm", value: "", notes: "" },
-    { item: "RF Rotor Condition / Thickness", unit: "mm", value: "", notes: "" },
-    { item: "LR Rotor Condition / Thickness", unit: "mm", value: "", notes: "" },
-    { item: "RR Rotor Condition / Thickness", unit: "mm", value: "", notes: "" },
-
-    // After road test
     { item: "Wheel Torque (after road test)", unit: "ft·lb", value: "", notes: "" },
   ];
 
-  return { title: "Measurements (Hydraulic)", items };
+  return { title: "Measurements (Air Brake CVIP)", items };
 }
 
 function buildOilChangeChecklist(): InspectionSection {
@@ -87,10 +110,14 @@ function buildOilChangeChecklist(): InspectionSection {
 function ensureScaffold(sections: InspectionSection[] | undefined): InspectionSection[] {
   const list = Array.isArray(sections) ? [...sections] : [];
 
-  const hasMeasurements = list.some((s) => (s.title || "").toLowerCase().includes("measurement"));
-  const hasOilChange = list.some((s) => (s.title || "").toLowerCase().includes("oil change"));
+  const hasMeasurements = list.some((s) =>
+    (s.title || "").toLowerCase().includes("measurement"),
+  );
+  const hasOilChange = list.some((s) =>
+    (s.title || "").toLowerCase().includes("oil change"),
+  );
 
-  if (!hasMeasurements) list.unshift(buildHydraulicMeasurementSection());
+  if (!hasMeasurements) list.unshift(buildAirMeasurementSection());
   if (!hasOilChange) list.push(buildOilChangeChecklist());
 
   return list;
@@ -100,7 +127,7 @@ function ensureScaffold(sections: InspectionSection[] | undefined): InspectionSe
 /* Page                                                               */
 /* ------------------------------------------------------------------ */
 
-export default function Maintenance50InspectionPage() {
+export default function Maintenance50AirInspectionPage() {
   const searchParams = useSearchParams();
 
   // Unit + voice state
@@ -112,7 +139,7 @@ export default function Maintenance50InspectionPage() {
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   // Header info
-  const templateName = searchParams.get("template") || "Maintenance 50 (Hydraulic)";
+  const templateName = searchParams.get("template") || "Maintenance 50 (Air Brake CVIP)";
   const customer = {
     first_name: searchParams.get("first_name") || "",
     last_name: searchParams.get("last_name") || "",
@@ -177,7 +204,6 @@ export default function Maintenance50InspectionPage() {
       (session?.sections?.length ?? 0) !== next.length ||
       (session?.sections?.[0]?.title || "") !== next[0]?.title;
     if (changed) {
-      // updateInspection accepts partial session in this app
       updateInspection({ sections: next });
     }
   }, [session?.sections, updateInspection]);
@@ -234,7 +260,6 @@ export default function Maintenance50InspectionPage() {
     </div>
   );
 
-  // Header card
   function HeaderCard() {
     return (
       <div className="mb-5 rounded-lg border border-zinc-700 bg-zinc-900 p-4 text-white">
@@ -299,21 +324,20 @@ export default function Maintenance50InspectionPage() {
     );
   }
 
-  // measurement row
   const renderMeasurementRow = (item: InspectionItem, idx: number, sectionIndex: number) => (
     <div key={idx} className="grid grid-cols-12 items-center gap-2">
       <div className="col-span-6 text-sm">{item.item}</div>
       <input
-        className="col-span-3 rounded bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400 border border-zinc-800"
+        className="col-span-3 rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400"
         value={(item.value as string | number | null) ?? ""}
         onChange={(e) => updateItem(sectionIndex, idx, { value: e.target.value })}
         placeholder="—"
       />
       <input
-        className="col-span-3 rounded bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400 border border-zinc-800"
+        className="col-span-3 rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400"
         value={item.unit ?? ""}
         onChange={(e) => updateItem(sectionIndex, idx, { unit: e.target.value })}
-        placeholder={unit === "metric" ? "mm / %" : "in / %"}
+        placeholder={unit === "metric" ? "mm / PSI / sec" : "in / PSI / sec"}
       />
     </div>
   );
@@ -370,7 +394,11 @@ export default function Maintenance50InspectionPage() {
           <div key={sectionIndex} className="mb-8 rounded-lg border border-zinc-800 bg-zinc-900 p-4">
             <SectionHeader
               title={section.title}
-              note={/measurement/i.test(section.title) ? "Enter numeric values (mm / ft·lb) and notes as needed." : undefined}
+              note={
+                /measurement/i.test(section.title)
+                  ? "Enter measured values (PSI / sec / mm / in) and notes as needed."
+                  : undefined
+              }
             />
 
             {isMeasurements ? (
@@ -435,27 +463,18 @@ export default function Maintenance50InspectionPage() {
                       </div>
                     </div>
 
-                    {/* Numeric + notes */}
+                    {/* Optional numeric value/unit/notes */}
                     <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto]">
                       <input
                         value={(item.value as string) ?? ""}
                         onChange={(e) => updateItem(sectionIndex, itemIndex, { value: e.target.value })}
-                        placeholder={
-                          (item.item || "").toLowerCase().includes("wheel torque")
-                            ? "Torque value"
-                            : /tread|pad|thickness|mm/i.test(item.item || "")
-                            ? "Value (mm)"
-                            : "Value"
-                        }
+                        placeholder="Value"
                         className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400"
                       />
                       <input
-                        value={
-                          item.unit ??
-                          ((item.item || "").toLowerCase().includes("wheel torque") ? "ft·lb" : "")
-                        }
+                        value={item.unit ?? ""}
                         onChange={(e) => updateItem(sectionIndex, itemIndex, { unit: e.target.value })}
-                        placeholder={(item.item || "").toLowerCase().includes("wheel torque") ? "ft·lb" : "Unit"}
+                        placeholder="Unit"
                         className="sm:w-28 w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400"
                       />
                       <input
