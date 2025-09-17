@@ -3,18 +3,24 @@
 import { createContext, useContext } from "react";
 import type { InspectionItem } from "@inspections/lib/inspection/types";
 
-export type InspectionFormCtxValue = {
-  updateItem: (
-    sectionIdx: number,
-    itemIdx: number,
-    patch: Partial<InspectionItem>
-  ) => void;
+// The shape of the context value (includes a function—totally fine here)
+export type UpdateItemFn = (
+  sectionIdx: number,
+  itemIdx: number,
+  patch: Partial<InspectionItem>
+) => void;
+
+type Ctx = {
+  updateItem: UpdateItemFn;
 };
 
-export const InspectionFormCtx = createContext<InspectionFormCtxValue | null>(null);
+// Export the context itself (no wrapper component!)
+export const InspectionFormCtx = createContext<Ctx | null>(null);
 
-export function useInspectionForm() {
+export function useInspectionForm(): Ctx {
   const ctx = useContext(InspectionFormCtx);
-  if (!ctx) throw new Error("useInspectionForm must be used inside <InspectionFormCtx.Provider>");
+  if (!ctx) {
+    throw new Error("useInspectionForm must be used inside <InspectionFormCtx.Provider>");
+  }
   return ctx;
 }

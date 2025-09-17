@@ -27,24 +27,32 @@ import { SaveInspectionButton } from "@inspections/components/inspection/SaveIns
 import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
 
 /* ----------------------------- Section Builders ---------------------------- */
+
 function buildHydraulicMeasurementsSection(): InspectionSection {
   return {
     title: "Measurements (Hydraulic)",
     items: [
+      // Tread
       { item: "LF Tire Tread", unit: "mm", value: "" },
       { item: "RF Tire Tread", unit: "mm", value: "" },
       { item: "LR Tire Tread (Outer)", unit: "mm", value: "" },
       { item: "LR Tire Tread (Inner)", unit: "mm", value: "" },
       { item: "RR Tire Tread (Outer)", unit: "mm", value: "" },
       { item: "RR Tire Tread (Inner)", unit: "mm", value: "" },
+
+      // Brakes
       { item: "LF Brake Pad Thickness", unit: "mm", value: "" },
       { item: "RF Brake Pad Thickness", unit: "mm", value: "" },
       { item: "LR Brake Pad Thickness", unit: "mm", value: "" },
       { item: "RR Brake Pad Thickness", unit: "mm", value: "" },
+
+      // Rotors
       { item: "LF Rotor Condition / Thickness", unit: "mm", value: "" },
       { item: "RF Rotor Condition / Thickness", unit: "mm", value: "" },
       { item: "LR Rotor Condition / Thickness", unit: "mm", value: "" },
       { item: "RR Rotor Condition / Thickness", unit: "mm", value: "" },
+
+      // After road test
       { item: "Wheel Torque (after road test)", unit: "ft·lb", value: "" },
     ],
   };
@@ -108,6 +116,7 @@ function buildDrivelineSection(): InspectionSection {
 }
 
 /* ---------------------- Unit helpers (hydraulic) --------------------------- */
+
 function unitForHydraulic(label: string, mode: "metric" | "imperial") {
   const l = label.toLowerCase();
   if (l.includes("tire tread")) return mode === "metric" ? "mm" : "in";
@@ -116,6 +125,7 @@ function unitForHydraulic(label: string, mode: "metric" | "imperial") {
   if (l.includes("torque")) return mode === "metric" ? "N·m" : "ft·lb";
   return "";
 }
+
 function applyUnitsHydraulic(
   sections: InspectionSection[],
   mode: "metric" | "imperial",
@@ -133,6 +143,7 @@ function applyUnitsHydraulic(
 }
 
 /* -------------------------------- Page ------------------------------------- */
+
 type SRConstructor = new () => SpeechRecognition;
 function resolveSR(): SRConstructor | undefined {
   if (typeof window === "undefined") return undefined;
@@ -142,7 +153,11 @@ function resolveSR(): SRConstructor | undefined {
 
 export default function Maintenance50HydraulicPage() {
   const searchParams = useSearchParams();
+
+  // Unit toggle
   const [unit, setUnit] = useState<"metric" | "imperial">("metric");
+
+  // Voice controls
   const [isListening, setIsListening] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [, setTranscript] = useState("");
@@ -203,11 +218,13 @@ export default function Maintenance50HydraulicPage() {
     addQuoteLine,
   } = useInspectionSession(initialSession);
 
+  // Start session once
   useEffect(() => {
     startSession(initialSession);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Scaffold sections once
   useEffect(() => {
     if (!session) return;
     if ((session.sections?.length ?? 0) > 0) return;
@@ -222,8 +239,9 @@ export default function Maintenance50HydraulicPage() {
     updateInspection({
       sections: applyUnitsHydraulic(next, unit) as typeof session.sections,
     });
-  }, [session, updateInspection]);
+  }, [session, updateInspection]); // unit applied below
 
+  // Re-apply units when toggled
   useEffect(() => {
     if (!session?.sections?.length) return;
     updateInspection({
@@ -256,7 +274,8 @@ export default function Maintenance50HydraulicPage() {
     recognition.lang = "en-US";
     recognition.onresult = (event: SpeechRecognitionEvent) => {
       const last = event.results.length - 1;
-      handleTranscript(event.results[last][0].transcript);
+      const t = event.results[last][0].transcript;
+      handleTranscript(t);
     };
     recognition.onerror = (event: any) =>
       console.error("Speech recognition error:", event.error);
@@ -316,7 +335,7 @@ export default function Maintenance50HydraulicPage() {
       />
 
       {/* Sections */}
-      <InspectionFormCtx.Provider value={useMemo(() => ({ updateItem }), [updateItem])}>
+      <InspectionFormCtx.Provider value={{ updateItem }}>
         {session.sections.map((section: InspectionSection, sectionIndex: number) => (
           <div
             key={sectionIndex}

@@ -119,10 +119,10 @@ export default function Maintenance50AirPage() {
       isPaused: false,
       isListening: false,
       transcript: "",
-      quote: [] as any[],
+      quote: [],
       customer,
       vehicle,
-      sections: [] as any[],
+      sections: [],
     }),
     [templateName],
   );
@@ -137,11 +137,11 @@ export default function Maintenance50AirPage() {
     resumeSession,
     pauseSession,
     addQuoteLine,
-  } = useInspectionSession(initialSession as any); // cast to satisfy strict session shape
+  } = useInspectionSession(initialSession);
 
   // Start session once
   useEffect(() => {
-    startSession(initialSession as any);
+    startSession(initialSession);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -284,7 +284,7 @@ export default function Maintenance50AirPage() {
       />
 
       {/* Sections */}
-      <InspectionFormCtx.Provider value={useMemo(() => ({ updateItem }), [updateItem])}>
+      <InspectionFormCtx.Provider value={{ updateItem }}>
         {session.sections.map((section: InspectionSection, sectionIndex: number) => {
           const isAxles = section.title === "Axles (Air)";
           const isAirSys = /air system/i.test(section.title);
@@ -317,6 +317,7 @@ export default function Maintenance50AirPage() {
                 <AxlesCornerGrid
                   sectionIndex={sectionIndex}
                   items={section.items}
+                  /* updateItem comes from context */
                   unitHint={unitHint}
                 />
               ) : (
