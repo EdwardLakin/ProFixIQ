@@ -1,3 +1,4 @@
+// features/inspections/app/maintenance50/page.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -242,7 +243,15 @@ export default function Maintenance50AirPage() {
     return <div className="text-white p-4">Loading inspection…</div>;
   }
 
-  const SectionHeader = ({ title, note, right }: { title: string; note?: string; right?: React.ReactNode }) => (
+  const SectionHeader = ({
+    title,
+    note,
+    right,
+  }: {
+    title: string;
+    note?: string;
+    right?: React.ReactNode;
+  }) => (
     <div className="mb-2 flex items-end justify-between gap-2">
       <h2 className="text-xl font-semibold text-orange-400">{title}</h2>
       <div className="flex items-center gap-2">
