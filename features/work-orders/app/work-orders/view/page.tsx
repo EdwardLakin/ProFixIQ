@@ -180,8 +180,9 @@ export default function WorkOrdersView(): JSX.Element {
 
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
+                  {/* Link to the TECH VIEW page */}
                   <Link
-                    href={`/work-orders/${r.id}`}
+                    href={`/work-orders/view/${r.id}`}
                     className="font-medium underline underline-offset-2 decoration-neutral-600 hover:decoration-orange-500"
                   >
                     {r.custom_id ? r.custom_id : `#${r.id.slice(0, 8)}`}
@@ -209,8 +210,9 @@ export default function WorkOrdersView(): JSX.Element {
               </div>
 
               <div className="flex items-center gap-2">
+                {/* Open → also to TECH VIEW */}
                 <Link
-                  href={`/work-orders/${r.id}`}
+                  href={`/work-orders/view/${r.id}`}
                   className="rounded border border-neutral-700 px-2 py-1 text-sm hover:bg-neutral-800"
                 >
                   Open

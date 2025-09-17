@@ -1,3 +1,4 @@
+// features/inspections/app/maintenance50/page.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -21,105 +22,146 @@ import type {
   InspectionItem,
 } from "@inspections/lib/inspection/types";
 
-// Axle helpers you shared
-import { generateAxleLayout } from "@inspections/lib/inspection/generateAxleLayout";
-
-// Buttons
 import { SaveInspectionButton } from "@inspections/components/inspection/SaveInspectionButton";
 import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
 
-/** SpeechRecognition resolver */
-type SRConstructor = new () => SpeechRecognition;
-function resolveSR(): SRConstructor | undefined {
-  if (typeof window === "undefined") return undefined;
-  const w = window as unknown as {
-    SpeechRecognition?: SRConstructor;
-    webkitSpeechRecognition?: SRConstructor;
-  };
-  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? undefined;
-}
+/* ----------------------------- Section Builders ---------------------------- */
 
-/* ------------------------- Builders (Hydraulic) ------------------------- */
-
-function buildOilChangeSection(): InspectionSection {
+function buildHydraulicMeasurementsSection(): InspectionSection {
+  // CVIP-inspired top block for **hydraulic** systems
   return {
-    title: "Oil Change / Service",
+    title: "Measurements (Hydraulic)",
     items: [
-      { item: "Engine Oil Grade", value: "", unit: "", notes: "" },
-      { item: "Oil Capacity Filled", value: "", unit: "L", notes: "" },
-      { item: "Oil Filter Part #", value: "", unit: "", notes: "" },
-      { item: "Drain Plug Torque", value: "", unit: "ft·lb", notes: "" },
-      { item: "Reset Maintenance Reminder", notes: "" },
-      { item: "Check for Leaks (post run)", status: "ok", notes: "" },
-      { item: "Top Off Other Fluids (coolant, washer, etc.)", notes: "" },
+      // Tire tread depths
+      { item: "LF Tire Tread", unit: "mm", value: "", notes: "" },
+      { item: "RF Tire Tread", unit: "mm", value: "", notes: "" },
+      { item: "LR Tire Tread (Outer)", unit: "mm", value: "", notes: "" },
+      { item: "LR Tire Tread (Inner)", unit: "mm", value: "", notes: "" },
+      { item: "RR Tire Tread (Outer)", unit: "mm", value: "", notes: "" },
+      { item: "RR Tire Tread (Inner)", unit: "mm", value: "", notes: "" },
+
+      // Brake pad thicknesses
+      { item: "LF Brake Pad Thickness", unit: "mm", value: "", notes: "" },
+      { item: "RF Brake Pad Thickness", unit: "mm", value: "", notes: "" },
+      { item: "LR Brake Pad Thickness", unit: "mm", value: "", notes: "" },
+      { item: "RR Brake Pad Thickness", unit: "mm", value: "", notes: "" },
+
+      // Rotor condition/thickness
+      { item: "LF Rotor Condition / Thickness", unit: "mm", value: "", notes: "" },
+      { item: "RF Rotor Condition / Thickness", unit: "mm", value: "", notes: "" },
+      { item: "LR Rotor Condition / Thickness", unit: "mm", value: "", notes: "" },
+      { item: "RR Rotor Condition / Thickness", unit: "mm", value: "", notes: "" },
+
+      // After road test
+      { item: "Wheel Torque (after road test)", unit: "ft·lb", value: "", notes: "" },
     ],
   };
 }
 
-/** Build a compact “Axles” section from the Axle model (hydraulic version) */
-function buildAxlesSectionHydraulic(vehicleType: "car" | "truck" | "bus" | "trailer"): InspectionSection {
-  const axles = generateAxleLayout(vehicleType); // hydraulic when vehicleType==="car"
-  const items: InspectionItem[] = [];
+/* -------------------------- Corner split (LF/RF/LR/RR) --------------------- */
 
-  for (const a of axles) {
-    items.push(
-      { item: `${a.axleLabel} Left Tread Depth`,  unit: "mm", value: "" },
-      { item: `${a.axleLabel} Right Tread Depth`, unit: "mm", value: "" },
-      { item: `${a.axleLabel} Left Tire Pressure`,  unit: "psi", value: "" },
-      { item: `${a.axleLabel} Right Tire Pressure`, unit: "psi", value: "" },
-      { item: `${a.axleLabel} Left Rotor/Drum`, value: "", unit: "" },
-      { item: `${a.axleLabel} Right Rotor/Drum`, value: "", unit: "" },
-      { item: `${a.axleLabel} Left Pad/Shoe Lining`,  unit: "mm", value: "" },
-      { item: `${a.axleLabel} Right Pad/Shoe Lining`, unit: "mm", value: "" },
-      { item: `${a.axleLabel} Wheel Torque`, unit: "ft·lb", value: "" },
+function CornerGrid({
+  sectionIndex,
+  items,
+  updateItem,
+}: {
+  sectionIndex: number;
+  items: InspectionItem[];
+  updateItem: (sIdx: number, iIdx: number, patch: Partial<InspectionItem>) => void;
+}) {
+  const find = (label: string) => items.findIndex(i => (i.item ?? i.name) === label);
+  const Field = ({ label, placeholder }: { label: string; placeholder?: string }) => {
+    const idx = find(label);
+    const item = items[idx];
+    return (
+      <div className="space-y-1">
+        <div className="text-xs text-zinc-400">{label}</div>
+        <div className="grid grid-cols-[1fr_90px] gap-2">
+          <input
+            className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white"
+            value={(item?.value as string) ?? ""}
+            onChange={(e) => updateItem(sectionIndex, idx, { value: e.target.value })}
+            placeholder={placeholder ?? "—"}
+          />
+          <input
+            className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white"
+            value={item?.unit ?? ""}
+            onChange={(e) => updateItem(sectionIndex, idx, { unit: e.target.value })}
+            placeholder="unit"
+          />
+        </div>
+      </div>
     );
-  }
+  };
 
-  return { title: "Axles", items };
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      {/* LEFT FRONT */}
+      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+        <div className="mb-2 font-semibold text-orange-400">Left Front</div>
+        <div className="grid gap-3">
+          <Field label="LF Tire Tread" placeholder="mm" />
+          <Field label="LF Brake Pad Thickness" placeholder="mm" />
+          <Field label="LF Rotor Condition / Thickness" placeholder="mm" />
+        </div>
+      </div>
+
+      {/* RIGHT FRONT */}
+      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+        <div className="mb-2 font-semibold text-orange-400">Right Front</div>
+        <div className="grid gap-3">
+          <Field label="RF Tire Tread" placeholder="mm" />
+          <Field label="RF Brake Pad Thickness" placeholder="mm" />
+          <Field label="RF Rotor Condition / Thickness" placeholder="mm" />
+        </div>
+      </div>
+
+      {/* LEFT REAR */}
+      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+        <div className="mb-2 font-semibold text-orange-400">Left Rear</div>
+        <div className="grid gap-3">
+          <Field label="LR Tire Tread (Outer)" placeholder="mm" />
+          <Field label="LR Tire Tread (Inner)" placeholder="mm" />
+          <Field label="LR Brake Pad Thickness" placeholder="mm" />
+          <Field label="LR Rotor Condition / Thickness" placeholder="mm" />
+        </div>
+      </div>
+
+      {/* RIGHT REAR */}
+      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+        <div className="mb-2 font-semibold text-orange-400">Right Rear</div>
+        <div className="grid gap-3">
+          <Field label="RR Tire Tread (Outer)" placeholder="mm" />
+          <Field label="RR Tire Tread (Inner)" placeholder="mm" />
+          <Field label="RR Brake Pad Thickness" placeholder="mm" />
+          <Field label="RR Rotor Condition / Thickness" placeholder="mm" />
+        </div>
+      </div>
+
+      {/* Wheel torque across bottom */}
+      <div className="md:col-span-2 rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+        <div className="mb-2 font-semibold text-orange-400">After Road Test</div>
+        <div className="grid gap-3 md:grid-cols-3">
+          <Field label="Wheel Torque (after road test)" placeholder="ft·lb" />
+        </div>
+      </div>
+    </div>
+  );
 }
 
-/** Update units when user toggles Metric/Imperial */
-function applyUnitsForHydraulic(sections: InspectionSection[], system: "metric" | "imperial"): InspectionSection[] {
-  const mm = system === "metric";
-  const torqueUnit = mm ? "N·m" : "ft·lb";
-  const lengthUnit = mm ? "mm" : "in";
+/* ------------------------------- Page ------------------------------------- */
 
-  return sections.map((sec) => {
-    if (!/axles|measurement/i.test(sec.title)) return sec;
-    const items = sec.items.map((it) => {
-      const label = (it.item || "").toLowerCase();
-      // tread/pad/lining/rotor/drum/lever travel → length unit
-      if (/tread|lining|pad|rotor|drum|travel/.test(label)) {
-        return { ...it, unit: lengthUnit };
-      }
-      // wheel torque → torque unit
-      if (/torque/.test(label)) {
-        return { ...it, unit: torqueUnit };
-      }
-      // tire pressure always psi
-      if (/tire pressure/.test(label)) {
-        return { ...it, unit: "psi" };
-      }
-      return it;
-    });
-    return { ...sec, items };
-  });
-}
-
-/* -------------------------------- Page --------------------------------- */
-
-export default function Maintenance50Page() {
+export default function Maintenance50HydraulicPage() {
   const searchParams = useSearchParams();
-
-  const [unitSystem, setUnitSystem] = useState<"metric" | "imperial">("metric");
+  const [unit, setUnit] = useState<"metric" | "imperial">("metric");
   const [isListening, setIsListening] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
   const [, setTranscript] = useState("");
+  const [isPaused, setIsPaused] = useState(false);
 
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
-  // Header info
-  const templateName = "Maintenance 50 (Hydraulic)";
+  const templateName = searchParams.get("template") || "Maintenance 50 (Hydraulic)";
+
   const customer = {
     first_name: searchParams.get("first_name") || "",
     last_name: searchParams.get("last_name") || "",
@@ -130,6 +172,7 @@ export default function Maintenance50Page() {
     province: searchParams.get("province") || "",
     postal_code: searchParams.get("postal_code") || "",
   };
+
   const vehicle = {
     year: searchParams.get("year") || "",
     make: searchParams.get("make") || "",
@@ -141,8 +184,6 @@ export default function Maintenance50Page() {
     unit_number: searchParams.get("unit_number") || "",
     odometer: searchParams.get("odometer") || "",
   };
-  // let caller specify vehicle_type=car|truck|bus|trailer; default “car”
-  const vehicleType = (searchParams.get("vehicle_type") as "car" | "truck" | "bus" | "trailer") || "car";
 
   const initialSession = useMemo(
     () => ({
@@ -157,8 +198,7 @@ export default function Maintenance50Page() {
       vehicle,
       sections: [],
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [templateName]
+    [templateName],
   );
 
   const {
@@ -173,43 +213,29 @@ export default function Maintenance50Page() {
     addQuoteLine,
   } = useInspectionSession(initialSession);
 
-  // kick off session
   useEffect(() => {
     startSession(initialSession);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [initialSession, startSession]);
 
-  // Scaffold: Axles (hydraulic) first + existing + Oil Change last
+  // ensure our measurement section exists at top (idempotent)
   useEffect(() => {
     if (!session) return;
-    const titles = (session.sections ?? []).map((s) => (s.title || "").toLowerCase());
-    const needAxles = !titles.some((t) => t.includes("axles"));
-    const needOil = !titles.some((t) => t.includes("oil change"));
+    const titles = (session.sections ?? []).map((s) => s.title?.toLowerCase() || "");
+    const needsMeasurements = !titles.some((t) => t.includes("measurements"));
 
-    if (needAxles || needOil) {
-      const next: InspectionSection[] = [
-        ...(needAxles ? [buildAxlesSectionHydraulic(vehicleType)] : []),
-        ...(session.sections ?? []),
-        ...(needOil ? [buildOilChangeSection()] : []),
-      ];
-      updateInspection({ sections: applyUnitsForHydraulic(next, unitSystem) as typeof session.sections });
+    if (needsMeasurements) {
+      updateInspection({
+        sections: [buildHydraulicMeasurementsSection(), ...(session.sections ?? [])],
+      });
     }
-  }, [session, updateInspection, unitSystem, vehicleType]);
+  }, [session, updateInspection]);
 
-  // When unit toggle changes, rewrite units for Axles/Measurements sections
-  useEffect(() => {
-    if (!session?.sections?.length) return;
-    const next = applyUnitsForHydraulic(session.sections, unitSystem);
-    updateInspection({ sections: next as typeof session.sections });
-  }, [unitSystem]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Voice pipeline
-  const onTranscript = async (text: string) => {
+  const handleTranscript = async (text: string) => {
     setTranscript(text);
-    const cmds: ParsedCommand[] = await interpretCommand(text);
-    for (const c of cmds) {
+    const commands: ParsedCommand[] = await interpretCommand(text);
+    for (const cmd of commands) {
       await handleTranscriptFn({
-        command: c,
+        command: cmd,
         session,
         updateInspection,
         updateItem,
@@ -219,98 +245,67 @@ export default function Maintenance50Page() {
     }
   };
 
+  // Simple SR bootstrap (unchanged)
+  function resolveSR(): (new () => SpeechRecognition) | undefined {
+    if (typeof window === "undefined") return undefined;
+    const w = window as any;
+    return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? undefined;
+  }
   const startListening = () => {
     const SR = resolveSR();
-    if (!SR) return console.error("SpeechRecognition not supported");
-    const rec = new SR();
-    rec.continuous = true;
-    rec.interimResults = false;
-    rec.lang = "en-US";
-    rec.onresult = (e: SpeechRecognitionEvent) => {
-      const last = e.results.length - 1;
-      onTranscript(e.results[last][0].transcript);
+    if (!SR) return console.error("SpeechRecognition API not supported");
+    const recognition = new SR();
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.lang = "en-US";
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      const last = event.results.length - 1;
+      const t = event.results[last][0].transcript;
+      handleTranscript(t);
     };
-    rec.onerror = (ev: Event & { error: string }) => console.error("Speech error:", ev.error);
-    recognitionRef.current = rec;
-    rec.start();
+    recognition.onerror = (event: any) => console.error("Speech recognition error:", event.error);
+    recognitionRef.current = recognition;
+    recognition.start();
     setIsListening(true);
   };
 
-  if (!session || !Array.isArray(session.sections) || session.sections.length === 0) {
+  if (!session || !session.sections || session.sections.length === 0) {
     return <div className="text-white p-4">Loading inspection…</div>;
   }
 
-  /* ----------------------------- UI bits ----------------------------- */
-
-  function HeaderCard() {
-    return (
-      <div className="mb-5 rounded-lg border border-zinc-700 bg-zinc-900 p-4 text-white">
-        <h1 className="mb-3 text-center text-2xl font-bold">{templateName}</h1>
-
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          {/* Vehicle */}
-          <div className="rounded-md border border-zinc-700 p-3">
-            <div className="mb-2 text-sm font-semibold text-orange-400">Vehicle Information</div>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <label className="opacity-70">VIN</label><div className="truncate">{vehicle.vin || "—"}</div>
-              <label className="opacity-70">Unit #</label><div>{vehicle.unit_number || "—"}</div>
-              <label className="opacity-70">Year</label><div>{vehicle.year || "—"}</div>
-              <label className="opacity-70">Make</label><div>{vehicle.make || "—"}</div>
-              <label className="opacity-70">Model</label><div>{vehicle.model || "—"}</div>
-              <label className="opacity-70">Odometer</label><div>{vehicle.odometer || vehicle.mileage || "—"}</div>
-              <label className="opacity-70">Plate</label><div>{vehicle.license_plate || "—"}</div>
-              <label className="opacity-70">Color</label><div>{vehicle.color || "—"}</div>
-            </div>
-          </div>
-
-          {/* Customer */}
-          <div className="rounded-md border border-zinc-700 p-3">
-            <div className="mb-2 text-sm font-semibold text-orange-400">Customer Information</div>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <label className="opacity-70">Name</label>
-              <div>{[customer.first_name, customer.last_name].filter(Boolean).join(" ") || "—"}</div>
-              <label className="opacity-70">Phone</label><div>{customer.phone || "—"}</div>
-              <label className="opacity-70">Email</label><div className="truncate">{customer.email || "—"}</div>
-              <label className="opacity-70">Address</label>
-              <div className="col-span-1 truncate">
-                {[customer.address, customer.city, customer.province, customer.postal_code].filter(Boolean).join(", ") || "—"}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const SectionHeader = ({ title, note }: { title: string; note?: string }) => (
-    <div className="mb-2 flex items-end justify-between">
-      <h2 className="text-xl font-semibold text-orange-400">{title}</h2>
-      {note ? <span className="text-xs text-zinc-400">{note}</span> : null}
-    </div>
-  );
+  const isMeasurementsTitle = (t?: string) => (t || "").toLowerCase().includes("measurements");
 
   return (
     <div className="px-4 pb-14">
-      <HeaderCard />
-
+      {/* Top controls unchanged */}
       <div className="mb-4 flex flex-wrap items-center justify-center gap-3">
-        <StartListeningButton isListening={isListening} setIsListening={setIsListening} onStart={startListening} />
-
+        <StartListeningButton
+          isListening={isListening}
+          setIsListening={setIsListening}
+          onStart={startListening}
+        />
         <PauseResumeButton
           isPaused={isPaused}
           isListening={isListening}
           setIsListening={setIsListening}
-          onPause={() => { setIsPaused(true); pauseSession(); recognitionRef.current?.stop(); }}
-          onResume={() => { setIsPaused(false); resumeSession(); startListening(); }}
+          onPause={() => {
+            setIsPaused(true);
+            pauseSession();
+            recognitionRef.current?.stop();
+          }}
+          onResume={() => {
+            setIsPaused(false);
+            resumeSession();
+            startListening();
+          }}
           recognitionInstance={recognitionRef.current}
-          setRecognitionRef={(inst) => (recognitionRef.current = inst)}
+          setRecognitionRef={(instance) => (recognitionRef.current = instance)}
         />
-
         <button
-          onClick={() => setUnitSystem(unitSystem === "metric" ? "imperial" : "metric")}
+          onClick={() => setUnit(unit === "metric" ? "imperial" : "metric")}
           className="rounded bg-zinc-700 px-3 py-2 text-white hover:bg-zinc-600"
         >
-          Unit: {unitSystem === "metric" ? "Metric" : "Imperial"}
+          Unit: {unit === "metric" ? "Metric" : "Imperial"}
         </button>
       </div>
 
@@ -324,94 +319,115 @@ export default function Maintenance50Page() {
       {/* Sections */}
       {session.sections.map((section: InspectionSection, sectionIndex: number) => (
         <div key={sectionIndex} className="mb-8 rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-          <SectionHeader
-            title={section.title}
-            note={/axles|measurement/i.test(section.title) ? (unitSystem === "metric" ? "Enter mm / N·m / psi" : "Enter in / ft·lb / psi") : undefined}
-          />
+          <div className="mb-2 flex items-end justify-between">
+            <h2 className="text-xl font-semibold text-orange-400">{section.title}</h2>
+          </div>
 
-          {section.items.map((item: InspectionItem, itemIndex: number) => {
-            const selected = (v: InspectionItemStatus) => item.status === v;
-            const onStatus = (v: InspectionItemStatus) => {
-              updateItem(sectionIndex, itemIndex, { status: v });
-              if ((v === "fail" || v === "recommend") && item.item) {
-                addQuoteLine({
-                  item: item.item,
-                  description: item.notes || "",
-                  status: v,
-                  value: item.value || "",
-                  notes: item.notes || "",
-                  laborTime: 0.5,
-                  laborRate: 0,
-                  parts: [],
-                  totalCost: 0,
-                  editable: true,
-                  source: "inspection",
-                  id: "",
-                  name: "",
-                  price: 0,
-                  partName: "",
-                });
-              }
-            };
+          {isMeasurementsTitle(section.title) ? (
+            <CornerGrid
+              sectionIndex={sectionIndex}
+              items={section.items}
+              updateItem={updateItem}
+            />
+          ) : (
+            section.items.map((item: InspectionItem, itemIndex: number) => {
+              const selected = (val: InspectionItemStatus) => item.status === val;
+              const onStatusClick = (val: InspectionItemStatus) => {
+                updateItem(sectionIndex, itemIndex, { status: val });
+                if ((val === "fail" || val === "recommend") && item.item) {
+                  addQuoteLine({
+                    item: item.item,
+                    description: item.notes || "",
+                    status: val,
+                    value: item.value || "",
+                    notes: item.notes || "",
+                    laborTime: 0.5,
+                    laborRate: 0,
+                    parts: [],
+                    totalCost: 0,
+                    editable: true,
+                    source: "inspection",
+                    id: "",
+                    name: "",
+                    price: 0,
+                    partName: "",
+                  });
+                }
+              };
 
-            return (
-              <div key={itemIndex} className="mb-3 rounded border border-zinc-800 bg-zinc-950 p-3">
-                <div className="mb-2 flex items-start justify-between gap-3">
-                  <h3 className="min-w-0 truncate text-base font-medium text-white">{item.item}</h3>
-                  <div className="flex shrink-0 flex-wrap gap-1">
-                    {(["ok", "fail", "na", "recommend"] as InspectionItemStatus[]).map((val) => (
-                      <button
-                        key={val}
-                        onClick={() => onStatus(val)}
-                        className={
-                          "rounded px-2 py-1 text-xs " +
-                          (selected(val)
-                            ? val === "ok" ? "bg-green-600 text-white"
-                            : val === "fail" ? "bg-red-600 text-white"
-                            : val === "na" ? "bg-yellow-500 text-white"
-                            : "bg-blue-500 text-white"
-                            : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700")
-                        }
-                      >
-                        {val.toUpperCase()}
-                      </button>
-                    ))}
+              return (
+                <div key={itemIndex} className="mb-3 rounded border border-zinc-800 bg-zinc-950 p-3">
+                  <div className="mb-2 flex items-start justify-between gap-3">
+                    <h3 className="min-w-0 truncate text-base font-medium text-white">
+                      {item.item ?? (item as any).name ?? "Item"}
+                    </h3>
+                    <div className="flex shrink-0 flex-wrap gap-1">
+                      {(["ok", "fail", "na", "recommend"] as InspectionItemStatus[]).map((val) => (
+                        <button
+                          key={val}
+                          onClick={() => onStatusClick(val)}
+                          className={
+                            "rounded px-2 py-1 text-xs " +
+                            (selected(val)
+                              ? val === "ok"
+                                ? "bg-green-600 text-white"
+                                : val === "fail"
+                                ? "bg-red-600 text-white"
+                                : val === "na"
+                                ? "bg-yellow-500 text-white"
+                                : "bg-blue-500 text-white"
+                              : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700")
+                          }
+                        >
+                          {val.toUpperCase()}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
 
-                <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto]">
-                  <input
-                    value={(item.value as string) ?? ""}
-                    onChange={(e) => updateItem(sectionIndex, itemIndex, { value: e.target.value })}
-                    placeholder="Value"
-                    className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400"
-                  />
-                  <input
-                    value={item.unit ?? ""}
-                    onChange={(e) => updateItem(sectionIndex, itemIndex, { unit: e.target.value })}
-                    placeholder="Unit"
-                    className="sm:w-28 w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400"
-                  />
-                  <input
-                    value={item.notes ?? ""}
-                    onChange={(e) => updateItem(sectionIndex, itemIndex, { notes: e.target.value })}
-                    placeholder="Notes"
-                    className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400 sm:col-span-1 col-span-1"
-                  />
-                </div>
+                  <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto]">
+                    <input
+                      value={(item.value as string) ?? ""}
+                      onChange={(e) => updateItem(sectionIndex, itemIndex, { value: e.target.value })}
+                      placeholder="Value"
+                      className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400"
+                    />
+                    <input
+                      value={item.unit ?? ""}
+                      onChange={(e) => updateItem(sectionIndex, itemIndex, { unit: e.target.value })}
+                      placeholder="Unit"
+                      className="sm:w-28 w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400"
+                    />
+                    <input
+                      value={item.notes ?? ""}
+                      onChange={(e) => updateItem(sectionIndex, itemIndex, { notes: e.target.value })}
+                      placeholder="Notes"
+                      className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400 sm:col-span-1 col-span-1"
+                    />
+                  </div>
 
-                {(item.status === "fail" || item.status === "recommend") && (
-                  <PhotoUploadButton
-                    photoUrls={item.photoUrls || []}
-                    onChange={(urls: string[]) => updateItem(sectionIndex, itemIndex, { photoUrls: urls })}
-                  />
-                )}
-              </div>
-            );
-          })}
+                  {(item.status === "fail" || item.status === "recommend") && (
+                    <PhotoUploadButton
+                      photoUrls={item.photoUrls || []}
+                      onChange={(urls: string[]) => {
+                        updateItem(sectionIndex, itemIndex, { photoUrls: urls });
+                      }}
+                    />
+                  )}
+
+                  {Array.isArray(item.recommend) && item.recommend.length > 0 ? (
+                    <p className="mt-2 text-xs text-yellow-400">
+                      <strong>Recommended:</strong> {item.recommend.join(", ")}
+                    </p>
+                  ) : null}
+                </div>
+              );
+            })
+          )}
         </div>
       ))}
 
+      {/* Footer actions (unchanged) */}
       <div className="mt-8 flex items-center justify-between gap-4">
         <SaveInspectionButton />
         <FinishInspectionButton />

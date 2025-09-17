@@ -55,7 +55,9 @@ function unitHint(label: string, mode: "metric" | "imperial") {
   return "";
 }
 
-const AXLE_RE = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
+const AXLE_FULL_RE = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
+const AXLE_SIDE_RE = /^(?<side>Left|Right)\s+(?<metric>.+)$/i;
+
 type AxleRow = {
   axle: string;
   metric: string;
@@ -78,12 +80,31 @@ function AxlesSection({
   updateItem: (sectionIdx: number, itemIdx: number, patch: Partial<InspectionItem>) => void;
 }) {
   const map = new Map<string, AxleRow>();
+
   section.items.forEach((it, idx) => {
-    const m = (it.item ?? "").match(AXLE_RE);
-    if (!m?.groups) return;
-    const axle = m.groups.axle.trim();
-    const side = m.groups.side as "Left" | "Right";
-    const metric = m.groups.metric.trim();
+    const label = (it.item ?? "").trim();
+    let axle = "";
+    let side: "Left" | "Right" | undefined;
+    let metric = "";
+
+    // Try "Steer Left Tread Depth"
+    let m = label.match(AXLE_FULL_RE);
+    if (m?.groups) {
+      axle = m.groups.axle.trim();
+      side = m.groups.side as "Left" | "Right";
+      metric = m.groups.metric.trim();
+    } else {
+      // Fallback: "Left Tread Depth" with section.title as axle
+      m = label.match(AXLE_SIDE_RE);
+      if (m?.groups) {
+        axle = section.title;
+        side = m.groups.side as "Left" | "Right";
+        metric = m.groups.metric.trim();
+      }
+    }
+
+    if (!axle || !side || !metric) return;
+
     const key = `${axle}::${metric}`;
     const row = map.get(key) ?? { axle, metric };
     if (side === "Left") {
@@ -96,6 +117,7 @@ function AxlesSection({
     row.unit = it.unit ?? unitHint(it.item ?? "", unitMode);
     map.set(key, row);
   });
+
   const rows = Array.from(map.values());
 
   return (
@@ -137,7 +159,6 @@ function AxlesSection({
     </div>
   );
 }
-
 /* ------------------------------------------------------------------ */
 /* Page                                                               */
 /* ------------------------------------------------------------------ */
@@ -182,7 +203,8 @@ export default function CustomRunPage() {
   // Builder selections (produced by your builder UI)
   // Expect a JSON string under ?selections= and optional ?vehicleType=
   const selectionsParam = searchParams.get("selections"); // base64 or json
-  const vehicleTypeParam = (searchParams.get("vehicleType") as "car" | "truck" | "bus" | "trailer" | null) || null;
+  const vehicleTypeParam =
+    (searchParams.get("vehicleType") as "car" | "truck" | "bus" | "trailer" | null) || null;
 
   const builtSections = useMemo<InspectionSection[]>(() => {
     // Try to parse selections; if absent, start empty
@@ -304,10 +326,12 @@ export default function CustomRunPage() {
 
   // Save as Template → inspection_templates
   async function saveAsTemplate() {
-    const user = (await supabase.auth.getUser()).data.user;
+    const { data } = await supabase.auth.getUser();
+    const user = data.user;
     if (!user) return alert("Please sign in to save a template.");
 
-    const name = prompt("Template name?", templateName || "Custom Template") || "Custom Template";
+    const name =
+      prompt("Template name?", templateName || "Custom Template") || "Custom Template";
     const payload: Database["public"]["Tables"]["inspection_templates"]["Insert"] = {
       user_id: user.id,
       template_name: name,
@@ -339,7 +363,9 @@ export default function CustomRunPage() {
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {/* Vehicle */}
           <div className="rounded-md border border-zinc-700 p-3">
-            <div className="mb-2 text-sm font-semibold text-orange-400">Vehicle Information</div>
+            <div className="mb-2 text-sm font-semibold text-orange-400">
+              Vehicle Information
+            </div>
             <div className="grid grid-cols-2 gap-2 text-sm">
               <label className="opacity-70">VIN</label>
               <div className="truncate">{session.vehicle?.vin || "—"}</div>
@@ -359,11 +385,15 @@ export default function CustomRunPage() {
           </div>
           {/* Customer */}
           <div className="rounded-md border border-zinc-700 p-3">
-            <div className="mb-2 text-sm font-semibold text-orange-400">Customer Information</div>
+            <div className="mb-2 text-sm font-semibold text-orange-400">
+              Customer Information
+            </div>
             <div className="grid grid-cols-2 gap-2 text-sm">
               <label className="opacity-70">Name</label>
               <div>
-                {[session.customer?.first_name, session.customer?.last_name].filter(Boolean).join(" ") || "—"}
+                {[session.customer?.first_name, session.customer?.last_name]
+                  .filter(Boolean)
+                  .join(" ") || "—"}
               </div>
               <label className="opacity-70">Phone</label>
               <div>{session.customer?.phone || "—"}</div>
@@ -371,7 +401,12 @@ export default function CustomRunPage() {
               <div className="truncate">{session.customer?.email || "—"}</div>
               <label className="opacity-70">Address</label>
               <div className="col-span-1 truncate">
-                {[session.customer?.address, session.customer?.city, session.customer?.province, session.customer?.postal_code]
+                {[
+                  session.customer?.address,
+                  session.customer?.city,
+                  session.customer?.province,
+                  session.customer?.postal_code,
+                ]
                   .filter(Boolean)
                   .join(", ") || "—"}
               </div>
@@ -434,14 +469,22 @@ export default function CustomRunPage() {
       />
 
       {session.sections.map((section: InspectionSection, sectionIndex: number) => {
-        const isAxles = section.title === "Axles" || /(steer|drive|trailer)/i.test(section.title);
+        const isAxles =
+          section.title === "Axles" || /(steer|drive|trailer)/i.test(section.title);
 
         return (
-          <div key={sectionIndex} className="mb-8 rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+          <div
+            key={sectionIndex}
+            className="mb-8 rounded-lg border border-zinc-800 bg-zinc-900 p-4"
+          >
             <div className="mb-2 flex items-end justify-between">
-              <h2 className="text-xl font-semibold text-orange-400">{section.title}</h2>
+              <h2 className="text-xl font-semibold text-orange-400">
+                {section.title}
+              </h2>
               {isAxles ? (
-                <span className="text-xs text-zinc-400">Enter mm / in / kPa / psi / N·m / ft·lb</span>
+                <span className="text-xs text-zinc-400">
+                  Enter mm / in / kPa / psi / N·m / ft·lb
+                </span>
               ) : null}
             </div>
 
@@ -479,51 +522,62 @@ export default function CustomRunPage() {
                 };
 
                 return (
-                  <div key={itemIndex} className="mb-3 rounded border border-zinc-800 bg-zinc-950 p-3">
+                  <div
+                    key={itemIndex}
+                    className="mb-3 rounded border border-zinc-800 bg-zinc-950 p-3"
+                  >
                     <div className="mb-2 flex items-start justify-between gap-3">
                       <h3 className="min-w-0 truncate text-base font-medium text-white">
                         {item.item ?? (item as any).name ?? "Item"}
                       </h3>
                       <div className="flex shrink-0 flex-wrap gap-1">
-                        {(["ok", "fail", "na", "recommend"] as InspectionItemStatus[]).map((val) => (
-                          <button
-                            key={val}
-                            onClick={() => onStatusClick(val)}
-                            className={
-                              "rounded px-2 py-1 text-xs " +
-                              (selected(val)
-                                ? val === "ok"
-                                  ? "bg-green-600 text-white"
-                                  : val === "fail"
-                                  ? "bg-red-600 text-white"
-                                  : val === "na"
-                                  ? "bg-yellow-500 text-white"
-                                  : "bg-blue-500 text-white"
-                                : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700")
-                            }
-                          >
-                            {val.toUpperCase()}
-                          </button>
-                        ))}
+                        {(["ok", "fail", "na", "recommend"] as InspectionItemStatus[]).map(
+                          (val) => (
+                            <button
+                              key={val}
+                              onClick={() => onStatusClick(val)}
+                              className={
+                                "rounded px-2 py-1 text-xs " +
+                                (selected(val)
+                                  ? val === "ok"
+                                    ? "bg-green-600 text-white"
+                                    : val === "fail"
+                                    ? "bg-red-600 text-white"
+                                    : val === "na"
+                                    ? "bg-yellow-500 text-white"
+                                    : "bg-blue-500 text-white"
+                                  : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700")
+                              }
+                            >
+                              {val.toUpperCase()}
+                            </button>
+                          ),
+                        )}
                       </div>
                     </div>
 
                     <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto]">
                       <input
                         value={(item.value as string) ?? ""}
-                        onChange={(e) => updateItem(sectionIndex, itemIndex, { value: e.target.value })}
+                        onChange={(e) =>
+                          updateItem(sectionIndex, itemIndex, { value: e.target.value })
+                        }
                         placeholder="Value"
                         className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400"
                       />
                       <input
                         value={item.unit ?? unitHint(item.item || "", unit)}
-                        onChange={(e) => updateItem(sectionIndex, itemIndex, { unit: e.target.value })}
+                        onChange={(e) =>
+                          updateItem(sectionIndex, itemIndex, { unit: e.target.value })
+                        }
                         placeholder="Unit"
                         className="sm:w-28 w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400"
                       />
                       <input
                         value={item.notes ?? ""}
-                        onChange={(e) => updateItem(sectionIndex, itemIndex, { notes: e.target.value })}
+                        onChange={(e) =>
+                          updateItem(sectionIndex, itemIndex, { notes: e.target.value })
+                        }
                         placeholder="Notes"
                         className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400 sm:col-span-1 col-span-1"
                       />
