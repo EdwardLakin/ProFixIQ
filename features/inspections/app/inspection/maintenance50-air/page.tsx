@@ -21,105 +21,14 @@ import type {
   InspectionItem,
 } from "@inspections/lib/inspection/types";
 
-import { generateAxleLayout } from "@inspections/lib/inspection/generateAxleLayout";
+import AxlesCornerGrid from "@inspections/lib/inspection/ui/AxlesCornerGrid";
+import { buildAirAxleSection } from "@inspections/lib/inspection/builders/buildAirAxleSections";
+import { InspectionFormCtx } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import { SaveInspectionButton } from "@inspections/components/inspection/SaveInspectionButton";
 import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
 
-/* ------------------------------------------------------------------ */
-/* Speech Recognition resolver                                         */
-/* ------------------------------------------------------------------ */
+/* --------------------------- Builders (Air) --------------------------- */
 
-type SRConstructor = new () => SpeechRecognition;
-function resolveSR(): SRConstructor | undefined {
-  if (typeof window === "undefined") return undefined;
-  const w = window as unknown as {
-    SpeechRecognition?: SRConstructor;
-    webkitSpeechRecognition?: SRConstructor;
-  };
-  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? undefined;
-}
-
-/* ------------------------------------------------------------------ */
-/* Builders                                                           */
-/* ------------------------------------------------------------------ */
-
-/** Corner measurements section for AIR — mirrors hydraulic LF/RF/LR/RR layout */
-function buildCornerMeasurementsAir(): InspectionSection {
-  return {
-    title: "Measurements (Air)",
-    items: [
-      // LF/RF/LR/RR TREAD
-      { item: "LF Tire Tread", unit: "mm", value: "", notes: "" },
-      { item: "RF Tire Tread", unit: "mm", value: "", notes: "" },
-      { item: "LR Tire Tread (Outer)", unit: "mm", value: "", notes: "" },
-      { item: "LR Tire Tread (Inner)", unit: "mm", value: "", notes: "" },
-      { item: "RR Tire Tread (Outer)", unit: "mm", value: "", notes: "" },
-      { item: "RR Tire Tread (Inner)", unit: "mm", value: "", notes: "" },
-
-      // Lining/Shoe thickness per corner
-      { item: "LF Brake Lining/Shoe", unit: "mm", value: "", notes: "" },
-      { item: "RF Brake Lining/Shoe", unit: "mm", value: "", notes: "" },
-      { item: "LR Brake Lining/Shoe", unit: "mm", value: "", notes: "" },
-      { item: "RR Brake Lining/Shoe", unit: "mm", value: "", notes: "" },
-
-      // Drum/Rotor condition (some fleets track condition text with thickness)
-      { item: "LF Drum/Rotor Condition / Thickness", unit: "mm", value: "", notes: "" },
-      { item: "RF Drum/Rotor Condition / Thickness", unit: "mm", value: "", notes: "" },
-      { item: "LR Drum/Rotor Condition / Thickness", unit: "mm", value: "", notes: "" },
-      { item: "RR Drum/Rotor Condition / Thickness", unit: "mm", value: "", notes: "" },
-
-      // Post-test wheel torque (if applicable)
-      { item: "Wheel Torque (after road test)", unit: "ft·lb", value: "", notes: "" },
-    ],
-  };
-}
-
-/** Air system top measurements akin to CVIP spec box */
-function buildAirSystemMeasurementSection(): InspectionSection {
-  return {
-    title: "Air System Measurements",
-    items: [
-      { item: "Air Build Time (90→120 psi)", unit: "sec", value: "" },
-      { item: "Air Leak Rate @ Gov Cut-Out", unit: "psi/min", value: "" },
-      { item: "Low Air Warning Activates", unit: "psi", value: "" },
-      { item: "Governor Cut-In", unit: "psi", value: "" },
-      { item: "Governor Cut-Out", unit: "psi", value: "" },
-      { item: "Compressor Cut-Out Ref", unit: "psi", value: "" },
-      { item: "Torque reference", unit: "ft·lb", value: "" },
-    ],
-  };
-}
-
-/** Axles with air-brake specifics (push-rod travel, etc.) */
-function buildAxlesSectionAir(vehicleType: "truck" | "bus" | "trailer"): InspectionSection {
-  const axles = generateAxleLayout(vehicleType);
-  const items: InspectionItem[] = [];
-
-  for (const a of axles) {
-    items.push(
-      { item: `${a.axleLabel} Left Tread Depth`,  unit: "mm", value: "" },
-      { item: `${a.axleLabel} Right Tread Depth`, unit: "mm", value: "" },
-      { item: `${a.axleLabel} Left Tire Pressure`,  unit: "psi", value: "" },
-      { item: `${a.axleLabel} Right Tire Pressure`, unit: "psi", value: "" },
-
-      { item: `${a.axleLabel} Left Drum/Rotor`, value: "", unit: "" },
-      { item: `${a.axleLabel} Right Drum/Rotor`, value: "", unit: "" },
-      { item: `${a.axleLabel} Left Lining/Shoe`,  unit: "mm", value: "" },
-      { item: `${a.axleLabel} Right Lining/Shoe`, unit: "mm", value: "" },
-
-      // air specifics
-      { item: `${a.axleLabel} Left Push Rod Travel`,  unit: "in", value: "" },
-      { item: `${a.axleLabel} Right Push Rod Travel`, unit: "in", value: "" },
-
-      { item: `${a.axleLabel} Wheel Torque Inner`, unit: "ft·lb", value: "" },
-      { item: `${a.axleLabel} Wheel Torque Outer`, unit: "ft·lb", value: "" },
-    );
-  }
-
-  return { title: "Axles (Air)", items };
-}
-
-/** Oil change / service block */
 function buildOilChangeSection(): InspectionSection {
   return {
     title: "Oil Change / Service",
@@ -135,140 +44,29 @@ function buildOilChangeSection(): InspectionSection {
   };
 }
 
-/** Switch units on Measurements/Axles/Air-System sections */
-function applyUnitsForAir(
-  sections: InspectionSection[],
-  system: "metric" | "imperial"
-): InspectionSection[] {
-  const isMetric = system === "metric";
-  const torqueUnit = isMetric ? "N·m" : "ft·lb";
-  const lengthUnit = isMetric ? "mm" : "in";
-
-  return sections.map((sec) => {
-    if (!/measurements|axles|air system/i.test(sec.title)) return sec;
-
-    const items = sec.items.map((it) => {
-      const label = (it.item || "").toLowerCase();
-
-      // Length-based
-      if (/tread|lining|shoe|rotor|drum/.test(label)) {
-        return { ...it, unit: lengthUnit };
-      }
-      // Push-rod travel
-      if (/push\s*rod\s*travel/.test(label)) {
-        return { ...it, unit: isMetric ? "mm" : "in" };
-      }
-      // Torque
-      if (/torque/.test(label)) {
-        return { ...it, unit: torqueUnit };
-      }
-      // Tire pressure always psi for heavy duty
-      if (/tire pressure/.test(label)) {
-        return { ...it, unit: "psi" };
-      }
-      return it;
-    });
-
-    return { ...sec, items };
-  });
-}
-
-/* ------------------------------------------------------------------ */
-/* Corner grid component (same UX as Hydraulic)                        */
-/* ------------------------------------------------------------------ */
-
-function CornerGrid({
-  sectionIndex,
-  items,
-  updateItem,
-}: {
-  sectionIndex: number;
-  items: InspectionItem[];
-  updateItem: (sIdx: number, iIdx: number, patch: Partial<InspectionItem>) => void;
-}) {
-  const find = (label: string) => items.findIndex((i) => (i.item ?? i.name) === label);
-  const Field = ({ label, placeholder }: { label: string; placeholder?: string }) => {
-    const idx = find(label);
-    const item = items[idx];
-    return (
-      <div className="space-y-1">
-        <div className="text-xs text-zinc-400">{label}</div>
-        <div className="grid grid-cols-[1fr_90px] gap-2">
-          <input
-            className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white"
-            value={(item?.value as string) ?? ""}
-            onChange={(e) => updateItem(sectionIndex, idx, { value: e.target.value })}
-            placeholder={placeholder ?? "—"}
-          />
-          <input
-            className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white"
-            value={item?.unit ?? ""}
-            onChange={(e) => updateItem(sectionIndex, idx, { unit: e.target.value })}
-            placeholder="unit"
-          />
-        </div>
-      </div>
-    );
+function buildAirSystemMeasurementSection(): InspectionSection {
+  return {
+    title: "Air System Measurements",
+    items: [
+      { item: "Air Build Time (90→120 psi)", unit: "sec", value: "" },
+      { item: "Air Leak Rate @ Gov Cut-Out", unit: "psi/min", value: "" },
+      { item: "Low Air Warning Activates", unit: "psi", value: "" },
+      { item: "Governor Cut-In", unit: "psi", value: "" },
+      { item: "Governor Cut-Out", unit: "psi", value: "" },
+      { item: "Compressor Cut-Out Ref", unit: "psi", value: "" },
+      { item: "Torque reference", unit: "ft·lb", value: "" },
+    ],
   };
-
-  return (
-    <div className="grid gap-4 md:grid-cols-2">
-      {/* LEFT FRONT */}
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
-        <div className="mb-2 font-semibold text-orange-400">Left Front</div>
-        <div className="grid gap-3">
-          <Field label="LF Tire Tread" placeholder="mm" />
-          <Field label="LF Brake Lining/Shoe" placeholder="mm" />
-          <Field label="LF Drum/Rotor Condition / Thickness" placeholder="mm" />
-        </div>
-      </div>
-
-      {/* RIGHT FRONT */}
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
-        <div className="mb-2 font-semibold text-orange-400">Right Front</div>
-        <div className="grid gap-3">
-          <Field label="RF Tire Tread" placeholder="mm" />
-          <Field label="RF Brake Lining/Shoe" placeholder="mm" />
-          <Field label="RF Drum/Rotor Condition / Thickness" placeholder="mm" />
-        </div>
-      </div>
-
-      {/* LEFT REAR */}
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
-        <div className="mb-2 font-semibold text-orange-400">Left Rear</div>
-        <div className="grid gap-3">
-          <Field label="LR Tire Tread (Outer)" placeholder="mm" />
-          <Field label="LR Tire Tread (Inner)" placeholder="mm" />
-          <Field label="LR Brake Lining/Shoe" placeholder="mm" />
-          <Field label="LR Drum/Rotor Condition / Thickness" placeholder="mm" />
-        </div>
-      </div>
-
-      {/* RIGHT REAR */}
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
-        <div className="mb-2 font-semibold text-orange-400">Right Rear</div>
-        <div className="grid gap-3">
-          <Field label="RR Tire Tread (Outer)" placeholder="mm" />
-          <Field label="RR Tire Tread (Inner)" placeholder="mm" />
-          <Field label="RR Brake Lining/Shoe" placeholder="mm" />
-          <Field label="RR Drum/Rotor Condition / Thickness" placeholder="mm" />
-        </div>
-      </div>
-
-      {/* Wheel torque across bottom */}
-      <div className="md:col-span-2 rounded-lg border border-zinc-800 bg-zinc-900 p-3">
-        <div className="mb-2 font-semibold text-orange-400">After Road Test</div>
-        <div className="grid gap-3 md:grid-cols-3">
-          <Field label="Wheel Torque (after road test)" placeholder="ft·lb" />
-        </div>
-      </div>
-    </div>
-  );
 }
 
-/* ------------------------------------------------------------------ */
-/* Page                                                                */
-/* ------------------------------------------------------------------ */
+/* -------------------------------- Page -------------------------------- */
+
+type SRConstructor = new () => SpeechRecognition;
+function resolveSR(): SRConstructor | undefined {
+  if (typeof window === "undefined") return undefined;
+  const w = window as any;
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? undefined;
+}
 
 export default function Maintenance50AirPage() {
   const searchParams = useSearchParams();
@@ -305,19 +103,12 @@ export default function Maintenance50AirPage() {
     odometer: searchParams.get("odometer") || "",
   };
 
-  // choose vehicle_type for axle layout; default “truck”
-  const vehicleType = (searchParams.get("vehicle_type") as "truck" | "bus" | "trailer") || "truck";
+  const vehicleType =
+    (searchParams.get("vehicle_type") as "truck" | "bus" | "trailer") || "truck";
 
-  // ---- Seed all key sections up-front to avoid flicker
-  const seededSections = useMemo<InspectionSection[]>(
-    () => [
-      buildCornerMeasurementsAir(),
-      buildAirSystemMeasurementSection(),
-      buildAxlesSectionAir(vehicleType),
-      buildOilChangeSection(),
-    ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [vehicleType]
+  // axle labels state (supports up to 5)
+  const [axleLabels, setAxleLabels] = useState<string[]>(
+    ["Steer 1", "Drive 1", "Drive 2"] // defaults for a tractor
   );
 
   const initialSession = useMemo(
@@ -328,13 +119,12 @@ export default function Maintenance50AirPage() {
       isPaused: false,
       isListening: false,
       transcript: "",
-      quote: [],
+      quote: [] as any[],
       customer,
       vehicle,
-      sections: applyUnitsForAir(seededSections, unitSystem),
+      sections: [] as any[],
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [templateName, customer, vehicle, seededSections, unitSystem]
+    [templateName],
   );
 
   const {
@@ -347,22 +137,75 @@ export default function Maintenance50AirPage() {
     resumeSession,
     pauseSession,
     addQuoteLine,
-  } = useInspectionSession(initialSession);
+  } = useInspectionSession(initialSession as any); // cast to satisfy strict session shape
 
   // Start session once
   useEffect(() => {
-    startSession(initialSession);
+    startSession(initialSession as any);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Unit switch → rewrite units on the fly
+  // Scaffold once: Air Measurements + Axles(Air) from labels + Oil Change
   useEffect(() => {
-    if (!session?.sections?.length) return;
-    updateInspection({ sections: applyUnitsForAir(session.sections, unitSystem) as typeof session.sections });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [unitSystem]);
+    if (!session) return;
+    if ((session.sections?.length ?? 0) > 0) return;
 
-  // Voice capture
+    const axlesSection = buildAirAxleSection({
+      vehicleType,
+      labels: axleLabels,
+      maxAxles: 5,
+    });
+
+    const next: InspectionSection[] = [
+      buildAirSystemMeasurementSection(),
+      axlesSection,
+      buildOilChangeSection(),
+    ];
+    updateInspection({ sections: next as typeof session.sections });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
+
+  // Unit hint for axle metrics
+  const unitHint = (label: string) => {
+    const l = label.toLowerCase();
+    if (l.includes("tread") || l.includes("lining") || l.includes("shoe")) return unitSystem === "metric" ? "mm" : "in";
+    if (l.includes("travel")) return unitSystem === "metric" ? "mm" : "in";
+    if (l.includes("tire pressure")) return "psi";
+    if (l.includes("torque")) return unitSystem === "metric" ? "N·m" : "ft·lb";
+    if (l.includes("rotor") || l.includes("drum")) return unitSystem === "metric" ? "mm" : "in";
+    return "";
+  };
+
+  // Add axle (up to 5). Order preference: Steer 2 → Drive 3 → Trailer 1 → Trailer 2 → Trailer 3
+  const nextAxleLabel = (current: string[]): string | null => {
+    const want: string[] = ["Steer 2", "Drive 3", "Trailer 1", "Trailer 2", "Trailer 3"];
+    for (const cand of want) if (!current.includes(cand)) return cand;
+    return null;
+  };
+
+  const addAxle = () => {
+    if (!session?.sections?.length) return;
+    if (axleLabels.length >= 5) return;
+
+    const newLabel = nextAxleLabel(axleLabels);
+    if (!newLabel) return;
+
+    const labels = [...axleLabels, newLabel].slice(0, 5);
+    setAxleLabels(labels);
+
+    // Rebuild just the Axles (Air) section
+    const rebuilt = buildAirAxleSection({ vehicleType, labels, maxAxles: 5 });
+
+    const idx = session.sections.findIndex((s) => s.title === "Axles (Air)");
+    const sections =
+      idx >= 0
+        ? session.sections.map((s, i) => (i === idx ? rebuilt : s))
+        : [rebuilt, ...session.sections];
+
+    updateInspection({ sections: sections as typeof session.sections });
+  };
+
+  // Voice
   const onTranscript = async (text: string) => {
     setTranscript(text);
     const cmds: ParsedCommand[] = await interpretCommand(text);
@@ -399,60 +242,19 @@ export default function Maintenance50AirPage() {
     return <div className="text-white p-4">Loading inspection…</div>;
   }
 
-  function HeaderCard() {
-    return (
-      <div className="mb-5 rounded-lg border border-zinc-700 bg-zinc-900 p-4 text-white">
-        <h1 className="mb-3 text-center text-2xl font-bold">{templateName}</h1>
-
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          {/* Vehicle */}
-          <div className="rounded-md border border-zinc-700 p-3">
-            <div className="mb-2 text-sm font-semibold text-orange-400">Vehicle Information</div>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <label className="opacity-70">VIN</label><div className="truncate">{vehicle.vin || "—"}</div>
-              <label className="opacity-70">Unit #</label><div>{vehicle.unit_number || "—"}</div>
-              <label className="opacity-70">Year</label><div>{vehicle.year || "—"}</div>
-              <label className="opacity-70">Make</label><div>{vehicle.make || "—"}</div>
-              <label className="opacity-70">Model</label><div>{vehicle.model || "—"}</div>
-              <label className="opacity-70">Odometer</label><div>{vehicle.odometer || vehicle.mileage || "—"}</div>
-              <label className="opacity-70">Plate</label><div>{vehicle.license_plate || "—"}</div>
-              <label className="opacity-70">Color</label><div>{vehicle.color || "—"}</div>
-            </div>
-          </div>
-
-          {/* Customer */}
-          <div className="rounded-md border border-zinc-700 p-3">
-            <div className="mb-2 text-sm font-semibold text-orange-400">Customer Information</div>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <label className="opacity-70">Name</label>
-              <div>{[customer.first_name, customer.last_name].filter(Boolean).join(" ") || "—"}</div>
-              <label className="opacity-70">Phone</label><div>{customer.phone || "—"}</div>
-              <label className="opacity-70">Email</label><div className="truncate">{customer.email || "—"}</div>
-              <label className="opacity-70">Address</label>
-              <div className="col-span-1 truncate">
-                {[customer.address, customer.city, customer.province, customer.postal_code].filter(Boolean).join(", ") || "—"}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const SectionHeader = ({ title, note }: { title: string; note?: string }) => (
-    <div className="mb-2 flex items-end justify-between">
+  const SectionHeader = ({ title, note, right }: { title: string; note?: string; right?: React.ReactNode }) => (
+    <div className="mb-2 flex items-end justify-between gap-2">
       <h2 className="text-xl font-semibold text-orange-400">{title}</h2>
-      {note ? <span className="text-xs text-zinc-400">{note}</span> : null}
+      <div className="flex items-center gap-2">
+        {note ? <span className="text-xs text-zinc-400">{note}</span> : null}
+        {right}
+      </div>
     </div>
   );
 
-  const isCornerMeasurements = (t?: string) => (t || "").toLowerCase().includes("measurements");
-  const unitNote = unitSystem === "metric" ? "Enter mm / N·m / psi" : "Enter in / ft·lb / psi";
-
   return (
     <div className="px-4 pb-14">
-      <HeaderCard />
-
+      {/* Controls */}
       <div className="mb-4 flex flex-wrap items-center justify-center gap-3">
         <StartListeningButton isListening={isListening} setIsListening={setIsListening} onStart={startListening} />
 
@@ -482,102 +284,130 @@ export default function Maintenance50AirPage() {
       />
 
       {/* Sections */}
-      {session.sections.map((section: InspectionSection, sectionIndex: number) => (
-        <div key={sectionIndex} className="mb-8 rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-          <SectionHeader
-            title={section.title}
-            note={/measurements|axles|air system/i.test(section.title) ? unitNote : undefined}
-          />
+      <InspectionFormCtx.Provider value={useMemo(() => ({ updateItem }), [updateItem])}>
+        {session.sections.map((section: InspectionSection, sectionIndex: number) => {
+          const isAxles = section.title === "Axles (Air)";
+          const isAirSys = /air system/i.test(section.title);
 
-          {isCornerMeasurements(section.title) ? (
-            <CornerGrid sectionIndex={sectionIndex} items={section.items} updateItem={updateItem} />
-          ) : (
-            section.items.map((item: InspectionItem, itemIndex: number) => {
-              const selected = (v: InspectionItemStatus) => item.status === v;
-              const onStatus = (v: InspectionItemStatus) => {
-                updateItem(sectionIndex, itemIndex, { status: v });
-                if ((v === "fail" || v === "recommend") && item.item) {
-                  addQuoteLine({
-                    item: item.item,
-                    description: item.notes || "",
-                    status: v,
-                    value: item.value || "",
-                    notes: item.notes || "",
-                    laborTime: 0.5,
-                    laborRate: 0,
-                    parts: [],
-                    totalCost: 0,
-                    editable: true,
-                    source: "inspection",
-                    id: "",
-                    name: "",
-                    price: 0,
-                    partName: "",
-                  });
+          return (
+            <div key={sectionIndex} className="mb-8 rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+              <SectionHeader
+                title={section.title}
+                note={
+                  isAxles || isAirSys
+                    ? unitSystem === "metric"
+                      ? "Enter mm / N·m / psi"
+                      : "Enter in / ft·lb / psi"
+                    : undefined
                 }
-              };
+                right={
+                  isAxles && axleLabels.length < 5 ? (
+                    <button
+                      onClick={addAxle}
+                      className="rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs hover:bg-zinc-700"
+                      title="Add another axle (up to 5)"
+                    >
+                      + Add Axle
+                    </button>
+                  ) : null
+                }
+              />
 
-              return (
-                <div key={itemIndex} className="mb-3 rounded border border-zinc-800 bg-zinc-950 p-3">
-                  <div className="mb-2 flex items-start justify-between gap-3">
-                    <h3 className="min-w-0 truncate text-base font-medium text-white">{item.item}</h3>
-                    <div className="flex shrink-0 flex-wrap gap-1">
-                      {(["ok", "fail", "na", "recommend"] as InspectionItemStatus[]).map((val) => (
-                        <button
-                          key={val}
-                          onClick={() => onStatus(val)}
-                          className={
-                            "rounded px-2 py-1 text-xs " +
-                            (selected(val)
-                              ? val === "ok"
-                                ? "bg-green-600 text-white"
-                                : val === "fail"
-                                ? "bg-red-600 text-white"
-                                : val === "na"
-                                ? "bg-yellow-500 text-white"
-                                : "bg-blue-500 text-white"
-                              : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700")
-                          }
-                        >
-                          {val.toUpperCase()}
-                        </button>
-                      ))}
+              {isAxles ? (
+                <AxlesCornerGrid
+                  sectionIndex={sectionIndex}
+                  items={section.items}
+                  unitHint={unitHint}
+                />
+              ) : (
+                section.items.map((item: InspectionItem, itemIndex: number) => {
+                  const selected = (v: InspectionItemStatus) => item.status === v;
+                  const onStatus = (v: InspectionItemStatus) => {
+                    updateItem(sectionIndex, itemIndex, { status: v });
+                    if ((v === "fail" || v === "recommend") && item.item) {
+                      addQuoteLine({
+                        item: item.item,
+                        description: item.notes || "",
+                        status: v,
+                        value: item.value || "",
+                        notes: item.notes || "",
+                        laborTime: 0.5,
+                        laborRate: 0,
+                        parts: [],
+                        totalCost: 0,
+                        editable: true,
+                        source: "inspection",
+                        id: "",
+                        name: "",
+                        price: 0,
+                        partName: "",
+                      });
+                    }
+                  };
+
+                  return (
+                    <div key={itemIndex} className="mb-3 rounded border border-zinc-800 bg-zinc-950 p-3">
+                      <div className="mb-2 flex items-start justify-between gap-3">
+                        <h3 className="min-w-0 truncate text-base font-medium text-white">{item.item}</h3>
+                        <div className="flex shrink-0 flex-wrap gap-1">
+                          {(["ok", "fail", "na", "recommend"] as InspectionItemStatus[]).map((val) => (
+                            <button
+                              key={val}
+                              onClick={() => onStatus(val)}
+                              className={
+                                "rounded px-2 py-1 text-xs " +
+                                (selected(val)
+                                  ? val === "ok"
+                                    ? "bg-green-600 text-white"
+                                    : val === "fail"
+                                    ? "bg-red-600 text-white"
+                                    : val === "na"
+                                    ? "bg-yellow-500 text-white"
+                                    : "bg-blue-500 text-white"
+                                  : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700")
+                              }
+                            >
+                              {val.toUpperCase()}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto]">
+                        <input
+                          value={(item.value as string) ?? ""}
+                          onChange={(e) => updateItem(sectionIndex, itemIndex, { value: e.target.value })}
+                          placeholder="Value"
+                          className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400"
+                        />
+                        <input
+                          value={item.unit ?? ""}
+                          onChange={(e) => updateItem(sectionIndex, itemIndex, { unit: e.target.value })}
+                          placeholder="Unit"
+                          className="sm:w-28 w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400"
+                        />
+                        <input
+                          value={item.notes ?? ""}
+                          onChange={(e) => updateItem(sectionIndex, itemIndex, { notes: e.target.value })}
+                          placeholder="Notes"
+                          className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400 sm:col-span-1 col-span-1"
+                        />
+                      </div>
+
+                      {(item.status === "fail" || item.status === "recommend") && (
+                        <PhotoUploadButton
+                          photoUrls={item.photoUrls || []}
+                          onChange={(urls: string[]) => updateItem(sectionIndex, itemIndex, { photoUrls: urls })}
+                        />
+                      )}
                     </div>
-                  </div>
-
-                  <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto]">
-                    <input
-                      value={(item.value as string) ?? ""}
-                      onChange={(e) => updateItem(sectionIndex, itemIndex, { value: e.target.value })}
-                      placeholder="Value"
-                      className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400"
-                    />
-                    <input
-                      value={item.unit ?? ""}
-                      onChange={(e) => updateItem(sectionIndex, itemIndex, { unit: e.target.value })}
-                      placeholder="Unit"
-                      className="sm:w-28 w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400"
-                    />
-                    <input
-                      value={item.notes ?? ""}
-                      onChange={(e) => updateItem(sectionIndex, itemIndex, { notes: e.target.value })}
-                      placeholder="Notes"
-                      className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400 sm:col-span-1 col-span-1"
-                    />
-                  </div>
-
-                  {(item.status === "fail" || item.status === "recommend") && (
-                    <PhotoUploadButton
-                      photoUrls={item.photoUrls || []}
-                      onChange={(urls: string[]) => updateItem(sectionIndex, itemIndex, { photoUrls: urls })}
-                    />
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
-      ))}
+                  );
+                })
+              )}
+            </div>
+          );
+        })}
+      </InspectionFormCtx.Provider>
 
       <div className="mt-8 flex items-center justify-between gap-4">
         <SaveInspectionButton />
