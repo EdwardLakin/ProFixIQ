@@ -23,13 +23,17 @@ import type {
 } from "@inspections/lib/inspection/types";
 
 import AxlesCornerGrid from "@inspections/lib/inspection/ui/AxlesCornerGrid";
+import CornerGrid from "@inspections/lib/inspection/ui/CornerGrid";
 import { buildAirAxleSection } from "@inspections/lib/inspection/builders/buildAirAxleSections";
 import { InspectionFormCtx } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import { SaveInspectionButton } from "@inspections/components/inspection/SaveInspectionButton";
 import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
 
-/* --------------------------- Section Builders --------------------------- */
+/* -------------------------------- Types -------------------------------- */
+type BrakeType = "air" | "hydraulic";
 
+/* --------------------------- Section Builders --------------------------- */
+/** AIR measurements */
 function buildMeasurementsAir(): InspectionSection {
   return {
     title: "Measurements (Air)",
@@ -45,6 +49,82 @@ function buildMeasurementsAir(): InspectionSection {
   };
 }
 
+/** HYDRAULIC measurements + basic sections to match your Maintenance50(Hydraulic) */
+function buildHydraulicMeasurementsSection(): InspectionSection {
+  return {
+    title: "Measurements (Hydraulic)",
+    items: [
+      { item: "LF Tire Tread", unit: "mm", value: "" },
+      { item: "RF Tire Tread", unit: "mm", value: "" },
+      { item: "LR Tire Tread (Outer)", unit: "mm", value: "" },
+      { item: "LR Tire Tread (Inner)", unit: "mm", value: "" },
+      { item: "RR Tire Tread (Outer)", unit: "mm", value: "" },
+      { item: "RR Tire Tread (Inner)", unit: "mm", value: "" },
+      { item: "LF Brake Pad Thickness", unit: "mm", value: "" },
+      { item: "RF Brake Pad Thickness", unit: "mm", value: "" },
+      { item: "LR Brake Pad Thickness", unit: "mm", value: "" },
+      { item: "RR Brake Pad Thickness", unit: "mm", value: "" },
+      { item: "LF Rotor Condition / Thickness", unit: "mm", value: "" },
+      { item: "RF Rotor Condition / Thickness", unit: "mm", value: "" },
+      { item: "LR Rotor Condition / Thickness", unit: "mm", value: "" },
+      { item: "RR Rotor Condition / Thickness", unit: "mm", value: "" },
+      { item: "Wheel Torque (after road test)", unit: "ft·lb", value: "" },
+    ],
+  };
+}
+function buildLightsSection(): InspectionSection {
+  return {
+    title: "Lighting & Reflectors",
+    items: [
+      { item: "Headlights (high/low beam)" },
+      { item: "Turn signals / flashers" },
+      { item: "Brake lights" },
+      { item: "Tail lights" },
+      { item: "Reverse lights" },
+      { item: "License plate light" },
+      { item: "Clearance / marker lights" },
+      { item: "Reflective tape / reflectors" },
+      { item: "Hazard switch function" },
+    ],
+  };
+}
+function buildBrakesSection(): InspectionSection {
+  return {
+    title: "Brakes",
+    items: [
+      { item: "Front brake pads" },
+      { item: "Rear brake pads" },
+      { item: "Brake fluid level" },
+      { item: "Brake lines and hoses" },
+      { item: "ABS wiring / sensors" },
+      { item: "Brake warning lights" },
+    ],
+  };
+}
+function buildSuspensionSection(): InspectionSection {
+  return {
+    title: "Suspension",
+    items: [
+      { item: "Front springs (coil/leaf)" },
+      { item: "Rear springs (coil/leaf)" },
+      { item: "Shocks / struts" },
+      { item: "Control arms / ball joints" },
+      { item: "Sway bar bushings / links" },
+    ],
+  };
+}
+function buildDrivelineSection(): InspectionSection {
+  return {
+    title: "Driveline",
+    items: [
+      { item: "Driveshaft / U-joints" },
+      { item: "Center support bearing" },
+      { item: "Slip yokes / seals" },
+      { item: "Axle seals / leaks" },
+      { item: "Differential leaks / play" },
+    ],
+  };
+}
 function buildOilChangeSection(): InspectionSection {
   return {
     title: "Oil Change / Service",
@@ -61,7 +141,6 @@ function buildOilChangeSection(): InspectionSection {
 }
 
 /* --------------------------- Unit Application --------------------------- */
-/** Mirror Maintenance 50 (Hydraulic): make builder unit-agnostic and apply here */
 function applyUnitsAir(
   sections: InspectionSection[],
   system: "metric" | "imperial",
@@ -77,7 +156,7 @@ function applyUnitsAir(
       const items = sec.items.map((it) => {
         const l = (it.item || "").toLowerCase();
         if (l.includes("torque")) return { ...it, unit: torque };
-        return it; // keep psi / sec / psi/min as-is
+        return it;
       });
       return { ...sec, items };
     }
@@ -107,6 +186,30 @@ function applyUnitsAir(
   });
 }
 
+function applyUnitsHydraulic(
+  sections: InspectionSection[],
+  system: "metric" | "imperial",
+): InspectionSection[] {
+  const len = system === "metric" ? "mm" : "in";
+  const torque = system === "metric" ? "N·m" : "ft·lb";
+
+  return sections.map((sec) => {
+    const title = (sec.title || "").toLowerCase();
+    if (title.includes("measurements")) {
+      const items = sec.items.map((it) => {
+        const l = (it.item || "").toLowerCase();
+        if (l.includes("tire tread")) return { ...it, unit: len };
+        if (l.includes("pad thickness")) return { ...it, unit: len };
+        if (l.includes("rotor")) return { ...it, unit: len };
+        if (l.includes("torque")) return { ...it, unit: torque };
+        return it;
+      });
+      return { ...sec, items };
+    }
+    return sec;
+  });
+}
+
 /* -------------------------------- Page -------------------------------- */
 
 type SRConstructor = new () => SpeechRecognition;
@@ -116,7 +219,7 @@ function resolveSR(): SRConstructor | undefined {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? undefined;
 }
 
-export default function Maintenance50AirPage() {
+export default function Maintenance50Page() {
   const searchParams = useSearchParams();
 
   const [unitSystem, setUnitSystem] = useState<"metric" | "imperial">("metric");
@@ -124,9 +227,15 @@ export default function Maintenance50AirPage() {
   const [isPaused, setIsPaused] = useState(false);
   const [, setTranscript] = useState("");
 
+  // Brake type from query or default
+  const initialBrakeType: BrakeType =
+    (searchParams.get("brakes") as BrakeType) || "air";
+  const [brakeType, setBrakeType] = useState<BrakeType>(initialBrakeType);
+
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
-  const templateName = "Maintenance 50 (Air)";
+  const templateName =
+    brakeType === "air" ? "Maintenance 50 (Air)" : "Maintenance 50 (Hydraulic)";
 
   const customer = {
     first_name: searchParams.get("first_name") || "",
@@ -154,8 +263,12 @@ export default function Maintenance50AirPage() {
   const vehicleType =
     (searchParams.get("vehicle_type") as "truck" | "bus" | "trailer") || "truck";
 
-  // axle labels state (supports up to 5)
-  const [axleLabels, setAxleLabels] = useState<string[]>(["Steer 1", "Drive 1", "Drive 2"]);
+  // axle labels state (supports up to 5) — for AIR
+  const [axleLabels, setAxleLabels] = useState<string[]>([
+    "Steer 1",
+    "Drive 1",
+    "Drive 2",
+  ]);
 
   const initialSession = useMemo(
     () => ({
@@ -168,9 +281,10 @@ export default function Maintenance50AirPage() {
       quote: [],
       customer,
       vehicle,
+      brakeType, // <— persist in session
       sections: [],
     }),
-    [templateName]
+    [templateName, brakeType]
   );
 
   const {
@@ -185,46 +299,77 @@ export default function Maintenance50AirPage() {
     addQuoteLine,
   } = useInspectionSession(initialSession);
 
+  // Helpers
+  const isAirAxles = (t?: string) => /axles.*air/i.test((t || ""));
+  const isMeasurements = (t?: string) => (t || "").toLowerCase().includes("measurements");
+  const isHydraulicMeasurements = (t?: string) => (t || "").toLowerCase().includes("hydraulic");
+
+  // Seed sections for current brakeType
+  const seedForBrakeType = (bt: BrakeType) => {
+    if (bt === "air") {
+      const axlesSection = buildAirAxleSection({
+        vehicleType,
+        labels: axleLabels,
+        maxAxles: 5,
+      });
+      const seeded: InspectionSection[] = [
+        buildMeasurementsAir(),
+        axlesSection,
+        buildOilChangeSection(),
+      ];
+      updateInspection({
+        brakeType: bt as any,
+        sections: applyUnitsAir(seeded, unitSystem) as typeof session.sections,
+      });
+    } else {
+      const seeded: InspectionSection[] = [
+        buildHydraulicMeasurementsSection(),
+        buildLightsSection(),
+        buildBrakesSection(),
+        buildSuspensionSection(),
+        buildDrivelineSection(),
+        buildOilChangeSection(),
+      ];
+      updateInspection({
+        brakeType: bt as any,
+        sections: applyUnitsHydraulic(seeded, unitSystem) as typeof session.sections,
+      });
+    }
+  };
+
   // Start once
   useEffect(() => {
     startSession(initialSession);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Seed sections once in Maintenance-50 order: Measurements → Axles → Oil
+  // Seed once after session becomes available
   useEffect(() => {
     if (!session) return;
     if ((session.sections?.length ?? 0) > 0) return;
-
-    const axlesSection = buildAirAxleSection({
-      vehicleType,
-      labels: axleLabels,
-      maxAxles: 5,
-    });
-
-    const seeded: InspectionSection[] = [
-      buildMeasurementsAir(),
-      axlesSection,
-      buildOilChangeSection(),
-    ];
-
-    updateInspection({
-      sections: applyUnitsAir(seeded, unitSystem) as typeof session.sections,
-    });
+    seedForBrakeType(brakeType);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
   // Re-apply units when toggled
   useEffect(() => {
     if (!session?.sections?.length) return;
-    updateInspection({
-      sections: applyUnitsAir(session.sections, unitSystem) as typeof session.sections,
-    });
+    const next =
+      (session.brakeType as BrakeType) === "air"
+        ? applyUnitsAir(session.sections, unitSystem)
+        : applyUnitsHydraulic(session.sections, unitSystem);
+    updateInspection({ sections: next as typeof session.sections });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unitSystem]);
 
-  // Unit hint for AxlesCornerGrid
-  const unitHint = (label: string) => {
+  // Change brake type via UI
+  const onBrakeTypeChange = (bt: BrakeType) => {
+    setBrakeType(bt);
+    seedForBrakeType(bt);
+  };
+
+  // Unit hint for AxlesCornerGrid (AIR)
+  const unitHintAir = (label: string) => {
     const l = label.toLowerCase();
     if (
       l.includes("tread") ||
@@ -241,7 +386,7 @@ export default function Maintenance50AirPage() {
     return "";
   };
 
-  // Add axle (up to 5)
+  // Add axle (up to 5) — AIR only
   const nextAxleLabel = (current: string[]): string | null => {
     const want: string[] = ["Steer 2", "Drive 3", "Trailer 1", "Trailer 2", "Trailer 3"];
     for (const cand of want) if (!current.includes(cand)) return cand;
@@ -258,9 +403,9 @@ export default function Maintenance50AirPage() {
     const labels = [...axleLabels, newLabel].slice(0, 5);
     setAxleLabels(labels);
 
-    // Rebuild Axles (Air) in place
+    // Rebuild Axles (Air) in place using regex detection
     const rebuilt = buildAirAxleSection({ vehicleType, labels, maxAxles: 5 });
-    const idx = session.sections.findIndex((s) => s.title === "Axles (Air)");
+    const idx = session.sections.findIndex((s) => isAirAxles(s.title));
     const sections =
       idx >= 0 ? session.sections.map((s, i) => (i === idx ? rebuilt : s)) : [rebuilt, ...session.sections];
 
@@ -306,10 +451,8 @@ export default function Maintenance50AirPage() {
     return <div className="text-white p-4">Loading inspection…</div>;
   }
 
-  const isMeasurements = (t?: string) => (t || "").toLowerCase().includes("measurements");
-
   const SectionHeader = ({ title, note, right }: { title: string; note?: string; right?: React.ReactNode }) => (
-    <div className="mb-2 flex items	end justify-between gap-2">
+    <div className="mb-2 flex items-end justify-between gap-2">
       <h2 className="text-xl font-semibold text-orange-400">{title}</h2>
       <div className="flex items-center gap-2">
         {note ? <span className="text-xs text-zinc-400">{note}</span> : null}
@@ -327,19 +470,24 @@ export default function Maintenance50AirPage() {
           isPaused={isPaused}
           isListening={isListening}
           setIsListening={setIsListening}
-          onPause={() => {
-            setIsPaused(true);
-            pauseSession();
-            recognitionRef.current?.stop();
-          }}
-          onResume={() => {
-            setIsPaused(false);
-            resumeSession();
-            startListening();
-          }}
+          onPause={() => { setIsPaused(true); pauseSession(); recognitionRef.current?.stop(); }}
+          onResume={() => { setIsPaused(false); resumeSession(); startListening(); }}
           recognitionInstance={recognitionRef.current}
           setRecognitionRef={(inst) => (recognitionRef.current = inst)}
         />
+
+        {/* Brake type selector */}
+        <select
+          value={(session.brakeType as BrakeType) ?? brakeType}
+          onChange={(e) => onBrakeTypeChange((e.target.value as BrakeType) || "air")}
+          className="rounded bg-zinc-700 px-2 py-2 text-white hover:bg-zinc-600"
+          title="Brake type"
+        >
+          <option value="air">Air Brakes</option>
+          <option value="hydraulic">Hydraulic Brakes</option>
+        </select>
+
+        {/* Unit toggle */}
         <button
           onClick={() => setUnitSystem(unitSystem === "metric" ? "imperial" : "metric")}
           className="rounded bg-zinc-700 px-3 py-2 text-white hover:bg-zinc-600"
@@ -359,25 +507,30 @@ export default function Maintenance50AirPage() {
       <InspectionFormCtx.Provider value={{ updateItem }}>
         {session.sections.map((section: InspectionSection, sectionIndex: number) => {
           const title = section.title || "";
-          const isAxles = title === "Axles (Air)";
+          const isAxlesAir = isAirAxles(title);
+          const isMeas = isMeasurements(title);
+
+          // Header note (varies by brake type)
+          const note =
+            (session.brakeType as BrakeType) === "air"
+              ? (isMeas || isAxlesAir)
+                ? unitSystem === "metric"
+                  ? "Enter mm / N·m / psi"
+                  : "Enter in / ft·lb / psi"
+                : undefined
+              : isMeas
+              ? unitSystem === "metric"
+                ? "Enter mm / N·m"
+                : "Enter in / ft·lb"
+              : undefined;
 
           return (
             <div key={sectionIndex} className="mb-8 rounded-lg border border-zinc-800 bg-zinc-900 p-4">
               <SectionHeader
                 title={title}
-                note={
-                  isMeasurements(title)
-                    ? unitSystem === "metric"
-                      ? "Enter mm / N·m / psi"
-                      : "Enter in / ft·lb / psi"
-                    : isAxles
-                    ? unitSystem === "metric"
-                      ? "Enter mm / N·m / psi"
-                      : "Enter in / ft·lb / psi"
-                    : undefined
-                }
+                note={note}
                 right={
-                  isAxles && axleLabels.length < 5 ? (
+                  isAxlesAir && axleLabels.length < 5 && (session.brakeType as BrakeType) === "air" ? (
                     <button
                       onClick={addAxle}
                       className="rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs hover:bg-zinc-700"
@@ -389,8 +542,97 @@ export default function Maintenance50AirPage() {
                 }
               />
 
-              {isAxles ? (
-                <AxlesCornerGrid sectionIndex={sectionIndex} items={section.items} unitHint={unitHint} />
+              {(session.brakeType as BrakeType) === "air" ? (
+                isAxlesAir ? (
+                  <AxlesCornerGrid sectionIndex={sectionIndex} items={section.items} unitHint={unitHintAir} />
+                ) : (
+                  section.items.map((item: InspectionItem, itemIndex: number) => {
+                    const selected = (v: InspectionItemStatus) => item.status === v;
+                    const onStatus = (v: InspectionItemStatus) => {
+                      updateItem(sectionIndex, itemIndex, { status: v });
+                      if ((v === "fail" || v === "recommend") && item.item) {
+                        addQuoteLine({
+                          item: item.item,
+                          description: item.notes || "",
+                          status: v,
+                          value: item.value || "",
+                          notes: item.notes || "",
+                          laborTime: 0.5,
+                          laborRate: 0,
+                          parts: [],
+                          totalCost: 0,
+                          editable: true,
+                          source: "inspection",
+                          id: "",
+                          name: "",
+                          price: 0,
+                          partName: "",
+                        });
+                      }
+                    };
+
+                    return (
+                      <div key={itemIndex} className="mb-3 rounded border border-zinc-800 bg-zinc-950 p-3">
+                        <div className="mb-2 flex items-start justify-between gap-3">
+                          <h3 className="min-w-0 truncate text-base font-medium text-white">{item.item}</h3>
+                          <div className="flex shrink-0 flex-wrap gap-1">
+                            {(["ok", "fail", "na", "recommend"] as InspectionItemStatus[]).map((val) => (
+                              <button
+                                key={val}
+                                onClick={() => onStatus(val)}
+                                className={
+                                  "rounded px-2 py-1 text-xs " +
+                                  (selected(val)
+                                    ? val === "ok"
+                                      ? "bg-green-600 text-white"
+                                      : val === "fail"
+                                      ? "bg-red-600 text-white"
+                                      : val === "na"
+                                      ? "bg-yellow-500 text-white"
+                                      : "bg-blue-500 text-white"
+                                    : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700")
+                                }
+                              >
+                                {val.toUpperCase()}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto]">
+                          <input
+                            value={(item.value as string) ?? ""}
+                            onChange={(e) => updateItem(sectionIndex, itemIndex, { value: e.target.value })}
+                            placeholder="Value"
+                            className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400"
+                          />
+                          <input
+                            value={item.unit ?? ""}
+                            onChange={(e) => updateItem(sectionIndex, itemIndex, { unit: e.target.value })}
+                            placeholder="Unit"
+                            className="sm:w-28 w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400"
+                          />
+                          <input
+                            value={item.notes ?? ""}
+                            onChange={(e) => updateItem(sectionIndex, itemIndex, { notes: e.target.value })}
+                            placeholder="Notes"
+                            className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400 sm:col-span-1 col-span-1"
+                          />
+                        </div>
+
+                        {(item.status === "fail" || item.status === "recommend") && (
+                          <PhotoUploadButton
+                            photoUrls={item.photoUrls || []}
+                            onChange={(urls: string[]) => updateItem(sectionIndex, itemIndex, { photoUrls: urls })}
+                          />
+                        )}
+                      </div>
+                    );
+                  })
+                )
+              ) : // HYDRAULIC
+              isHydraulicMeasurements(title) ? (
+                <CornerGrid sectionIndex={sectionIndex} items={section.items} />
               ) : (
                 section.items.map((item: InspectionItem, itemIndex: number) => {
                   const selected = (v: InspectionItemStatus) => item.status === v;

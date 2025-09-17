@@ -1,3 +1,4 @@
+// @inspections/lib/inspection/builders/buildAirAxleSections.ts
 import { generateAxleLayout } from "@inspections/lib/inspection/generateAxleLayout";
 import type { InspectionItem, InspectionSection } from "@inspections/lib/inspection/types";
 
@@ -9,8 +10,8 @@ import type { InspectionItem, InspectionSection } from "@inspections/lib/inspect
  */
 export function buildAirAxleSection(opts: {
   vehicleType: "truck" | "bus" | "trailer";
-  labels?: string[];              // e.g. ["Steer 1","Steer 2","Drive 1","Drive 2","Drive 3"]
-  maxAxles?: number;              // hard cap (defaults to 5)
+  labels?: string[];    // e.g. ["Steer 1","Steer 2","Drive 1","Drive 2","Drive 3"]
+  maxAxles?: number;    // hard cap (defaults to 5)
 }): InspectionSection {
   const { vehicleType, labels, maxAxles = 5 } = opts;
 
@@ -19,7 +20,6 @@ export function buildAirAxleSection(opts: {
   if (labels?.length) {
     axleLabels = labels.slice(0, maxAxles);
   } else {
-    // generateAxleLayout gives you Steer, Drive 1, Drive 2, etc.
     const layout = generateAxleLayout(vehicleType);
     axleLabels = layout.map((a) => a.axleLabel).slice(0, maxAxles);
   }
@@ -28,30 +28,30 @@ export function buildAirAxleSection(opts: {
   for (const label of axleLabels) {
     // Tire measurements
     items.push(
-      { item: `${label} Left Tread Depth`,  unit: "mm", value: "" },
-      { item: `${label} Right Tread Depth`, unit: "mm", value: "" },
-      { item: `${label} Left Tire Pressure`,  unit: "psi", value: "" },
-      { item: `${label} Right Tire Pressure`, unit: "psi", value: "" },
+      { item: `${label} Left Tread Depth`,  unit: "", value: "" },
+      { item: `${label} Right Tread Depth`, unit: "", value: "" },
+      { item: `${label} Left Tire Pressure`,  unit: "", value: "" },
+      { item: `${label} Right Tire Pressure`, unit: "", value: "" },
     );
 
     // Brake hardware + linings
     items.push(
       { item: `${label} Left Drum/Rotor`, value: "", unit: "" },
       { item: `${label} Right Drum/Rotor`, value: "", unit: "" },
-      { item: `${label} Left Lining/Shoe`,  unit: "mm", value: "" },
-      { item: `${label} Right Lining/Shoe`, unit: "mm", value: "" },
+      { item: `${label} Left Lining/Shoe`,  unit: "", value: "" },
+      { item: `${label} Right Lining/Shoe`, unit: "", value: "" },
     );
 
     // Air-brake specifics
     items.push(
-      { item: `${label} Left Push Rod Travel`,  unit: "in", value: "" },
-      { item: `${label} Right Push Rod Travel`, unit: "in", value: "" },
+      { item: `${label} Left Push Rod Travel`,  unit: "", value: "" },
+      { item: `${label} Right Push Rod Travel`, unit: "", value: "" },
     );
 
     // Wheel torque
     items.push(
-      { item: `${label} Wheel Torque Inner`, unit: "ft·lb", value: "" },
-      { item: `${label} Wheel Torque Outer`, unit: "ft·lb", value: "" },
+      { item: `${label} Wheel Torque Inner`, unit: "", value: "" },
+      { item: `${label} Wheel Torque Outer`, unit: "", value: "" },
     );
   }
 

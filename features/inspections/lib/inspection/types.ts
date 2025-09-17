@@ -2,6 +2,8 @@
 
 /** ---------- Item / Section ---------- */
 export type InspectionItemStatus = "ok" | "fail" | "na" | "recommend";
+export type BrakeType = "air" | "hydraulic";
+
 
 export interface InspectionItem {
   /** Primary label. Some code uses `item`, some uses `name` — support both. */
@@ -288,6 +290,3 @@ export interface InspectionSession {
   /** Quotes can be DB-sourced or UI-generated — accept both */
   quote?: Array<QuoteLine | QuoteLineItem>;
 }
-
-/** ---------- Brake / Axle helpers ---------- */
-export type BrakeType = "air" | "hydraulic";
