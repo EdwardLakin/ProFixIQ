@@ -1,4 +1,3 @@
-// features/work-orders/app/work-orders/queue/page.tsx
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
@@ -101,7 +100,7 @@ export default async function QueuePage() {
           return (
             <Link
               key={wo.id}
-              href={`/work-orders/${wo.id}`}
+              href={`/work-orders/view/${wo.id}`}
               className="block rounded border border-neutral-800 bg-neutral-900 p-3 hover:border-orange-500 transition"
             >
               <div className="flex items-center justify-between">

@@ -1,4 +1,3 @@
-// features/work-orders/app/work-orders/view/[id]/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
@@ -28,7 +27,7 @@ type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 
 const statusBadge: Record<string, string> = {
   awaiting: "bg-blue-100 text-blue-800",
-  awaiting_approval: "bg-blue-100 text-blue-800", // ← added to match new flow
+  awaiting_approval: "bg-blue-100 text-blue-800",
   in_progress: "bg-orange-100 text-orange-800",
   on_hold: "bg-yellow-100 text-yellow-800",
   completed: "bg-green-100 text-green-800",
@@ -49,7 +48,7 @@ export default function WorkOrderDetailPage() {
   const [workOrder, setWorkOrder] = useState<WorkOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [duration, setDuration] = useState("");
-  const [techNotes, setTechNotes] = useState("");
+  const [jobNotes, setJobNotes] = useState("");
   const [updatingNotes, setUpdatingNotes] = useState(false);
   const [showDetails, setShowDetails] = useState(true);
 
@@ -87,7 +86,7 @@ export default function WorkOrderDetailPage() {
 
     setLine(data);
     setActiveJobId(data.punched_out_at ? null : data.id);
-    setTechNotes(data.tech_notes ?? "");
+    setJobNotes(data.notes ?? ""); // <-- use `notes`
 
     if (data.vehicle_id) {
       const { data: v } = await supabase
@@ -140,7 +139,6 @@ export default function WorkOrderDetailPage() {
     fetchData();
   }, [fetchData]);
 
-  // Refresh when other parts of the app announce a new/updated line
   useEffect(() => {
     const handler = () => fetchData();
     window.addEventListener("wo:line-added", handler);
@@ -188,12 +186,12 @@ export default function WorkOrderDetailPage() {
     }
   };
 
-  const updateTechNotes = async () => {
+  const updateJobNotes = async () => {
     if (!line) return;
     setUpdatingNotes(true);
     const { error } = await supabase
       .from("work_order_lines")
-      .update({ tech_notes: techNotes })
+      .update({ notes: jobNotes }) // <-- update `notes`
       .eq("id", line.id);
     if (!error) toast.success("Notes updated");
     setUpdatingNotes(false);
@@ -220,7 +218,6 @@ export default function WorkOrderDetailPage() {
       return;
     }
 
-    // Try tech-suggested first; if none, fall back to non-completed items
     const { data: techSuggested, error: tsErr } = await supabase
       .from("work_order_lines")
       .select("*")
@@ -526,9 +523,9 @@ export default function WorkOrderDetailPage() {
             <textarea
               className="w-full border p-2 rounded"
               rows={3}
-              value={techNotes}
-              onChange={(e) => setTechNotes(e.target.value)}
-              onBlur={updateTechNotes}
+              value={jobNotes}
+              onChange={(e) => setJobNotes(e.target.value)}
+              onBlur={updateJobNotes}
               disabled={updatingNotes}
             />
           </div>
