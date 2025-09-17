@@ -69,7 +69,7 @@ function CornerGrid({
   items: InspectionItem[];
   updateItem: (sIdx: number, iIdx: number, patch: Partial<InspectionItem>) => void;
 }) {
-  const find = (label: string) => items.findIndex(i => (i.item ?? i.name) === label);
+  const find = (label: string) => items.findIndex((i) => (i.item ?? i.name) === label);
   const Field = ({ label, placeholder }: { label: string; placeholder?: string }) => {
     const idx = find(label);
     const item = items[idx];
@@ -185,6 +185,8 @@ export default function Maintenance50HydraulicPage() {
     odometer: searchParams.get("odometer") || "",
   };
 
+  // Seed the session WITH the Measurements section to avoid the empty → patch flicker
+  const seededSections = useMemo(() => [buildHydraulicMeasurementsSection()], []);
   const initialSession = useMemo(
     () => ({
       id: uuidv4(),
@@ -196,9 +198,9 @@ export default function Maintenance50HydraulicPage() {
       quote: [],
       customer,
       vehicle,
-      sections: [],
+      sections: seededSections, // <- pre-seeded (prevents "Loading…" flash)
     }),
-    [templateName],
+    [templateName, customer, vehicle, seededSections],
   );
 
   const {
@@ -217,13 +219,11 @@ export default function Maintenance50HydraulicPage() {
     startSession(initialSession);
   }, [initialSession, startSession]);
 
-  // ensure our measurement section exists at top (idempotent)
+  // Idempotent safety: if somehow the first section is missing later, add it once.
   useEffect(() => {
     if (!session) return;
     const titles = (session.sections ?? []).map((s) => s.title?.toLowerCase() || "");
-    const needsMeasurements = !titles.some((t) => t.includes("measurements"));
-
-    if (needsMeasurements) {
+    if (!titles.some((t) => t.includes("measurements"))) {
       updateInspection({
         sections: [buildHydraulicMeasurementsSection(), ...(session.sections ?? [])],
       });
@@ -269,6 +269,7 @@ export default function Maintenance50HydraulicPage() {
     setIsListening(true);
   };
 
+  // With the seed above, this guard should basically never trip now
   if (!session || !session.sections || session.sections.length === 0) {
     return <div className="text-white p-4">Loading inspection…</div>;
   }
@@ -277,7 +278,7 @@ export default function Maintenance50HydraulicPage() {
 
   return (
     <div className="px-4 pb-14">
-      {/* Top controls unchanged */}
+      {/* Top controls */}
       <div className="mb-4 flex flex-wrap items-center justify-center gap-3">
         <StartListeningButton
           isListening={isListening}
@@ -427,7 +428,7 @@ export default function Maintenance50HydraulicPage() {
         </div>
       ))}
 
-      {/* Footer actions (unchanged) */}
+      {/* Footer actions */}
       <div className="mt-8 flex items-center justify-between gap-4">
         <SaveInspectionButton />
         <FinishInspectionButton />

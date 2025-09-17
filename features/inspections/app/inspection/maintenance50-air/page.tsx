@@ -25,6 +25,10 @@ import { generateAxleLayout } from "@inspections/lib/inspection/generateAxleLayo
 import { SaveInspectionButton } from "@inspections/components/inspection/SaveInspectionButton";
 import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
 
+/* ------------------------------------------------------------------ */
+/* Speech Recognition resolver                                         */
+/* ------------------------------------------------------------------ */
+
 type SRConstructor = new () => SpeechRecognition;
 function resolveSR(): SRConstructor | undefined {
   if (typeof window === "undefined") return undefined;
@@ -35,19 +39,53 @@ function resolveSR(): SRConstructor | undefined {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? undefined;
 }
 
-/* --------------------------- Builders (Air) --------------------------- */
+/* ------------------------------------------------------------------ */
+/* Builders                                                           */
+/* ------------------------------------------------------------------ */
 
-function buildOilChangeSection(): InspectionSection {
+/** Corner measurements section for AIR — mirrors hydraulic LF/RF/LR/RR layout */
+function buildCornerMeasurementsAir(): InspectionSection {
   return {
-    title: "Oil Change / Service",
+    title: "Measurements (Air)",
     items: [
-      { item: "Engine Oil Grade", value: "", unit: "", notes: "" },
-      { item: "Oil Capacity Filled", value: "", unit: "L", notes: "" },
-      { item: "Oil Filter Part #", value: "", unit: "", notes: "" },
-      { item: "Drain Plug Torque", value: "", unit: "ft·lb", notes: "" },
-      { item: "Reset Maintenance Reminder", notes: "" },
-      { item: "Check for Leaks (post run)", status: "ok", notes: "" },
-      { item: "Top Off Other Fluids (coolant, washer, etc.)", notes: "" },
+      // LF/RF/LR/RR TREAD
+      { item: "LF Tire Tread", unit: "mm", value: "", notes: "" },
+      { item: "RF Tire Tread", unit: "mm", value: "", notes: "" },
+      { item: "LR Tire Tread (Outer)", unit: "mm", value: "", notes: "" },
+      { item: "LR Tire Tread (Inner)", unit: "mm", value: "", notes: "" },
+      { item: "RR Tire Tread (Outer)", unit: "mm", value: "", notes: "" },
+      { item: "RR Tire Tread (Inner)", unit: "mm", value: "", notes: "" },
+
+      // Lining/Shoe thickness per corner
+      { item: "LF Brake Lining/Shoe", unit: "mm", value: "", notes: "" },
+      { item: "RF Brake Lining/Shoe", unit: "mm", value: "", notes: "" },
+      { item: "LR Brake Lining/Shoe", unit: "mm", value: "", notes: "" },
+      { item: "RR Brake Lining/Shoe", unit: "mm", value: "", notes: "" },
+
+      // Drum/Rotor condition (some fleets track condition text with thickness)
+      { item: "LF Drum/Rotor Condition / Thickness", unit: "mm", value: "", notes: "" },
+      { item: "RF Drum/Rotor Condition / Thickness", unit: "mm", value: "", notes: "" },
+      { item: "LR Drum/Rotor Condition / Thickness", unit: "mm", value: "", notes: "" },
+      { item: "RR Drum/Rotor Condition / Thickness", unit: "mm", value: "", notes: "" },
+
+      // Post-test wheel torque (if applicable)
+      { item: "Wheel Torque (after road test)", unit: "ft·lb", value: "", notes: "" },
+    ],
+  };
+}
+
+/** Air system top measurements akin to CVIP spec box */
+function buildAirSystemMeasurementSection(): InspectionSection {
+  return {
+    title: "Air System Measurements",
+    items: [
+      { item: "Air Build Time (90→120 psi)", unit: "sec", value: "" },
+      { item: "Air Leak Rate @ Gov Cut-Out", unit: "psi/min", value: "" },
+      { item: "Low Air Warning Activates", unit: "psi", value: "" },
+      { item: "Governor Cut-In", unit: "psi", value: "" },
+      { item: "Governor Cut-Out", unit: "psi", value: "" },
+      { item: "Compressor Cut-Out Ref", unit: "psi", value: "" },
+      { item: "Torque reference", unit: "ft·lb", value: "" },
     ],
   };
 }
@@ -81,46 +119,156 @@ function buildAxlesSectionAir(vehicleType: "truck" | "bus" | "trailer"): Inspect
   return { title: "Axles (Air)", items };
 }
 
-/** Air system top measurements akin to CVIP spec box */
-function buildAirSystemMeasurementSection(): InspectionSection {
+/** Oil change / service block */
+function buildOilChangeSection(): InspectionSection {
   return {
-    title: "Air System Measurements",
+    title: "Oil Change / Service",
     items: [
-      { item: "Air Build Time (90→120 psi)", unit: "sec", value: "" },
-      { item: "Air Leak Rate @ Gov Cut-Out", unit: "psi/min", value: "" },
-      { item: "Low Air Warning Activates", unit: "psi", value: "" },
-      { item: "Governor Cut-In", unit: "psi", value: "" },
-      { item: "Governor Cut-Out", unit: "psi", value: "" },
-      { item: "Compressor Cut-Out Ref", unit: "psi", value: "" },
-      { item: "Torque reference", unit: "ft·lb", value: "" },
+      { item: "Engine Oil Grade", value: "", unit: "", notes: "" },
+      { item: "Oil Capacity Filled", value: "", unit: "L", notes: "" },
+      { item: "Oil Filter Part #", value: "", unit: "", notes: "" },
+      { item: "Drain Plug Torque", value: "", unit: "ft·lb", notes: "" },
+      { item: "Reset Maintenance Reminder", notes: "" },
+      { item: "Check for Leaks (post run)", status: "ok", notes: "" },
+      { item: "Top Off Other Fluids (coolant, washer, etc.)", notes: "" },
     ],
   };
 }
 
-/** Switch units on Axles/Measurements sections */
-function applyUnitsForAir(sections: InspectionSection[], system: "metric" | "imperial"): InspectionSection[] {
-  const mm = system === "metric";
-  const torqueUnit = mm ? "N·m" : "ft·lb";
-  const lengthUnit = mm ? "mm" : "in";
+/** Switch units on Measurements/Axles/Air-System sections */
+function applyUnitsForAir(
+  sections: InspectionSection[],
+  system: "metric" | "imperial"
+): InspectionSection[] {
+  const isMetric = system === "metric";
+  const torqueUnit = isMetric ? "N·m" : "ft·lb";
+  const lengthUnit = isMetric ? "mm" : "in";
 
   return sections.map((sec) => {
-    if (!/axles|air system/i.test(sec.title)) return sec;
+    if (!/measurements|axles|air system/i.test(sec.title)) return sec;
+
     const items = sec.items.map((it) => {
       const label = (it.item || "").toLowerCase();
 
-      if (/tread|lining|shoe|rotor|drum|travel/.test(label)) {
-        return { ...it, unit: /travel/.test(label) ? (mm ? "mm" : "in") : lengthUnit };
+      // Length-based
+      if (/tread|lining|shoe|rotor|drum/.test(label)) {
+        return { ...it, unit: lengthUnit };
       }
-      if (/torque/.test(label)) return { ...it, unit: torqueUnit };
-      if (/tire pressure/.test(label)) return { ...it, unit: "psi" };
-      // air system psi stays psi / sec, leave untouched
+      // Push-rod travel
+      if (/push\s*rod\s*travel/.test(label)) {
+        return { ...it, unit: isMetric ? "mm" : "in" };
+      }
+      // Torque
+      if (/torque/.test(label)) {
+        return { ...it, unit: torqueUnit };
+      }
+      // Tire pressure always psi for heavy duty
+      if (/tire pressure/.test(label)) {
+        return { ...it, unit: "psi" };
+      }
       return it;
     });
+
     return { ...sec, items };
   });
 }
 
-/* -------------------------------- Page -------------------------------- */
+/* ------------------------------------------------------------------ */
+/* Corner grid component (same UX as Hydraulic)                        */
+/* ------------------------------------------------------------------ */
+
+function CornerGrid({
+  sectionIndex,
+  items,
+  updateItem,
+}: {
+  sectionIndex: number;
+  items: InspectionItem[];
+  updateItem: (sIdx: number, iIdx: number, patch: Partial<InspectionItem>) => void;
+}) {
+  const find = (label: string) => items.findIndex((i) => (i.item ?? i.name) === label);
+  const Field = ({ label, placeholder }: { label: string; placeholder?: string }) => {
+    const idx = find(label);
+    const item = items[idx];
+    return (
+      <div className="space-y-1">
+        <div className="text-xs text-zinc-400">{label}</div>
+        <div className="grid grid-cols-[1fr_90px] gap-2">
+          <input
+            className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white"
+            value={(item?.value as string) ?? ""}
+            onChange={(e) => updateItem(sectionIndex, idx, { value: e.target.value })}
+            placeholder={placeholder ?? "—"}
+          />
+          <input
+            className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white"
+            value={item?.unit ?? ""}
+            onChange={(e) => updateItem(sectionIndex, idx, { unit: e.target.value })}
+            placeholder="unit"
+          />
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      {/* LEFT FRONT */}
+      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+        <div className="mb-2 font-semibold text-orange-400">Left Front</div>
+        <div className="grid gap-3">
+          <Field label="LF Tire Tread" placeholder="mm" />
+          <Field label="LF Brake Lining/Shoe" placeholder="mm" />
+          <Field label="LF Drum/Rotor Condition / Thickness" placeholder="mm" />
+        </div>
+      </div>
+
+      {/* RIGHT FRONT */}
+      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+        <div className="mb-2 font-semibold text-orange-400">Right Front</div>
+        <div className="grid gap-3">
+          <Field label="RF Tire Tread" placeholder="mm" />
+          <Field label="RF Brake Lining/Shoe" placeholder="mm" />
+          <Field label="RF Drum/Rotor Condition / Thickness" placeholder="mm" />
+        </div>
+      </div>
+
+      {/* LEFT REAR */}
+      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+        <div className="mb-2 font-semibold text-orange-400">Left Rear</div>
+        <div className="grid gap-3">
+          <Field label="LR Tire Tread (Outer)" placeholder="mm" />
+          <Field label="LR Tire Tread (Inner)" placeholder="mm" />
+          <Field label="LR Brake Lining/Shoe" placeholder="mm" />
+          <Field label="LR Drum/Rotor Condition / Thickness" placeholder="mm" />
+        </div>
+      </div>
+
+      {/* RIGHT REAR */}
+      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+        <div className="mb-2 font-semibold text-orange-400">Right Rear</div>
+        <div className="grid gap-3">
+          <Field label="RR Tire Tread (Outer)" placeholder="mm" />
+          <Field label="RR Tire Tread (Inner)" placeholder="mm" />
+          <Field label="RR Brake Lining/Shoe" placeholder="mm" />
+          <Field label="RR Drum/Rotor Condition / Thickness" placeholder="mm" />
+        </div>
+      </div>
+
+      {/* Wheel torque across bottom */}
+      <div className="md:col-span-2 rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+        <div className="mb-2 font-semibold text-orange-400">After Road Test</div>
+        <div className="grid gap-3 md:grid-cols-3">
+          <Field label="Wheel Torque (after road test)" placeholder="ft·lb" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Page                                                                */
+/* ------------------------------------------------------------------ */
 
 export default function Maintenance50AirPage() {
   const searchParams = useSearchParams();
@@ -160,6 +308,18 @@ export default function Maintenance50AirPage() {
   // choose vehicle_type for axle layout; default “truck”
   const vehicleType = (searchParams.get("vehicle_type") as "truck" | "bus" | "trailer") || "truck";
 
+  // ---- Seed all key sections up-front to avoid flicker
+  const seededSections = useMemo<InspectionSection[]>(
+    () => [
+      buildCornerMeasurementsAir(),
+      buildAirSystemMeasurementSection(),
+      buildAxlesSectionAir(vehicleType),
+      buildOilChangeSection(),
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [vehicleType]
+  );
+
   const initialSession = useMemo(
     () => ({
       id: uuidv4(),
@@ -171,10 +331,10 @@ export default function Maintenance50AirPage() {
       quote: [],
       customer,
       vehicle,
-      sections: [],
+      sections: applyUnitsForAir(seededSections, unitSystem),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [templateName]
+    [templateName, customer, vehicle, seededSections, unitSystem]
   );
 
   const {
@@ -195,33 +355,14 @@ export default function Maintenance50AirPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Scaffold: Air Measurements + Axles(Air) + … + Oil Change
-  useEffect(() => {
-    if (!session) return;
-    const titles = (session.sections ?? []).map((s) => (s.title || "").toLowerCase());
-    const needAirMeas = !titles.some((t) => t.includes("air system measurements"));
-    const needAxles = !titles.some((t) => t.includes("axles"));
-    const needOil = !titles.some((t) => t.includes("oil change"));
-
-    if (needAirMeas || needAxles || needOil) {
-      const next: InspectionSection[] = [
-        ...(needAirMeas ? [buildAirSystemMeasurementSection()] : []),
-        ...(needAxles ? [buildAxlesSectionAir(vehicleType)] : []),
-        ...(session.sections ?? []),
-        ...(needOil ? [buildOilChangeSection()] : []),
-      ];
-      updateInspection({ sections: applyUnitsForAir(next, unitSystem) as typeof session.sections });
-    }
-  }, [session, updateInspection, unitSystem, vehicleType]);
-
-  // Apply unit switch
+  // Unit switch → rewrite units on the fly
   useEffect(() => {
     if (!session?.sections?.length) return;
-    const next = applyUnitsForAir(session.sections, unitSystem);
-    updateInspection({ sections: next as typeof session.sections });
-  }, [unitSystem]); // eslint-disable-line react-hooks/exhaustive-deps
+    updateInspection({ sections: applyUnitsForAir(session.sections, unitSystem) as typeof session.sections });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unitSystem]);
 
-  // Voice
+  // Voice capture
   const onTranscript = async (text: string) => {
     setTranscript(text);
     const cmds: ParsedCommand[] = await interpretCommand(text);
@@ -305,6 +446,9 @@ export default function Maintenance50AirPage() {
     </div>
   );
 
+  const isCornerMeasurements = (t?: string) => (t || "").toLowerCase().includes("measurements");
+  const unitNote = unitSystem === "metric" ? "Enter mm / N·m / psi" : "Enter in / ft·lb / psi";
+
   return (
     <div className="px-4 pb-14">
       <HeaderCard />
@@ -342,93 +486,96 @@ export default function Maintenance50AirPage() {
         <div key={sectionIndex} className="mb-8 rounded-lg border border-zinc-800 bg-zinc-900 p-4">
           <SectionHeader
             title={section.title}
-            note={
-              /axles|air system/i.test(section.title)
-                ? (unitSystem === "metric" ? "Enter mm / N·m / psi" : "Enter in / ft·lb / psi")
-                : undefined
-            }
+            note={/measurements|axles|air system/i.test(section.title) ? unitNote : undefined}
           />
 
-          {section.items.map((item: InspectionItem, itemIndex: number) => {
-            const selected = (v: InspectionItemStatus) => item.status === v;
-            const onStatus = (v: InspectionItemStatus) => {
-              updateItem(sectionIndex, itemIndex, { status: v });
-              if ((v === "fail" || v === "recommend") && item.item) {
-                addQuoteLine({
-                  item: item.item,
-                  description: item.notes || "",
-                  status: v,
-                  value: item.value || "",
-                  notes: item.notes || "",
-                  laborTime: 0.5,
-                  laborRate: 0,
-                  parts: [],
-                  totalCost: 0,
-                  editable: true,
-                  source: "inspection",
-                  id: "",
-                  name: "",
-                  price: 0,
-                  partName: "",
-                });
-              }
-            };
+          {isCornerMeasurements(section.title) ? (
+            <CornerGrid sectionIndex={sectionIndex} items={section.items} updateItem={updateItem} />
+          ) : (
+            section.items.map((item: InspectionItem, itemIndex: number) => {
+              const selected = (v: InspectionItemStatus) => item.status === v;
+              const onStatus = (v: InspectionItemStatus) => {
+                updateItem(sectionIndex, itemIndex, { status: v });
+                if ((v === "fail" || v === "recommend") && item.item) {
+                  addQuoteLine({
+                    item: item.item,
+                    description: item.notes || "",
+                    status: v,
+                    value: item.value || "",
+                    notes: item.notes || "",
+                    laborTime: 0.5,
+                    laborRate: 0,
+                    parts: [],
+                    totalCost: 0,
+                    editable: true,
+                    source: "inspection",
+                    id: "",
+                    name: "",
+                    price: 0,
+                    partName: "",
+                  });
+                }
+              };
 
-            return (
-              <div key={itemIndex} className="mb-3 rounded border border-zinc-800 bg-zinc-950 p-3">
-                <div className="mb-2 flex items-start justify-between gap-3">
-                  <h3 className="min-w-0 truncate text-base font-medium text-white">{item.item}</h3>
-                  <div className="flex shrink-0 flex-wrap gap-1">
-                    {(["ok", "fail", "na", "recommend"] as InspectionItemStatus[]).map((val) => (
-                      <button
-                        key={val}
-                        onClick={() => onStatus(val)}
-                        className={
-                          "rounded px-2 py-1 text-xs " +
-                          (selected(val)
-                            ? val === "ok" ? "bg-green-600 text-white"
-                            : val === "fail" ? "bg-red-600 text-white"
-                            : val === "na" ? "bg-yellow-500 text-white"
-                            : "bg-blue-500 text-white"
-                            : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700")
-                        }
-                      >
-                        {val.toUpperCase()}
-                      </button>
-                    ))}
+              return (
+                <div key={itemIndex} className="mb-3 rounded border border-zinc-800 bg-zinc-950 p-3">
+                  <div className="mb-2 flex items-start justify-between gap-3">
+                    <h3 className="min-w-0 truncate text-base font-medium text-white">{item.item}</h3>
+                    <div className="flex shrink-0 flex-wrap gap-1">
+                      {(["ok", "fail", "na", "recommend"] as InspectionItemStatus[]).map((val) => (
+                        <button
+                          key={val}
+                          onClick={() => onStatus(val)}
+                          className={
+                            "rounded px-2 py-1 text-xs " +
+                            (selected(val)
+                              ? val === "ok"
+                                ? "bg-green-600 text-white"
+                                : val === "fail"
+                                ? "bg-red-600 text-white"
+                                : val === "na"
+                                ? "bg-yellow-500 text-white"
+                                : "bg-blue-500 text-white"
+                              : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700")
+                          }
+                        >
+                          {val.toUpperCase()}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
 
-                <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto]">
-                  <input
-                    value={(item.value as string) ?? ""}
-                    onChange={(e) => updateItem(sectionIndex, itemIndex, { value: e.target.value })}
-                    placeholder="Value"
-                    className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400"
-                  />
-                  <input
-                    value={item.unit ?? ""}
-                    onChange={(e) => updateItem(sectionIndex, itemIndex, { unit: e.target.value })}
-                    placeholder="Unit"
-                    className="sm:w-28 w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400"
-                  />
-                  <input
-                    value={item.notes ?? ""}
-                    onChange={(e) => updateItem(sectionIndex, itemIndex, { notes: e.target.value })}
-                    placeholder="Notes"
-                    className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400 sm:col-span-1 col-span-1"
-                  />
-                </div>
+                  <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto]">
+                    <input
+                      value={(item.value as string) ?? ""}
+                      onChange={(e) => updateItem(sectionIndex, itemIndex, { value: e.target.value })}
+                      placeholder="Value"
+                      className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400"
+                    />
+                    <input
+                      value={item.unit ?? ""}
+                      onChange={(e) => updateItem(sectionIndex, itemIndex, { unit: e.target.value })}
+                      placeholder="Unit"
+                      className="sm:w-28 w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400"
+                    />
+                    <input
+                      value={item.notes ?? ""}
+                      onChange={(e) => updateItem(sectionIndex, itemIndex, { notes: e.target.value })}
+                      placeholder="Notes"
+                      className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400 sm:col-span-1 col-span-1"
+                    />
+                  </div>
 
-                {(item.status === "fail" || item.status === "recommend") && (
-                  <PhotoUploadButton
-                    photoUrls={item.photoUrls || []}
-                    onChange={(urls: string[]) => updateItem(sectionIndex, itemIndex, { photoUrls: urls })}
-                  />
-                )}
-              </div>
-            );
-          })}
+                  {(item.status === "fail" || item.status === "recommend") && (
+                    <PhotoUploadButton
+                      photoUrls={item.photoUrls || []}
+                      onChange={(urls: string[]) => updateItem(sectionIndex, itemIndex, { photoUrls: urls })}
+                    />
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
       ))}
 

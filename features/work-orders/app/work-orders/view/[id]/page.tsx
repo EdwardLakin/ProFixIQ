@@ -35,116 +35,133 @@ const statusBadge: Record<string, string> = {
 
 export default function WorkOrderDetailPage() {
   const params = useParams();
-  const id = useMemo(() => {
+  const workOrderId = useMemo(() => {
     const raw = (params as Record<string, string | string[]>)?.id;
     return Array.isArray(raw) ? raw[0] : raw;
   }, [params]);
 
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
-  const [line, setLine] = useState<WorkOrderLine | null>(null);
-  const [vehicle, setVehicle] = useState<Vehicle | null>(null);
-  const [tech, setTech] = useState<Profile | null>(null);
-  const [customer, setCustomer] = useState<Customer | null>(null);
+
+  // Work order scope
   const [workOrder, setWorkOrder] = useState<WorkOrder | null>(null);
+  const [vehicle, setVehicle] = useState<Vehicle | null>(null);
+  const [customer, setCustomer] = useState<Customer | null>(null);
+  const [relatedJobs, setRelatedJobs] = useState<WorkOrderLine[]>([]);
+  const [tech, setTech] = useState<Profile | null>(null);
+
+  // Focused job (right panel)
+  const [line, setLine] = useState<WorkOrderLine | null>(null);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [techNotes, setTechNotes] = useState("");
+  const [updatingNotes, setUpdatingNotes] = useState(false);
+
+  // UI
   const [loading, setLoading] = useState(true);
   const [duration, setDuration] = useState("");
-  const [jobNotes, setJobNotes] = useState("");
-  const [updatingNotes, setUpdatingNotes] = useState(false);
   const [showDetails, setShowDetails] = useState(true);
 
+  // Modals
   const [isPartsModalOpen, setIsPartsModalOpen] = useState(false);
   const [isCauseModalOpen, setIsCauseModalOpen] = useState(false);
   const [isAddJobModalOpen, setIsAddJobModalOpen] = useState(false);
 
-  const [relatedJobs, setRelatedJobs] = useState<WorkOrderLine[]>([]);
-  const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-
   useEffect(() => {
     (async () => {
-      const { data: { user }, error } = await supabase.auth.getUser();
+      const { data: { user } } = await supabase.auth.getUser();
       if (user) setCurrentUserId(user.id);
-      else if (error) console.error("No user found", error);
     })();
   }, [supabase]);
 
   const fetchData = useCallback(async () => {
-    if (!id) return;
+    if (!workOrderId) return;
     setLoading(true);
 
-    const { data, error } = await supabase
-      .from("work_order_lines")
+    // 1) Load WORK ORDER
+    const { data: wo, error: woErr } = await supabase
+      .from("work_orders")
       .select("*")
-      .eq("id", id)
+      .eq("id", workOrderId)
       .single();
 
-    if (error) {
-      console.error("Failed to fetch line:", error);
+    if (woErr || !wo) {
+      console.error("Failed to fetch work order:", woErr);
       setLoading(false);
       return;
     }
+    setWorkOrder(wo);
 
-    setLine(data);
-    setActiveJobId(data.punched_out_at ? null : data.id);
-    setJobNotes(data.notes ?? ""); // <-- use `notes`
-
-    if (data.vehicle_id) {
+    // 2) Load VEHICLE & CUSTOMER off work order
+    if (wo.vehicle_id) {
       const { data: v } = await supabase
         .from("vehicles")
         .select("*")
-        .eq("id", data.vehicle_id)
+        .eq("id", wo.vehicle_id)
         .single();
       if (v) setVehicle(v);
+    } else {
+      setVehicle(null);
     }
 
-    if (data.assigned_to) {
+    if (wo.customer_id) {
+      const { data: cust } = await supabase
+        .from("customers")
+        .select("*")
+        .eq("id", wo.customer_id)
+        .single();
+      if (cust) setCustomer(cust);
+    } else {
+      setCustomer(null);
+    }
+
+    // 3) Load all JOBS for the work order
+    const { data: jobs } = await supabase
+      .from("work_order_lines")
+      .select("*")
+      .eq("work_order_id", wo.id)
+      .order("created_at", { ascending: true });
+
+    const jobList = jobs ?? [];
+    setRelatedJobs(jobList);
+
+    // 4) Choose a "focused" job to show in details panel
+    const pick =
+      jobList.find((j) => j.status === "in_progress") ||
+      jobList.find((j) => !j.punched_out_at) ||
+      jobList[0] ||
+      null;
+
+    setLine(pick ?? null);
+    setActiveJobId(pick && !pick.punched_out_at ? pick.id : null);
+    setTechNotes(pick?.notes ?? ""); // using `notes` per your change
+
+    // 5) Load assigned tech for focused job (if any)
+    if (pick?.assigned_to) {
       const { data: p } = await supabase
         .from("profiles")
         .select("*")
-        .eq("id", data.assigned_to)
+        .eq("id", pick.assigned_to)
         .single();
       if (p) setTech(p);
-    }
-
-    if (data.work_order_id) {
-      const { data: wo } = await supabase
-        .from("work_orders")
-        .select("*")
-        .eq("id", data.work_order_id)
-        .single();
-      if (wo) setWorkOrder(wo);
-
-      const { data: jobs } = await supabase
-        .from("work_order_lines")
-        .select("*")
-        .eq("work_order_id", data.work_order_id)
-        .order("created_at", { ascending: true });
-
-      setRelatedJobs(jobs ?? []);
-
-      if (wo?.customer_id) {
-        const { data: cust } = await supabase
-          .from("customers")
-          .select("*")
-          .eq("id", wo.customer_id)
-          .single();
-        if (cust) setCustomer(cust);
-      }
+    } else {
+      setTech(null);
     }
 
     setLoading(false);
-  }, [id, supabase]);
+  }, [supabase, workOrderId]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
+  // Refresh when other parts of the app announce a new/updated line
   useEffect(() => {
     const handler = () => fetchData();
     window.addEventListener("wo:line-added", handler);
     return () => window.removeEventListener("wo:line-added", handler);
   }, [fetchData]);
 
+  // Live timer for focused job
   useEffect(() => {
     const t = setInterval(() => {
       if (line?.punched_in_at && !line?.punched_out_at) {
@@ -154,6 +171,7 @@ export default function WorkOrderDetailPage() {
     return () => clearInterval(t);
   }, [line]);
 
+  // ----- Actions (focused job) -----
   const handlePunchIn = async (jobId: string) => {
     if (activeJobId) {
       toast.error("You are already punched in to a job.");
@@ -186,12 +204,12 @@ export default function WorkOrderDetailPage() {
     }
   };
 
-  const updateJobNotes = async () => {
+  const updateTechNotes = async () => {
     if (!line) return;
     setUpdatingNotes(true);
     const { error } = await supabase
       .from("work_order_lines")
-      .update({ notes: jobNotes }) // <-- update `notes`
+      .update({ notes: techNotes }) // ← use `notes`
       .eq("id", line.id);
     if (!error) toast.success("Notes updated");
     setUpdatingNotes(false);
@@ -213,25 +231,24 @@ export default function WorkOrderDetailPage() {
   };
 
   const handleDownloadQuote = async () => {
-    if (!line?.work_order_id || !line.vehicle_id) {
+    if (!workOrder?.id || !vehicle?.id) {
       toast.error("Missing work order or vehicle info");
       return;
     }
 
-    const { data: techSuggested, error: tsErr } = await supabase
+    // Prefer tech-suggested; otherwise all non-completed
+    const { data: techSuggested } = await supabase
       .from("work_order_lines")
       .select("*")
-      .eq("work_order_id", line.work_order_id)
+      .eq("work_order_id", workOrder.id)
       .eq("job_type", "tech-suggested");
 
     let jobs = techSuggested ?? [];
-    if (tsErr) console.warn("tech-suggested fetch error:", tsErr);
-
     if (!jobs.length) {
       const { data: fallback, error: fbErr } = await supabase
         .from("work_order_lines")
         .select("*")
-        .eq("work_order_id", line.work_order_id)
+        .eq("work_order_id", workOrder.id)
         .neq("status", "completed");
       if (fbErr) {
         toast.error("Failed to fetch jobs for quote.");
@@ -245,8 +262,8 @@ export default function WorkOrderDetailPage() {
       return;
     }
 
-    const pdfBytes = await generateQuotePDFBytes(jobs, jobs[0]?.vehicle_id ?? "");
-    const fileName = `quote-${line.work_order_id}.pdf`;
+    const pdfBytes = await generateQuotePDFBytes(jobs, vehicle.id);
+    const fileName = `quote-${workOrder.id}.pdf`;
 
     const { error: uploadError } = await supabase.storage
       .from("quotes")
@@ -268,7 +285,7 @@ export default function WorkOrderDetailPage() {
     await supabase
       .from("work_orders")
       .update({ quote_url: publicUrl })
-      .eq("id", line.work_order_id);
+      .eq("id", workOrder.id);
 
     if (publicUrl) {
       setWorkOrder((prev) => (prev ? { ...prev, quote_url: publicUrl } : prev));
@@ -277,7 +294,7 @@ export default function WorkOrderDetailPage() {
     const { data: wo } = await supabase
       .from("work_orders")
       .select("id, customer:customer_id (email, full_name)")
-      .eq("id", line.work_order_id)
+      .eq("id", workOrder.id)
       .single<{
         id: string;
         customer: { email: string | null; full_name: string | null } | null;
@@ -291,7 +308,7 @@ export default function WorkOrderDetailPage() {
         method: "POST",
         body: JSON.stringify({
           email: customerEmail,
-          subject: `Quote for Work Order #${line.work_order_id}`,
+          subject: `Quote for Work Order #${workOrder.id}`,
           html: `<p>Hi ${customerName || ""},</p>
                  <p>Your quote is ready: <a href="${publicUrl}" target="_blank">View Quote PDF</a></p>`,
           summaryHtml: `<h2>Quote for Work Order</h2><p><a href="${publicUrl}">View PDF</a></p>`,
@@ -302,9 +319,9 @@ export default function WorkOrderDetailPage() {
 
       await supabase.from("email_logs").insert({
         recipient: customerEmail,
-        subject: `Quote for Work Order #${line.work_order_id}`,
+        subject: `Quote for Work Order #${workOrder.id}`,
         quote_url: publicUrl,
-        work_order_id: line.work_order_id,
+        work_order_id: workOrder.id,
       });
     }
 
@@ -326,9 +343,7 @@ export default function WorkOrderDetailPage() {
               Work Order #{workOrder.id.slice(0, 8)}
             </h2>
             <span className="text-xs text-neutral-500">
-              {workOrder.created_at
-                ? format(new Date(workOrder.created_at), "PPpp")
-                : "—"}
+              {workOrder.created_at ? format(new Date(workOrder.created_at), "PPpp") : "—"}
             </span>
           </div>
 
@@ -383,8 +398,7 @@ export default function WorkOrderDetailPage() {
             <div className="mt-2 text-sm text-neutral-600 dark:text-neutral-300">
               {relatedJobs.length} jobs ·{" "}
               {relatedJobs.filter((j) => j.status === "awaiting").length} awaiting ·{" "}
-              {relatedJobs.filter((j) => j.status === "in_progress").length} in
-              progress ·{" "}
+              {relatedJobs.filter((j) => j.status === "in_progress").length} in progress ·{" "}
               {relatedJobs.filter((j) => j.status === "on_hold").length} on hold ·{" "}
               {relatedJobs.filter((j) => j.status === "completed").length} completed
             </div>
@@ -398,33 +412,22 @@ export default function WorkOrderDetailPage() {
             className="text-sm text-orange-500 mb-2"
             onClick={() => setShowDetails((prev) => !prev)}
           >
-            {showDetails
-              ? "Hide Vehicle & Customer Info"
-              : "Show Vehicle & Customer Info"}
+            {showDetails ? "Hide Vehicle & Customer Info" : "Show Vehicle & Customer Info"}
           </button>
           {showDetails && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <h2 className="font-semibold mb-1">Vehicle Info</h2>
-                <p>
-                  {(vehicle.year ?? "").toString()} {vehicle.make ?? ""} {vehicle.model ?? ""}
-                </p>
+                <p>{(vehicle.year ?? "").toString()} {vehicle.make ?? ""} {vehicle.model ?? ""}</p>
                 <p>VIN: {vehicle.vin ?? "—"}</p>
                 <p>Mileage: {vehicle.mileage ?? "—"}</p>
                 <p>Plate: {vehicle.license_plate ?? "—"}</p>
               </div>
               <div>
                 <h2 className="font-semibold mb-1">Customer Info</h2>
-                <p>
-                  {[customer?.first_name ?? "", customer?.last_name ?? ""]
-                    .filter(Boolean)
-                    .join(" ") || "—"}
-                </p>
+                <p>{[customer?.first_name ?? "", customer?.last_name ?? ""].filter(Boolean).join(" ") || "—"}</p>
                 <p>{customer?.phone ?? "—"}</p>
-                {(customer?.street ||
-                  customer?.city ||
-                  customer?.province ||
-                  customer?.postal_code) ? (
+                {(customer?.street || customer?.city || customer?.province || customer?.postal_code) ? (
                   <p>
                     {[customer?.street, customer?.city, customer?.province, customer?.postal_code]
                       .filter(Boolean)
@@ -484,29 +487,13 @@ export default function WorkOrderDetailPage() {
           </div>
 
           <div className="mt-4 p-4 border rounded bg-white dark:bg-gray-900">
-            <p>
-              <strong>Complaint:</strong> {line.complaint || "—"}
-            </p>
-            <p>
-              <strong>Status:</strong> {line.status ?? "—"}
-            </p>
-            <p>
-              <strong>Live Timer:</strong> {duration}
-            </p>
-            <p>
-              <strong>Punched In:</strong>{" "}
-              {line.punched_in_at ? format(new Date(line.punched_in_at), "PPpp") : "—"}
-            </p>
-            <p>
-              <strong>Punched Out:</strong>{" "}
-              {line.punched_out_at ? format(new Date(line.punched_out_at), "PPpp") : "—"}
-            </p>
-            <p>
-              <strong>Labor Time:</strong> {line.labor_time ?? "—"} hrs
-            </p>
-            <p>
-              <strong>Hold Reason:</strong> {line.hold_reason || "—"}
-            </p>
+            <p><strong>Complaint:</strong> {line.complaint || "—"}</p>
+            <p><strong>Status:</strong> {line.status ?? "—"}</p>
+            <p><strong>Live Timer:</strong> {duration}</p>
+            <p><strong>Punched In:</strong> {line.punched_in_at ? format(new Date(line.punched_in_at), "PPpp") : "—"}</p>
+            <p><strong>Punched Out:</strong> {line.punched_out_at ? format(new Date(line.punched_out_at), "PPpp") : "—"}</p>
+            <p><strong>Labor Time:</strong> {line.labor_time ?? "—"} hrs</p>
+            <p><strong>Hold Reason:</strong> {line.hold_reason || "—"}</p>
           </div>
 
           <div className="mt-2">
@@ -523,9 +510,9 @@ export default function WorkOrderDetailPage() {
             <textarea
               className="w-full border p-2 rounded"
               rows={3}
-              value={jobNotes}
-              onChange={(e) => setJobNotes(e.target.value)}
-              onBlur={updateJobNotes}
+              value={techNotes}
+              onChange={(e) => setTechNotes(e.target.value)}
+              onBlur={updateTechNotes}
               disabled={updatingNotes}
             />
           </div>
@@ -542,10 +529,8 @@ export default function WorkOrderDetailPage() {
                   repair: "border-l-4 border-green-500",
                   "tech-suggested": "border-l-4 border-blue-400",
                 };
-
                 const jobBadge =
-                  statusBadge[job.status as keyof typeof statusBadge] ??
-                  "bg-gray-300 text-gray-800";
+                  statusBadge[job.status as keyof typeof statusBadge] ?? "bg-gray-300 text-gray-800";
 
                 return (
                   <div
@@ -554,9 +539,7 @@ export default function WorkOrderDetailPage() {
                   >
                     <div className="flex justify-between items-center">
                       <div>
-                        <p className="font-semibold">
-                          {job.complaint || "No complaint"}
-                        </p>
+                        <p className="font-semibold">{job.complaint || "No complaint"}</p>
                         <p className="text-xs text-gray-500">
                           {job.job_type || "unknown"} | {job.status ?? "—"}
                         </p>
@@ -583,12 +566,12 @@ export default function WorkOrderDetailPage() {
             </div>
           </div>
 
-          {isPartsModalOpen && line?.work_order_id && (
+          {isPartsModalOpen && workOrder?.id && line && (
             <PartsRequestModal
               isOpen={isPartsModalOpen}
               onClose={() => setIsPartsModalOpen(false)}
               jobId={line.id}
-              workOrderId={line.work_order_id}
+              workOrderId={workOrder.id}
               requested_by={tech?.id || "system"}
             />
           )}
@@ -602,12 +585,12 @@ export default function WorkOrderDetailPage() {
             />
           )}
 
-          {isAddJobModalOpen && line?.work_order_id && line?.vehicle_id && (
+          {isAddJobModalOpen && workOrder?.id && vehicle?.id && (
             <AddJobModal
               isOpen={isAddJobModalOpen}
               onClose={() => setIsAddJobModalOpen(false)}
-              workOrderId={line.work_order_id}
-              vehicleId={line.vehicle_id}
+              workOrderId={workOrder.id}
+              vehicleId={vehicle.id}
               techId={tech?.id || "system"}
               onJobAdded={fetchData}
             />
