@@ -1,5 +1,3 @@
-
-
 /** ---------- Item / Section ---------- */
 export type InspectionItemStatus = "ok" | "fail" | "na" | "recommend";
 export type BrakeType = "air" | "hydraulic";
@@ -260,6 +258,11 @@ export interface InspectionSession {
   /** Template meta */
   templateId?: string | null;
   templateName?: string | null;
+  /** Legacy alias still used by some pages */
+  templateitem?: string | null;
+
+  /** Selected brake system for rendering/units */
+  brakeType?: BrakeType;
 
   location?: string | null;
 

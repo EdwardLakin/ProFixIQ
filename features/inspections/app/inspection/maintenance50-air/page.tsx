@@ -215,7 +215,10 @@ function applyUnitsHydraulic(
 type SRConstructor = new () => SpeechRecognition;
 function resolveSR(): SRConstructor | undefined {
   if (typeof window === "undefined") return undefined;
-  const w = window as any;
+  const w = window as unknown as {
+    SpeechRecognition?: SRConstructor;
+    webkitSpeechRecognition?: SRConstructor;
+  };
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? undefined;
 }
 
@@ -281,8 +284,8 @@ export default function Maintenance50Page() {
       quote: [],
       customer,
       vehicle,
-      brakeType, // <— persist in session
-      sections: [],
+      brakeType, // persist in session
+      sections: [] as InspectionSection[],
     }),
     [templateName, brakeType]
   );
@@ -300,7 +303,7 @@ export default function Maintenance50Page() {
   } = useInspectionSession(initialSession);
 
   // Helpers
-  const isAirAxles = (t?: string) => /axles.*air/i.test((t || ""));
+  const isAirAxles = (t?: string) => /axles.*air/i.test(t || "");
   const isMeasurements = (t?: string) => (t || "").toLowerCase().includes("measurements");
   const isHydraulicMeasurements = (t?: string) => (t || "").toLowerCase().includes("hydraulic");
 
@@ -318,8 +321,8 @@ export default function Maintenance50Page() {
         buildOilChangeSection(),
       ];
       updateInspection({
-        brakeType: bt as any,
-        sections: applyUnitsAir(seeded, unitSystem) as typeof session.sections,
+        brakeType: bt,
+        sections: applyUnitsAir(seeded, unitSystem),
       });
     } else {
       const seeded: InspectionSection[] = [
@@ -331,8 +334,8 @@ export default function Maintenance50Page() {
         buildOilChangeSection(),
       ];
       updateInspection({
-        brakeType: bt as any,
-        sections: applyUnitsHydraulic(seeded, unitSystem) as typeof session.sections,
+        brakeType: bt,
+        sections: applyUnitsHydraulic(seeded, unitSystem),
       });
     }
   };
@@ -358,7 +361,7 @@ export default function Maintenance50Page() {
       (session.brakeType as BrakeType) === "air"
         ? applyUnitsAir(session.sections, unitSystem)
         : applyUnitsHydraulic(session.sections, unitSystem);
-    updateInspection({ sections: next as typeof session.sections });
+    updateInspection({ sections: next });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unitSystem]);
 
@@ -410,7 +413,7 @@ export default function Maintenance50Page() {
       idx >= 0 ? session.sections.map((s, i) => (i === idx ? rebuilt : s)) : [rebuilt, ...session.sections];
 
     updateInspection({
-      sections: applyUnitsAir(sections, unitSystem) as typeof session.sections,
+      sections: applyUnitsAir(sections, unitSystem),
     });
   };
 
