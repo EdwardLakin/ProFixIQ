@@ -28,7 +28,22 @@ import { InspectionFormCtx } from "@inspections/lib/inspection/ui/InspectionForm
 import { SaveInspectionButton } from "@inspections/components/inspection/SaveInspectionButton";
 import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
 
-/* --------------------------- Builders (Air) --------------------------- */
+/* --------------------------- Section Builders --------------------------- */
+
+function buildMeasurementsAir(): InspectionSection {
+  return {
+    title: "Measurements (Air)",
+    items: [
+      { item: "Air Build Time (90→120 psi)", unit: "sec", value: "" },
+      { item: "Air Leak Rate @ Gov Cut-Out", unit: "psi/min", value: "" },
+      { item: "Low Air Warning Activates", unit: "psi", value: "" },
+      { item: "Governor Cut-In", unit: "psi", value: "" },
+      { item: "Governor Cut-Out", unit: "psi", value: "" },
+      { item: "Compressor Cut-Out Ref", unit: "psi", value: "" },
+      { item: "Torque reference", unit: "ft·lb", value: "" },
+    ],
+  };
+}
 
 function buildOilChangeSection(): InspectionSection {
   return {
@@ -45,19 +60,51 @@ function buildOilChangeSection(): InspectionSection {
   };
 }
 
-function buildAirSystemMeasurementSection(): InspectionSection {
-  return {
-    title: "Air System Measurements",
-    items: [
-      { item: "Air Build Time (90→120 psi)", unit: "sec", value: "" },
-      { item: "Air Leak Rate @ Gov Cut-Out", unit: "psi/min", value: "" },
-      { item: "Low Air Warning Activates", unit: "psi", value: "" },
-      { item: "Governor Cut-In", unit: "psi", value: "" },
-      { item: "Governor Cut-Out", unit: "psi", value: "" },
-      { item: "Compressor Cut-Out Ref", unit: "psi", value: "" },
-      { item: "Torque reference", unit: "ft·lb", value: "" },
-    ],
-  };
+/* --------------------------- Unit Application --------------------------- */
+/** Mirror Maintenance 50 (Hydraulic): make builder unit-agnostic and apply here */
+function applyUnitsAir(
+  sections: InspectionSection[],
+  system: "metric" | "imperial",
+): InspectionSection[] {
+  const len = system === "metric" ? "mm" : "in";
+  const torque = system === "metric" ? "N·m" : "ft·lb";
+
+  return sections.map((sec) => {
+    const title = (sec.title || "").toLowerCase();
+
+    // Measurements (Air): psi/sec remain; torque flips
+    if (title.includes("measurements")) {
+      const items = sec.items.map((it) => {
+        const l = (it.item || "").toLowerCase();
+        if (l.includes("torque")) return { ...it, unit: torque };
+        return it; // keep psi / sec / psi/min as-is
+      });
+      return { ...sec, items };
+    }
+
+    // Axles (Air): set units by metric label
+    if (title.includes("axles")) {
+      const items = sec.items.map((it) => {
+        const l = (it.item || "").toLowerCase();
+        if (
+          l.includes("tread") ||
+          l.includes("lining") ||
+          l.includes("shoe") ||
+          l.includes("travel") ||
+          l.includes("drum") ||
+          l.includes("rotor")
+        ) {
+          return { ...it, unit: len };
+        }
+        if (l.includes("tire pressure")) return { ...it, unit: "psi" };
+        if (l.includes("torque")) return { ...it, unit: torque };
+        return it;
+      });
+      return { ...sec, items };
+    }
+
+    return sec;
+  });
 }
 
 /* -------------------------------- Page -------------------------------- */
@@ -108,9 +155,7 @@ export default function Maintenance50AirPage() {
     (searchParams.get("vehicle_type") as "truck" | "bus" | "trailer") || "truck";
 
   // axle labels state (supports up to 5)
-  const [axleLabels, setAxleLabels] = useState<string[]>(
-    ["Steer 1", "Drive 1", "Drive 2"] // defaults for a tractor
-  );
+  const [axleLabels, setAxleLabels] = useState<string[]>(["Steer 1", "Drive 1", "Drive 2"]);
 
   const initialSession = useMemo(
     () => ({
@@ -125,7 +170,7 @@ export default function Maintenance50AirPage() {
       vehicle,
       sections: [],
     }),
-    [templateName],
+    [templateName]
   );
 
   const {
@@ -140,13 +185,13 @@ export default function Maintenance50AirPage() {
     addQuoteLine,
   } = useInspectionSession(initialSession);
 
-  // Start session once
+  // Start once
   useEffect(() => {
     startSession(initialSession);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Scaffold once: Air Measurements + Axles(Air) from labels + Oil Change
+  // Seed sections once in Maintenance-50 order: Measurements → Axles → Oil
   useEffect(() => {
     if (!session) return;
     if ((session.sections?.length ?? 0) > 0) return;
@@ -157,27 +202,46 @@ export default function Maintenance50AirPage() {
       maxAxles: 5,
     });
 
-    const next: InspectionSection[] = [
-      buildAirSystemMeasurementSection(),
+    const seeded: InspectionSection[] = [
+      buildMeasurementsAir(),
       axlesSection,
       buildOilChangeSection(),
     ];
-    updateInspection({ sections: next as typeof session.sections });
+
+    updateInspection({
+      sections: applyUnitsAir(seeded, unitSystem) as typeof session.sections,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
-  // Unit hint for axle metrics
+  // Re-apply units when toggled
+  useEffect(() => {
+    if (!session?.sections?.length) return;
+    updateInspection({
+      sections: applyUnitsAir(session.sections, unitSystem) as typeof session.sections,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unitSystem]);
+
+  // Unit hint for AxlesCornerGrid
   const unitHint = (label: string) => {
     const l = label.toLowerCase();
-    if (l.includes("tread") || l.includes("lining") || l.includes("shoe")) return unitSystem === "metric" ? "mm" : "in";
-    if (l.includes("travel")) return unitSystem === "metric" ? "mm" : "in";
+    if (
+      l.includes("tread") ||
+      l.includes("lining") ||
+      l.includes("shoe") ||
+      l.includes("travel") ||
+      l.includes("rotor") ||
+      l.includes("drum")
+    ) {
+      return unitSystem === "metric" ? "mm" : "in";
+    }
     if (l.includes("tire pressure")) return "psi";
     if (l.includes("torque")) return unitSystem === "metric" ? "N·m" : "ft·lb";
-    if (l.includes("rotor") || l.includes("drum")) return unitSystem === "metric" ? "mm" : "in";
     return "";
   };
 
-  // Add axle (up to 5). Order preference: Steer 2 → Drive 3 → Trailer 1 → Trailer 2 → Trailer 3
+  // Add axle (up to 5)
   const nextAxleLabel = (current: string[]): string | null => {
     const want: string[] = ["Steer 2", "Drive 3", "Trailer 1", "Trailer 2", "Trailer 3"];
     for (const cand of want) if (!current.includes(cand)) return cand;
@@ -194,19 +258,18 @@ export default function Maintenance50AirPage() {
     const labels = [...axleLabels, newLabel].slice(0, 5);
     setAxleLabels(labels);
 
-    // Rebuild just the Axles (Air) section
+    // Rebuild Axles (Air) in place
     const rebuilt = buildAirAxleSection({ vehicleType, labels, maxAxles: 5 });
-
     const idx = session.sections.findIndex((s) => s.title === "Axles (Air)");
     const sections =
-      idx >= 0
-        ? session.sections.map((s, i) => (i === idx ? rebuilt : s))
-        : [rebuilt, ...session.sections];
+      idx >= 0 ? session.sections.map((s, i) => (i === idx ? rebuilt : s)) : [rebuilt, ...session.sections];
 
-    updateInspection({ sections: sections as typeof session.sections });
+    updateInspection({
+      sections: applyUnitsAir(sections, unitSystem) as typeof session.sections,
+    });
   };
 
-  // Voice
+  // Voice handling
   const onTranscript = async (text: string) => {
     setTranscript(text);
     const cmds: ParsedCommand[] = await interpretCommand(text);
@@ -243,16 +306,10 @@ export default function Maintenance50AirPage() {
     return <div className="text-white p-4">Loading inspection…</div>;
   }
 
-  const SectionHeader = ({
-    title,
-    note,
-    right,
-  }: {
-    title: string;
-    note?: string;
-    right?: React.ReactNode;
-  }) => (
-    <div className="mb-2 flex items-end justify-between gap-2">
+  const isMeasurements = (t?: string) => (t || "").toLowerCase().includes("measurements");
+
+  const SectionHeader = ({ title, note, right }: { title: string; note?: string; right?: React.ReactNode }) => (
+    <div className="mb-2 flex items	end justify-between gap-2">
       <h2 className="text-xl font-semibold text-orange-400">{title}</h2>
       <div className="flex items-center gap-2">
         {note ? <span className="text-xs text-zinc-400">{note}</span> : null}
@@ -266,17 +323,23 @@ export default function Maintenance50AirPage() {
       {/* Controls */}
       <div className="mb-4 flex flex-wrap items-center justify-center gap-3">
         <StartListeningButton isListening={isListening} setIsListening={setIsListening} onStart={startListening} />
-
         <PauseResumeButton
           isPaused={isPaused}
           isListening={isListening}
           setIsListening={setIsListening}
-          onPause={() => { setIsPaused(true); pauseSession(); recognitionRef.current?.stop(); }}
-          onResume={() => { setIsPaused(false); resumeSession(); startListening(); }}
+          onPause={() => {
+            setIsPaused(true);
+            pauseSession();
+            recognitionRef.current?.stop();
+          }}
+          onResume={() => {
+            setIsPaused(false);
+            resumeSession();
+            startListening();
+          }}
           recognitionInstance={recognitionRef.current}
           setRecognitionRef={(inst) => (recognitionRef.current = inst)}
         />
-
         <button
           onClick={() => setUnitSystem(unitSystem === "metric" ? "imperial" : "metric")}
           className="rounded bg-zinc-700 px-3 py-2 text-white hover:bg-zinc-600"
@@ -295,15 +358,19 @@ export default function Maintenance50AirPage() {
       {/* Sections */}
       <InspectionFormCtx.Provider value={{ updateItem }}>
         {session.sections.map((section: InspectionSection, sectionIndex: number) => {
-          const isAxles = section.title === "Axles (Air)";
-          const isAirSys = /air system/i.test(section.title);
+          const title = section.title || "";
+          const isAxles = title === "Axles (Air)";
 
           return (
             <div key={sectionIndex} className="mb-8 rounded-lg border border-zinc-800 bg-zinc-900 p-4">
               <SectionHeader
-                title={section.title}
+                title={title}
                 note={
-                  isAxles || isAirSys
+                  isMeasurements(title)
+                    ? unitSystem === "metric"
+                      ? "Enter mm / N·m / psi"
+                      : "Enter in / ft·lb / psi"
+                    : isAxles
                     ? unitSystem === "metric"
                       ? "Enter mm / N·m / psi"
                       : "Enter in / ft·lb / psi"
@@ -323,12 +390,7 @@ export default function Maintenance50AirPage() {
               />
 
               {isAxles ? (
-                <AxlesCornerGrid
-                  sectionIndex={sectionIndex}
-                  items={section.items}
-                  /* updateItem comes from context */
-                  unitHint={unitHint}
-                />
+                <AxlesCornerGrid sectionIndex={sectionIndex} items={section.items} unitHint={unitHint} />
               ) : (
                 section.items.map((item: InspectionItem, itemIndex: number) => {
                   const selected = (v: InspectionItemStatus) => item.status === v;
