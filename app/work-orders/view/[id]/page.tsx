@@ -1,4 +1,8 @@
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export { default } from "@/features/work-orders/app/work-orders/view/[id]/page";
+import WorkOrderDetailClient from "@work-orders/app/work-orders/view/[id]/WorkOrderDetailClient";
+
+export default function Page({ params }: { params: { id: string } }) {
+  return <WorkOrderDetailClient id={params.id} />;
+}

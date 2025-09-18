@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
 import { format, formatDistanceStrict } from "date-fns";
 import { toast } from "sonner";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
@@ -33,13 +32,8 @@ const statusBadge: Record<string, string> = {
   completed: "bg-green-100 text-green-800",
 };
 
-export default function WorkOrderDetailPage() {
-  const params = useParams();
-  const workOrderId = useMemo(() => {
-    const raw = (params as Record<string, string | string[]>)?.id;
-    return Array.isArray(raw) ? raw[0] : raw;
-  }, [params]);
-
+export default function WorkOrderDetailClient({ id }: { id: string }) {
+  const workOrderId = id;
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   // Work order scope

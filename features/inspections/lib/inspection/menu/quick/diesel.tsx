@@ -1,50 +1,49 @@
 "use client";
 
-import { memo } from "react";
+import React, { memo, useContext } from "react";
 import { InspectionFormCtx } from "@inspections/lib/inspection/ui/InspectionFormContext";
-import type { InspectionItem, InspectionItemStatus, InspectionSection } from "@inspections/lib/inspection/types";
+import type {
+  InspectionItem,
+  InspectionItemStatus,
+  InspectionSection,
+} from "@inspections/lib/inspection/types";
+
+// Give the context a type so TypeScript knows updateItem exists
+type InspectionFormCtxType = {
+  updateItem: (
+    sectionIndex: number,
+    itemIndex: number,
+    changes: Partial<InspectionItem>
+  ) => void;
+} | null;
 
 /** Build a single “basic quick inspection” section for DIESEL engines */
 export function buildDieselQuickSection(): InspectionSection {
   const items: InspectionItem[] = [
-    // ---- Fluids (enter a value like "filled" when topped up) ----
     { item: "Engine Oil Level", value: "", unit: "", notes: "" },
     { item: "Coolant Level", value: "", unit: "", notes: "" },
     { item: "Power Steering Fluid Level", value: "", unit: "", notes: "" },
     { item: "Brake Fluid Level", value: "", unit: "", notes: "" },
     { item: "Windshield Washer Fluid Level", value: "", unit: "", notes: "" },
     { item: "Transmission Fluid Level (if applicable)", value: "", unit: "", notes: "" },
-
-    // ---- Diesel-specific quick checks ----
     { item: "DEF Level (if equipped)", value: "", unit: "", notes: "" },
     { item: "Fuel Water Separator (drain if needed)", value: "", unit: "", notes: "" },
-
-    // ---- Engine bay ----
     { item: "Engine Air Filter Condition", value: "", unit: "", notes: "" },
     { item: "Battery/Batteries State & Connections", value: "", unit: "", notes: "" },
-
-    // ---- Tires ----
     { item: "LF Tire Pressure", value: "", unit: "psi", notes: "" },
     { item: "RF Tire Pressure", value: "", unit: "psi", notes: "" },
     { item: "LR Tire Pressure", value: "", unit: "psi", notes: "" },
     { item: "RR Tire Pressure", value: "", unit: "psi", notes: "" },
-
     { item: "LF Tread Depth", value: "", unit: "mm", notes: "" },
     { item: "RF Tread Depth", value: "", unit: "mm", notes: "" },
     { item: "LR Tread Depth (Outer)", value: "", unit: "mm", notes: "" },
     { item: "LR Tread Depth (Inner)", value: "", unit: "mm", notes: "" },
     { item: "RR Tread Depth (Outer)", value: "", unit: "mm", notes: "" },
     { item: "RR Tread Depth (Inner)", value: "", unit: "mm", notes: "" },
-
-    // ---- Electrical & visibility ----
     { item: "Horn Operation", value: "", unit: "", notes: "" },
     { item: "Wiper Blade Condition", value: "", unit: "", notes: "" },
     { item: "Washer Spray Operation", value: "", unit: "", notes: "" },
-
-    // ---- Lighting bundle ----
     { item: "Exterior Lights (HL/Turn/Brake/Reverse/Markers)", value: "", unit: "", notes: "" },
-
-    // ---- Single notes for the whole section ----
     { item: "Quick Inspection Notes", value: "", unit: "", notes: "" },
   ];
 
@@ -57,13 +56,17 @@ export const QuickCheckDiesel = memo(function QuickCheckDiesel(props: {
   items: InspectionItem[];
 }) {
   const { sectionIndex, items } = props;
-  const ctx = (globalThis as any).__INSPECTION_FORM_CTX__ ?? null;
-  const form = ctx || undefined;
 
-  const { updateItem } = form ?? React.useContext(InspectionFormCtx);
+  const form = useContext(InspectionFormCtx) as InspectionFormCtxType;
+  if (!form) {
+    return <div className="text-red-400">Inspection form context not found</div>;
+  }
+
+  const { updateItem } = form;
 
   const buttons: InspectionItemStatus[] = ["ok", "fail", "na", "recommend"];
-  const findIndex = (label: string): number => items.findIndex((i) => (i.item ?? "") === label);
+  const findIndex = (label: string): number =>
+    items.findIndex((i) => (i.item ?? "") === label);
   const notesIdx = findIndex("Quick Inspection Notes");
 
   const cardRows = items
@@ -105,13 +108,17 @@ export const QuickCheckDiesel = memo(function QuickCheckDiesel(props: {
               <input
                 className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white"
                 value={String((it.value ?? "") as string)}
-                onChange={(e) => updateItem(sectionIndex, idx, { value: e.target.value })}
+                onChange={(e) =>
+                  updateItem(sectionIndex, idx, { value: e.target.value })
+                }
                 placeholder="value (e.g., filled, 32)"
               />
               <input
                 className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white"
                 value={String((it.unit ?? "") as string)}
-                onChange={(e) => updateItem(sectionIndex, idx, { unit: e.target.value })}
+                onChange={(e) =>
+                  updateItem(sectionIndex, idx, { unit: e.target.value })
+                }
                 placeholder="unit"
               />
             </div>
@@ -125,7 +132,9 @@ export const QuickCheckDiesel = memo(function QuickCheckDiesel(props: {
           <textarea
             className="h-24 w-full resize-y rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white"
             value={String((items[notesIdx].notes ?? "") as string)}
-            onChange={(e) => updateItem(sectionIndex, notesIdx, { notes: e.target.value })}
+            onChange={(e) =>
+              updateItem(sectionIndex, notesIdx, { notes: e.target.value })
+            }
             placeholder="Any recommendations or comments…"
           />
         </div>
