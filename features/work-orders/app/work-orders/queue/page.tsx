@@ -68,6 +68,9 @@ export default async function QueuePage() {
     ? wos.filter((wo) => (linesByWo.get(wo.id) ?? []).some((l) => l.assigned_to === user.id))
     : wos;
 
+  // DEBUG: which WOs are being filtered out by the tech-only view?
+  const filteredOut: WO[] = isTech ? wos.filter((wo) => !visibleWos.some((v) => v.id === wo.id)) : [];
+
   const counts: Counts = { awaiting: 0, in_progress: 0, on_hold: 0, completed: 0 };
   for (const wo of visibleWos) counts[rollupStatus(linesByWo.get(wo.id) ?? [])] += 1;
 
@@ -76,6 +79,40 @@ export default async function QueuePage() {
   return (
     <div className="p-6 text-white">
       <h1 className="text-2xl font-blackops text-orange-400 mb-4">Job Queue</h1>
+
+      {/* DEBUG BLOCKS */}
+      <div className="mb-4 rounded border border-neutral-800 bg-neutral-900 p-3 text-sm">
+        <div className="font-semibold text-orange-400 mb-1">Debug</div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div className="space-y-1">
+            <div><span className="text-neutral-400">User:</span> {user.id}</div>
+            <div><span className="text-neutral-400">Role:</span> {profile.role ?? "—"}</div>
+            <div><span className="text-neutral-400">Shop:</span> {profile.shop_id ?? "—"}</div>
+          </div>
+          <div className="space-y-1">
+            <div><span className="text-neutral-400">Fetched WOs (RLS):</span> {wos.length}</div>
+            <div><span className="text-neutral-400">Fetched Lines:</span> {lines?.length ?? 0}</div>
+            <div><span className="text-neutral-400">Visible WOs:</span> {visibleWos.length}{isTech ? ` (tech filter on)` : ""}</div>
+            {isTech && <div><span className="text-neutral-400">Filtered Out:</span> {filteredOut.length}</div>}
+          </div>
+        </div>
+
+        {isTech && filteredOut.length > 0 && (
+          <div className="mt-2">
+            <div className="text-neutral-400 mb-1">Filtered-out WO ids (no lines assigned to this user):</div>
+            <div className="flex flex-wrap gap-1">
+              {filteredOut.slice(0, 12).map((wo) => (
+                <span key={wo.id} className="text-xs rounded border border-neutral-700 px-2 py-0.5">
+                  {wo.id.slice(0, 8)}{wo.created_at ? ` • ${new Date(wo.created_at).toLocaleDateString()}` : ""}
+                </span>
+              ))}
+              {filteredOut.length > 12 && (
+                <span className="text-xs text-neutral-400">+{filteredOut.length - 12} more…</span>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       <div className="grid gap-3 md:grid-cols-4 mb-6">
         {statuses.map((s) => (
