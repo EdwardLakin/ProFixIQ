@@ -40,11 +40,18 @@ function useMenuData() {
     { name: "Brake Pads", laborHours: 1.2, partCost: 90, jobType: "repair" },
     { name: "Rotors", laborHours: 1.3, partCost: 140, jobType: "repair" },
     { name: "Oil Change (Gas)", laborHours: 0.8, partCost: 40, jobType: "maintenance" },
+    // NEW: Diesel oil change for quick add
+    { name: "Oil Change (Diesel)", laborHours: 1.2, partCost: 65, jobType: "maintenance", notes: "Higher capacity oil & filter" },
+
     { name: "Air Filter", laborHours: 0.3, partCost: 25, jobType: "maintenance" },
     { name: "Coolant Flush", laborHours: 1.2, partCost: 80, jobType: "maintenance" },
     { name: "Battery Replacement", laborHours: 0.5, partCost: 120, jobType: "maintenance" },
     { name: "Tire Rotation", laborHours: 0.6, jobType: "maintenance" },
     { name: "Alignment", laborHours: 1.2, jobType: "maintenance" },
+
+    // NEW: Quick inspection singles (so they show in the “Quick add from menu” grid)
+    { name: "Quick Inspection – Gas", laborHours: 1.0, jobType: "inspection", notes: "Fluids, tires, lights, horn, wipers" },
+    { name: "Quick Inspection – Diesel", laborHours: 1.2, jobType: "inspection", notes: "Fluids, tires, lights, horn, wipers, DEF check" },
   ];
 
   const packages: PackageDef[] = [
