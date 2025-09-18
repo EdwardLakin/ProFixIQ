@@ -1,13 +1,17 @@
 "use client";
 
-import { memo } from "react";
+import React, { memo, useContext } from "react";
 import { InspectionFormCtx } from "@inspections/lib/inspection/ui/InspectionFormContext";
-import type { InspectionItem, InspectionItemStatus, InspectionSection } from "@inspections/lib/inspection/types";
+import type {
+  InspectionItem,
+  InspectionItemStatus,
+  InspectionSection,
+} from "@inspections/lib/inspection/types";
 
 /** Build a single “basic quick inspection” section for GAS engines */
 export function buildGasQuickSection(): InspectionSection {
   const items: InspectionItem[] = [
-    // ---- Fluids (enter a value like "filled" when topped up) ----
+    // ---- Fluids ----
     { item: "Engine Oil Level", value: "", unit: "", notes: "" },
     { item: "Coolant Level", value: "", unit: "", notes: "" },
     { item: "Power Steering Fluid Level", value: "", unit: "", notes: "" },
@@ -17,7 +21,7 @@ export function buildGasQuickSection(): InspectionSection {
 
     // ---- Engine bay ----
     { item: "Engine Air Filter Condition", value: "", unit: "", notes: "" },
-    { item: "Battery State / Connections", value: "", unit: "", notes: "" },
+    { item: "Battery State & Connections", value: "", unit: "", notes: "" },
 
     // ---- Tires ----
     { item: "LF Tire Pressure", value: "", unit: "psi", notes: "" },
@@ -37,10 +41,10 @@ export function buildGasQuickSection(): InspectionSection {
     { item: "Wiper Blade Condition", value: "", unit: "", notes: "" },
     { item: "Washer Spray Operation", value: "", unit: "", notes: "" },
 
-    // ---- Lighting bundle ----
+    // ---- Lighting ----
     { item: "Exterior Lights (HL/Turn/Brake/Reverse/Markers)", value: "", unit: "", notes: "" },
 
-    // ---- Single notes for the whole section ----
+    // ---- Notes ----
     { item: "Quick Inspection Notes", value: "", unit: "", notes: "" },
   ];
 
@@ -53,15 +57,28 @@ export const QuickCheckGas = memo(function QuickCheckGas(props: {
   items: InspectionItem[];
 }) {
   const { sectionIndex, items } = props;
-  const ctx = (globalThis as any).__INSPECTION_FORM_CTX__ ?? null; // just for SSR safety
-  const form = ctx || undefined;
 
-  // Use the real context in client
-  const { updateItem } = form ?? React.useContext(InspectionFormCtx);
+  // Read the real context; guard for safety in case provider is missing.
+  const form = useContext(InspectionFormCtx) as
+    | {
+        updateItem: (
+          sectionIndex: number,
+          itemIndex: number,
+          patch: Partial<InspectionItem>
+        ) => void;
+      }
+    | null;
+
+  if (!form) {
+    // If there’s no provider, render nothing to avoid runtime errors.
+    return null;
+  }
+
+  const { updateItem } = form;
 
   const buttons: InspectionItemStatus[] = ["ok", "fail", "na", "recommend"];
-  const findIndex = (label: string): number => items.findIndex((i) => (i.item ?? "") === label);
-
+  const findIndex = (label: string): number =>
+    items.findIndex((i) => (i.item ?? "") === label);
   const notesIdx = findIndex("Quick Inspection Notes");
 
   const cardRows = items
@@ -70,12 +87,16 @@ export const QuickCheckGas = memo(function QuickCheckGas(props: {
 
   return (
     <div className="space-y-4">
-      {/* responsive 2-col (sm+) / 1-col (base) */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {cardRows.map(({ it, idx }) => (
-          <div key={idx} className="rounded border border-zinc-800 bg-zinc-900 p-3">
+          <div
+            key={idx}
+            className="rounded border border-zinc-800 bg-zinc-900 p-3"
+          >
             <div className="mb-2 flex items-start justify-between gap-3">
-              <h3 className="min-w-0 truncate text-sm font-medium text-white">{it.item}</h3>
+              <h3 className="min-w-0 truncate text-sm font-medium text-white">
+                {it.item}
+              </h3>
               <div className="flex shrink-0 flex-wrap gap-1">
                 {buttons.map((b) => (
                   <button
@@ -100,35 +121,39 @@ export const QuickCheckGas = memo(function QuickCheckGas(props: {
               </div>
             </div>
 
-            {/* Value + Unit (use value="filled" if topped up) */}
             <div className="grid grid-cols-[1fr_84px] gap-2">
               <input
                 className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white"
                 value={String((it.value ?? "") as string)}
-                onChange={(e) => updateItem(sectionIndex, idx, { value: e.target.value })}
+                onChange={(e) =>
+                  updateItem(sectionIndex, idx, { value: e.target.value })
+                }
                 placeholder="value (e.g., filled, 32)"
               />
               <input
                 className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white"
                 value={String((it.unit ?? "") as string)}
-                onChange={(e) => updateItem(sectionIndex, idx, { unit: e.target.value })}
+                onChange={(e) =>
+                  updateItem(sectionIndex, idx, { unit: e.target.value })
+                }
                 placeholder="unit"
               />
             </div>
-
-            {/* On FAIL/RECOMMEND show photo uploader (handled elsewhere), this card just leaves space */}
           </div>
         ))}
       </div>
 
-      {/* Shared notes */}
       {notesIdx >= 0 && (
         <div className="rounded border border-zinc-800 bg-zinc-900 p-3">
-          <div className="mb-1 text-xs font-medium text-orange-400">Section Notes</div>
+          <div className="mb-1 text-xs font-medium text-orange-400">
+            Section Notes
+          </div>
           <textarea
             className="h-24 w-full resize-y rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white"
             value={String((items[notesIdx].notes ?? "") as string)}
-            onChange={(e) => updateItem(sectionIndex, notesIdx, { notes: e.target.value })}
+            onChange={(e) =>
+              updateItem(sectionIndex, notesIdx, { notes: e.target.value })
+            }
             placeholder="Any recommendations or comments…"
           />
         </div>
