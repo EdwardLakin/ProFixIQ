@@ -1,14 +1,6 @@
-// app/work-orders/view/[id]/page.tsx
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+import { redirect } from "next/navigation";
 
-import WorkOrderDetailClient from "@work-orders/app/work-orders/view/[id]/WorkOrderDetailClient";
-
-export default async function Page({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = await params; // <-- Next 15: params is a Promise
-  return <WorkOrderDetailClient id={id} />;
+export default function Page({ params }: { params: { id: string } }) {
+  // Send legacy route to the consolidated detail page in "tech" mode by default.
+  redirect();
 }
