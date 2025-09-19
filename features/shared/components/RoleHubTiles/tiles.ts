@@ -18,14 +18,14 @@ export const TILES: Tile[] = [
     roles: ["advisor","manager","owner","admin"], scopes: ["work_orders","all"] },
   { href: "/work-orders/queue", title: "Job Queue", subtitle: "Active & in-progress",
     roles: ["mechanic","manager","owner","admin"], scopes: ["work_orders","tech","all"] },
-  { href: "/work-orders/editor", title: "Work Order Editor", subtitle: "Compose job lines",
-    roles: ["advisor","manager","owner","admin"], scopes: ["work_orders","all"] },
   { href: "/work-orders/quote-review", title: "Quote Review", subtitle: "Review & send estimates",
     roles: ["advisor","manager","owner","admin"], scopes: ["work_orders","all"] },
   { href: "/menu", title: "Service Menu", subtitle: "Saved services & presets",
     roles: ["advisor","manager","owner","admin"], scopes: ["work_orders","all"] },
   { href: "/work-orders/history", title: "History", subtitle: "Completed Work Orders & Invoices", 
     roles: ["owner","admin","manager","advisor","mechanic"], scopes: ["work_orders" , "all"] },
+   { href: "/work-orders/view/[id]", title: "Tech View", subtitle: "Browse & manage",
+    roles: ["advisor","manager","owner","admin"], scopes: ["work_orders","all"] },
 
 
   // --- Inspections ---
