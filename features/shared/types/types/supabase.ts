@@ -2892,6 +2892,7 @@ export type Database = {
           line_id: string | null
           reason: string
           snapshot: Json
+          status: string | null
           work_order_id: string
         }
         Insert: {
@@ -2900,6 +2901,7 @@ export type Database = {
           line_id?: string | null
           reason?: string
           snapshot: Json
+          status?: string | null
           work_order_id: string
         }
         Update: {
@@ -2908,9 +2910,17 @@ export type Database = {
           line_id?: string | null
           reason?: string
           snapshot?: Json
+          status?: string | null
           work_order_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "work_order_line_history_line_id_fkey"
+            columns: ["line_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_lines"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "work_order_line_history_work_order_id_fkey"
             columns: ["work_order_id"]
@@ -3109,6 +3119,7 @@ export type Database = {
           inspection_pdf_url: string | null
           inspection_type: string | null
           invoice_total: number | null
+          invoice_url: string | null
           labor_total: number | null
           notes: string | null
           parts_total: number | null
@@ -3117,6 +3128,7 @@ export type Database = {
           shop_id: string | null
           status: string | null
           type: string | null
+          updated_at: string | null
           user_id: string | null
           vehicle_id: string | null
           vehicle_info: string | null
@@ -3132,6 +3144,7 @@ export type Database = {
           inspection_pdf_url?: string | null
           inspection_type?: string | null
           invoice_total?: number | null
+          invoice_url?: string | null
           labor_total?: number | null
           notes?: string | null
           parts_total?: number | null
@@ -3140,6 +3153,7 @@ export type Database = {
           shop_id?: string | null
           status?: string | null
           type?: string | null
+          updated_at?: string | null
           user_id?: string | null
           vehicle_id?: string | null
           vehicle_info?: string | null
@@ -3155,6 +3169,7 @@ export type Database = {
           inspection_pdf_url?: string | null
           inspection_type?: string | null
           invoice_total?: number | null
+          invoice_url?: string | null
           labor_total?: number | null
           notes?: string | null
           parts_total?: number | null
@@ -3163,6 +3178,7 @@ export type Database = {
           shop_id?: string | null
           status?: string | null
           type?: string | null
+          updated_at?: string | null
           user_id?: string | null
           vehicle_id?: string | null
           vehicle_info?: string | null

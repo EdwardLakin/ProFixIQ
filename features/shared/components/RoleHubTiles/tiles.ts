@@ -24,6 +24,9 @@ export const TILES: Tile[] = [
     roles: ["advisor","manager","owner","admin"], scopes: ["work_orders","all"] },
   { href: "/menu", title: "Service Menu", subtitle: "Saved services & presets",
     roles: ["advisor","manager","owner","admin"], scopes: ["work_orders","all"] },
+  { href: "/work-orders/history", title: "History", subtitle: "Completed Work Orders & Invoices", 
+    roles: ["owner","admin","manager","advisor","mechanic"], scopes: ["all"] },
+
 
   // --- Inspections ---
   { href: "/inspections", title: "Inspection Menu", subtitle: "Perform & review inspections",
