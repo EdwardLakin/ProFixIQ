@@ -2885,6 +2885,41 @@ export type Database = {
           },
         ]
       }
+      work_order_line_history: {
+        Row: {
+          created_at: string
+          id: string
+          line_id: string | null
+          reason: string
+          snapshot: Json
+          work_order_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          line_id?: string | null
+          reason?: string
+          snapshot: Json
+          work_order_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          line_id?: string | null
+          reason?: string
+          snapshot?: Json
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_order_line_history_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       work_order_lines: {
         Row: {
           assigned_tech_id: string | null
