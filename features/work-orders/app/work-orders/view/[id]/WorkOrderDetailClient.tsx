@@ -1,4 +1,4 @@
-
+"use client"
 import { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import { format, formatDistanceStrict } from "date-fns";
