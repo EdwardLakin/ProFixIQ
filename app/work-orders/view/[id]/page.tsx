@@ -2,7 +2,7 @@
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-import WorkOrderDetailClient from "@work-orders/app/work-orders/view/[id]//WorkOrderDetailClient";
+import WorkOrderDetailClient from "@work-orders/app/work-orders/view/[id]/WorkOrderDetailClient";
 
 export default async function Page({
   params,
