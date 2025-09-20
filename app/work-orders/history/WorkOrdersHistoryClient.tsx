@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import Link from "next/link";
@@ -27,7 +27,8 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
   const [from, setFrom] = useState<string>(""); // yyyy-mm-dd
   const [to, setTo] = useState<string>("");     // yyyy-mm-dd
 
-  async function load() {
+  // Memoized loader to satisfy React/ESLint and avoid stale closures
+  const load = useCallback(async () => {
     setLoading(true);
     setErr(null);
 
@@ -45,7 +46,11 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
 
     // optional date range (by updated_at)
     if (from) query = query.gte("updated_at", new Date(from).toISOString());
-    if (to)   query = query.lte("updated_at", new Date(new Date(to).setHours(23,59,59,999)).toISOString());
+    if (to) {
+      const toEnd = new Date(to);
+      toEnd.setHours(23, 59, 59, 999);
+      query = query.lte("updated_at", toEnd.toISOString());
+    }
 
     const { data, error } = await query;
     if (error) {
@@ -57,15 +62,19 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
 
     const list = (data ?? []) as Row[];
 
+    // Client-side keyword filter
     const qlc = q.trim().toLowerCase();
     const filtered = qlc
       ? list.filter((r) => {
           const name = [r.customers?.first_name ?? "", r.customers?.last_name ?? ""]
-            .filter(Boolean).join(" ").toLowerCase();
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
           const plate = r.vehicles?.license_plate?.toLowerCase() ?? "";
           const vin   = r.vehicles?.vin?.toLowerCase() ?? "";
-          const ymm  = [r.vehicles?.year ?? "", r.vehicles?.make ?? "", r.vehicles?.model ?? ""]
-            .join(" ").toLowerCase();
+          const ymm   = [r.vehicles?.year ?? "", r.vehicles?.make ?? "", r.vehicles?.model ?? ""]
+            .join(" ")
+            .toLowerCase();
           const cid = (r.custom_id ?? "").toLowerCase();
           return (
             r.id.toLowerCase().includes(qlc) ||
@@ -80,9 +89,12 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
 
     setRows(filtered);
     setLoading(false);
-  }
+  }, [supabase, from, to, q]);
 
-  useEffect(() => { void load(); /* eslint-disable-next-line */ }, []);
+  // Initial load
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   // Export: CSV of current rows
   function exportCSV() {
@@ -96,11 +108,15 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
       "Vehicle",
       "Plate",
       "VIN",
-      "Invoice URL"
+      "Invoice URL",
     ];
     const lines = rows.map((r) => {
-      const customer = [r.customers?.first_name ?? "", r.customers?.last_name ?? ""].filter(Boolean).join(" ");
-      const vehicle = r.vehicles ? `${r.vehicles.year ?? ""} ${r.vehicles.make ?? ""} ${r.vehicles.model ?? ""}`.trim() : "";
+      const customer = [r.customers?.first_name ?? "", r.customers?.last_name ?? ""]
+        .filter(Boolean)
+        .join(" ");
+      const vehicle = r.vehicles
+        ? `${r.vehicles.year ?? ""} ${r.vehicles.make ?? ""} ${r.vehicles.model ?? ""}`.trim()
+        : "";
       const updated = r.updated_at ? format(new Date(r.updated_at), "yyyy-MM-dd HH:mm") : "";
       return [
         r.id,
@@ -112,11 +128,15 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
         vehicle,
         r.vehicles?.license_plate ?? "",
         r.vehicles?.vin ?? "",
-        r.invoice_url ?? r.quote_url ?? ""
-      ].map((x) => `"${String(x ?? "").replace(/"/g, '""')}"`).join(",");
+        r.invoice_url ?? r.quote_url ?? "",
+      ]
+        .map((x) => `"${String(x ?? "").replace(/"/g, '""')}"`)
+        .join(",");
     });
 
-    const blob = new Blob([header.join(",") + "\n" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const blob = new Blob([header.join(",") + "\n" + lines.join("\n")], {
+      type: "text/csv;charset=utf-8",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -185,7 +205,9 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
           {rows.map((r) => {
             const updated = r.updated_at ? format(new Date(r.updated_at), "PPpp") : "—";
             const customer = r.customers
-              ? [r.customers.first_name ?? "", r.customers.last_name ?? ""].filter(Boolean).join(" ")
+              ? [r.customers.first_name ?? "", r.customers.last_name ?? ""]
+                  .filter(Boolean)
+                  .join(" ")
               : "—";
             const vehicle = r.vehicles
               ? `${r.vehicles.year ?? ""} ${r.vehicles.make ?? ""} ${r.vehicles.model ?? ""}`.trim()
