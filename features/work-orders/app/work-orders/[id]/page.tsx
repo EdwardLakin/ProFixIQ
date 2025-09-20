@@ -196,8 +196,9 @@ export default function WorkOrderPage(): JSX.Element {
   const [duration, setDuration] = useState("");
   const [tech, setTech] = useState<Profile | null>(null);
 
-  // Photos
+  // Photos + user cache
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
 
   // UI toggles
   const [showDetails, setShowDetails] = useState(true);
@@ -213,31 +214,43 @@ export default function WorkOrderPage(): JSX.Element {
   const [busyQueue, setBusyQueue] = useState(false);
   const [busyAwaiting, setBusyAwaiting] = useState(false);
 
-  // Current user (for photos)
+  // Current user (for photos) + cache user id to reduce re-auth flicker
   useEffect(() => {
     (async () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (user) setCurrentUserId(user.id);
+      if (user) {
+        setCurrentUserId(user.id);
+        setUserId(user.id);
+      } else {
+        setCurrentUserId(null);
+        setUserId(null);
+      }
     })();
   }, [supabase]);
 
   // Load role early to compute mode/caps (non-blocking if it fails)
   useEffect(() => {
     (async () => {
+      if (!userId) {
+        setProfileRole(null);
+        return;
+      }
       const { data: prof } = await supabase
         .from("profiles")
         .select("role")
-        .eq("id", (await supabase.auth.getUser()).data.user?.id ?? "")
+        .eq("id", userId)
         .maybeSingle();
       setProfileRole(prof?.role ?? null);
     })();
-  }, [supabase]);
+  }, [supabase, userId]);
 
   // Derive mode from your hook (uses role + query param)
   const mode = useWorkOrderMode(profileRole as Role | null); // ✅ only one arg
   const caps = capabilities(profileRole);
+  const isViewMode = mode === "view";
+  const isTechMode = mode === "tech";
 
   // Update URL with jobId (no page nav)
   const setUrlJobId = useCallback(
@@ -401,17 +414,28 @@ export default function WorkOrderPage(): JSX.Element {
 
   /* ------------------------------ Tech Actions ----------------------------- */
   const handlePunchIn = async (jobId: string) => {
-    if (activeJobId) {
+    // allow switching with a quick confirm
+    if (activeJobId && activeJobId !== jobId) {
+      const ok = confirm("You are punched into another job. Punch out and switch?");
+      if (!ok) return;
+      const { error: outErr } = await supabase
+        .from("work_order_lines")
+        .update({ punched_out_at: new Date().toISOString(), status: "awaiting" })
+        .eq("id", activeJobId);
+      if (outErr) return showErr("Punch out failed", outErr);
+    } else if (activeJobId) {
       toast.error("You are already punched in to a job.");
       return;
     }
+
     const { error } = await supabase
       .from("work_order_lines")
-      .update({ punched_in_at: new Date().toISOString() })
+      .update({ punched_in_at: new Date().toISOString(), status: "in_progress" })
       .eq("id", jobId);
     if (error) return showErr("Punch in failed", error);
     toast.success("Punched in");
     setUrlJobId(jobId);
+    setActiveJobId(jobId);
     fetchAll();
   };
 
@@ -729,132 +753,148 @@ export default function WorkOrderPage(): JSX.Element {
             </div>
 
             {/* Jobs (front-desk quick add + list) */}
-            <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
-              <div className="mb-3 flex items-center justify-between gap-2">
-                <h2 className="text-lg font-semibold">Jobs in this Work Order</h2>
-                {caps.canAddJobs && (
-                  <button
-                    type="button"
-                    onClick={() => setShowAddForm((v) => !v)}
-                    className="rounded bg-neutral-800 border border-neutral-700 px-3 py-1.5 text-sm hover:border-orange-500"
-                    aria-expanded={showAddForm}
-                  >
-                    {showAddForm ? "Hide Add Job Line" : "Add Job Line"}
-                  </button>
+            {isViewMode && (
+              <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <h2 className="text-lg font-semibold">Jobs in this Work Order</h2>
+                  {caps.canAddJobs && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAddForm((v) => !v)}
+                      className="rounded bg-neutral-800 border border-neutral-700 px-3 py-1.5 text-sm hover:border-orange-500"
+                      aria-expanded={showAddForm}
+                    >
+                      {showAddForm ? "Hide Add Job Line" : "Add Job Line"}
+                    </button>
+                  )}
+                </div>
+
+                {showAddForm && caps.canAddJobs && (
+                  <ErrorBoundary>
+                    <NewWorkOrderLineForm
+                      workOrderId={wo.id}
+                      vehicleId={vehicle?.id ?? null}
+                      defaultJobType={null}
+                      onCreated={() => fetchAll()}
+                    />
+                  </ErrorBoundary>
+                )}
+
+                {sortedLines.length === 0 ? (
+                  <p className="text-sm text-neutral-400">No lines yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {sortedLines.map((ln) => (
+                      <div key={ln.id} className="rounded border border-neutral-800 bg-neutral-950 p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="truncate font-medium">{ln.description || ln.complaint || "Untitled job"}</div>
+                            <div className="text-xs text-neutral-400">
+                              {String((ln.job_type as JobType) ?? "job").replaceAll("_", " ")} •{" "}
+                              {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} • Status:{" "}
+                              {(ln.status ?? "awaiting").replaceAll("_", " ")}
+                            </div>
+                            {(ln.complaint || ln.cause || ln.correction) && (
+                              <div className="text-xs text-neutral-400 mt-1">
+                                {ln.complaint ? `Cmpl: ${ln.complaint}  ` : ""}
+                                {ln.cause ? `| Cause: ${ln.cause}  ` : ""}
+                                {ln.correction ? `| Corr: ${ln.correction}` : ""}
+                              </div>
+                            )}
+                          </div>
+                          <span className={chipClass(ln.status as WOStatus)}>
+                            {(ln.status ?? "awaiting").replaceAll("_", " ")}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
-
-              {showAddForm && caps.canAddJobs && (
-                <ErrorBoundary>
-                  <NewWorkOrderLineForm
-                    workOrderId={wo.id}
-                    vehicleId={vehicle?.id ?? null}
-                    defaultJobType={null}
-                    onCreated={() => fetchAll()}
-                  />
-                </ErrorBoundary>
-              )}
-
-              {sortedLines.length === 0 ? (
-                <p className="text-sm text-neutral-400">No lines yet.</p>
-              ) : (
-                <div className="space-y-2">
-                  {sortedLines.map((ln) => (
-                    <div key={ln.id} className="rounded border border-neutral-800 bg-neutral-950 p-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="truncate font-medium">{ln.description || ln.complaint || "Untitled job"}</div>
-                          <div className="text-xs text-neutral-400">
-                            {String((ln.job_type as JobType) ?? "job").replaceAll("_", " ")} •{" "}
-                            {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} • Status:{" "}
-                            {(ln.status ?? "awaiting").replaceAll("_", " ")}
-                          </div>
-                          {(ln.complaint || ln.cause || ln.correction) && (
-                            <div className="text-xs text-neutral-400 mt-1">
-                              {ln.complaint ? `Cmpl: ${ln.complaint}  ` : ""}
-                              {ln.cause ? `| Cause: ${ln.cause}  ` : ""}
-                              {ln.correction ? `| Corr: ${ln.correction}` : ""}
-                            </div>
-                          )}
-                        </div>
-                        <span className={chipClass(ln.status as WOStatus)}>
-                          {(ln.status ?? "awaiting").replaceAll("_", " ")}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            )}
 
             {/* Invoice (lazy) */}
-            <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
-              <h3 className="mb-2 font-semibold">Invoice</h3>
-              <ErrorBoundary>
-                <LazyInvoice woId={wo.id} lines={sortedLines} vehicle={vehicle} customer={customer} />
-              </ErrorBoundary>
-            </div>
+            {isViewMode && (
+              <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
+                <h3 className="mb-2 font-semibold">Invoice</h3>
+                <ErrorBoundary>
+                  <LazyInvoice woId={wo.id} lines={sortedLines} vehicle={vehicle} customer={customer} />
+                </ErrorBoundary>
+              </div>
+            )}
 
             {/* Sticky progress actions (front desk) */}
-            <div className="sticky bottom-3 z-10 mt-4 rounded border border-neutral-800 bg-neutral-900/95 p-3 backdrop-blur">
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  onClick={() => router.push(`/work-orders/quote-review?woId=${wo.id}`)}
-                  className="rounded bg-orange-500 px-3 py-2 font-semibold text-black hover:bg-orange-600"
-                >
-                  Review Quote
-                </button>
+            {isViewMode && (
+              <div className="sticky bottom-3 z-10 mt-4 rounded border border-neutral-800 bg-neutral-900/95 p-3 backdrop-blur">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => router.push(`/work-orders/quote-review?woId=${wo.id}`)}
+                    className="rounded bg-orange-500 px-3 py-2 font-semibold text-black hover:bg-orange-600"
+                  >
+                    Review Quote
+                  </button>
 
-                <button
-                  onClick={async () => {
-                    if (busyAwaiting) return;
-                    setBusyAwaiting(true);
-                    const { error } = await supabase
-                      .from("work_orders")
-                      .update({ status: "awaiting_approval" })
-                      .eq("id", wo.id);
-                    setBusyAwaiting(false);
-                    if (error) return showErr("Update status failed", error);
-                    toast.success("Marked as awaiting customer approval");
-                  }}
-                  className="rounded border border-neutral-700 px-3 py-2 hover:border-orange-500 disabled:opacity-60"
-                  disabled={busyAwaiting}
-                >
-                  Mark Awaiting Approval
-                </button>
+                  <button
+                    onClick={async () => {
+                      if (busyAwaiting) return;
+                      setBusyAwaiting(true);
+                      const prev = wo;
+                      setWo(prev ? { ...prev, status: "awaiting_approval" } : prev);
+                      const { error } = await supabase
+                        .from("work_orders")
+                        .update({ status: "awaiting_approval" })
+                        .eq("id", wo.id);
+                      setBusyAwaiting(false);
+                      if (error) {
+                        setWo(prev);
+                        return showErr("Update status failed", error);
+                      }
+                      toast.success("Marked as awaiting customer approval");
+                    }}
+                    className="rounded border border-neutral-700 px-3 py-2 hover:border-orange-500 disabled:opacity-60"
+                    disabled={busyAwaiting}
+                  >
+                    Mark Awaiting Approval
+                  </button>
 
-                <button
-                  onClick={async () => {
-                    if (busyQueue) return;
-                    setBusyQueue(true);
-                    const { error } = await supabase.from("work_orders").update({ status: "queued" }).eq("id", wo.id);
-                    setBusyQueue(false);
-                    if (error) return showErr("Update status failed", error);
-                    toast.success("Moved to Queue");
-                    await fetchAll();
-                  }}
-                  className="rounded border border-neutral-700 px-3 py-2 hover:border-orange-500 disabled:opacity-60"
-                  disabled={busyQueue}
-                >
-                  Queue Work
-                </button>
+                  <button
+                    onClick={async () => {
+                      if (busyQueue) return;
+                      setBusyQueue(true);
+                      const prev = wo;
+                      setWo(prev ? { ...prev, status: "queued" } : prev);
+                      const { error } = await supabase.from("work_orders").update({ status: "queued" }).eq("id", wo.id);
+                      setBusyQueue(false);
+                      if (error) {
+                        setWo(prev);
+                        return showErr("Update status failed", error);
+                      }
+                      toast.success("Moved to Queue");
+                      await fetchAll();
+                    }}
+                    className="rounded border border-neutral-700 px-3 py-2 hover:border-orange-500 disabled:opacity-60"
+                    disabled={busyQueue}
+                  >
+                    Queue Work
+                  </button>
 
-                <button
-                  className="rounded bg-purple-600 px-3 py-2 text-white hover:bg-purple-700 disabled:opacity-60"
-                  onClick={handleDownloadQuote}
-                  disabled={!caps.canGenerateQuote || busyQuote}
-                  title={!caps.canGenerateQuote ? "Not permitted" : "Generate quote PDF"}
-                >
-                  {busyQuote ? "Saving…" : "Download Quote PDF"}
-                </button>
+                  <button
+                    className="rounded bg-purple-600 px-3 py-2 text-white hover:bg-purple-700 disabled:opacity-60"
+                    onClick={handleDownloadQuote}
+                    disabled={!caps.canGenerateQuote || busyQuote}
+                    title={!caps.canGenerateQuote ? "Not permitted" : "Generate quote PDF"}
+                  >
+                    {busyQuote ? "Saving…" : "Download Quote PDF"}
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* RIGHT */}
           <aside className="space-y-6">
             {/* AI suggestions (only for techs; also sensible in tech mode) */}
-            {isTech && (
+            {isTechMode && isTech && (
               <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
                 <ErrorBoundary>
                   {suggestedJobId ? (
@@ -878,6 +918,7 @@ export default function WorkOrderPage(): JSX.Element {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
+                          work_order_id: wo.id, // attach to WO
                           customer: {
                             first_name: customer?.first_name ?? "",
                             last_name: customer?.last_name ?? "",
@@ -917,6 +958,7 @@ export default function WorkOrderPage(): JSX.Element {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
+                          work_order_id: wo.id, // attach to WO
                           customer: {
                             first_name: customer?.first_name ?? "",
                             last_name: customer?.last_name ?? "",
@@ -951,14 +993,16 @@ export default function WorkOrderPage(): JSX.Element {
             </div>
 
             {/* Quick add menu (front-desk friendly) */}
-            <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
-              <ErrorBoundary>
-                <MenuQuickAdd workOrderId={wo.id} />
-              </ErrorBoundary>
-            </div>
+            {isViewMode && (
+              <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
+                <ErrorBoundary>
+                  <MenuQuickAdd workOrderId={wo.id} />
+                </ErrorBoundary>
+              </div>
+            )}
 
             {/* Tech actions panel (visible in tech mode or to tech roles) */}
-            {line ? (
+            {isTechMode && line ? (
               <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold">Focused Job</h3>
@@ -1085,7 +1129,7 @@ export default function WorkOrderPage(): JSX.Element {
                                 {(job.status ?? "awaiting").replaceAll("_", " ")}
                               </span>
 
-                              {activeJobId === null && !job.punched_in_at && (
+                              {(!job.punched_in_at || activeJobId !== job.id) && (
                                 <button
                                   className="ml-2 bg-green-600 hover:bg-green-700 text-white text-xs px-2 py-1 rounded"
                                   onClick={() => handlePunchIn(job.id)}
@@ -1116,11 +1160,11 @@ export default function WorkOrderPage(): JSX.Element {
                   </div>
                 )}
               </div>
-            ) : (
+            ) : isTechMode ? (
               <div className="rounded border border-neutral-800 bg-neutral-900 p-4 text-sm text-neutral-400">
                 No focused job yet.
               </div>
-            )}
+            ) : null}
           </aside>
         </div>
       )}
