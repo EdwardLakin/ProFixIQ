@@ -1,4 +1,5 @@
 "use client";
+
 import * as React from "react";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -13,32 +14,40 @@ export default function TechPanel({
   vehicle,
   customer,
   lines,
-  onRefresh,
 }: {
   workOrder: WorkOrder;
   vehicle: Vehicle | null;
   customer: Customer | null;
   lines: WorkOrderLine[];
-  onRefresh: () => void | Promise<void>;
 }) {
-  // TODO: move your punch in/out, notes, parts modal, quote PDF, photos, DTC/AI suggestions here.
+  const vehicleText = vehicle
+    ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}${
+        vehicle.license_plate ? ` (${vehicle.license_plate})` : ""
+      }`.trim()
+    : "—";
+
+  const customerText = customer
+    ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ").trim() || "—"
+    : "—";
+
   return (
     <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
       <div className="mb-2 font-semibold text-orange-400">Tech Panel</div>
       <p className="text-sm text-neutral-300">
-        Work on <strong>{workOrder.custom_id || workOrder.id.slice(0,8)}</strong>.{" "}
-        Vehicle: {vehicle ?  : "—"} ·{" "}
-        Customer: {customer ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") : "—"}.
+        Work on <strong>{workOrder.custom_id || workOrder.id.slice(0, 8)}</strong>.{" "}
+        Vehicle: {vehicleText} · Customer: {customerText}.
       </p>
       <p className="mt-2 text-sm text-neutral-400">Jobs: {lines.length}</p>
+
       <div className="mt-3">
         <button
-          onClick={() => void onRefresh()}
+          onClick={() => window.location.reload()}
           className="rounded border border-neutral-700 px-3 py-1.5 text-sm hover:border-orange-500"
         >
           Refresh
         </button>
       </div>
+
       <div className="mt-4 text-xs text-neutral-500">
         Placeholder: wire your existing tech UI (punch, cause/correction, add job/quote, AI suggestions, photos) here.
       </div>
