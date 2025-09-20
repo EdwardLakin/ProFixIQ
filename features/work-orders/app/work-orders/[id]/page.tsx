@@ -236,15 +236,15 @@ export default function WorkOrderPage(): JSX.Element {
   }, [supabase]);
 
   // Derive mode from your hook (uses role + query param)
-    const mode = useWorkOrderMode(profileRole as Role | null); // ✅ only one arg
-    const caps = capabilities(profileRole);
+  const mode = useWorkOrderMode(profileRole as Role | null); // ✅ only one arg
+  const caps = capabilities(profileRole);
+
   // Update URL with jobId (no page nav)
   const setUrlJobId = useCallback(
     (jobId: string | null) => {
       const sp = new URLSearchParams(searchParams.toString());
       if (jobId) sp.set("jobId", jobId);
       else sp.delete("jobId");
-      // keep mode param stable if present
       const href = `?${sp.toString()}`;
       window.history.replaceState(null, "", href);
     },
@@ -356,31 +356,31 @@ export default function WorkOrderPage(): JSX.Element {
 
   // Real-time refresh: WO + lines
   useEffect(() => {
-  if (!woId) return;
+    if (!woId) return;
 
-  const ch = supabase
-    .channel(`wo:${woId}`)
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "work_orders", filter: `id=eq.${woId}` },
-      () => fetchAll()
-    )
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "work_order_lines", filter: `work_order_id=eq.${woId}` },
-      () => fetchAll()
-    )
-    .subscribe();
+    const ch = supabase
+      .channel(`wo:${woId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "work_orders", filter: `id=eq.${woId}` },
+        () => fetchAll()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "work_order_lines", filter: `work_order_id=eq.${woId}` },
+        () => fetchAll()
+      )
+      .subscribe();
 
-  // ❗ Cleanup must NOT return a Promise
-  return () => {
-    try {
-      supabase.removeChannel(ch); // fire-and-forget
-    } catch {
-      // ignore
-    }
-  };
-}, [supabase, woId, fetchAll]);
+    // ❗ Cleanup must NOT return a Promise
+    return () => {
+      try {
+        supabase.removeChannel(ch); // fire-and-forget
+      } catch {
+        // ignore
+      }
+    };
+  }, [supabase, woId, fetchAll]);
 
   // Refresh when other parts of the app announce a new/updated line (legacy event)
   useEffect(() => {
