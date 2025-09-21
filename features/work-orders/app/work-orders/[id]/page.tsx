@@ -210,12 +210,45 @@ export default function WorkOrderPage(): JSX.Element {
   const [busyQuote, setBusyQuote] = useState(false);
   const [busyQueue, setBusyQueue] = useState(false);
   const [busyAwaiting, setBusyAwaiting] = useState(false);
+  const [busySendApproval, setBusySendApproval] = useState(false);
 
-  // (2) Track which lines we've already normalized to status 'awaiting'
+  // Normalization tracker
   const [fixedStatus, setFixedStatus] = useState<Set<string>>(new Set());
 
-  // (3) Warn once if WO missing vehicle/customer
+  // One-time missing notice
   const [warnedMissing, setWarnedMissing] = useState(false);
+
+  // ------------------ NEW: selection for approval ------------------
+  const [selectedForApproval, setSelectedForApproval] = useState<Set<string>>(new Set());
+  const [touchedSelection, setTouchedSelection] = useState(false);
+
+  const setSelection = (ids: string[], touched = true) => {
+    setSelectedForApproval(new Set(ids));
+    if (touched) setTouchedSelection(true);
+  };
+  const toggleSelection = (id: string) => {
+    setSelectedForApproval((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    setTouchedSelection(true);
+  };
+  const selectAllEligible = () => {
+    const ids = (lines ?? []).filter((l) => (l.status ?? "") !== "completed").map((l) => l.id);
+    setSelection(ids);
+  };
+  const clearAllSelection = () => setSelection([], true);
+
+  // Default selection: non-completed lines until the user touches it
+  useEffect(() => {
+    if (!touchedSelection) {
+      const ids = (lines ?? []).filter((l) => (l.status ?? "") !== "completed").map((l) => l.id);
+      setSelectedForApproval(new Set(ids));
+    }
+  }, [lines, touchedSelection]);
+  // ---------------------------------------------------------------
 
   // Current user
   useEffect(() => {
@@ -296,7 +329,7 @@ export default function WorkOrderPage(): JSX.Element {
         }
         setWo(woRow);
 
-        // (3) Loud toast if missing vehicle/customer (only once per load session)
+        // Warn once if missing vehicle/customer
         if (!warnedMissing && (!woRow.vehicle_id || !woRow.customer_id)) {
           toast.error("This work order is missing vehicle and/or customer. Open the Create form to set them.", {
             important: true,
@@ -407,7 +440,7 @@ export default function WorkOrderPage(): JSX.Element {
     return () => clearInterval(t);
   }, [line]);
 
-  /* -------- (2) Normalize any newly created lines to status 'awaiting' ----- */
+  /* -------- Normalize any newly created lines to status 'awaiting' -------- */
   useEffect(() => {
     (async () => {
       if (!lines.length) return;
@@ -427,7 +460,6 @@ export default function WorkOrderPage(): JSX.Element {
         const next = new Set(fixedStatus);
         toFix.forEach((id) => next.add(id));
         setFixedStatus(next);
-        // refresh to reflect normalized status
         fetchAll();
       }
     })();
@@ -586,6 +618,62 @@ export default function WorkOrderPage(): JSX.Element {
       showErr("Generate quote failed", e);
     } finally {
       setBusyQuote(false);
+    }
+  };
+
+  // Send for Approval with selected subset
+  const handleSendForApproval = async () => {
+    if (!wo?.id) return;
+    if (!customer?.email) {
+      toast.error("Customer email is required to send for approval.");
+      return;
+    }
+    if (!vehicle?.id) {
+      toast.error("Vehicle is required on the work order before sending for approval.");
+      return;
+    }
+    if (busySendApproval) return;
+
+    const selected = Array.from(selectedForApproval);
+    if (!selected.length) {
+      toast.error("Select at least one job to send for approval.");
+      return;
+    }
+
+    setBusySendApproval(true);
+    const prev = wo;
+    try {
+      // Optimistic WO status
+      setWo(prev ? { ...prev, status: "awaiting_approval" } : prev);
+
+      // Persist WO status
+      const { error: upErr } = await supabase
+        .from("work_orders")
+        .update({ status: "awaiting_approval" })
+        .eq("id", wo.id);
+      if (upErr) throw upErr;
+
+      // Fire approval
+      const res = await fetch("/api/quotes/send-for-approval", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workOrderId: wo.id,
+          lineIds: selected,
+        }),
+      });
+
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error || "Failed to send for approval.");
+      }
+
+      toast.success(`Sent ${selected.length} item(s) to customer for approval.`);
+    } catch (e: any) {
+      setWo(prev);
+      showErr("Send for approval failed", e);
+    } finally {
+      setBusySendApproval(false);
     }
   };
 
@@ -773,7 +861,7 @@ export default function WorkOrderPage(): JSX.Element {
                 <div className="mb-3 flex items-center justify-between gap-2">
                   <h2 className="text-lg font-semibold">Jobs in this Work Order</h2>
 
-                  {/* (1) Always show the manual Add Job Line toggle */}
+                  {/* Add Job Line toggle */}
                   <button
                     type="button"
                     onClick={() => setShowAddForm((v) => !v)}
@@ -784,7 +872,29 @@ export default function WorkOrderPage(): JSX.Element {
                   </button>
                 </div>
 
-                {/* (1) Always allow opening the manual form when toggled */}
+                {/* NEW: Selection quick actions */}
+                <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-neutral-300">
+                  <span className="opacity-70">Approval selection:</span>
+                  <button
+                    type="button"
+                    className="rounded border border-neutral-700 px-2 py-1 hover:border-orange-500"
+                    onClick={selectAllEligible}
+                  >
+                    Select all eligible
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded border border-neutral-700 px-2 py-1 hover:border-orange-500"
+                    onClick={clearAllSelection}
+                  >
+                    Clear all
+                  </button>
+                  <span className="ml-auto">
+                    Selected: <strong>{selectedForApproval.size}</strong>
+                  </span>
+                </div>
+
+                {/* Manual form */}
                 {showAddForm && (
                   <ErrorBoundary>
                     <NewWorkOrderLineForm
@@ -800,30 +910,61 @@ export default function WorkOrderPage(): JSX.Element {
                   <p className="text-sm text-neutral-400">No lines yet.</p>
                 ) : (
                   <div className="space-y-2">
-                    {sortedLines.map((ln) => (
-                      <div key={ln.id} className="rounded border border-neutral-800 bg-neutral-950 p-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="truncate font-medium">{ln.description || ln.complaint || "Untitled job"}</div>
-                            <div className="text-xs text-neutral-400">
-                              {String((ln.job_type as JobType) ?? "job").replaceAll("_", " ")} •{" "}
-                              {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} • Status:{" "}
-                              {(ln.status ?? "awaiting").replaceAll("_", " ")}
-                            </div>
-                            {(ln.complaint || ln.cause || ln.correction) && (
-                              <div className="text-xs text-neutral-400 mt-1">
-                                {ln.complaint ? `Cmpl: ${ln.complaint}  ` : ""}
-                                {ln.cause ? `| Cause: ${ln.cause}  ` : ""}
-                                {ln.correction ? `| Corr: ${ln.correction}` : ""}
+                    {sortedLines.map((ln) => {
+                      const eligible = (ln.status ?? "") !== "completed";
+                      const checked = selectedForApproval.has(ln.id);
+
+                      return (
+                        <div key={ln.id} className="rounded border border-neutral-800 bg-neutral-950 p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="truncate font-medium">
+                                {ln.description || ln.complaint || "Untitled job"}
                               </div>
-                            )}
+                              <div className="text-xs text-neutral-400">
+                                {String((ln.job_type as JobType) ?? "job").replaceAll("_", " ")} •{" "}
+                                {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} • Status:{" "}
+                                {(ln.status ?? "awaiting").replaceAll("_", " ")}
+                              </div>
+                              {(ln.complaint || ln.cause || ln.correction) && (
+                                <div className="text-xs text-neutral-400 mt-1">
+                                  {ln.complaint ? `Cmpl: ${ln.complaint}  ` : ""}
+                                  {ln.cause ? `| Cause: ${ln.cause}  ` : ""}
+                                  {ln.correction ? `| Corr: ${ln.correction}` : ""}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-3">
+                              {/* NEW: per-line checkbox */}
+                              <label
+                                className={`flex items-center gap-1 text-xs ${
+                                  eligible ? "text-neutral-300" : "text-neutral-500"
+                                }`}
+                                title={
+                                  eligible
+                                    ? "Include this job in the customer approval"
+                                    : "Completed jobs are excluded"
+                                }
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="h-4 w-4"
+                                  disabled={!eligible}
+                                  checked={eligible && checked}
+                                  onChange={() => eligible && toggleSelection(ln.id)}
+                                />
+                                Include
+                              </label>
+
+                              <span className={chipClass(ln.status as WOStatus)}>
+                                {(ln.status ?? "awaiting").replaceAll("_", " ")}
+                              </span>
+                            </div>
                           </div>
-                          <span className={chipClass(ln.status as WOStatus)}>
-                            {(ln.status ?? "awaiting").replaceAll("_", " ")}
-                          </span>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -848,6 +989,20 @@ export default function WorkOrderPage(): JSX.Element {
                     className="rounded bg-orange-500 px-3 py-2 font-semibold text-black hover:bg-orange-600"
                   >
                     Review Quote
+                  </button>
+
+                  {/* Send for Approval uses current selection */}
+                  <button
+                    onClick={handleSendForApproval}
+                    disabled={busySendApproval || selectedForApproval.size === 0}
+                    className="rounded bg-blue-600 px-3 py-2 text-white hover:bg-blue-700 disabled:opacity-60"
+                    title={
+                      selectedForApproval.size
+                        ? "Email/SMS approval link to customer"
+                        : "Select at least one job line"
+                    }
+                  >
+                    {busySendApproval ? "Sending…" : `Send for Approval (${selectedForApproval.size})`}
                   </button>
 
                   <button
@@ -1118,10 +1273,7 @@ export default function WorkOrderPage(): JSX.Element {
                         statusBadge[job.status as keyof typeof statusBadge] ?? "bg-gray-300 text-gray-800";
 
                       return (
-                        <div
-                          key={job.id}
-                          className={`p-3 border rounded bg-neutral-950 ${typeColor[jobType] || ""}`}
-                        >
+                        <div key={job.id} className={`p-3 border rounded bg-neutral-950 ${typeColor[jobType] || ""}`}>
                           <div className="flex justify-between items-center">
                             <div
                               className="cursor-pointer"

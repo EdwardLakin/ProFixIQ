@@ -2932,6 +2932,10 @@ export type Database = {
       }
       work_order_lines: {
         Row: {
+          approval_at: string | null
+          approval_by: string | null
+          approval_note: string | null
+          approval_state: string | null
           assigned_tech_id: string | null
           assigned_to: string | null
           cause: string | null
@@ -2962,6 +2966,10 @@ export type Database = {
           work_order_id: string | null
         }
         Insert: {
+          approval_at?: string | null
+          approval_by?: string | null
+          approval_note?: string | null
+          approval_state?: string | null
           assigned_tech_id?: string | null
           assigned_to?: string | null
           cause?: string | null
@@ -2992,6 +3000,10 @@ export type Database = {
           work_order_id?: string | null
         }
         Update: {
+          approval_at?: string | null
+          approval_by?: string | null
+          approval_note?: string | null
+          approval_state?: string | null
           assigned_tech_id?: string | null
           assigned_to?: string | null
           cause?: string | null
@@ -3109,6 +3121,7 @@ export type Database = {
       }
       work_orders: {
         Row: {
+          approval_state: string | null
           assigned_tech: string | null
           created_at: string | null
           custom_id: string | null
@@ -3134,6 +3147,7 @@ export type Database = {
           vehicle_info: string | null
         }
         Insert: {
+          approval_state?: string | null
           assigned_tech?: string | null
           created_at?: string | null
           custom_id?: string | null
@@ -3159,6 +3173,7 @@ export type Database = {
           vehicle_info?: string | null
         }
         Update: {
+          approval_state?: string | null
           assigned_tech?: string | null
           created_at?: string | null
           custom_id?: string | null
@@ -3322,6 +3337,20 @@ export type Database = {
       }
     }
     Functions: {
+      _ensure_same_shop: {
+        Args: { _wo: string }
+        Returns: boolean
+      }
+      approve_lines: {
+        Args: {
+          _approved_ids: string[]
+          _approver?: string
+          _decline_unchecked?: boolean
+          _declined_ids?: string[]
+          _wo: string
+        }
+        Returns: undefined
+      }
       can_manage_profile: {
         Args: { target_profile_id: string }
         Returns: boolean
@@ -3392,6 +3421,10 @@ export type Database = {
       }
       seed_default_hours: {
         Args: { shop_id: string }
+        Returns: undefined
+      }
+      send_for_approval: {
+        Args: { _line_ids: string[]; _set_wo_status?: boolean; _wo: string }
         Returns: undefined
       }
       set_authenticated: {
