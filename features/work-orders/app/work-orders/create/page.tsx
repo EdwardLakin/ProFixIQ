@@ -408,7 +408,7 @@ export default function CreateWorkOrderPage() {
             cause: m.cause ?? null,
             correction: m.correction ?? null,
             tools: m.tools ?? null,
-            status: "new" as const,
+            status: "awaiting" as const, // ✅ seeded lines forced to allowed status
             job_type: type,
           }));
           const { error: lineErr } = await supabase.from("work_order_lines").insert(lineRows);
@@ -464,8 +464,8 @@ export default function CreateWorkOrderPage() {
         }
       }
 
-      // ✅ Redirect to the ID page and pass vehicle/customer along (plus mode=view)
-      router.push(`/work-orders/${newId}?mode=view&vehicleId=${veh.id}&customerId=${cust.id}`);
+      // Navigate to the new Work Order page (flag it was just created for ID-page toast)
+      router.push(`/work-orders/${newId}?created=1`);
     } catch (ex) {
       const message = ex instanceof Error ? ex.message : "Failed to create work order.";
       setError(message);
