@@ -464,8 +464,8 @@ export default function CreateWorkOrderPage() {
         }
       }
 
-      // Navigate to the new Work Order page
-      router.push(`/work-orders/${newId}`);
+      // ✅ Redirect to the ID page and pass vehicle/customer along (plus mode=view)
+      router.push(`/work-orders/${newId}?mode=view&vehicleId=${veh.id}&customerId=${cust.id}`);
     } catch (ex) {
       const message = ex instanceof Error ? ex.message : "Failed to create work order.";
       setError(message);

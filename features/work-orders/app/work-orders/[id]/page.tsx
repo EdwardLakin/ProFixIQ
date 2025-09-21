@@ -65,7 +65,6 @@ type Customer = DB["public"]["Tables"]["customers"]["Row"];
 type Profile = DB["public"]["Tables"]["profiles"]["Row"];
 type WorkOrderWithMaybeNotes = WorkOrder & { notes?: string | null };
 
-// stronger unions (compile-time guardrails; values still come from DB)
 type WOStatus =
   | "awaiting_approval"
   | "awaiting"
@@ -172,9 +171,7 @@ export default function WorkOrderPage(): JSX.Element {
     return paramToString(raw);
   }, [params]);
 
-  // keep focused job stable via URL ?jobId=
   const urlJobId = searchParams.get("jobId");
-
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   // Core entities
@@ -188,7 +185,7 @@ export default function WorkOrderPage(): JSX.Element {
   // Role (for gating AI panel + caps)
   const [profileRole, setProfileRole] = useState<string | null>(null);
 
-  // Tech view extras (focused job, timers, notes)
+  // Tech view extras
   const [line, setLine] = useState<WorkOrderLine | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [techNotes, setTechNotes] = useState("");
@@ -209,17 +206,21 @@ export default function WorkOrderPage(): JSX.Element {
   const [isCauseModalOpen, setIsCauseModalOpen] = useState(false);
   const [isAddJobModalOpen, setIsAddJobModalOpen] = useState(false);
 
-  // Busy flags to prevent double actions
+  // Busy flags
   const [busyQuote, setBusyQuote] = useState(false);
   const [busyQueue, setBusyQueue] = useState(false);
   const [busyAwaiting, setBusyAwaiting] = useState(false);
 
-  // Current user (for photos) + cache user id to reduce re-auth flicker
+  // (2) Track which lines we've already normalized to status 'awaiting'
+  const [fixedStatus, setFixedStatus] = useState<Set<string>>(new Set());
+
+  // (3) Warn once if WO missing vehicle/customer
+  const [warnedMissing, setWarnedMissing] = useState(false);
+
+  // Current user
   useEffect(() => {
     (async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         setCurrentUserId(user.id);
         setUserId(user.id);
@@ -230,7 +231,7 @@ export default function WorkOrderPage(): JSX.Element {
     })();
   }, [supabase]);
 
-  // Load role early to compute mode/caps (non-blocking if it fails)
+  // Load role
   useEffect(() => {
     (async () => {
       if (!userId) {
@@ -246,13 +247,11 @@ export default function WorkOrderPage(): JSX.Element {
     })();
   }, [supabase, userId]);
 
-  // Derive mode from your hook (uses role + query param)
-  const mode = useWorkOrderMode(profileRole as Role | null); // ✅ only one arg
+  const mode = useWorkOrderMode(profileRole as Role | null);
   const caps = capabilities(profileRole);
   const isViewMode = mode === "view";
   const isTechMode = mode === "tech";
 
-  // Update URL with jobId (no page nav)
   const setUrlJobId = useCallback(
     (jobId: string | null) => {
       const sp = new URLSearchParams(searchParams.toString());
@@ -264,7 +263,7 @@ export default function WorkOrderPage(): JSX.Element {
     [searchParams]
   );
 
-  // Fetch everything (combines both original pages) with exponential backoff for just-created WOs
+  // Fetch everything
   const fetchAll = useCallback(
     async (retry = 0) => {
       if (!woId) return;
@@ -272,7 +271,6 @@ export default function WorkOrderPage(): JSX.Element {
       setViewError(null);
 
       try {
-        // Work Order first (single row)
         const { data: woRow, error: woErr } = await supabase
           .from("work_orders")
           .select("*")
@@ -280,10 +278,9 @@ export default function WorkOrderPage(): JSX.Element {
           .maybeSingle();
         if (woErr) throw woErr;
 
-        // Slight retry window if just-created and not yet visible through RLS
         if (!woRow) {
           if (retry < 3) {
-            const delay = 300 * Math.pow(2, retry); // 300ms, 600ms, 1200ms
+            const delay = 300 * Math.pow(2, retry);
             await sleep(delay);
             return fetchAll(retry + 1);
           } else {
@@ -299,7 +296,14 @@ export default function WorkOrderPage(): JSX.Element {
         }
         setWo(woRow);
 
-        // Parallel fetch lines + vehicle + customer
+        // (3) Loud toast if missing vehicle/customer (only once per load session)
+        if (!warnedMissing && (!woRow.vehicle_id || !woRow.customer_id)) {
+          toast.error("This work order is missing vehicle and/or customer. Open the Create form to set them.", {
+            important: true,
+          } as any);
+          setWarnedMissing(true);
+        }
+
         const [linesRes, vehRes, custRes] = await Promise.all([
           supabase
             .from("work_order_lines")
@@ -324,9 +328,6 @@ export default function WorkOrderPage(): JSX.Element {
         if (custRes?.error) throw custRes.error;
         setCustomer((custRes?.data as Customer | null) ?? null);
 
-        // Focused line:
-        // 1) If URL has ?jobId=, try to use that
-        // 2) Else first in_progress, else first not punched_out, else first line
         let pick: WorkOrderLine | null =
           (urlJobId && list.find((j) => j.id === urlJobId)) ||
           list.find((j) => j.status === "in_progress") ||
@@ -337,11 +338,8 @@ export default function WorkOrderPage(): JSX.Element {
         setLine(pick ?? null);
         setActiveJobId(pick && !pick?.punched_out_at ? pick.id : null);
         setTechNotes(pick?.notes ?? "");
-
-        // Persist jobId to URL for stable refresh/deeplink
         setUrlJobId(pick?.id ?? null);
 
-        // Assigned tech for focused job
         if (pick?.assigned_to) {
           const { data: p } = await supabase
             .from("profiles")
@@ -360,14 +358,14 @@ export default function WorkOrderPage(): JSX.Element {
         setLoading(false);
       }
     },
-    [supabase, woId, urlJobId, setUrlJobId]
+    [supabase, woId, urlJobId, setUrlJobId, warnedMissing]
   );
 
   useEffect(() => {
     void fetchAll();
   }, [fetchAll]);
 
-  // Real-time refresh: WO + lines
+  // Real-time refresh
   useEffect(() => {
     if (!woId) return;
 
@@ -385,24 +383,21 @@ export default function WorkOrderPage(): JSX.Element {
       )
       .subscribe();
 
-    // ❗ Cleanup must NOT return a Promise
     return () => {
       try {
-        supabase.removeChannel(ch); // fire-and-forget
-      } catch {
-        // ignore
-      }
+        supabase.removeChannel(ch);
+      } catch {}
     };
   }, [supabase, woId, fetchAll]);
 
-  // Refresh when other parts of the app announce a new/updated line (legacy event)
+  // Legacy refresh event
   useEffect(() => {
     const handler = () => fetchAll();
     window.addEventListener("wo:line-added", handler);
     return () => window.removeEventListener("wo:line-added", handler);
   }, [fetchAll]);
 
-  // Live timer for focused job
+  // Live timer
   useEffect(() => {
     const t = setInterval(() => {
       if (line?.punched_in_at && !line?.punched_out_at) {
@@ -412,9 +407,34 @@ export default function WorkOrderPage(): JSX.Element {
     return () => clearInterval(t);
   }, [line]);
 
+  /* -------- (2) Normalize any newly created lines to status 'awaiting' ----- */
+  useEffect(() => {
+    (async () => {
+      if (!lines.length) return;
+      const toFix = lines
+        .filter((l) => !l.status || l.status === (null as any))
+        .map((l) => l.id)
+        .filter((id) => !fixedStatus.has(id));
+
+      if (toFix.length === 0) return;
+
+      const { error } = await supabase
+        .from("work_order_lines")
+        .update({ status: "awaiting" })
+        .in("id", toFix);
+
+      if (!error) {
+        const next = new Set(fixedStatus);
+        toFix.forEach((id) => next.add(id));
+        setFixedStatus(next);
+        // refresh to reflect normalized status
+        fetchAll();
+      }
+    })();
+  }, [lines, fixedStatus, supabase, fetchAll]);
+
   /* ------------------------------ Tech Actions ----------------------------- */
   const handlePunchIn = async (jobId: string) => {
-    // allow switching with a quick confirm
     if (activeJobId && activeJobId !== jobId) {
       const ok = confirm("You are punched into another job. Punch out and switch?");
       if (!ok) return;
@@ -487,7 +507,6 @@ export default function WorkOrderPage(): JSX.Element {
     }
     setBusyQuote(true);
     try {
-      // Prefer tech-suggested; otherwise all non-completed
       const { data: techSuggested, error: tsErr } = await supabase
         .from("work_order_lines")
         .select("*")
@@ -528,7 +547,6 @@ export default function WorkOrderPage(): JSX.Element {
 
       if (publicUrl) setWo((prev) => (prev ? { ...prev, quote_url: publicUrl } : prev));
 
-      // Optional: email customer
       const { data: woRow } = await supabase
         .from("work_orders")
         .select("id, customer:customer_id (email, full_name)")
@@ -579,7 +597,6 @@ export default function WorkOrderPage(): JSX.Element {
 
   const isTech = (profileRole ?? "").toLowerCase() === "tech";
 
-  // Memoized sorted list (stable order)
   const sortedLines = useMemo(() => {
     const pr: Record<string, number> = { diagnosis: 1, inspection: 2, maintenance: 3, repair: 4 };
     return [...lines].sort((a, b) => {
@@ -606,11 +623,9 @@ export default function WorkOrderPage(): JSX.Element {
   const createdAt = wo?.created_at ? new Date(wo.created_at) : null;
   const createdAtText = createdAt && !isNaN(createdAt.getTime()) ? format(createdAt, "PPpp") : "—";
 
-  /* ---------------------------------- UI ---------------------------------- */
   const badgeClass =
     statusBadge[(line?.status ?? "awaiting") as keyof typeof statusBadge] ?? "bg-gray-200 text-gray-800";
 
-  // simple skeletons
   const Skeleton = ({ className = "" }: { className?: string }) => (
     <div className={`animate-pulse rounded bg-neutral-800/60 ${className}`} />
   );
@@ -619,7 +634,7 @@ export default function WorkOrderPage(): JSX.Element {
     <div className="p-4 sm:p-6 text-white">
       <PreviousPageButton to="/work-orders" />
 
-      {/* Mode toggle (query-param based) — no new files needed */}
+      {/* Mode toggle */}
       <div className="mb-3 flex items-center gap-2 text-xs text-neutral-300">
         <span className="opacity-70">Mode:</span>
         <button
@@ -757,19 +772,20 @@ export default function WorkOrderPage(): JSX.Element {
               <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
                 <div className="mb-3 flex items-center justify-between gap-2">
                   <h2 className="text-lg font-semibold">Jobs in this Work Order</h2>
-                  {caps.canAddJobs && (
-                    <button
-                      type="button"
-                      onClick={() => setShowAddForm((v) => !v)}
-                      className="rounded bg-neutral-800 border border-neutral-700 px-3 py-1.5 text-sm hover:border-orange-500"
-                      aria-expanded={showAddForm}
-                    >
-                      {showAddForm ? "Hide Add Job Line" : "Add Job Line"}
-                    </button>
-                  )}
+
+                  {/* (1) Always show the manual Add Job Line toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setShowAddForm((v) => !v)}
+                    className="rounded bg-neutral-800 border border-neutral-700 px-3 py-1.5 text-sm hover:border-orange-500"
+                    aria-expanded={showAddForm}
+                  >
+                    {showAddForm ? "Hide Add Job Line" : "Add Job Line"}
+                  </button>
                 </div>
 
-                {showAddForm && caps.canAddJobs && (
+                {/* (1) Always allow opening the manual form when toggled */}
+                {showAddForm && (
                   <ErrorBoundary>
                     <NewWorkOrderLineForm
                       workOrderId={wo.id}
@@ -823,7 +839,7 @@ export default function WorkOrderPage(): JSX.Element {
               </div>
             )}
 
-            {/* Sticky progress actions (front desk) */}
+            {/* Sticky progress actions */}
             {isViewMode && (
               <div className="sticky bottom-3 z-10 mt-4 rounded border border-neutral-800 bg-neutral-900/95 p-3 backdrop-blur">
                 <div className="flex flex-wrap items-center gap-2">
@@ -893,7 +909,6 @@ export default function WorkOrderPage(): JSX.Element {
 
           {/* RIGHT */}
           <aside className="space-y-6">
-            {/* AI suggestions (only for techs; also sensible in tech mode) */}
             {isTechMode && isTech && (
               <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
                 <ErrorBoundary>
@@ -906,7 +921,7 @@ export default function WorkOrderPage(): JSX.Element {
               </div>
             )}
 
-            {/* Start inspections from this WO */}
+            {/* Start inspections */}
             <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
               <div className="mb-2 font-semibold text-orange-400">Start an Inspection</div>
               <div className="flex flex-wrap gap-2">
@@ -918,7 +933,7 @@ export default function WorkOrderPage(): JSX.Element {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
-                          work_order_id: wo.id, // attach to WO
+                          work_order_id: wo.id,
                           customer: {
                             first_name: customer?.first_name ?? "",
                             last_name: customer?.last_name ?? "",
@@ -958,7 +973,7 @@ export default function WorkOrderPage(): JSX.Element {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
-                          work_order_id: wo.id, // attach to WO
+                          work_order_id: wo.id,
                           customer: {
                             first_name: customer?.first_name ?? "",
                             last_name: customer?.last_name ?? "",
@@ -992,7 +1007,7 @@ export default function WorkOrderPage(): JSX.Element {
               </div>
             </div>
 
-            {/* Quick add menu (front-desk friendly) */}
+            {/* Quick add menu */}
             {isViewMode && (
               <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
                 <ErrorBoundary>
@@ -1001,7 +1016,7 @@ export default function WorkOrderPage(): JSX.Element {
               </div>
             )}
 
-            {/* Tech actions panel (visible in tech mode or to tech roles) */}
+            {/* Tech actions */}
             {isTechMode && line ? (
               <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
                 <div className="flex items-center justify-between">
@@ -1169,7 +1184,7 @@ export default function WorkOrderPage(): JSX.Element {
         </div>
       )}
 
-      {/* Vehicle photos (shared) */}
+      {/* Vehicle photos */}
       {vehicle?.id && currentUserId && (
         <div className="mt-8 space-y-4">
           <h2 className="text-xl font-semibold">Vehicle Photos</h2>
@@ -1178,7 +1193,7 @@ export default function WorkOrderPage(): JSX.Element {
         </div>
       )}
 
-      {/* Tech modals (shared) */}
+      {/* Tech modals */}
       {isPartsModalOpen && wo?.id && line && (
         <PartsRequestModal
           isOpen={isPartsModalOpen}

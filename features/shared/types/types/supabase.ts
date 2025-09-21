@@ -3406,6 +3406,10 @@ export type Database = {
         Args: { "": number }
         Returns: number
       }
+      shop_id_for: {
+        Args: { uid: string }
+        Returns: string
+      }
       show_limit: {
         Args: Record<PropertyKey, never>
         Returns: number
