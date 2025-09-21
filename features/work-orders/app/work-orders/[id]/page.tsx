@@ -222,6 +222,8 @@ export default function WorkOrderPage(): JSX.Element {
   const [isPartsModalOpen, setIsPartsModalOpen] = useState(false);
   const [isCauseModalOpen, setIsCauseModalOpen] = useState(false);
   const [isAddJobModalOpen, setIsAddJobModalOpen] = useState(false);
+  const [aiModalOpen, setAiModalOpen] = useState(false);
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
 
   // Busy flags
   const [busyQuote, setBusyQuote] = useState(false);
@@ -677,7 +679,8 @@ export default function WorkOrderPage(): JSX.Element {
         .eq("id", wo.id);
       if (upErr) throw upErr;
 
-      const res = await fetch("/api/quotes/send-for-approval", {
+      // 🔁 use your route handler path
+      const res = await fetch("/work-orders/send-for-approval", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -811,9 +814,187 @@ export default function WorkOrderPage(): JSX.Element {
       {!loading && !wo && !viewError && <div className="mt-6 text-red-500">Work order not found.</div>}
 
       {!loading && wo && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px]">
-          {/* LEFT */}
-          <div className="space-y-6">
+        // NOTE: swap to 360px left column so Focused Job can be sticky + always visible
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[360px_1fr]">
+          {/* LEFT — Focused/controls (sticky) */}
+          <aside className="space-y-4 lg:order-1">
+            {/* Focused Job panel */}
+            {line ? (
+              <div className="rounded border border-neutral-800 bg-neutral-900 p-4 sticky top-20">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold">Focused Job</h3>
+                  <span className={`text-xs px-2 py-1 rounded ${badgeClass}`}>
+                    {(line.status ?? "awaiting").replaceAll("_", " ")}
+                  </span>
+                </div>
+
+                <div className="mt-2 p-3 rounded border border-neutral-800 bg-neutral-950">
+                  <p>
+                    <strong>Complaint:</strong> {line.complaint || "—"}
+                  </p>
+                  <p>
+                    <strong>Status:</strong> {line.status ?? "—"}
+                  </p>
+                  <p>
+                    <strong>Live Timer:</strong> {duration || renderJobDuration(line)}
+                  </p>
+                  <p>
+                    <strong>Punched In:</strong>{" "}
+                    {line.punched_in_at ? format(new Date(line.punched_in_at), "PPpp") : "—"}
+                  </p>
+                  <p>
+                    <strong>Punched Out:</strong>{" "}
+                    {line.punched_out_at ? format(new Date(line.punched_out_at), "PPpp") : "—"}
+                  </p>
+                  <p>
+                    <strong>Labor Time:</strong> {line.labor_time ?? "—"} hrs
+                  </p>
+                  <p>
+                    <strong>Hold Reason:</strong> {line.hold_reason || "—"}
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
+                    <button
+                      className="bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded text-white"
+                      onClick={() => setIsCauseModalOpen(true)}
+                    >
+                      Complete Job
+                    </button>
+
+                    {(!line.punched_in_at || line.punched_out_at) ? (
+                      <button
+                        className="bg-green-600 hover:bg-green-700 px-3 py-2 rounded text-white"
+                        onClick={() => handlePunchIn(line.id)}
+                      >
+                        Punch In
+                      </button>
+                    ) : (
+                      <button
+                        className="bg-neutral-700 hover:bg-neutral-800 px-3 py-2 rounded text-white"
+                        onClick={() => handlePunchOut(line.id)}
+                      >
+                        Punch Out
+                      </button>
+                    )}
+
+                    <button
+                      className="bg-red-600 hover:bg-red-700 px-3 py-2 rounded text-white"
+                      onClick={() => setIsPartsModalOpen(true)}
+                    >
+                      Request Parts
+                    </button>
+
+                    {/* Hold with reason */}
+                    <div className="flex items-center gap-2">
+                      <select
+                        className="flex-1 border border-neutral-700 bg-neutral-800 text-white text-sm rounded px-2 py-2"
+                        value={holdReason}
+                        onChange={(e) => setHoldReason(e.target.value)}
+                      >
+                        {holdOptions.map((opt) => (
+                          <option key={opt} value={opt}>
+                            {opt}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        className="bg-amber-600 hover:bg-amber-700 px-3 py-2 rounded text-white"
+                        onClick={applyHold}
+                      >
+                        Hold
+                      </button>
+                    </div>
+
+                    <button
+                      className="bg-gray-800 hover:bg-black px-3 py-2 rounded text-white col-span-1 sm:col-span-2"
+                      onClick={() => setIsAddJobModalOpen(true)}
+                    >
+                      Add Job
+                    </button>
+                  </div>
+
+                  <div className="mt-3">
+                    <button
+                      className="bg-purple-600 hover:bg-purple-700 px-3 py-2 rounded text-white w-full"
+                      onClick={handleDownloadQuote}
+                      disabled={!caps.canGenerateQuote || busyQuote}
+                    >
+                      {busyQuote ? "Saving…" : "Download Quote PDF"}
+                    </button>
+                  </div>
+
+                  <div className="mt-4 space-y-2">
+                    <label className="block text-sm">Tech Notes</label>
+                    <textarea
+                      className="w-full border border-neutral-700 bg-neutral-800 text-white placeholder-neutral-400 p-2 rounded"
+                      rows={3}
+                      value={techNotes}
+                      onChange={(e) => setTechNotes(e.target.value)}
+                      onBlur={updateTechNotes}
+                      disabled={updatingNotes}
+                      placeholder="Add notes for this job…"
+                    />
+                  </div>
+
+                  {/* Diagnosis helper */}
+                  {line.job_type === "diagnosis" &&
+                    line.punched_in_at &&
+                    !line.cause &&
+                    !line.correction &&
+                    vehicle && (
+                      <div className="mt-4">
+                        <DtcSuggestionPopup
+                          jobId={line.id}
+                          vehicle={{
+                            id: vehicle.id,
+                            year: (vehicle.year ?? "").toString(),
+                            make: vehicle.make ?? "",
+                            model: vehicle.model ?? "",
+                          }}
+                        />
+                      </div>
+                    )}
+                </div>
+
+                {/* Buttons to open the modals for AI & Quick Add */}
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button
+                    className="rounded border border-neutral-700 px-3 py-2 text-sm hover:border-orange-500"
+                    onClick={() => setAiModalOpen(true)}
+                  >
+                    AI Suggestions
+                  </button>
+                  <button
+                    className="rounded border border-neutral-700 px-3 py-2 text-sm hover:border-orange-500"
+                    onClick={() => setQuickAddOpen(true)}
+                  >
+                    Quick Add
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded border border-neutral-800 bg-neutral-900 p-4 sticky top-20">
+                <div className="text-sm text-neutral-400">No focused job yet.</div>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button
+                    className="rounded border border-neutral-700 px-3 py-2 text-sm hover:border-orange-500"
+                    onClick={() => setAiModalOpen(true)}
+                  >
+                    AI Suggestions
+                  </button>
+                  <button
+                    className="rounded border border-neutral-700 px-3 py-2 text-sm hover:border-orange-500"
+                    onClick={() => setQuickAddOpen(true)}
+                  >
+                    Quick Add
+                  </button>
+                </div>
+              </div>
+            )}
+          </aside>
+
+          {/* RIGHT — main content */}
+          <div className="space-y-6 lg:order-2">
             {/* Header */}
             <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
               <div className="flex items-center justify-between">
@@ -1038,108 +1219,92 @@ export default function WorkOrderPage(): JSX.Element {
               )}
             </div>
 
-            {/* Invoice (lazy) */}
-            <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
-              <h3 className="mb-2 font-semibold">Invoice</h3>
-              <ErrorBoundary>
-                <LazyInvoice woId={wo.id} lines={sortedLines} vehicle={vehicle} customer={customer} />
-              </ErrorBoundary>
-            </div>
+            {/* Invoice + Actions → View mode only */}
+            {mode === "view" && (
+              <>
+                {/* Invoice (lazy) */}
+                <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
+                  <h3 className="mb-2 font-semibold">Invoice</h3>
+                  <ErrorBoundary>
+                    <LazyInvoice woId={wo.id} lines={sortedLines} vehicle={vehicle} customer={customer} />
+                  </ErrorBoundary>
+                </div>
 
-            {/* Sticky progress actions */}
-            <div className="sticky bottom-3 z-10 mt-4 rounded border border-neutral-800 bg-neutral-900/95 p-3 backdrop-blur">
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  onClick={() => router.push(`/work-orders/quote-review?woId=${wo.id}`)}
-                  className="rounded bg-orange-500 px-3 py-2 font-semibold text-black hover:bg-orange-600"
-                >
-                  Review Quote
-                </button>
+                {/* Sticky progress actions */}
+                <div className="sticky bottom-3 z-10 mt-4 rounded border border-neutral-800 bg-neutral-900/95 p-3 backdrop-blur">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => router.push(`/work-orders/quote-review?woId=${wo.id}`)}
+                      className="rounded bg-orange-500 px-3 py-2 font-semibold text-black hover:bg-orange-600"
+                    >
+                      Review Quote
+                    </button>
 
-                {/* Send for Approval uses selection */}
-                <button
-                  onClick={handleSendForApproval}
-                  disabled={busySendApproval || selectedForApproval.size === 0}
-                  className="rounded bg-blue-600 px-3 py-2 text-white hover:bg-blue-700 disabled:opacity-60"
-                >
-                  {busySendApproval ? "Sending…" : `Send for Approval (${selectedForApproval.size})`}
-                </button>
+                    {/* Send for Approval uses selection */}
+                    <button
+                      onClick={handleSendForApproval}
+                      disabled={busySendApproval || selectedForApproval.size === 0}
+                      className="rounded bg-blue-600 px-3 py-2 text-white hover:bg-blue-700 disabled:opacity-60"
+                    >
+                      {busySendApproval ? "Sending…" : `Send for Approval (${selectedForApproval.size})`}
+                    </button>
 
-                <button
-                  onClick={async () => {
-                    if (busyAwaiting) return;
-                    setBusyAwaiting(true);
-                    const prev = wo;
-                    setWo(prev ? { ...prev, status: "awaiting_approval" } : prev);
-                    const { error } = await supabase
-                      .from("work_orders")
-                      .update({ status: "awaiting_approval" })
-                      .eq("id", wo!.id);
-                    setBusyAwaiting(false);
-                    if (error) {
-                      setWo(prev);
-                      return showErr("Update status failed", error);
-                    }
-                    toast.success("Marked as awaiting customer approval");
-                  }}
-                  className="rounded border border-neutral-700 px-3 py-2 hover:border-orange-500 disabled:opacity-60"
-                  disabled={busyAwaiting}
-                >
-                  Mark Awaiting Approval
-                </button>
+                    <button
+                      onClick={async () => {
+                        if (busyAwaiting) return;
+                        setBusyAwaiting(true);
+                        const prev = wo;
+                        setWo(prev ? { ...prev, status: "awaiting_approval" } : prev);
+                        const { error } = await supabase
+                          .from("work_orders")
+                          .update({ status: "awaiting_approval" })
+                          .eq("id", wo!.id);
+                        setBusyAwaiting(false);
+                        if (error) {
+                          setWo(prev);
+                          return showErr("Update status failed", error);
+                        }
+                        toast.success("Marked as awaiting customer approval");
+                      }}
+                      className="rounded border border-neutral-700 px-3 py-2 hover:border-orange-500 disabled:opacity-60"
+                      disabled={busyAwaiting}
+                    >
+                      Mark Awaiting Approval
+                    </button>
 
-                <button
-                  onClick={async () => {
-                    if (busyQueue) return;
-                    setBusyQueue(true);
-                    const prev = wo;
-                    setWo(prev ? { ...prev, status: "queued" } : prev);
-                    const { error } = await supabase.from("work_orders").update({ status: "queued" }).eq("id", wo!.id);
-                    setBusyQueue(false);
-                    if (error) {
-                      setWo(prev);
-                      return showErr("Update status failed", error);
-                    }
-                    toast.success("Moved to Queue");
-                    await fetchAll();
-                  }}
-                  className="rounded border border-neutral-700 px-3 py-2 hover:border-orange-500 disabled:opacity-60"
-                  disabled={busyQueue}
-                >
-                  Queue Work
-                </button>
+                    <button
+                      onClick={async () => {
+                        if (busyQueue) return;
+                        setBusyQueue(true);
+                        const prev = wo;
+                        setWo(prev ? { ...prev, status: "queued" } : prev);
+                        const { error } = await supabase.from("work_orders").update({ status: "queued" }).eq("id", wo!.id);
+                        setBusyQueue(false);
+                        if (error) {
+                          setWo(prev);
+                          return showErr("Update status failed", error);
+                        }
+                        toast.success("Moved to Queue");
+                        await fetchAll();
+                      }}
+                      className="rounded border border-neutral-700 px-3 py-2 hover:border-orange-500 disabled:opacity-60"
+                      disabled={busyQueue}
+                    >
+                      Queue Work
+                    </button>
 
-                <button
-                  className="rounded bg-purple-600 px-3 py-2 text-white hover:bg-purple-700 disabled:opacity-60"
-                  onClick={handleDownloadQuote}
-                  disabled={!caps.canGenerateQuote || busyQuote}
-                  title={!caps.canGenerateQuote ? "Not permitted" : "Generate quote PDF"}
-                >
-                  {busyQuote ? "Saving…" : "Download Quote PDF"}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* RIGHT */}
-          <aside className="space-y-6">
-            {/* AI helper panel */}
-            <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
-              <ErrorBoundary>
-                {suggestedJobId ? (
-                  <SuggestedQuickAdd jobId={suggestedJobId} workOrderId={wo.id} vehicleId={vehicle?.id ?? null} />
-                ) : (
-                  <div className="text-sm text-neutral-400">Add a job line to enable AI suggestions.</div>
-                )}
-              </ErrorBoundary>
-            </div>
-
-            {/* Quick add menu (uses MenuQuickAdd import) */}
-            <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
-              <ErrorBoundary>
-                <MenuQuickAdd workOrderId={wo.id} />
-              </ErrorBoundary>
-            </div>
+                    <button
+                      className="rounded bg-purple-600 px-3 py-2 text-white hover:bg-purple-700 disabled:opacity-60"
+                      onClick={handleDownloadQuote}
+                      disabled={!caps.canGenerateQuote || busyQuote}
+                      title={!caps.canGenerateQuote ? "Not permitted" : "Generate quote PDF"}
+                    >
+                      {busyQuote ? "Saving…" : "Download Quote PDF"}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
 
             {/* Inspection shortcuts: only if attached */}
             {!!wo.inspection_id && (
@@ -1161,151 +1326,7 @@ export default function WorkOrderPage(): JSX.Element {
                 </div>
               </div>
             )}
-
-            {/* Tech actions (Focused Job) */}
-            {line ? (
-              <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold">Focused Job</h3>
-                  <span className={`text-xs px-2 py-1 rounded ${badgeClass}`}>
-                    {(line.status ?? "awaiting").replaceAll("_", " ")}
-                  </span>
-                </div>
-
-                <div className="mt-2 p-3 rounded border border-neutral-800 bg-neutral-950">
-                  <p>
-                    <strong>Complaint:</strong> {line.complaint || "—"}
-                  </p>
-                  <p>
-                    <strong>Status:</strong> {line.status ?? "—"}
-                  </p>
-                  <p>
-                    <strong>Live Timer:</strong> {duration || renderJobDuration(line)}
-                  </p>
-                  <p>
-                    <strong>Punched In:</strong>{" "}
-                    {line.punched_in_at ? format(new Date(line.punched_in_at), "PPpp") : "—"}
-                  </p>
-                  <p>
-                    <strong>Punched Out:</strong>{" "}
-                    {line.punched_out_at ? format(new Date(line.punched_out_at), "PPpp") : "—"}
-                  </p>
-                  <p>
-                    <strong>Labor Time:</strong> {line.labor_time ?? "—"} hrs
-                  </p>
-                  <p>
-                    <strong>Hold Reason:</strong> {line.hold_reason || "—"}
-                  </p>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
-                    <button
-                      className="bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded text-white"
-                      onClick={() => setIsCauseModalOpen(true)}
-                    >
-                      Complete Job
-                    </button>
-
-                    {(!line.punched_in_at || line.punched_out_at) ? (
-                      <button
-                        className="bg-green-600 hover:bg-green-700 px-3 py-2 rounded text-white"
-                        onClick={() => handlePunchIn(line.id)}
-                      >
-                        Punch In
-                      </button>
-                    ) : (
-                      <button
-                        className="bg-neutral-700 hover:bg-neutral-800 px-3 py-2 rounded text-white"
-                        onClick={() => handlePunchOut(line.id)}
-                      >
-                        Punch Out
-                      </button>
-                    )}
-
-                    <button
-                      className="bg-red-600 hover:bg-red-700 px-3 py-2 rounded text-white"
-                      onClick={() => setIsPartsModalOpen(true)}
-                    >
-                      Request Parts
-                    </button>
-
-                    {/* Hold with reason */}
-                    <div className="flex items-center gap-2">
-                      <select
-                        className="flex-1 border border-neutral-700 bg-neutral-800 text-white text-sm rounded px-2 py-2"
-                        value={holdReason}
-                        onChange={(e) => setHoldReason(e.target.value)}
-                      >
-                        {holdOptions.map((opt) => (
-                          <option key={opt} value={opt}>
-                            {opt}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        className="bg-amber-600 hover:bg-amber-700 px-3 py-2 rounded text-white"
-                        onClick={applyHold}
-                      >
-                        Hold
-                      </button>
-                    </div>
-
-                    <button
-                      className="bg-gray-800 hover:bg-black px-3 py-2 rounded text-white col-span-1 sm:col-span-2"
-                      onClick={() => setIsAddJobModalOpen(true)}
-                    >
-                      Add Job
-                    </button>
-                  </div>
-
-                  <div className="mt-3">
-                    <button
-                      className="bg-purple-600 hover:bg-purple-700 px-3 py-2 rounded text-white w-full"
-                      onClick={handleDownloadQuote}
-                      disabled={!caps.canGenerateQuote || busyQuote}
-                    >
-                      {busyQuote ? "Saving…" : "Download Quote PDF"}
-                    </button>
-                  </div>
-
-                  <div className="mt-4 space-y-2">
-                    <label className="block text-sm">Tech Notes</label>
-                    <textarea
-                      className="w-full border border-neutral-700 bg-neutral-800 text-white placeholder-neutral-400 p-2 rounded"
-                      rows={3}
-                      value={techNotes}
-                      onChange={(e) => setTechNotes(e.target.value)}
-                      onBlur={updateTechNotes}
-                      disabled={updatingNotes}
-                      placeholder="Add notes for this job…"
-                    />
-                  </div>
-
-                  {/* Diagnosis helper (uses DtcSuggestionPopup import) */}
-                  {line.job_type === "diagnosis" &&
-                    line.punched_in_at &&
-                    !line.cause &&
-                    !line.correction &&
-                    vehicle && (
-                      <div className="mt-4">
-                        <DtcSuggestionPopup
-                          jobId={line.id}
-                          vehicle={{
-                            id: vehicle.id,
-                            year: (vehicle.year ?? "").toString(),
-                            make: vehicle.make ?? "",
-                            model: vehicle.model ?? "",
-                          }}
-                        />
-                      </div>
-                    )}
-                </div>
-              </div>
-            ) : (
-              <div className="rounded border border-neutral-800 bg-neutral-900 p-4 text-sm text-neutral-400">
-                No focused job yet.
-              </div>
-            )}
-          </aside>
+          </div>
         </div>
       )}
 
@@ -1347,6 +1368,44 @@ export default function WorkOrderPage(): JSX.Element {
           techId={tech?.id || "system"}
           onJobAdded={fetchAll}
         />
+      )}
+
+      {/* AI modal */}
+      {aiModalOpen && (
+        <div className="fixed inset-0 z-40 bg-black/60 flex items-center justify-center p-4">
+          <div className="w-full max-w-2xl rounded-lg border border-neutral-800 bg-neutral-900 p-4">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-lg font-semibold">AI Suggestions</h3>
+              <button className="text-sm text-neutral-300 hover:text-white" onClick={() => setAiModalOpen(false)}>
+                Close
+              </button>
+            </div>
+            <ErrorBoundary>
+              {suggestedJobId ? (
+                <SuggestedQuickAdd jobId={suggestedJobId} workOrderId={wo!.id} vehicleId={vehicle?.id ?? null} />
+              ) : (
+                <div className="text-sm text-neutral-400">Add a job line to enable AI suggestions.</div>
+              )}
+            </ErrorBoundary>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Add modal */}
+      {quickAddOpen && (
+        <div className="fixed inset-0 z-40 bg-black/60 flex items-center justify-center p-4">
+          <div className="w-full max-w-3xl rounded-lg border border-neutral-800 bg-neutral-900 p-4">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-lg font-semibold">Quick Add</h3>
+              <button className="text-sm text-neutral-300 hover:text-white" onClick={() => setQuickAddOpen(false)}>
+                Close
+              </button>
+            </div>
+            <ErrorBoundary>
+              <MenuQuickAdd workOrderId={wo!.id} />
+            </ErrorBoundary>
+          </div>
+        </div>
       )}
     </div>
   );

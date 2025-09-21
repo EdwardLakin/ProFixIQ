@@ -3,6 +3,8 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useTabs } from "./TabsProvider";
 
+const DASH_PATH = "/dashboard";
+
 export default function TabsBar(): JSX.Element {
   const { tabs, activeHref, activateTab, closeTab, closeOthers, closeAll } = useTabs();
 
@@ -14,6 +16,7 @@ export default function TabsBar(): JSX.Element {
         <AnimatePresence initial={false}>
           {tabs.map((t) => {
             const active = t.href === activeHref;
+            const pinned = t.href === DASH_PATH;
             return (
               <motion.div
                 key={t.href}
@@ -33,18 +36,21 @@ export default function TabsBar(): JSX.Element {
                   className="flex items-center gap-1 outline-none"
                   title={t.title}
                 >
-                  {/* Icon (optional) */}
                   {t.icon ? <span className="opacity-80">{t.icon}</span> : null}
-                  <span className="truncate max-w-[200px] font-header tracking-wide">{t.title}</span>
+                  <span className="truncate max-w-[200px] font-header tracking-wide">
+                    {t.title}{pinned ? " 📌" : ""}
+                  </span>
                 </button>
 
-                <button
-                  onClick={() => closeTab(t.href)}
-                  className="rounded px-1 text-xs text-neutral-400 hover:text-white"
-                  title="Close"
-                >
-                  ✕
-                </button>
+                {!pinned && (
+                  <button
+                    onClick={() => closeTab(t.href)}
+                    className="rounded px-1 text-xs text-neutral-400 hover:text-white"
+                    title="Close"
+                  >
+                    ✕
+                  </button>
+                )}
 
                 {active && (
                   <motion.div

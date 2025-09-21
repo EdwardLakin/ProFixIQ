@@ -40,16 +40,12 @@ function useMenuData() {
     { name: "Brake Pads", laborHours: 1.2, partCost: 90, jobType: "repair" },
     { name: "Rotors", laborHours: 1.3, partCost: 140, jobType: "repair" },
     { name: "Oil Change (Gas)", laborHours: 0.8, partCost: 40, jobType: "maintenance" },
-    // NEW: Diesel oil change for quick add
     { name: "Oil Change (Diesel)", laborHours: 1.2, partCost: 65, jobType: "maintenance", notes: "Higher capacity oil & filter" },
-
     { name: "Air Filter", laborHours: 0.3, partCost: 25, jobType: "maintenance" },
     { name: "Coolant Flush", laborHours: 1.2, partCost: 80, jobType: "maintenance" },
     { name: "Battery Replacement", laborHours: 0.5, partCost: 120, jobType: "maintenance" },
     { name: "Tire Rotation", laborHours: 0.6, jobType: "maintenance" },
     { name: "Alignment", laborHours: 1.2, jobType: "maintenance" },
-
-    // NEW: Quick inspection singles (so they show in the “Quick add from menu” grid)
     { name: "Quick Inspection – Gas", laborHours: 1.0, jobType: "inspection", notes: "Fluids, tires, lights, horn, wipers" },
     { name: "Quick Inspection – Diesel", laborHours: 1.2, jobType: "inspection", notes: "Fluids, tires, lights, horn, wipers, DEF check" },
   ];
@@ -60,8 +56,7 @@ function useMenuData() {
       name: "Oil Change – Gasoline",
       jobType: "maintenance",
       estLaborHours: 0.8,
-      summary:
-        "Engine oil & filter, top off fluids, tire pressures, quick visual leak check.",
+      summary: "Engine oil & filter, top off fluids, tire pressures, quick visual leak check.",
       items: [
         { description: "Drain engine oil & replace oil filter", jobType: "maintenance", laborHours: 0.6 },
         { description: "Top off all fluids (coolant, washer, PS/ATF if applicable)", jobType: "maintenance", laborHours: 0.1 },
@@ -74,8 +69,7 @@ function useMenuData() {
       name: "Oil Change – Diesel",
       jobType: "maintenance",
       estLaborHours: 1.2,
-      summary:
-        "Diesel engine oil & filter, drain fuel/water separator, DEF level, quick diesel-system checks.",
+      summary: "Diesel engine oil & filter, drain fuel/water separator, DEF level, quick diesel-system checks.",
       items: [
         { description: "Drain engine oil & replace oil filter", jobType: "maintenance", laborHours: 0.6 },
         { description: "Drain fuel water separator", jobType: "maintenance", laborHours: 0.2 },
@@ -89,8 +83,7 @@ function useMenuData() {
       name: "Multi-Point Inspection – Gas",
       jobType: "inspection",
       estLaborHours: 1.0,
-      summary:
-        "Brakes, tires, suspension, fluids, leaks, battery test, lights, codes scan.",
+      summary: "Brakes, tires, suspension, fluids, leaks, battery test, lights, codes scan.",
       items: [
         { description: "Scan for diagnostic trouble codes (DTCs)", jobType: "diagnosis", laborHours: 0.2 },
         { description: "Brake system inspection (pads/rotors/hoses/fluid leaks)", jobType: "inspection", laborHours: 0.2 },
@@ -105,8 +98,7 @@ function useMenuData() {
       name: "Multi-Point Inspection – Diesel",
       jobType: "inspection",
       estLaborHours: 1.2,
-      summary:
-        "All gas checks + diesel specifics: glow system, fuel system, turbo/charge air, DPF/regen, DEF.",
+      summary: "All gas checks + diesel specifics: glow system, fuel system, turbo/charge air, DPF/regen, DEF.",
       items: [
         { description: "Scan for diagnostic trouble codes (powertrain & emissions)", jobType: "diagnosis", laborHours: 0.2 },
         { description: "Brake system inspection", jobType: "inspection", laborHours: 0.2 },
@@ -163,40 +155,36 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   // For the Review Quote chip
   const [woLineCount, setWoLineCount] = useState<number | null>(null);
 
+  // Collapsing UI (defaults collapsed to keep panel compact)
+  const [showAllPackages, setShowAllPackages] = useState(false);
+  const [showAllSingles, setShowAllSingles] = useState(false);
+
   useEffect(() => {
     (async () => {
-      // Load work order links
       const { data: wo } = await supabase
         .from("work_orders")
         .select("id, vehicle_id, customer_id")
         .eq("id", workOrderId)
         .maybeSingle();
 
-      // Vehicle
       if (wo?.vehicle_id) {
         const { data: v } = await supabase
           .from("vehicles")
-          .select(
-            "id, year, make, model, vin, license_plate, mileage, color, unit_number, odometer",
-          )
+          .select("id, year, make, model, vin, license_plate, mileage, color, unit_number, odometer")
           .eq("id", wo.vehicle_id)
           .maybeSingle();
         if (v) setVehicle(v as VehicleLite);
       }
 
-      // Customer
       if (wo?.customer_id) {
         const { data: c } = await supabase
           .from("customers")
-          .select(
-            "id, first_name, last_name, phone, email, address, city, province, postal_code",
-          )
+          .select("id, first_name, last_name, phone, email, address, city, province, postal_code")
           .eq("id", wo.customer_id)
           .maybeSingle();
         if (c) setCustomer(c as CustomerLite);
       }
 
-      // Count current WO lines (simple signal something exists to review)
       const { count } = await supabase
         .from("work_order_lines")
         .select("*", { count: "exact", head: true })
@@ -208,14 +196,8 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
   function pushInspection(path: string) {
     const params = new URLSearchParams();
-
     params.set("workOrderId", workOrderId);
-    params.set(
-      "template",
-      path.includes("hydraulic")
-        ? "Maintenance 50 (Hydraulic)"
-        : "Maintenance 50 (Air Brake CVIP)",
-    );
+    params.set("template", path.includes("hydraulic") ? "Maintenance 50 (Hydraulic)" : "Maintenance 50 (Air Brake CVIP)");
 
     if (customer) {
       if (customer.first_name) params.set("first_name", String(customer.first_name));
@@ -250,7 +232,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       work_order_id: workOrderId,
       description: item.name,
       labor_time: item.laborHours ?? null,
-      status: "planned",
+      status: "awaiting", // ← fix: satisfy work_order_lines_status_check
       priority: 3,
       job_type: item.jobType,
       notes: item.notes ?? null,
@@ -275,7 +257,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       work_order_id: workOrderId,
       description: i.description,
       labor_time: typeof i.laborHours === "number" ? i.laborHours : null,
-      status: "planned",
+      status: "awaiting", // ← fix: satisfy work_order_lines_status_check
       priority: 3,
       job_type: (i.jobType ?? pkg.jobType) as WorkOrderLineInsert["job_type"],
       notes: i.notes ?? null,
@@ -292,6 +274,9 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
     window.dispatchEvent(new CustomEvent("wo:line-added"));
   }
+
+  const visiblePackages = showAllPackages ? packages : packages.slice(0, 2);
+  const visibleSingles = showAllSingles ? singles : singles.slice(0, 2);
 
   return (
     <div className="space-y-6">
@@ -329,9 +314,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
             title={!vehicle ? "Link a vehicle to this Work Order first." : "Open hydraulic inspection"}
           >
             <div className="font-medium">Maintenance 50 – Hydraulic</div>
-            <div className="text-xs text-neutral-400">
-              CVIP-style measurements + oil change section
-            </div>
+            <div className="text-xs text-neutral-400">CVIP-style measurements + oil change section</div>
           </button>
 
           <button
@@ -341,9 +324,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
             title={!vehicle ? "Link a vehicle to this Work Order first." : "Open air-brake inspection"}
           >
             <div className="font-medium">Maintenance 50 – Air (CVIP)</div>
-            <div className="text-xs text-neutral-400">
-              Air-governor, leakage, push-rod stroke + oil change
-            </div>
+            <div className="text-xs text-neutral-400">Air-governor, leakage, push-rod stroke + oil change</div>
           </button>
         </div>
 
@@ -354,11 +335,19 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         )}
       </div>
 
-      {/* PACKAGES */}
+      {/* PACKAGES (collapsible) */}
       <div>
-        <h3 className="mb-2 font-semibold text-orange-400">Packages</h3>
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="font-semibold text-orange-400">Packages</h3>
+          <button
+            className="text-xs text-neutral-300 hover:text-white underline"
+            onClick={() => setShowAllPackages((v) => !v)}
+          >
+            {showAllPackages ? "Show less" : "Show more"}
+          </button>
+        </div>
         <div className="grid gap-2 sm:grid-cols-2">
-          {packages.map((p) => (
+          {visiblePackages.map((p) => (
             <button
               key={p.id}
               onClick={() => addPackage(p)}
@@ -376,11 +365,20 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         </div>
       </div>
 
-      {/* SINGLE SERVICES */}
+      {/* SINGLE SERVICES (collapsible) */}
       <div>
-        <h3 className="mb-2 font-semibold text-orange-400">Quick add from menu</h3>
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="font-semibold text-orange-400">Quick add from menu</h3>
+          <button
+            className="text-xs text-neutral-300 hover:text-white underline"
+            onClick={() => setShowAllSingles((v) => !v)}
+          >
+            {showAllSingles ? "Show less" : "Show more"}
+          </button>
+        </div>
+
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {singles.map((m) => (
+          {visibleSingles.map((m) => (
             <button
               key={m.name}
               onClick={() => addSingle(m)}
