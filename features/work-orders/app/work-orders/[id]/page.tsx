@@ -91,13 +91,24 @@ function paramToString(v: string | string[] | undefined): string | null {
 /* ---------------------------- Status -> Badges ---------------------------- */
 const statusBadge: Record<string, string> = {
   awaiting_approval: "bg-blue-100 text-blue-800",
-  awaiting: "bg-blue-100 text-blue-800",
-  queued: "bg-blue-100 text-blue-800",
+  awaiting: "bg-slate-200 text-slate-800",
+  queued: "bg-indigo-100 text-indigo-800",
   in_progress: "bg-orange-100 text-orange-800",
-  on_hold: "bg-yellow-100 text-yellow-800",
+  on_hold: "bg-amber-100 text-amber-800",
   planned: "bg-purple-100 text-purple-800",
   new: "bg-gray-200 text-gray-800",
   completed: "bg-green-100 text-green-800",
+};
+
+const statusBorder: Record<string, string> = {
+  awaiting: "border-l-4 border-slate-400",
+  queued: "border-l-4 border-indigo-400",
+  in_progress: "border-l-4 border-orange-500",
+  on_hold: "border-l-4 border-amber-500",
+  completed: "border-l-4 border-green-500",
+  awaiting_approval: "border-l-4 border-blue-500",
+  planned: "border-l-4 border-purple-500",
+  new: "border-l-4 border-gray-400",
 };
 
 /* ----------------------------- Lazy Invoice UI ---------------------------- */
@@ -159,6 +170,12 @@ function showErr(prefix: string, err?: { message?: string } | null) {
 function sleep(ms: number) {
   return new Promise((res) => setTimeout(res, ms));
 }
+function msToTenthHours(ms: number): string {
+  // .1 hr = 6 min = 360000 ms
+  const tenths = Math.max(0, Math.round(ms / 360000));
+  const hours = (tenths / 10).toFixed(1);
+  return `${hours} hr`;
+}
 
 /* ---------------------------------- Page --------------------------------- */
 export default function WorkOrderPage(): JSX.Element {
@@ -218,9 +235,12 @@ export default function WorkOrderPage(): JSX.Element {
   // One-time missing notice
   const [warnedMissing, setWarnedMissing] = useState(false);
 
-  // ------------------ NEW: selection for approval ------------------
+  // Selection for approval
   const [selectedForApproval, setSelectedForApproval] = useState<Set<string>>(new Set());
   const [touchedSelection, setTouchedSelection] = useState(false);
+
+  // Hold reason UI
+  const [holdReason, setHoldReason] = useState<string>("Awaiting customer authorization");
 
   const setSelection = (ids: string[], touched = true) => {
     setSelectedForApproval(new Set(ids));
@@ -241,14 +261,13 @@ export default function WorkOrderPage(): JSX.Element {
   };
   const clearAllSelection = () => setSelection([], true);
 
-  // Default selection: non-completed lines until the user touches it
+  // Default approval selection
   useEffect(() => {
     if (!touchedSelection) {
       const ids = (lines ?? []).filter((l) => (l.status ?? "") !== "completed").map((l) => l.id);
       setSelectedForApproval(new Set(ids));
     }
   }, [lines, touchedSelection]);
-  // ---------------------------------------------------------------
 
   // Current user
   useEffect(() => {
@@ -282,8 +301,6 @@ export default function WorkOrderPage(): JSX.Element {
 
   const mode = useWorkOrderMode(profileRole as Role | null);
   const caps = capabilities(profileRole);
-  const isViewMode = mode === "view";
-  const isTechMode = mode === "tech";
 
   const setUrlJobId = useCallback(
     (jobId: string | null) => {
@@ -430,11 +447,13 @@ export default function WorkOrderPage(): JSX.Element {
     return () => window.removeEventListener("wo:line-added", handler);
   }, [fetchAll]);
 
-  // Live timer
+  // Live timer for focused job
   useEffect(() => {
     const t = setInterval(() => {
       if (line?.punched_in_at && !line?.punched_out_at) {
         setDuration(formatDistanceStrict(new Date(), new Date(line.punched_in_at)));
+      } else {
+        setDuration("");
       }
     }, 10_000);
     return () => clearInterval(t);
@@ -491,6 +510,17 @@ export default function WorkOrderPage(): JSX.Element {
     fetchAll();
   };
 
+  const handlePunchOut = async (jobId: string) => {
+    const { error } = await supabase
+      .from("work_order_lines")
+      .update({ punched_out_at: new Date().toISOString(), status: "awaiting" })
+      .eq("id", jobId);
+    if (error) return showErr("Punch out failed", error);
+    toast.success("Punched out");
+    setActiveJobId(null);
+    fetchAll();
+  };
+
   const handleCompleteJob = async (cause: string, correction: string) => {
     if (!line) return;
     const { error } = await supabase
@@ -517,17 +547,18 @@ export default function WorkOrderPage(): JSX.Element {
     toast.success("Notes updated");
   };
 
-  const requestAuthorization = async () => {
+  const applyHold = async () => {
     if (!line) return;
+    const reason = holdReason || "On hold";
     const { error } = await supabase
       .from("work_order_lines")
       .update({
-        hold_reason: "Awaiting customer authorization",
+        hold_reason: reason,
         status: "on_hold",
       })
       .eq("id", line.id);
-    if (error) return showErr("Request authorization failed", error);
-    toast.success("Job put on hold for authorization");
+    if (error) return showErr("Put on hold failed", error);
+    toast.success("Job put on hold");
     fetchAll();
   };
 
@@ -628,32 +659,24 @@ export default function WorkOrderPage(): JSX.Element {
       toast.error("Customer email is required to send for approval.");
       return;
     }
-    if (!vehicle?.id) {
-      toast.error("Vehicle is required on the work order before sending for approval.");
-      return;
-    }
-    if (busySendApproval) return;
-
     const selected = Array.from(selectedForApproval);
     if (!selected.length) {
       toast.error("Select at least one job to send for approval.");
       return;
     }
+    if (busySendApproval) return;
 
     setBusySendApproval(true);
     const prev = wo;
     try {
-      // Optimistic WO status
       setWo(prev ? { ...prev, status: "awaiting_approval" } : prev);
 
-      // Persist WO status
       const { error: upErr } = await supabase
         .from("work_orders")
         .update({ status: "awaiting_approval" })
         .eq("id", wo.id);
       if (upErr) throw upErr;
 
-      // Fire approval
       const res = await fetch("/api/quotes/send-for-approval", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -683,8 +706,6 @@ export default function WorkOrderPage(): JSX.Element {
     return `text-xs px-2 py-1 rounded ${statusBadge[key] ?? "bg-gray-200 text-gray-800"}`;
   };
 
-  const isTech = (profileRole ?? "").toLowerCase() === "tech";
-
   const sortedLines = useMemo(() => {
     const pr: Record<string, number> = { diagnosis: 1, inspection: 2, maintenance: 3, repair: 4 };
     return [...lines].sort((a, b) => {
@@ -710,13 +731,33 @@ export default function WorkOrderPage(): JSX.Element {
   const notes: string | null = ((wo as WorkOrderWithMaybeNotes | null)?.notes ?? null) || null;
   const createdAt = wo?.created_at ? new Date(wo.created_at) : null;
   const createdAtText = createdAt && !isNaN(createdAt.getTime()) ? format(createdAt, "PPpp") : "—";
-
   const badgeClass =
     statusBadge[(line?.status ?? "awaiting") as keyof typeof statusBadge] ?? "bg-gray-200 text-gray-800";
+
+  // helper: per-job live duration in tenth hours
+  const renderJobDuration = (job: WorkOrderLine) => {
+    if (job.punched_in_at && !job.punched_out_at) {
+      const ms = Date.now() - new Date(job.punched_in_at).getTime();
+      return msToTenthHours(ms);
+    }
+    if (job.punched_in_at && job.punched_out_at) {
+      const ms = new Date(job.punched_out_at).getTime() - new Date(job.punched_in_at).getTime();
+      return msToTenthHours(ms);
+    }
+    return "0.0 hr";
+  };
 
   const Skeleton = ({ className = "" }: { className?: string }) => (
     <div className={`animate-pulse rounded bg-neutral-800/60 ${className}`} />
   );
+
+  const holdOptions = [
+    "Awaiting customer authorization",
+    "Awaiting parts",
+    "Waiting on vendor",
+    "Need additional info",
+    "Shop capacity",
+  ];
 
   return (
     <div className="p-4 sm:p-6 text-white">
@@ -801,14 +842,24 @@ export default function WorkOrderPage(): JSX.Element {
             <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold">Vehicle & Customer</h2>
-                <button
-                  type="button"
-                  className="text-sm text-orange-400 hover:underline"
-                  onClick={() => setShowDetails((v) => !v)}
-                  aria-expanded={showDetails}
-                >
-                  {showDetails ? "Hide details" : "Show details"}
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    className="rounded border border-neutral-700 px-3 py-1.5 text-xs hover:border-orange-500"
+                    onClick={() => router.push(`/work-orders/${wo.id}/approve`)}
+                    title="Open signature capture / approval"
+                  >
+                    Capture Signature
+                  </button>
+                  <button
+                    type="button"
+                    className="text-sm text-orange-400 hover:underline"
+                    onClick={() => setShowDetails((v) => !v)}
+                    aria-expanded={showDetails}
+                  >
+                    {showDetails ? "Hide details" : "Show details"}
+                  </button>
+                </div>
               </div>
 
               {showDetails && (
@@ -856,323 +907,263 @@ export default function WorkOrderPage(): JSX.Element {
             </div>
 
             {/* Jobs (front-desk quick add + list) */}
-            {isViewMode && (
-              <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <h2 className="text-lg font-semibold">Jobs in this Work Order</h2>
+            <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h2 className="text-lg font-semibold">Jobs in this Work Order</h2>
 
-                  {/* Add Job Line toggle */}
-                  <button
-                    type="button"
-                    onClick={() => setShowAddForm((v) => !v)}
-                    className="rounded bg-neutral-800 border border-neutral-700 px-3 py-1.5 text-sm hover:border-orange-500"
-                    aria-expanded={showAddForm}
-                  >
-                    {showAddForm ? "Hide Add Job Line" : "Add Job Line"}
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAddForm((v) => !v)}
+                  className="rounded bg-neutral-800 border border-neutral-700 px-3 py-1.5 text-sm hover:border-orange-500"
+                  aria-expanded={showAddForm}
+                >
+                  {showAddForm ? "Hide Add Job Line" : "Add Job Line"}
+                </button>
+              </div>
 
-                {/* NEW: Selection quick actions */}
-                <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-neutral-300">
-                  <span className="opacity-70">Approval selection:</span>
-                  <button
-                    type="button"
-                    className="rounded border border-neutral-700 px-2 py-1 hover:border-orange-500"
-                    onClick={selectAllEligible}
-                  >
-                    Select all eligible
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded border border-neutral-700 px-2 py-1 hover:border-orange-500"
-                    onClick={clearAllSelection}
-                  >
-                    Clear all
-                  </button>
-                  <span className="ml-auto">
-                    Selected: <strong>{selectedForApproval.size}</strong>
-                  </span>
-                </div>
+              {/* Approval selection helpers */}
+              <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-neutral-300">
+                <span className="opacity-70">Approval selection:</span>
+                <button
+                  type="button"
+                  className="rounded border border-neutral-700 px-2 py-1 hover:border-orange-500"
+                  onClick={selectAllEligible}
+                >
+                  Select all eligible
+                </button>
+                <button
+                  type="button"
+                  className="rounded border border-neutral-700 px-2 py-1 hover:border-orange-500"
+                  onClick={clearAllSelection}
+                >
+                  Clear all
+                </button>
+                <span className="ml-auto">
+                  Selected: <strong>{selectedForApproval.size}</strong>
+                </span>
+              </div>
 
-                {/* Manual form */}
-                {showAddForm && (
-                  <ErrorBoundary>
-                    <NewWorkOrderLineForm
-                      workOrderId={wo.id}
-                      vehicleId={vehicle?.id ?? null}
-                      defaultJobType={null}
-                      onCreated={() => fetchAll()}
-                    />
-                  </ErrorBoundary>
-                )}
+              {showAddForm && (
+                <ErrorBoundary>
+                  <NewWorkOrderLineForm
+                    workOrderId={wo.id}
+                    vehicleId={vehicle?.id ?? null}
+                    defaultJobType={null}
+                    onCreated={() => fetchAll()}
+                  />
+                </ErrorBoundary>
+              )}
 
-                {sortedLines.length === 0 ? (
-                  <p className="text-sm text-neutral-400">No lines yet.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {sortedLines.map((ln) => {
-                      const eligible = (ln.status ?? "") !== "completed";
-                      const checked = selectedForApproval.has(ln.id);
+              {sortedLines.length === 0 ? (
+                <p className="text-sm text-neutral-400">No lines yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {sortedLines.map((ln) => {
+                    const eligible = (ln.status ?? "") !== "completed";
+                    const checked = selectedForApproval.has(ln.id);
+                    const statusKey = (ln.status ?? "awaiting").toLowerCase().replaceAll(" ", "_");
+                    const borderCls = statusBorder[statusKey] || "border-l-4 border-gray-400";
 
-                      return (
-                        <div key={ln.id} className="rounded border border-neutral-800 bg-neutral-950 p-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="min-w-0">
-                              <div className="truncate font-medium">
-                                {ln.description || ln.complaint || "Untitled job"}
-                              </div>
-                              <div className="text-xs text-neutral-400">
-                                {String((ln.job_type as JobType) ?? "job").replaceAll("_", " ")} •{" "}
-                                {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} • Status:{" "}
-                                {(ln.status ?? "awaiting").replaceAll("_", " ")}
-                              </div>
-                              {(ln.complaint || ln.cause || ln.correction) && (
-                                <div className="text-xs text-neutral-400 mt-1">
-                                  {ln.complaint ? `Cmpl: ${ln.complaint}  ` : ""}
-                                  {ln.cause ? `| Cause: ${ln.cause}  ` : ""}
-                                  {ln.correction ? `| Corr: ${ln.correction}` : ""}
-                                </div>
-                              )}
+                    // individual live duration
+                    const live = renderJobDuration(ln);
+
+                    const isActive = activeJobId === ln.id && !ln.punched_out_at;
+
+                    return (
+                      <div key={ln.id} className={`rounded border border-neutral-800 bg-neutral-950 p-3 ${borderCls}`}>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="truncate font-medium">
+                              {ln.description || ln.complaint || "Untitled job"}
                             </div>
+                            <div className="text-xs text-neutral-400">
+                              {String((ln.job_type as JobType) ?? "job").replaceAll("_", " ")} •{" "}
+                              {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} • Status:{" "}
+                              {(ln.status ?? "awaiting").replaceAll("_", " ")} • Time: {live}
+                            </div>
+                            {(ln.complaint || ln.cause || ln.correction) && (
+                              <div className="text-xs text-neutral-400 mt-1">
+                                {ln.complaint ? `Cmpl: ${ln.complaint}  ` : ""}
+                                {ln.cause ? `| Cause: ${ln.cause}  ` : ""}
+                                {ln.correction ? `| Corr: ${ln.correction}` : ""}
+                              </div>
+                            )}
+                          </div>
 
-                            <div className="flex items-center gap-3">
-                              {/* NEW: per-line checkbox */}
-                              <label
-                                className={`flex items-center gap-1 text-xs ${
-                                  eligible ? "text-neutral-300" : "text-neutral-500"
-                                }`}
-                                title={
-                                  eligible
-                                    ? "Include this job in the customer approval"
-                                    : "Completed jobs are excluded"
-                                }
+                          <div className="flex flex-col items-end gap-2">
+                            <label
+                              className={`flex items-center gap-1 text-xs ${
+                                eligible ? "text-neutral-300" : "text-neutral-500"
+                              }`}
+                              title={eligible ? "Include in approval" : "Completed jobs are excluded"}
+                            >
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4"
+                                disabled={!eligible}
+                                checked={eligible && checked}
+                                onChange={() => eligible && toggleSelection(ln.id)}
+                              />
+                              Include
+                            </label>
+
+                            <span className={chipClass(ln.status as WOStatus)}>
+                              {(ln.status ?? "awaiting").replaceAll("_", " ")}
+                            </span>
+
+                            {/* Punch controls reflect state */}
+                            {!ln.punched_in_at || !isActive ? (
+                              <button
+                                className="ml-2 bg-green-600 hover:bg-green-700 text-white text-xs px-2 py-1 rounded"
+                                onClick={() => handlePunchIn(ln.id)}
+                                disabled={!!activeJobId && activeJobId !== ln.id}
+                                title={activeJobId && activeJobId !== ln.id ? "Punch out of current job first" : ""}
                               >
-                                <input
-                                  type="checkbox"
-                                  className="h-4 w-4"
-                                  disabled={!eligible}
-                                  checked={eligible && checked}
-                                  onChange={() => eligible && toggleSelection(ln.id)}
-                                />
-                                Include
-                              </label>
-
-                              <span className={chipClass(ln.status as WOStatus)}>
-                                {(ln.status ?? "awaiting").replaceAll("_", " ")}
-                              </span>
-                            </div>
+                                {activeJobId === ln.id ? "Punched In" : "Punch In"}
+                              </button>
+                            ) : (
+                              <button
+                                className="ml-2 bg-neutral-700 hover:bg-neutral-800 text-white text-xs px-2 py-1 rounded"
+                                onClick={() => handlePunchOut(ln.id)}
+                              >
+                                Punch Out
+                              </button>
+                            )}
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
 
             {/* Invoice (lazy) */}
-            {isViewMode && (
-              <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
-                <h3 className="mb-2 font-semibold">Invoice</h3>
-                <ErrorBoundary>
-                  <LazyInvoice woId={wo.id} lines={sortedLines} vehicle={vehicle} customer={customer} />
-                </ErrorBoundary>
-              </div>
-            )}
+            <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
+              <h3 className="mb-2 font-semibold">Invoice</h3>
+              <ErrorBoundary>
+                <LazyInvoice woId={wo.id} lines={sortedLines} vehicle={vehicle} customer={customer} />
+              </ErrorBoundary>
+            </div>
 
             {/* Sticky progress actions */}
-            {isViewMode && (
-              <div className="sticky bottom-3 z-10 mt-4 rounded border border-neutral-800 bg-neutral-900/95 p-3 backdrop-blur">
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    onClick={() => router.push(`/work-orders/quote-review?woId=${wo.id}`)}
-                    className="rounded bg-orange-500 px-3 py-2 font-semibold text-black hover:bg-orange-600"
-                  >
-                    Review Quote
-                  </button>
+            <div className="sticky bottom-3 z-10 mt-4 rounded border border-neutral-800 bg-neutral-900/95 p-3 backdrop-blur">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => router.push(`/work-orders/quote-review?woId=${wo.id}`)}
+                  className="rounded bg-orange-500 px-3 py-2 font-semibold text-black hover:bg-orange-600"
+                >
+                  Review Quote
+                </button>
 
-                  {/* Send for Approval uses current selection */}
-                  <button
-                    onClick={handleSendForApproval}
-                    disabled={busySendApproval || selectedForApproval.size === 0}
-                    className="rounded bg-blue-600 px-3 py-2 text-white hover:bg-blue-700 disabled:opacity-60"
-                    title={
-                      selectedForApproval.size
-                        ? "Email/SMS approval link to customer"
-                        : "Select at least one job line"
+                {/* Send for Approval uses selection */}
+                <button
+                  onClick={handleSendForApproval}
+                  disabled={busySendApproval || selectedForApproval.size === 0}
+                  className="rounded bg-blue-600 px-3 py-2 text-white hover:bg-blue-700 disabled:opacity-60"
+                >
+                  {busySendApproval ? "Sending…" : `Send for Approval (${selectedForApproval.size})`}
+                </button>
+
+                <button
+                  onClick={async () => {
+                    if (busyAwaiting) return;
+                    setBusyAwaiting(true);
+                    const prev = wo;
+                    setWo(prev ? { ...prev, status: "awaiting_approval" } : prev);
+                    const { error } = await supabase
+                      .from("work_orders")
+                      .update({ status: "awaiting_approval" })
+                      .eq("id", wo!.id);
+                    setBusyAwaiting(false);
+                    if (error) {
+                      setWo(prev);
+                      return showErr("Update status failed", error);
                     }
-                  >
-                    {busySendApproval ? "Sending…" : `Send for Approval (${selectedForApproval.size})`}
-                  </button>
+                    toast.success("Marked as awaiting customer approval");
+                  }}
+                  className="rounded border border-neutral-700 px-3 py-2 hover:border-orange-500 disabled:opacity-60"
+                  disabled={busyAwaiting}
+                >
+                  Mark Awaiting Approval
+                </button>
 
-                  <button
-                    onClick={async () => {
-                      if (busyAwaiting) return;
-                      setBusyAwaiting(true);
-                      const prev = wo;
-                      setWo(prev ? { ...prev, status: "awaiting_approval" } : prev);
-                      const { error } = await supabase
-                        .from("work_orders")
-                        .update({ status: "awaiting_approval" })
-                        .eq("id", wo.id);
-                      setBusyAwaiting(false);
-                      if (error) {
-                        setWo(prev);
-                        return showErr("Update status failed", error);
-                      }
-                      toast.success("Marked as awaiting customer approval");
-                    }}
-                    className="rounded border border-neutral-700 px-3 py-2 hover:border-orange-500 disabled:opacity-60"
-                    disabled={busyAwaiting}
-                  >
-                    Mark Awaiting Approval
-                  </button>
+                <button
+                  onClick={async () => {
+                    if (busyQueue) return;
+                    setBusyQueue(true);
+                    const prev = wo;
+                    setWo(prev ? { ...prev, status: "queued" } : prev);
+                    const { error } = await supabase.from("work_orders").update({ status: "queued" }).eq("id", wo!.id);
+                    setBusyQueue(false);
+                    if (error) {
+                      setWo(prev);
+                      return showErr("Update status failed", error);
+                    }
+                    toast.success("Moved to Queue");
+                    await fetchAll();
+                  }}
+                  className="rounded border border-neutral-700 px-3 py-2 hover:border-orange-500 disabled:opacity-60"
+                  disabled={busyQueue}
+                >
+                  Queue Work
+                </button>
 
-                  <button
-                    onClick={async () => {
-                      if (busyQueue) return;
-                      setBusyQueue(true);
-                      const prev = wo;
-                      setWo(prev ? { ...prev, status: "queued" } : prev);
-                      const { error } = await supabase.from("work_orders").update({ status: "queued" }).eq("id", wo.id);
-                      setBusyQueue(false);
-                      if (error) {
-                        setWo(prev);
-                        return showErr("Update status failed", error);
-                      }
-                      toast.success("Moved to Queue");
-                      await fetchAll();
-                    }}
-                    className="rounded border border-neutral-700 px-3 py-2 hover:border-orange-500 disabled:opacity-60"
-                    disabled={busyQueue}
-                  >
-                    Queue Work
-                  </button>
-
-                  <button
-                    className="rounded bg-purple-600 px-3 py-2 text-white hover:bg-purple-700 disabled:opacity-60"
-                    onClick={handleDownloadQuote}
-                    disabled={!caps.canGenerateQuote || busyQuote}
-                    title={!caps.canGenerateQuote ? "Not permitted" : "Generate quote PDF"}
-                  >
-                    {busyQuote ? "Saving…" : "Download Quote PDF"}
-                  </button>
-                </div>
+                <button
+                  className="rounded bg-purple-600 px-3 py-2 text-white hover:bg-purple-700 disabled:opacity-60"
+                  onClick={handleDownloadQuote}
+                  disabled={!caps.canGenerateQuote || busyQuote}
+                  title={!caps.canGenerateQuote ? "Not permitted" : "Generate quote PDF"}
+                >
+                  {busyQuote ? "Saving…" : "Download Quote PDF"}
+                </button>
               </div>
-            )}
+            </div>
           </div>
 
           {/* RIGHT */}
           <aside className="space-y-6">
-            {isTechMode && isTech && (
-              <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
-                <ErrorBoundary>
-                  {suggestedJobId ? (
-                    <SuggestedQuickAdd jobId={suggestedJobId} workOrderId={wo.id} vehicleId={vehicle?.id ?? null} />
-                  ) : (
-                    <div className="text-sm text-neutral-400">Add a job line to enable AI suggestions.</div>
-                  )}
-                </ErrorBoundary>
-              </div>
-            )}
-
-            {/* Start inspections */}
+            {/* AI helper panel */}
             <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
-              <div className="mb-2 font-semibold text-orange-400">Start an Inspection</div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  className="rounded bg-zinc-800 px-3 py-2 text-sm hover:bg-zinc-700"
-                  onClick={async () => {
-                    try {
-                      const res = await fetch("/api/inspection/save", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          work_order_id: wo.id,
-                          customer: {
-                            first_name: customer?.first_name ?? "",
-                            last_name: customer?.last_name ?? "",
-                            phone: customer?.phone ?? "",
-                            email: customer?.email ?? "",
-                          },
-                          vehicle: {
-                            year: String(vehicle?.year ?? ""),
-                            make: vehicle?.make ?? "",
-                            model: vehicle?.model ?? "",
-                            vin: vehicle?.vin ?? "",
-                            license_plate: vehicle?.license_plate ?? "",
-                            mileage: String(vehicle?.mileage ?? ""),
-                            color: "",
-                          },
-                        }),
-                      });
-                      const j = await res.json();
-                      if (!res.ok) {
-                        toast.error(j?.error || "Failed to start inspection.");
-                        return;
-                      }
-                      window.location.assign(`/inspection/maintenance50?inspectionId=${j.inspectionId}`);
-                    } catch (e: any) {
-                      showErr("Start inspection failed", e);
-                    }
-                  }}
-                >
-                  Gas – Maintenance/Inspection
-                </button>
-
-                <button
-                  className="rounded bg-zinc-800 px-3 py-2 text-sm hover:bg-zinc-700"
-                  onClick={async () => {
-                    try {
-                      const res = await fetch("/api/inspection/save", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          work_order_id: wo.id,
-                          customer: {
-                            first_name: customer?.first_name ?? "",
-                            last_name: customer?.last_name ?? "",
-                            phone: customer?.phone ?? "",
-                            email: customer?.email ?? "",
-                          },
-                          vehicle: {
-                            year: String(vehicle?.year ?? ""),
-                            make: vehicle?.make ?? "",
-                            model: vehicle?.model ?? "",
-                            vin: vehicle?.vin ?? "",
-                            license_plate: vehicle?.license_plate ?? "",
-                            mileage: String(vehicle?.mileage ?? ""),
-                            color: "",
-                          },
-                        }),
-                      });
-                      const j = await res.json();
-                      if (!res.ok) {
-                        toast.error(j?.error || "Failed to start inspection.");
-                        return;
-                      }
-                      window.location.assign(`/inspection/maintenance50?inspectionId=${j.inspectionId}&fuel=diesel`);
-                    } catch (e: any) {
-                      showErr("Start inspection failed", e);
-                    }
-                  }}
-                >
-                  Diesel – Maintenance/Inspection
-                </button>
-              </div>
+              <ErrorBoundary>
+                {suggestedJobId ? (
+                  <SuggestedQuickAdd jobId={suggestedJobId} workOrderId={wo.id} vehicleId={vehicle?.id ?? null} />
+                ) : (
+                  <div className="text-sm text-neutral-400">Add a job line to enable AI suggestions.</div>
+                )}
+              </ErrorBoundary>
             </div>
 
-            {/* Quick add menu */}
-            {isViewMode && (
+            {/* Quick add menu (uses MenuQuickAdd import) */}
+            <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
+              <ErrorBoundary>
+                <MenuQuickAdd workOrderId={wo.id} />
+              </ErrorBoundary>
+            </div>
+
+            {/* Inspection shortcuts: only if attached */}
+            {!!wo.inspection_id && (
               <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
-                <ErrorBoundary>
-                  <MenuQuickAdd workOrderId={wo.id} />
-                </ErrorBoundary>
+                <div className="mb-2 font-semibold text-orange-400">Inspection</div>
+                <div className="flex flex-wrap gap-2">
+                  <Link
+                    className="rounded bg-zinc-800 px-3 py-2 text-sm hover:bg-zinc-700"
+                    href={`/inspection/maintenance50?inspectionId=${wo.inspection_id}`}
+                  >
+                    Open Inspection
+                  </Link>
+                  <Link
+                    className="rounded bg-zinc-800 px-3 py-2 text-sm hover:bg-zinc-700"
+                    href={`/inspection/maintenance50?inspectionId=${wo.inspection_id}&fuel=diesel`}
+                  >
+                    Open (Diesel)
+                  </Link>
+                </div>
               </div>
             )}
 
-            {/* Tech actions */}
-            {isTechMode && line ? (
+            {/* Tech actions (Focused Job) */}
+            {line ? (
               <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold">Focused Job</h3>
@@ -1189,7 +1180,7 @@ export default function WorkOrderPage(): JSX.Element {
                     <strong>Status:</strong> {line.status ?? "—"}
                   </p>
                   <p>
-                    <strong>Live Timer:</strong> {duration}
+                    <strong>Live Timer:</strong> {duration || renderJobDuration(line)}
                   </p>
                   <p>
                     <strong>Punched In:</strong>{" "}
@@ -1213,18 +1204,51 @@ export default function WorkOrderPage(): JSX.Element {
                     >
                       Complete Job
                     </button>
+
+                    {(!line.punched_in_at || line.punched_out_at) ? (
+                      <button
+                        className="bg-green-600 hover:bg-green-700 px-3 py-2 rounded text-white"
+                        onClick={() => handlePunchIn(line.id)}
+                      >
+                        Punch In
+                      </button>
+                    ) : (
+                      <button
+                        className="bg-neutral-700 hover:bg-neutral-800 px-3 py-2 rounded text-white"
+                        onClick={() => handlePunchOut(line.id)}
+                      >
+                        Punch Out
+                      </button>
+                    )}
+
                     <button
-                      className="bg-red-500 hover:bg-red-600 px-3 py-2 rounded text-white"
+                      className="bg-red-600 hover:bg-red-700 px-3 py-2 rounded text-white"
                       onClick={() => setIsPartsModalOpen(true)}
                     >
                       Request Parts
                     </button>
-                    <button
-                      className="bg-yellow-500 hover:bg-yellow-600 px-3 py-2 rounded text-white"
-                      onClick={requestAuthorization}
-                    >
-                      Request Authorization
-                    </button>
+
+                    {/* Hold with reason */}
+                    <div className="flex items-center gap-2">
+                      <select
+                        className="flex-1 border border-neutral-700 bg-neutral-800 text-white text-sm rounded px-2 py-2"
+                        value={holdReason}
+                        onChange={(e) => setHoldReason(e.target.value)}
+                      >
+                        {holdOptions.map((opt) => (
+                          <option key={opt} value={opt}>
+                            {opt}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        className="bg-amber-600 hover:bg-amber-700 px-3 py-2 rounded text-white"
+                        onClick={applyHold}
+                      >
+                        Hold
+                      </button>
+                    </div>
+
                     <button
                       className="bg-gray-800 hover:bg-black px-3 py-2 rounded text-white col-span-1 sm:col-span-2"
                       onClick={() => setIsAddJobModalOpen(true)}
@@ -1246,92 +1270,41 @@ export default function WorkOrderPage(): JSX.Element {
                   <div className="mt-4 space-y-2">
                     <label className="block text-sm">Tech Notes</label>
                     <textarea
-                      className="w-full border border-neutral-700 bg-neutral-800 text-white p-2 rounded"
+                      className="w-full border border-neutral-700 bg-neutral-800 text-white placeholder-neutral-400 p-2 rounded"
                       rows={3}
                       value={techNotes}
                       onChange={(e) => setTechNotes(e.target.value)}
                       onBlur={updateTechNotes}
                       disabled={updatingNotes}
+                      placeholder="Add notes for this job…"
                     />
                   </div>
+
+                  {/* Diagnosis helper (uses DtcSuggestionPopup import) */}
+                  {line.job_type === "diagnosis" &&
+                    line.punched_in_at &&
+                    !line.cause &&
+                    !line.correction &&
+                    vehicle && (
+                      <div className="mt-4">
+                        <DtcSuggestionPopup
+                          jobId={line.id}
+                          vehicle={{
+                            id: vehicle.id,
+                            year: (vehicle.year ?? "").toString(),
+                            make: vehicle.make ?? "",
+                            model: vehicle.model ?? "",
+                          }}
+                        />
+                      </div>
+                    )}
                 </div>
-
-                {/* Job list with punch-in */}
-                <div className="mt-6">
-                  <h4 className="font-semibold mb-2">Job List</h4>
-                  <div className="space-y-2">
-                    {sortedLines.map((job) => {
-                      const jobType = (job.job_type as JobType) ?? "unknown";
-                      const typeColor: Record<string, string> = {
-                        diagnosis: "border-l-4 border-red-500",
-                        "diagnosis-followup": "border-l-4 border-orange-500",
-                        maintenance: "border-l-4 border-yellow-500",
-                        repair: "border-l-4 border-green-500",
-                        "tech-suggested": "border-l-4 border-blue-400",
-                      };
-                      const jobBadge =
-                        statusBadge[job.status as keyof typeof statusBadge] ?? "bg-gray-300 text-gray-800";
-
-                      return (
-                        <div key={job.id} className={`p-3 border rounded bg-neutral-950 ${typeColor[jobType] || ""}`}>
-                          <div className="flex justify-between items-center">
-                            <div
-                              className="cursor-pointer"
-                              title="Focus this job"
-                              onClick={() => {
-                                setLine(job);
-                                setActiveJobId(job.punched_out_at ? null : job.id);
-                                setTechNotes(job.notes ?? "");
-                                setUrlJobId(job.id);
-                              }}
-                            >
-                              <p className="font-medium text-white">{job.complaint || "No complaint"}</p>
-                              <p className="text-xs text-neutral-400">
-                                {job.job_type || "unknown"} | {job.status ?? "—"}
-                              </p>
-                            </div>
-
-                            <div className="flex items-center gap-2">
-                              <span className={`text-xs px-2 py-1 rounded ${jobBadge}`}>
-                                {(job.status ?? "awaiting").replaceAll("_", " ")}
-                              </span>
-
-                              {(!job.punched_in_at || activeJobId !== job.id) && (
-                                <button
-                                  className="ml-2 bg-green-600 hover:bg-green-700 text-white text-xs px-2 py-1 rounded"
-                                  onClick={() => handlePunchIn(job.id)}
-                                >
-                                  Punch In
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Diagnosis: AI DTC helper */}
-                {line?.job_type === "diagnosis" && line.punched_in_at && !line.cause && !line.correction && vehicle && (
-                  <div className="mt-4">
-                    <DtcSuggestionPopup
-                      jobId={line.id}
-                      vehicle={{
-                        id: vehicle.id,
-                        year: (vehicle.year ?? "").toString(),
-                        make: vehicle.make ?? "",
-                        model: vehicle.model ?? "",
-                      }}
-                    />
-                  </div>
-                )}
               </div>
-            ) : isTechMode ? (
+            ) : (
               <div className="rounded border border-neutral-800 bg-neutral-900 p-4 text-sm text-neutral-400">
                 No focused job yet.
               </div>
-            ) : null}
+            )}
           </aside>
         </div>
       )}

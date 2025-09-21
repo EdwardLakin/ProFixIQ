@@ -1,4 +1,3 @@
-// features/shared/components/SignaturePad.tsx
 "use client";
 
 import { useRef } from "react";
@@ -9,15 +8,13 @@ type Props = {
   onCancel: () => void;
 };
 
+// NOTE: accept `any` to bypass Next’s serializable-props check, then cast internally.
 export default function SignaturePad(rawProps: any) {
-  // Cast internally so Next.js' serializable-props check doesn't run on export type
   const { onSave, onCancel } = rawProps as Props;
 
   const sigRef = useRef<SignatureCanvas | null>(null);
 
-  const handleClear = () => {
-    sigRef.current?.clear();
-  };
+  const handleClear = () => sigRef.current?.clear();
 
   const handleSave = () => {
     const canvas = sigRef.current;
@@ -30,42 +27,33 @@ export default function SignaturePad(rawProps: any) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-gray-900 rounded-lg p-6 shadow-lg max-w-md w-full">
-        <h2 className="text-lg font-semibold mb-4 text-center text-gray-800 dark:text-white">
-          Sign Below
-        </h2>
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-gray-900 rounded-lg p-6 shadow-lg w-full max-w-md">
+        <h2 className="text-lg font-semibold mb-4 text-center text-gray-800 dark:text-white">Sign Below</h2>
 
         <SignatureCanvas
           ref={sigRef}
           penColor="black"
           canvasProps={{
-            width: 400,
-            height: 200,
-            className: "border border-gray-300 rounded-md",
-            style: { backgroundColor: "white" }, // ✅ put backgroundColor here
+            width: 500,
+            height: 220,
+            className: "border border-gray-300 rounded-md w-full",
+            style: { backgroundColor: "white" },
           }}
         />
 
-        <div className="mt-4 flex justify-between">
-          <button
-            onClick={handleClear}
-            className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400"
-          >
+        <div className="mt-4 flex flex-wrap gap-2 justify-between">
+          <button onClick={handleClear} className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400">
             Clear
           </button>
-          <button
-            onClick={handleSave}
-            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
-          >
-            Save
-          </button>
-          <button
-            onClick={onCancel}
-            className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
-          >
-            Cancel
-          </button>
+          <div className="flex gap-2">
+            <button onClick={onCancel} className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600">
+              Cancel
+            </button>
+            <button onClick={handleSave} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">
+              Save
+            </button>
+          </div>
         </div>
       </div>
     </div>
