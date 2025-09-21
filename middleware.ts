@@ -6,7 +6,7 @@ import type { Database } from "@shared/types/types/supabase";
 
 type UserRole = Database["public"]["Enums"]["user_role_enum"];
 
-const PUBLIC_PATHS = new Set<string>([
+const PUBLIC_PATHS = new Set([
   "/sign-in",
   "/signup",
   "/subscribe",
@@ -16,69 +16,76 @@ const PUBLIC_PATHS = new Set<string>([
   "/coming-soon",
 ]);
 
-function isAssetPath(pathname: string): boolean {
+function isAssetPath(p: string) {
   return (
-    pathname.startsWith("/_next") ||
-    pathname.startsWith("/fonts") ||
-    pathname.endsWith("/favicon.ico") ||
-    pathname.endsWith(".svg") ||
-    /\.(png|jpg|jpeg|gif|webp|ico|css|js|map)$/i.test(pathname)
+    p.startsWith("/_next") ||
+    p.startsWith("/fonts") ||
+    p.endsWith("/favicon.ico") ||
+    p.endsWith(".svg") ||
+    /\.(png|jpg|jpeg|gif|webp|ico|css|js|map)$/i.test(p)
   );
+}
+
+// 👇 helper: preserve cookies set on `res` when redirecting/rewriting
+function withSupabaseCookies(from: NextResponse, to: NextResponse) {
+  const setCookie = from.headers.get("set-cookie");
+  if (setCookie) {
+    // multiple cookies are joined by comma by Next; append is safer
+    const parts = setCookie.split(","); // naive split is fine for Set-Cookie
+    for (const c of parts) to.headers.append("set-cookie", c.trim());
+  }
+  return to;
 }
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
   const supabase = createMiddlewareClient<Database>({ req, res });
 
-  const { pathname } = req.nextUrl;
+  const { pathname, search } = req.nextUrl;
 
-  // Skip assets & API
   if (isAssetPath(pathname) || pathname.startsWith("/api")) {
     return res;
   }
 
-  // Session
   const {
     data: { session },
   } = await supabase.auth.getSession();
 
-  // ----- Coming Soon allowlist on "/" -----
+  // "/" allowlist
   if (pathname === "/") {
     if (!session?.user) {
-      const login = new URL("/sign-in", req.url);
-      login.searchParams.set("redirect", "/dashboard");
-      return NextResponse.redirect(login);
+      const url = new URL("/sign-in", req.url);
+      url.searchParams.set("redirect", "/dashboard");
+      return withSupabaseCookies(res, NextResponse.redirect(url));
     }
-
-    const allowList = (process.env.ALLOWLIST_EMAILS ?? "")
-      .split(",")
-      .map((e) => e.trim().toLowerCase())
-      .filter(Boolean);
-    const allow = new Set<string>(allowList);
-
+    const allow = new Set(
+      (process.env.ALLOWLIST_EMAILS ?? "")
+        .split(",")
+        .map((e) => e.trim().toLowerCase())
+        .filter(Boolean)
+    );
     const email = (session.user.email ?? "").toLowerCase();
     if (!allow.has(email)) {
-      return NextResponse.rewrite(new URL("/coming-soon", req.url));
+      return withSupabaseCookies(res, NextResponse.rewrite(new URL("/coming-soon", req.url)));
     }
-    // fall through to profile check below
   }
 
-  // Public pages
+  // Public
   if (PUBLIC_PATHS.has(pathname)) {
     if ((pathname === "/sign-in" || pathname === "/signup") && session?.user) {
-      return NextResponse.redirect(new URL("/dashboard", req.url));
+      return withSupabaseCookies(res, NextResponse.redirect(new URL("/dashboard", req.url)));
     }
     return res;
   }
 
-  // Protected app
+  // Protected
   if (!session?.user) {
-    const login = new URL("/sign-in", req.url);
-    login.searchParams.set("redirect", `${pathname}${req.nextUrl.search}`);
-    return NextResponse.redirect(login);
+    const url = new URL("/sign-in", req.url);
+    url.searchParams.set("redirect", `${pathname}${search}`);
+    return withSupabaseCookies(res, NextResponse.redirect(url));
   }
 
-  // Read profile; if it fails, do NOT force onboarding
+  // Profile lookup (make sure your profiles RLS lets a user read their own row)
   let role: UserRole | null = null;
   let completed = false;
   let gotProfile = false;
@@ -89,25 +96,22 @@ export async function middleware(req: NextRequest) {
       .select("role, completed_onboarding")
       .eq("id", session.user.id)
       .maybeSingle();
-
     if (profile) {
       gotProfile = true;
-      role = profile.role ?? null;
-      completed = !!profile.completed_onboarding;
+      role = (profile as any).role ?? null;
+      completed = !!(profile as any).completed_onboarding;
     }
   } catch {
-    gotProfile = false; // treat as unknown
+    // ignore; don't block
   }
 
-  // If you land on "/" (and passed allowlist) choose destination
   if (pathname === "/") {
     const to = gotProfile && role && completed ? "/dashboard" : "/onboarding";
-    return NextResponse.redirect(new URL(to, req.url));
+    return withSupabaseCookies(res, NextResponse.redirect(new URL(to, req.url)));
   }
 
-  // Only gate dashboard when we positively know onboarding is incomplete
   if (pathname.startsWith("/dashboard") && gotProfile && role && completed === false) {
-    return NextResponse.redirect(new URL("/onboarding", req.url));
+    return withSupabaseCookies(res, NextResponse.redirect(new URL("/onboarding", req.url)));
   }
 
   return res;

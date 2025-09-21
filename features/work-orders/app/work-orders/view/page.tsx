@@ -9,7 +9,7 @@ import { format } from "date-fns";
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
-type Vehicle  = DB["public"]["Tables"]["vehicles"]["Row"];
+type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 
 type Row = WorkOrder & {
   customers: Pick<Customer, "first_name" | "last_name" | "phone" | "email"> | null;
@@ -180,9 +180,9 @@ export default function WorkOrdersView(): JSX.Element {
 
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  {/* Link to the TECH VIEW page */}
+                  {/* Link to unified id page, forcing view mode */}
                   <Link
-                    href={`/work-orders/${r.id}`}
+                    href={`/work-orders/${r.id}?mode=view`}
                     className="font-medium underline underline-offset-2 decoration-neutral-600 hover:decoration-orange-500"
                   >
                     {r.custom_id ? r.custom_id : `#${r.id.slice(0, 8)}`}
@@ -210,9 +210,9 @@ export default function WorkOrdersView(): JSX.Element {
               </div>
 
               <div className="flex items-center gap-2">
-                {/* Open → also to TECH VIEW */}
+                {/* Open → also goes to unified id page in view mode */}
                 <Link
-                  href={`/work-orders/${r.id}`}
+                  href={`/work-orders/${r.id}?mode=view`}
                   className="rounded border border-neutral-700 px-2 py-1 text-sm hover:bg-neutral-800"
                 >
                   Open
