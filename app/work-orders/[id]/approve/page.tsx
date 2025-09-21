@@ -49,8 +49,8 @@ export default function ApproveWorkOrderPage() {
         setWo(woRow ?? null);
         setLines(lineRows ?? []);
         setApproved(new Set((lineRows ?? []).map((l) => l.id))); // preselect all
-      } catch (e: any) {
-        setErr(e?.message ?? "Failed to load work order.");
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "Failed to load work order.");
       } finally {
         setLoading(false);
       }
@@ -74,13 +74,6 @@ export default function ApproveWorkOrderPage() {
 
   async function handleSubmit(signatureDataUrl?: string) {
     if (!id) return;
-
-    // You can allow 0 selections to mean "decline all".
-    // If you want to force at least one, uncomment:
-    // if (approved.size === 0) {
-    //   alert("Please approve at least one item, or uncheck all and click Submit to decline.");
-    //   return;
-    // }
 
     setSubmitting(true);
     try {
@@ -111,8 +104,8 @@ export default function ApproveWorkOrderPage() {
       if (!res.ok) throw new Error(j?.error || "Failed to submit approval");
 
       router.replace(`/work-orders/confirm?woId=${id}`);
-    } catch (e: any) {
-      setErr(e?.message ?? "Approval failed");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Approval failed");
     } finally {
       setSubmitting(false);
     }
