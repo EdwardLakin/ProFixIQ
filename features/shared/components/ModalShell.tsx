@@ -9,8 +9,10 @@ interface Props {
   isOpen: boolean;
   onClose: () => void | Promise<void>;
   onSubmit?: () => void | Promise<void>;
-  title?: ReactNode;      // allow styled titles (e.g., status-colored)
-  subtitle?: ReactNode;   // allow styled subtitles
+  title?: string;
+  /** extra: allow callers to color the title (status-based) */
+  titleClass?: string;
+  subtitle?: string;
   submitText?: string;
   size?: Size;
   footerLeft?: ReactNode;
@@ -23,6 +25,7 @@ export default function ModalShell(props: any) {
     onClose,
     onSubmit,
     title,
+    titleClass,
     subtitle,
     submitText,
     size = "md",
@@ -30,45 +33,45 @@ export default function ModalShell(props: any) {
     children,
   } = props as Props;
 
-  const maxW =
-    size === "sm" ? "max-w-md" : size === "lg" ? "max-w-3xl" : "max-w-xl";
+  const maxW = size === "sm" ? "max-w-md" : size === "lg" ? "max-w-3xl" : "max-w-xl";
 
   return (
     <Dialog open={isOpen} onClose={onClose} className="fixed inset-0 z-50">
-      {/* darker overlay, match other dark modals */}
       <div className="fixed inset-0 bg-black/60" />
       <div className="fixed inset-0 flex items-center justify-center p-4">
         <Dialog.Panel
-          className={`w-full ${maxW} rounded-lg border border-neutral-800 bg-neutral-950 text-white shadow-2xl`}
+          className={`w-full ${maxW} rounded bg-neutral-900 text-white border border-orange-400 shadow-2xl`}
         >
           {(title || subtitle) && (
-            <header className="mb-4 border-b border-neutral-900 px-6 pt-5 pb-3">
+            <header className="mb-3 border-b border-neutral-800 px-6 pt-5 pb-3">
               {title ? (
-                <Dialog.Title className="font-header text-lg tracking-wide">
+                <Dialog.Title
+                  className={`font-blackops text-lg tracking-wide ${titleClass ?? ""}`}
+                >
                   {title}
                 </Dialog.Title>
               ) : null}
               {subtitle ? (
-                <div className="mt-1 text-sm text-neutral-400">{subtitle}</div>
+                <p className="mt-0.5 text-xs text-neutral-400 font-roboto">{subtitle}</p>
               ) : null}
             </header>
           )}
 
-          <div className="px-6">{children}</div>
+          <div className="px-6 pb-4 font-roboto">{children}</div>
 
-          <footer className="mt-6 flex items-center justify-between gap-2 border-t border-neutral-900 px-6 py-4">
+          <footer className="mt-1 flex items-center justify-between gap-2 px-6 pb-5">
             <div>{footerLeft}</div>
             <div className="flex items-center gap-2">
               <button
                 onClick={onClose}
-                className="font-header rounded border border-neutral-700 bg-transparent px-4 py-2 text-sm text-neutral-200 hover:bg-neutral-900"
+                className="font-blackops rounded border border-neutral-600 px-4 py-2 text-sm hover:border-orange-400"
               >
                 Cancel
               </button>
               {onSubmit ? (
                 <button
                   onClick={onSubmit}
-                  className="font-header rounded border border-orange-600 bg-transparent px-4 py-2 text-sm text-orange-300 hover:bg-orange-900/20"
+                  className="font-blackops rounded border border-orange-500 px-4 py-2 text-sm hover:border-orange-400"
                 >
                   {submitText ?? "Submit"}
                 </button>

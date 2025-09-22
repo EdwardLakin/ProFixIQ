@@ -35,25 +35,18 @@ const statusTextColor: Record<string, string> = {
 };
 
 const chip = (s: string | null) =>
-  (statusTextColor[(s ?? "awaiting").toLowerCase().replaceAll(" ", "_")] ??
-    "text-neutral-200");
+  statusTextColor[(s ?? "awaiting").toLowerCase().replaceAll(" ", "_")] ??
+  "text-neutral-200";
 
 const outlineBtn =
   "font-header rounded border px-3 py-2 text-sm transition-colors";
-const outlineNeutral =
-  `${outlineBtn} border-neutral-700 text-neutral-200 hover:bg-neutral-800`;
-const outlineSuccess =
-  `${outlineBtn} border-green-600 text-green-300 hover:bg-green-900/20`;
-const outlineFinish =
-  `${outlineBtn} border-neutral-600 text-neutral-200 hover:bg-neutral-800`;
-const outlineWarn =
-  `${outlineBtn} border-amber-600 text-amber-300 hover:bg-amber-900/20`;
-const outlineDanger =
-  `${outlineBtn} border-red-600 text-red-300 hover:bg-red-900/20`;
-const outlineInfo =
-  `${outlineBtn} border-blue-600 text-blue-300 hover:bg-blue-900/20`;
-const outlinePurple =
-  `${outlineBtn} border-purple-600 text-purple-300 hover:bg-purple-900/20`;
+const outlineNeutral = `${outlineBtn} border-neutral-700 text-neutral-200 hover:bg-neutral-800`;
+const outlineSuccess = `${outlineBtn} border-green-600 text-green-300 hover:bg-green-900/20`;
+const outlineFinish = `${outlineBtn} border-neutral-600 text-neutral-200 hover:bg-neutral-800`;
+const outlineWarn = `${outlineBtn} border-amber-600 text-amber-300 hover:bg-amber-900/20`;
+const outlineDanger = `${outlineBtn} border-red-600 text-red-300 hover:bg-red-900/20`;
+const outlineInfo = `${outlineBtn} border-blue-600 text-blue-300 hover:bg-blue-900/20`;
+const outlinePurple = `${outlineBtn} border-purple-600 text-purple-300 hover:bg-purple-900/20`;
 
 export default function FocusedJobModal(props: any) {
   const {
@@ -142,9 +135,7 @@ export default function FocusedJobModal(props: any) {
     if (!isOpen) return;
     const t = setInterval(() => {
       if (line?.punched_in_at && !line?.punched_out_at) {
-        setDuration(
-          formatDistanceStrict(new Date(), new Date(line.punched_in_at))
-        );
+        setDuration(formatDistanceStrict(new Date(), new Date(line.punched_in_at)));
       } else {
         setDuration("");
       }
@@ -158,12 +149,8 @@ export default function FocusedJobModal(props: any) {
   const msToTenthHours = (ms: number) =>
     (Math.max(0, Math.round(ms / 360000)) / 10).toFixed(1) + " hr";
   const renderLiveTenthHours = () => {
-    if (startAt && !finishAt)
-      return msToTenthHours(Date.now() - new Date(startAt).getTime());
-    if (startAt && finishAt)
-      return msToTenthHours(
-        new Date(finishAt).getTime() - new Date(startAt).getTime()
-      );
+    if (startAt && !finishAt) return msToTenthHours(Date.now() - new Date(startAt).getTime());
+    if (startAt && finishAt) return msToTenthHours(new Date(finishAt).getTime() - new Date(startAt).getTime());
     return "0.0 hr";
   };
 
@@ -186,9 +173,14 @@ export default function FocusedJobModal(props: any) {
   // Actions
   const startJob = async () => {
     if (!workOrderLineId) return;
+    // FIX: ensure we clear punched_out_at when (re)starting
     const { error } = await supabase
       .from("work_order_lines")
-      .update({ punched_in_at: new Date().toISOString(), status: "in_progress" })
+      .update({
+        punched_in_at: new Date().toISOString(),
+        punched_out_at: null,
+        status: "in_progress",
+      })
       .eq("id", workOrderLineId);
     if (error) return showErr("Start failed", error);
     toast.success("Started");
@@ -254,10 +246,7 @@ export default function FocusedJobModal(props: any) {
     const path = `wo/${workOrder.id}/lines/${workOrderLineId}/${uuidv4()}_${file.name}`;
     const { error } = await supabase.storage
       .from("job-photos")
-      .upload(path, file, {
-        contentType: file.type || "image/jpeg",
-        upsert: true,
-      });
+      .upload(path, file, { contentType: file.type || "image/jpeg", upsert: true });
     if (error) return showErr("Photo upload failed", error);
     toast.success("Photo attached");
   };
@@ -277,11 +266,7 @@ export default function FocusedJobModal(props: any) {
     await fetch("/api/send-email", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: customer.email,
-        subject,
-        html: `<p>${body}</p>`,
-      }),
+      body: JSON.stringify({ email: customer.email, subject, html: `<p>${body}</p>` }),
     }).catch(() => null);
     toast.success("Email queued");
   };
@@ -311,9 +296,7 @@ export default function FocusedJobModal(props: any) {
   const titleText =
     (line?.description || line?.complaint || "Focused Job") +
     (line?.job_type ? ` — ${String(line.job_type).replaceAll("_", " ")}` : "");
-  const titleEl = (
-    <span className={`font-header ${chip(line?.status)}`}>{titleText}</span>
-  );
+  const titleEl = <span className={`font-header ${chip(line?.status)}`}>{titleText}</span>;
 
   const startedText = startAt ? format(new Date(startAt), "PPpp") : "—";
   const finishedText = finishAt ? format(new Date(finishAt), "PPpp") : "—";
@@ -380,9 +363,7 @@ export default function FocusedJobModal(props: any) {
                   <div className="text-neutral-400">Customer</div>
                   <div className="truncate">
                     {customer
-                      ? [customer.first_name ?? "", customer.last_name ?? ""]
-                          .filter(Boolean)
-                          .join(" ") || "—"
+                      ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") || "—"
                       : "—"}
                   </div>
                   <div className="text-xs text-neutral-500">
@@ -406,87 +387,51 @@ export default function FocusedJobModal(props: any) {
                     </button>
                   )}
 
-                  <button
-                    className={outlinePurple}
-                    onClick={() => setOpenComplete(true)}
-                  >
+                  <button className={outlinePurple} onClick={() => setOpenComplete(true)}>
                     Complete (Cause/Correction)
                   </button>
 
-                  <button
-                    className={outlineDanger}
-                    onClick={() => setOpenParts(true)}
-                  >
+                  <button className={outlineDanger} onClick={() => setOpenParts(true)}>
                     Request Parts
                   </button>
 
-                  <button
-                    className={outlineWarn}
-                    onClick={() => setOpenHold(true)}
-                  >
+                  <button className={outlineWarn} onClick={() => setOpenHold(true)}>
                     {line.status === "on_hold" ? "On Hold" : "Hold"}
                   </button>
 
-                  <button
-                    className={outlineInfo}
-                    onClick={() => setOpenStatus(true)}
-                  >
+                  <button className={outlineInfo} onClick={() => setOpenStatus(true)}>
                     Change Status
                   </button>
 
-                  <button
-                    className={outlineNeutral}
-                    onClick={() => setOpenTime(true)}
-                  >
+                  <button className={outlineNeutral} onClick={() => setOpenTime(true)}>
                     Adjust Time
                   </button>
 
-                  <button
-                    className={outlineNeutral}
-                    onClick={() => setOpenAssign(true)}
-                  >
+                  <button className={outlineNeutral} onClick={() => setOpenAssign(true)}>
                     Assign Tech
                   </button>
 
-                  <button
-                    className={outlineNeutral}
-                    onClick={() => setOpenPhoto(true)}
-                  >
+                  <button className={outlineNeutral} onClick={() => setOpenPhoto(true)}>
                     Add Photo
                   </button>
 
-                  <button
-                    className={outlineNeutral}
-                    onClick={() => setOpenCost(true)}
-                  >
+                  <button className={outlineNeutral} onClick={() => setOpenCost(true)}>
                     Cost / Estimate
                   </button>
 
-                  <button
-                    className={outlineNeutral}
-                    onClick={() => setOpenContact(true)}
-                  >
+                  <button className={outlineNeutral} onClick={() => setOpenContact(true)}>
                     Contact Customer
                   </button>
                 </>
               ) : (
                 <>
-                  <button
-                    className={outlineNeutral}
-                    onClick={() => setOpenCost(true)}
-                  >
+                  <button className={outlineNeutral} onClick={() => setOpenCost(true)}>
                     Cost / Estimate
                   </button>
-                  <button
-                    className={outlineNeutral}
-                    onClick={() => setOpenContact(true)}
-                  >
+                  <button className={outlineNeutral} onClick={() => setOpenContact(true)}>
                     Contact Customer
                   </button>
-                  <button
-                    className={outlineInfo}
-                    onClick={() => setOpenStatus(true)}
-                  >
+                  <button className={outlineInfo} onClick={() => setOpenStatus(true)}>
                     Change Status
                   </button>
                 </>
@@ -515,9 +460,7 @@ export default function FocusedJobModal(props: any) {
 
             <div className="text-xs text-neutral-500">
               Job ID: {line.id}
-              {typeof line.labor_time === "number"
-                ? ` • Labor: ${line.labor_time.toFixed(1)}h`
-                : ""}
+              {typeof line.labor_time === "number" ? ` • Labor: ${line.labor_time.toFixed(1)}h` : ""}
               {line.hold_reason ? ` • Hold: ${line.hold_reason}` : ""}
             </div>
           </div>
@@ -609,14 +552,8 @@ export default function FocusedJobModal(props: any) {
         <CostEstimateModal
           isOpen={openCost}
           onClose={() => setOpenCost(false)}
-          defaultLaborHours={
-            typeof line.labor_time === "number" ? line.labor_time : null
-          }
-          defaultPrice={
-            typeof line.price_estimate === "number"
-              ? line.price_estimate
-              : null
-          }
+          defaultLaborHours={typeof line.labor_time === "number" ? line.labor_time : null}
+          defaultPrice={typeof line.price_estimate === "number" ? line.price_estimate : null}
           onApply={applyCost}
         />
       )}
@@ -627,9 +564,7 @@ export default function FocusedJobModal(props: any) {
           onClose={() => setOpenContact(false)}
           customerName={
             customer
-              ? [customer.first_name ?? "", customer.last_name ?? ""]
-                  .filter(Boolean)
-                  .join(" ")
+              ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ")
               : ""
           }
           customerEmail={customer?.email ?? ""}
