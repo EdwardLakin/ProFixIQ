@@ -19,7 +19,6 @@ interface Props {
 }
 
 export default function PartsRequestModal(props: any) {
-  // Cast locally for strong typing while keeping exported signature serializable-safe
   const {
     isOpen,
     onClose,
@@ -38,10 +37,13 @@ export default function PartsRequestModal(props: any) {
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
 
+  // preload if editing an existing request
   useEffect(() => {
     if (existingRequest) {
       setPartsNeeded(existingRequest.part_name || "");
-      setUrgency((existingRequest.urgency as "low" | "medium" | "high") ?? "medium");
+      setUrgency(
+        (existingRequest.urgency as "low" | "medium" | "high") ?? "medium"
+      );
       setNotes(existingRequest.notes || "");
       setQuantity(existingRequest.quantity || 1);
       setPhotoUrls(existingRequest.photo_urls || []);
@@ -78,24 +80,32 @@ export default function PartsRequestModal(props: any) {
     };
 
     const { error } = existingRequest
-      ? await supabase.from("parts_requests").update(payload).eq("id", existingRequest.id!)
+      ? await supabase
+          .from("parts_requests")
+          .update(payload)
+          .eq("id", existingRequest.id!)
       : await supabase.from("parts_requests").insert(payload);
 
     if (error) {
       toast.error("Failed to submit parts request: " + error.message);
     } else {
-      toast.success(existingRequest ? "Request updated successfully." : "Parts request submitted.");
+      toast.success(
+        existingRequest ? "Request updated successfully." : "Parts request submitted."
+      );
       resetForm();
-      setTimeout(onClose, 1500);
+      setTimeout(onClose, 1000);
     }
   };
 
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || !files.length) return;
+  const handlePhotoUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const input = e.target as HTMLInputElement | null;
+    const files = input?.files;
+    if (!files || files.length === 0) return;
 
     const maxFiles = 5 - photoUrls.length;
-    const filesToUpload = Array.from(files).slice(0, maxFiles);
+    const filesToUpload = Array.from(files).slice(0, maxFiles) as File[];
 
     setUploading(true);
     for (const file of filesToUpload) {
@@ -106,13 +116,15 @@ export default function PartsRequestModal(props: any) {
 
       if (error) {
         toast.error(`Upload failed: ${file.name}`);
-      } else if (data) {
-        const { data: publicData } = supabase.storage
-          .from("parts-request-photos")
-          .getPublicUrl(data.path);
-        const url = publicData?.publicUrl ?? "";
-        if (url) setPhotoUrls((prev) => [...prev, url]);
+        continue;
       }
+
+      const { data: publicData } = supabase.storage
+        .from("parts-request-photos")
+        .getPublicUrl(data!.path);
+
+      const url = publicData?.publicUrl ?? "";
+      if (url) setPhotoUrls((prev) => [...prev, url]);
     }
     setUploading(false);
   };
@@ -126,15 +138,15 @@ export default function PartsRequestModal(props: any) {
       <div className="fixed inset-0 bg-black/50" aria-hidden="true" />
       <div className="fixed inset-0 flex items-center justify-center p-4">
         <Dialog.Panel className="w-full max-w-md rounded bg-neutral-900 p-6 text-white shadow-lg">
-          <Dialog.Title className="text-lg font-bold mb-4">
+          <Dialog.Title className="mb-4 text-lg font-bold">
             {existingRequest ? "Edit Parts Request" : "Request Parts"}
           </Dialog.Title>
 
           <div className="mb-3">
-            <label className="block text-sm font-medium mb-1">Parts Needed*</label>
+            <label className="mb-1 block text-sm font-medium">Parts Needed*</label>
             <textarea
               rows={2}
-              className="w-full rounded bg-neutral-800 border border-neutral-600 p-2"
+              className="w-full rounded border border-neutral-600 bg-neutral-800 p-2"
               value={partsNeeded}
               onChange={(e) => setPartsNeeded(e.target.value)}
               required
@@ -142,10 +154,10 @@ export default function PartsRequestModal(props: any) {
           </div>
 
           <div className="mb-3">
-            <label className="block text-sm font-medium mb-1">Quantity</label>
+            <label className="mb-1 block text-sm font-medium">Quantity</label>
             <input
               type="number"
-              className="w-full rounded bg-neutral-800 border border-neutral-600 p-2"
+              className="w-full rounded border border-neutral-600 bg-neutral-800 p-2"
               value={quantity}
               min={1}
               onChange={(e) => setQuantity(Number(e.target.value))}
@@ -153,11 +165,13 @@ export default function PartsRequestModal(props: any) {
           </div>
 
           <div className="mb-3">
-            <label className="block text-sm font-medium mb-1">Urgency</label>
+            <label className="mb-1 block text-sm font-medium">Urgency</label>
             <select
-              className="w-full rounded bg-neutral-800 border border-neutral-600 p-2"
+              className="w-full rounded border border-neutral-600 bg-neutral-800 p-2"
               value={urgency}
-              onChange={(e) => setUrgency(e.target.value as "low" | "medium" | "high")}
+              onChange={(e) =>
+                setUrgency(e.target.value as "low" | "medium" | "high")
+              }
             >
               <option value="low">Low</option>
               <option value="medium">Medium</option>
@@ -166,23 +180,24 @@ export default function PartsRequestModal(props: any) {
           </div>
 
           <div className="mb-3">
-            <label className="block text-sm font-medium mb-1">Notes</label>
+            <label className="mb-1 block text-sm font-medium">Notes</label>
             <textarea
               rows={2}
-              className="w-full rounded bg-neutral-800 border border-neutral-600 p-2"
+              className="w-full rounded border border-neutral-600 bg-neutral-800 p-2"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
             />
           </div>
 
           <div className="mb-3">
-            <label className="block text-sm font-medium mb-1">
+            <label className="mb-1 block text-sm font-medium">
               Photos ({photoUrls.length}/5)
             </label>
             <input
               type="file"
               multiple
               accept="image/*"
+              capture="environment"
               disabled={photoUrls.length >= 5 || uploading}
               onChange={handlePhotoUpload}
               className="mb-2"
@@ -190,10 +205,14 @@ export default function PartsRequestModal(props: any) {
             <div className="flex flex-wrap gap-2">
               {photoUrls.map((url) => (
                 <div key={url} className="relative">
-                  <img src={url} alt="part" className="h-16 w-16 rounded object-cover" />
+                  <img
+                    src={url}
+                    alt="part"
+                    className="h-16 w-16 rounded object-cover"
+                  />
                   <button
                     onClick={() => handleDeletePhoto(url)}
-                    className="absolute top-0 right-0 bg-red-600 text-xs rounded px-1"
+                    className="absolute right-0 top-0 rounded bg-red-600 px-1 text-xs"
                   >
                     ✕
                   </button>
@@ -202,11 +221,11 @@ export default function PartsRequestModal(props: any) {
             </div>
           </div>
 
-          <div className="flex justify-end mt-4">
+          <div className="mt-4 flex justify-end">
             <button
               onClick={handleSubmit}
               disabled={uploading}
-              className="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded font-semibold"
+              className="rounded bg-orange-500 px-4 py-2 font-semibold hover:bg-orange-600"
             >
               {existingRequest ? "Update Request" : "Submit Request"}
             </button>

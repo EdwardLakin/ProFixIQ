@@ -16,16 +16,16 @@ import { MenuQuickAdd } from "@work-orders/components/MenuQuickAdd";
 import SuggestedQuickAdd from "@work-orders/components/SuggestedQuickAdd";
 import { WorkOrderInvoiceDownloadButton } from "@work-orders/components/WorkOrderInvoiceDownloadButton";
 import { NewWorkOrderLineForm } from "@work-orders/components/NewWorkOrderLineForm";
-
-import DtcSuggestionPopup from "@work-orders/components/workorders/DtcSuggestionPopup";
-import PartsRequestModal from "@work-orders/components/workorders/PartsRequestModal";
-import CauseCorrectionModal from "@work-orders/components/workorders/CauseCorrectionModal";
-import AddJobModal from "@work-orders/components/workorders/AddJobModal";
 import VehiclePhotoUploader from "@parts/components/VehiclePhotoUploader";
 import VehiclePhotoGallery from "@parts/components/VehiclePhotoGallery";
 import { generateQuotePDFBytes } from "@work-orders/lib/work-orders/generateQuotePdf";
 
 import { useTabState } from "@/features/shared/hooks/useTabState";
+
+// New unified focused job modal + chat
+import FocusedJobModal from "@/features/work-orders/components/workorders/FocusedJobModal";
+import AddJobModal from "@work-orders/components/workorders/AddJobModal";
+import NewChatModal from "@/features/ai/components/chat/NewChatModal";
 
 /* ----------------------------- Error Boundary ----------------------------- */
 class ErrorBoundary extends React.Component<
@@ -205,8 +205,6 @@ export default function WorkOrderPage(): JSX.Element {
   // Tech view extras
   const [line, setLine] = useState<WorkOrderLine | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
-  const [techNotes, setTechNotes] = useState("");
-  const [updatingNotes, setUpdatingNotes] = useState(false);
   const [duration, setDuration] = useState("");
   const [tech, setTech] = useState<Profile | null>(null);
 
@@ -218,12 +216,15 @@ export default function WorkOrderPage(): JSX.Element {
   const [showDetails, setShowDetails] = useState(true);
   const [showAddForm, setShowAddForm] = useTabState<boolean>("showAddForm", false);
 
-  // Modals
-  const [isPartsModalOpen, setIsPartsModalOpen] = useState(false);
-  const [isCauseModalOpen, setIsCauseModalOpen] = useState(false);
+  // Modals kept
   const [isAddJobModalOpen, setIsAddJobModalOpen] = useState(false);
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
+
+  // NEW: FocusedJobModal & Chat
+  const [focusedOpen, setFocusedOpen] = useState(false);
+  const [focusedJobId, setFocusedJobId] = useState<string | null>(null);
+  const [chatOpen, setChatOpen] = useState(false);
 
   // Busy flags
   const [busyQuote, setBusyQuote] = useState(false);
@@ -240,9 +241,6 @@ export default function WorkOrderPage(): JSX.Element {
   // Selection for approval
   const [selectedForApproval, setSelectedForApproval] = useState<Set<string>>(new Set());
   const [touchedSelection, setTouchedSelection] = useState(false);
-
-  // Hold reason UI
-  const [holdReason, setHoldReason] = useState<string>("Awaiting customer authorization");
 
   const setSelection = (ids: string[], touched = true) => {
     setSelectedForApproval(new Set(ids));
@@ -274,7 +272,9 @@ export default function WorkOrderPage(): JSX.Element {
   // Current user
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (user) {
         setCurrentUserId(user.id);
         setUserId(user.id);
@@ -389,7 +389,6 @@ export default function WorkOrderPage(): JSX.Element {
 
         setLine(pick ?? null);
         setActiveJobId(pick && !pick?.punched_out_at ? pick.id : null);
-        setTechNotes(pick?.notes ?? "");
         setUrlJobId(pick?.id ?? null);
 
         if (pick?.assigned_to) {
@@ -449,7 +448,7 @@ export default function WorkOrderPage(): JSX.Element {
     return () => window.removeEventListener("wo:line-added", handler);
   }, [fetchAll]);
 
-  // Live timer for focused job
+  // Live timer for focused job badge
   useEffect(() => {
     const t = setInterval(() => {
       if (line?.punched_in_at && !line?.punched_out_at) {
@@ -520,47 +519,6 @@ export default function WorkOrderPage(): JSX.Element {
     if (error) return showErr("Punch out failed", error);
     toast.success("Punched out");
     setActiveJobId(null);
-    fetchAll();
-  };
-
-  const handleCompleteJob = async (cause: string, correction: string) => {
-    if (!line) return;
-    const { error } = await supabase
-      .from("work_order_lines")
-      .update({
-        cause,
-        correction,
-        punched_out_at: new Date().toISOString(),
-        status: "completed",
-      })
-      .eq("id", line.id);
-    if (error) return showErr("Complete job failed", error);
-    toast.success("Job completed");
-    setIsCauseModalOpen(false);
-    fetchAll();
-  };
-
-  const updateTechNotes = async () => {
-    if (!line) return;
-    setUpdatingNotes(true);
-    const { error } = await supabase.from("work_order_lines").update({ notes: techNotes }).eq("id", line.id);
-    setUpdatingNotes(false);
-    if (error) return showErr("Update notes failed", error);
-    toast.success("Notes updated");
-  };
-
-  const applyHold = async () => {
-    if (!line) return;
-    const reason = holdReason || "On hold";
-    const { error } = await supabase
-      .from("work_order_lines")
-      .update({
-        hold_reason: reason,
-        status: "on_hold",
-      })
-      .eq("id", line.id);
-    if (error) return showErr("Put on hold failed", error);
-    toast.success("Job put on hold");
     fetchAll();
   };
 
@@ -679,7 +637,6 @@ export default function WorkOrderPage(): JSX.Element {
         .eq("id", wo.id);
       if (upErr) throw upErr;
 
-      // 🔁 use your route handler path
       const res = await fetch("/work-orders/send-for-approval", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -727,15 +684,9 @@ export default function WorkOrderPage(): JSX.Element {
     return byStatus("in_progress") || byStatus("awaiting") || byStatus("queued") || sortedLines[0]?.id || null;
   }, [sortedLines]);
 
-  if (!woId) {
-    return <div className="p-6 text-red-500">Missing work order id.</div>;
-  }
-
   const notes: string | null = ((wo as WorkOrderWithMaybeNotes | null)?.notes ?? null) || null;
   const createdAt = wo?.created_at ? new Date(wo.created_at) : null;
   const createdAtText = createdAt && !isNaN(createdAt.getTime()) ? format(createdAt, "PPpp") : "—";
-  const badgeClass =
-    statusBadge[(line?.status ?? "awaiting") as keyof typeof statusBadge] ?? "bg-gray-200 text-gray-800";
 
   // helper: per-job live duration in tenth hours
   const renderJobDuration = (job: WorkOrderLine) => {
@@ -750,17 +701,23 @@ export default function WorkOrderPage(): JSX.Element {
     return "0.0 hr";
   };
 
+  // open focused modal (and sync url)
+  const openFocused = (jobId: string) => {
+    setFocusedJobId(jobId);
+    setFocusedOpen(true);
+    setUrlJobId(jobId);
+  };
+
+  if (!woId) {
+    return <div className="p-6 text-red-500">Missing work order id.</div>;
+  }
+
+  const badgeClass =
+    statusBadge[(line?.status ?? "awaiting") as keyof typeof statusBadge] ?? "bg-gray-200 text-gray-800";
+
   const Skeleton = ({ className = "" }: { className?: string }) => (
     <div className={`animate-pulse rounded bg-neutral-800/60 ${className}`} />
   );
-
-  const holdOptions = [
-    "Awaiting customer authorization",
-    "Awaiting parts",
-    "Waiting on vendor",
-    "Need additional info",
-    "Shop capacity",
-  ];
 
   return (
     <div className="p-4 sm:p-6 text-white">
@@ -814,13 +771,12 @@ export default function WorkOrderPage(): JSX.Element {
       {!loading && !wo && !viewError && <div className="mt-6 text-red-500">Work order not found.</div>}
 
       {!loading && wo && (
-        // NOTE: swap to 360px left column so Focused Job can be sticky + always visible
+        // NOTE: 360px left column so Focused Job card can be sticky + visible
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[360px_1fr]">
           {/* LEFT — Focused/controls (sticky) */}
           <aside className="space-y-4 lg:order-1">
-            {/* Focused Job panel */}
             {line ? (
-              <div className="rounded border border-neutral-800 bg-neutral-900 p-4 sticky top-20">
+              <div className="sticky top-20 rounded border border-neutral-800 bg-neutral-900 p-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold">Focused Job</h3>
                   <span className={`text-xs px-2 py-1 rounded ${badgeClass}`}>
@@ -828,165 +784,43 @@ export default function WorkOrderPage(): JSX.Element {
                   </span>
                 </div>
 
-                <div className="mt-2 p-3 rounded border border-neutral-800 bg-neutral-950">
-                  <p>
-                    <strong>Complaint:</strong> {line.complaint || "—"}
-                  </p>
-                  <p>
-                    <strong>Status:</strong> {line.status ?? "—"}
-                  </p>
-                  <p>
-                    <strong>Live Timer:</strong> {duration || renderJobDuration(line)}
-                  </p>
-                  <p>
-                    <strong>Punched In:</strong>{" "}
-                    {line.punched_in_at ? format(new Date(line.punched_in_at), "PPpp") : "—"}
-                  </p>
-                  <p>
-                    <strong>Punched Out:</strong>{" "}
-                    {line.punched_out_at ? format(new Date(line.punched_out_at), "PPpp") : "—"}
-                  </p>
-                  <p>
-                    <strong>Labor Time:</strong> {line.labor_time ?? "—"} hrs
-                  </p>
-                  <p>
-                    <strong>Hold Reason:</strong> {line.hold_reason || "—"}
-                  </p>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
-                    <button
-                      className="bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded text-white"
-                      onClick={() => setIsCauseModalOpen(true)}
-                    >
-                      Complete Job
-                    </button>
-
-                    {(!line.punched_in_at || line.punched_out_at) ? (
-                      <button
-                        className="bg-green-600 hover:bg-green-700 px-3 py-2 rounded text-white"
-                        onClick={() => handlePunchIn(line.id)}
-                      >
-                        Punch In
-                      </button>
-                    ) : (
-                      <button
-                        className="bg-neutral-700 hover:bg-neutral-800 px-3 py-2 rounded text-white"
-                        onClick={() => handlePunchOut(line.id)}
-                      >
-                        Punch Out
-                      </button>
-                    )}
-
-                    <button
-                      className="bg-red-600 hover:bg-red-700 px-3 py-2 rounded text-white"
-                      onClick={() => setIsPartsModalOpen(true)}
-                    >
-                      Request Parts
-                    </button>
-
-                    {/* Hold with reason */}
-                    <div className="flex items-center gap-2">
-                      <select
-                        className="flex-1 border border-neutral-700 bg-neutral-800 text-white text-sm rounded px-2 py-2"
-                        value={holdReason}
-                        onChange={(e) => setHoldReason(e.target.value)}
-                      >
-                        {holdOptions.map((opt) => (
-                          <option key={opt} value={opt}>
-                            {opt}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        className="bg-amber-600 hover:bg-amber-700 px-3 py-2 rounded text-white"
-                        onClick={applyHold}
-                      >
-                        Hold
-                      </button>
-                    </div>
-
-                    <button
-                      className="bg-gray-800 hover:bg-black px-3 py-2 rounded text-white col-span-1 sm:col-span-2"
-                      onClick={() => setIsAddJobModalOpen(true)}
-                    >
-                      Add Job
-                    </button>
+                <div className="mt-2 text-sm text-neutral-300">
+                  <div className="truncate font-medium">
+                    {line.description || line.complaint || "Untitled job"}
                   </div>
-
-                  <div className="mt-3">
-                    <button
-                      className="bg-purple-600 hover:bg-purple-700 px-3 py-2 rounded text-white w-full"
-                      onClick={handleDownloadQuote}
-                      disabled={!caps.canGenerateQuote || busyQuote}
-                    >
-                      {busyQuote ? "Saving…" : "Download Quote PDF"}
-                    </button>
-                  </div>
-
-                  <div className="mt-4 space-y-2">
-                    <label className="block text-sm">Tech Notes</label>
-                    <textarea
-                      className="w-full border border-neutral-700 bg-neutral-800 text-white placeholder-neutral-400 p-2 rounded"
-                      rows={3}
-                      value={techNotes}
-                      onChange={(e) => setTechNotes(e.target.value)}
-                      onBlur={updateTechNotes}
-                      disabled={updatingNotes}
-                      placeholder="Add notes for this job…"
-                    />
-                  </div>
-
-                  {/* Diagnosis helper */}
-                  {line.job_type === "diagnosis" &&
-                    line.punched_in_at &&
-                    !line.cause &&
-                    !line.correction &&
-                    vehicle && (
-                      <div className="mt-4">
-                        <DtcSuggestionPopup
-                          jobId={line.id}
-                          vehicle={{
-                            id: vehicle.id,
-                            year: (vehicle.year ?? "").toString(),
-                            make: vehicle.make ?? "",
-                            model: vehicle.model ?? "",
-                          }}
-                        />
-                      </div>
-                    )}
+                  <div className="text-xs text-neutral-400">Time: {duration || renderJobDuration(line)}</div>
                 </div>
 
-                {/* Buttons to open the modals for AI & Quick Add */}
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <button
-                    className="rounded border border-neutral-700 px-3 py-2 text-sm hover:border-orange-500"
-                    onClick={() => setAiModalOpen(true)}
+                    className="rounded bg-orange-600 px-3 py-2 text-sm font-semibold text-white hover:bg-orange-700"
+                    onClick={() => openFocused(line.id)}
                   >
-                    AI Suggestions
+                    Open Job
                   </button>
                   <button
                     className="rounded border border-neutral-700 px-3 py-2 text-sm hover:border-orange-500"
-                    onClick={() => setQuickAddOpen(true)}
+                    onClick={() => setIsAddJobModalOpen(true)}
                   >
-                    Quick Add
+                    Add Job
                   </button>
                 </div>
               </div>
             ) : (
-              <div className="rounded border border-neutral-800 bg-neutral-900 p-4 sticky top-20">
+              <div className="sticky top-20 rounded border border-neutral-800 bg-neutral-900 p-4">
                 <div className="text-sm text-neutral-400">No focused job yet.</div>
                 <div className="mt-3 grid grid-cols-2 gap-2">
-                  <button
-                    className="rounded border border-neutral-700 px-3 py-2 text-sm hover:border-orange-500"
-                    onClick={() => setAiModalOpen(true)}
-                  >
-                    AI Suggestions
-                  </button>
                   <button
                     className="rounded border border-neutral-700 px-3 py-2 text-sm hover:border-orange-500"
                     onClick={() => setQuickAddOpen(true)}
                   >
                     Quick Add
+                  </button>
+                  <button
+                    className="rounded border border-neutral-700 px-3 py-2 text-sm hover:border-orange-500"
+                    onClick={() => setIsAddJobModalOpen(true)}
+                  >
+                    Add Job
                   </button>
                 </div>
               </div>
@@ -1145,22 +979,24 @@ export default function WorkOrderPage(): JSX.Element {
                     const statusKey = (ln.status ?? "awaiting").toLowerCase().replaceAll(" ", "_");
                     const borderCls = statusBorder[statusKey] || "border-l-4 border-gray-400";
 
-                    // individual live duration
-                    const live = renderJobDuration(ln);
-
                     const isActive = activeJobId === ln.id && !ln.punched_out_at;
 
                     return (
                       <div key={ln.id} className={`rounded border border-neutral-800 bg-neutral-950 p-3 ${borderCls}`}>
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <div className="truncate font-medium">
+                            <button
+                              type="button"
+                              onClick={() => openFocused(ln.id)}
+                              className="truncate font-medium text-left hover:underline"
+                              title="Open focused job"
+                            >
                               {ln.description || ln.complaint || "Untitled job"}
-                            </div>
+                            </button>
                             <div className="text-xs text-neutral-400">
                               {String((ln.job_type as JobType) ?? "job").replaceAll("_", " ")} •{" "}
                               {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} • Status:{" "}
-                              {(ln.status ?? "awaiting").replaceAll("_", " ")} • Time: {live}
+                              {(ln.status ?? "awaiting").replaceAll("_", " ")} • Time: {renderJobDuration(ln)}
                             </div>
                             {(ln.complaint || ln.cause || ln.correction) && (
                               <div className="text-xs text-neutral-400 mt-1">
@@ -1339,26 +1175,7 @@ export default function WorkOrderPage(): JSX.Element {
         </div>
       )}
 
-      {/* Tech modals */}
-      {isPartsModalOpen && wo?.id && line && (
-        <PartsRequestModal
-          isOpen={isPartsModalOpen}
-          onClose={() => setIsPartsModalOpen(false)}
-          jobId={line.id}
-          workOrderId={wo.id}
-          requested_by={tech?.id || "system"}
-        />
-      )}
-
-      {isCauseModalOpen && line && (
-        <CauseCorrectionModal
-          isOpen={isCauseModalOpen}
-          onClose={() => setIsCauseModalOpen(false)}
-          jobId={line.id}
-          onSubmit={handleCompleteJob}
-        />
-      )}
-
+      {/* Add Job modal (kept) */}
       {isAddJobModalOpen && wo?.id && vehicle?.id && (
         <AddJobModal
           isOpen={isAddJobModalOpen}
@@ -1406,6 +1223,28 @@ export default function WorkOrderPage(): JSX.Element {
             </ErrorBoundary>
           </div>
         </div>
+      )}
+
+      {/* NEW: Focused Job modal */}
+      {focusedOpen && focusedJobId && (
+        <FocusedJobModal
+          isOpen={focusedOpen}
+          onClose={() => setFocusedOpen(false)}
+          workOrderLineId={focusedJobId}
+          onChanged={fetchAll}
+        />
+      )}
+
+      {/* Optional: quick new chat (launch from anywhere you like) */}
+      {chatOpen && currentUserId && (
+        <NewChatModal
+          isOpen={chatOpen}
+          onClose={() => setChatOpen(false)}
+          created_by={currentUserId}
+          onCreated={() => setChatOpen(false)}
+          context_type="work_order"
+          context_id={wo?.id ?? null}
+        />
       )}
     </div>
   );

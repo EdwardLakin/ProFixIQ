@@ -27,7 +27,8 @@ export default function AddJobModal(props: any) {
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async () => {
-    if (!jobName.trim()) {
+    const name = jobName.trim();
+    if (!name) {
       alert("Job name is required.");
       return;
     }
@@ -37,7 +38,7 @@ export default function AddJobModal(props: any) {
         id: uuidv4(),
         work_order_id: workOrderId,
         vehicle_id: vehicleId,
-        complaint: jobName.trim(),
+        complaint: name,
         hold_reason: notes.trim() || null,
         status: "queued",
         job_type: "tech-suggested",
@@ -62,21 +63,24 @@ export default function AddJobModal(props: any) {
     <Dialog open={isOpen} onClose={onClose} className="fixed inset-0 z-50">
       <div className="fixed inset-0 bg-black/50" />
       <div className="fixed inset-0 flex items-center justify-center p-4">
-        <Dialog.Panel className="w-full max-w-md bg-white dark:bg-gray-900 rounded p-6">
-          <Dialog.Title className="text-lg font-semibold mb-2">
+        <Dialog.Panel className="w-full max-w-md rounded border border-neutral-800 bg-neutral-900 p-6 text-white shadow-xl">
+          <Dialog.Title className="mb-2 text-lg font-bold font-header tracking-wide">
             Suggest New Job
           </Dialog.Title>
 
           <input
             type="text"
-            className="w-full mb-3 p-2 rounded bg-neutral-100 dark:bg-neutral-800"
+            className="font-sans w-full mb-3 p-2 rounded bg-neutral-800 border border-neutral-700 placeholder-neutral-400"
             placeholder="Job name (e.g. Replace serpentine belt)"
             value={jobName}
             onChange={(e) => setJobName(e.target.value)}
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key === "Enter") handleSubmit();
+            }}
           />
 
           <select
-            className="w-full mb-3 p-2 rounded bg-neutral-100 dark:bg-neutral-800"
+            className="font-sans w-full mb-3 p-2 rounded bg-neutral-800 border border-neutral-700"
             value={urgency}
             onChange={(e) => setUrgency(e.target.value as Urgency)}
           >
@@ -87,7 +91,7 @@ export default function AddJobModal(props: any) {
 
           <textarea
             rows={3}
-            className="w-full mb-3 p-2 rounded bg-neutral-100 dark:bg-neutral-800"
+            className="font-sans w-full mb-3 p-2 rounded bg-neutral-800 border border-neutral-700 placeholder-neutral-400"
             placeholder="Optional notes"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
@@ -95,14 +99,14 @@ export default function AddJobModal(props: any) {
 
           <div className="flex justify-end gap-2">
             <button
-              className="bg-gray-500 text-white px-4 py-2 rounded"
+              className="rounded border border-neutral-700 bg-neutral-800 px-4 py-2 text-sm hover:border-orange-500"
               onClick={onClose}
               disabled={submitting}
             >
               Cancel
             </button>
             <button
-              className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-60"
+              className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
               onClick={handleSubmit}
               disabled={submitting}
             >

@@ -3,11 +3,8 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useTabs } from "./TabsProvider";
 
-const DASH_PATH = "/dashboard";
-
 export default function TabsBar(): JSX.Element {
   const { tabs, activeHref, activateTab, closeTab, closeOthers, closeAll } = useTabs();
-
   if (!tabs.length) return <div className="border-b border-neutral-800" />;
 
   return (
@@ -16,26 +13,20 @@ export default function TabsBar(): JSX.Element {
         <AnimatePresence initial={false}>
           {tabs.map((t) => {
             const active = t.href === activeHref;
-            const pinned = t.href === DASH_PATH;
+            const pinned = !!t.pinned;
             return (
               <motion.div
                 key={t.href}
                 layout
                 className={`group relative inline-flex items-center gap-2 rounded-md border-2 px-2.5 py-1.5 text-sm ${
-                  active
-                    ? "border-orange-400 bg-neutral-900"
-                    : "border-orange-400/40 hover:border-orange-400"
+                  active ? "border-orange-400 bg-neutral-900" : "border-orange-400/40 hover:border-orange-400"
                 }`}
                 initial={{ opacity: 0, scale: 0.96 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.96 }}
                 transition={{ type: "spring", stiffness: 400, damping: 30, mass: 0.2 }}
               >
-                <button
-                  onClick={() => activateTab(t.href)}
-                  className="flex items-center gap-1 outline-none"
-                  title={t.title}
-                >
+                <button onClick={() => activateTab(t.href)} className="flex items-center gap-1 outline-none" title={t.title}>
                   {t.icon ? <span className="opacity-80">{t.icon}</span> : null}
                   <span className="truncate max-w-[200px] font-header tracking-wide">
                     {t.title}{pinned ? " 📌" : ""}
@@ -64,7 +55,6 @@ export default function TabsBar(): JSX.Element {
           })}
         </AnimatePresence>
 
-        {/* Right-side controls */}
         <div className="ml-auto flex items-center gap-2">
           <button
             onClick={() => closeOthers(activeHref)}
