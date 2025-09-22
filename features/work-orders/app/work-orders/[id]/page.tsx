@@ -230,10 +230,9 @@ export default function WorkOrderPage(): JSX.Element {
 
   // Modals kept
   const [isAddJobModalOpen, setIsAddJobModalOpen] = useState(false);
-  const [aiModalOpen, setAiModalOpen] = useState(false);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
 
-  // NEW: FocusedJobModal & Chat
+  // NEW: Focused Job modal & Chat
   const [focusedOpen, setFocusedOpen] = useState(false);
   const [focusedJobId, setFocusedJobId] = useState<string | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
@@ -460,7 +459,7 @@ export default function WorkOrderPage(): JSX.Element {
     return () => window.removeEventListener("wo:line-added", handler);
   }, [fetchAll]);
 
-  // Live timer for focused job badge
+  // Live timer for focused job badge + header timer
   useEffect(() => {
     const t = setInterval(() => {
       if (line?.punched_in_at && !line?.punched_out_at) {
@@ -498,8 +497,9 @@ export default function WorkOrderPage(): JSX.Element {
   }, [lines, fixedStatus, supabase, fetchAll]);
 
   /* ------------------------------ Tech Actions ----------------------------- */
+  // Note: Start/Finish actions are still handled in FocusedJobModal, but keep
+  // these for keyboard shortcuts to avoid cluttering the UI with buttons.
   const handleStart = async (jobId: string) => {
-    // If currently punched into a different job, finish it first
     if (activeJobId && activeJobId !== jobId) {
       const ok = confirm("You are currently on another job. Finish it and switch?");
       if (!ok) return;
@@ -526,6 +526,7 @@ export default function WorkOrderPage(): JSX.Element {
   };
 
   const handleFinish = async (jobId: string) => {
+    // The modal enforces cause/correction, but shortcut can still finish.
     const { error } = await supabase
       .from("work_order_lines")
       .update({ punched_out_at: new Date().toISOString(), status: "awaiting" })
@@ -535,6 +536,23 @@ export default function WorkOrderPage(): JSX.Element {
     setActiveJobId(null);
     fetchAll();
   };
+
+  // Keyboard shortcuts for current focused job: Alt+S (start), Alt+F (finish)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!focusedJobId) return;
+      if (!e.altKey) return;
+      if (e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        handleStart(focusedJobId);
+      } else if (e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        handleFinish(focusedJobId);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [focusedJobId]); // uses handleStart/handleFinish
 
   const handleDownloadQuote = async () => {
     if (busyQuote) return;
@@ -720,7 +738,7 @@ export default function WorkOrderPage(): JSX.Element {
     setFocusedJobId(jobId);
     setFocusedOpen(true);
     setUrlJobId(jobId);
-    // also reflect in left card
+    // keep line state in sync
     const found = lines.find((l) => l.id === jobId) || null;
     setLine(found);
   };
@@ -788,161 +806,116 @@ export default function WorkOrderPage(): JSX.Element {
       {!loading && !wo && !viewError && <div className="mt-6 text-red-500">Work order not found.</div>}
 
       {!loading && wo && (
-        // NOTE: 360px left column so Focused Job card can be sticky + visible
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[360px_1fr]">
-          {/* LEFT — Focused/controls (sticky) */}
-          <aside className="space-y-4 lg:order-1">
-            {line ? (
-              <div className="sticky top-20 rounded border border-neutral-800 bg-neutral-900 p-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold">Focused Job</h3>
-                  <span className={`text-xs px-2 py-1 rounded ${badgeClass}`}>
+        // Single-column main content (Focused Job left panel removed)
+        <div className="space-y-6">
+          {/* Header */}
+          <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h1 className="text-2xl font-semibold">
+                Work Order {wo.custom_id || `#${wo.id.slice(0, 8)}`}{" "}
+                {line ? (
+                  <span className={`ml-2 align-middle text-[11px] px-2 py-1 rounded ${badgeClass}`} title="Focused job status">
                     {(line.status ?? "awaiting").replaceAll("_", " ")}
                   </span>
+                ) : null}
+              </h1>
+              {duration ? (
+                <div className="text-xs text-neutral-300" title="Active job time">
+                  Active time: {duration}
                 </div>
-
-                <div className="mt-2 text-sm text-neutral-300">
-                  <div className="truncate font-medium">
-                    {line.description || line.complaint || "Untitled job"}
-                  </div>
-                  <div className="text-xs text-neutral-400">Time: {duration || renderJobDuration(line)}</div>
-                </div>
-
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <button
-                    className="rounded bg-orange-600 px-3 py-2 text-sm font-semibold text-white hover:bg-orange-700"
-                    onClick={() => openFocused(line.id)}
-                  >
-                    Open Job
-                  </button>
-                  <button
-                    className="rounded border border-neutral-700 px-3 py-2 text-sm hover:border-orange-500"
-                    onClick={() => setIsAddJobModalOpen(true)}
-                  >
-                    Add Job
-                  </button>
-                </div>
+              ) : null}
+            </div>
+            <div className="mt-2 grid gap-2 text-sm text-neutral-300 sm:grid-cols-3">
+              <div>
+                <div className="text-neutral-400">Created</div>
+                <div>{createdAtText}</div>
               </div>
-            ) : (
-              <div className="sticky top-20 rounded border border-neutral-800 bg-neutral-900 p-4">
-                <div className="text-sm text-neutral-400">No focused job yet.</div>
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <button
-                    className="rounded border border-neutral-700 px-3 py-2 text-sm hover:border-orange-500"
-                    onClick={() => setQuickAddOpen(true)}
-                  >
-                    Quick Add
-                  </button>
-                  <button
-                    className="rounded border border-neutral-700 px-3 py-2 text-sm hover:border-orange-500"
-                    onClick={() => setIsAddJobModalOpen(true)}
-                  >
-                    Add Job
-                  </button>
+              <div>
+                <div className="text-neutral-400">Notes</div>
+                <div className="truncate">{notes ?? "—"}</div>
+              </div>
+              <div>
+                <div className="text-neutral-400">WO ID</div>
+                <div className="truncate">{wo.id}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Vehicle & Customer (Capture Signature button removed here) */}
+          <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Vehicle & Customer</h2>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  className="text-sm text-orange-400 hover:underline"
+                  onClick={() => setShowDetails((v) => !v)}
+                  aria-expanded={showDetails}
+                >
+                  {showDetails ? "Hide details" : "Show details"}
+                </button>
+              </div>
+            </div>
+
+            {showDetails && (
+              <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                <div>
+                  <h3 className="mb-1 font-semibold">Vehicle</h3>
+                  {vehicle ? (
+                    <>
+                      <p>
+                        {(vehicle.year ?? "").toString()} {vehicle.make ?? ""} {vehicle.model ?? ""}
+                      </p>
+                      <p className="text-sm text-neutral-400">
+                        VIN: {vehicle.vin ?? "—"} • Plate: {vehicle.license_plate ?? "—"}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-neutral-400">—</p>
+                  )}
+                </div>
+
+                <div>
+                  <h3 className="mb-1 font-semibold">Customer</h3>
+                  {customer ? (
+                    <>
+                      <p>{[customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") || "—"}</p>
+                      <p className="text-sm text-neutral-400">
+                        {customer.phone ?? "—"} {customer.email ? `• ${customer.email}` : ""}
+                      </p>
+                      {customer.id && (
+                        <Link
+                          href={`/customers/${customer.id}`}
+                          className="mt-1 inline-block text-xs text-orange-500 hover:underline"
+                          title="Open customer profile"
+                        >
+                          View Customer Profile →
+                        </Link>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-neutral-400">—</p>
+                  )}
                 </div>
               </div>
             )}
-          </aside>
+          </div>
 
-          {/* RIGHT — main content */}
-          <div className="space-y-6 lg:order-2">
-            {/* Header */}
-            <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
-              <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-semibold">Work Order {wo.custom_id || `#${wo.id.slice(0, 8)}`}</h1>
-                <span className={chipClass(wo.status as WOStatus)}>
-                  {(wo.status ?? "awaiting").replaceAll("_", " ")}
-                </span>
-              </div>
-              <div className="mt-2 grid gap-2 text-sm text-neutral-300 sm:grid-cols-3">
-                <div>
-                  <div className="text-neutral-400">Created</div>
-                  <div>{createdAtText}</div>
-                </div>
-                <div>
-                  <div className="text-neutral-400">Notes</div>
-                  <div className="truncate">{notes ?? "—"}</div>
-                </div>
-                <div>
-                  <div className="text-neutral-400">WO ID</div>
-                  <div className="truncate">{wo.id}</div>
-                </div>
-              </div>
-            </div>
+          {/* Jobs (front-desk quick add + list) */}
+          <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-lg font-semibold">Jobs in this Work Order</h2>
 
-            {/* Vehicle & Customer */}
-            <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">Vehicle & Customer</h2>
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    className="rounded border border-neutral-700 px-3 py-1.5 text-xs hover:border-orange-500"
-                    onClick={() => router.push(`/work-orders/${wo.id}/approve`)}
-                    title="Open signature capture / approval"
-                  >
-                    Capture Signature
-                  </button>
-                  <button
-                    type="button"
-                    className="text-sm text-orange-400 hover:underline"
-                    onClick={() => setShowDetails((v) => !v)}
-                    aria-expanded={showDetails}
-                  >
-                    {showDetails ? "Hide details" : "Show details"}
-                  </button>
-                </div>
-              </div>
-
-              {showDetails && (
-                <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <h3 className="mb-1 font-semibold">Vehicle</h3>
-                    {vehicle ? (
-                      <>
-                        <p>
-                          {(vehicle.year ?? "").toString()} {vehicle.make ?? ""} {vehicle.model ?? ""}
-                        </p>
-                        <p className="text-sm text-neutral-400">
-                          VIN: {vehicle.vin ?? "—"} • Plate: {vehicle.license_plate ?? "—"}
-                        </p>
-                      </>
-                    ) : (
-                      <p className="text-neutral-400">—</p>
-                    )}
-                  </div>
-
-                  <div>
-                    <h3 className="mb-1 font-semibold">Customer</h3>
-                    {customer ? (
-                      <>
-                        <p>{[customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") || "—"}</p>
-                        <p className="text-sm text-neutral-400">
-                          {customer.phone ?? "—"} {customer.email ? `• ${customer.email}` : ""}
-                        </p>
-                        {customer.id && (
-                          <Link
-                            href={`/customers/${customer.id}`}
-                            className="mt-1 inline-block text-xs text-orange-500 hover:underline"
-                            title="Open customer profile"
-                          >
-                            View Customer Profile →
-                          </Link>
-                        )}
-                      </>
-                    ) : (
-                      <p className="text-neutral-400">—</p>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Jobs (front-desk quick add + list) */}
-            <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
-              <div className="mb-3 flex items-center justify-between gap-2">
-                <h2 className="text-lg font-semibold">Jobs in this Work Order</h2>
-
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setQuickAddOpen((v) => !v)}
+                  className="rounded border border-neutral-700 px-3 py-1.5 text-sm hover:border-orange-500"
+                  aria-expanded={quickAddOpen}
+                  title="Open Quick Add menu"
+                >
+                  {quickAddOpen ? "Hide Quick Add" : "Quick Add"}
+                </button>
                 <button
                   type="button"
                   onClick={() => setShowAddForm((v) => !v)}
@@ -952,246 +925,243 @@ export default function WorkOrderPage(): JSX.Element {
                   {showAddForm ? "Hide Add Job Line" : "Add Job Line"}
                 </button>
               </div>
-
-              {/* Approval selection helpers */}
-              <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-neutral-300">
-                <span className="opacity-70">Approval selection:</span>
-                <button
-                  type="button"
-                  className="rounded border border-neutral-700 px-2 py-1 hover:border-orange-500"
-                  onClick={selectAllEligible}
-                >
-                  Select all eligible
-                </button>
-                <button
-                  type="button"
-                  className="rounded border border-neutral-700 px-2 py-1 hover:border-orange-500"
-                  onClick={clearAllSelection}
-                >
-                  Clear all
-                </button>
-                <span className="ml-auto">
-                  Selected: <strong>{selectedForApproval.size}</strong>
-                </span>
-              </div>
-
-              {showAddForm && (
-                <ErrorBoundary>
-                  <NewWorkOrderLineForm
-                    workOrderId={wo.id}
-                    vehicleId={vehicle?.id ?? null}
-                    defaultJobType={null}
-                    onCreated={() => fetchAll()}
-                  />
-                </ErrorBoundary>
-              )}
-
-              {sortedLines.length === 0 ? (
-                <p className="text-sm text-neutral-400">No lines yet.</p>
-              ) : (
-                <div className="space-y-2">
-                  {sortedLines.map((ln) => {
-                    const eligible = (ln.status ?? "") !== "completed";
-                    const checked = selectedForApproval.has(ln.id);
-                    const statusKey = (ln.status ?? "awaiting").toLowerCase().replaceAll(" ", "_");
-                    const borderCls = statusBorder[statusKey] || "border-l-4 border-gray-400";
-                    const tintCls = statusRowTint[statusKey] || "bg-neutral-950";
-
-                    const isActiveFocused = focusedJobId === ln.id;
-
-                    const StartFinishButton =
-                      mode === "tech" ? (
-                        !ln.punched_in_at || ln.punched_out_at ? (
-                          <button
-                            className="ml-2 bg-green-600 hover:bg-green-700 text-white text-xs px-2 py-1 rounded"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleStart(ln.id);
-                            }}
-                          >
-                            Start
-                          </button>
-                        ) : (
-                          <button
-                            className="ml-2 bg-neutral-700 hover:bg-neutral-800 text-white text-xs px-2 py-1 rounded"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleFinish(ln.id);
-                            }}
-                          >
-                            Finish
-                          </button>
-                        )
-                      ) : null;
-
-                    return (
-                      <div
-                        key={ln.id}
-                        className={`rounded border border-neutral-800 ${tintCls} p-3 ${borderCls} ${
-                          isActiveFocused ? "ring-2 ring-orange-400" : ""
-                        } cursor-pointer`}
-                        onClick={() => openFocused(ln.id)}
-                        title="Open focused job"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="truncate font-medium">
-                              {ln.description || ln.complaint || "Untitled job"}
-                            </div>
-                            <div className="text-xs text-neutral-400">
-                              {String((ln.job_type as JobType) ?? "job").replaceAll("_", " ")} •{" "}
-                              {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} • Status:{" "}
-                              {(ln.status ?? "awaiting").replaceAll("_", " ")} • Time: {renderJobDuration(ln)}
-                            </div>
-                            {(ln.complaint || ln.cause || ln.correction) && (
-                              <div className="text-xs text-neutral-400 mt-1">
-                                {ln.complaint ? `Cmpl: ${ln.complaint}  ` : ""}
-                                {ln.cause ? `| Cause: ${ln.cause}  ` : ""}
-                                {ln.correction ? `| Corr: ${ln.correction}` : ""}
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="flex flex-col items-end gap-2">
-                            <label
-                              className={`flex items-center gap-1 text-xs ${
-                                eligible ? "text-neutral-300" : "text-neutral-500"
-                              }`}
-                              title={eligible ? "Include in approval" : "Completed jobs are excluded"}
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <input
-                                type="checkbox"
-                                className="h-4 w-4"
-                                disabled={!eligible}
-                                checked={eligible && checked}
-                                onChange={() => eligible && toggleSelection(ln.id)}
-                              />
-                              Include
-                            </label>
-
-                            <span className={chipClass(ln.status as WOStatus)}>
-                              {(ln.status ?? "awaiting").replaceAll("_", " ")}
-                            </span>
-
-                            {StartFinishButton}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
             </div>
 
-            {/* Invoice + Actions → View mode only */}
-            {mode === "view" && (
-              <>
-                {/* Invoice (lazy) */}
-                <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
-                  <h3 className="mb-2 font-semibold">Invoice</h3>
-                  <ErrorBoundary>
-                    <LazyInvoice woId={wo.id} lines={sortedLines} vehicle={vehicle} customer={customer} />
-                  </ErrorBoundary>
+            {/* Quick Add (uses MenuQuickAdd) */}
+            {quickAddOpen && (
+              <div className="mb-3 rounded border border-neutral-800 bg-neutral-950 p-3">
+                <ErrorBoundary>
+                  <MenuQuickAdd workOrderId={wo.id} />
+                </ErrorBoundary>
+                <div className="mt-2 text-[11px] text-neutral-500">
+                  Tip: Keyboard shortcuts — <span className="text-neutral-300">Alt+S</span> to Start, <span className="text-neutral-300">Alt+F</span> to Finish the focused job.
                 </div>
-
-                {/* Sticky progress actions */}
-                <div className="sticky bottom-3 z-10 mt-4 rounded border border-neutral-800 bg-neutral-900/95 p-3 backdrop-blur">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      onClick={() => router.push(`/work-orders/quote-review?woId=${wo.id}`)}
-                      className="rounded bg-orange-500 px-3 py-2 font-semibold text-black hover:bg-orange-600"
-                    >
-                      Review Quote
-                    </button>
-
-                    {/* Send for Approval uses selection */}
-                    <button
-                      onClick={handleSendForApproval}
-                      disabled={busySendApproval || selectedForApproval.size === 0}
-                      className="rounded bg-blue-600 px-3 py-2 text-white hover:bg-blue-700 disabled:opacity-60"
-                    >
-                      {busySendApproval ? "Sending…" : `Send for Approval (${selectedForApproval.size})`}
-                    </button>
-
-                    <button
-                      onClick={async () => {
-                        if (busyAwaiting) return;
-                        setBusyAwaiting(true);
-                        const prev = wo;
-                        setWo(prev ? { ...prev, status: "awaiting_approval" } : prev);
-                        const { error } = await supabase
-                          .from("work_orders")
-                          .update({ status: "awaiting_approval" })
-                          .eq("id", wo!.id);
-                        setBusyAwaiting(false);
-                        if (error) {
-                          setWo(prev);
-                          return showErr("Update status failed", error);
-                        }
-                        toast.success("Marked as awaiting customer approval");
-                      }}
-                      className="rounded border border-neutral-700 px-3 py-2 hover:border-orange-500 disabled:opacity-60"
-                      disabled={busyAwaiting}
-                    >
-                      Mark Awaiting Approval
-                    </button>
-
-                    <button
-                      onClick={async () => {
-                        if (busyQueue) return;
-                        setBusyQueue(true);
-                        const prev = wo;
-                        setWo(prev ? { ...prev, status: "queued" } : prev);
-                        const { error } = await supabase.from("work_orders").update({ status: "queued" }).eq("id", wo!.id);
-                        setBusyQueue(false);
-                        if (error) {
-                          setWo(prev);
-                          return showErr("Update status failed", error);
-                        }
-                        toast.success("Moved to Queue");
-                        await fetchAll();
-                      }}
-                      className="rounded border border-neutral-700 px-3 py-2 hover:border-orange-500 disabled:opacity-60"
-                      disabled={busyQueue}
-                    >
-                      Queue Work
-                    </button>
-
-                    <button
-                      className="rounded bg-purple-600 px-3 py-2 text-white hover:bg-purple-700 disabled:opacity-60"
-                      onClick={handleDownloadQuote}
-                      disabled={!caps.canGenerateQuote || busyQuote}
-                      title={!caps.canGenerateQuote ? "Not permitted" : "Generate quote PDF"}
-                    >
-                      {busyQuote ? "Saving…" : "Download Quote PDF"}
-                    </button>
-                  </div>
-                </div>
-              </>
+              </div>
             )}
 
-            {/* Inspection shortcuts: only if attached */}
-            {!!wo.inspection_id && (
-              <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
-                <div className="mb-2 font-semibold text-orange-400">Inspection</div>
-                <div className="flex flex-wrap gap-2">
-                  <Link
-                    className="rounded bg-zinc-800 px-3 py-2 text-sm hover:bg-zinc-700"
-                    href={`/inspection/maintenance50?inspectionId=${wo.inspection_id}`}
-                  >
-                    Open Inspection
-                  </Link>
-                  <Link
-                    className="rounded bg-zinc-800 px-3 py-2 text-sm hover:bg-zinc-700"
-                    href={`/inspection/maintenance50?inspectionId=${wo.inspection_id}&fuel=diesel`}
-                  >
-                    Open (Diesel)
-                  </Link>
-                </div>
+            {/* Approval selection helpers */}
+            <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-neutral-300">
+              <span className="opacity-70">Approval selection:</span>
+              <button
+                type="button"
+                className="rounded border border-neutral-700 px-2 py-1 hover:border-orange-500"
+                onClick={selectAllEligible}
+              >
+                Select all eligible
+              </button>
+              <button
+                type="button"
+                className="rounded border border-neutral-700 px-2 py-1 hover:border-orange-500"
+                onClick={clearAllSelection}
+              >
+                Clear all
+              </button>
+              <span className="ml-auto">
+                Selected: <strong>{selectedForApproval.size}</strong>
+              </span>
+            </div>
+
+            {showAddForm && (
+              <ErrorBoundary>
+                <NewWorkOrderLineForm
+                  workOrderId={wo.id}
+                  vehicleId={vehicle?.id ?? null}
+                  defaultJobType={null}
+                  onCreated={() => fetchAll()}
+                />
+              </ErrorBoundary>
+            )}
+
+            {sortedLines.length === 0 ? (
+              <p className="text-sm text-neutral-400">No lines yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {sortedLines.map((ln) => {
+                  const eligible = (ln.status ?? "") !== "completed";
+                  const checked = selectedForApproval.has(ln.id);
+                  const statusKey = (ln.status ?? "awaiting").toLowerCase().replaceAll(" ", "_");
+                  const borderCls = statusBorder[statusKey] || "border-l-4 border-gray-400";
+                  const tintCls = statusRowTint[statusKey] || "bg-neutral-950";
+                  const isActiveFocused = focusedJobId === ln.id;
+
+                  return (
+                    <div
+                      key={ln.id}
+                      className={`rounded border border-neutral-800 ${tintCls} p-3 ${borderCls} ${
+                        isActiveFocused ? "ring-2 ring-orange-400" : ""
+                      } cursor-pointer`}
+                      onClick={() => openFocused(ln.id)}
+                      title="Open focused job"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate font-medium">
+                            {ln.description || ln.complaint || "Untitled job"}
+                          </div>
+                          <div className="text-xs text-neutral-400">
+                            {String((ln.job_type as JobType) ?? "job").replaceAll("_", " ")} •{" "}
+                            {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} • Status:{" "}
+                            {(ln.status ?? "awaiting").replaceAll("_", " ")} • Time: {renderJobDuration(ln)}
+                          </div>
+                          {(ln.complaint || ln.cause || ln.correction) && (
+                            <div className="text-xs text-neutral-400 mt-1">
+                              {ln.complaint ? `Cmpl: ${ln.complaint}  ` : ""}
+                              {ln.cause ? `| Cause: ${ln.cause}  ` : ""}
+                              {ln.correction ? `| Corr: ${ln.correction}` : ""}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex flex-col items-end gap-2">
+                          <label
+                            className={`flex items-center gap-1 text-xs ${
+                              eligible ? "text-neutral-300" : "text-neutral-500"
+                            }`}
+                            title={eligible ? "Include in approval" : "Completed jobs are excluded"}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4"
+                              disabled={!eligible}
+                              checked={eligible && checked}
+                              onChange={() => eligible && toggleSelection(ln.id)}
+                            />
+                            Include
+                          </label>
+
+                          <span className={chipClass(ln.status as WOStatus)}>
+                            {(ln.status ?? "awaiting").replaceAll("_", " ")}
+                          </span>
+                          {/* Start/Finish buttons intentionally removed from list */}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
+
+          {/* INLINE AI Suggested Repairs (not a modal) */}
+          <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
+            <h3 className="mb-2 font-semibold">AI Suggested Repairs</h3>
+            <ErrorBoundary>
+              {sortedLines.length > 0 && suggestedJobId ? (
+                <SuggestedQuickAdd jobId={suggestedJobId} workOrderId={wo!.id} vehicleId={vehicle?.id ?? null} />
+              ) : (
+                <div className="text-sm text-neutral-400">Add a job line to enable AI suggestions.</div>
+              )}
+            </ErrorBoundary>
+          </div>
+
+          {/* Invoice + Actions → View mode only */}
+          {mode === "view" && (
+            <>
+              {/* Invoice (lazy) */}
+              <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
+                <h3 className="mb-2 font-semibold">Invoice</h3>
+                <ErrorBoundary>
+                  <LazyInvoice woId={wo.id} lines={sortedLines} vehicle={vehicle} customer={customer} />
+                </ErrorBoundary>
+              </div>
+
+              {/* Sticky progress actions */}
+              <div className="sticky bottom-3 z-10 mt-4 rounded border border-neutral-800 bg-neutral-900/95 p-3 backdrop-blur">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => router.push(`/work-orders/quote-review?woId=${wo.id}`)}
+                    className="rounded bg-orange-500 px-3 py-2 font-semibold text-black hover:bg-orange-600"
+                  >
+                    Capture Signature / Review Quote
+                  </button>
+
+                  {/* Send for Approval uses selection (keep if wired) */}
+                  <button
+                    onClick={handleSendForApproval}
+                    disabled={busySendApproval || selectedForApproval.size === 0}
+                    className="rounded bg-blue-600 px-3 py-2 text-white hover:bg-blue-700 disabled:opacity-60"
+                  >
+                    {busySendApproval ? "Sending…" : `Send for Approval (${selectedForApproval.size})`}
+                  </button>
+
+                  <button
+                    onClick={async () => {
+                      if (busyAwaiting) return;
+                      setBusyAwaiting(true);
+                      const prev = wo;
+                      setWo(prev ? { ...prev, status: "awaiting_approval" } : prev);
+                      const { error } = await supabase
+                        .from("work_orders")
+                        .update({ status: "awaiting_approval" })
+                        .eq("id", wo!.id);
+                      setBusyAwaiting(false);
+                      if (error) {
+                        setWo(prev);
+                        return showErr("Update status failed", error);
+                      }
+                      toast.success("Marked as awaiting customer approval");
+                    }}
+                    className="rounded border border-neutral-700 px-3 py-2 hover:border-orange-500 disabled:opacity-60"
+                    disabled={busyAwaiting}
+                  >
+                    Mark Awaiting Approval
+                  </button>
+
+                  <button
+                    onClick={async () => {
+                      if (busyQueue) return;
+                      setBusyQueue(true);
+                      const prev = wo;
+                      setWo(prev ? { ...prev, status: "queued" } : prev);
+                      const { error } = await supabase.from("work_orders").update({ status: "queued" }).eq("id", wo!.id);
+                      setBusyQueue(false);
+                      if (error) {
+                        setWo(prev);
+                        return showErr("Update status failed", error);
+                      }
+                      toast.success("Moved to Queue");
+                      await fetchAll();
+                    }}
+                    className="rounded border border-neutral-700 px-3 py-2 hover:border-orange-500 disabled:opacity-60"
+                    disabled={busyQueue}
+                  >
+                    Queue Work
+                  </button>
+
+                  <button
+                    className="rounded bg-purple-600 px-3 py-2 text-white hover:bg-purple-700 disabled:opacity-60"
+                    onClick={handleDownloadQuote}
+                    disabled={!caps.canGenerateQuote || busyQuote}
+                    title={!caps.canGenerateQuote ? "Not permitted" : "Generate quote PDF"}
+                  >
+                    {busyQuote ? "Saving…" : "Download Quote PDF"}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Inspection shortcuts: only if attached */}
+          {!!wo.inspection_id && (
+            <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
+              <div className="mb-2 font-semibold text-orange-400">Inspection</div>
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  className="rounded bg-zinc-800 px-3 py-2 text-sm hover:bg-zinc-700"
+                  href={`/inspection/maintenance50?inspectionId=${wo.inspection_id}`}
+                >
+                  Open Inspection
+                </Link>
+                <Link
+                  className="rounded bg-zinc-800 px-3 py-2 text-sm hover:bg-zinc-700"
+                  href={`/inspection/maintenance50?inspectionId=${wo.inspection_id}&fuel=diesel`}
+                >
+                  Open (Diesel)
+                </Link>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1216,45 +1186,7 @@ export default function WorkOrderPage(): JSX.Element {
         />
       )}
 
-      {/* AI modal */}
-      {aiModalOpen && (
-        <div className="fixed inset-0 z-40 bg-black/60 flex items-center justify-center p-4">
-          <div className="w-full max-w-2xl rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-            <div className="mb-2 flex items-center justify-between">
-              <h3 className="text-lg font-semibold">AI Suggestions</h3>
-              <button className="text-sm text-neutral-300 hover:text-white" onClick={() => setAiModalOpen(false)}>
-                Close
-              </button>
-            </div>
-            <ErrorBoundary>
-              {suggestedJobId ? (
-                <SuggestedQuickAdd jobId={suggestedJobId} workOrderId={wo!.id} vehicleId={vehicle?.id ?? null} />
-              ) : (
-                <div className="text-sm text-neutral-400">Add a job line to enable AI suggestions.</div>
-              )}
-            </ErrorBoundary>
-          </div>
-        </div>
-      )}
-
-      {/* Quick Add modal */}
-      {quickAddOpen && (
-        <div className="fixed inset-0 z-40 bg-black/60 flex items-center justify-center p-4">
-          <div className="w-full max-w-3xl rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-            <div className="mb-2 flex items-center justify-between">
-              <h3 className="text-lg font-semibold">Quick Add</h3>
-              <button className="text-sm text-neutral-300 hover:text-white" onClick={() => setQuickAddOpen(false)}>
-                Close
-              </button>
-            </div>
-            <ErrorBoundary>
-              <MenuQuickAdd workOrderId={wo!.id} />
-            </ErrorBoundary>
-          </div>
-        </div>
-      )}
-
-      {/* NEW: Focused Job modal */}
+      {/* NEW: Focused Job modal — all job interaction happens here now */}
       {focusedOpen && focusedJobId && (
         <FocusedJobModal
           isOpen={focusedOpen}
@@ -1264,7 +1196,7 @@ export default function WorkOrderPage(): JSX.Element {
         />
       )}
 
-      {/* Optional: quick new chat (toggle wherever you want) */}
+      {/* Optional: quick new chat (unchanged) */}
       {chatOpen && currentUserId && (
         <NewChatModal
           isOpen={chatOpen}

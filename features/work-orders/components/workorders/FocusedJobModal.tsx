@@ -1,4 +1,3 @@
-// features/work-orders/components/workorders/FocusedJobModal.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -21,6 +20,9 @@ import PhotoCaptureModal from "@/features/work-orders/components/workorders/extr
 import CostEstimateModal from "@/features/work-orders/components/workorders/extras/CostEstimateModal";
 import CustomerContactModal from "@/features/work-orders/components/workorders/extras/CustomerContactModal";
 
+// NEW: chat in the focused modal
+import NewChatModal from "@/features/ai/components/chat/NewChatModal";
+
 type Mode = "tech" | "view";
 
 const statusTextColor: Record<string, string> = {
@@ -33,13 +35,11 @@ const statusTextColor: Record<string, string> = {
   planned: "text-purple-300",
   new: "text-neutral-200",
 };
-
 const chip = (s: string | null) =>
-  statusTextColor[(s ?? "awaiting").toLowerCase().replaceAll(" ", "_")] ??
-  "text-neutral-200";
+  (statusTextColor[(s ?? "awaiting").toLowerCase().replaceAll(" ", "_")] ??
+    "text-neutral-200");
 
-const outlineBtn =
-  "font-header rounded border px-3 py-2 text-sm transition-colors";
+const outlineBtn = "font-header rounded border px-3 py-2 text-sm transition-colors";
 const outlineNeutral = `${outlineBtn} border-neutral-700 text-neutral-200 hover:bg-neutral-800`;
 const outlineSuccess = `${outlineBtn} border-green-600 text-green-300 hover:bg-green-900/20`;
 const outlineFinish = `${outlineBtn} border-neutral-600 text-neutral-200 hover:bg-neutral-800`;
@@ -64,7 +64,6 @@ export default function FocusedJobModal(props: any) {
   };
 
   const supabase = useMemo(() => createBrowserSupabase(), []);
-
   const [loading, setLoading] = useState(false);
   const [line, setLine] = useState<any>(null);
   const [workOrder, setWorkOrder] = useState<any>(null);
@@ -85,6 +84,7 @@ export default function FocusedJobModal(props: any) {
   const [openPhoto, setOpenPhoto] = useState(false);
   const [openCost, setOpenCost] = useState(false);
   const [openContact, setOpenContact] = useState(false);
+  const [openChat, setOpenChat] = useState(false); // NEW
 
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
@@ -149,8 +149,12 @@ export default function FocusedJobModal(props: any) {
   const msToTenthHours = (ms: number) =>
     (Math.max(0, Math.round(ms / 360000)) / 10).toFixed(1) + " hr";
   const renderLiveTenthHours = () => {
-    if (startAt && !finishAt) return msToTenthHours(Date.now() - new Date(startAt).getTime());
-    if (startAt && finishAt) return msToTenthHours(new Date(finishAt).getTime() - new Date(startAt).getTime());
+    if (startAt && !finishAt)
+      return msToTenthHours(Date.now() - new Date(startAt).getTime());
+    if (startAt && finishAt)
+      return msToTenthHours(
+        new Date(finishAt).getTime() - new Date(startAt).getTime()
+      );
     return "0.0 hr";
   };
 
@@ -173,29 +177,18 @@ export default function FocusedJobModal(props: any) {
   // Actions
   const startJob = async () => {
     if (!workOrderLineId) return;
-    // FIX: ensure we clear punched_out_at when (re)starting
     const { error } = await supabase
       .from("work_order_lines")
-      .update({
-        punched_in_at: new Date().toISOString(),
-        punched_out_at: null,
-        status: "in_progress",
-      })
+      .update({ punched_in_at: new Date().toISOString(), status: "in_progress" })
       .eq("id", workOrderLineId);
     if (error) return showErr("Start failed", error);
     toast.success("Started");
     await refresh();
   };
 
+  // CHANGE: Finish -> open Cause/Correction modal instead of instantly setting awaiting
   const finishJob = async () => {
-    if (!workOrderLineId) return;
-    const { error } = await supabase
-      .from("work_order_lines")
-      .update({ punched_out_at: new Date().toISOString(), status: "awaiting" })
-      .eq("id", workOrderLineId);
-    if (error) return showErr("Finish failed", error);
-    toast.success("Finished");
-    await refresh();
+    setOpenComplete(true);
   };
 
   const applyHold = async (reason: string, notes?: string) => {
@@ -246,7 +239,10 @@ export default function FocusedJobModal(props: any) {
     const path = `wo/${workOrder.id}/lines/${workOrderLineId}/${uuidv4()}_${file.name}`;
     const { error } = await supabase.storage
       .from("job-photos")
-      .upload(path, file, { contentType: file.type || "image/jpeg", upsert: true });
+      .upload(path, file, {
+        contentType: file.type || "image/jpeg",
+        upsert: true,
+      });
     if (error) return showErr("Photo upload failed", error);
     toast.success("Photo attached");
   };
@@ -266,7 +262,11 @@ export default function FocusedJobModal(props: any) {
     await fetch("/api/send-email", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: customer.email, subject, html: `<p>${body}</p>` }),
+      body: JSON.stringify({
+        email: customer.email,
+        subject,
+        html: `<p>${body}</p>`,
+      }),
     }).catch(() => null);
     toast.success("Email queued");
   };
@@ -296,7 +296,9 @@ export default function FocusedJobModal(props: any) {
   const titleText =
     (line?.description || line?.complaint || "Focused Job") +
     (line?.job_type ? ` — ${String(line.job_type).replaceAll("_", " ")}` : "");
-  const titleEl = <span className={`font-header ${chip(line?.status)}`}>{titleText}</span>;
+  const titleEl = (
+    <span className={`font-header ${chip(line?.status)}`}>{titleText}</span>
+  );
 
   const startedText = startAt ? format(new Date(startAt), "PPpp") : "—";
   const finishedText = finishAt ? format(new Date(finishAt), "PPpp") : "—";
@@ -323,7 +325,7 @@ export default function FocusedJobModal(props: any) {
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Meta */}
+            {/* Meta (force dark blocks) */}
             <div className="grid gap-2 sm:grid-cols-2">
               <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
                 <div className="text-xs text-neutral-400">Status</div>
@@ -363,7 +365,9 @@ export default function FocusedJobModal(props: any) {
                   <div className="text-neutral-400">Customer</div>
                   <div className="truncate">
                     {customer
-                      ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") || "—"
+                      ? [customer.first_name ?? "", customer.last_name ?? ""]
+                          .filter(Boolean)
+                          .join(" ") || "—"
                       : "—"}
                   </div>
                   <div className="text-xs text-neutral-500">
@@ -378,13 +382,9 @@ export default function FocusedJobModal(props: any) {
               {mode === "tech" ? (
                 <>
                   {!startAt || finishAt ? (
-                    <button className={outlineSuccess} onClick={startJob}>
-                      Start
-                    </button>
+                    <button className={outlineSuccess} onClick={startJob}>Start</button>
                   ) : (
-                    <button className={outlineFinish} onClick={finishJob}>
-                      Finish
-                    </button>
+                    <button className={outlineFinish} onClick={finishJob}>Finish</button>
                   )}
 
                   <button className={outlinePurple} onClick={() => setOpenComplete(true)}>
@@ -422,6 +422,11 @@ export default function FocusedJobModal(props: any) {
                   <button className={outlineNeutral} onClick={() => setOpenContact(true)}>
                     Contact Customer
                   </button>
+
+                  {/* NEW: Chat */}
+                  <button className={outlineInfo} onClick={() => setOpenChat(true)}>
+                    Chat
+                  </button>
                 </>
               ) : (
                 <>
@@ -434,17 +439,20 @@ export default function FocusedJobModal(props: any) {
                   <button className={outlineInfo} onClick={() => setOpenStatus(true)}>
                     Change Status
                   </button>
+                  <button className={outlineInfo} onClick={() => setOpenChat(true)}>
+                    Chat
+                  </button>
                 </>
               )}
             </div>
 
-            {/* Live timer */}
+            {/* Live timer (dark block) */}
             <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
               <div className="text-xs text-neutral-400">Live Timer</div>
               <div className="font-medium">{duration || renderLiveTenthHours()}</div>
             </div>
 
-            {/* Tech notes */}
+            {/* Tech notes (orange border) */}
             <div>
               <label className="mb-1 block text-sm font-header">Tech Notes</label>
               <textarea
@@ -453,7 +461,7 @@ export default function FocusedJobModal(props: any) {
                 onChange={(e) => setTechNotes(e.target.value)}
                 onBlur={saveNotes}
                 disabled={savingNotes}
-                className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder-neutral-400"
+                className="w-full rounded border border-orange-500 bg-neutral-900 p-2 text-white placeholder-neutral-400"
                 placeholder="Add notes for this job…"
               />
             </div>
@@ -513,21 +521,11 @@ export default function FocusedJobModal(props: any) {
       )}
 
       {openAssign && line && (
-        <AssignTechModal
-          isOpen={openAssign}
-          onClose={() => setOpenAssign(false)}
-          workOrderLineId={line.id}
-          onAssigned={refresh}
-        />
+        <AssignTechModal isOpen={openAssign} onClose={() => setOpenAssign(false)} workOrderLineId={line.id} onAssigned={refresh} />
       )}
 
       {openStatus && line && (
-        <StatusPickerModal
-          isOpen={openStatus}
-          onClose={() => setOpenStatus(false)}
-          current={(line.status || "awaiting") as any}
-          onChange={changeStatus}
-        />
+        <StatusPickerModal isOpen={openStatus} onClose={() => setOpenStatus(false)} current={(line.status || "awaiting") as any} onChange={changeStatus} />
       )}
 
       {openTime && line && (
@@ -540,13 +538,7 @@ export default function FocusedJobModal(props: any) {
         />
       )}
 
-      {openPhoto && (
-        <PhotoCaptureModal
-          isOpen={openPhoto}
-          onClose={() => setOpenPhoto(false)}
-          onCapture={uploadPhoto}
-        />
-      )}
+      {openPhoto && <PhotoCaptureModal isOpen={openPhoto} onClose={() => setOpenPhoto(false)} onCapture={uploadPhoto} />}
 
       {openCost && line && (
         <CostEstimateModal
@@ -562,15 +554,23 @@ export default function FocusedJobModal(props: any) {
         <CustomerContactModal
           isOpen={openContact}
           onClose={() => setOpenContact(false)}
-          customerName={
-            customer
-              ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ")
-              : ""
-          }
+          customerName={customer ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") : ""}
           customerEmail={customer?.email ?? ""}
           customerPhone={customer?.phone ?? ""}
           onSendEmail={sendEmail}
           onSendSms={sendSms}
+        />
+      )}
+
+      {/* NEW: chat modal */}
+      {openChat && (
+        <NewChatModal
+          isOpen={openChat}
+          onClose={() => setOpenChat(false)}
+          created_by={workOrder?.created_by ?? "system"}
+          onCreated={() => setOpenChat(false)}
+          context_type="work_order_line"
+          context_id={line?.id ?? null}
         />
       )}
     </>
