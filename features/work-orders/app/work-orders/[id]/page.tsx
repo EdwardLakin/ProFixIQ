@@ -88,7 +88,7 @@ function paramToString(v: string | string[] | undefined): string | null {
   return Array.isArray(v) ? v[0] ?? null : v;
 }
 
-/* ---------------------------- Status -> Badges ---------------------------- */
+/* ---------------------------- Status -> Styles ---------------------------- */
 const statusBadge: Record<string, string> = {
   awaiting_approval: "bg-blue-100 text-blue-800",
   awaiting: "bg-slate-200 text-slate-800",
@@ -109,6 +109,18 @@ const statusBorder: Record<string, string> = {
   awaiting_approval: "border-l-4 border-blue-500",
   planned: "border-l-4 border-purple-500",
   new: "border-l-4 border-gray-400",
+};
+
+// Row background tint by status
+const statusRowTint: Record<string, string> = {
+  awaiting: "bg-slate-900/40",
+  queued: "bg-indigo-900/40",
+  in_progress: "bg-orange-900/40",
+  on_hold: "bg-amber-900/40",
+  completed: "bg-green-900/40",
+  awaiting_approval: "bg-blue-900/40",
+  planned: "bg-purple-900/40",
+  new: "bg-gray-900/40",
 };
 
 /* ----------------------------- Lazy Invoice UI ---------------------------- */
@@ -486,17 +498,19 @@ export default function WorkOrderPage(): JSX.Element {
   }, [lines, fixedStatus, supabase, fetchAll]);
 
   /* ------------------------------ Tech Actions ----------------------------- */
-  const handlePunchIn = async (jobId: string) => {
+  const handleStart = async (jobId: string) => {
+    // If currently punched into a different job, finish it first
     if (activeJobId && activeJobId !== jobId) {
-      const ok = confirm("You are punched into another job. Punch out and switch?");
+      const ok = confirm("You are currently on another job. Finish it and switch?");
       if (!ok) return;
       const { error: outErr } = await supabase
         .from("work_order_lines")
         .update({ punched_out_at: new Date().toISOString(), status: "awaiting" })
         .eq("id", activeJobId);
-      if (outErr) return showErr("Punch out failed", outErr);
+      if (outErr) return showErr("Finish current job failed", outErr);
+      setActiveJobId(null);
     } else if (activeJobId) {
-      toast.error("You are already punched in to a job.");
+      toast.error("You have already started a job.");
       return;
     }
 
@@ -504,20 +518,20 @@ export default function WorkOrderPage(): JSX.Element {
       .from("work_order_lines")
       .update({ punched_in_at: new Date().toISOString(), status: "in_progress" })
       .eq("id", jobId);
-    if (error) return showErr("Punch in failed", error);
-    toast.success("Punched in");
+    if (error) return showErr("Start failed", error);
+    toast.success("Started job");
     setUrlJobId(jobId);
     setActiveJobId(jobId);
     fetchAll();
   };
 
-  const handlePunchOut = async (jobId: string) => {
+  const handleFinish = async (jobId: string) => {
     const { error } = await supabase
       .from("work_order_lines")
       .update({ punched_out_at: new Date().toISOString(), status: "awaiting" })
       .eq("id", jobId);
-    if (error) return showErr("Punch out failed", error);
-    toast.success("Punched out");
+    if (error) return showErr("Finish failed", error);
+    toast.success("Finished job");
     setActiveJobId(null);
     fetchAll();
   };
@@ -706,6 +720,9 @@ export default function WorkOrderPage(): JSX.Element {
     setFocusedJobId(jobId);
     setFocusedOpen(true);
     setUrlJobId(jobId);
+    // also reflect in left card
+    const found = lines.find((l) => l.id === jobId) || null;
+    setLine(found);
   };
 
   if (!woId) {
@@ -978,21 +995,49 @@ export default function WorkOrderPage(): JSX.Element {
                     const checked = selectedForApproval.has(ln.id);
                     const statusKey = (ln.status ?? "awaiting").toLowerCase().replaceAll(" ", "_");
                     const borderCls = statusBorder[statusKey] || "border-l-4 border-gray-400";
+                    const tintCls = statusRowTint[statusKey] || "bg-neutral-950";
 
-                    const isActive = activeJobId === ln.id && !ln.punched_out_at;
+                    const isActiveFocused = focusedJobId === ln.id;
+
+                    const StartFinishButton =
+                      mode === "tech" ? (
+                        !ln.punched_in_at || ln.punched_out_at ? (
+                          <button
+                            className="ml-2 bg-green-600 hover:bg-green-700 text-white text-xs px-2 py-1 rounded"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleStart(ln.id);
+                            }}
+                          >
+                            Start
+                          </button>
+                        ) : (
+                          <button
+                            className="ml-2 bg-neutral-700 hover:bg-neutral-800 text-white text-xs px-2 py-1 rounded"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleFinish(ln.id);
+                            }}
+                          >
+                            Finish
+                          </button>
+                        )
+                      ) : null;
 
                     return (
-                      <div key={ln.id} className={`rounded border border-neutral-800 bg-neutral-950 p-3 ${borderCls}`}>
+                      <div
+                        key={ln.id}
+                        className={`rounded border border-neutral-800 ${tintCls} p-3 ${borderCls} ${
+                          isActiveFocused ? "ring-2 ring-orange-400" : ""
+                        } cursor-pointer`}
+                        onClick={() => openFocused(ln.id)}
+                        title="Open focused job"
+                      >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <button
-                              type="button"
-                              onClick={() => openFocused(ln.id)}
-                              className="truncate font-medium text-left hover:underline"
-                              title="Open focused job"
-                            >
+                            <div className="truncate font-medium">
                               {ln.description || ln.complaint || "Untitled job"}
-                            </button>
+                            </div>
                             <div className="text-xs text-neutral-400">
                               {String((ln.job_type as JobType) ?? "job").replaceAll("_", " ")} •{" "}
                               {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} • Status:{" "}
@@ -1013,6 +1058,7 @@ export default function WorkOrderPage(): JSX.Element {
                                 eligible ? "text-neutral-300" : "text-neutral-500"
                               }`}
                               title={eligible ? "Include in approval" : "Completed jobs are excluded"}
+                              onClick={(e) => e.stopPropagation()}
                             >
                               <input
                                 type="checkbox"
@@ -1028,24 +1074,7 @@ export default function WorkOrderPage(): JSX.Element {
                               {(ln.status ?? "awaiting").replaceAll("_", " ")}
                             </span>
 
-                            {/* Punch controls reflect state */}
-                            {!ln.punched_in_at || !isActive ? (
-                              <button
-                                className="ml-2 bg-green-600 hover:bg-green-700 text-white text-xs px-2 py-1 rounded"
-                                onClick={() => handlePunchIn(ln.id)}
-                                disabled={!!activeJobId && activeJobId !== ln.id}
-                                title={activeJobId && activeJobId !== ln.id ? "Punch out of current job first" : ""}
-                              >
-                                {activeJobId === ln.id ? "Punched In" : "Punch In"}
-                              </button>
-                            ) : (
-                              <button
-                                className="ml-2 bg-neutral-700 hover:bg-neutral-800 text-white text-xs px-2 py-1 rounded"
-                                onClick={() => handlePunchOut(ln.id)}
-                              >
-                                Punch Out
-                              </button>
-                            )}
+                            {StartFinishButton}
                           </div>
                         </div>
                       </div>
@@ -1235,7 +1264,7 @@ export default function WorkOrderPage(): JSX.Element {
         />
       )}
 
-      {/* Optional: quick new chat (launch from anywhere you like) */}
+      {/* Optional: quick new chat (toggle wherever you want) */}
       {chatOpen && currentUserId && (
         <NewChatModal
           isOpen={chatOpen}

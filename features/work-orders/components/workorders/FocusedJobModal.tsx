@@ -1,17 +1,18 @@
+// features/work-orders/components/workorders/FocusedJobModal.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { format } from "date-fns";
+import { format, formatDistanceStrict } from "date-fns";
 import { toast } from "sonner";
 import { v4 as uuidv4 } from "uuid";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import ModalShell from "@/features/shared/components/ModalShell";
 
-// existing modals in your codebase
+// existing modals
 import CauseCorrectionModal from "@work-orders/components/workorders/CauseCorrectionModal";
 import PartsRequestModal from "@work-orders/components/workorders/PartsRequestModal";
 
-// new unified-look modals
+// extras
 import HoldModal from "@/features/work-orders/components/workorders/HoldModal";
 import AssignTechModal from "@/features/work-orders/components/workorders/extras/AssignTechModal";
 import StatusPickerModal from "@/features/work-orders/components/workorders/extras/StatusPickerModal";
@@ -19,7 +20,40 @@ import TimeAdjustModal from "@/features/work-orders/components/workorders/extras
 import PhotoCaptureModal from "@/features/work-orders/components/workorders/extras/PhotoCaptureModal";
 import CostEstimateModal from "@/features/work-orders/components/workorders/extras/CostEstimateModal";
 import CustomerContactModal from "@/features/work-orders/components/workorders/extras/CustomerContactModal";
-import NewChatModal from "@/features/ai/components/chat/NewChatModal";
+
+type Mode = "tech" | "view";
+
+const statusTextColor: Record<string, string> = {
+  in_progress: "text-orange-300",
+  awaiting: "text-slate-200",
+  queued: "text-indigo-300",
+  on_hold: "text-amber-300",
+  completed: "text-green-300",
+  awaiting_approval: "text-blue-300",
+  planned: "text-purple-300",
+  new: "text-neutral-200",
+};
+
+const chip = (s: string | null) =>
+  (statusTextColor[(s ?? "awaiting").toLowerCase().replaceAll(" ", "_")] ??
+    "text-neutral-200");
+
+const outlineBtn =
+  "font-header rounded border px-3 py-2 text-sm transition-colors";
+const outlineNeutral =
+  `${outlineBtn} border-neutral-700 text-neutral-200 hover:bg-neutral-800`;
+const outlineSuccess =
+  `${outlineBtn} border-green-600 text-green-300 hover:bg-green-900/20`;
+const outlineFinish =
+  `${outlineBtn} border-neutral-600 text-neutral-200 hover:bg-neutral-800`;
+const outlineWarn =
+  `${outlineBtn} border-amber-600 text-amber-300 hover:bg-amber-900/20`;
+const outlineDanger =
+  `${outlineBtn} border-red-600 text-red-300 hover:bg-red-900/20`;
+const outlineInfo =
+  `${outlineBtn} border-blue-600 text-blue-300 hover:bg-blue-900/20`;
+const outlinePurple =
+  `${outlineBtn} border-purple-600 text-purple-300 hover:bg-purple-900/20`;
 
 export default function FocusedJobModal(props: any) {
   const {
@@ -27,7 +61,14 @@ export default function FocusedJobModal(props: any) {
     onClose,
     workOrderLineId,
     onChanged,
-  } = props;
+    mode = "tech",
+  } = props as {
+    isOpen: boolean;
+    onClose: () => void;
+    workOrderLineId: string;
+    onChanged?: () => void | Promise<void>;
+    mode?: Mode;
+  };
 
   const supabase = useMemo(() => createBrowserSupabase(), []);
 
@@ -36,10 +77,12 @@ export default function FocusedJobModal(props: any) {
   const [workOrder, setWorkOrder] = useState<any>(null);
   const [vehicle, setVehicle] = useState<any>(null);
   const [customer, setCustomer] = useState<any>(null);
+  const [duration, setDuration] = useState("");
 
   const [techNotes, setTechNotes] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
 
+  // sub-modals
   const [openComplete, setOpenComplete] = useState(false);
   const [openParts, setOpenParts] = useState(false);
   const [openHold, setOpenHold] = useState(false);
@@ -49,7 +92,6 @@ export default function FocusedJobModal(props: any) {
   const [openPhoto, setOpenPhoto] = useState(false);
   const [openCost, setOpenCost] = useState(false);
   const [openContact, setOpenContact] = useState(false);
-  const [openChat, setOpenChat] = useState(false);
 
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
@@ -73,18 +115,22 @@ export default function FocusedJobModal(props: any) {
           setWorkOrder(wo ?? null);
 
           if (wo?.vehicle_id) {
-            const { data: v } = await supabase.from("vehicles").select("*").eq("id", wo.vehicle_id).maybeSingle();
+            const { data: v } = await supabase
+              .from("vehicles")
+              .select("*")
+              .eq("id", wo.vehicle_id)
+              .maybeSingle();
             setVehicle(v ?? null);
-          } else {
-            setVehicle(null);
-          }
+          } else setVehicle(null);
 
           if (wo?.customer_id) {
-            const { data: c } = await supabase.from("customers").select("*").eq("id", wo.customer_id).maybeSingle();
+            const { data: c } = await supabase
+              .from("customers")
+              .select("*")
+              .eq("id", wo.customer_id)
+              .maybeSingle();
             setCustomer(c ?? null);
-          } else {
-            setCustomer(null);
-          }
+          } else setCustomer(null);
         }
       } finally {
         setLoading(false);
@@ -92,49 +138,87 @@ export default function FocusedJobModal(props: any) {
     })();
   }, [isOpen, workOrderLineId, supabase]);
 
-  const refreshLine = async () => {
-    const { data: l } = await supabase.from("work_order_lines").select("*").eq("id", workOrderLineId).maybeSingle();
+  useEffect(() => {
+    if (!isOpen) return;
+    const t = setInterval(() => {
+      if (line?.punched_in_at && !line?.punched_out_at) {
+        setDuration(
+          formatDistanceStrict(new Date(), new Date(line.punched_in_at))
+        );
+      } else {
+        setDuration("");
+      }
+    }, 10_000);
+    return () => clearInterval(t);
+  }, [isOpen, line?.punched_in_at, line?.punched_out_at]);
+
+  const startAt = line?.punched_in_at ?? null;
+  const finishAt = line?.punched_out_at ?? null;
+
+  const msToTenthHours = (ms: number) =>
+    (Math.max(0, Math.round(ms / 360000)) / 10).toFixed(1) + " hr";
+  const renderLiveTenthHours = () => {
+    if (startAt && !finishAt)
+      return msToTenthHours(Date.now() - new Date(startAt).getTime());
+    if (startAt && finishAt)
+      return msToTenthHours(
+        new Date(finishAt).getTime() - new Date(startAt).getTime()
+      );
+    return "0.0 hr";
+  };
+
+  const refresh = async () => {
+    const { data: l } = await supabase
+      .from("work_order_lines")
+      .select("*")
+      .eq("id", workOrderLineId)
+      .maybeSingle();
     setLine(l ?? null);
     setTechNotes(l?.notes ?? "");
     await onChanged?.();
   };
 
-  const showErr = (prefix: string, err?: any) => {
-    const msg = err?.message ?? "Something went wrong.";
+  const showErr = (prefix: string, err?: { message?: string } | null) => {
+    toast.error(`${prefix}: ${err?.message ?? "Something went wrong."}`);
     console.error(prefix, err);
-    toast.error(`${prefix}: ${msg}`);
   };
 
-  const punchIn = async () => {
+  // Actions
+  const startJob = async () => {
+    if (!workOrderLineId) return;
     const { error } = await supabase
       .from("work_order_lines")
       .update({ punched_in_at: new Date().toISOString(), status: "in_progress" })
       .eq("id", workOrderLineId);
-    if (error) return showErr("Punch in failed", error);
-    toast.success("Punched in");
-    await refreshLine();
+    if (error) return showErr("Start failed", error);
+    toast.success("Started");
+    await refresh();
   };
 
-  const punchOut = async () => {
+  const finishJob = async () => {
+    if (!workOrderLineId) return;
     const { error } = await supabase
       .from("work_order_lines")
       .update({ punched_out_at: new Date().toISOString(), status: "awaiting" })
       .eq("id", workOrderLineId);
-    if (error) return showErr("Punch out failed", error);
-    toast.success("Punched out");
-    await refreshLine();
+    if (error) return showErr("Finish failed", error);
+    toast.success("Finished");
+    await refresh();
   };
 
   const applyHold = async (reason: string, notes?: string) => {
     const { error } = await supabase
       .from("work_order_lines")
-      .update({ hold_reason: reason || "On hold", status: "on_hold", notes: notes ?? line?.notes ?? null })
+      .update({
+        hold_reason: reason || "On hold",
+        status: "on_hold",
+        notes: notes ?? line?.notes ?? null,
+      })
       .eq("id", workOrderLineId);
     if (error) return showErr("Apply hold failed", error);
     toast.success("Hold applied");
-    await refreshLine();
+    await refresh();
   };
-
   const releaseHold = async () => {
     const { error } = await supabase
       .from("work_order_lines")
@@ -142,14 +226,17 @@ export default function FocusedJobModal(props: any) {
       .eq("id", workOrderLineId);
     if (error) return showErr("Remove hold failed", error);
     toast.success("Hold removed");
-    await refreshLine();
+    await refresh();
   };
 
   const changeStatus = async (next: string) => {
-    const { error } = await supabase.from("work_order_lines").update({ status: next }).eq("id", workOrderLineId);
+    const { error } = await supabase
+      .from("work_order_lines")
+      .update({ status: next })
+      .eq("id", workOrderLineId);
     if (error) return showErr("Update status failed", error);
     toast.success("Status updated");
-    await refreshLine();
+    await refresh();
   };
 
   const updateTime = async (inAt: string | null, outAt: string | null) => {
@@ -159,16 +246,18 @@ export default function FocusedJobModal(props: any) {
       .eq("id", workOrderLineId);
     if (error) return showErr("Update time failed", error);
     toast.success("Time updated");
-    await refreshLine();
+    await refresh();
   };
 
   const uploadPhoto = async (file: File) => {
-    if (!workOrder?.id) return;
+    if (!workOrderLineId || !workOrder?.id) return;
     const path = `wo/${workOrder.id}/lines/${workOrderLineId}/${uuidv4()}_${file.name}`;
-    const { error } = await supabase.storage.from("job-photos").upload(path, file, {
-      contentType: file.type || "image/jpeg",
-      upsert: true,
-    });
+    const { error } = await supabase.storage
+      .from("job-photos")
+      .upload(path, file, {
+        contentType: file.type || "image/jpeg",
+        upsert: true,
+      });
     if (error) return showErr("Photo upload failed", error);
     toast.success("Photo attached");
   };
@@ -180,27 +269,25 @@ export default function FocusedJobModal(props: any) {
       .eq("id", workOrderLineId);
     if (error) return showErr("Save cost failed", error);
     toast.success("Estimate updated");
-    await refreshLine();
+    await refresh();
   };
 
   const sendEmail = async (subject: string, body: string) => {
-    if (!customer?.email) {
-      toast.error("No customer email on file");
-      return;
-    }
+    if (!customer?.email) return toast.error("No customer email on file");
     await fetch("/api/send-email", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: customer.email, subject, html: `<p>${body}</p>` }),
+      body: JSON.stringify({
+        email: customer.email,
+        subject,
+        html: `<p>${body}</p>`,
+      }),
     }).catch(() => null);
     toast.success("Email queued");
   };
 
   const sendSms = async (message: string) => {
-    if (!customer?.phone) {
-      toast.error("No customer phone on file");
-      return;
-    }
+    if (!customer?.phone) return toast.error("No customer phone on file");
     await fetch("/api/send-sms", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -211,58 +298,72 @@ export default function FocusedJobModal(props: any) {
 
   const saveNotes = async () => {
     setSavingNotes(true);
-    const { error } = await supabase.from("work_order_lines").update({ notes: techNotes }).eq("id", workOrderLineId);
+    const { error } = await supabase
+      .from("work_order_lines")
+      .update({ notes: techNotes })
+      .eq("id", workOrderLineId);
     setSavingNotes(false);
     if (error) return showErr("Update notes failed", error);
     toast.success("Notes saved");
-    await refreshLine();
+    await refresh();
   };
 
-  const title =
+  const titleText =
     (line?.description || line?.complaint || "Focused Job") +
     (line?.job_type ? ` — ${String(line.job_type).replaceAll("_", " ")}` : "");
+  const titleEl = (
+    <span className={`font-header ${chip(line?.status)}`}>{titleText}</span>
+  );
 
-  const punchedInText = line?.punched_in_at ? format(new Date(line.punched_in_at), "PPpp") : "—";
-  const punchedOutText = line?.punched_out_at ? format(new Date(line.punched_out_at), "PPpp") : "—";
+  const startedText = startAt ? format(new Date(startAt), "PPpp") : "—";
+  const finishedText = finishAt ? format(new Date(finishAt), "PPpp") : "—";
 
   return (
     <>
       <ModalShell
         isOpen={isOpen}
         onClose={onClose}
-        title={title}
-        subtitle={workOrder ? `WO #${workOrder.custom_id || (workOrder.id || "").slice(0, 8)}` : undefined}
+        title={titleEl}
+        subtitle={
+          workOrder ? (
+            <span className="text-neutral-400">
+              WO #{workOrder.custom_id || workOrder.id?.slice(0, 8)}
+            </span>
+          ) : undefined
+        }
         size="lg"
       >
-        {loading ? (
+        {loading || !line ? (
           <div className="grid gap-3">
             <div className="h-6 w-40 animate-pulse rounded bg-neutral-800/60" />
             <div className="h-24 animate-pulse rounded bg-neutral-800/60" />
           </div>
-        ) : !line ? (
-          <div className="text-sm text-red-400">Job not found.</div>
         ) : (
           <div className="space-y-4">
+            {/* Meta */}
             <div className="grid gap-2 sm:grid-cols-2">
               <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
                 <div className="text-xs text-neutral-400">Status</div>
-                <div className="font-medium">{String(line.status || "awaiting").replaceAll("_", " ")}</div>
+                <div className={`font-medium ${chip(line.status)}`}>
+                  {String(line.status || "awaiting").replaceAll("_", " ")}
+                </div>
               </div>
               <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
-                <div className="text-xs text-neutral-400">Punched In</div>
-                <div className="font-medium">{punchedInText}</div>
+                <div className="text-xs text-neutral-400">Start</div>
+                <div className="font-medium">{startedText}</div>
               </div>
               <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
-                <div className="text-xs text-neutral-400">Punched Out</div>
-                <div className="font-medium">{punchedOutText}</div>
+                <div className="text-xs text-neutral-400">Finish</div>
+                <div className="font-medium">{finishedText}</div>
               </div>
               <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
                 <div className="text-xs text-neutral-400">Hold Reason</div>
-                <div className="font-medium">{line.hold_reason || "—"}</div>
+                <div className="font-medium">{line.hold_reason ?? "—"}</div>
               </div>
             </div>
 
-            <div className="rounded border border-neutral-800 bg-neutral-900 p-3 text-sm">
+            {/* Vehicle & Customer */}
+            <div className="rounded border border-neutral-800 bg-neutral-950 p-3 text-sm">
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <div className="text-neutral-400">Vehicle</div>
@@ -279,7 +380,9 @@ export default function FocusedJobModal(props: any) {
                   <div className="text-neutral-400">Customer</div>
                   <div className="truncate">
                     {customer
-                      ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") || "—"
+                      ? [customer.first_name ?? "", customer.last_name ?? ""]
+                          .filter(Boolean)
+                          .join(" ") || "—"
                       : "—"}
                   </div>
                   <div className="text-xs text-neutral-500">
@@ -289,117 +392,145 @@ export default function FocusedJobModal(props: any) {
               </div>
             </div>
 
+            {/* Controls — outline buttons, gated by mode */}
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {!line.punched_in_at || line.punched_out_at ? (
-                <button className="rounded bg-green-600 px-3 py-2 text-white hover:bg-green-700" onClick={punchIn}>
-                  Punch In
-                </button>
+              {mode === "tech" ? (
+                <>
+                  {!startAt || finishAt ? (
+                    <button className={outlineSuccess} onClick={startJob}>
+                      Start
+                    </button>
+                  ) : (
+                    <button className={outlineFinish} onClick={finishJob}>
+                      Finish
+                    </button>
+                  )}
+
+                  <button
+                    className={outlinePurple}
+                    onClick={() => setOpenComplete(true)}
+                  >
+                    Complete (Cause/Correction)
+                  </button>
+
+                  <button
+                    className={outlineDanger}
+                    onClick={() => setOpenParts(true)}
+                  >
+                    Request Parts
+                  </button>
+
+                  <button
+                    className={outlineWarn}
+                    onClick={() => setOpenHold(true)}
+                  >
+                    {line.status === "on_hold" ? "On Hold" : "Hold"}
+                  </button>
+
+                  <button
+                    className={outlineInfo}
+                    onClick={() => setOpenStatus(true)}
+                  >
+                    Change Status
+                  </button>
+
+                  <button
+                    className={outlineNeutral}
+                    onClick={() => setOpenTime(true)}
+                  >
+                    Adjust Time
+                  </button>
+
+                  <button
+                    className={outlineNeutral}
+                    onClick={() => setOpenAssign(true)}
+                  >
+                    Assign Tech
+                  </button>
+
+                  <button
+                    className={outlineNeutral}
+                    onClick={() => setOpenPhoto(true)}
+                  >
+                    Add Photo
+                  </button>
+
+                  <button
+                    className={outlineNeutral}
+                    onClick={() => setOpenCost(true)}
+                  >
+                    Cost / Estimate
+                  </button>
+
+                  <button
+                    className={outlineNeutral}
+                    onClick={() => setOpenContact(true)}
+                  >
+                    Contact Customer
+                  </button>
+                </>
               ) : (
-                <button className="rounded bg-neutral-700 px-3 py-2 text-white hover:bg-neutral-800" onClick={punchOut}>
-                  Punch Out
-                </button>
+                <>
+                  <button
+                    className={outlineNeutral}
+                    onClick={() => setOpenCost(true)}
+                  >
+                    Cost / Estimate
+                  </button>
+                  <button
+                    className={outlineNeutral}
+                    onClick={() => setOpenContact(true)}
+                  >
+                    Contact Customer
+                  </button>
+                  <button
+                    className={outlineInfo}
+                    onClick={() => setOpenStatus(true)}
+                  >
+                    Change Status
+                  </button>
+                </>
               )}
-
-              <button
-                className="rounded bg-blue-600 px-3 py-2 text-white hover:bg-blue-700"
-                onClick={() => setOpenComplete(true)}
-              >
-                Complete (Cause/Correction)
-              </button>
-
-              <button
-                className="rounded bg-red-600 px-3 py-2 text-white hover:bg-red-700"
-                onClick={() => setOpenParts(true)}
-              >
-                Request Parts
-              </button>
-
-              <button
-                className="rounded bg-amber-600 px-3 py-2 text-white hover:bg-amber-700"
-                onClick={() => setOpenHold(true)}
-              >
-                {line.status === "on_hold" ? "On Hold" : "Hold"}
-              </button>
-
-              <button
-                className="rounded bg-purple-600 px-3 py-2 text-white hover:bg-purple-700"
-                onClick={() => setOpenStatus(true)}
-              >
-                Change Status
-              </button>
-
-              <button
-                className="rounded bg-neutral-700 px-3 py-2 text-white hover:bg-neutral-800"
-                onClick={() => setOpenTime(true)}
-              >
-                Adjust Time
-              </button>
-
-              <button
-                className="rounded bg-neutral-700 px-3 py-2 text-white hover:bg-neutral-800"
-                onClick={() => setOpenAssign(true)}
-              >
-                Assign Tech
-              </button>
-
-              <button
-                className="rounded bg-neutral-700 px-3 py-2 text-white hover:bg-neutral-800"
-                onClick={() => setOpenPhoto(true)}
-              >
-                Add Photo
-              </button>
-
-              <button
-                className="rounded bg-neutral-700 px-3 py-2 text-white hover:bg-neutral-800"
-                onClick={() => setOpenCost(true)}
-              >
-                Cost / Estimate
-              </button>
-
-              <button
-                className="rounded bg-neutral-700 px-3 py-2 text-white hover:bg-neutral-800"
-                onClick={() => setOpenContact(true)}
-              >
-                Contact Customer
-              </button>
-
-              <button
-                className="rounded bg-pink-600 px-3 py-2 text-white hover:bg-pink-700"
-                onClick={() => setOpenChat(true)}
-              >
-                New Chat
-              </button>
             </div>
 
+            {/* Live timer */}
+            <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
+              <div className="text-xs text-neutral-400">Live Timer</div>
+              <div className="font-medium">{duration || renderLiveTenthHours()}</div>
+            </div>
+
+            {/* Tech notes */}
             <div>
-              <label className="mb-1 block text-sm">Tech Notes</label>
+              <label className="mb-1 block text-sm font-header">Tech Notes</label>
               <textarea
                 rows={4}
                 value={techNotes}
                 onChange={(e) => setTechNotes(e.target.value)}
                 onBlur={saveNotes}
                 disabled={savingNotes}
-                className="w-full rounded border border-neutral-700 bg-neutral-800 p-2 text-white placeholder-neutral-400"
+                className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder-neutral-400"
                 placeholder="Add notes for this job…"
               />
             </div>
 
             <div className="text-xs text-neutral-500">
               Job ID: {line.id}
-              {typeof line.labor_time === "number" ? ` • Labor: ${line.labor_time.toFixed(1)}h` : ""}
+              {typeof line.labor_time === "number"
+                ? ` • Labor: ${line.labor_time.toFixed(1)}h`
+                : ""}
               {line.hold_reason ? ` • Hold: ${line.hold_reason}` : ""}
             </div>
           </div>
         )}
       </ModalShell>
 
+      {/* Sub-modals */}
       {openComplete && line && (
         <CauseCorrectionModal
           isOpen={openComplete}
           onClose={() => setOpenComplete(false)}
           jobId={line.id}
-          // IMPORTANT: matches your modal's (jobId, cause, correction) signature
-          onSubmit={async (jobId: string, cause: string, correction: string) => {
+          onSubmit={async (cause: string, correction: string) => {
             const { error } = await supabase
               .from("work_order_lines")
               .update({
@@ -408,11 +539,11 @@ export default function FocusedJobModal(props: any) {
                 punched_out_at: new Date().toISOString(),
                 status: "completed",
               })
-              .eq("id", jobId);
+              .eq("id", line.id);
             if (error) return showErr("Complete job failed", error);
             toast.success("Job completed");
             setOpenComplete(false);
-            await refreshLine();
+            await refresh();
           }}
         />
       )}
@@ -443,7 +574,7 @@ export default function FocusedJobModal(props: any) {
           isOpen={openAssign}
           onClose={() => setOpenAssign(false)}
           workOrderLineId={line.id}
-          onAssigned={refreshLine}
+          onAssigned={refresh}
         />
       )}
 
@@ -451,7 +582,7 @@ export default function FocusedJobModal(props: any) {
         <StatusPickerModal
           isOpen={openStatus}
           onClose={() => setOpenStatus(false)}
-          current={line.status || "awaiting"}
+          current={(line.status || "awaiting") as any}
           onChange={changeStatus}
         />
       )}
@@ -478,8 +609,14 @@ export default function FocusedJobModal(props: any) {
         <CostEstimateModal
           isOpen={openCost}
           onClose={() => setOpenCost(false)}
-          defaultLaborHours={typeof line.labor_time === "number" ? line.labor_time : null}
-          defaultPrice={typeof line.price_estimate === "number" ? line.price_estimate : null}
+          defaultLaborHours={
+            typeof line.labor_time === "number" ? line.labor_time : null
+          }
+          defaultPrice={
+            typeof line.price_estimate === "number"
+              ? line.price_estimate
+              : null
+          }
           onApply={applyCost}
         />
       )}
@@ -489,23 +626,16 @@ export default function FocusedJobModal(props: any) {
           isOpen={openContact}
           onClose={() => setOpenContact(false)}
           customerName={
-            customer ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") : ""
+            customer
+              ? [customer.first_name ?? "", customer.last_name ?? ""]
+                  .filter(Boolean)
+                  .join(" ")
+              : ""
           }
           customerEmail={customer?.email ?? ""}
           customerPhone={customer?.phone ?? ""}
           onSendEmail={sendEmail}
           onSendSms={sendSms}
-        />
-      )}
-
-      {openChat && (
-        <NewChatModal
-          isOpen={openChat}
-          onClose={() => setOpenChat(false)}
-          onCreated={() => setOpenChat(false)}
-          created_by={line?.assigned_to || "system"}
-          context_type="work_order_line"
-          context_id={line?.id || null}
         />
       )}
     </>
