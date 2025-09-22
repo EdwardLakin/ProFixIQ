@@ -3,143 +3,162 @@ import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import type { Database, TablesInsert } from "@shared/types/types/supabase";
 
-import type { InspectionItem } from "@inspections/lib/inspection/types";
+import type { InspectionItem } from "@/features/inspections/lib/inspection/types";
+
 import { generateQuoteFromInspection } from "@quotes/lib/quote/generateQuoteFromInspection";
+import { normalizeQuoteLine } from "@quotes/lib/quote/normalizeQuoteLine";
+
+export const runtime = "nodejs";
 
 type DB = Database;
+type QuoteLinesInsert = TablesInsert<"quote_lines">;
 
-type BodyShape = {
+/* ----------------------------- Type guards ----------------------------- */
+function isInspectionItem(value: unknown): value is InspectionItem {
+  if (typeof value !== "object" || value === null) return false;
+  return true; // minimal structural check
+}
+function isInspectionItemArray(value: unknown): value is InspectionItem[] {
+  return Array.isArray(value) && value.every(isInspectionItem);
+}
+
+/* -------------------------------- Types -------------------------------- */
+type CompleteRequest = {
   workOrderId: string;
-  vehicleId?: string | null;
-  /** If provided, we’ll write the inspection summary to this line’s `correction`
-   *  and mark it completed. */
-  workOrderLineId?: string | null;
-
-  /** Raw inspection items (if you want the route to build quote lines + summary). */
-  results?: InspectionItem[];
-
-  /** Optional prebuilt items if you’ve already run AI elsewhere.
-   *  If provided, we’ll insert these directly. */
-  items?: Array<{
-    description: string;
-    hours?: number | null;     // -> labor_time
-    rate?: number | null;      // -> labor_rate
-    total?: number | null;     // -> total
-    status?: string | null;    // -> status
-    notes?: string | null;     // -> notes
-    photoUrls?: string[] | null;
-  }>;
-
-  /** If present we’ll use this, otherwise we’ll build one from `results`. */
-  summaryText?: string | null;
+  workOrderLineId: string;
+  results: InspectionItem[];
+  templateName?: string | null; // accepted, but we won't write it (no column)
 };
 
+/* --------------------------------- Route -------------------------------- */
 export async function POST(req: NextRequest) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
   try {
-    const body = (await req.json()) as BodyShape;
+    // 1) Parse & validate
+    const body = (await req.json()) as Partial<CompleteRequest>;
+    const workOrderId = String(body.workOrderId ?? "");
+    const workOrderLineId = String(body.workOrderLineId ?? "");
+    const results = body.results;
 
-    const workOrderId = body.workOrderId;
-    const vehicleId = body.vehicleId ?? null;
-    const workOrderLineId = body.workOrderLineId ?? null;
-
-    if (!workOrderId) {
-      return NextResponse.json({ error: "Missing workOrderId" }, { status: 400 });
+    if (!workOrderId || !workOrderLineId) {
+      return NextResponse.json(
+        { error: "Missing workOrderId or workOrderLineId." },
+        { status: 400 }
+      );
+    }
+    if (!isInspectionItemArray(results)) {
+      return NextResponse.json(
+        { error: "results must be an array of InspectionItem." },
+        { status: 400 }
+      );
     }
 
-    // Build quote + summary if the caller only sent raw inspection results
-    let summary = body.summaryText ?? null;
-    let quoteInput =
-      body.items && Array.isArray(body.items) && body.items.length > 0
-        ? body.items
-        : null;
+    // current user (for quote_lines.user_id)
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const userId = user?.id ?? null;
 
-    if (!quoteInput && body.results && Array.isArray(body.results)) {
-      // Use your existing generator to convert inspection items → quote lines
-      const { summary: autoSummary, quote } = await generateQuoteFromInspection(body.results);
-      summary = summary ?? autoSummary;
+    // 2) Verify the WO line exists
+    const { data: line, error: lineErr } = await supabase
+      .from("work_order_lines")
+      .select("*")
+      .eq("id", workOrderLineId)
+      .maybeSingle();
 
-      // Normalize to the insert shape we need below
-      quoteInput = quote.map((q) => ({
-        description: q.description,
-        hours: typeof q.hours === "number" ? q.hours : null,
-        rate: typeof q.rate === "number" ? q.rate : null,
-        total: typeof q.total === "number" ? q.total : null,
-        status: "proposed" as const,
-        notes: null,
-        photoUrls: null,
-      }));
+    if (lineErr) {
+      return NextResponse.json(
+        { error: `Failed to load work order line: ${lineErr.message}` },
+        { status: 500 }
+      );
+    }
+    if (!line) {
+      return NextResponse.json(
+        { error: "Work order line not found." },
+        { status: 404 }
+      );
     }
 
-    // Nothing to insert? We can still finalize the work order line summary.
-    if (!quoteInput || quoteInput.length === 0) {
-      // still write summary if requested
-      if (workOrderLineId && summary) {
-        const { error: updErr } = await supabase
-          .from("work_order_lines")
-          .update({ correction: summary, status: "completed" })
-          .eq("id", workOrderLineId);
+    // 3) Generate AI summary and quote lines from inspection results
+    const { summary, quote } = await generateQuoteFromInspection(results);
+    const normalized = await Promise.all(quote.map((q) => normalizeQuoteLine(q)));
 
-        if (updErr) {
-          return NextResponse.json({ error: updErr.message }, { status: 500 });
-        }
-      }
-
-      return NextResponse.json({ ok: true, inserted: 0, summaryWritten: !!summary });
-    }
-
-    // Insert rows into quote_lines (matches your current schema).
-    // IMPORTANT: Your generated types show `title` exists, so we provide it
-    // (aliasing it to description) to satisfy the Insert type.
-    const rows = quoteInput.map((q) => ({
+    // 4) Insert quote_lines (match your schema exactly)
+    const nowIso = new Date().toISOString();
+    const quoteRows: QuoteLinesInsert[] = normalized.map((n): QuoteLinesInsert => ({
       work_order_id: workOrderId,
-      vehicle_id: vehicleId,
-      description: q.description,
-      title: q.description, // satisfy schema that includes `title`
-      item: q.description,  // harmless alias; some UIs read `item`
-      name: q.description,  // ditto
-      notes: q.notes ?? null,
-      status: (q.status as string) ?? "proposed",
-      labor_time: typeof q.hours === "number" ? q.hours : null,
-      labor_rate: typeof q.rate === "number" ? q.rate : null,
-      total: typeof q.total === "number" ? q.total : null,
-      price: typeof q.total === "number" ? q.total : null,
-      photo_urls: q.photoUrls ?? null,
-      // Any other nullable fields (e.g., parts) can be added here if you later need them:
-      // part_name: null,
-      // part_price: null,
-      // parts_costs: null,
-      // quantity: 1,
+
+      // text columns used by your UI
+      description: n.description,
+      item: n.item ?? n.name ?? n.description,
+      name: n.name ?? n.description,
+      title: n.description, // required by your schema
+
+      // pricing / labor
+      quantity: 1,
+      labor_time: typeof n.laborHours === "number" ? n.laborHours : null,
+      price: typeof n.price === "number" ? n.price : null,
+      total: typeof n.price === "number" ? n.price : null,
+
+      // parts info if present / inferred
+      part_name: n.part?.name ?? n.partName ?? null,
+      part_price:
+        typeof n.part?.price === "number"
+          ? n.part.price
+          : n.partPrice ?? null,
+
+      // misc columns
+      photo_urls: Array.isArray(n.photoUrls) ? n.photoUrls : null,
+      status: "draft",
+      user_id: userId,
+      updated_at: nowIso,
     }));
 
-    const { error: insErr } = await supabase.from("quote_lines").insert(rows);
-
-    if (insErr) {
-      return NextResponse.json({ error: insErr.message }, { status: 500 });
-    }
-
-    // If a work order line id was supplied, write the (AI) summary + mark completed
-    if (workOrderLineId && summary) {
-      const { error: updErr } = await supabase
-        .from("work_order_lines")
-        .update({ correction: summary, status: "completed" })
-        .eq("id", workOrderLineId);
-
-      if (updErr) {
-        return NextResponse.json({ error: updErr.message }, { status: 500 });
+    if (quoteRows.length > 0) {
+      const { error: insErr } = await supabase
+        .from("quote_lines")
+        .insert(quoteRows);
+      if (insErr) {
+        return NextResponse.json(
+          { error: `Failed to insert quote lines: ${insErr.message}` },
+          { status: 500 }
+        );
       }
     }
 
+    // 5) Mark the inspection line complete & store AI summary in correction
+    const { error: updErr } = await supabase
+      .from("work_order_lines")
+      .update({
+        status: "completed",
+        correction: summary ?? null,
+        updated_at: nowIso,
+      })
+      .eq("id", workOrderLineId);
+
+    if (updErr) {
+      return NextResponse.json(
+        { error: `Failed to update work order line: ${updErr.message}` },
+        { status: 500 }
+      );
+    }
+
+    // 6) Done
     return NextResponse.json({
       ok: true,
-      inserted: rows.length,
-      summaryWritten: !!summary && !!workOrderLineId,
+      workOrderId,
+      workOrderLineId,
+      summary,
+      inserted: quoteRows.length,
     });
-  } catch (err: any) {
-    console.error("[inspections/complete] failed:", err);
-    return NextResponse.json({ error: "Failed to complete inspection" }, { status: 500 });
+  } catch (err) {
+    const message =
+      err instanceof Error
+        ? err.message
+        : "Unexpected error handling inspection completion.";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
