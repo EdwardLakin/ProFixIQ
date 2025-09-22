@@ -194,10 +194,44 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     })();
   }, [supabase, workOrderId]);
 
-  function pushInspection(path: string) {
+  /** Create an inspection line first, then navigate to the inspection page with prefilled params */
+  async function pushInspection(path: string) {
+    // 1) Create a Work Order Line that represents the inspection
+    const inspectionName =
+      path.includes("maintenance50-air") || path.endsWith("maintenance50-air")
+        ? "Maintenance 50 – Air (CVIP) – Inspection"
+        : "Maintenance 50 – Hydraulic – Inspection";
+
+    const newLine: WorkOrderLineInsert = {
+      work_order_id: workOrderId,
+      description: inspectionName,
+      job_type: "inspection",
+      status: "awaiting",
+      priority: 3,
+      labor_time: null,
+      notes: null,
+    };
+
+    const { data: inserted, error: insErr } = await supabase
+      .from("work_order_lines")
+      .insert(newLine)
+      .select("id")
+      .single();
+
+    if (insErr || !inserted?.id) {
+      console.error("Failed to create inspection line:", insErr);
+      alert(insErr?.message || "Failed to create inspection line");
+      return;
+    }
+
+    // 2) Prefill params for the inspection page
     const params = new URLSearchParams();
     params.set("workOrderId", workOrderId);
-    params.set("template", path.includes("hydraulic") ? "Maintenance 50 (Hydraulic)" : "Maintenance 50 (Air Brake CVIP)");
+    params.set("workOrderLineId", inserted.id); // ← tie the inspection to this line
+    params.set(
+      "template",
+      path.includes("maintenance50-air") ? "Maintenance 50 – Air (CVIP)" : "Maintenance 50 – Hydraulic"
+    );
 
     if (customer) {
       if (customer.first_name) params.set("first_name", String(customer.first_name));
@@ -222,6 +256,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       if (vehicle.odometer) params.set("odometer", String(vehicle.odometer));
     }
 
+    // 3) Navigate to the inspection screen bound to this line
     router.push(`${path}?${params.toString()}`);
   }
 
@@ -232,7 +267,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       work_order_id: workOrderId,
       description: item.name,
       labor_time: item.laborHours ?? null,
-      status: "awaiting", // ← fix: satisfy work_order_lines_status_check
+      status: "awaiting", // ← satisfy work_order_lines_status_check
       priority: 3,
       job_type: item.jobType,
       notes: item.notes ?? null,
@@ -257,7 +292,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       work_order_id: workOrderId,
       description: i.description,
       labor_time: typeof i.laborHours === "number" ? i.laborHours : null,
-      status: "awaiting", // ← fix: satisfy work_order_lines_status_check
+      status: "awaiting",
       priority: 3,
       job_type: (i.jobType ?? pkg.jobType) as WorkOrderLineInsert["job_type"],
       notes: i.notes ?? null,
@@ -308,7 +343,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
         <div className="grid gap-2 sm:grid-cols-2">
           <button
-            onClick={() => pushInspection("/inspection/maintenance50-hydraulic")}
+            onClick={() => pushInspection("/inspection/maintenance50")}
             className="rounded border border-neutral-800 bg-neutral-950 p-3 text-left hover:bg-neutral-900 disabled:opacity-60"
             disabled={!vehicle}
             title={!vehicle ? "Link a vehicle to this Work Order first." : "Open hydraulic inspection"}

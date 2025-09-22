@@ -80,6 +80,7 @@ type JobType =
   | "maintenance"
   | "repair"
   | "tech-suggested"
+  | "inspection"
   | string;
 
 type ParamsShape = Record<string, string | string[]>;
@@ -743,6 +744,22 @@ export default function WorkOrderPage(): JSX.Element {
     setLine(found);
   };
 
+  /** Open the correct inspection UI for a given inspection work-order line. */
+  const openInspectionForLine = (ln: WorkOrderLine) => {
+    // Choose air vs hydraulic via description hint
+    const isAir =
+      String(ln.description ?? "")
+        .toLowerCase()
+        .includes("air");
+    const base = isAir ? "/inspection/maintenance50-air" : "/inspection/maintenance50";
+    const sp = new URLSearchParams();
+    sp.set("workOrderId", wo?.id ?? "");
+    sp.set("workOrderLineId", ln.id);
+    // keep template hint for prefill UIs
+    sp.set("template", isAir ? "Maintenance 50 – Air (CVIP)" : "Maintenance 50 – Hydraulic");
+    router.push(`${base}?${sp.toString()}`);
+  };
+
   if (!woId) {
     return <div className="p-6 text-red-500">Missing work order id.</div>;
   }
@@ -1030,6 +1047,20 @@ export default function WorkOrderPage(): JSX.Element {
                             Include
                           </label>
 
+                          {/* If it's an inspection line, show quick-open button */}
+                          {ln.job_type === "inspection" && (
+                            <button
+                              className="rounded border border-neutral-700 px-2 py-1 text-xs hover:border-orange-500"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openInspectionForLine(ln);
+                              }}
+                              title="Open inspection for this line"
+                            >
+                              Open Inspection
+                            </button>
+                          )}
+
                           <span className={chipClass(ln.status as WOStatus)}>
                             {(ln.status ?? "awaiting").replaceAll("_", " ")}
                           </span>
@@ -1155,7 +1186,7 @@ export default function WorkOrderPage(): JSX.Element {
                 </Link>
                 <Link
                   className="rounded bg-zinc-800 px-3 py-2 text-sm hover:bg-zinc-700"
-                  href={`/inspection/maintenance50?inspectionId=${wo.inspection_id}&fuel=diesel`}
+                  href={`/inspection/maintenance50-air?inspectionId=${wo.inspection_id}&fuel=diesel`}
                 >
                   Open (Diesel)
                 </Link>
