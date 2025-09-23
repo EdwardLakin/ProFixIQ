@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
 
 type Body = {
   workOrderId: string;
@@ -10,41 +11,54 @@ type Body = {
   template: "maintenance50" | "maintenance50-air";
 };
 
+type JsonOk = { sessionId: string; reused: boolean };
+type JsonErr = { error: string };
+
 export async function POST(req: Request) {
-  const supabase = createRouteHandlerClient({ cookies });
+  const supabase = createRouteHandlerClient<Database>({ cookies });
+
+  let parsed: unknown;
+  try {
+    parsed = await req.json();
+  } catch {
+    return NextResponse.json<JsonErr>(
+      { error: "Invalid JSON body" },
+      { status: 400 }
+    );
+  }
+
+  const body = parsed as Partial<Body>;
+  const workOrderId = body.workOrderId?.trim();
+  const workOrderLineId = body.workOrderLineId?.trim();
+  const vehicleId = body.vehicleId ?? null;
+  const customerId = body.customerId ?? null;
+  const template: Body["template"] = body.template ?? "maintenance50";
+
+  if (!workOrderId || !workOrderLineId) {
+    return NextResponse.json<JsonErr>(
+      { error: "workOrderId and workOrderLineId are required" },
+      { status: 400 }
+    );
+  }
 
   try {
-    const body = (await req.json()) as Partial<Body>;
-    const workOrderId = body.workOrderId?.trim();
-    const workOrderLineId = body.workOrderLineId?.trim();
-    const vehicleId = body.vehicleId ?? null;
-    const customerId = body.customerId ?? null;
-    const template = (body.template as Body["template"]) || "maintenance50";
-
-    if (!workOrderId || !workOrderLineId) {
-      return NextResponse.json(
-        { error: "workOrderId and workOrderLineId are required" },
-        { status: 400 }
-      );
-    }
-
-    // 1) If the line already has a session, re-use it.
+    // 1) If the line already has a session, reuse it
     const { data: existingLine, error: lineErr } = await supabase
       .from("work_order_lines")
       .select("id, inspection_session_id")
       .eq("id", workOrderLineId)
       .maybeSingle();
 
-    if (lineErr) throw lineErr;
+    if (lineErr) throw new Error(lineErr.message);
 
     if (existingLine?.inspection_session_id) {
-      return NextResponse.json({
+      return NextResponse.json<JsonOk>({
         sessionId: existingLine.inspection_session_id,
         reused: true,
       });
     }
 
-    // 2) Check for any existing session for this line+template (safety).
+    // 2) Check for an existing session (safety)
     const { data: existingSession, error: findErr } = await supabase
       .from("inspection_sessions")
       .select("id")
@@ -52,11 +66,11 @@ export async function POST(req: Request) {
       .eq("template", template)
       .maybeSingle();
 
-    if (findErr) throw findErr;
+    if (findErr) throw new Error(findErr.message);
 
-    let sessionId = existingSession?.id as string | undefined;
+    let sessionId: string | undefined = existingSession?.id ?? undefined;
 
-    // 3) Insert session if none.
+    // 3) Insert session if none exists
     if (!sessionId) {
       const { data: inserted, error: insErr } = await supabase
         .from("inspection_sessions")
@@ -65,35 +79,35 @@ export async function POST(req: Request) {
           work_order_line_id: workOrderLineId,
           vehicle_id: vehicleId,
           customer_id: customerId,
-          template, // "maintenance50" | "maintenance50-air"
+          template,
           status: "new",
         })
         .select("id")
         .maybeSingle();
 
-      if (insErr) throw insErr;
-      sessionId = inserted?.id as string;
+      if (insErr) throw new Error(insErr.message);
+      sessionId = inserted?.id;
       if (!sessionId) {
-        return NextResponse.json(
+        return NextResponse.json<JsonErr>(
           { error: "Failed to create inspection session" },
           { status: 500 }
         );
       }
     }
 
-    // 4) Link session back to the line.
+    // 4) Link session back to the line
     const { error: upErr } = await supabase
       .from("work_order_lines")
       .update({ inspection_session_id: sessionId })
       .eq("id", workOrderLineId);
 
-    if (upErr) throw upErr;
+    if (upErr) throw new Error(upErr.message);
 
-    return NextResponse.json({ sessionId, reused: !!existingSession });
-  } catch (e: any) {
+    return NextResponse.json<JsonOk>({ sessionId, reused: !!existingSession });
+  } catch (e) {
+    const message =
+      e instanceof Error ? e.message : "Failed to create inspection session";
     console.error("[inspection session create] error:", e);
-    return NextResponse.json(
-      { error: e?.message ?? "Failed to create inspection session" },
-      { status: 500 }
-    );
-  }}
+    return NextResponse.json<JsonErr>({ error: message }, { status: 500 });
+  }
+}
