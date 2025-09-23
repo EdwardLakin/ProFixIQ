@@ -96,5 +96,4 @@ export async function POST(req: Request) {
       { error: e?.message ?? "Failed to create inspection session" },
       { status: 500 }
     );
-    }
-}
+  }}
