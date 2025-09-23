@@ -23,6 +23,9 @@ import CustomerContactModal from "@/features/work-orders/components/workorders/e
 // NEW: chat in the focused modal
 import NewChatModal from "@/features/ai/components/chat/NewChatModal";
 
+// NEW: AI suggestions (moved into Focused modal)
+import SuggestedQuickAdd from "@work-orders/components/SuggestedQuickAdd";
+
 type Mode = "tech" | "view";
 
 const statusTextColor: Record<string, string> = {
@@ -301,15 +304,22 @@ export default function FocusedJobModal(props: any) {
   const startedText = startAt ? format(new Date(startAt), "PPpp") : "—";
   const finishedText = finishAt ? format(new Date(finishAt), "PPpp") : "—";
 
+  // CHANGED: open inspection via modal event (no navigation)
   const openInspection = () => {
     if (!line) return;
-    // Heuristic: if description mentions “air”, go to air page
     const isAir = String(line.description ?? "").toLowerCase().includes("air");
     const base = isAir ? "/inspections/maintenance50-air" : "/inspections/maintenance50";
     const sp = new URLSearchParams();
     if (workOrder?.id) sp.set("workOrderId", workOrder.id);
     sp.set("workOrderLineId", line.id);
-    window.location.href = `${base}?${sp.toString()}`;
+    // optional friendly label for the template
+    sp.set("template", isAir ? "Maintenance 50 – Air (CVIP)" : "Maintenance 50 – Hydraulic");
+
+    window.dispatchEvent(
+      new CustomEvent("inspection:open", {
+        detail: { path: base, params: sp.toString() },
+      })
+    );
   };
 
   return (
@@ -432,7 +442,7 @@ export default function FocusedJobModal(props: any) {
                     Contact Customer
                   </button>
 
-                  {/* NEW: Open Inspection (only for inspection lines) */}
+                  {/* CHANGED: Open Inspection (only for inspection lines) */}
                   <button
                     className={`${outlineInfo} ${line?.job_type === "inspection" ? "" : "opacity-50 cursor-not-allowed"}`}
                     onClick={line?.job_type === "inspection" ? openInspection : undefined}
@@ -488,6 +498,24 @@ export default function FocusedJobModal(props: any) {
                 className="w-full rounded border border-orange-500 bg-neutral-900 p-2 text-white placeholder-neutral-400"
                 placeholder="Add notes for this job…"
               />
+            </div>
+
+            {/* NEW: AI suggestions (now inside Focused modal) */}
+            <div className="rounded border border-neutral-800 bg-neutral-900 p-3">
+              <h3 className="mb-2 font-semibold">AI Suggested Repairs</h3>
+              {line && workOrder ? (
+                <SuggestedQuickAdd
+                  jobId={line.id}
+                  workOrderId={workOrder.id}
+                  vehicleId={vehicle?.id ?? null}
+                  onAdded={async () => {
+                    toast.success("Suggested line added");
+                    await refresh();
+                  }}
+                />
+              ) : (
+                <div className="text-sm text-neutral-400">Vehicle/work order details required.</div>
+              )}
             </div>
 
             <div className="text-xs text-neutral-500">

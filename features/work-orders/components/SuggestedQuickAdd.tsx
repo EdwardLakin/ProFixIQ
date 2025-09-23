@@ -41,10 +41,12 @@ export default function SuggestedQuickAdd({
   jobId,
   workOrderId,
   vehicleId,
+  onAdded, // <-- NEW
 }: {
   jobId: string;
   workOrderId: string;
   vehicleId?: string | null;
+  onAdded?: () => void | Promise<void>; // <-- NEW
 }) {
   const [loading, setLoading] = useState(false);
   const [adding, setAdding] = useState<string | null>(null);
@@ -102,6 +104,9 @@ export default function SuggestedQuickAdd({
         const j = await res.json().catch(() => ({}));
         throw new Error(j?.error || "Failed to add quote line");
       }
+
+      // ✅ Notify parent if provided
+      await onAdded?.();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Failed to add quote line");
     } finally {
