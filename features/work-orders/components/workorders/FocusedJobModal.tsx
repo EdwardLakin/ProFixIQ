@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { format, formatDistanceStrict } from "date-fns";
+import { format } from "date-fns";
 import { toast } from "sonner";
 import { v4 as uuidv4 } from "uuid";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
@@ -69,7 +69,6 @@ export default function FocusedJobModal(props: any) {
   const [workOrder, setWorkOrder] = useState<any>(null);
   const [vehicle, setVehicle] = useState<any>(null);
   const [customer, setCustomer] = useState<any>(null);
-  const [duration, setDuration] = useState("");
 
   const [techNotes, setTechNotes] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
@@ -84,8 +83,15 @@ export default function FocusedJobModal(props: any) {
   const [openPhoto, setOpenPhoto] = useState(false);
   const [openCost, setOpenCost] = useState(false);
   const [openContact, setOpenContact] = useState(false);
-  const [openChat, setOpenChat] = useState(false); // NEW
+  const [openChat, setOpenChat] = useState(false);
 
+  // NEW — Inspection modal state
+  const [inspectionModalOpen, setInspectionModalOpen] = useState(false);
+  const [inspectionTemplate, setInspectionTemplate] = useState<"maintenance50" | "maintenance50-air" | null>(null);
+  const [inspectionId, setInspectionId] = useState<string | null>(null);
+  const [inspectionSessionId, setInspectionSessionId] = useState<string | null>(null);
+
+  // Load the line + related entities + any existing inspection session
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
     (async () => {
@@ -125,38 +131,48 @@ export default function FocusedJobModal(props: any) {
             setCustomer(c ?? null);
           } else setCustomer(null);
         }
+
+        // Try to find an existing inspection session linked to this line
+        if (l?.id) {
+          const { data: sess } = await supabase
+            .from("inspection_sessions")
+            .select("*")
+            .eq("work_order_line_id", l.id)
+            .maybeSingle();
+
+          if (sess) {
+            setInspectionSessionId(sess.id ?? null);
+            setInspectionId(sess.inspection_id ?? null);
+
+            // Resolve which inspection UI to open from session/template or line description
+            const tFromSession: string | null =
+              (sess.template as string | null) || null;
+
+            // fallback: infer from description
+            const isAir = String(l.description ?? "").toLowerCase().includes("air");
+            const template =
+              (tFromSession === "maintenance50-air" && "maintenance50-air") ||
+              (tFromSession === "maintenance50" && "maintenance50") ||
+              (isAir ? "maintenance50-air" : "maintenance50");
+
+            setInspectionTemplate(template);
+          } else {
+            // No session yet
+            setInspectionSessionId(null);
+            setInspectionId(null);
+            const isAir = String(l?.description ?? "").toLowerCase().includes("air");
+            setInspectionTemplate(isAir ? "maintenance50-air" : "maintenance50");
+          }
+        } else {
+          setInspectionSessionId(null);
+          setInspectionId(null);
+          setInspectionTemplate(null);
+        }
       } finally {
         setLoading(false);
       }
     })();
   }, [isOpen, workOrderLineId, supabase]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const t = setInterval(() => {
-      if (line?.punched_in_at && !line?.punched_out_at) {
-        setDuration(formatDistanceStrict(new Date(), new Date(line.punched_in_at)));
-      } else {
-        setDuration("");
-      }
-    }, 10_000);
-    return () => clearInterval(t);
-  }, [isOpen, line?.punched_in_at, line?.punched_out_at]);
-
-  const startAt = line?.punched_in_at ?? null;
-  const finishAt = line?.punched_out_at ?? null;
-
-  const msToTenthHours = (ms: number) =>
-    (Math.max(0, Math.round(ms / 360000)) / 10).toFixed(1) + " hr";
-  const renderLiveTenthHours = () => {
-    if (startAt && !finishAt)
-      return msToTenthHours(Date.now() - new Date(startAt).getTime());
-    if (startAt && finishAt)
-      return msToTenthHours(
-        new Date(finishAt).getTime() - new Date(startAt).getTime()
-      );
-    return "0.0 hr";
-  };
 
   const refresh = async () => {
     const { data: l } = await supabase
@@ -166,6 +182,29 @@ export default function FocusedJobModal(props: any) {
       .maybeSingle();
     setLine(l ?? null);
     setTechNotes(l?.notes ?? "");
+
+    // Re-check inspection session after potential updates inside modal
+    if (l?.id) {
+      const { data: sess } = await supabase
+        .from("inspection_sessions")
+        .select("*")
+        .eq("work_order_line_id", l.id)
+        .maybeSingle();
+
+      if (sess) {
+        setInspectionSessionId(sess.id ?? null);
+        setInspectionId(sess.inspection_id ?? null);
+        const tFromSession: string | null = (sess.template as string | null) || null;
+        const template =
+          (tFromSession === "maintenance50-air" && "maintenance50-air") ||
+          (tFromSession === "maintenance50" && "maintenance50") ||
+          (String(l.description ?? "").toLowerCase().includes("air") ? "maintenance50-air" : "maintenance50");
+        setInspectionTemplate(template);
+      } else {
+        setInspectionSessionId(null);
+        setInspectionId(null);
+      }
+    }
     await onChanged?.();
   };
 
@@ -186,7 +225,7 @@ export default function FocusedJobModal(props: any) {
     await refresh();
   };
 
-  // CHANGE: Finish -> open Cause/Correction modal instead of instantly setting awaiting
+  // Finish opens Cause/Correction modal
   const finishJob = async () => {
     setOpenComplete(true);
   };
@@ -293,6 +332,12 @@ export default function FocusedJobModal(props: any) {
     await refresh();
   };
 
+  // Inspection modal open
+  const openInspectionModal = () => {
+    if (!inspectionSessionId || !inspectionTemplate) return;
+    setInspectionModalOpen(true);
+  };
+
   const titleText =
     (line?.description || line?.complaint || "Focused Job") +
     (line?.job_type ? ` — ${String(line.job_type).replaceAll("_", " ")}` : "");
@@ -300,8 +345,29 @@ export default function FocusedJobModal(props: any) {
     <span className={`font-header ${chip(line?.status)}`}>{titleText}</span>
   );
 
-  const startedText = startAt ? format(new Date(startAt), "PPpp") : "—";
-  const finishedText = finishAt ? format(new Date(finishAt), "PPpp") : "—";
+  const startedText = line?.punched_in_at ? format(new Date(line.punched_in_at), "PPpp") : "—";
+  const finishedText = line?.punched_out_at ? format(new Date(line.punched_out_at), "PPpp") : "—";
+
+  // Build inspection URL for the embedded modal view
+  const inspectionHref =
+    inspectionSessionId && inspectionTemplate
+      ? (() => {
+          const base =
+            inspectionTemplate === "maintenance50-air"
+              ? "/inspection/maintenance50-air"
+              : "/inspection/maintenance50";
+          const sp = new URLSearchParams();
+          if (workOrder?.id) sp.set("workOrderId", workOrder.id);
+          if (line?.id) sp.set("workOrderLineId", line.id);
+          if (inspectionId) sp.set("inspectionId", inspectionId);
+          sp.set("sessionId", inspectionSessionId);
+          // Let the page know we’re inside a modal (if you want compact styles there)
+          sp.set("embed", "1");
+          return `${base}?${sp.toString()}`;
+        })()
+      : null;
+
+  const hasLinkedInspection = Boolean(inspectionSessionId);
 
   return (
     <>
@@ -317,6 +383,9 @@ export default function FocusedJobModal(props: any) {
           ) : undefined
         }
         size="lg"
+        // Force darker surface for this modal content
+        className="!bg-neutral-950 text-white"
+        titleClassName="!text-white"
       >
         {loading || !line ? (
           <div className="grid gap-3">
@@ -381,7 +450,7 @@ export default function FocusedJobModal(props: any) {
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {mode === "tech" ? (
                 <>
-                  {!startAt || finishAt ? (
+                  {!line.punched_in_at || line.punched_out_at ? (
                     <button className={outlineSuccess} onClick={startJob}>Start</button>
                   ) : (
                     <button className={outlineFinish} onClick={finishJob}>Finish</button>
@@ -423,6 +492,20 @@ export default function FocusedJobModal(props: any) {
                     Contact Customer
                   </button>
 
+                  {/* NEW: Open Inspection (only when session is linked) */}
+                  <button
+                    className={`${outlineInfo} ${!hasLinkedInspection ? "opacity-50 cursor-not-allowed" : ""}`}
+                    onClick={openInspectionModal}
+                    disabled={!hasLinkedInspection}
+                    title={
+                      hasLinkedInspection
+                        ? "Open linked inspection"
+                        : "No inspection linked to this job"
+                    }
+                  >
+                    Open Inspection
+                  </button>
+
                   {/* NEW: Chat */}
                   <button className={outlineInfo} onClick={() => setOpenChat(true)}>
                     Chat
@@ -439,17 +522,26 @@ export default function FocusedJobModal(props: any) {
                   <button className={outlineInfo} onClick={() => setOpenStatus(true)}>
                     Change Status
                   </button>
+
+                  {/* View mode can still open inspection if present */}
+                  <button
+                    className={`${outlineInfo} ${!hasLinkedInspection ? "opacity-50 cursor-not-allowed" : ""}`}
+                    onClick={openInspectionModal}
+                    disabled={!hasLinkedInspection}
+                    title={
+                      hasLinkedInspection
+                        ? "Open linked inspection"
+                        : "No inspection linked to this job"
+                    }
+                  >
+                    Open Inspection
+                  </button>
+
                   <button className={outlineInfo} onClick={() => setOpenChat(true)}>
                     Chat
                   </button>
                 </>
               )}
-            </div>
-
-            {/* Live timer (dark block) */}
-            <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
-              <div className="text-xs text-neutral-400">Live Timer</div>
-              <div className="font-medium">{duration || renderLiveTenthHours()}</div>
             </div>
 
             {/* Tech notes (orange border) */}
@@ -572,6 +664,33 @@ export default function FocusedJobModal(props: any) {
           context_type="work_order_line"
           context_id={line?.id ?? null}
         />
+      )}
+
+      {/* NEW: INSPECTION EMBED MODAL (dark) */}
+      {inspectionModalOpen && inspectionHref && (
+        <ModalShell
+          isOpen={inspectionModalOpen}
+          onClose={() => {
+            setInspectionModalOpen(false);
+            // when closing inspection, refresh to catch any saved progress flags
+            refresh();
+          }}
+          title={<span className="font-header text-white">Inspection</span>}
+          subtitle={inspectionTemplate === "maintenance50-air" ? "Maintenance 50 — Air" : "Maintenance 50 — Hydraulic"}
+          size="xl"
+          className="!bg-neutral-950 text-white"
+          titleClassName="!text-white"
+        >
+          <div className="h-[80vh] w-full overflow-hidden rounded border border-neutral-800 bg-neutral-950">
+            <iframe
+              src={inspectionHref}
+              title="Inspection"
+              className="h-full w-full"
+              // keep it dark and seamless
+              style={{ background: "rgb(10, 10, 10)" }}
+            />
+          </div>
+        </ModalShell>
       )}
     </>
   );

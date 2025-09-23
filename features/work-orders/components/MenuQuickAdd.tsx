@@ -1,4 +1,3 @@
-// features/work-orders/components/MenuQuickAdd.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -56,12 +55,11 @@ function useMenuData() {
       name: "Oil Change – Gasoline",
       jobType: "maintenance",
       estLaborHours: 0.8,
-      summary: "Engine oil & filter, top off fluids, tire pressures, quick visual leak check.",
+      summary: "Engine oil & filter + quick visual inspection (leaks, hoses, undercarriage).",
       items: [
-        { description: "Drain engine oil & replace oil filter", jobType: "maintenance", laborHours: 0.6 },
-        { description: "Top off all fluids (coolant, washer, PS/ATF if applicable)", jobType: "maintenance", laborHours: 0.1 },
-        { description: "Set tire pressures & reset maintenance light (if needed)", jobType: "maintenance", laborHours: 0.1 },
-        { description: "Quick visual leak inspection (engine bay & undercarriage)", jobType: "inspection" },
+        // kept for reference; addPackage() collapses this to a single WO line
+        { description: "Oil & filter", jobType: "maintenance", laborHours: 0.6 },
+        { description: "Top off fluids / set tire pressures", jobType: "maintenance", laborHours: 0.2 },
       ],
     },
     {
@@ -69,13 +67,11 @@ function useMenuData() {
       name: "Oil Change – Diesel",
       jobType: "maintenance",
       estLaborHours: 1.2,
-      summary: "Diesel engine oil & filter, drain fuel/water separator, DEF level, quick diesel-system checks.",
+      summary: "Diesel oil & filter + quick diesel visual (charge air/turbo hoses, fuel water separator check).",
       items: [
-        { description: "Drain engine oil & replace oil filter", jobType: "maintenance", laborHours: 0.6 },
-        { description: "Drain fuel water separator", jobType: "maintenance", laborHours: 0.2 },
-        { description: "Check/Top DEF fluid level", jobType: "maintenance", laborHours: 0.1 },
-        { description: "Inspect fuel filter condition (replace if due)", jobType: "maintenance", laborHours: 0.2, notes: "If replacement required, create additional line." },
-        { description: "Quick diesel visual: charge pipes/turbo hoses/intercooler connections", jobType: "inspection" },
+        // kept for reference; addPackage() collapses this to a single WO line
+        { description: "Oil & filter", jobType: "maintenance", laborHours: 0.8 },
+        { description: "DEF level / water separator check", jobType: "maintenance", laborHours: 0.4 },
       ],
     },
     {
@@ -106,7 +102,7 @@ function useMenuData() {
         { description: "Tires (tread, wear) & set pressures", jobType: "inspection", laborHours: 0.1 },
         { description: "Battery & charging system quick test", jobType: "inspection", laborHours: 0.1 },
         { description: "Fuel system visual (lines, filter housing, leaks)", jobType: "inspection", laborHours: 0.1 },
-        { description: "Glow plug system quick check (indicator, basic continuity if applicable)", jobType: "inspection", laborHours: 0.1 },
+        { description: "Glow plug system quick check", jobType: "inspection", laborHours: 0.1 },
         { description: "Turbo/charge air hoses & intercooler connections", jobType: "inspection", laborHours: 0.1 },
         { description: "DPF/regen status & DEF system quick check", jobType: "inspection", laborHours: 0.2 },
       ],
@@ -199,7 +195,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     // 1) Create a Work Order Line that represents the inspection
     const inspectionName =
       path.includes("maintenance50-air") || path.endsWith("maintenance50-air")
-        ? "Maintenance 50 – Air (CVIP) – Inspection"
+        ? "Maintenance 50 – Air – Inspection"
         : "Maintenance 50 – Hydraulic – Inspection";
 
     const newLine: WorkOrderLineInsert = {
@@ -228,10 +224,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     const params = new URLSearchParams();
     params.set("workOrderId", workOrderId);
     params.set("workOrderLineId", inserted.id); // ← tie the inspection to this line
-    params.set(
-      "template",
-      path.includes("maintenance50-air") ? "Maintenance 50 – Air (CVIP)" : "Maintenance 50 – Hydraulic"
-    );
+    params.set("template", path.includes("maintenance50-air") ? "Maintenance 50 – Air" : "Maintenance 50 – Hydraulic");
 
     if (customer) {
       if (customer.first_name) params.set("first_name", String(customer.first_name));
@@ -267,7 +260,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       work_order_id: workOrderId,
       description: item.name,
       labor_time: item.laborHours ?? null,
-      status: "awaiting", // ← satisfy work_order_lines_status_check
+      status: "awaiting",
       priority: 3,
       job_type: item.jobType,
       notes: item.notes ?? null,
@@ -288,6 +281,29 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   async function addPackage(pkg: PackageDef) {
     setAddingId(pkg.id);
 
+    // Special rule: Oil Change packages become a SINGLE work-order line (no extra lines)
+    if (pkg.id === "oil-gas" || pkg.id === "oil-diesel") {
+      const oneLine: WorkOrderLineInsert = {
+        work_order_id: workOrderId,
+        description: pkg.name, // keep clean; inspection link lives in Focused Job later
+        job_type: "maintenance",
+        status: "awaiting",
+        priority: 3,
+        labor_time: pkg.estLaborHours,
+        notes: pkg.summary,
+      };
+      const { error } = await supabase.from("work_order_lines").insert(oneLine);
+      setAddingId(null);
+      if (error) {
+        console.error("Failed to add oil package:", error);
+        alert(error.message);
+        return;
+      }
+      window.dispatchEvent(new CustomEvent("wo:line-added"));
+      return;
+    }
+
+    // Default behavior: multi-item packages insert multiple lines
     const payload: WorkOrderLineInsert[] = pkg.items.map((i) => ({
       work_order_id: workOrderId,
       description: i.description,
@@ -349,7 +365,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
             title={!vehicle ? "Link a vehicle to this Work Order first." : "Open hydraulic inspection"}
           >
             <div className="font-medium">Maintenance 50 – Hydraulic</div>
-            <div className="text-xs text-neutral-400">CVIP-style measurements + oil change section</div>
+            <div className="text-xs text-neutral-400">Measurements + oil change section</div>
           </button>
 
           <button
@@ -358,7 +374,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
             disabled={!vehicle}
             title={!vehicle ? "Link a vehicle to this Work Order first." : "Open air-brake inspection"}
           >
-            <div className="font-medium">Maintenance 50 – Air (CVIP)</div>
+            <div className="font-medium">Maintenance 50 – Air</div>
             <div className="text-xs text-neutral-400">Air-governor, leakage, push-rod stroke + oil change</div>
           </button>
         </div>

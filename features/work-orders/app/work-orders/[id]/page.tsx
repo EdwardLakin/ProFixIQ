@@ -527,7 +527,6 @@ export default function WorkOrderPage(): JSX.Element {
   };
 
   const handleFinish = async (jobId: string) => {
-    // The modal enforces cause/correction, but shortcut can still finish.
     const { error } = await supabase
       .from("work_order_lines")
       .update({ punched_out_at: new Date().toISOString(), status: "awaiting" })
@@ -746,7 +745,6 @@ export default function WorkOrderPage(): JSX.Element {
 
   /** Open the correct inspection UI for a given inspection work-order line. */
   const openInspectionForLine = (ln: WorkOrderLine) => {
-    // Choose air vs hydraulic via description hint
     const isAir =
       String(ln.description ?? "")
         .toLowerCase()
@@ -755,8 +753,7 @@ export default function WorkOrderPage(): JSX.Element {
     const sp = new URLSearchParams();
     sp.set("workOrderId", wo?.id ?? "");
     sp.set("workOrderLineId", ln.id);
-    // keep template hint for prefill UIs
-    sp.set("template", isAir ? "Maintenance 50 – Air (CVIP)" : "Maintenance 50 – Hydraulic");
+    sp.set("template", isAir ? "Maintenance 50 – Air" : "Maintenance 50 – Hydraulic");
     router.push(`${base}?${sp.toString()}`);
   };
 
@@ -858,7 +855,7 @@ export default function WorkOrderPage(): JSX.Element {
             </div>
           </div>
 
-          {/* Vehicle & Customer (Capture Signature button removed here) */}
+          {/* Vehicle & Customer */}
           <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold">Vehicle & Customer</h2>
@@ -1107,7 +1104,7 @@ export default function WorkOrderPage(): JSX.Element {
                     Capture Signature / Review Quote
                   </button>
 
-                  {/* Send for Approval uses selection (keep if wired) */}
+                  {/* Send for Approval uses selection */}
                   <button
                     onClick={handleSendForApproval}
                     disabled={busySendApproval || selectedForApproval.size === 0}
@@ -1173,7 +1170,7 @@ export default function WorkOrderPage(): JSX.Element {
             </>
           )}
 
-          {/* Inspection shortcuts: only if attached */}
+          {/* Inspection shortcuts: only if attached to WO (legacy block, kept) */}
           {!!wo.inspection_id && (
             <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
               <div className="mb-2 font-semibold text-orange-400">Inspection</div>
@@ -1186,9 +1183,9 @@ export default function WorkOrderPage(): JSX.Element {
                 </Link>
                 <Link
                   className="rounded bg-zinc-800 px-3 py-2 text-sm hover:bg-zinc-700"
-                  href={`/inspection/maintenance50-air?inspectionId=${wo.inspection_id}&fuel=diesel`}
+                  href={`/inspection/maintenance50-air?inspectionId=${wo.inspection_id}`}
                 >
-                  Open (Diesel)
+                  Open (Air)
                 </Link>
               </div>
             </div>
