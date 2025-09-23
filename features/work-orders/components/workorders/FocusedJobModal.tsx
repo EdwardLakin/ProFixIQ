@@ -304,22 +304,53 @@ export default function FocusedJobModal(props: any) {
   const startedText = startAt ? format(new Date(startAt), "PPpp") : "—";
   const finishedText = finishAt ? format(new Date(finishAt), "PPpp") : "—";
 
-  // CHANGED: open inspection via modal event (no navigation)
-  const openInspection = () => {
+  // REPLACED: async version that ensures/links a session then opens the modal
+  const openInspection = async () => {
     if (!line) return;
-    const isAir = String(line.description ?? "").toLowerCase().includes("air");
-    const base = isAir ? "/inspections/maintenance50-air" : "/inspections/maintenance50";
-    const sp = new URLSearchParams();
-    if (workOrder?.id) sp.set("workOrderId", workOrder.id);
-    sp.set("workOrderLineId", line.id);
-    // optional friendly label for the template
-    sp.set("template", isAir ? "Maintenance 50 – Air (CVIP)" : "Maintenance 50 – Hydraulic");
 
-    window.dispatchEvent(
-      new CustomEvent("inspection:open", {
-        detail: { path: base, params: sp.toString() },
-      })
-    );
+    // Pick template by heuristic
+    const isAir = String(line.description ?? "").toLowerCase().includes("air");
+    const template: "maintenance50" | "maintenance50-air" = isAir ? "maintenance50-air" : "maintenance50";
+
+    try {
+      // Ensure a session exists (or get existing)
+      const res = await fetch("/api/inspections/session/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workOrderId: workOrder?.id,
+          workOrderLineId: line.id,
+          vehicleId: vehicle?.id ?? null,
+          customerId: customer?.id ?? null,
+          template,
+        }),
+      });
+
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j?.error || "Failed to create inspection session");
+
+      const sessionId: string = j.sessionId;
+
+      // Build params for your InspectionModal iframe
+      const sp = new URLSearchParams();
+      if (workOrder?.id) sp.set("workOrderId", workOrder.id);
+      sp.set("workOrderLineId", line.id);
+      sp.set("sessionId", sessionId);
+      sp.set("template", template);
+
+      const path = `/inspections/${template}`;
+
+      // Tell the WO id page to open the InspectionModal (it already listens for this)
+      window.dispatchEvent(
+        new CustomEvent("inspection:open", {
+          detail: { path, params: sp.toString() },
+        })
+      );
+
+      toast.success("Inspection opened");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Unable to open inspection");
+    }
   };
 
   return (
@@ -442,7 +473,7 @@ export default function FocusedJobModal(props: any) {
                     Contact Customer
                   </button>
 
-                  {/* CHANGED: Open Inspection (only for inspection lines) */}
+                  {/* Open Inspection (only for inspection lines) */}
                   <button
                     className={`${outlineInfo} ${line?.job_type === "inspection" ? "" : "opacity-50 cursor-not-allowed"}`}
                     onClick={line?.job_type === "inspection" ? openInspection : undefined}
