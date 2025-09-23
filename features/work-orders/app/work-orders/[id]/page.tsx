@@ -21,8 +21,9 @@ import VehiclePhotoGallery from "@parts/components/VehiclePhotoGallery";
 import { generateQuotePDFBytes } from "@work-orders/lib/work-orders/generateQuotePdf";
 
 import { useTabState } from "@/features/shared/hooks/useTabState";
+import InspectionModal from "@/features/inspections/components/InspectionModal";
 
-// New unified focused job modal + chat
+// Focused job & chat
 import FocusedJobModal from "@/features/work-orders/components/workorders/FocusedJobModal";
 import AddJobModal from "@work-orders/components/workorders/AddJobModal";
 import NewChatModal from "@/features/ai/components/chat/NewChatModal";
@@ -112,7 +113,6 @@ const statusBorder: Record<string, string> = {
   new: "border-l-4 border-gray-400",
 };
 
-// Row background tint by status
 const statusRowTint: Record<string, string> = {
   awaiting: "bg-slate-900/40",
   queued: "bg-indigo-900/40",
@@ -184,7 +184,6 @@ function sleep(ms: number) {
   return new Promise((res) => setTimeout(res, ms));
 }
 function msToTenthHours(ms: number): string {
-  // .1 hr = 6 min = 360000 ms
   const tenths = Math.max(0, Math.round(ms / 360000));
   const hours = (tenths / 10).toFixed(1);
   return `${hours} hr`;
@@ -212,7 +211,7 @@ export default function WorkOrderPage(): JSX.Element {
   const [loading, setLoading] = useState<boolean>(true);
   const [viewError, setViewError] = useState<string | null>(null);
 
-  // Role (for gating AI panel + caps)
+  // Role
   const [profileRole, setProfileRole] = useState<string | null>(null);
 
   // Tech view extras
@@ -233,10 +232,14 @@ export default function WorkOrderPage(): JSX.Element {
   const [isAddJobModalOpen, setIsAddJobModalOpen] = useState(false);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
 
-  // NEW: Focused Job modal & Chat
+  // Focused Job modal & Chat
   const [focusedOpen, setFocusedOpen] = useState(false);
   const [focusedJobId, setFocusedJobId] = useState<string | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
+
+  // Inspection modal state (opened by FocusedJob via window event)
+  const [inspectionOpen, setInspectionOpen] = useState(false);
+  const [inspectionSrc, setInspectionSrc] = useState<string | null>(null);
 
   // Busy flags
   const [busyQuote, setBusyQuote] = useState(false);
@@ -360,7 +363,6 @@ export default function WorkOrderPage(): JSX.Element {
         }
         setWo(woRow);
 
-        // Warn once if missing vehicle/customer
         if (!warnedMissing && (!woRow.vehicle_id || !woRow.customer_id)) {
           toast.error("This work order is missing vehicle and/or customer. Open the Create form to set them.", {
             important: true,
@@ -460,6 +462,19 @@ export default function WorkOrderPage(): JSX.Element {
     return () => window.removeEventListener("wo:line-added", handler);
   }, [fetchAll]);
 
+  // Listen for "open inspection" requests (emitted by FocusedJob modal)
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const ce = e as CustomEvent<{ path: string; params: string }>;
+      if (!ce?.detail) return;
+      const url = `${ce.detail.path}?${ce.detail.params}`;
+      setInspectionSrc(url);
+      setInspectionOpen(true);
+    };
+    window.addEventListener("inspection:open", onOpen as EventListener);
+    return () => window.removeEventListener("inspection:open", onOpen as EventListener);
+  }, []);
+
   // Live timer for focused job badge + header timer
   useEffect(() => {
     const t = setInterval(() => {
@@ -498,8 +513,6 @@ export default function WorkOrderPage(): JSX.Element {
   }, [lines, fixedStatus, supabase, fetchAll]);
 
   /* ------------------------------ Tech Actions ----------------------------- */
-  // Note: Start/Finish actions are still handled in FocusedJobModal, but keep
-  // these for keyboard shortcuts to avoid cluttering the UI with buttons.
   const handleStart = async (jobId: string) => {
     if (activeJobId && activeJobId !== jobId) {
       const ok = confirm("You are currently on another job. Finish it and switch?");
@@ -537,23 +550,87 @@ export default function WorkOrderPage(): JSX.Element {
     fetchAll();
   };
 
-  // Keyboard shortcuts for current focused job: Alt+S (start), Alt+F (finish)
+  // Delete line (View mode)
+  const handleDeleteLine = async (lineId: string) => {
+    const ok = confirm("Delete this job line? This cannot be undone.");
+    if (!ok) return;
+    const { error } = await supabase.from("work_order_lines").delete().eq("id", lineId);
+    if (error) return showErr("Delete failed", error);
+    toast.success("Line deleted");
+    fetchAll();
+  };
+
+  // KEYBOARD SHORTCUTS: Alt+S to Start, Alt+F to Finish on the focused job
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!focusedJobId) return;
-      if (!e.altKey) return;
-      if (e.key.toLowerCase() === "s") {
+      // Ignore if user is typing in an input/textarea/select
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select" || (e.target as HTMLElement)?.isContentEditable) {
+        return;
+      }
+      if (e.altKey && (e.key === "s" || e.key === "S")) {
         e.preventDefault();
         handleStart(focusedJobId);
-      } else if (e.key.toLowerCase() === "f") {
+      }
+      if (e.altKey && (e.key === "f" || e.key === "F")) {
         e.preventDefault();
         handleFinish(focusedJobId);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [focusedJobId]); // uses handleStart/handleFinish
+  }, [focusedJobId]); // handlers are stable enough for this usage
 
+  // Send for Approval with selected subset
+  const handleSendForApproval = async () => {
+    if (!wo?.id) return;
+    if (!customer?.email) {
+      toast.error("Customer email is required to send for approval.");
+      return;
+    }
+    const selected = Array.from(selectedForApproval);
+    if (!selected.length) {
+      toast.error("Select at least one job to send for approval.");
+      return;
+    }
+    if (busySendApproval) return;
+
+    setBusySendApproval(true);
+    const prev = wo;
+    try {
+      setWo(prev ? { ...prev, status: "awaiting_approval" } : prev);
+
+      const { error: upErr } = await supabase
+        .from("work_orders")
+        .update({ status: "awaiting_approval" })
+        .eq("id", wo.id);
+      if (upErr) throw upErr;
+
+      const res = await fetch("/work-orders/send-for-approval", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workOrderId: wo.id,
+          lineIds: selected,
+        }),
+      });
+
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error || "Failed to send for approval.");
+      }
+
+      toast.success(`Sent ${selected.length} item(s) to customer for approval.`);
+    } catch (e: any) {
+      setWo(prev);
+      showErr("Send for approval failed", e);
+    } finally {
+      setBusySendApproval(false);
+    }
+  };
+
+  // Generate Quote PDF and upload/email
   const handleDownloadQuote = async () => {
     if (busyQuote) return;
     if (!wo?.id || !vehicle?.id) {
@@ -644,60 +721,11 @@ export default function WorkOrderPage(): JSX.Element {
     }
   };
 
-  // Send for Approval with selected subset
-  const handleSendForApproval = async () => {
-    if (!wo?.id) return;
-    if (!customer?.email) {
-      toast.error("Customer email is required to send for approval.");
-      return;
-    }
-    const selected = Array.from(selectedForApproval);
-    if (!selected.length) {
-      toast.error("Select at least one job to send for approval.");
-      return;
-    }
-    if (busySendApproval) return;
-
-    setBusySendApproval(true);
-    const prev = wo;
-    try {
-      setWo(prev ? { ...prev, status: "awaiting_approval" } : prev);
-
-      const { error: upErr } = await supabase
-        .from("work_orders")
-        .update({ status: "awaiting_approval" })
-        .eq("id", wo.id);
-      if (upErr) throw upErr;
-
-      const res = await fetch("/work-orders/send-for-approval", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workOrderId: wo.id,
-          lineIds: selected,
-        }),
-      });
-
-      if (!res.ok) {
-        const j = await res.json().catch(() => null);
-        throw new Error(j?.error || "Failed to send for approval.");
-      }
-
-      toast.success(`Sent ${selected.length} item(s) to customer for approval.`);
-    } catch (e: any) {
-      setWo(prev);
-      showErr("Send for approval failed", e);
-    } finally {
-      setBusySendApproval(false);
-    }
-  };
-
-  /* -------------------------------- Helpers ------------------------------- */
+  // Sorting & helpers
   const chipClass = (s: string | null): string => {
     const key = (s ?? "awaiting").toLowerCase().replaceAll(" ", "_");
     return `text-xs px-2 py-1 rounded ${statusBadge[key] ?? "bg-gray-200 text-gray-800"}`;
   };
-
   const sortedLines = useMemo(() => {
     const pr: Record<string, number> = { diagnosis: 1, inspection: 2, maintenance: 3, repair: 4 };
     return [...lines].sort((a, b) => {
@@ -709,7 +737,6 @@ export default function WorkOrderPage(): JSX.Element {
       return ta - tb;
     });
   }, [lines]);
-
   const suggestedJobId: string | null = useMemo(() => {
     if (!sortedLines.length) return null;
     const byStatus = (st: string) => sortedLines.find((l) => (l.status ?? "").toLowerCase() === st)?.id ?? null;
@@ -720,7 +747,6 @@ export default function WorkOrderPage(): JSX.Element {
   const createdAt = wo?.created_at ? new Date(wo.created_at) : null;
   const createdAtText = createdAt && !isNaN(createdAt.getTime()) ? format(createdAt, "PPpp") : "—";
 
-  // helper: per-job live duration in tenth hours
   const renderJobDuration = (job: WorkOrderLine) => {
     if (job.punched_in_at && !job.punched_out_at) {
       const ms = Date.now() - new Date(job.punched_in_at).getTime();
@@ -731,30 +757,6 @@ export default function WorkOrderPage(): JSX.Element {
       return msToTenthHours(ms);
     }
     return "0.0 hr";
-  };
-
-  // open focused modal (and sync url)
-  const openFocused = (jobId: string) => {
-    setFocusedJobId(jobId);
-    setFocusedOpen(true);
-    setUrlJobId(jobId);
-    // keep line state in sync
-    const found = lines.find((l) => l.id === jobId) || null;
-    setLine(found);
-  };
-
-  /** Open the correct inspection UI for a given inspection work-order line. */
-  const openInspectionForLine = (ln: WorkOrderLine) => {
-    const isAir =
-      String(ln.description ?? "")
-        .toLowerCase()
-        .includes("air");
-    const base = isAir ? "/inspection/maintenance50-air" : "/inspection/maintenance50";
-    const sp = new URLSearchParams();
-    sp.set("workOrderId", wo?.id ?? "");
-    sp.set("workOrderLineId", ln.id);
-    sp.set("template", isAir ? "Maintenance 50 – Air" : "Maintenance 50 – Hydraulic");
-    router.push(`${base}?${sp.toString()}`);
   };
 
   if (!woId) {
@@ -820,7 +822,6 @@ export default function WorkOrderPage(): JSX.Element {
       {!loading && !wo && !viewError && <div className="mt-6 text-red-500">Work order not found.</div>}
 
       {!loading && wo && (
-        // Single-column main content (Focused Job left panel removed)
         <div className="space-y-6">
           {/* Header */}
           <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
@@ -915,7 +916,7 @@ export default function WorkOrderPage(): JSX.Element {
             )}
           </div>
 
-          {/* Jobs (front-desk quick add + list) */}
+          {/* Jobs */}
           <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-lg font-semibold">Jobs in this Work Order</h2>
@@ -941,14 +942,15 @@ export default function WorkOrderPage(): JSX.Element {
               </div>
             </div>
 
-            {/* Quick Add (uses MenuQuickAdd) */}
+            {/* Quick Add */}
             {quickAddOpen && (
               <div className="mb-3 rounded border border-neutral-800 bg-neutral-950 p-3">
                 <ErrorBoundary>
                   <MenuQuickAdd workOrderId={wo.id} />
                 </ErrorBoundary>
                 <div className="mt-2 text-[11px] text-neutral-500">
-                  Tip: Keyboard shortcuts — <span className="text-neutral-300">Alt+S</span> to Start, <span className="text-neutral-300">Alt+F</span> to Finish the focused job.
+                  Tip: Keyboard shortcuts — <span className="text-neutral-300">Alt+S</span> to Start,{" "}
+                  <span className="text-neutral-300">Alt+F</span> to Finish the focused job.
                 </div>
               </div>
             )}
@@ -998,13 +1000,21 @@ export default function WorkOrderPage(): JSX.Element {
                   const tintCls = statusRowTint[statusKey] || "bg-neutral-950";
                   const isActiveFocused = focusedJobId === ln.id;
 
+                  const isInspection = (ln.job_type ?? "") === "inspection";
+                  const isActive = !!ln.punched_in_at && !ln.punched_out_at;
+
                   return (
                     <div
                       key={ln.id}
                       className={`rounded border border-neutral-800 ${tintCls} p-3 ${borderCls} ${
                         isActiveFocused ? "ring-2 ring-orange-400" : ""
                       } cursor-pointer`}
-                      onClick={() => openFocused(ln.id)}
+                      onClick={() => {
+                        setFocusedJobId(ln.id);
+                        setFocusedOpen(true);
+                        setUrlJobId(ln.id);
+                        setLine(ln);
+                      }}
                       title="Open focused job"
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -1017,16 +1027,22 @@ export default function WorkOrderPage(): JSX.Element {
                             {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} • Status:{" "}
                             {(ln.status ?? "awaiting").replaceAll("_", " ")} • Time: {renderJobDuration(ln)}
                           </div>
-                          {(ln.complaint || ln.cause || ln.correction) && (
-                            <div className="text-xs text-neutral-400 mt-1">
-                              {ln.complaint ? `Cmpl: ${ln.complaint}  ` : ""}
-                              {ln.cause ? `| Cause: ${ln.cause}  ` : ""}
-                              {ln.correction ? `| Corr: ${ln.correction}` : ""}
+                          {(ln.complaint || ln.cause || ln.correction || isInspection) && (
+                            <div className="text-xs text-neutral-400 mt-1 flex flex-wrap items-center gap-2">
+                              {ln.complaint ? <span>Cmpl: {ln.complaint}</span> : null}
+                              {ln.cause ? <span>| Cause: {ln.cause}</span> : null}
+                              {ln.correction ? <span>| Corr: {ln.correction}</span> : null}
+                              {isInspection ? (
+                                <span className="rounded border border-neutral-700 px-1.5 py-0.5 text-[11px] text-neutral-300">
+                                  Inspection available — open from Focused Job
+                                </span>
+                              ) : null}
                             </div>
                           )}
                         </div>
 
                         <div className="flex flex-col items-end gap-2">
+                          {/* approval include */}
                           <label
                             className={`flex items-center gap-1 text-xs ${
                               eligible ? "text-neutral-300" : "text-neutral-500"
@@ -1044,24 +1060,46 @@ export default function WorkOrderPage(): JSX.Element {
                             Include
                           </label>
 
-                          {/* If it's an inspection line, show quick-open button */}
-                          {ln.job_type === "inspection" && (
+                          {/* TECH quick actions: Start/Finish */}
+                          {mode === "tech" && (
+                            <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                              {!isActive ? (
+                                <button
+                                  className="rounded border border-neutral-600 px-2 py-1 text-xs hover:border-orange-500"
+                                  onClick={() => handleStart(ln.id)}
+                                  title="Start this job"
+                                >
+                                  Start
+                                </button>
+                              ) : (
+                                <button
+                                  className="rounded border border-neutral-600 px-2 py-1 text-xs hover:border-orange-500"
+                                  onClick={() => handleFinish(ln.id)}
+                                  title="Finish this job"
+                                >
+                                  Finish
+                                </button>
+                              )}
+                            </div>
+                          )}
+
+                          {/* DELETE: only in View mode */}
+                          {mode === "view" && (
                             <button
-                              className="rounded border border-neutral-700 px-2 py-1 text-xs hover:border-orange-500"
+                              className="rounded border border-red-600 px-2 py-1 text-xs text-red-300 hover:bg-red-900/20"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                openInspectionForLine(ln);
+                                handleDeleteLine(ln.id);
                               }}
-                              title="Open inspection for this line"
+                              title="Delete line"
                             >
-                              Open Inspection
+                              Delete
                             </button>
                           )}
 
                           <span className={chipClass(ln.status as WOStatus)}>
                             {(ln.status ?? "awaiting").replaceAll("_", " ")}
                           </span>
-                          {/* Start/Finish buttons intentionally removed from list */}
                         </div>
                       </div>
                     </div>
@@ -1071,7 +1109,7 @@ export default function WorkOrderPage(): JSX.Element {
             )}
           </div>
 
-          {/* INLINE AI Suggested Repairs (not a modal) */}
+          {/* INLINE AI Suggested Repairs */}
           <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
             <h3 className="mb-2 font-semibold">AI Suggested Repairs</h3>
             <ErrorBoundary>
@@ -1104,7 +1142,6 @@ export default function WorkOrderPage(): JSX.Element {
                     Capture Signature / Review Quote
                   </button>
 
-                  {/* Send for Approval uses selection */}
                   <button
                     onClick={handleSendForApproval}
                     disabled={busySendApproval || selectedForApproval.size === 0}
@@ -1169,27 +1206,6 @@ export default function WorkOrderPage(): JSX.Element {
               </div>
             </>
           )}
-
-          {/* Inspection shortcuts: only if attached to WO (legacy block, kept) */}
-          {!!wo.inspection_id && (
-            <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
-              <div className="mb-2 font-semibold text-orange-400">Inspection</div>
-              <div className="flex flex-wrap gap-2">
-                <Link
-                  className="rounded bg-zinc-800 px-3 py-2 text-sm hover:bg-zinc-700"
-                  href={`/inspection/maintenance50?inspectionId=${wo.inspection_id}`}
-                >
-                  Open Inspection
-                </Link>
-                <Link
-                  className="rounded bg-zinc-800 px-3 py-2 text-sm hover:bg-zinc-700"
-                  href={`/inspection/maintenance50-air?inspectionId=${wo.inspection_id}`}
-                >
-                  Open (Air)
-                </Link>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
@@ -1202,7 +1218,7 @@ export default function WorkOrderPage(): JSX.Element {
         </div>
       )}
 
-      {/* Add Job modal (kept) */}
+      {/* Add Job modal */}
       {isAddJobModalOpen && wo?.id && vehicle?.id && (
         <AddJobModal
           isOpen={isAddJobModalOpen}
@@ -1214,17 +1230,19 @@ export default function WorkOrderPage(): JSX.Element {
         />
       )}
 
-      {/* NEW: Focused Job modal — all job interaction happens here now */}
+      {/* Focused Job modal — hosts the "Open Inspection" control */}
       {focusedOpen && focusedJobId && (
         <FocusedJobModal
           isOpen={focusedOpen}
           onClose={() => setFocusedOpen(false)}
           workOrderLineId={focusedJobId}
           onChanged={fetchAll}
+          // When "Open Inspection" is clicked inside this modal (and the job is an inspection),
+          // it emits: window.dispatchEvent(new CustomEvent("inspection:open", { detail: { path, params } }))
         />
       )}
 
-      {/* Optional: quick new chat (unchanged) */}
+      {/* Quick chat */}
       {chatOpen && currentUserId && (
         <NewChatModal
           isOpen={chatOpen}
@@ -1234,6 +1252,11 @@ export default function WorkOrderPage(): JSX.Element {
           context_type="work_order"
           context_id={wo?.id ?? null}
         />
+      )}
+
+      {/* INSPECTION MODAL (dark ModalShell via wrapper, never navigates away) */}
+      {inspectionOpen && inspectionSrc && (
+        <InspectionModal isOpen={inspectionOpen} onClose={() => setInspectionOpen(false)} src={inspectionSrc} />
       )}
     </div>
   );
