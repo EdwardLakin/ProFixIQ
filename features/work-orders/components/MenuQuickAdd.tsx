@@ -55,11 +55,12 @@ function useMenuData() {
       name: "Oil Change – Gasoline",
       jobType: "maintenance",
       estLaborHours: 0.8,
-      summary: "Engine oil & filter + quick visual inspection (leaks, hoses, undercarriage).",
+      summary: "Engine oil & filter, top off fluids, tire pressures, quick visual leak check.",
       items: [
-        // kept for reference; addPackage() collapses this to a single WO line
-        { description: "Oil & filter", jobType: "maintenance", laborHours: 0.6 },
-        { description: "Top off fluids / set tire pressures", jobType: "maintenance", laborHours: 0.2 },
+        { description: "Drain engine oil & replace oil filter", jobType: "maintenance", laborHours: 0.6 },
+        { description: "Top off all fluids (coolant, washer, PS/ATF if applicable)", jobType: "maintenance", laborHours: 0.1 },
+        { description: "Set tire pressures & reset maintenance light (if needed)", jobType: "maintenance", laborHours: 0.1 },
+        { description: "Quick visual leak inspection (engine bay & undercarriage)", jobType: "inspection" },
       ],
     },
     {
@@ -67,11 +68,13 @@ function useMenuData() {
       name: "Oil Change – Diesel",
       jobType: "maintenance",
       estLaborHours: 1.2,
-      summary: "Diesel oil & filter + quick diesel visual (charge air/turbo hoses, fuel water separator check).",
+      summary: "Diesel engine oil & filter, drain fuel/water separator, DEF level, quick diesel-system checks.",
       items: [
-        // kept for reference; addPackage() collapses this to a single WO line
-        { description: "Oil & filter", jobType: "maintenance", laborHours: 0.8 },
-        { description: "DEF level / water separator check", jobType: "maintenance", laborHours: 0.4 },
+        { description: "Drain engine oil & replace oil filter", jobType: "maintenance", laborHours: 0.6 },
+        { description: "Drain fuel water separator", jobType: "maintenance", laborHours: 0.2 },
+        { description: "Check/Top DEF fluid level", jobType: "maintenance", laborHours: 0.1 },
+        { description: "Inspect fuel filter condition (replace if due)", jobType: "maintenance", laborHours: 0.2, notes: "If replacement required, create additional line." },
+        { description: "Quick diesel visual: charge pipes/turbo hoses/intercooler connections", jobType: "inspection" },
       ],
     },
     {
@@ -80,14 +83,7 @@ function useMenuData() {
       jobType: "inspection",
       estLaborHours: 1.0,
       summary: "Brakes, tires, suspension, fluids, leaks, battery test, lights, codes scan.",
-      items: [
-        { description: "Scan for diagnostic trouble codes (DTCs)", jobType: "diagnosis", laborHours: 0.2 },
-        { description: "Brake system inspection (pads/rotors/hoses/fluid leaks)", jobType: "inspection", laborHours: 0.2 },
-        { description: "Suspension/steering inspection (ball joints, tie rods, bushings)", jobType: "inspection", laborHours: 0.2 },
-        { description: "Tires (tread depth, wear pattern) & set pressures", jobType: "inspection", laborHours: 0.1 },
-        { description: "Battery test & charging system quick check", jobType: "inspection", laborHours: 0.1 },
-        { description: "Fluids/leaks/hoses/belts visual inspection", jobType: "inspection", laborHours: 0.2 },
-      ],
+      items: [],
     },
     {
       id: "insp-diesel",
@@ -95,17 +91,7 @@ function useMenuData() {
       jobType: "inspection",
       estLaborHours: 1.2,
       summary: "All gas checks + diesel specifics: glow system, fuel system, turbo/charge air, DPF/regen, DEF.",
-      items: [
-        { description: "Scan for diagnostic trouble codes (powertrain & emissions)", jobType: "diagnosis", laborHours: 0.2 },
-        { description: "Brake system inspection", jobType: "inspection", laborHours: 0.2 },
-        { description: "Suspension/steering inspection", jobType: "inspection", laborHours: 0.2 },
-        { description: "Tires (tread, wear) & set pressures", jobType: "inspection", laborHours: 0.1 },
-        { description: "Battery & charging system quick test", jobType: "inspection", laborHours: 0.1 },
-        { description: "Fuel system visual (lines, filter housing, leaks)", jobType: "inspection", laborHours: 0.1 },
-        { description: "Glow plug system quick check", jobType: "inspection", laborHours: 0.1 },
-        { description: "Turbo/charge air hoses & intercooler connections", jobType: "inspection", laborHours: 0.1 },
-        { description: "DPF/regen status & DEF system quick check", jobType: "inspection", laborHours: 0.2 },
-      ],
+      items: [],
     },
   ];
 
@@ -191,11 +177,10 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   }, [supabase, workOrderId]);
 
   /** Create an inspection line first, then navigate to the inspection page with prefilled params */
-  async function pushInspection(path: string) {
-    // 1) Create a Work Order Line that represents the inspection
+  async function pushInspection(path: "/inspections/maintenance50" | "/inspections/maintenance50-air") {
     const inspectionName =
-      path.includes("maintenance50-air") || path.endsWith("maintenance50-air")
-        ? "Maintenance 50 – Air – Inspection"
+      path === "/inspections/maintenance50-air"
+        ? "Maintenance 50 – Air (CVIP) – Inspection"
         : "Maintenance 50 – Hydraulic – Inspection";
 
     const newLine: WorkOrderLineInsert = {
@@ -220,11 +205,13 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       return;
     }
 
-    // 2) Prefill params for the inspection page
     const params = new URLSearchParams();
     params.set("workOrderId", workOrderId);
-    params.set("workOrderLineId", inserted.id); // ← tie the inspection to this line
-    params.set("template", path.includes("maintenance50-air") ? "Maintenance 50 – Air" : "Maintenance 50 – Hydraulic");
+    params.set("workOrderLineId", inserted.id);
+    params.set(
+      "template",
+      path === "/inspections/maintenance50-air" ? "Maintenance 50 – Air (CVIP)" : "Maintenance 50 – Hydraulic"
+    );
 
     if (customer) {
       if (customer.first_name) params.set("first_name", String(customer.first_name));
@@ -249,7 +236,6 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       if (vehicle.odometer) params.set("odometer", String(vehicle.odometer));
     }
 
-    // 3) Navigate to the inspection screen bound to this line
     router.push(`${path}?${params.toString()}`);
   }
 
@@ -281,40 +267,29 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   async function addPackage(pkg: PackageDef) {
     setAddingId(pkg.id);
 
-    // Special rule: Oil Change packages become a SINGLE work-order line (no extra lines)
-    if (pkg.id === "oil-gas" || pkg.id === "oil-diesel") {
-      const oneLine: WorkOrderLineInsert = {
-        work_order_id: workOrderId,
-        description: pkg.name, // keep clean; inspection link lives in Focused Job later
-        job_type: "maintenance",
-        status: "awaiting",
-        priority: 3,
-        labor_time: pkg.estLaborHours,
-        notes: pkg.summary,
-      };
-      const { error } = await supabase.from("work_order_lines").insert(oneLine);
+    // For inspection packages, create ONE inspection line then route
+    if (pkg.jobType === "inspection") {
       setAddingId(null);
-      if (error) {
-        console.error("Failed to add oil package:", error);
-        alert(error.message);
-        return;
+      if (pkg.id === "insp-diesel") {
+        await pushInspection("/inspections/maintenance50-air");
+      } else {
+        await pushInspection("/inspections/maintenance50");
       }
-      window.dispatchEvent(new CustomEvent("wo:line-added"));
       return;
     }
 
-    // Default behavior: multi-item packages insert multiple lines
-    const payload: WorkOrderLineInsert[] = pkg.items.map((i) => ({
+    // For maintenance packages, create ONE summary line (no line explosion)
+    const line: WorkOrderLineInsert = {
       work_order_id: workOrderId,
-      description: i.description,
-      labor_time: typeof i.laborHours === "number" ? i.laborHours : null,
+      description: pkg.name,
+      labor_time: pkg.estLaborHours,
       status: "awaiting",
       priority: 3,
-      job_type: (i.jobType ?? pkg.jobType) as WorkOrderLineInsert["job_type"],
-      notes: i.notes ?? null,
-    }));
+      job_type: "maintenance",
+      notes: pkg.summary,
+    };
 
-    const { error } = await supabase.from("work_order_lines").insert(payload);
+    const { error } = await supabase.from("work_order_lines").insert(line);
     setAddingId(null);
 
     if (error) {
@@ -359,7 +334,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
         <div className="grid gap-2 sm:grid-cols-2">
           <button
-            onClick={() => pushInspection("/inspection/maintenance50")}
+            onClick={() => pushInspection("/inspections/maintenance50")}
             className="rounded border border-neutral-800 bg-neutral-950 p-3 text-left hover:bg-neutral-900 disabled:opacity-60"
             disabled={!vehicle}
             title={!vehicle ? "Link a vehicle to this Work Order first." : "Open hydraulic inspection"}
@@ -369,12 +344,12 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
           </button>
 
           <button
-            onClick={() => pushInspection("/inspection/maintenance50-air")}
+            onClick={() => pushInspection("/inspections/maintenance50-air")}
             className="rounded border border-neutral-800 bg-neutral-950 p-3 text-left hover:bg-neutral-900 disabled:opacity-60"
             disabled={!vehicle}
             title={!vehicle ? "Link a vehicle to this Work Order first." : "Open air-brake inspection"}
           >
-            <div className="font-medium">Maintenance 50 – Air</div>
+            <div className="font-medium">Maintenance 50 – Air (CVIP)</div>
             <div className="text-xs text-neutral-400">Air-governor, leakage, push-rod stroke + oil change</div>
           </button>
         </div>
