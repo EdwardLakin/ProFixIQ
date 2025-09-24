@@ -19,39 +19,58 @@ const PUBLIC_PATHS = new Set([
 function isAssetPath(p: string) {
   return (
     p.startsWith("/_next") ||
+    p.startsWith("/api/auth") ||              // next-auth/supabase helpers sometimes touch these
     p.startsWith("/fonts") ||
+    p.startsWith("/images") ||
+    p.startsWith("/icons") ||
+    p.startsWith("/_vercel") ||              // vercel internals
     p.endsWith("/favicon.ico") ||
-    p.endsWith(".svg") ||
-    /\.(png|jpg|jpeg|gif|webp|ico|css|js|map)$/i.test(p)
+    p.endsWith("/robots.txt") ||
+    /\.(png|jpg|jpeg|gif|webp|ico|css|js|map|svg|txt)$/i.test(p)
   );
 }
 
-// 👇 helper: preserve cookies set on `res` when redirecting/rewriting
+// Preserve Set-Cookie on redirects/rewrites
 function withSupabaseCookies(from: NextResponse, to: NextResponse) {
   const setCookie = from.headers.get("set-cookie");
   if (setCookie) {
-    // multiple cookies are joined by comma by Next; append is safer
-    const parts = setCookie.split(","); // naive split is fine for Set-Cookie
-    for (const c of parts) to.headers.append("set-cookie", c.trim());
+    // Next joins multiple Set-Cookie values with commas; append safely.
+    for (const c of setCookie.split(",")) to.headers.append("set-cookie", c.trim());
   }
   return to;
 }
 
 export async function middleware(req: NextRequest) {
+  // 1) Always create the response first so Supabase can attach refreshed cookies to it.
   const res = NextResponse.next();
-  const supabase = createMiddlewareClient<Database>({ req, res });
 
+  // 2) Ignore non-HTML traffic and static assets (reduces spurious cookie churn).
+  if (req.method === "OPTIONS" || req.method === "HEAD") return res;
   const { pathname, search } = req.nextUrl;
+  if (isAssetPath(pathname) || pathname.startsWith("/api")) return res;
 
-  if (isAssetPath(pathname) || pathname.startsWith("/api")) {
-    return res;
-  }
-
+  // 3) Refresh/inspect session (this call sets/refreshes cookies on `res`).
+  const supabase = createMiddlewareClient<Database>({ req, res });
   const {
     data: { session },
   } = await supabase.auth.getSession();
 
-  // "/" allowlist
+  // TEMP diagnostic header you can watch in Network tab (harmless in prod)
+  if (process.env.NODE_ENV !== "production") {
+    res.headers.set("x-auth", session?.user ? "yes" : "no");
+  }
+
+  // 4) Public routes
+  if (PUBLIC_PATHS.has(pathname)) {
+    // Already signed-in? Kick away from sign-in/up
+    if ((pathname === "/sign-in" || pathname === "/signup") && session?.user) {
+      const to = new URL("/dashboard", req.url);
+      return withSupabaseCookies(res, NextResponse.redirect(to));
+    }
+    return res; // public page
+  }
+
+  // 5) Root allow-list (unchanged)
   if (pathname === "/") {
     if (!session?.user) {
       const url = new URL("/sign-in", req.url);
@@ -70,39 +89,35 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  // Public
-  if (PUBLIC_PATHS.has(pathname)) {
-    if ((pathname === "/sign-in" || pathname === "/signup") && session?.user) {
-      return withSupabaseCookies(res, NextResponse.redirect(new URL("/dashboard", req.url)));
-    }
-    return res;
-  }
-
-  // Protected
+  // 6) Auth gate for protected routes
   if (!session?.user) {
     const url = new URL("/sign-in", req.url);
     url.searchParams.set("redirect", `${pathname}${search}`);
     return withSupabaseCookies(res, NextResponse.redirect(url));
   }
 
-  // Profile lookup (make sure your profiles RLS lets a user read their own row)
+  // 7) Profile lookup ONLY where you actually need it
+  //    Doing DB reads inside middleware can trip RLS if something’s off.
+  //    Keep it, but scope it to the pages that need the onboarding redirect.
   let role: UserRole | null = null;
   let completed = false;
   let gotProfile = false;
 
-  try {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role, completed_onboarding")
-      .eq("id", session.user.id)
-      .maybeSingle();
-    if (profile) {
-      gotProfile = true;
-      role = (profile as any).role ?? null;
-      completed = !!(profile as any).completed_onboarding;
+  if (pathname === "/" || pathname.startsWith("/dashboard")) {
+    try {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role, completed_onboarding")
+        .eq("id", session.user.id)
+        .maybeSingle();
+      if (profile) {
+        gotProfile = true;
+        role = (profile as any).role ?? null;
+        completed = !!(profile as any).completed_onboarding;
+      }
+    } catch {
+      // ignore; don’t block navigation
     }
-  } catch {
-    // ignore; don't block
   }
 
   if (pathname === "/") {
@@ -114,15 +129,18 @@ export async function middleware(req: NextRequest) {
     return withSupabaseCookies(res, NextResponse.redirect(new URL("/onboarding", req.url)));
   }
 
+  // 8) Default allow
   return res;
 }
 
+// Be explicit about what’s protected so we don’t run middleware for unnecessary routes.
 export const config = {
   matcher: [
     "/",
     "/dashboard/:path*",
     "/work-orders/:path*",
     "/inspections/:path*",
+    "/customers/:path*",     // add if you have customer pages
     "/sign-in",
     "/signup",
     "/subscribe",

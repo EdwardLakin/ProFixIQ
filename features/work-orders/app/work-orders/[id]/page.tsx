@@ -183,11 +183,52 @@ function msToTenthHours(ms: number): string {
   return `${hours} hr`;
 }
 
+/* ---------------------------- Debug Panel (opt-in) ---------------------------- */
+function DebugPanel({
+  woId,
+  supabase,
+}: {
+  woId: string;
+  supabase: ReturnType<typeof createClientComponentClient<DB>>;
+}) {
+  const [state, setState] = useState<any>(null);
+
+  useEffect(() => {
+    (async () => {
+      const [{ data: userData }, { data: curShop }, { data: woRow, error: woErr }, vis] = await Promise.all([
+        supabase.auth.getUser(),
+        supabase.rpc("current_shop_id"),
+        supabase.from("work_orders").select("id, shop_id").eq("id", woId).maybeSingle(),
+        supabase.from("work_orders").select("id", { head: true, count: "exact" }).eq("id", woId),
+      ]);
+
+      setState({
+        user: userData?.user?.id ?? null,
+        current_shop_id: curShop ?? null,
+        wo_shop_id: woRow?.shop_id ?? null,
+        visible_to_select: !!vis.count && vis.count > 0,
+        wo_error: woErr?.message ?? null,
+      });
+    })();
+  }, [supabase, woId]);
+
+  if (!state) return null;
+  return (
+    <div className="mt-4 rounded border border-yellow-700 bg-yellow-900/20 p-3 text-xs text-yellow-200">
+      <div className="font-semibold mb-1">Debug</div>
+      <pre className="whitespace-pre-wrap text-[11px]">
+        {JSON.stringify(state, null, 2)}
+      </pre>
+    </div>
+  );
+}
+
 /* ---------------------------------- Page --------------------------------- */
 export default function WorkOrderPage(): JSX.Element {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const debug = searchParams.get("debug") === "1";
 
   const woId = useMemo(() => {
     const raw = (params as ParamsShape)?.id;
@@ -297,7 +338,7 @@ export default function WorkOrderPage(): JSX.Element {
   // Re-run after auth state changes (helps when session is restored async)
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange(() => {
-      // when auth becomes ready, subsequent effect below will call fetchAll
+      // no-op; fetch effect below depends on userId
     });
     return () => sub.subscription.unsubscribe();
   }, [supabase]);
@@ -343,22 +384,44 @@ export default function WorkOrderPage(): JSX.Element {
           .maybeSingle();
         if (woErr) throw woErr;
 
+        // 🔎 If not visible, stop spinning and explain why
         if (!woRow) {
-          if (retry < 3) {
-            const delay = 300 * Math.pow(2, retry);
-            await sleep(delay);
+          // Small backoff retry in case session just synced
+          if (retry < 2) {
+            await sleep(200 * Math.pow(2, retry));
             return fetchAll(retry + 1);
-          } else {
-            setWo(null);
-            setLines([]);
-            setVehicle(null);
-            setCustomer(null);
-            setLine(null);
-            setActiveJobId(null);
-            setLoading(false);
-            return;
           }
+
+          const [
+            {
+              data: { user },
+            },
+            { data: curShop },
+            vis,
+          ] = await Promise.all([
+            supabase.auth.getUser(),
+            supabase.rpc("current_shop_id"),
+            supabase.from("work_orders").select("id", { head: true, count: "exact" }).eq("id", woId),
+          ]);
+
+          const parts = [
+            "Work order not visible.",
+            `• session: ${user ? "present" : "missing"}`,
+            `• current_shop_id: ${curShop ?? "NULL"}`,
+            `• visible via SELECT count: ${vis.count ?? 0}`,
+            "Tip: likely RLS shop mismatch or no session. Use ?debug=1 for details.",
+          ];
+          setViewError(parts.join("\n"));
+          setWo(null);
+          setLines([]);
+          setVehicle(null);
+          setCustomer(null);
+          setLine(null);
+          setActiveJobId(null);
+          setLoading(false);
+          return;
         }
+
         setWo(woRow);
 
         if (!warnedMissing && (!woRow.vehicle_id || !woRow.customer_id)) {
@@ -768,7 +831,7 @@ export default function WorkOrderPage(): JSX.Element {
         </button>
       </div>
 
-      {viewError && <div className="mt-4 rounded border border-red-500/40 bg-red-500/10 p-3 text-red-300">{viewError}</div>}
+      {viewError && <div className="mt-4 whitespace-pre-wrap rounded border border-red-500/40 bg-red-500/10 p-3 text-red-300">{viewError}</div>}
 
       {loading && (
         <div className="mt-6 grid gap-4">
@@ -1139,6 +1202,9 @@ export default function WorkOrderPage(): JSX.Element {
               </div>
             </>
           )}
+
+          {/* Optional inline diagnostics */}
+          {debug && woId && <DebugPanel woId={woId} supabase={supabase} />}
         </div>
       )}
 
@@ -1147,7 +1213,7 @@ export default function WorkOrderPage(): JSX.Element {
         <div className="mt-8 space-y-4">
           <h2 className="text-xl font-semibold">Vehicle Photos</h2>
           <VehiclePhotoUploader vehicleId={vehicle.id} />
-          <VehiclePhotoGallery vehicleId={vehicle.id} currentUserId={currentUserId!} />
+          <VehiclePhotoGallery vehicleId={vehicle.id} currentUserId={currentUserId} />
         </div>
       )}
 
