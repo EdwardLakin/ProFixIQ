@@ -90,7 +90,6 @@ function paramToString(v: string | string[] | undefined): string | null {
 }
 
 /* ---------------------------- Status -> Styles ---------------------------- */
-/** Badge chip */
 const statusBadge: Record<string, string> = {
   awaiting_approval: "bg-blue-100 text-blue-800",
   awaiting: "bg-slate-200 text-slate-800",
@@ -101,8 +100,6 @@ const statusBadge: Record<string, string> = {
   new: "bg-gray-200 text-gray-800",
   completed: "bg-green-100 text-green-800",
 };
-
-/** Left border color */
 const statusBorder: Record<string, string> = {
   awaiting: "border-l-4 border-slate-400",
   queued: "border-l-4 border-indigo-400",
@@ -113,17 +110,10 @@ const statusBorder: Record<string, string> = {
   planned: "border-l-4 border-purple-500",
   new: "border-l-4 border-gray-400",
 };
-
-/**
- * Row background tint
- * — Keep most rows neutral
- * — Completed = green tint
- * — On hold = amber tint
- */
 const statusRowTint: Record<string, string> = {
   awaiting: "bg-neutral-950",
   queued: "bg-neutral-950",
-  in_progress: "bg-neutral-950", // ← keep same fill; only outline shows activity
+  in_progress: "bg-neutral-950",
   on_hold: "bg-amber-900/30",
   completed: "bg-green-900/30",
   awaiting_approval: "bg-neutral-950",
@@ -147,10 +137,7 @@ function LazyInvoice({
 
   if (!open) {
     return (
-      <button
-        onClick={() => setOpen(true)}
-        className="px-4 py-2 bg-blue-700 text-white rounded hover:bg-blue-800"
-      >
+      <button onClick={() => setOpen(true)} className="px-4 py-2 bg-blue-700 text-white rounded hover:bg-blue-800">
         Generate / Download Invoice PDF
       </button>
     );
@@ -307,6 +294,14 @@ export default function WorkOrderPage(): JSX.Element {
     })();
   }, [supabase]);
 
+  // Re-run after auth state changes (helps when session is restored async)
+  useEffect(() => {
+    const { data: sub } = supabase.auth.onAuthStateChange(() => {
+      // when auth becomes ready, subsequent effect below will call fetchAll
+    });
+    return () => sub.subscription.unsubscribe();
+  }, [supabase]);
+
   // Load role
   useEffect(() => {
     (async () => {
@@ -314,11 +309,7 @@ export default function WorkOrderPage(): JSX.Element {
         setProfileRole(null);
         return;
       }
-      const { data: prof } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", userId)
-        .maybeSingle();
+      const { data: prof } = await supabase.from("profiles").select("role").eq("id", userId).maybeSingle();
       setProfileRole(prof?.role ?? null);
     })();
   }, [supabase, userId]);
@@ -326,7 +317,7 @@ export default function WorkOrderPage(): JSX.Element {
   const mode = useWorkOrderMode(profileRole as Role | null);
   const caps = capabilities(profileRole);
 
-  const setUrlJobId = useCallback(
+  const setUrlJobId = React.useCallback(
     (jobId: string | null) => {
       const sp = new URLSearchParams(searchParams.toString());
       if (jobId) sp.set("jobId", jobId);
@@ -337,10 +328,10 @@ export default function WorkOrderPage(): JSX.Element {
     [searchParams]
   );
 
-  // Fetch everything
+  // ---------------------- FETCH (guarded by user session) ----------------------
   const fetchAll = useCallback(
     async (retry = 0) => {
-      if (!woId) return;
+      if (!woId || !userId) return; // 🚦 wait for auth + param
       setLoading(true);
       setViewError(null);
 
@@ -413,11 +404,7 @@ export default function WorkOrderPage(): JSX.Element {
         setUrlJobId(pick?.id ?? null);
 
         if (pick?.assigned_to) {
-          const { data: p } = await supabase
-            .from("profiles")
-            .select("*")
-            .eq("id", pick.assigned_to)
-            .single();
+          const { data: p } = await supabase.from("profiles").select("*").eq("id", pick.assigned_to).single();
           setTech(p ?? null);
         } else {
           setTech(null);
@@ -430,16 +417,18 @@ export default function WorkOrderPage(): JSX.Element {
         setLoading(false);
       }
     },
-    [supabase, woId, urlJobId, setUrlJobId, warnedMissing]
+    [supabase, woId, userId, urlJobId, setUrlJobId, warnedMissing]
   );
 
+  // Only fetch once we have both: a work order id and an authenticated user
   useEffect(() => {
+    if (!woId || !userId) return;
     void fetchAll();
-  }, [fetchAll]);
+  }, [fetchAll, woId, userId]);
 
-  // Real-time refresh
+  // Real-time refresh (only subscribe when authed + id present)
   useEffect(() => {
-    if (!woId) return;
+    if (!woId || !userId) return;
 
     const ch = supabase
       .channel(`wo:${woId}`)
@@ -460,7 +449,7 @@ export default function WorkOrderPage(): JSX.Element {
         supabase.removeChannel(ch);
       } catch {}
     };
-  }, [supabase, woId, fetchAll]);
+  }, [supabase, woId, userId, fetchAll]);
 
   // Legacy refresh event
   useEffect(() => {
@@ -469,7 +458,7 @@ export default function WorkOrderPage(): JSX.Element {
     return () => window.removeEventListener("wo:line-added", handler);
   }, [fetchAll]);
 
-  // Listen for "open inspection" requests (emitted by FocusedJob modal)
+  // Listen for "open inspection" requests
   useEffect(() => {
     const onOpen = (e: Event) => {
       const ce = e as CustomEvent<{ path: string; params: string }>;
@@ -505,10 +494,7 @@ export default function WorkOrderPage(): JSX.Element {
 
       if (toFix.length === 0) return;
 
-      const { error } = await supabase
-        .from("work_order_lines")
-        .update({ status: "awaiting" })
-        .in("id", toFix);
+      const { error } = await supabase.from("work_order_lines").update({ status: "awaiting" }).in("id", toFix);
 
       if (!error) {
         const next = new Set(fixedStatus);
@@ -586,10 +572,7 @@ export default function WorkOrderPage(): JSX.Element {
     try {
       setWo(prev ? { ...prev, status: "awaiting_approval" } : prev);
 
-      const { error: upErr } = await supabase
-        .from("work_orders")
-        .update({ status: "awaiting_approval" })
-        .eq("id", wo.id);
+      const { error: upErr } = await supabase.from("work_orders").update({ status: "awaiting_approval" }).eq("id", wo.id);
       if (upErr) throw upErr;
 
       const res = await fetch("/work-orders/send-for-approval", {
@@ -785,11 +768,7 @@ export default function WorkOrderPage(): JSX.Element {
         </button>
       </div>
 
-      {viewError && (
-        <div className="mt-4 rounded border border-red-500/40 bg-red-500/10 p-3 text-red-300">
-          {viewError}
-        </div>
-      )}
+      {viewError && <div className="mt-4 rounded border border-red-500/40 bg-red-500/10 p-3 text-red-300">{viewError}</div>}
 
       {loading && (
         <div className="mt-6 grid gap-4">
@@ -809,7 +788,10 @@ export default function WorkOrderPage(): JSX.Element {
               <h1 className="text-2xl font-semibold">
                 Work Order {wo.custom_id || `#${wo.id.slice(0, 8)}`}{" "}
                 {line ? (
-                  <span className={`ml-2 align-middle text-[11px] px-2 py-1 rounded ${badgeClass}`} title="Focused job status">
+                  <span
+                    className={`ml-2 align-middle text-[11px] px-2 py-1 rounded ${badgeClass}`}
+                    title="Focused job status"
+                  >
                     {(line.status ?? "awaiting").replaceAll("_", " ")}
                   </span>
                 ) : null}
@@ -929,7 +911,8 @@ export default function WorkOrderPage(): JSX.Element {
                   <MenuQuickAdd workOrderId={wo.id} />
                 </ErrorBoundary>
                 <div className="mt-2 text-[11px] text-neutral-500">
-                  Tip: Keyboard shortcuts — <span className="text-neutral-300">Alt+S</span> to Start, <span className="text-neutral-300">Alt+F</span> to Finish the focused job.
+                  Tip: Keyboard shortcuts — <span className="text-neutral-300">Alt+S</span> to Start,{" "}
+                  <span className="text-neutral-300">Alt+F</span> to Finish the focused job.
                 </div>
               </div>
             )}
@@ -1164,7 +1147,7 @@ export default function WorkOrderPage(): JSX.Element {
         <div className="mt-8 space-y-4">
           <h2 className="text-xl font-semibold">Vehicle Photos</h2>
           <VehiclePhotoUploader vehicleId={vehicle.id} />
-          <VehiclePhotoGallery vehicleId={vehicle.id} currentUserId={currentUserId} />
+          <VehiclePhotoGallery vehicleId={vehicle.id} currentUserId={currentUserId!} />
         </div>
       )}
 
@@ -1201,18 +1184,14 @@ export default function WorkOrderPage(): JSX.Element {
           onClose={() => setChatOpen(false)}
           created_by={currentUserId}
           onCreated={() => setChatOpen(false)}
-                    context_type="work_order"
+          context_type="work_order"
           context_id={wo?.id ?? null}
         />
       )}
 
       {/* INSPECTION MODAL (dark, never navigates away) */}
       {inspectionOpen && inspectionSrc && (
-        <InspectionModal
-          isOpen={inspectionOpen}
-          onClose={() => setInspectionOpen(false)}
-          src={inspectionSrc}
-        />
+        <InspectionModal isOpen={inspectionOpen} onClose={() => setInspectionOpen(false)} src={inspectionSrc} />
       )}
     </div>
   );
