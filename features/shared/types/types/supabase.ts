@@ -967,6 +967,7 @@ export type Database = {
           customer_id: string | null
           id: string
           state: Json | null
+          status: string
           template: string | null
           updated_at: string | null
           user_id: string | null
@@ -980,6 +981,7 @@ export type Database = {
           customer_id?: string | null
           id?: string
           state?: Json | null
+          status?: string
           template?: string | null
           updated_at?: string | null
           user_id?: string | null
@@ -993,6 +995,7 @@ export type Database = {
           customer_id?: string | null
           id?: string
           state?: Json | null
+          status?: string
           template?: string | null
           updated_at?: string | null
           user_id?: string | null
@@ -1001,6 +1004,13 @@ export type Database = {
           work_order_line_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "inspection_sessions_created_by_fk"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "inspection_sessions_customer_id_fkey"
             columns: ["customer_id"]
@@ -1016,10 +1026,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "inspection_sessions_work_order_fk"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "inspection_sessions_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspection_sessions_work_order_line_fk"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_lines"
             referencedColumns: ["id"]
           },
           {
@@ -2984,6 +3008,7 @@ export type Database = {
           description: string | null
           hold_reason: string | null
           id: string
+          inspection_session_id: string | null
           job_type: string | null
           labor_time: number | null
           line_status: string | null
@@ -3018,6 +3043,7 @@ export type Database = {
           description?: string | null
           hold_reason?: string | null
           id?: string
+          inspection_session_id?: string | null
           job_type?: string | null
           labor_time?: number | null
           line_status?: string | null
@@ -3052,6 +3078,7 @@ export type Database = {
           description?: string | null
           hold_reason?: string | null
           id?: string
+          inspection_session_id?: string | null
           job_type?: string | null
           labor_time?: number | null
           line_status?: string | null
@@ -3081,6 +3108,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "work_order_lines_inspection_session_fk"
+            columns: ["inspection_session_id"]
+            isOneToOne: false
+            referencedRelation: "inspection_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_lines_inspection_session_id_fkey"
+            columns: ["inspection_session_id"]
+            isOneToOne: false
+            referencedRelation: "inspection_sessions"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "work_order_lines_shop_id_fkey"
             columns: ["shop_id"]
             isOneToOne: false
@@ -3099,6 +3140,13 @@ export type Database = {
             columns: ["vehicle_id"]
             isOneToOne: false
             referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_lines_work_order_fk"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
           {

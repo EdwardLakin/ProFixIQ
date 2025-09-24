@@ -130,14 +130,14 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
   const [addingId, setAddingId] = useState<string | null>(null);
 
-  // Vehicle + customer prefill for inspection routes
+  // Vehicle + customer prefill hints for UI
   const [vehicle, setVehicle] = useState<VehicleLite | null>(null);
   const [customer, setCustomer] = useState<CustomerLite | null>(null);
 
   // For the Review Quote chip
   const [woLineCount, setWoLineCount] = useState<number | null>(null);
 
-  // Collapsing UI (defaults collapsed to keep panel compact)
+  // Collapsing UI
   const [showAllPackages, setShowAllPackages] = useState(false);
   const [showAllSingles, setShowAllSingles] = useState(false);
 
@@ -156,6 +156,8 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
           .eq("id", wo.vehicle_id)
           .maybeSingle();
         if (v) setVehicle(v as VehicleLite);
+      } else {
+        setVehicle(null);
       }
 
       if (wo?.customer_id) {
@@ -165,6 +167,8 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
           .eq("id", wo.customer_id)
           .maybeSingle();
         if (c) setCustomer(c as CustomerLite);
+      } else {
+        setCustomer(null);
       }
 
       const { count } = await supabase
@@ -176,16 +180,18 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     })();
   }, [supabase, workOrderId]);
 
-  /** Create an inspection line first, then navigate to the inspection page with prefilled params */
-  async function pushInspection(path: "/inspections/maintenance50" | "/inspections/maintenance50-air") {
-    const inspectionName =
-      path === "/inspections/maintenance50-air"
+  /** Adds a single inspection line (no navigation). User then clicks it to open FocusedJob → Open Inspection. */
+  async function addInspectionLine(kind: "hydraulic" | "air") {
+    setAddingId(kind);
+
+    const description =
+      kind === "air"
         ? "Maintenance 50 – Air (CVIP) – Inspection"
         : "Maintenance 50 – Hydraulic – Inspection";
 
     const newLine: WorkOrderLineInsert = {
       work_order_id: workOrderId,
-      description: inspectionName,
+      description,
       job_type: "inspection",
       status: "awaiting",
       priority: 3,
@@ -193,50 +199,17 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       notes: null,
     };
 
-    const { data: inserted, error: insErr } = await supabase
-      .from("work_order_lines")
-      .insert(newLine)
-      .select("id")
-      .single();
+    const { error } = await supabase.from("work_order_lines").insert(newLine);
+    setAddingId(null);
 
-    if (insErr || !inserted?.id) {
-      console.error("Failed to create inspection line:", insErr);
-      alert(insErr?.message || "Failed to create inspection line");
+    if (error) {
+      console.error("Failed to create inspection line:", error);
+      alert(error.message);
       return;
     }
 
-    const params = new URLSearchParams();
-    params.set("workOrderId", workOrderId);
-    params.set("workOrderLineId", inserted.id);
-    params.set(
-      "template",
-      path === "/inspections/maintenance50-air" ? "Maintenance 50 – Air (CVIP)" : "Maintenance 50 – Hydraulic"
-    );
-
-    if (customer) {
-      if (customer.first_name) params.set("first_name", String(customer.first_name));
-      if (customer.last_name) params.set("last_name", String(customer.last_name));
-      if (customer.phone) params.set("phone", String(customer.phone));
-      if (customer.email) params.set("email", String(customer.email));
-      if (customer.address) params.set("address", String(customer.address));
-      if (customer.city) params.set("city", String(customer.city));
-      if (customer.province) params.set("province", String(customer.province));
-      if (customer.postal_code) params.set("postal_code", String(customer.postal_code));
-    }
-
-    if (vehicle) {
-      if (vehicle.year) params.set("year", String(vehicle.year));
-      if (vehicle.make) params.set("make", String(vehicle.make));
-      if (vehicle.model) params.set("model", String(vehicle.model));
-      if (vehicle.vin) params.set("vin", String(vehicle.vin));
-      if (vehicle.license_plate) params.set("license_plate", String(vehicle.license_plate));
-      if (vehicle.mileage) params.set("mileage", String(vehicle.mileage));
-      if (vehicle.color) params.set("color", String(vehicle.color));
-      if (vehicle.unit_number) params.set("unit_number", String(vehicle.unit_number));
-      if (vehicle.odometer) params.set("odometer", String(vehicle.odometer));
-    }
-
-    router.push(`${path}?${params.toString()}`);
+    // Let the id page refresh & user can click the new line to open FocusedJob
+    window.dispatchEvent(new CustomEvent("wo:line-added"));
   }
 
   async function addSingle(item: SimpleService) {
@@ -267,18 +240,18 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   async function addPackage(pkg: PackageDef) {
     setAddingId(pkg.id);
 
-    // For inspection packages, create ONE inspection line then route
+    // For inspection packages, create ONE inspection line (no navigation)
     if (pkg.jobType === "inspection") {
-      setAddingId(null);
       if (pkg.id === "insp-diesel") {
-        await pushInspection("/inspections/maintenance50-air");
+        await addInspectionLine("air");
       } else {
-        await pushInspection("/inspections/maintenance50");
+        await addInspectionLine("hydraulic");
       }
+      setAddingId(null);
       return;
     }
 
-    // For maintenance packages, create ONE summary line (no line explosion)
+    // For maintenance packages, create ONE summary line
     const line: WorkOrderLineInsert = {
       work_order_id: workOrderId,
       description: pkg.name,
@@ -303,6 +276,22 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
   const visiblePackages = showAllPackages ? packages : packages.slice(0, 2);
   const visibleSingles = showAllSingles ? singles : singles.slice(0, 2);
+
+  const vehicleName =
+    vehicle ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim() : "";
+  const customerName =
+    customer ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") : "";
+
+  const inspectionBtnTitle = (kind: "hydraulic" | "air") => {
+    const tpl = kind === "air" ? "Air (CVIP)" : "Hydraulic";
+    const who = customerName ? ` for ${customerName}` : "";
+    const what = vehicleName ? ` on ${vehicleName}` : "";
+    const missing =
+      !vehicle || !customer
+        ? " — note: link vehicle & customer on the work order to prefill the inspection"
+        : "";
+    return `Add "Maintenance 50 – ${tpl} – Inspection"${who}${what}${missing}`;
+  };
 
   return (
     <div className="space-y-6">
@@ -334,31 +323,45 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
         <div className="grid gap-2 sm:grid-cols-2">
           <button
-            onClick={() => pushInspection("/inspections/maintenance50")}
-            className="rounded border border-neutral-800 bg-neutral-950 p-3 text-left hover:bg-neutral-900 disabled:opacity-60"
-            disabled={!vehicle}
-            title={!vehicle ? "Link a vehicle to this Work Order first." : "Open hydraulic inspection"}
+            onClick={() => addInspectionLine("hydraulic")}
+            className="rounded border border-neutral-800 bg-neutral-950 p-3 text-left hover:bg-neutral-900"
+            title={inspectionBtnTitle("hydraulic")}
+            disabled={addingId === "hydraulic"}
           >
             <div className="font-medium">Maintenance 50 – Hydraulic</div>
             <div className="text-xs text-neutral-400">Measurements + oil change section</div>
+            {(vehicleName || customerName) && (
+              <div className="mt-1 text-[11px] text-neutral-500">
+                {customerName ? `Customer: ${customerName}` : ""}
+                {customerName && vehicleName ? " • " : ""}
+                {vehicleName ? `Vehicle: ${vehicleName}` : ""}
+              </div>
+            )}
           </button>
 
           <button
-            onClick={() => pushInspection("/inspections/maintenance50-air")}
-            className="rounded border border-neutral-800 bg-neutral-950 p-3 text-left hover:bg-neutral-900 disabled:opacity-60"
-            disabled={!vehicle}
-            title={!vehicle ? "Link a vehicle to this Work Order first." : "Open air-brake inspection"}
+            onClick={() => addInspectionLine("air")}
+            className="rounded border border-neutral-800 bg-neutral-950 p-3 text-left hover:bg-neutral-900"
+            title={inspectionBtnTitle("air")}
+            disabled={addingId === "air"}
           >
             <div className="font-medium">Maintenance 50 – Air (CVIP)</div>
             <div className="text-xs text-neutral-400">Air-governor, leakage, push-rod stroke + oil change</div>
+            {(vehicleName || customerName) && (
+              <div className="mt-1 text-[11px] text-neutral-500">
+                {customerName ? `Customer: ${customerName}` : ""}
+                {customerName && vehicleName ? " • " : ""}
+                {vehicleName ? `Vehicle: ${vehicleName}` : ""}
+              </div>
+            )}
           </button>
         </div>
 
-        {!vehicle && (
+        {!vehicle || !customer ? (
           <p className="mt-2 text-xs text-neutral-500">
-            No vehicle found on this work order — inspections need vehicle info to prefill the form.
+            To prefill the inspection, make sure **both** vehicle and customer are linked on the work order.
           </p>
-        )}
+        ) : null}
       </div>
 
       {/* PACKAGES (collapsible) */}
@@ -410,6 +413,11 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
               onClick={() => addSingle(m)}
               disabled={addingId === m.name}
               className="rounded border border-neutral-800 bg-neutral-950 p-3 text-left hover:bg-neutral-900 disabled:opacity-60"
+              title={
+                customerName || vehicleName
+                  ? `For ${customerName || "customer"}${vehicleName ? ` • ${vehicleName}` : ""}`
+                  : undefined
+              }
             >
               <div className="font-medium">{m.name}</div>
               <div className="text-xs text-neutral-400">
