@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { format, formatDistanceStrict } from "date-fns";
 import { toast } from "sonner";
@@ -189,7 +190,7 @@ function DebugPanel({
   supabase,
 }: {
   woId: string;
-  supabase: ReturnType<typeof createClientComponentClient<DB>>;
+  supabase: SupabaseClient<DB>;
 }) {
   const [state, setState] = useState<any>(null);
 
@@ -216,9 +217,7 @@ function DebugPanel({
   return (
     <div className="mt-4 rounded border border-yellow-700 bg-yellow-900/20 p-3 text-xs text-yellow-200">
       <div className="font-semibold mb-1">Debug</div>
-      <pre className="whitespace-pre-wrap text-[11px]">
-        {JSON.stringify(state, null, 2)}
-      </pre>
+      <pre className="whitespace-pre-wrap text-[11px]">{JSON.stringify(state, null, 2)}</pre>
     </div>
   );
 }
@@ -319,7 +318,7 @@ export default function WorkOrderPage(): JSX.Element {
     }
   }, [lines, touchedSelection]);
 
-  // Current user
+  // Current user (initial fetch)
   useEffect(() => {
     (async () => {
       const {
@@ -335,13 +334,28 @@ export default function WorkOrderPage(): JSX.Element {
     })();
   }, [supabase]);
 
-  // Re-run after auth state changes (helps when session is restored async)
+  // Re-run after auth state changes (hydrate userId when session restores)
   useEffect(() => {
-    const { data: sub } = supabase.auth.onAuthStateChange(() => {
-      // no-op; fetch effect below depends on userId
+    const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
+      const uid = session?.user?.id ?? null;
+      setCurrentUserId(uid);
+      setUserId(uid);
     });
     return () => sub.subscription.unsubscribe();
   }, [supabase]);
+
+  // One-shot kickstart in case hydration is slow (iOS/Safari)
+  useEffect(() => {
+    if (userId) return;
+    const t = setTimeout(async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setCurrentUserId(user.id);
+        setUserId(user.id);
+      }
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [userId, supabase]);
 
   // Load role
   useEffect(() => {
@@ -831,7 +845,11 @@ export default function WorkOrderPage(): JSX.Element {
         </button>
       </div>
 
-      {viewError && <div className="mt-4 whitespace-pre-wrap rounded border border-red-500/40 bg-red-500/10 p-3 text-red-300">{viewError}</div>}
+      {viewError && (
+        <div className="mt-4 whitespace-pre-wrap rounded border border-red-500/40 bg-red-500/10 p-3 text-red-300">
+          {viewError}
+        </div>
+      )}
 
       {loading && (
         <div className="mt-6 grid gap-4">
@@ -1204,7 +1222,7 @@ export default function WorkOrderPage(): JSX.Element {
           )}
 
           {/* Optional inline diagnostics */}
-          {debug && woId && <DebugPanel woId={woId} supabase={supabase} />}
+          {debug && woId && <DebugPanel woId={woId} supabase={supabase as unknown as SupabaseClient<DB>} />}
         </div>
       )}
 
@@ -1213,7 +1231,7 @@ export default function WorkOrderPage(): JSX.Element {
         <div className="mt-8 space-y-4">
           <h2 className="text-xl font-semibold">Vehicle Photos</h2>
           <VehiclePhotoUploader vehicleId={vehicle.id} />
-          <VehiclePhotoGallery vehicleId={vehicle.id} currentUserId={currentUserId} />
+          <VehiclePhotoGallery vehicleId={vehicle.id} currentUserId={currentUserId!} />
         </div>
       )}
 
