@@ -43,29 +43,10 @@ export async function middleware(req: NextRequest) {
     completed = !!profile?.completed_onboarding;
   }
 
-  // --- Landing handling ---
-  // If NOT signed in: go straight to /sign-in (so you don't have to click Dashboard)
-  // After login, we'll redirect to /dashboard (see redirect param).
-  if (pathname === "/" && !session?.user) {
-    const login = new URL("/sign-in", req.url);
-    login.searchParams.set("redirect", "/dashboard");
-    return NextResponse.redirect(login);
-  }
-
-  // If signed in but NOT allowlisted: show Coming Soon
+  // Signed-in user hitting landing → go to dashboard or onboarding
   if (pathname === "/" && session?.user) {
-    const allow = new Set(
-      (process.env.ALLOWLIST_EMAILS ?? "")
-        .split(",")
-        .map((e) => e.trim().toLowerCase())
-        .filter(Boolean),
-    );
-
-    const email = (session.user.email ?? "").toLowerCase();
-    if (!allow.has(email)) {
-      return NextResponse.rewrite(new URL("/coming-soon", req.url));
-    }
-    // allowlisted + signed in: fall through to app
+    const to = role && completed ? "/dashboard" : "/onboarding";
+    return NextResponse.redirect(new URL(to, req.url));
   }
 
   if (isPublic) {
