@@ -3,7 +3,11 @@ import "./globals.css";
 import { Roboto, Black_Ops_One } from "next/font/google";
 import Providers from "./providers";
 import AppShell from "@/features/shared/components/AppShell";
-import TabsBridge from "@/features/shared/components/tabs/TabsBridge"; // ⬅️ NEW
+import TabsBridge from "@/features/shared/components/tabs/TabsBridge";
+
+import { cookies } from "next/headers";
+import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
 
 // Fonts: body → Roboto, headers/buttons → Black Ops One
 const roboto = Roboto({
@@ -22,17 +26,27 @@ export const metadata = {
   description: "Tech tools for modern shops",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // ✅ Server-side session check (no flash of tabs for signed-out users)
+  const supabase = createServerComponentClient<Database>({ cookies });
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
   return (
     <html lang="en">
       <body className={`${roboto.variable} ${blackOps.variable} bg-black text-white`}>
         <Providers>
           {/* Global app shell (desktop header + mobile shell) */}
           <AppShell>
-            {/* Tabs with user-scoped persistence */}
-            <TabsBridge>
+            {/* Tabs with user-scoped persistence – only render when signed in */}
+            {session?.user ? (
+              <TabsBridge>
+                <main>{children}</main>
+              </TabsBridge>
+            ) : (
               <main>{children}</main>
-            </TabsBridge>
+            )}
           </AppShell>
         </Providers>
       </body>

@@ -4,8 +4,6 @@ import type { NextRequest } from "next/server";
 import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
-type UserRole = Database["public"]["Enums"]["user_role_enum"];
-
 function isAssetPath(p: string) {
   return (
     p.startsWith("/_next") ||
@@ -18,10 +16,7 @@ function isAssetPath(p: string) {
 
 function withSupabaseCookies(from: NextResponse, to: NextResponse) {
   const setCookie = from.headers.get("set-cookie");
-  if (setCookie) {
-    // Append each Set-Cookie safely (Next may join them with commas)
-    setCookie.split(",").forEach((c) => to.headers.append("set-cookie", c.trim()));
-  }
+  if (setCookie) setCookie.split(",").forEach((c) => to.headers.append("set-cookie", c.trim()));
   return to;
 }
 
@@ -30,11 +25,7 @@ export async function middleware(req: NextRequest) {
   const supabase = createMiddlewareClient<Database>({ req, res });
 
   const { pathname, search } = req.nextUrl;
-
-  // Skip assets & API
-  if (isAssetPath(pathname) || pathname.startsWith("/api")) {
-    return res;
-  }
+  if (isAssetPath(pathname) || pathname.startsWith("/api")) return res;
 
   const {
     data: { session },
@@ -49,43 +40,42 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/sign-in") ||
     pathname.startsWith("/portal");
 
-  // Lightweight profile flags (RLS must allow the user to read their own row)
-  let role: UserRole | null = null;
+  // Only the onboarding flag matters for routing decisions
   let completed = false;
   if (session?.user) {
     try {
       const { data: profile } = await supabase
         .from("profiles")
-        .select("role, completed_onboarding")
+        .select("completed_onboarding")
         .eq("id", session.user.id)
         .maybeSingle();
-      role = profile?.role ?? null;
       completed = !!profile?.completed_onboarding;
     } catch {
-      // don't block on errors — we'll treat as not completed
+      // treat as not completed if profile lookup fails
+      completed = false;
     }
   }
 
-  // Signed-in landing → dashboard/onboarding
+  // Signed-in user on landing → go to dashboard or onboarding
   if (pathname === "/" && session?.user) {
-    const to = role && completed ? "/dashboard" : "/onboarding";
-    return withSupabaseCookies(res, NextResponse.redirect(new URL(to, req.url)));
+    return withSupabaseCookies(
+      res,
+      NextResponse.redirect(new URL(completed ? "/dashboard" : "/onboarding", req.url))
+    );
   }
 
-  // Public routes pass (with a couple of signed-in conveniences)
+  // Public routes
   if (isPublic) {
-    // If already signed in and hitting auth pages, bounce to redirect or app
+    // Signed-in user trying to visit auth pages → bounce to right place
     if (session?.user && (pathname.startsWith("/sign-in") || pathname.startsWith("/signup"))) {
       const redirectParam = req.nextUrl.searchParams.get("redirect");
-      const to = redirectParam || (role && completed ? "/dashboard" : "/onboarding");
+      const to = redirectParam || (completed ? "/dashboard" : "/onboarding");
       return withSupabaseCookies(res, NextResponse.redirect(new URL(to, req.url)));
     }
-
-    // If fully onboarded, keep you off /onboarding (shouldn’t be public anyway, but guard just in case)
-    if (pathname.startsWith("/onboarding") && session?.user && role && completed) {
+    // If already finished, keep them off /onboarding even if linked
+    if (pathname.startsWith("/onboarding") && session?.user && completed) {
       return withSupabaseCookies(res, NextResponse.redirect(new URL("/dashboard", req.url)));
     }
-
     return res;
   }
 
@@ -96,7 +86,7 @@ export async function middleware(req: NextRequest) {
     return withSupabaseCookies(res, NextResponse.redirect(login));
   }
 
-  // Require onboarding before any protected area
+  // Require onboarding before any protected area (except /onboarding itself)
   if (!completed && !pathname.startsWith("/onboarding")) {
     return withSupabaseCookies(res, NextResponse.redirect(new URL("/onboarding", req.url)));
   }
