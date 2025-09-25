@@ -243,6 +243,7 @@ export default function WorkOrderPage(): JSX.Element {
   const [customer, setCustomer] = useState<Customer | null>(null);
 
   // IMPORTANT: start not-loading; only show skeletons when a fetch actually starts
+  const [attempted, setAttempted] = useState(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [viewError, setViewError] = useState<string | null>(null);
 
@@ -390,6 +391,11 @@ export default function WorkOrderPage(): JSX.Element {
       if (!woId || !userId) return; // wait for auth + param
       setLoading(true);
       setViewError(null);
+
+      if (!woId || !userId) return;
+        setAttempted(true);          // ← mark that we tried
+        setLoading(true);
+        setViewError(null);
 
       try {
         const { data: woRow, error: woErr } = await supabase
@@ -858,7 +864,9 @@ export default function WorkOrderPage(): JSX.Element {
         </div>
       )}
 
-      {!loading && !wo && !viewError && <div className="mt-6 text-red-500">Work order not found.</div>}
+      {attempted && !loading && !wo && !viewError && (
+        <div className="mt-6 text-red-500">Work order not found.</div>
+      )}
 
       {!loading && wo && (
         <div className="space-y-6">
