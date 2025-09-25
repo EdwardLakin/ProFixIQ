@@ -4,7 +4,6 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { format, formatDistanceStrict } from "date-fns";
 import { toast } from "sonner";
@@ -190,7 +189,7 @@ function DebugPanel({
   supabase,
 }: {
   woId: string;
-  supabase: SupabaseClient<DB>;
+  supabase: ReturnType<typeof createClientComponentClient<DB>>;
 }) {
   const [state, setState] = useState<any>(null);
 
@@ -242,7 +241,9 @@ export default function WorkOrderPage(): JSX.Element {
   const [lines, setLines] = useState<WorkOrderLine[]>([]);
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+
+  // IMPORTANT: start not-loading; only show skeletons when a fetch actually starts
+  const [loading, setLoading] = useState<boolean>(false);
   const [viewError, setViewError] = useState<string | null>(null);
 
   // Role
@@ -318,7 +319,7 @@ export default function WorkOrderPage(): JSX.Element {
     }
   }, [lines, touchedSelection]);
 
-  // Current user (initial fetch)
+  // Current user (initial)
   useEffect(() => {
     (async () => {
       const {
@@ -327,35 +328,35 @@ export default function WorkOrderPage(): JSX.Element {
       if (user) {
         setCurrentUserId(user.id);
         setUserId(user.id);
-      } else {
-        setCurrentUserId(null);
-        setUserId(null);
       }
     })();
   }, [supabase]);
 
-  // Re-run after auth state changes (hydrate userId when session restores)
+  // Keep userId in sync with auth state (THIS FIXES THE STUCK SKELETON)
   useEffect(() => {
-    const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
       const uid = session?.user?.id ?? null;
       setCurrentUserId(uid);
       setUserId(uid);
     });
-    return () => sub.subscription.unsubscribe();
+    return () => data.subscription.unsubscribe();
   }, [supabase]);
 
-  // One-shot kickstart in case hydration is slow (iOS/Safari)
+  // Fallback: if session was late to hydrate, poke once after a short delay
   useEffect(() => {
-    if (userId) return;
     const t = setTimeout(async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setCurrentUserId(user.id);
-        setUserId(user.id);
+      if (!userId) {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (user) {
+          setCurrentUserId(user.id);
+          setUserId(user.id);
+        }
       }
-    }, 1500);
+    }, 400);
     return () => clearTimeout(t);
-  }, [userId, supabase]);
+  }, [supabase, userId]);
 
   // Load role
   useEffect(() => {
@@ -386,7 +387,7 @@ export default function WorkOrderPage(): JSX.Element {
   // ---------------------- FETCH (guarded by user session) ----------------------
   const fetchAll = useCallback(
     async (retry = 0) => {
-      if (!woId || !userId) return; // 🚦 wait for auth + param
+      if (!woId || !userId) return; // wait for auth + param
       setLoading(true);
       setViewError(null);
 
@@ -398,14 +399,12 @@ export default function WorkOrderPage(): JSX.Element {
           .maybeSingle();
         if (woErr) throw woErr;
 
-        // 🔎 If not visible, stop spinning and explain why
+        // Not visible → give actionable message (don’t spin forever)
         if (!woRow) {
-          // Small backoff retry in case session just synced
           if (retry < 2) {
             await sleep(200 * Math.pow(2, retry));
             return fetchAll(retry + 1);
           }
-
           const [
             {
               data: { user },
@@ -1067,9 +1066,7 @@ export default function WorkOrderPage(): JSX.Element {
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="truncate font-medium">
-                            {ln.description || ln.complaint || "Untitled job"}
-                          </div>
+                          <div className="truncate font-medium">{ln.description || ln.complaint || "Untitled job"}</div>
                           <div className="text-xs text-neutral-400">
                             {String((ln.job_type as JobType) ?? "job").replaceAll("_", " ")} •{" "}
                             {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} • Status:{" "}
@@ -1222,7 +1219,7 @@ export default function WorkOrderPage(): JSX.Element {
           )}
 
           {/* Optional inline diagnostics */}
-          {debug && woId && <DebugPanel woId={woId} supabase={supabase as unknown as SupabaseClient<DB>} />}
+          {debug && woId && <DebugPanel woId={woId} supabase={supabase} />}
         </div>
       )}
 
