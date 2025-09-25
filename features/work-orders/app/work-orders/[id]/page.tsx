@@ -88,6 +88,7 @@ function paramToString(v: string | string[] | undefined): string | null {
   if (!v) return null;
   return Array.isArray(v) ? v[0] ?? null : v;
 }
+const looksLikeUuid = (s: string) => s.includes("-") && s.length >= 36;
 
 /* ---------------------------- Status -> Styles ---------------------------- */
 const statusBadge: Record<string, string> = {
@@ -241,10 +242,7 @@ export default function WorkOrderPage(): JSX.Element {
   const [lines, setLines] = useState<WorkOrderLine[]>([]);
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
-
-  // IMPORTANT: start not-loading; only show skeletons when a fetch actually starts
-  const [attempted, setAttempted] = useState(false);
-  const [loading, setLoading] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(true);
   const [viewError, setViewError] = useState<string | null>(null);
 
   // Role
@@ -254,7 +252,7 @@ export default function WorkOrderPage(): JSX.Element {
   const [line, setLine] = useState<WorkOrderLine | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [duration, setDuration] = useState("");
-  const [tech, setTech] = useState<Profile | null>(null);
+  the const [tech, setTech] = useState<Profile | null>(null);
 
   // Photos + user cache
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -320,7 +318,7 @@ export default function WorkOrderPage(): JSX.Element {
     }
   }, [lines, touchedSelection]);
 
-  // Current user (initial)
+  // Current user
   useEffect(() => {
     (async () => {
       const {
@@ -329,35 +327,18 @@ export default function WorkOrderPage(): JSX.Element {
       if (user) {
         setCurrentUserId(user.id);
         setUserId(user.id);
+      } else {
+        setCurrentUserId(null);
+        setUserId(null);
       }
     })();
   }, [supabase]);
 
-  // Keep userId in sync with auth state (THIS FIXES THE STUCK SKELETON)
+  // Re-run after auth state changes (helps when session is restored async)
   useEffect(() => {
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      const uid = session?.user?.id ?? null;
-      setCurrentUserId(uid);
-      setUserId(uid);
-    });
-    return () => data.subscription.unsubscribe();
+    const { data: sub } = supabase.auth.onAuthStateChange(() => {});
+    return () => sub.subscription.unsubscribe();
   }, [supabase]);
-
-  // Fallback: if session was late to hydrate, poke once after a short delay
-  useEffect(() => {
-    const t = setTimeout(async () => {
-      if (!userId) {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (user) {
-          setCurrentUserId(user.id);
-          setUserId(user.id);
-        }
-      }
-    }, 400);
-    return () => clearTimeout(t);
-  }, [supabase, userId]);
 
   // Load role
   useEffect(() => {
@@ -388,29 +369,34 @@ export default function WorkOrderPage(): JSX.Element {
   // ---------------------- FETCH (guarded by user session) ----------------------
   const fetchAll = useCallback(
     async (retry = 0) => {
-      if (!woId || !userId) return; // wait for auth + param
+      if (!woId || !userId) return; // 🚦 wait for auth + param
       setLoading(true);
       setViewError(null);
 
-      if (!woId || !userId) return;
-        setAttempted(true);          // ← mark that we tried
-        setLoading(true);
-        setViewError(null);
-
       try {
-        const { data: woRow, error: woErr } = await supabase
+        // Primary: try UUID id
+        let { data: woRow, error: woErr } = await supabase
           .from("work_orders")
           .select("*")
           .eq("id", woId)
           .maybeSingle();
         if (woErr) throw woErr;
 
-        // Not visible → give actionable message (don’t spin forever)
+        // 🔁 fallback: try custom_id when route param is short (no dashes)
+        if (!woRow && !looksLikeUuid(woId)) {
+          const byCustom = await supabase.from("work_orders").select("*").eq("custom_id", woId).maybeSingle();
+          if (byCustom.data) {
+            woRow = byCustom.data;
+          }
+        }
+
+        // 🔎 If still not visible, stop spinning and explain why
         if (!woRow) {
           if (retry < 2) {
             await sleep(200 * Math.pow(2, retry));
             return fetchAll(retry + 1);
           }
+
           const [
             {
               data: { user },
@@ -424,11 +410,13 @@ export default function WorkOrderPage(): JSX.Element {
           ]);
 
           const parts = [
-            "Work order not visible.",
+            "Work order not visible / not found.",
+            `• param: ${woId}`,
+            `• treated_as_uuid: ${looksLikeUuid(woId)}`,
             `• session: ${user ? "present" : "missing"}`,
             `• current_shop_id: ${curShop ?? "NULL"}`,
             `• visible via SELECT count: ${vis.count ?? 0}`,
-            "Tip: likely RLS shop mismatch or no session. Use ?debug=1 for details.",
+            "Tip: ensure URL uses the full UUID or that custom_id is set to the short code.",
           ];
           setViewError(parts.join("\n"));
           setWo(null);
@@ -864,9 +852,7 @@ export default function WorkOrderPage(): JSX.Element {
         </div>
       )}
 
-      {attempted && !loading && !wo && !viewError && (
-        <div className="mt-6 text-red-500">Work order not found.</div>
-      )}
+      {!loading && !wo && !viewError && <div className="mt-6 text-red-500">Work order not found.</div>}
 
       {!loading && wo && (
         <div className="space-y-6">
@@ -1074,7 +1060,9 @@ export default function WorkOrderPage(): JSX.Element {
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="truncate font-medium">{ln.description || ln.complaint || "Untitled job"}</div>
+                          <div className="truncate font-medium">
+                            {ln.description || ln.complaint || "Untitled job"}
+                          </div>
                           <div className="text-xs text-neutral-400">
                             {String((ln.job_type as JobType) ?? "job").replaceAll("_", " ")} •{" "}
                             {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} • Status:{" "}
