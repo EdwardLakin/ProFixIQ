@@ -252,7 +252,7 @@ export default function WorkOrderPage(): JSX.Element {
   const [line, setLine] = useState<WorkOrderLine | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [duration, setDuration] = useState("");
-  the const [tech, setTech] = useState<Profile | null>(null);
+  const [tech, setTech] = useState<Profile | null>(null);
 
   // Photos + user cache
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
