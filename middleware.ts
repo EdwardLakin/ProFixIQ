@@ -86,10 +86,10 @@ export async function middleware(req: NextRequest) {
     return withSupabaseCookies(res, NextResponse.redirect(login));
   }
 
-  // Require onboarding before any protected area (except /onboarding itself)
-  if (!completed && !pathname.startsWith("/onboarding")) {
-    return withSupabaseCookies(res, NextResponse.redirect(new URL("/onboarding", req.url)));
-  }
+  // Only force onboarding if we explicitly know it's not completed
+if (completed === false && !pathname.startsWith("/onboarding")) {
+  return withSupabaseCookies(res, NextResponse.redirect(new URL("/onboarding", req.url)));
+}
 
   return res;
 }
