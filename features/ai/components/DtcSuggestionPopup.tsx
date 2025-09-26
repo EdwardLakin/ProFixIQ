@@ -6,31 +6,24 @@ type Props = {
   jobId: string;
   vehicle: { year: string; make: string; model: string };
   punchedInAt: string;
-  onSave: (updates: {
-    cause: string;
-    correction: string;
-    estimatedLaborTime: number;
-  }) => void;
 };
 
-export default function DtcSuggestionPopup({
-  jobId,
-  vehicle,
-  punchedInAt,
-  onSave,
-}: Props) {
+type SuggestionResult = {
+  cause: string;
+  correction: string;
+  estimatedLaborTime: string;
+};
+
+export default function DtcSuggestionPopup({ jobId, vehicle, punchedInAt }: Props) {
   const [show, setShow] = useState(false);
   const [dtcCode, setDtcCode] = useState("");
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<null | {
-    cause: string;
-    correction: string;
-    estimatedLaborTime: string;
-  }>(null);
+  const [result, setResult] = useState<SuggestionResult | null>(null);
   const [error, setError] = useState("");
 
   // Trigger 10 minutes after punch-in
   useEffect(() => {
+    if (!punchedInAt) return;
     const punchTime = new Date(punchedInAt).getTime();
     const now = Date.now();
     const delay = Math.max(0, 10 * 60 * 1000 - (now - punchTime));
@@ -44,42 +37,48 @@ export default function DtcSuggestionPopup({
     try {
       const res = await fetch("/ai/chat/dtc", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ dtcCode, vehicle, jobId }),
       });
-      const data = await res.json();
-      if (res.ok) {
-        setResult(data);
-      } else {
-        setError(data.error || "Failed to get suggestion");
-      }
-    } catch (err) {
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) setResult(data as SuggestionResult);
+      else setError((data as any)?.error || "Failed to get suggestion");
+    } catch {
       setError("Error contacting AI.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleConfirm = () => {
     if (!result) return;
-    const time =
-      parseFloat(result.estimatedLaborTime.replace(/[^\d.]/g, "")) || 0.5;
-    onSave({
-      cause: result.cause,
-      correction: result.correction,
-      estimatedLaborTime: time,
-    });
+    const time = parseFloat(result.estimatedLaborTime.replace(/[^\d.]/g, "")) || 0.5;
+
+    // 🔔 Emit a client-side event instead of using a function prop
+    window.dispatchEvent(
+      new CustomEvent("dtc:save", {
+        detail: {
+          jobId,
+          cause: result.cause,
+          correction: result.correction,
+          estimatedLaborTime: time,
+        },
+      })
+    );
+
     setShow(false);
   };
 
   if (!show) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-white text-black p-6 rounded-lg max-w-lg w-full shadow-lg space-y-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-lg space-y-4 rounded-lg bg-white p-6 text-black shadow-lg">
         <h2 className="text-xl font-bold text-orange-600">AI DTC Suggestion</h2>
 
         <input
           placeholder="Enter DTC code (e.g., P0131)"
-          className="w-full border p-2 rounded"
+          className="w-full rounded border p-2"
           value={dtcCode}
           onChange={(e) => setDtcCode(e.target.value.toUpperCase())}
         />
@@ -87,15 +86,15 @@ export default function DtcSuggestionPopup({
         <button
           onClick={handleSubmit}
           disabled={loading}
-          className="bg-orange-600 text-white px-4 py-2 rounded w-full font-semibold"
+          className="w-full rounded bg-orange-600 px-4 py-2 font-semibold text-white disabled:opacity-60"
         >
           {loading ? "Analyzing..." : "Get Suggestion"}
         </button>
 
-        {error && <p className="text-red-600 text-sm">{error}</p>}
+        {error && <p className="text-sm text-red-600">{error}</p>}
 
         {result && (
-          <div className="bg-gray-100 p-3 rounded text-sm space-y-2">
+          <div className="space-y-2 rounded bg-gray-100 p-3 text-sm">
             <div>
               <strong>Cause:</strong> {result.cause}
             </div>
@@ -106,16 +105,16 @@ export default function DtcSuggestionPopup({
               <strong>Est. Labor Time:</strong> {result.estimatedLaborTime}
             </div>
 
-            <div className="flex gap-4 mt-2">
+            <div className="mt-2 flex gap-4">
               <button
                 onClick={handleConfirm}
-                className="bg-green-600 text-white px-4 py-2 rounded w-full font-bold"
+                className="w-full rounded bg-green-600 px-4 py-2 font-bold text-white"
               >
                 Save to Job
               </button>
               <button
                 onClick={() => setShow(false)}
-                className="bg-gray-400 text-black px-4 py-2 rounded w-full"
+                className="w-full rounded bg-gray-400 px-4 py-2 text-black"
               >
                 Dismiss
               </button>
