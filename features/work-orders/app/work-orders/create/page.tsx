@@ -1,3 +1,4 @@
+// app/work-orders/create/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -8,74 +9,68 @@ import type { Database } from "@shared/types/types/supabase";
 import { useTabState } from "@/features/shared/hooks/useTabState";
 
 type DB = Database;
-type MenuItem = DB["public"]["Tables"]["menu_items"]["Row"];
-type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
-type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
+type MenuItem   = DB["public"]["Tables"]["menu_items"]["Row"];
+type Customer   = DB["public"]["Tables"]["customers"]["Row"];
+type Vehicle    = DB["public"]["Tables"]["vehicles"]["Row"];
 
-// Match your UI choices
 type WOType = "inspection" | "maintenance" | "diagnosis";
 
-type UploadSummary = {
-  uploaded: number;
-  failed: number;
-};
+type UploadSummary = { uploaded: number; failed: number };
 
 export default function CreateWorkOrderPage() {
+  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
-  // --- Preselects (optional) -------------------------------------------------
+  // ------- preselects from URL / tab state
   const [prefillVehicleId, setPrefillVehicleId] = useTabState<string | null>("prefillVehicleId", null);
   const [prefillCustomerId, setPrefillCustomerId] = useTabState<string | null>("prefillCustomerId", null);
-  const [inspectionId, setInspectionId] = useTabState<string | null>("inspectionId", null);
+  const [inspectionId,     setInspectionId]     = useTabState<string | null>("inspectionId", null);
 
-  // --- Customer form ---------------------------------------------------------
+  // ------- customer form
   const [customerId, setCustomerId] = useTabState<string | null>("customerId", null);
-  const [custFirst, setCustFirst] = useTabState("custFirst", "");
-  const [custLast, setCustLast] = useTabState("custLast", "");
-  const [custPhone, setCustPhone] = useTabState("custPhone", "");
-  const [custEmail, setCustEmail] = useTabState("custEmail", "");
-  const [sendInvite, setSendInvite] = useTabState<boolean>("sendInvite", false); // invite toggle
+  const [custFirst, setCustFirst]   = useTabState("custFirst", "");
+  const [custLast,  setCustLast]    = useTabState("custLast", "");
+  const [custPhone, setCustPhone]   = useTabState("custPhone", "");
+  const [custEmail, setCustEmail]   = useTabState("custEmail", "");
+  const [sendInvite, setSendInvite] = useTabState<boolean>("sendInvite", false);
 
-  // --- Vehicle form ----------------------------------------------------------
+  // ------- vehicle form
   const [vehicleId, setVehicleId] = useTabState<string | null>("vehicleId", null);
-  const [vin, setVin] = useTabState("vin", "");
-  const [year, setYear] = useTabState<string>("year", "");
-  const [make, setMake] = useTabState("make", "");
-  const [model, setModel] = useTabState("model", "");
-  const [plate, setPlate] = useTabState("plate", "");
-  const [mileage, setMileage] = useTabState<string>("mileage", "");
+  const [vin,    setVin]    = useTabState("vin", "");
+  const [year,   setYear]   = useTabState<string>("year", "");
+  const [make,   setMake]   = useTabState("make", "");
+  const [model,  setModel]  = useTabState("model", "");
+  const [plate,  setPlate]  = useTabState("plate", "");
+  const [mileage,setMileage]= useTabState<string>("mileage", "");
 
-  // --- WO basics -------------------------------------------------------------
-  const [type, setType] = useTabState<WOType>("type", "maintenance"); // used to seed line job_type from menu picks
+  // ------- work order basics
+  const [type,  setType]  = useTabState<WOType>("type", "maintenance"); // default for menu quick-add
   const [notes, setNotes] = useTabState("notes", "");
 
-  // --- Menu items / selection ------------------------------------------------
-  const [menuItems, setMenuItems] = useTabState<MenuItem[]>("menuItems", []);
+  // ------- menu quick add
+  const [menuItems,   setMenuItems]   = useTabState<MenuItem[]>("menuItems", []);
   const [selectedIds, setSelectedIds] = useTabState<string[]>("selectedIds", []);
 
-  // --- Uploads ---------------------------------------------------------------
-  // NOTE: File objects are not JSON-serializable; keep these in volatile state
+  // ------- uploads (kept out of tab-state; File isn't serializable)
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
-  const [docFiles, setDocFiles] = useState<File[]>([]);
+  const [docFiles,   setDocFiles]   = useState<File[]>([]);
   const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(null);
 
-  // --- UI state --------------------------------------------------------------
+  // ------- ui
   const [loading, setLoading] = useTabState("loading", false);
-  const [error, setError] = useTabState("error", "");
-  const [inviteNotice, setInviteNotice] = useTabState<string>("inviteNotice", "");
+  const [error,   setError]   = useTabState("error", "");
+  const [inviteNotice, setInviteNotice] = useTabState("inviteNotice", "");
 
-  // Helpers: initials + custom id
+  // ========== helpers
   function getInitials(first?: string | null, last?: string | null, fallback?: string | null): string {
     const f = (first ?? "").trim();
     const l = (last ?? "").trim();
     if (f || l) return `${f[0] ?? ""}${l[0] ?? ""}`.toUpperCase() || "WO";
-    // fallback from full name or email local part
     const fb = (fallback ?? "").trim();
     if (fb.includes(" ")) {
-      const parts = fb.split(/\s+/);
-      return `${parts[0]?.[0] ?? ""}${parts[1]?.[0] ?? ""}`.toUpperCase() || "WO";
+      const [a = "", b = ""] = fb.split(/\s+/);
+      return `${a[0] ?? ""}${b[0] ?? ""}`.toUpperCase() || "WO";
     }
     if (fb.includes("@")) return fb.split("@")[0].slice(0, 2).toUpperCase() || "WO";
     return fb.slice(0, 2).toUpperCase() || "WO";
@@ -83,7 +78,6 @@ export default function CreateWorkOrderPage() {
 
   async function generateCustomId(prefix: string): Promise<string> {
     const p = prefix.replace(/[^A-Z]/g, "").slice(0, 3) || "WO";
-    // pull a few recent with this prefix and find the max numeric tail
     const { data } = await supabase
       .from("work_orders")
       .select("custom_id")
@@ -95,44 +89,126 @@ export default function CreateWorkOrderPage() {
     (data ?? []).forEach((r) => {
       const m = (r.custom_id ?? "").match(/^([A-Z]+)(\d{1,})$/i);
       if (m && m[1].toUpperCase() === p) {
-        const n = parseInt(m[2], 10);
+        const n = Number(m[2]);
         if (!Number.isNaN(n)) max = Math.max(max, n);
       }
     });
-    const next = (max + 1).toString().padStart(4, "0");
+    const next = String(max + 1).padStart(4, "0");
     return `${p}${next}`;
   }
 
-  // NEW: auto-heal helper to ensure profile.shop_id is set
+  // Ensure profile has a shop_id (repair one if user owns a shop)
   async function getOrLinkShopId(userId: string): Promise<string | null> {
-    // read current profile (must include shop_id)
     const { data: profile, error: profErr } = await supabase
       .from("profiles")
       .select("id, shop_id")
       .eq("id", userId)
       .maybeSingle();
     if (profErr) throw profErr;
-
     if (profile?.shop_id) return profile.shop_id;
 
-    // try to find a shop owned by this user
-    const { data: ownedShop, error: shopErr } = await supabase
-      .from("shops")
-      .select("id")
-      .eq("owner_id", userId)
-      .maybeSingle();
+    const { data: owned, error: shopErr } = await supabase.from("shops").select("id").eq("owner_id", userId).maybeSingle();
     if (shopErr) throw shopErr;
+    if (!owned?.id) return null;
 
-    if (!ownedShop?.id) return null;
-
-    // write it back to profile so it stays fixed
-    const { error: updErr } = await supabase.from("profiles").update({ shop_id: ownedShop.id }).eq("id", userId);
+    const { error: updErr } = await supabase.from("profiles").update({ shop_id: owned.id }).eq("id", userId);
     if (updErr) throw updErr;
-
-    return ownedShop.id;
+    return owned.id;
   }
 
-  // ----- Read query params (optional) ----------------------------------------
+  // Toggle a quick-pick
+  function togglePick(id: string) {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  // Ensure or create a customer
+  async function ensureCustomer(): Promise<Customer> {
+    if (customerId) {
+      const { data } = await supabase.from("customers").select("*").eq("id", customerId).maybeSingle();
+      if (data) return data;
+    }
+
+    // try match by phone, otherwise email
+    const query = supabase.from("customers").select("*").limit(1);
+    if (custPhone) query.ilike("phone", custPhone);
+    else if (custEmail) query.ilike("email", custEmail);
+    const { data: found } = await query;
+    if (found?.[0]) {
+      setCustomerId(found[0].id);
+      return found[0];
+    }
+
+    const toInsert = {
+      first_name: custFirst || null,
+      last_name:  custLast  || null,
+      phone:      custPhone || null,
+      email:      custEmail || null,
+    };
+    const { data: inserted, error: insErr } = await supabase.from("customers").insert(toInsert).select("*").single();
+    if (insErr || !inserted) throw new Error(insErr?.message ?? "Failed to create customer");
+    setCustomerId(inserted.id);
+    return inserted;
+  }
+
+  // Ensure or create a vehicle for that customer
+  async function ensureVehicle(cust: Customer, shopId: string): Promise<Vehicle> {
+    if (vehicleId) {
+      const { data } = await supabase.from("vehicles").select("*").eq("id", vehicleId).maybeSingle();
+      if (data) return data;
+    }
+
+    let existing: Vehicle | null = null;
+    if (vin || plate) {
+      const { data: maybe } = await supabase
+        .from("vehicles")
+        .select("*")
+        .eq("customer_id", cust.id)
+        .or([vin ? `vin.eq.${vin}` : "", plate ? `license_plate.eq.${plate}` : ""].filter(Boolean).join(","));
+      existing = maybe?.[0] ?? null;
+    }
+    if (existing) {
+      setVehicleId(existing.id);
+      return existing;
+    }
+
+    const toInsert = {
+      customer_id:   cust.id,
+      vin:           vin || null,
+      year:          year ? Number(year) : null,
+      make:          make || null,
+      model:         model || null,
+      license_plate: plate || null,
+      mileage:       mileage ? Number(mileage) : null,
+      shop_id:       shopId,
+    };
+    const { data: inserted, error: insErr } = await supabase.from("vehicles").insert(toInsert).select("*").single();
+    if (insErr || !inserted) throw new Error(insErr?.message ?? "Failed to create vehicle");
+    setVehicleId(inserted.id);
+    return inserted;
+  }
+
+  async function uploadVehicleFiles(vId: string): Promise<UploadSummary> {
+    let uploaded = 0, failed = 0;
+    const { data: { user } } = await supabase.auth.getUser();
+    const uploader = user?.id ?? null;
+
+    const uploadOne = async (bucket: "vehicle-photos" | "vehicle-docs", f: File, mediaType: "photo" | "document") => {
+      const key = `veh_${vId}/${Date.now()}_${f.name}`;
+      const up = await supabase.storage.from(bucket).upload(key, f, { upsert: false });
+      if (up.error) { failed += 1; return; }
+      const { error: rowErr } = await supabase.from("vehicle_media").insert({
+        vehicle_id: vId, type: mediaType, storage_path: key, uploaded_by: uploader,
+      });
+      if (rowErr) failed += 1; else uploaded += 1;
+    };
+
+    for (const f of photoFiles) await uploadOne("vehicle-photos", f, "photo");
+    for (const f of docFiles)   await uploadOne("vehicle-docs",   f, "document");
+    return { uploaded, failed };
+  }
+
+  // ========== effects
+  // absorb URL prefill
   useEffect(() => {
     const v = searchParams.get("vehicleId");
     const c = searchParams.get("customerId");
@@ -142,13 +218,12 @@ export default function CreateWorkOrderPage() {
     if (i) setInspectionId(i);
   }, [searchParams, setPrefillVehicleId, setPrefillCustomerId, setInspectionId]);
 
-  // ----- Prefill data --------------------------------------------------------
+  // prefill customer / vehicle + load menu
   useEffect(() => {
     let cancelled = false;
-
     (async () => {
       if (prefillCustomerId) {
-        const { data } = await supabase.from("customers").select("*").eq("id", prefillCustomerId).single();
+        const { data } = await supabase.from("customers").select("*").eq("id", prefillCustomerId).maybeSingle();
         if (!cancelled && data) {
           setCustomerId(data.id);
           setCustFirst(data.first_name ?? "");
@@ -157,9 +232,8 @@ export default function CreateWorkOrderPage() {
           setCustEmail(data.email ?? "");
         }
       }
-
       if (prefillVehicleId) {
-        const { data } = await supabase.from("vehicles").select("*").eq("id", prefillVehicleId).single();
+        const { data } = await supabase.from("vehicles").select("*").eq("id", prefillVehicleId).maybeSingle();
         if (!cancelled && data) {
           setVehicleId(data.id);
           setVin(data.vin ?? "");
@@ -171,190 +245,53 @@ export default function CreateWorkOrderPage() {
         }
       }
 
-      // Load current user's menu items
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const { data: auth } = await supabase.auth.getUser();
+      const uid = auth?.user?.id;
+      if (!uid) return;
 
-      if (user?.id) {
-        const { data: items } = await supabase
-          .from("menu_items")
-          .select("*")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false });
-
-        if (!cancelled) setMenuItems(items ?? []);
-
-        const channel = supabase
-          .channel("menu-items-create-quickpick")
-          .on(
-            "postgres_changes",
-            { event: "*", schema: "public", table: "menu_items", filter: `user_id=eq.${user.id}` },
-            async () => {
-              const { data: refetch } = await supabase
-                .from("menu_items")
-                .select("*")
-                .eq("user_id", user.id)
-                .order("created_at", { ascending: false });
-              if (!cancelled) setMenuItems(refetch ?? []);
-            },
-          )
-          .subscribe();
-
-        return () => {
-          supabase.removeChannel(channel);
-        };
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    prefillCustomerId,
-    prefillVehicleId,
-    supabase,
-    setCustomerId,
-    setCustFirst,
-    setCustLast,
-    setCustPhone,
-    setCustEmail,
-    setVehicleId,
-    setVin,
-    setYear,
-    setMake,
-    setModel,
-    setPlate,
-    setMileage,
-    setMenuItems,
-  ]);
-
-  function togglePick(id: string) {
-    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-  }
-
-  // ----- Helpers -------------------------------------------------------------
-  async function ensureCustomer(): Promise<CustomerRow> {
-    if (customerId) {
-      const { data } = await supabase.from("customers").select("*").eq("id", customerId).single();
-      if (data) return data;
-    }
-
-    const query = supabase.from("customers").select("*").limit(1);
-    if (custPhone) query.ilike("phone", custPhone);
-    else if (custEmail) query.ilike("email", custEmail);
-    const { data: found } = await query;
-
-    if (found && found.length > 0) {
-      setCustomerId(found[0].id);
-      return found[0];
-    }
-
-    const toInsert = {
-      first_name: custFirst || null,
-      last_name: custLast || null,
-      phone: custPhone || null,
-      email: custEmail || null,
-    };
-    const { data: inserted, error: insErr } = await supabase.from("customers").insert(toInsert).select("*").single();
-
-    if (insErr || !inserted) throw new Error(insErr?.message ?? "Failed to create customer");
-    setCustomerId(inserted.id);
-    return inserted;
-  }
-
-  async function ensureVehicle(cust: CustomerRow, shopId: string | null): Promise<VehicleRow> {
-    if (vehicleId) {
-      const { data } = await supabase.from("vehicles").select("*").eq("id", vehicleId).single();
-      if (data) return data;
-    }
-
-    let existing: VehicleRow | null = null;
-    if (vin || plate) {
-      const { data: maybe } = await supabase
-        .from("vehicles")
+      const { data: items } = await supabase
+        .from("menu_items")
         .select("*")
-        .eq("customer_id", cust.id)
-        .or([vin ? `vin.eq.${vin}` : "", plate ? `license_plate.eq.${plate}` : ""].filter(Boolean).join(","));
-      if (maybe && maybe.length > 0) existing = maybe[0] ?? null;
-    }
-    if (existing) {
-      setVehicleId(existing.id);
-      return existing;
-    }
+        .eq("user_id", uid)
+        .order("created_at", { ascending: false });
+      if (!cancelled) setMenuItems(items ?? []);
 
-    const toInsert = {
-      customer_id: cust.id,
-      vin: vin || null,
-      year: year ? Number(year) : null,
-      make: make || null,
-      model: model || null,
-      license_plate: plate || null,
-      mileage: mileage ? Number(mileage) : null,
-      shop_id: shopId, // ✅ ensure vehicle is tied to the shop
-    };
-    const { data: inserted, error: insErr } = await supabase.from("vehicles").insert(toInsert).select("*").single();
+      const channel = supabase
+        .channel("menu-items-create-quickpick")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "menu_items", filter: `user_id=eq.${uid}` },
+          async () => {
+            const { data: refetch } = await supabase
+              .from("menu_items")
+              .select("*")
+              .eq("user_id", uid)
+              .order("created_at", { ascending: false });
+            if (!cancelled) setMenuItems(refetch ?? []);
+          },
+        )
+        .subscribe();
 
-    if (insErr || !inserted) throw new Error(insErr?.message ?? "Failed to create vehicle");
-    setVehicleId(inserted.id);
-    return inserted;
-  }
+      return () => { supabase.removeChannel(channel); };
+    })();
+    return () => { cancelled = true; };
+  }, [prefillCustomerId, prefillVehicleId, supabase, setMenuItems,
+      setCustomerId, setCustFirst, setCustLast, setCustPhone, setCustEmail,
+      setVehicleId, setVin, setYear, setMake, setModel, setPlate, setMileage]);
 
-  async function uploadVehicleFiles(vId: string): Promise<UploadSummary> {
-    let uploaded = 0;
-    let failed = 0;
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    const uploader = user?.id ?? null;
-
-    const uploadAndRecord = async (
-      bucket: "vehicle-photos" | "vehicle-docs",
-      f: File,
-      mediaType: "photo" | "document",
-    ): Promise<void> => {
-      const key = `veh_${vId}/${Date.now()}_${f.name}`;
-      const up = await supabase.storage.from(bucket).upload(key, f, { upsert: false });
-      if (up.error) {
-        failed += 1;
-        return;
-      }
-      const { error: rowErr } = await supabase.from("vehicle_media").insert({
-        vehicle_id: vId,
-        type: mediaType,
-        storage_path: key,
-        uploaded_by: uploader,
-      });
-      if (rowErr) failed += 1;
-      else uploaded += 1;
-    };
-
-    for (const f of photoFiles) await uploadAndRecord("vehicle-photos", f, "photo");
-    for (const f of docFiles) await uploadAndRecord("vehicle-docs", f, "document");
-
-    return { uploaded, failed };
-  }
-
-  // ----- Submit --------------------------------------------------------------
+  // ========== submit
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setLoading(true);
-    setError("");
-    setInviteNotice("");
-    setUploadSummary(null);
+    setLoading(true); setError(""); setInviteNotice(""); setUploadSummary(null);
 
     try {
       if (!custFirst && !custPhone && !custEmail) {
         throw new Error("Please enter at least a name, phone, or email for the customer.");
       }
 
-      const cust = await ensureCustomer();
-
-      // current user + profile (names)
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const customer = await ensureCustomer();
+      const { data: auth } = await supabase.auth.getUser();
+      const user = auth?.user;
       if (!user?.id) throw new Error("Not signed in.");
 
       const { data: profileNames } = await supabase
@@ -363,13 +300,11 @@ export default function CreateWorkOrderPage() {
         .eq("id", user.id)
         .maybeSingle();
 
-      // ✅ ensure we actually have a shop_id (auto-heal if needed)
       const shopId = await getOrLinkShopId(user.id);
       if (!shopId) throw new Error("Your profile isn’t linked to a shop yet.");
 
-      const veh = await ensureVehicle(cust, shopId);
+      const vehicle = await ensureVehicle(customer, shopId);
 
-      // Build custom_id like TU0001 based on creator initials
       const initials = getInitials(
         profileNames?.first_name,
         profileNames?.last_name,
@@ -377,52 +312,49 @@ export default function CreateWorkOrderPage() {
       );
       const customId = await generateCustomId(initials);
 
-      // Create WO
       const newId = uuidv4();
-      const { error: insertWOError } = await supabase.from("work_orders").insert({
+      const { error: woErr } = await supabase.from("work_orders").insert({
         id: newId,
-        custom_id: customId, // ✅ set human-friendly id
-        vehicle_id: veh.id,
-        customer_id: cust.id,
+        custom_id: customId,
+        vehicle_id: vehicle.id,
+        customer_id: customer.id,
         inspection_id: inspectionId,
-        // type removed from WO record per your design
         notes,
         user_id: user.id,
         shop_id: shopId,
         status: "awaiting_approval",
       });
+      if (woErr) throw new Error(woErr.message || "Failed to create work order.");
 
-      if (insertWOError) throw new Error(insertWOError.message || "Failed to create work order.");
-
-      // Initial lines from selected menu items (best-effort)
+      // seed lines from selected menu items
       if (selectedIds.length > 0) {
-        const selectedItems = menuItems.filter((m) => selectedIds.includes(m.id));
-        if (selectedItems.length) {
-          const lineRows = selectedItems.map((m) => ({
+        const selected = menuItems.filter((m) => selectedIds.includes(m.id));
+        if (selected.length) {
+          const lineRows = selected.map((m) => ({
             work_order_id: newId,
-            vehicle_id: veh.id,
-            user_id: user.id,
-            description: m.name ?? null,
-            labor_time: m.labor_time ?? null,
-            complaint: m.complaint ?? null,
-            cause: m.cause ?? null,
-            correction: m.correction ?? null,
-            tools: m.tools ?? null,
-            status: "awaiting" as const, // ✅ seeded lines forced to allowed status
-            job_type: type,
+            vehicle_id:    vehicle.id,
+            user_id:       user.id,
+            description:   m.name ?? null,
+            labor_time:    m.labor_time ?? null,
+            complaint:     m.complaint ?? null,
+            cause:         m.cause ?? null,
+            correction:    m.correction ?? null,
+            tools:         m.tools ?? null,
+            status:        "awaiting" as const,
+            job_type:      type,
           }));
           const { error: lineErr } = await supabase.from("work_order_lines").insert(lineRows);
           if (lineErr) console.error("Failed to add menu items as lines:", lineErr);
         }
       }
 
-      // Import from inspection (optional)
+      // optional: import from inspection
       if (inspectionId) {
         try {
           const res = await fetch("/api/work-orders/import-from-inspection", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ workOrderId: newId, inspectionId, vehicleId: veh.id }),
+            body: JSON.stringify({ workOrderId: newId, inspectionId, vehicleId: vehicle.id }),
           });
           if (!res.ok) {
             const j = await res.json().catch(() => null);
@@ -433,13 +365,13 @@ export default function CreateWorkOrderPage() {
         }
       }
 
-      // Upload files (optional)
+      // uploads (optional)
       if (photoFiles.length || docFiles.length) {
-        const summary = await uploadVehicleFiles(veh.id);
+        const summary = await uploadVehicleFiles(vehicle.id);
         setUploadSummary(summary);
       }
 
-      // Email a customer portal sign-up link (optional)
+      // optional: email customer portal invite
       if (sendInvite && custEmail) {
         try {
           const origin =
@@ -447,25 +379,19 @@ export default function CreateWorkOrderPage() {
               ? window.location.origin
               : (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
           const portalUrl = `${origin || "https://profixiq.com"}/portal/signup?email=${encodeURIComponent(custEmail)}`;
-
           const { error: fnErr } = await supabase.functions.invoke("send-portal-invite", {
-            body: { email: custEmail, customer_id: cust.id, portal_url: portalUrl },
+            body: { email: custEmail, customer_id: customer.id, portal_url: portalUrl } as any,
           });
-
-          if (fnErr) {
-            console.warn("send-portal-invite failed:", fnErr);
-            setInviteNotice("Work order created. Failed to send invite email (logged).");
-          } else {
-            setInviteNotice("Work order created. Invite email queued to the customer.");
-          }
+          if (fnErr) setInviteNotice("Work order created. Failed to send invite email (logged).");
+          else       setInviteNotice("Work order created. Invite email queued to the customer.");
         } catch (e) {
           console.warn("send-portal-invite threw:", e);
           setInviteNotice("Work order created. Failed to send invite email (caught).");
         }
       }
 
-      // Navigate to the new Work Order page (flag it was just created for ID-page toast)
-      router.push(`/work-orders/${newId}?created=1`);
+      // go straight to TECH page for this WO
+      router.push(`/work-orders/${newId}`);
     } catch (ex) {
       const message = ex instanceof Error ? ex.message : "Failed to create work order.";
       setError(message);
@@ -473,13 +399,12 @@ export default function CreateWorkOrderPage() {
     }
   }
 
-  // ----- UI ------------------------------------------------------------------
+  // ========== UI
   return (
     <div className="mx-auto max-w-6xl p-6 text-white">
       <h1 className="mb-6 text-2xl font-bold">Create Work Order</h1>
 
       {error && <div className="mb-4 rounded bg-red-100 px-4 py-2 text-red-700">{error}</div>}
-
       {uploadSummary && (
         <div className="mb-4 rounded bg-neutral-800 px-4 py-2 text-neutral-200 text-sm">
           Uploaded {uploadSummary.uploaded} file(s){uploadSummary.failed ? `, ${uploadSummary.failed} failed` : ""}.
@@ -537,7 +462,6 @@ export default function CreateWorkOrderPage() {
                     placeholder="jane@example.com"
                     disabled={loading}
                   />
-                  {/* Invite toggle under Email */}
                   <div className="mt-1 flex items-center gap-2 text-xs text-neutral-300">
                     <input
                       id="send-invite"
@@ -622,7 +546,7 @@ export default function CreateWorkOrderPage() {
               </div>
             </section>
 
-            {/* Optional: Import from inspection */}
+            {/* Optional: import from inspection */}
             <section>
               <h2 className="mb-2 text-lg font-semibold">Optional: Import from Inspection</h2>
               <div className="flex gap-2">
@@ -645,7 +569,7 @@ export default function CreateWorkOrderPage() {
               </div>
             </section>
 
-            {/* Work Order (type select kept ONLY to seed line job_type from menu picks) */}
+            {/* Work Order defaults for quick-add */}
             <section>
               <h2 className="mb-2 text-lg font-semibold">Work Order</h2>
               <div className="grid grid-cols-1 gap-3">
@@ -740,8 +664,9 @@ export default function CreateWorkOrderPage() {
                       <div className="min-w-0">
                         <div className="truncate font-medium">{m.name}</div>
                         <div className="truncate text-xs text-neutral-400">
-                          {typeof m.labor_time === "number" ? `${m.labor_time}h` : "—"} {m.tools ? `• Tools: ${m.tools}` : ""}{" "}
-                          {m.complaint ? `• Complaint: ${m.complaint}` : ""}
+                          {typeof m.labor_time === "number" ? `${m.labor_time}h` : "—"}
+                          {m.tools ? ` • Tools: ${m.tools}` : ""}
+                          {m.complaint ? ` • Complaint: ${m.complaint}` : ""}
                         </div>
                       </div>
                       <button

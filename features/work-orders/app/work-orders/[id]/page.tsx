@@ -1,38 +1,76 @@
+// app/work-orders/[id]/page.tsx
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { format, formatDistanceStrict } from "date-fns";
 import { toast } from "sonner";
 
-import { useWorkOrderMode, type Role } from "@/features/work-orders/hooks/useWorkOrderMode";
-import { capabilities } from "@/features/work-orders/lib/capabilities";
-
 import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
 import { MenuQuickAdd } from "@work-orders/components/MenuQuickAdd";
-import { WorkOrderInvoiceDownloadButton } from "@work-orders/components/WorkOrderInvoiceDownloadButton";
 import { NewWorkOrderLineForm } from "@work-orders/components/NewWorkOrderLineForm";
 import VehiclePhotoUploader from "@parts/components/VehiclePhotoUploader";
 import VehiclePhotoGallery from "@parts/components/VehiclePhotoGallery";
-import { generateQuotePDFBytes } from "@work-orders/lib/work-orders/generateQuotePdf";
-
-import { useTabState } from "@/features/shared/hooks/useTabState";
 import InspectionModal from "@/features/inspections/components/InspectionModal";
-
-// Focused job & chat
 import FocusedJobModal from "@/features/work-orders/components/workorders/FocusedJobModal";
-import AddJobModal from "@work-orders/components/workorders/AddJobModal";
-import NewChatModal from "@/features/ai/components/chat/NewChatModal";
+
+/* --------------------------------- Types --------------------------------- */
+type DB = Database;
+type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
+type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
+type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
+type Customer = DB["public"]["Tables"]["customers"]["Row"];
+type Profile = DB["public"]["Tables"]["profiles"]["Row"];
+
+type WOStatus =
+  | "awaiting_review" // advisor review (preferred)
+  | "awaiting_approval" // legacy: directly to customer
+  | "queued"
+  | "in_progress"
+  | "on_hold"
+  | "planned"
+  | "new"
+  | "completed"
+  | string;
+type JobType = "diagnosis" | "diagnosis-followup" | "maintenance" | "repair" | "tech-suggested" | "inspection" | string;
+
+type ParamsShape = Record<string, string | string[]>;
+const looksLikeUuid = (s: string) => s.includes("-") && s.length >= 36;
+const toStr = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] ?? null : v ?? null);
+
+/* ----------------------------- Styling maps ------------------------------ */
+const statusBorder: Record<string, string> = {
+  awaiting: "border-l-4 border-slate-400",
+  awaiting_review: "border-l-4 border-blue-400",
+  awaiting_approval: "border-l-4 border-blue-500",
+  queued: "border-l-4 border-indigo-400",
+  in_progress: "border-l-4 border-orange-500",
+  on_hold: "border-l-4 border-amber-500",
+  completed: "border-l-4 border-green-500",
+  planned: "border-l-4 border-purple-500",
+  new: "border-l-4 border-gray-400",
+};
+const statusRowTint: Record<string, string> = {
+  awaiting: "bg-neutral-950",
+  awaiting_review: "bg-neutral-950",
+  awaiting_approval: "bg-neutral-950",
+  queued: "bg-neutral-950",
+  in_progress: "bg-neutral-950",
+  on_hold: "bg-amber-900/30",
+  completed: "bg-green-900/30",
+  planned: "bg-neutral-950",
+  new: "bg-neutral-950",
+};
 
 /* ----------------------------- Error Boundary ----------------------------- */
 class ErrorBoundary extends React.Component<
   React.PropsWithChildren<{ fallback?: React.ReactNode }>,
   { hasError: boolean; msg?: string }
 > {
-  constructor(props: React.PropsWithChildren<{ fallback?: React.ReactNode }>) {
+  constructor(props: any) {
     super(props);
     this.state = { hasError: false, msg: undefined };
   }
@@ -56,125 +94,7 @@ class ErrorBoundary extends React.Component<
   }
 }
 
-/* --------------------------------- Types --------------------------------- */
-type DB = Database;
-type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
-type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
-type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
-type Customer = DB["public"]["Tables"]["customers"]["Row"];
-type Profile = DB["public"]["Tables"]["profiles"]["Row"];
-type WorkOrderWithMaybeNotes = WorkOrder & { notes?: string | null };
-
-type WOStatus =
-  | "awaiting_approval"
-  | "awaiting"
-  | "queued"
-  | "in_progress"
-  | "on_hold"
-  | "planned"
-  | "new"
-  | "completed";
-type JobType =
-  | "diagnosis"
-  | "diagnosis-followup"
-  | "maintenance"
-  | "repair"
-  | "tech-suggested"
-  | "inspection"
-  | string;
-
-type ParamsShape = Record<string, string | string[]>;
-function paramToString(v: string | string[] | undefined): string | null {
-  if (!v) return null;
-  return Array.isArray(v) ? v[0] ?? null : v;
-}
-const looksLikeUuid = (s: string) => s.includes("-") && s.length >= 36;
-
-/* ---------------------------- Status -> Styles ---------------------------- */
-const statusBadge: Record<string, string> = {
-  awaiting_approval: "bg-blue-100 text-blue-800",
-  awaiting: "bg-slate-200 text-slate-800",
-  queued: "bg-indigo-100 text-indigo-800",
-  in_progress: "bg-orange-100 text-orange-800",
-  on_hold: "bg-amber-100 text-amber-800",
-  planned: "bg-purple-100 text-purple-800",
-  new: "bg-gray-200 text-gray-800",
-  completed: "bg-green-100 text-green-800",
-};
-const statusBorder: Record<string, string> = {
-  awaiting: "border-l-4 border-slate-400",
-  queued: "border-l-4 border-indigo-400",
-  in_progress: "border-l-4 border-orange-500",
-  on_hold: "border-l-4 border-amber-500",
-  completed: "border-l-4 border-green-500",
-  awaiting_approval: "border-l-4 border-blue-500",
-  planned: "border-l-4 border-purple-500",
-  new: "border-l-4 border-gray-400",
-};
-const statusRowTint: Record<string, string> = {
-  awaiting: "bg-neutral-950",
-  queued: "bg-neutral-950",
-  in_progress: "bg-neutral-950",
-  on_hold: "bg-amber-900/30",
-  completed: "bg-green-900/30",
-  awaiting_approval: "bg-neutral-950",
-  planned: "bg-neutral-950",
-  new: "bg-neutral-950",
-};
-
-/* ----------------------------- Lazy Invoice UI ---------------------------- */
-function LazyInvoice({
-  woId,
-  lines,
-  vehicle,
-  customer,
-}: {
-  woId: string;
-  lines: WorkOrderLine[];
-  vehicle: Vehicle | null;
-  customer: Customer | null;
-}) {
-  const [open, setOpen] = useState(false);
-
-  if (!open) {
-    return (
-      <button onClick={() => setOpen(true)} className="px-4 py-2 bg-blue-700 text-white rounded hover:bg-blue-800">
-        Generate / Download Invoice PDF
-      </button>
-    );
-  }
-
-  return (
-    <WorkOrderInvoiceDownloadButton
-      workOrderId={woId}
-      lines={(lines ?? []).filter(Boolean).map((l) => ({
-        complaint: l.complaint ?? l.description ?? "",
-        cause: l.cause ?? "",
-        correction: l.correction ?? "",
-        tools: l.tools ?? "",
-        labor_time: typeof l.labor_time === "number" ? l.labor_time : 0,
-      }))}
-      vehicleInfo={{
-        year: vehicle?.year ? String(vehicle.year) : "",
-        make: vehicle?.make ?? "",
-        model: vehicle?.model ?? "",
-        vin: vehicle?.vin ?? "",
-      }}
-      customerInfo={{
-        name: [customer?.first_name ?? "", customer?.last_name ?? ""].filter(Boolean).join(" "),
-        phone: customer?.phone ?? "",
-        email: customer?.email ?? "",
-      }}
-    />
-  );
-}
-
 /* ------------------------------ Small helpers ----------------------------- */
-function showErr(prefix: string, err?: { message?: string } | null) {
-  const msg = err?.message ?? "Something went wrong.";
-  console.error(prefix, err);
-  toast.error(`${prefix}: ${msg}`);
-}
 function sleep(ms: number) {
   return new Promise((res) => setTimeout(res, ms));
 }
@@ -182,6 +102,21 @@ function msToTenthHours(ms: number): string {
   const tenths = Math.max(0, Math.round(ms / 360000));
   const hours = (tenths / 10).toFixed(1);
   return `${hours} hr`;
+}
+function chipClass(s: string | null): string {
+  const key = (s ?? "awaiting").toLowerCase().replaceAll(" ", "_");
+  const badge: Record<string, string> = {
+    awaiting_approval: "bg-blue-100 text-blue-800",
+    awaiting_review: "bg-sky-100 text-sky-800",
+    awaiting: "bg-slate-200 text-slate-800",
+    queued: "bg-indigo-100 text-indigo-800",
+    in_progress: "bg-orange-100 text-orange-800",
+    on_hold: "bg-amber-100 text-amber-800",
+    planned: "bg-purple-100 text-purple-800",
+    new: "bg-gray-200 text-gray-800",
+    completed: "bg-green-100 text-green-800",
+  };
+  return `text-xs px-2 py-1 rounded ${badge[key] ?? "bg-gray-200 text-gray-800"}`;
 }
 
 /* ---------------------------- Debug Panel (opt-in) ---------------------------- */
@@ -223,17 +158,12 @@ function DebugPanel({
 }
 
 /* ---------------------------------- Page --------------------------------- */
-export default function WorkOrderPage(): JSX.Element {
+export default function WorkOrderTechPage(): JSX.Element {
   const params = useParams();
-  const router = useRouter();
   const searchParams = useSearchParams();
   const debug = searchParams.get("debug") === "1";
 
-  const woId = useMemo(() => {
-    const raw = (params as ParamsShape)?.id;
-    return paramToString(raw);
-  }, [params]);
-
+  const woId = useMemo(() => toStr((params as ParamsShape)?.id), [params]);
   const urlJobId = searchParams.get("jobId");
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
@@ -242,81 +172,59 @@ export default function WorkOrderPage(): JSX.Element {
   const [lines, setLines] = useState<WorkOrderLine[]>([]);
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
+
+  // UI + state
   const [loading, setLoading] = useState<boolean>(true);
   const [viewError, setViewError] = useState<string | null>(null);
 
-  // Role
-  const [profileRole, setProfileRole] = useState<string | null>(null);
-
-  // Tech view extras
   const [line, setLine] = useState<WorkOrderLine | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [duration, setDuration] = useState("");
-  const [tech, setTech] = useState<Profile | null>(null);
+  const [,setTech] = useState<Profile | null>(null);
 
-  // Photos + user cache
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
 
-  // UI toggles
-  const [showDetails, setShowDetails] = useState(true);
-  const [showAddForm, setShowAddForm] = useTabState<boolean>("showAddForm", false);
-
-  // Modals kept
-  const [isAddJobModalOpen, setIsAddJobModalOpen] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
 
-  // Focused Job modal & Chat
   const [focusedOpen, setFocusedOpen] = useState(false);
   const [focusedJobId, setFocusedJobId] = useState<string | null>(null);
-  const [chatOpen, setChatOpen] = useState(false);
-
-  // Inspection modal state (opened by FocusedJob via window event)
   const [inspectionOpen, setInspectionOpen] = useState(false);
   const [inspectionSrc, setInspectionSrc] = useState<string | null>(null);
 
-  // Busy flags
-  const [busyQuote, setBusyQuote] = useState(false);
-  const [busyQueue, setBusyQueue] = useState(false);
-  const [busyAwaiting, setBusyAwaiting] = useState(false);
-  const [busySendApproval, setBusySendApproval] = useState(false);
-
-  // Normalization tracker
-  const [fixedStatus, setFixedStatus] = useState<Set<string>>(new Set());
-
-  // One-time missing notice
-  const [warnedMissing, setWarnedMissing] = useState(false);
-
-  // Selection for approval
+  // Approval selection (tech chooses which lines to send to advisor review)
   const [selectedForApproval, setSelectedForApproval] = useState<Set<string>>(new Set());
   const [touchedSelection, setTouchedSelection] = useState(false);
 
-  const setSelection = (ids: string[], touched = true) => {
+  const setUrlJobId = useCallback(
+    (jobId: string | null) => {
+      const sp = new URLSearchParams(searchParams.toString());
+      if (jobId) sp.set("jobId", jobId);
+      else sp.delete("jobId");
+      const href = `?${sp.toString()}`;
+      window.history.replaceState(null, "", href);
+    },
+    [searchParams]
+  );
+
+  const selectAllEligible = () => {
+    const ids = (lines ?? []).filter((l) => (l.status ?? "") !== "completed").map((l) => l.id);
     setSelectedForApproval(new Set(ids));
-    if (touched) setTouchedSelection(true);
+    setTouchedSelection(true);
+  };
+  const clearAllSelection = () => {
+    setSelectedForApproval(new Set());
+    setTouchedSelection(true);
   };
   const toggleSelection = (id: string) => {
     setSelectedForApproval((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
     setTouchedSelection(true);
   };
-  const selectAllEligible = () => {
-    const ids = (lines ?? []).filter((l) => (l.status ?? "") !== "completed").map((l) => l.id);
-    setSelection(ids);
-  };
-  const clearAllSelection = () => setSelection([], true);
-
-  // Default approval selection
-  useEffect(() => {
-    if (!touchedSelection) {
-      const ids = (lines ?? []).filter((l) => (l.status ?? "") !== "completed").map((l) => l.id);
-      setSelectedForApproval(new Set(ids));
-    }
-  }, [lines, touchedSelection]);
 
   // Current user
   useEffect(() => {
@@ -334,47 +242,54 @@ export default function WorkOrderPage(): JSX.Element {
     })();
   }, [supabase]);
 
-  // Re-run after auth state changes (helps when session is restored async)
+  // Re-run after auth state changes (helps when session restores)
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange(() => {});
     return () => sub.subscription.unsubscribe();
   }, [supabase]);
 
-  // Load role
+  // Live timer for the header
   useEffect(() => {
-    (async () => {
-      if (!userId) {
-        setProfileRole(null);
-        return;
+    const t = setInterval(() => {
+      if (line?.punched_in_at && !line?.punched_out_at) {
+        setDuration(formatDistanceStrict(new Date(), new Date(line.punched_in_at)));
+      } else {
+        setDuration("");
       }
-      const { data: prof } = await supabase.from("profiles").select("role").eq("id", userId).maybeSingle();
-      setProfileRole(prof?.role ?? null);
-    })();
-  }, [supabase, userId]);
+    }, 10_000);
+    return () => clearInterval(t);
+  }, [line]);
 
-  const mode = useWorkOrderMode(profileRole as Role | null);
-  const caps = capabilities(profileRole);
+  // Listen for "open inspection" requests from FocusedJob
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const ce = e as CustomEvent<{ path: string; params: string }>;
+      if (!ce?.detail) return;
+      const url = `${ce.detail.path}?${ce.detail.params}`;
+      setInspectionSrc(url);
+      setInspectionOpen(true);
+    };
+    window.addEventListener("inspection:open", onOpen as EventListener);
+    return () => window.removeEventListener("inspection:open", onOpen as EventListener);
+  }, []);
 
-  const setUrlJobId = React.useCallback(
-    (jobId: string | null) => {
-      const sp = new URLSearchParams(searchParams.toString());
-      if (jobId) sp.set("jobId", jobId);
-      else sp.delete("jobId");
-      const href = `?${sp.toString()}`;
-      window.history.replaceState(null, "", href);
-    },
-    [searchParams]
-  );
+  // Default approval selection = any non-completed
+  useEffect(() => {
+    if (!touchedSelection) {
+      const ids = (lines ?? []).filter((l) => (l.status ?? "") !== "completed").map((l) => l.id);
+      setSelectedForApproval(new Set(ids));
+    }
+  }, [lines, touchedSelection]);
 
-  // ---------------------- FETCH (guarded by user session) ----------------------
+  // ------------------------------ FETCH ALL ------------------------------
   const fetchAll = useCallback(
     async (retry = 0) => {
-      if (!woId || !userId) return; // 🚦 wait for auth + param
+      if (!woId || !userId) return;
       setLoading(true);
       setViewError(null);
 
       try {
-        // Primary: try UUID id
+        // try UUID id
         let { data: woRow, error: woErr } = await supabase
           .from("work_orders")
           .select("*")
@@ -382,21 +297,18 @@ export default function WorkOrderPage(): JSX.Element {
           .maybeSingle();
         if (woErr) throw woErr;
 
-        // 🔁 fallback: try custom_id when route param is short (no dashes)
+        // fallback: custom_id (short code)
         if (!woRow && !looksLikeUuid(woId)) {
           const byCustom = await supabase.from("work_orders").select("*").eq("custom_id", woId).maybeSingle();
-          if (byCustom.data) {
-            woRow = byCustom.data;
-          }
+          if (byCustom.data) woRow = byCustom.data;
         }
 
-        // 🔎 If still not visible, stop spinning and explain why
+        // not visible yet → retry briefly then explain
         if (!woRow) {
           if (retry < 2) {
             await sleep(200 * Math.pow(2, retry));
             return fetchAll(retry + 1);
           }
-
           const [
             {
               data: { user },
@@ -416,7 +328,6 @@ export default function WorkOrderPage(): JSX.Element {
             `• session: ${user ? "present" : "missing"}`,
             `• current_shop_id: ${curShop ?? "NULL"}`,
             `• visible via SELECT count: ${vis.count ?? 0}`,
-            "Tip: ensure URL uses the full UUID or that custom_id is set to the short code.",
           ];
           setViewError(parts.join("\n"));
           setWo(null);
@@ -430,13 +341,6 @@ export default function WorkOrderPage(): JSX.Element {
         }
 
         setWo(woRow);
-
-        if (!warnedMissing && (!woRow.vehicle_id || !woRow.customer_id)) {
-          toast.error("This work order is missing vehicle and/or customer. Open the Create form to set them.", {
-            important: true,
-          } as any);
-          setWarnedMissing(true);
-        }
 
         const [linesRes, vehRes, custRes] = await Promise.all([
           supabase
@@ -482,30 +386,28 @@ export default function WorkOrderPage(): JSX.Element {
       } catch (e: any) {
         const msg = e?.message ?? "Failed to load work order.";
         setViewError(msg);
-        console.error("[WO id page] load error:", e);
+        console.error("[WO tech page] load error:", e);
       } finally {
         setLoading(false);
       }
     },
-    [supabase, woId, userId, urlJobId, setUrlJobId, warnedMissing]
+    [supabase, woId, userId, urlJobId, setUrlJobId]
   );
 
-  // Only fetch once we have both: a work order id and an authenticated user
+  // Only fetch once we have both: an id and an authenticated user
   useEffect(() => {
     if (!woId || !userId) return;
     void fetchAll();
   }, [fetchAll, woId, userId]);
 
-  // Real-time refresh (only subscribe when authed + id present)
+  // Real-time refresh (subscribe when authed + id present)
   useEffect(() => {
     if (!woId || !userId) return;
 
     const ch = supabase
       .channel(`wo:${woId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "work_orders", filter: `id=eq.${woId}` },
-        () => fetchAll()
+      .on("postgres_changes", { event: "*", schema: "public", table: "work_orders", filter: `id=eq.${woId}` }, () =>
+        fetchAll()
       )
       .on(
         "postgres_changes",
@@ -528,54 +430,7 @@ export default function WorkOrderPage(): JSX.Element {
     return () => window.removeEventListener("wo:line-added", handler);
   }, [fetchAll]);
 
-  // Listen for "open inspection" requests
-  useEffect(() => {
-    const onOpen = (e: Event) => {
-      const ce = e as CustomEvent<{ path: string; params: string }>;
-      if (!ce?.detail) return;
-      const url = `${ce.detail.path}?${ce.detail.params}`;
-      setInspectionSrc(url);
-      setInspectionOpen(true);
-    };
-    window.addEventListener("inspection:open", onOpen as EventListener);
-    return () => window.removeEventListener("inspection:open", onOpen as EventListener);
-  }, []);
-
-  // Live timer for focused job badge + header timer
-  useEffect(() => {
-    const t = setInterval(() => {
-      if (line?.punched_in_at && !line?.punched_out_at) {
-        setDuration(formatDistanceStrict(new Date(), new Date(line.punched_in_at)));
-      } else {
-        setDuration("");
-      }
-    }, 10_000);
-    return () => clearInterval(t);
-  }, [line]);
-
-  /* -------- Normalize any newly created lines to status 'awaiting' -------- */
-  useEffect(() => {
-    (async () => {
-      if (!lines.length) return;
-      const toFix = lines
-        .filter((l) => !l.status || l.status === (null as any))
-        .map((l) => l.id)
-        .filter((id) => !fixedStatus.has(id));
-
-      if (toFix.length === 0) return;
-
-      const { error } = await supabase.from("work_order_lines").update({ status: "awaiting" }).in("id", toFix);
-
-      if (!error) {
-        const next = new Set(fixedStatus);
-        toFix.forEach((id) => next.add(id));
-        setFixedStatus(next);
-        fetchAll();
-      }
-    })();
-  }, [lines, fixedStatus, supabase, fetchAll]);
-
-  /* ------------------------------ Tech Actions ----------------------------- */
+  // ------------------------------ TECH ACTIONS ------------------------------
   const handleStart = async (jobId: string) => {
     if (activeJobId && activeJobId !== jobId) {
       const ok = confirm("You are currently on another job. Finish it and switch?");
@@ -584,7 +439,7 @@ export default function WorkOrderPage(): JSX.Element {
         .from("work_order_lines")
         .update({ punched_out_at: new Date().toISOString(), status: "awaiting" })
         .eq("id", activeJobId);
-      if (outErr) return showErr("Finish current job failed", outErr);
+      if (outErr) return toast.error(`Finish current job failed: ${outErr.message}`);
       setActiveJobId(null);
     } else if (activeJobId) {
       toast.error("You have already started a job.");
@@ -595,7 +450,7 @@ export default function WorkOrderPage(): JSX.Element {
       .from("work_order_lines")
       .update({ punched_in_at: new Date().toISOString(), status: "in_progress" })
       .eq("id", jobId);
-    if (error) return showErr("Start failed", error);
+    if (error) return toast.error(`Start failed: ${error.message}`);
     toast.success("Started job");
     setUrlJobId(jobId);
     setActiveJobId(jobId);
@@ -607,32 +462,27 @@ export default function WorkOrderPage(): JSX.Element {
       .from("work_order_lines")
       .update({ punched_out_at: new Date().toISOString(), status: "awaiting" })
       .eq("id", jobId);
-    if (error) return showErr("Finish failed", error);
+    if (error) return toast.error(`Finish failed: ${error.message}`);
     toast.success("Finished job");
     setActiveJobId(null);
     fetchAll();
   };
 
-  // Delete line (View mode)
   const handleDeleteLine = async (lineId: string) => {
     const ok = confirm("Delete this job line? This cannot be undone.");
     if (!ok) return;
     const { error } = await supabase.from("work_order_lines").delete().eq("id", lineId);
-    if (error) return showErr("Delete failed", error);
+    if (error) return toast.error(`Delete failed: ${error.message}`);
     toast.success("Line deleted");
     fetchAll();
   };
 
-  // Send for Approval with selected subset
-  const handleSendForApproval = async () => {
+  const [busySendApproval, setBusySendApproval] = useState(false);
+  const handleSendToAdvisor = async () => {
     if (!wo?.id) return;
-    if (!customer?.email) {
-      toast.error("Customer email is required to send for approval.");
-      return;
-    }
     const selected = Array.from(selectedForApproval);
     if (!selected.length) {
-      toast.error("Select at least one job to send for approval.");
+      toast.error("Select at least one job to send for review.");
       return;
     }
     if (busySendApproval) return;
@@ -640,130 +490,42 @@ export default function WorkOrderPage(): JSX.Element {
     setBusySendApproval(true);
     const prev = wo;
     try {
-      setWo(prev ? { ...prev, status: "awaiting_approval" } : prev);
-
-      const { error: upErr } = await supabase.from("work_orders").update({ status: "awaiting_approval" }).eq("id", wo.id);
-      if (upErr) throw upErr;
-
-      const res = await fetch("/work-orders/send-for-approval", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workOrderId: wo.id,
-          lineIds: selected,
-        }),
-      });
-
-      if (!res.ok) {
-        const j = await res.json().catch(() => null);
-        throw new Error(j?.error || "Failed to send for approval.");
+      // Prefer the staged status "awaiting_review" (advisor). If that column/state is not allowed, we fall back silently.
+      setWo(prev ? { ...prev, status: "awaiting_review" as WOStatus } : prev);
+      const up = await supabase.from("work_orders").update({ status: "awaiting_review" as any }).eq("id", wo.id);
+      if (up.error) {
+        // fallback to legacy "awaiting_approval"
+        await supabase.from("work_orders").update({ status: "awaiting_approval" as any }).eq("id", wo.id);
       }
 
-      toast.success(`Sent ${selected.length} item(s) to customer for approval.`);
+      // Fire-and-forget server action / route to notify advisor pipeline (implement your API route)
+      fetch("/work-orders/submit-for-review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workOrderId: wo.id, lineIds: selected }),
+      }).catch(() => {});
+
+      toast.success(`Sent ${selected.length} job(s) to advisor for review.`);
     } catch (e: any) {
       setWo(prev);
-      showErr("Send for approval failed", e);
+      toast.error(e?.message || "Send to advisor failed");
     } finally {
       setBusySendApproval(false);
     }
   };
 
-  // Generate Quote PDF and upload/email
-  const handleDownloadQuote = async () => {
-    if (busyQuote) return;
-    if (!wo?.id || !vehicle?.id) {
-      toast.error("Missing work order or vehicle info");
-      return;
-    }
-    setBusyQuote(true);
-    try {
-      const { data: techSuggested, error: tsErr } = await supabase
-        .from("work_order_lines")
-        .select("*")
-        .eq("work_order_id", wo.id)
-        .eq("job_type", "tech-suggested");
-      if (tsErr) throw tsErr;
+  // ------------------------------- RENDER --------------------------------
+  if (!woId) {
+    return <div className="p-6 text-red-500">Missing work order id.</div>;
+  }
 
-      let jobs = techSuggested ?? [];
-      if (!jobs.length) {
-        const { data: fallback, error: fbErr } = await supabase
-          .from("work_order_lines")
-          .select("*")
-          .eq("work_order_id", wo.id)
-          .neq("status", "completed");
-        if (fbErr) throw fbErr;
-        jobs = fallback ?? [];
-      }
+  const Skeleton = ({ className = "" }: { className?: string }) => (
+    <div className={`animate-pulse rounded bg-neutral-800/60 ${className}`} />
+  );
 
-      if (!jobs.length) {
-        toast.error("No jobs found to include in the quote.");
-        return;
-      }
+  const createdAt = wo?.created_at ? new Date(wo.created_at) : null;
+  const createdAtText = createdAt && !isNaN(createdAt.getTime()) ? format(createdAt, "PPpp") : "—";
 
-      const bytes = await generateQuotePDFBytes(jobs, vehicle.id);
-      const pdfBlob = bytes instanceof Blob ? bytes : new Blob([bytes], { type: "application/pdf" });
-      const fileName = `quote-${wo.id}.pdf`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("quotes")
-        .upload(fileName, pdfBlob, { contentType: "application/pdf", upsert: true });
-      if (uploadError) throw uploadError;
-
-      const { data: publicUrlData } = await supabase.storage.from("quotes").getPublicUrl(fileName);
-      const publicUrl = publicUrlData?.publicUrl ?? null;
-
-      const { error: updErr } = await supabase.from("work_orders").update({ quote_url: publicUrl }).eq("id", wo.id);
-      if (updErr) throw updErr;
-
-      if (publicUrl) setWo((prev) => (prev ? { ...prev, quote_url: publicUrl } : prev));
-
-      const { data: woRow } = await supabase
-        .from("work_orders")
-        .select("id, customer:customer_id (email, full_name)")
-        .eq("id", wo.id)
-        .single<{
-          id: string;
-          customer: { email: string | null; full_name: string | null } | null;
-        }>();
-
-      const customerEmail = woRow?.customer?.email ?? null;
-      const customerName = woRow?.customer?.full_name ?? "";
-
-      if (customerEmail && publicUrl) {
-        await fetch("/api/send-email", {
-          method: "POST",
-          body: JSON.stringify({
-            email: customerEmail,
-            subject: `Quote for Work Order #${wo.id}`,
-            html: `<p>Hi ${customerName || ""},</p>
-                   <p>Your quote is ready: <a href="${publicUrl}" target="_blank">View Quote PDF</a></p>`,
-            summaryHtml: `<h2>Quote for Work Order</h2><p><a href="${publicUrl}">View PDF</a></p>`,
-            fileName,
-          }),
-          headers: { "Content-Type": "application/json" },
-        });
-
-        await supabase.from("email_logs").insert({
-          recipient: customerEmail,
-          subject: `Quote for Work Order #${wo.id}`,
-          quote_url: publicUrl,
-          work_order_id: wo.id,
-        });
-      }
-
-      toast.success("Quote PDF saved" + (customerEmail ? " and emailed to customer" : ""));
-    } catch (e: any) {
-      showErr("Generate quote failed", e);
-    } finally {
-      setBusyQuote(false);
-    }
-  };
-
-  // Sorting & helpers
-  const chipClass = (s: string | null): string => {
-    const key = (s ?? "awaiting").toLowerCase().replaceAll(" ", "_");
-    return `text-xs px-2 py-1 rounded ${statusBadge[key] ?? "bg-gray-200 text-gray-800"}`;
-  };
   const sortedLines = useMemo(() => {
     const pr: Record<string, number> = { diagnosis: 1, inspection: 2, maintenance: 3, repair: 4 };
     return [...lines].sort((a, b) => {
@@ -775,10 +537,6 @@ export default function WorkOrderPage(): JSX.Element {
       return ta - tb;
     });
   }, [lines]);
-
-  const notes: string | null = ((wo as WorkOrderWithMaybeNotes | null)?.notes ?? null) || null;
-  const createdAt = wo?.created_at ? new Date(wo.created_at) : null;
-  const createdAtText = createdAt && !isNaN(createdAt.getTime()) ? format(createdAt, "PPpp") : "—";
 
   const renderJobDuration = (job: WorkOrderLine) => {
     if (job.punched_in_at && !job.punched_out_at) {
@@ -792,51 +550,9 @@ export default function WorkOrderPage(): JSX.Element {
     return "0.0 hr";
   };
 
-  if (!woId) {
-    return <div className="p-6 text-red-500">Missing work order id.</div>;
-  }
-
-  const badgeClass =
-    statusBadge[(line?.status ?? "awaiting") as keyof typeof statusBadge] ?? "bg-gray-200 text-gray-800";
-
-  const Skeleton = ({ className = "" }: { className?: string }) => (
-    <div className={`animate-pulse rounded bg-neutral-800/60 ${className}`} />
-  );
-
   return (
     <div className="p-4 sm:p-6 text-white">
       <PreviousPageButton to="/work-orders" />
-
-      {/* Mode toggle */}
-      <div className="mb-3 flex items-center gap-2 text-xs text-neutral-300">
-        <span className="opacity-70">Mode:</span>
-        <button
-          className={`rounded px-2 py-1 border ${
-            mode === "view" ? "border-orange-500 text-orange-300" : "border-neutral-700 text-neutral-300"
-          }`}
-          onClick={() => {
-            const sp = new URLSearchParams(searchParams.toString());
-            sp.set("mode", "view");
-            window.history.replaceState(null, "", `?${sp.toString()}`);
-            toast.success("Switched to View mode");
-          }}
-        >
-          View
-        </button>
-        <button
-          className={`rounded px-2 py-1 border ${
-            mode === "tech" ? "border-orange-500 text-orange-300" : "border-neutral-700 text-neutral-300"
-          }`}
-          onClick={() => {
-            const sp = new URLSearchParams(searchParams.toString());
-            sp.set("mode", "tech");
-            window.history.replaceState(null, "", `?${sp.toString()}`);
-            toast.success("Switched to Tech mode");
-          }}
-        >
-          Tech
-        </button>
-      </div>
 
       {viewError && (
         <div className="mt-4 whitespace-pre-wrap rounded border border-red-500/40 bg-red-500/10 p-3 text-red-300">
@@ -860,15 +576,7 @@ export default function WorkOrderPage(): JSX.Element {
           <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h1 className="text-2xl font-semibold">
-                Work Order {wo.custom_id || `#${wo.id.slice(0, 8)}`}{" "}
-                {line ? (
-                  <span
-                    className={`ml-2 align-middle text-[11px] px-2 py-1 rounded ${badgeClass}`}
-                    title="Focused job status"
-                  >
-                    {(line.status ?? "awaiting").replaceAll("_", " ")}
-                  </span>
-                ) : null}
+                Work Order {wo.custom_id || `#${wo.id.slice(0, 8)}`}
               </h1>
               {duration ? (
                 <div className="text-xs text-neutral-300" title="Active job time">
@@ -882,8 +590,12 @@ export default function WorkOrderPage(): JSX.Element {
                 <div>{createdAtText}</div>
               </div>
               <div>
-                <div className="text-neutral-400">Notes</div>
-                <div className="truncate">{notes ?? "—"}</div>
+                <div className="text-neutral-400">Status</div>
+                <div>
+                  <span className={chipClass(wo.status as WOStatus)}>
+                    {(wo.status ?? "awaiting").replaceAll("_", " ")}
+                  </span>
+                </div>
               </div>
               <div>
                 <div className="text-neutral-400">WO ID</div>
@@ -892,67 +604,55 @@ export default function WorkOrderPage(): JSX.Element {
             </div>
           </div>
 
-          {/* Vehicle & Customer */}
+          {/* Vehicle & Customer (tech needs quick reference + link) */}
           <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold">Vehicle & Customer</h2>
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
+              {customer?.id && (
+                <Link
+                  href={`/customers/${customer.id}`}
                   className="text-sm text-orange-400 hover:underline"
-                  onClick={() => setShowDetails((v) => !v)}
-                  aria-expanded={showDetails}
+                  title="Open customer profile"
                 >
-                  {showDetails ? "Hide details" : "Show details"}
-                </button>
-              </div>
+                  Customer Profile →
+                </Link>
+              )}
             </div>
 
-            {showDetails && (
-              <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                <div>
-                  <h3 className="mb-1 font-semibold">Vehicle</h3>
-                  {vehicle ? (
-                    <>
-                      <p>
-                        {(vehicle.year ?? "").toString()} {vehicle.make ?? ""} {vehicle.model ?? ""}
-                      </p>
-                      <p className="text-sm text-neutral-400">
-                        VIN: {vehicle.vin ?? "—"} • Plate: {vehicle.license_plate ?? "—"}
-                      </p>
-                    </>
-                  ) : (
-                    <p className="text-neutral-400">—</p>
-                  )}
-                </div>
-
-                <div>
-                  <h3 className="mb-1 font-semibold">Customer</h3>
-                  {customer ? (
-                    <>
-                      <p>{[customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") || "—"}</p>
-                      <p className="text-sm text-neutral-400">
-                        {customer.phone ?? "—"} {customer.email ? `• ${customer.email}` : ""}
-                      </p>
-                      {customer.id && (
-                        <Link
-                          href={`/customers/${customer.id}`}
-                          className="mt-1 inline-block text-xs text-orange-500 hover:underline"
-                          title="Open customer profile"
-                        >
-                          View Customer Profile →
-                        </Link>
-                      )}
-                    </>
-                  ) : (
-                    <p className="text-neutral-400">—</p>
-                  )}
-                </div>
+            <div className="mt-3 grid gap-4 sm:grid-cols-2">
+              <div>
+                <h3 className="mb-1 font-semibold">Vehicle</h3>
+                {vehicle ? (
+                  <>
+                    <p>
+                      {(vehicle.year ?? "").toString()} {vehicle.make ?? ""} {vehicle.model ?? ""}
+                    </p>
+                    <p className="text-sm text-neutral-400">
+                      VIN: {vehicle.vin ?? "—"} • Plate: {vehicle.license_plate ?? "—"}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-neutral-400">—</p>
+                )}
               </div>
-            )}
+
+              <div>
+                <h3 className="mb-1 font-semibold">Customer</h3>
+                {customer ? (
+                  <>
+                    <p>{[customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") || "—"}</p>
+                    <p className="text-sm text-neutral-400">
+                      {customer.phone ?? "—"} {customer.email ? `• ${customer.email}` : ""}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-neutral-400">—</p>
+                )}
+              </div>
+            </div>
           </div>
 
-          {/* Jobs */}
+          {/* Jobs (tech workspace) */}
           <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-lg font-semibold">Jobs in this Work Order</h2>
@@ -991,22 +691,22 @@ export default function WorkOrderPage(): JSX.Element {
               </div>
             )}
 
-            {/* Approval selection helpers */}
+            {/* Approval selection helpers (tech → advisor) */}
             <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-neutral-300">
-              <span className="opacity-70">Approval selection:</span>
+              <span className="opacity-70">Choose items to send for advisor review:</span>
               <button
                 type="button"
                 className="rounded border border-neutral-700 px-2 py-1 hover:border-orange-500"
                 onClick={selectAllEligible}
               >
-                Select all eligible
+                Select all
               </button>
               <button
                 type="button"
                 className="rounded border border-neutral-700 px-2 py-1 hover:border-orange-500"
                 onClick={clearAllSelection}
               >
-                Clear all
+                Clear
               </button>
               <span className="ml-auto">
                 Selected: <strong>{selectedForApproval.size}</strong>
@@ -1084,12 +784,12 @@ export default function WorkOrderPage(): JSX.Element {
                         </div>
 
                         <div className="flex flex-col items-end gap-2">
-                          {/* approval include */}
+                          {/* include in advisor review */}
                           <label
                             className={`flex items-center gap-1 text-xs ${
                               eligible ? "text-neutral-300" : "text-neutral-500"
                             }`}
-                            title={eligible ? "Include in approval" : "Completed jobs are excluded"}
+                            title={eligible ? "Include in advisor review" : "Completed jobs are excluded"}
                             onClick={(e) => e.stopPropagation()}
                           >
                             <input
@@ -1102,19 +802,17 @@ export default function WorkOrderPage(): JSX.Element {
                             Include
                           </label>
 
-                          {/* DELETE: only in View mode */}
-                          {mode === "view" && (
-                            <button
-                              className="rounded border border-red-600 px-2 py-1 text-xs text-red-300 hover:bg-red-900/20"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteLine(ln.id);
-                              }}
-                              title="Delete line"
-                            >
-                              Delete
-                            </button>
-                          )}
+                          {/* Delete line (if allowed by RLS) */}
+                          <button
+                            className="rounded border border-red-600 px-2 py-1 text-xs text-red-300 hover:bg-red-900/20"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteLine(ln.id);
+                            }}
+                            title="Delete line"
+                          >
+                            Delete
+                          </button>
 
                           <span className={chipClass(ln.status as WOStatus)}>
                             {(ln.status ?? "awaiting").replaceAll("_", " ")}
@@ -1126,93 +824,30 @@ export default function WorkOrderPage(): JSX.Element {
                 })}
               </div>
             )}
+
+            {/* Sticky actions (tech → advisor) */}
+            <div className="sticky bottom-3 z-10 mt-4 rounded border border-neutral-800 bg-neutral-900/95 p-3 backdrop-blur">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={handleSendToAdvisor}
+                  disabled={busySendApproval || selectedForApproval.size === 0}
+                  className="rounded bg-blue-600 px-3 py-2 text-white hover:bg-blue-700 disabled:opacity-60"
+                  title="Send selected jobs to advisor review"
+                >
+                  {busySendApproval ? "Sending…" : `Send to Advisor (${selectedForApproval.size})`}
+                </button>
+
+                {/* Advisor’s review & customer signature live on /work-orders/quote-review */}
+                <a
+                  href={`/work-orders/quote-review?woId=${wo?.id ?? ""}`}
+                  className="rounded border border-neutral-700 px-3 py-2 hover:border-orange-500"
+                  title="Open advisor/customer review"
+                >
+                  Open Review / Signature
+                </a>
+              </div>
+            </div>
           </div>
-
-          {/* Invoice + Actions → View mode only */}
-          {mode === "view" && (
-            <>
-              {/* Invoice (lazy) */}
-              <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
-                <h3 className="mb-2 font-semibold">Invoice</h3>
-                <ErrorBoundary>
-                  <LazyInvoice woId={wo.id} lines={sortedLines} vehicle={vehicle} customer={customer} />
-                </ErrorBoundary>
-              </div>
-
-              {/* Sticky progress actions */}
-              <div className="sticky bottom-3 z-10 mt-4 rounded border border-neutral-800 bg-neutral-900/95 p-3 backdrop-blur">
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    onClick={() => router.push(`/work-orders/quote-review?woId=${wo.id}`)}
-                    className="rounded bg-orange-500 px-3 py-2 font-semibold text-black hover:bg-orange-600"
-                  >
-                    Capture Signature / Review Quote
-                  </button>
-
-                  <button
-                    onClick={handleSendForApproval}
-                    disabled={busySendApproval || selectedForApproval.size === 0}
-                    className="rounded bg-blue-600 px-3 py-2 text-white hover:bg-blue-700 disabled:opacity-60"
-                  >
-                    {busySendApproval ? "Sending…" : `Send for Approval (${selectedForApproval.size})`}
-                  </button>
-
-                  <button
-                    onClick={async () => {
-                      if (busyAwaiting) return;
-                      setBusyAwaiting(true);
-                      const prev = wo;
-                      setWo(prev ? { ...prev, status: "awaiting_approval" } : prev);
-                      const { error } = await supabase
-                        .from("work_orders")
-                        .update({ status: "awaiting_approval" })
-                        .eq("id", wo!.id);
-                      setBusyAwaiting(false);
-                      if (error) {
-                        setWo(prev);
-                        return showErr("Update status failed", error);
-                      }
-                      toast.success("Marked as awaiting customer approval");
-                    }}
-                    className="rounded border border-neutral-700 px-3 py-2 hover:border-orange-500 disabled:opacity-60"
-                    disabled={busyAwaiting}
-                  >
-                    Mark Awaiting Approval
-                  </button>
-
-                  <button
-                    onClick={async () => {
-                      if (busyQueue) return;
-                      setBusyQueue(true);
-                      const prev = wo;
-                      setWo(prev ? { ...prev, status: "queued" } : prev);
-                      const { error } = await supabase.from("work_orders").update({ status: "queued" }).eq("id", wo!.id);
-                      setBusyQueue(false);
-                      if (error) {
-                        setWo(prev);
-                        return showErr("Update status failed", error);
-                      }
-                      toast.success("Moved to Queue");
-                      await fetchAll();
-                    }}
-                    className="rounded border border-neutral-700 px-3 py-2 hover:border-orange-500 disabled:opacity-60"
-                    disabled={busyQueue}
-                  >
-                    Queue Work
-                  </button>
-
-                  <button
-                    className="rounded bg-purple-600 px-3 py-2 text-white hover:bg-purple-700 disabled:opacity-60"
-                    onClick={handleDownloadQuote}
-                    disabled={!caps.canGenerateQuote || busyQuote}
-                    title={!caps.canGenerateQuote ? "Not permitted" : "Generate quote PDF"}
-                  >
-                    {busyQuote ? "Saving…" : "Download Quote PDF"}
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
 
           {/* Optional inline diagnostics */}
           {debug && woId && <DebugPanel woId={woId} supabase={supabase} />}
@@ -1228,19 +863,7 @@ export default function WorkOrderPage(): JSX.Element {
         </div>
       )}
 
-      {/* Add Job modal */}
-      {isAddJobModalOpen && wo?.id && vehicle?.id && (
-        <AddJobModal
-          isOpen={isAddJobModalOpen}
-          onClose={() => setIsAddJobModalOpen(false)}
-          workOrderId={wo.id}
-          vehicleId={vehicle.id}
-          techId={tech?.id || "system"}
-          onJobAdded={fetchAll}
-        />
-      )}
-
-      {/* Focused Job modal — hosts “Open Inspection” & AI suggestions */}
+      {/* Focused Job modal — hosts “Open Inspection” & tech actions */}
       {focusedOpen && focusedJobId && (
         <FocusedJobModal
           isOpen={focusedOpen}
@@ -1251,18 +874,6 @@ export default function WorkOrderPage(): JSX.Element {
           onChanged={fetchAll}
           onStart={handleStart}
           onFinish={handleFinish}
-        />
-      )}
-
-      {/* Quick chat */}
-      {chatOpen && currentUserId && (
-        <NewChatModal
-          isOpen={chatOpen}
-          onClose={() => setChatOpen(false)}
-          created_by={currentUserId}
-          onCreated={() => setChatOpen(false)}
-          context_type="work_order"
-          context_id={wo?.id ?? null}
         />
       )}
 
