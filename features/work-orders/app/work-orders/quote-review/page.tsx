@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import SignaturePad from "@shared/components/SignaturePad";
-import { formatCurrency } from "@/features/shared/lib/formatCurrency"; // if you don't have, replace with simple formatter below
+import { formatCurrency } from "@/features/shared/lib/formatCurrency";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -13,12 +13,14 @@ type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
 
 export default function QuoteReviewPage() {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const router = useRouter();
   const woId = useSearchParams().get("woId") ?? null;
 
   const [wo, setWo] = useState<WorkOrder | null>(null);
   const [lines, setLines] = useState<Line[]>([]);
   const [loading, setLoading] = useState(true);
   const [sigOpen, setSigOpen] = useState(false);
+  const [savingSig, setSavingSig] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -36,16 +38,14 @@ export default function QuoteReviewPage() {
     })();
   }, [woId, supabase]);
 
-  // naive pricing placeholders (replace with your real parts/labor math if available)
-  const laborRate = 120; // adjust or fetch from org settings
+  const laborRate = 120;
   const totalLaborHours = (lines ?? [])
     .map((l) => (typeof l.labor_time === "number" ? l.labor_time : 0))
     .reduce((a, b) => a + b, 0);
   const laborTotal = totalLaborHours * laborRate;
-  const partsTotal = 0; // if you have a parts model, sum it here
+  const partsTotal = 0;
   const grandTotal = laborTotal + partsTotal;
 
-  // fallback currency formatter
   function fmt(n: number) {
     try {
       return formatCurrency(n);
@@ -54,39 +54,54 @@ export default function QuoteReviewPage() {
     }
   }
 
+  // Safe dataURL -> Blob (Safari/iOS friendly)
+  function dataURLtoBlob(dataUrl: string): Blob {
+    const [meta, b64] = dataUrl.split(",");
+    const mimeMatch = /^data:(.*?);base64$/.exec(meta || "");
+    const mime = mimeMatch?.[1] || "image/png";
+    const binary = atob(b64 || "");
+    const len = binary.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+    return new Blob([bytes], { type: mime });
+  }
+
   async function handleSignatureSave(base64: string) {
-    if (!woId) return;
+    if (!woId || savingSig) return;
+    setSavingSig(true);
     try {
-      // 1) upload to storage
-      const file = await (await fetch(base64)).blob();
+      // 1) Upload to storage
+      const file = dataURLtoBlob(base64);
       const filename = `wo-${woId}-${Date.now()}.png`;
-      const { error: upErr } = await supabase.storage
+      const up = await supabase.storage
         .from("signatures")
         .upload(filename, file, { contentType: "image/png", upsert: true });
-      if (upErr) throw upErr;
+      if (up.error) throw up.error;
 
       const { data: pub } = await supabase.storage.from("signatures").getPublicUrl(filename);
       const url = pub?.publicUrl ?? null;
 
-      // 2) update work_orders with best-effort fields (ignore if columns don’t exist)
-      const { error: updErr } = await supabase
+      // 2) Update work order (best-effort)
+      const upd = await supabase
         .from("work_orders")
         .update({
-          // Use whatever columns you actually have. These are common names:
           customer_approval_signature_url: url as any,
           customer_approval_at: new Date().toISOString() as any,
-          status: "queued" as any, // advance after approval; tweak to your flow
+          status: "queued" as any, // advance after approval per your flow
         })
         .eq("id", woId);
-      if (updErr) {
-        // Not fatal: you still have the signature stored.
-        console.warn("Work order update failed (columns may not exist):", updErr.message);
+      if (upd.error) {
+        console.warn("Work order update failed (columns may not exist):", upd.error.message);
       }
 
-      alert("Signature captured. Thank you!");
       setSigOpen(false);
+      // Optional: return to WO or queue
+      router.push(`/work-orders/${woId}`);
+      alert("Signature captured. Thank you!");
     } catch (e: any) {
       alert(e?.message || "Failed to save signature");
+    } finally {
+      setSavingSig(false);
     }
   }
 
@@ -125,9 +140,7 @@ export default function QuoteReviewPage() {
                   <div key={l.id} className="px-4 py-3">
                     <div className="flex items-center justify-between">
                       <div className="min-w-0">
-                        <div className="truncate font-medium">
-                          {l.description || l.complaint || "Untitled job"}
-                        </div>
+                        <div className="truncate font-medium">{l.description || l.complaint || "Untitled job"}</div>
                         <div className="text-xs text-neutral-400">
                           {String(l.job_type ?? "job").replaceAll("_", " ")} •{" "}
                           {typeof l.labor_time === "number" ? `${l.labor_time}h` : "—"} •{" "}
@@ -145,7 +158,9 @@ export default function QuoteReviewPage() {
 
             <div className="px-4 py-3 text-sm">
               <div className="flex items-center justify-between">
-                <span>Labor ({totalLaborHours.toFixed(1)}h @ {fmt(laborRate)}/hr)</span>
+                <span>
+                  Labor ({totalLaborHours.toFixed(1)}h @ {fmt(laborRate)}/hr)
+                </span>
                 <span className="font-medium">{fmt(laborTotal)}</span>
               </div>
               <div className="mt-1 flex items-center justify-between">
@@ -179,6 +194,7 @@ export default function QuoteReviewPage() {
 
       {sigOpen && (
         <SignaturePad
+          saving={savingSig}
           onSave={handleSignatureSave}
           onCancel={() => setSigOpen(false)}
         />

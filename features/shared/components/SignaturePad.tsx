@@ -6,17 +6,19 @@ import SignatureCanvas from "react-signature-canvas";
 type Props = {
   onSave: (base64: string) => void;
   onCancel: () => void;
+  saving?: boolean; // disable while uploading
 };
 
-// NOTE: accept `any` to bypass Next’s serializable-props check, then cast internally.
+// IMPORTANT: accept `any` at the boundary to avoid “Props must be serializable”.
 export default function SignaturePad(rawProps: any) {
-  const { onSave, onCancel } = rawProps as Props;
+  const { onSave, onCancel, saving = false } = rawProps as Props;
 
   const sigRef = useRef<SignatureCanvas | null>(null);
 
   const handleClear = () => sigRef.current?.clear();
 
   const handleSave = () => {
+    if (saving) return;
     const canvas = sigRef.current;
     if (!canvas || canvas.isEmpty()) {
       alert("Please draw a signature before saving.");
@@ -29,7 +31,9 @@ export default function SignaturePad(rawProps: any) {
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
       <div className="bg-white dark:bg-gray-900 rounded-lg p-6 shadow-lg w-full max-w-md">
-        <h2 className="text-lg font-semibold mb-4 text-center text-gray-800 dark:text-white">Sign Below</h2>
+        <h2 className="text-lg font-semibold mb-4 text-center text-gray-800 dark:text-white">
+          Sign Below
+        </h2>
 
         <SignatureCanvas
           ref={sigRef}
@@ -43,15 +47,27 @@ export default function SignaturePad(rawProps: any) {
         />
 
         <div className="mt-4 flex flex-wrap gap-2 justify-between">
-          <button onClick={handleClear} className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400">
+          <button
+            onClick={handleClear}
+            className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400"
+            disabled={saving}
+          >
             Clear
           </button>
           <div className="flex gap-2">
-            <button onClick={onCancel} className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600">
+            <button
+              onClick={onCancel}
+              className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
+              disabled={saving}
+            >
               Cancel
             </button>
-            <button onClick={handleSave} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">
-              Save
+            <button
+              onClick={handleSave}
+              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-60"
+              disabled={saving}
+            >
+              {saving ? "Saving…" : "Save"}
             </button>
           </div>
         </div>

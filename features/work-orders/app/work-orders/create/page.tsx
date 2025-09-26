@@ -426,7 +426,7 @@ export default function CreateWorkOrderPage() {
         <div className="mb-4 rounded bg-neutral-800 px-4 py-2 text-neutral-200 text-sm">{inviteNotice}</div>
       )}
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_420px]">
+      <div className="mx-auto max-w-5xl grid grid-cols-1 gap-6">
         {/* LEFT: main form + jobs */}
         <div className="space-y-6 rounded border border-orange-400 bg-neutral-900 p-4">
 
@@ -743,38 +743,6 @@ export default function CreateWorkOrderPage() {
           </section>
         </div>
 
-        {/* RIGHT: brief tips / totals */}
-        <aside className="rounded border border-orange-400 bg-neutral-900 p-4 space-y-4">
-          <h2 className="text-lg font-semibold text-orange-400">Summary</h2>
-
-          <div className="text-sm text-neutral-300 space-y-1">
-            <div>Customer: <span className="text-neutral-200">
-              {[custFirst, custLast].filter(Boolean).join(" ") || (custEmail || custPhone || "—")}
-            </span></div>
-            <div>Vehicle: <span className="text-neutral-200">
-              {[year, make, model].filter(Boolean).join(" ") || (vin || "—")}
-            </span></div>
-            <div>Lines: <span className="text-neutral-200">{lines.length}</span></div>
-          </div>
-
-          {lines.length > 0 && (
-            <div className="text-xs text-neutral-400">
-              Totals are shown on the Review screen. Labor rate and parts are applied there.
-            </div>
-          )}
-
-          {woId && (
-            <div className="pt-2">
-              <button
-                type="button"
-                onClick={goReview}
-                className="w-full rounded bg-orange-500 px-4 py-2 font-semibold text-black hover:bg-orange-600"
-              >
-                Done → Review & Sign
-              </button>
-            </div>
-          )}
-        </aside>
       </div>
     </div>
   );
