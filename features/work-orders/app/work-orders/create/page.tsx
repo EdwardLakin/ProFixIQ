@@ -11,8 +11,14 @@ import { useTabState } from "@/features/shared/hooks/useTabState";
 import { MenuQuickAdd } from "@work-orders/components/MenuQuickAdd";
 import { NewWorkOrderLineForm } from "@work-orders/components/NewWorkOrderLineForm";
 
+/**
+ * NOTE ON FONTS:
+ * - This page uses `font-blackops` for headings and `font-roboto` for body text.
+ * - Ensure your Tailwind config defines these font families, e.g.:
+ *   theme: { extend: { fontFamily: { blackops: ['"Black Ops One"', 'cursive'], roboto: ['Roboto', 'sans-serif'] } } }
+ */
+
 type DB = Database;
-type MenuItem = DB["public"]["Tables"]["menu_items"]["Row"];
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -33,7 +39,7 @@ export default function CreateWorkOrderPage() {
   // --- Preselects (optional) -------------------------------------------------
   const [prefillVehicleId, setPrefillVehicleId] = useTabState<string | null>("prefillVehicleId", null);
   const [prefillCustomerId, setPrefillCustomerId] = useTabState<string | null>("prefillCustomerId", null);
-  const [inspectionId, setInspectionId] = useTabState<string | null>("inspectionId", null);
+  // (Removed inspectionId entirely per request)
 
   // --- Customer form ---------------------------------------------------------
   const [customerId, setCustomerId] = useTabState<string | null>("customerId", null);
@@ -61,9 +67,6 @@ export default function CreateWorkOrderPage() {
   // --- WO basics -------------------------------------------------------------
   const [type, setType] = useTabState<WOType>("type", "maintenance");
   const [notes, setNotes] = useTabState("notes", "");
-
-  // --- (kept) Menu items list (Create page doesn’t use it directly, but leaving intact) ---
-  const [, setMenuItems] = useTabState<MenuItem[]>("menuItems", []);
 
   // --- Uploads ---------------------------------------------------------------
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
@@ -143,13 +146,11 @@ export default function CreateWorkOrderPage() {
   useEffect(() => {
     const v = searchParams.get("vehicleId");
     const c = searchParams.get("customerId");
-    const i = searchParams.get("inspectionId");
     if (v) setPrefillVehicleId(v);
     if (c) setPrefillCustomerId(c);
-    if (i) setInspectionId(i);
-  }, [searchParams, setPrefillVehicleId, setPrefillCustomerId, setInspectionId]);
+  }, [searchParams, setPrefillVehicleId, setPrefillCustomerId]);
 
-  // ----- Prefill data & (kept) menu items -----------------------------------
+  // ----- Prefill data --------------------------------------------------------
   useEffect(() => {
     let cancelled = false;
 
@@ -181,41 +182,6 @@ export default function CreateWorkOrderPage() {
           setMileage(data.mileage ? String(data.mileage) : "");
         }
       }
-
-      // Load current user's menu items (left as-is)
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (user?.id) {
-        const { data: items } = await supabase
-          .from("menu_items")
-          .select("*")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false });
-
-        if (!cancelled) setMenuItems(items ?? []);
-
-        const channel = supabase
-          .channel("menu-items-create-quickpick")
-          .on(
-            "postgres_changes",
-            { event: "*", schema: "public", table: "menu_items", filter: `user_id=eq.${user.id}` },
-            async () => {
-              const { data: refetch } = await supabase
-                .from("menu_items")
-                .select("*")
-                .eq("user_id", user.id)
-                .order("created_at", { ascending: false });
-              if (!cancelled) setMenuItems(refetch ?? []);
-            },
-          )
-          .subscribe();
-
-        return () => {
-          supabase.removeChannel(channel);
-        };
-      }
     })();
 
     return () => {
@@ -237,7 +203,6 @@ export default function CreateWorkOrderPage() {
     setModel,
     setPlate,
     setMileage,
-    setMenuItems,
     setCustAddress,
     setCustCity,
     setCustProvince,
@@ -413,7 +378,7 @@ export default function CreateWorkOrderPage() {
       );
       const customId = await generateCustomId(initials);
 
-      // Create WO
+      // Create WO  (Removed inspection_id per request)
       const newId = uuidv4();
       const { data: inserted, error: insertWOError } = await supabase
         .from("work_orders")
@@ -422,7 +387,6 @@ export default function CreateWorkOrderPage() {
           custom_id: customId,
           vehicle_id: veh.id,
           customer_id: cust.id,
-          inspection_id: inspectionId,
           notes,
           user_id: user.id,
           shop_id: shopId,
@@ -504,8 +468,8 @@ export default function CreateWorkOrderPage() {
 
   // ----- UI ------------------------------------------------------------------
   return (
-    <div className="mx-auto max-w-5xl p-6 text-white">
-      <h1 className="mb-6 text-2xl font-bold">Create Work Order</h1>
+    <div className="mx-auto max-w-5xl p-6 text-white font-roboto">
+      <h1 className="mb-6 text-2xl font-bold font-blackops">Create Work Order</h1>
 
       {error && <div className="mb-4 rounded bg-red-100 px-4 py-2 text-red-700">{error}</div>}
 
@@ -523,7 +487,7 @@ export default function CreateWorkOrderPage() {
         <div className="grid grid-cols-1 gap-6">
           {/* Customer */}
           <section className="rounded border border-neutral-800 bg-neutral-900 p-4">
-            <h2 className="mb-2 text-lg font-semibold">Customer</h2>
+            <h2 className="mb-2 text-lg font-semibold font-blackops">Customer</h2>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label className="block text-sm">First name</label>
@@ -625,7 +589,7 @@ export default function CreateWorkOrderPage() {
           {/* Quick add — immediate (no buffer) */}
           {wo?.id && (
             <section className="rounded border border-neutral-800 bg-neutral-900 p-4">
-              <h2 className="mb-3 text-lg font-semibold text-orange-400">Quick add from menu</h2>
+              <h2 className="mb-3 text-lg font-semibold text-orange-400 font-blackops">Quick add from menu</h2>
               <MenuQuickAdd workOrderId={wo.id} />
             </section>
           )}
@@ -633,7 +597,7 @@ export default function CreateWorkOrderPage() {
           {/* Manual line form (styled like your screenshot) */}
           {wo?.id && (
             <section className="rounded border border-neutral-800 bg-neutral-900 p-4">
-              <h2 className="mb-2 text-lg font-semibold">Add Job Line</h2>
+              <h2 className="mb-2 text-lg font-semibold font-blackops">Add Job Line</h2>
               <NewWorkOrderLineForm
                 workOrderId={wo.id}
                 vehicleId={vehicleId}
@@ -643,51 +607,9 @@ export default function CreateWorkOrderPage() {
             </section>
           )}
 
-          {/* Current Lines (deletable) */}
-          <section className="rounded border border-neutral-800 bg-neutral-900 p-4">
-            <h2 className="mb-2 text-lg font-semibold">Current Lines</h2>
-            {!wo?.id || lines.length === 0 ? (
-              <p className="text-sm text-neutral-400">No lines yet.</p>
-            ) : (
-              <div className="space-y-2">
-                {lines.map((ln) => (
-                  <div
-                    key={ln.id}
-                    className="flex items-start justify-between gap-3 rounded border border-neutral-800 bg-neutral-950 p-3"
-                  >
-                    <div className="min-w-0">
-                      <div className="truncate font-medium">
-                        {ln.description || ln.complaint || "Untitled job"}
-                      </div>
-                      <div className="text-xs text-neutral-400">
-                        {String(ln.job_type ?? "job").replaceAll("_", " ")} •{" "}
-                        {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} •{" "}
-                        {(ln.status ?? "awaiting").replaceAll("_", " ")}
-                      </div>
-                      {(ln.complaint || ln.cause || ln.correction) && (
-                        <div className="text-xs text-neutral-400 mt-1">
-                          {ln.complaint ? `Cmpl: ${ln.complaint}  ` : ""}
-                          {ln.cause ? `| Cause: ${ln.cause}  ` : ""}
-                          {ln.correction ? `| Corr: ${ln.correction}` : ""}
-                        </div>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteLine(ln.id)}
-                      className="rounded border border-red-600 px-2 py-1 text-xs text-red-300 hover:bg-red-900/20"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-
           {/* Vehicle */}
           <section className="rounded border border-neutral-800 bg-neutral-900 p-4">
-            <h2 className="mb-2 text-lg font-semibold">Vehicle</h2>
+            <h2 className="mb-2 text-lg font-semibold font-blackops">Vehicle</h2>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label className="block text-sm">VIN</label>
@@ -754,32 +676,80 @@ export default function CreateWorkOrderPage() {
             </div>
           </section>
 
-          {/* Optional: Import from inspection */}
+          {/* Uploads */}
           <section className="rounded border border-neutral-800 bg-neutral-900 p-4">
-            <h2 className="mb-2 text-lg font-semibold">Optional: Import from Inspection</h2>
-            <div className="flex gap-2">
-              <input
-                value={inspectionId ?? ""}
-                onChange={(e) => setInspectionId(e.target.value || null)}
-                className="flex-1 rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
-                placeholder="Paste inspection ID (optional)"
-                disabled={loading}
-              />
-              {inspectionId && (
-                <button
-                  type="button"
-                  className="rounded border border-neutral-600 px-3 py-2 text-sm"
-                  onClick={() => setInspectionId(null)}
-                >
-                  Clear
-                </button>
-              )}
+            <h2 className="mb-2 text-lg font-semibold font-blackops">Uploads</h2>
+            <div className="grid grid-cols-1 gap-3">
+              <div>
+                <label className="block text-sm">Vehicle Photos</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(e) => setPhotoFiles(Array.from(e.target.files ?? []))}
+                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
+                  disabled={loading}
+                />
+              </div>
+              <div>
+                <label className="block text-sm">Documents (PDF/JPG/PNG)</label>
+                <input
+                  type="file"
+                  accept="application/pdf,image/*"
+                  multiple
+                  onChange={(e) => setDocFiles(Array.from(e.target.files ?? []))}
+                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
+                  disabled={loading}
+                />
+              </div>
             </div>
           </section>
 
-          {/* Work Order (defaults for menu items + notes) */}
+          {/* Current Lines (moved here under Uploads) */}
           <section className="rounded border border-neutral-800 bg-neutral-900 p-4">
-            <h2 className="mb-2 text-lg font-semibold">Work Order</h2>
+            <h2 className="mb-2 text-lg font-semibold font-blackops">Current Lines</h2>
+            {!wo?.id || lines.length === 0 ? (
+              <p className="text-sm text-neutral-400">No lines yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {lines.map((ln) => (
+                  <div
+                    key={ln.id}
+                    className="flex items-start justify-between gap-3 rounded border border-neutral-800 bg-neutral-950 p-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate font-medium">
+                        {ln.description || ln.complaint || "Untitled job"}
+                      </div>
+                      <div className="text-xs text-neutral-400">
+                        {String(ln.job_type ?? "job").replaceAll("_", " ")} •{" "}
+                        {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} •{" "}
+                        {(ln.status ?? "awaiting").replaceAll("_", " ")}
+                      </div>
+                      {(ln.complaint || ln.cause || ln.correction) && (
+                        <div className="text-xs text-neutral-400 mt-1">
+                          {ln.complaint ? `Cmpl: ${ln.complaint}  ` : ""}
+                          {ln.cause ? `| Cause: ${ln.cause}  ` : ""}
+                          {ln.correction ? `| Corr: ${ln.correction}` : ""}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteLine(ln.id)}
+                      className="rounded border border-red-600 px-2 py-1 text-xs text-red-300 hover:bg-red-900/20"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* Work Order (defaults + notes) */}
+          <section className="rounded border border-neutral-800 bg-neutral-900 p-4">
+            <h2 className="mb-2 text-lg font-semibold font-blackops">Work Order</h2>
             <div className="grid grid-cols-1 gap-3">
               <div>
                 <label className="block text-sm">Default job type for added menu items</label>
@@ -802,35 +772,6 @@ export default function CreateWorkOrderPage() {
                   className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
                   rows={3}
                   placeholder="Optional notes for technician"
-                  disabled={loading}
-                />
-              </div>
-            </div>
-          </section>
-
-          {/* Uploads */}
-          <section className="rounded border border-neutral-800 bg-neutral-900 p-4">
-            <h2 className="mb-2 text-lg font-semibold">Uploads</h2>
-            <div className="grid grid-cols-1 gap-3">
-              <div>
-                <label className="block text-sm">Vehicle Photos</label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={(e) => setPhotoFiles(Array.from(e.target.files ?? []))}
-                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
-                  disabled={loading}
-                />
-              </div>
-              <div>
-                <label className="block text-sm">Documents (PDF/JPG/PNG)</label>
-                <input
-                  type="file"
-                  accept="application/pdf,image/*"
-                  multiple
-                  onChange={(e) => setDocFiles(Array.from(e.target.files ?? []))}
-                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
                   disabled={loading}
                 />
               </div>
