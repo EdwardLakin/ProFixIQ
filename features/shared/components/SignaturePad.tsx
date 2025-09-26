@@ -1,31 +1,35 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import SignatureCanvas from "react-signature-canvas";
 
 type Props = {
-  onSave: (base64: string) => void;
+  onSave: (base64: string) => void | Promise<void>;
   onCancel: () => void;
-  saving?: boolean; // disable while uploading
 };
 
-// IMPORTANT: accept `any` at the boundary to avoid “Props must be serializable”.
-export default function SignaturePad(rawProps: any) {
-  const { onSave, onCancel, saving = false } = rawProps as Props;
-
+export default function SignaturePad(props: Props) {
+  // NOTE: this is a client component; function props are fine.
+  const { onSave, onCancel } = props;
   const sigRef = useRef<SignatureCanvas | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const handleClear = () => sigRef.current?.clear();
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (saving) return;
     const canvas = sigRef.current;
     if (!canvas || canvas.isEmpty()) {
       alert("Please draw a signature before saving.");
       return;
     }
-    const base64 = canvas.getTrimmedCanvas().toDataURL("image/png");
-    onSave(base64);
+    try {
+      setSaving(true);
+      const base64 = canvas.getTrimmedCanvas().toDataURL("image/png");
+      await onSave(base64);               // parent can be async
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -47,11 +51,7 @@ export default function SignaturePad(rawProps: any) {
         />
 
         <div className="mt-4 flex flex-wrap gap-2 justify-between">
-          <button
-            onClick={handleClear}
-            className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400"
-            disabled={saving}
-          >
+          <button onClick={handleClear} className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400">
             Clear
           </button>
           <div className="flex gap-2">

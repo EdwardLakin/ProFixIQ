@@ -1,23 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import { toast } from "sonner";
-
 import { useTabState } from "@/features/shared/hooks/useTabState";
-import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
 
-// line add-ons on the Create page
+// Components already in your project
 import { MenuQuickAdd } from "@work-orders/components/MenuQuickAdd";
 import { NewWorkOrderLineForm } from "@work-orders/components/NewWorkOrderLineForm";
 
 type DB = Database;
+type MenuItem = DB["public"]["Tables"]["menu_items"]["Row"];
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
-type VehicleRow  = DB["public"]["Tables"]["vehicles"]["Row"];
-type LineRow     = DB["public"]["Tables"]["work_order_lines"]["Row"];
+type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
+type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
+type LineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
 
 type WOType = "inspection" | "maintenance" | "diagnosis";
 
@@ -26,122 +25,61 @@ type UploadSummary = {
   failed: number;
 };
 
-/* --------------------------------- page ---------------------------------- */
-
 export default function CreateWorkOrderPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
-  // from URL (optional: continue editing an existing draft)
-  const paramWoId = searchParams.get("woId");
-  const [woId, setWoId] = useTabState<string | null>("create.woId", paramWoId ?? null);
-
   // --- Preselects (optional) -------------------------------------------------
-  const [prefillVehicleId, setPrefillVehicleId] = useTabState<string | null>("create.prefillVehicleId", null);
-  const [prefillCustomerId, setPrefillCustomerId] = useTabState<string | null>("create.prefillCustomerId", null);
-  const [inspectionId, setInspectionId] = useTabState<string | null>("create.inspectionId", null);
+  const [prefillVehicleId, setPrefillVehicleId] = useTabState<string | null>("prefillVehicleId", null);
+  const [prefillCustomerId, setPrefillCustomerId] = useTabState<string | null>("prefillCustomerId", null);
+  const [inspectionId, setInspectionId] = useTabState<string | null>("inspectionId", null);
 
   // --- Customer form ---------------------------------------------------------
-  const [customerId, setCustomerId] = useTabState<string | null>("create.customerId", null);
-  const [custFirst, setCustFirst] = useTabState("create.custFirst", "");
-  const [custLast, setCustLast]   = useTabState("create.custLast", "");
-  const [custPhone, setCustPhone] = useTabState("create.custPhone", "");
-  const [custEmail, setCustEmail] = useTabState("create.custEmail", "");
-  const [sendInvite, setSendInvite] = useTabState<boolean>("create.sendInvite", false);
+  const [customerId, setCustomerId] = useTabState<string | null>("customerId", null);
+  const [custFirst, setCustFirst] = useTabState("custFirst", "");
+  const [custLast, setCustLast] = useTabState("custLast", "");
+  const [custPhone, setCustPhone] = useTabState("custPhone", "");
+  const [custEmail, setCustEmail] = useTabState("custEmail", "");
+  const [sendInvite, setSendInvite] = useTabState<boolean>("sendInvite", false);
+
+  // NEW address fields
+  const [custAddress, setCustAddress] = useTabState("custAddress", "");
+  const [custCity, setCustCity] = useTabState("custCity", "");
+  const [custProvince, setCustProvince] = useTabState("custProvince", "");
+  const [custPostal, setCustPostal] = useTabState("custPostal", "");
 
   // --- Vehicle form ----------------------------------------------------------
-  const [vehicleId, setVehicleId] = useTabState<string | null>("create.vehicleId", null);
-  const [vin, setVin]       = useTabState("create.vin", "");
-  const [year, setYear]     = useTabState<string>("create.year", "");
-  const [make, setMake]     = useTabState("create.make", "");
-  const [model, setModel]   = useTabState("create.model", "");
-  const [plate, setPlate]   = useTabState("create.plate", "");
-  const [mileage, setMileage] = useTabState<string>("create.mileage", "");
+  const [vehicleId, setVehicleId] = useTabState<string | null>("vehicleId", null);
+  const [vin, setVin] = useTabState("vin", "");
+  const [year, setYear] = useTabState<string>("year", "");
+  const [make, setMake] = useTabState("make", "");
+  const [model, setModel] = useTabState("model", "");
+  const [plate, setPlate] = useTabState("plate", "");
+  const [mileage, setMileage] = useTabState<string>("mileage", "");
 
   // --- WO basics -------------------------------------------------------------
-  const [type, setType]   = useTabState<WOType>("create.type", "maintenance"); // default job_type seed for menu
-  const [notes, setNotes] = useTabState("create.notes", "");
+  const [type, setType] = useTabState<WOType>("type", "maintenance");
+  const [notes, setNotes] = useTabState("notes", "");
+
+  // --- (kept) Menu items list (Create page doesn’t use it directly, but leaving intact) ---
+  const [, setMenuItems] = useTabState<MenuItem[]>("menuItems", []);
 
   // --- Uploads ---------------------------------------------------------------
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
-  const [docFiles, setDocFiles]     = useState<File[]>([]);
+  const [docFiles, setDocFiles] = useState<File[]>([]);
   const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(null);
 
-  // lines (for preview list on the create page)
-  const [lines, setLines] = useState<LineRow[]>([]);
-  const [linesLoading, setLinesLoading] = useState(false);
-
   // --- UI state --------------------------------------------------------------
-  const [loading,] = useTabState("create.loading", false);
-  const [error, setError]     = useTabState("create.error", "");
-  const [inviteNotice, setInviteNotice] = useTabState<string>("create.inviteNotice", "");
-  const [jobsEnabled, setJobsEnabled]   = useTabState<boolean>("create.jobsEnabled", !!woId);
+  const [loading, setLoading] = useTabState("loading", false);
+  const [error, setError] = useTabState("error", "");
+  const [inviteNotice, setInviteNotice] = useTabState<string>("inviteNotice", "");
 
-  const [busyEnable, setBusyEnable] = useState(false);
+  // --- Live WO context for the page (created upon submit) --------------------
+  const [wo, setWo] = useTabState<WorkOrderRow | null>("__create_wo", null);
+  const [lines, setLines] = useTabState<LineRow[]>("__create_lines", []);
 
-  /* ----------------------------- read params ------------------------------ */
-
-  useEffect(() => {
-    const v = searchParams.get("vehicleId");
-    const c = searchParams.get("customerId");
-    const i = searchParams.get("inspectionId");
-    if (v) setPrefillVehicleId(v);
-    if (c) setPrefillCustomerId(c);
-    if (i) setInspectionId(i);
-  }, [searchParams, setPrefillVehicleId, setPrefillCustomerId, setInspectionId]);
-
-  /* ----------------------------- prefill data ----------------------------- */
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (prefillCustomerId) {
-        const { data } = await supabase.from("customers").select("*").eq("id", prefillCustomerId).maybeSingle();
-        if (!cancelled && data) {
-          setCustomerId(data.id);
-          setCustFirst(data.first_name ?? "");
-          setCustLast(data.last_name ?? "");
-          setCustPhone(data.phone ?? "");
-          setCustEmail(data.email ?? "");
-        }
-      }
-      if (prefillVehicleId) {
-        const { data } = await supabase.from("vehicles").select("*").eq("id", prefillVehicleId).maybeSingle();
-        if (!cancelled && data) {
-          setVehicleId(data.id);
-          setVin(data.vin ?? "");
-          setYear(data.year ? String(data.year) : "");
-          setMake(data.make ?? "");
-          setModel(data.model ?? "");
-          setPlate(data.license_plate ?? "");
-          setMileage(data.mileage ? String(data.mileage) : "");
-        }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [prefillCustomerId, prefillVehicleId, supabase,
-      setCustomerId, setCustFirst, setCustLast, setCustPhone, setCustEmail,
-      setVehicleId, setVin, setYear, setMake, setModel, setPlate, setMileage]);
-
-  /* --------------------------- shop + identity ---------------------------- */
-
-  async function getOrLinkShopId(userId: string): Promise<string | null> {
-    const { data: profile, error: profErr } = await supabase
-      .from("profiles").select("id, shop_id").eq("id", userId).maybeSingle();
-    if (profErr) throw profErr;
-    if (profile?.shop_id) return profile.shop_id;
-
-    const { data: owned, error: shopErr } = await supabase
-      .from("shops").select("id").eq("owner_id", userId).maybeSingle();
-    if (shopErr) throw shopErr;
-    if (!owned?.id) return null;
-
-    const { error: updErr } = await supabase.from("profiles").update({ shop_id: owned.id }).eq("id", userId);
-    if (updErr) throw updErr;
-    return owned.id;
-  }
-
+  // Helpers: initials + custom id
   function getInitials(first?: string | null, last?: string | null, fallback?: string | null): string {
     const f = (first ?? "").trim();
     const l = (last ?? "").trim();
@@ -158,7 +96,8 @@ export default function CreateWorkOrderPage() {
   async function generateCustomId(prefix: string): Promise<string> {
     const p = prefix.replace(/[^A-Z]/g, "").slice(0, 3) || "WO";
     const { data } = await supabase
-      .from("work_orders").select("custom_id")
+      .from("work_orders")
+      .select("custom_id")
       .ilike("custom_id", `${p}%`)
       .order("created_at", { ascending: false })
       .limit(50);
@@ -175,33 +114,167 @@ export default function CreateWorkOrderPage() {
     return `${p}${next}`;
   }
 
-  /* --------------------------- ensure entities ---------------------------- */
+  async function getOrLinkShopId(userId: string): Promise<string | null> {
+    const { data: profile, error: profErr } = await supabase
+      .from("profiles")
+      .select("id, shop_id")
+      .eq("id", userId)
+      .maybeSingle();
+    if (profErr) throw profErr;
 
+    if (profile?.shop_id) return profile.shop_id;
+
+    const { data: ownedShop, error: shopErr } = await supabase
+      .from("shops")
+      .select("id")
+      .eq("owner_id", userId)
+      .maybeSingle();
+    if (shopErr) throw shopErr;
+
+    if (!ownedShop?.id) return null;
+
+    const { error: updErr } = await supabase.from("profiles").update({ shop_id: ownedShop.id }).eq("id", userId);
+    if (updErr) throw updErr;
+
+    return ownedShop.id;
+  }
+
+  // ----- Read query params (optional) ----------------------------------------
+  useEffect(() => {
+    const v = searchParams.get("vehicleId");
+    const c = searchParams.get("customerId");
+    const i = searchParams.get("inspectionId");
+    if (v) setPrefillVehicleId(v);
+    if (c) setPrefillCustomerId(c);
+    if (i) setInspectionId(i);
+  }, [searchParams, setPrefillVehicleId, setPrefillCustomerId, setInspectionId]);
+
+  // ----- Prefill data & (kept) menu items -----------------------------------
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      if (prefillCustomerId) {
+        const { data } = await supabase.from("customers").select("*").eq("id", prefillCustomerId).single();
+        if (!cancelled && data) {
+          setCustomerId(data.id);
+          setCustFirst(data.first_name ?? "");
+          setCustLast(data.last_name ?? "");
+          setCustPhone(data.phone ?? "");
+          setCustEmail(data.email ?? "");
+          setCustAddress((data as any)?.address ?? "");
+          setCustCity((data as any)?.city ?? "");
+          setCustProvince((data as any)?.province ?? "");
+          setCustPostal((data as any)?.postal_code ?? "");
+        }
+      }
+
+      if (prefillVehicleId) {
+        const { data } = await supabase.from("vehicles").select("*").eq("id", prefillVehicleId).single();
+        if (!cancelled && data) {
+          setVehicleId(data.id);
+          setVin(data.vin ?? "");
+          setYear(data.year ? String(data.year) : "");
+          setMake(data.make ?? "");
+          setModel(data.model ?? "");
+          setPlate(data.license_plate ?? "");
+          setMileage(data.mileage ? String(data.mileage) : "");
+        }
+      }
+
+      // Load current user's menu items (left as-is)
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (user?.id) {
+        const { data: items } = await supabase
+          .from("menu_items")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false });
+
+        if (!cancelled) setMenuItems(items ?? []);
+
+        const channel = supabase
+          .channel("menu-items-create-quickpick")
+          .on(
+            "postgres_changes",
+            { event: "*", schema: "public", table: "menu_items", filter: `user_id=eq.${user.id}` },
+            async () => {
+              const { data: refetch } = await supabase
+                .from("menu_items")
+                .select("*")
+                .eq("user_id", user.id)
+                .order("created_at", { ascending: false });
+              if (!cancelled) setMenuItems(refetch ?? []);
+            },
+          )
+          .subscribe();
+
+        return () => {
+          supabase.removeChannel(channel);
+        };
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    prefillCustomerId,
+    prefillVehicleId,
+    supabase,
+    setCustomerId,
+    setCustFirst,
+    setCustLast,
+    setCustPhone,
+    setCustEmail,
+    setVehicleId,
+    setVin,
+    setYear,
+    setMake,
+    setModel,
+    setPlate,
+    setMileage,
+    setMenuItems,
+    setCustAddress,
+    setCustCity,
+    setCustProvince,
+    setCustPostal,
+  ]);
+
+  // ----- Helpers -------------------------------------------------------------
   async function ensureCustomer(): Promise<CustomerRow> {
     if (customerId) {
-      const { data } = await supabase.from("customers").select("*").eq("id", customerId).maybeSingle();
+      const { data } = await supabase.from("customers").select("*").eq("id", customerId).single();
       if (data) return data;
     }
 
-    if (custPhone || custEmail) {
-      const query = supabase.from("customers").select("*").limit(1);
-      if (custPhone) query.ilike("phone", custPhone);
-      else if (custEmail) query.ilike("email", custEmail);
-      const { data: found } = await query;
-      if (found && found.length > 0) {
-        setCustomerId(found[0].id);
-        return found[0];
-      }
+    const query = supabase.from("customers").select("*").limit(1);
+    if (custPhone) query.ilike("phone", custPhone);
+    else if (custEmail) query.ilike("email", custEmail);
+    const { data: found } = await query;
+
+    if (found && found.length > 0) {
+      setCustomerId(found[0].id);
+      return found[0];
     }
 
-    const toInsert = {
+    const toInsert: any = {
       first_name: custFirst || null,
-      last_name : custLast || null,
-      phone     : custPhone || null,
-      email     : custEmail || null,
+      last_name: custLast || null,
+      phone: custPhone || null,
+      email: custEmail || null,
+      // NEW address fields
+      address: custAddress || null,
+      city: custCity || null,
+      province: custProvince || null,
+      postal_code: custPostal || null,
     };
-    const { data: inserted, error: insErr } =
-      await supabase.from("customers").insert(toInsert).select("*").single();
+
+    const { data: inserted, error: insErr } = await supabase.from("customers").insert(toInsert).select("*").single();
+
     if (insErr || !inserted) throw new Error(insErr?.message ?? "Failed to create customer");
     setCustomerId(inserted.id);
     return inserted;
@@ -209,7 +282,7 @@ export default function CreateWorkOrderPage() {
 
   async function ensureVehicle(cust: CustomerRow, shopId: string | null): Promise<VehicleRow> {
     if (vehicleId) {
-      const { data } = await supabase.from("vehicles").select("*").eq("id", vehicleId).maybeSingle();
+      const { data } = await supabase.from("vehicles").select("*").eq("id", vehicleId).single();
       if (data) return data;
     }
 
@@ -237,8 +310,8 @@ export default function CreateWorkOrderPage() {
       mileage: mileage ? Number(mileage) : null,
       shop_id: shopId,
     };
-    const { data: inserted, error: insErr } =
-      await supabase.from("vehicles").insert(toInsert).select("*").single();
+    const { data: inserted, error: insErr } = await supabase.from("vehicles").insert(toInsert).select("*").single();
+
     if (insErr || !inserted) throw new Error(insErr?.message ?? "Failed to create vehicle");
     setVehicleId(inserted.id);
     return inserted;
@@ -248,7 +321,9 @@ export default function CreateWorkOrderPage() {
     let uploaded = 0;
     let failed = 0;
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     const uploader = user?.id ?? null;
 
     const uploadAndRecord = async (
@@ -258,14 +333,18 @@ export default function CreateWorkOrderPage() {
     ): Promise<void> => {
       const key = `veh_${vId}/${Date.now()}_${f.name}`;
       const up = await supabase.storage.from(bucket).upload(key, f, { upsert: false });
-      if (up.error) { failed += 1; return; }
+      if (up.error) {
+        failed += 1;
+        return;
+      }
       const { error: rowErr } = await supabase.from("vehicle_media").insert({
         vehicle_id: vId,
         type: mediaType,
         storage_path: key,
         uploaded_by: uploader,
       });
-      if (rowErr) failed += 1; else uploaded += 1;
+      if (rowErr) failed += 1;
+      else uploaded += 1;
     };
 
     for (const f of photoFiles) await uploadAndRecord("vehicle-photos", f, "photo");
@@ -274,22 +353,47 @@ export default function CreateWorkOrderPage() {
     return { uploaded, failed };
   }
 
-  /* ------------------------- draft creation / enable ----------------------- */
+  // delete a line (works after WO exists and lines are in DB)
+  const handleDeleteLine = useCallback(
+    async (lineId: string) => {
+      if (!wo?.id) return;
+      const ok = confirm("Delete this line?");
+      if (!ok) return;
+      const { error: delErr } = await supabase.from("work_order_lines").delete().eq("id", lineId);
+      if (delErr) {
+        alert(delErr.message || "Delete failed");
+        return;
+      }
+      const { data: refreshed } = await supabase
+        .from("work_order_lines")
+        .select("*")
+        .eq("work_order_id", wo.id)
+        .order("created_at", { ascending: true });
+      setLines(refreshed ?? []);
+    },
+    [supabase, wo?.id, setLines],
+  );
 
-  const enableJobs = useCallback(async () => {
-    if (busyEnable) return;
-    setBusyEnable(true);
+  // ----- Submit (creates the WO) --------------------------------------------
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setLoading(true);
     setError("");
+    setInviteNotice("");
+    setUploadSummary(null);
 
     try {
-      // must have at least some customer info
       if (!custFirst && !custPhone && !custEmail) {
-        throw new Error("Enter at least a name, phone, or email for the customer.");
+        throw new Error("Please enter at least a name, phone, or email for the customer.");
       }
 
-      // get current user + names (for initials) + shop
-      const { data: { user } } = await supabase.auth.getUser();
+      const cust = await ensureCustomer();
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user?.id) throw new Error("Not signed in.");
+
       const { data: profileNames } = await supabase
         .from("profiles")
         .select("first_name, last_name, full_name")
@@ -299,120 +403,108 @@ export default function CreateWorkOrderPage() {
       const shopId = await getOrLinkShopId(user.id);
       if (!shopId) throw new Error("Your profile isn’t linked to a shop yet.");
 
-      // ensure customer & vehicle
-      const cust = await ensureCustomer();
-      const veh  = await ensureVehicle(cust, shopId);
+      const veh = await ensureVehicle(cust, shopId);
 
-      // create the WO only if we don't have one
-      let id = woId;
-      if (!id) {
-        const initials  = getInitials(profileNames?.first_name, profileNames?.last_name, profileNames?.full_name ?? user.email ?? null);
-        const customId  = await generateCustomId(initials);
-        id = uuidv4();
+      // Build custom_id like TU0001 based on creator initials
+      const initials = getInitials(
+        profileNames?.first_name,
+        profileNames?.last_name,
+        profileNames?.full_name ?? user.email ?? null,
+      );
+      const customId = await generateCustomId(initials);
 
-        const { error: insertWOError } = await supabase.from("work_orders").insert({
-          id,
-          custom_id   : customId,
-          vehicle_id  : veh.id,
-          customer_id : cust.id,
+      // Create WO
+      const newId = uuidv4();
+      const { data: inserted, error: insertWOError } = await supabase
+        .from("work_orders")
+        .insert({
+          id: newId,
+          custom_id: customId,
+          vehicle_id: veh.id,
+          customer_id: cust.id,
           inspection_id: inspectionId,
           notes,
           user_id: user.id,
           shop_id: shopId,
-          status: "awaiting_approval", // advisor building the quote
-        });
-        if (insertWOError) throw new Error(insertWOError.message || "Failed to create work order.");
-        setWoId(id);
-        setJobsEnabled(true);
+          status: "awaiting_approval",
+        })
+        .select("*")
+        .single();
+      if (insertWOError || !inserted) throw new Error(insertWOError?.message || "Failed to create work order.");
+      setWo(inserted);
 
-        // uploads (optional)
-        if (photoFiles.length || docFiles.length) {
-          const summary = await uploadVehicleFiles(veh.id);
-          setUploadSummary(summary);
-        }
-
-        // optional customer portal invite
-        if (sendInvite && custEmail) {
-          try {
-            const origin =
-              typeof window !== "undefined"
-                ? window.location.origin
-                : (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
-            const portalUrl = `${origin || "https://profixiq.com"}/portal/signup?email=${encodeURIComponent(custEmail)}`;
-            const { error: fnErr } = await supabase.functions.invoke("send-portal-invite", {
-              body: { email: custEmail, customer_id: cust.id, portal_url: portalUrl },
-            });
-            if (fnErr) setInviteNotice("Work order created. Failed to send invite email (logged).");
-            else setInviteNotice("Work order created. Invite email queued to the customer.");
-          } catch {
-            setInviteNotice("Work order created. Failed to send invite email (caught).");
-          }
-        }
-      } else {
-        setJobsEnabled(true);
+      // Upload files (optional)
+      if (photoFiles.length || docFiles.length) {
+        const summary = await uploadVehicleFiles(veh.id);
+        setUploadSummary(summary);
       }
 
-      toast.success("Jobs enabled — add job lines now.");
-      await fetchLines(id!);
+      // Invite email (optional)
+      if (sendInvite && custEmail) {
+        try {
+          const origin =
+            typeof window !== "undefined"
+              ? window.location.origin
+              : (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
+          const portalUrl = `${origin || "https://profixiq.com"}/portal/signup?email=${encodeURIComponent(custEmail)}`;
+
+          const { error: fnErr } = await supabase.functions.invoke("send-portal-invite", {
+            body: { email: custEmail, customer_id: cust.id, portal_url: portalUrl },
+          });
+
+          if (fnErr) {
+            console.warn("send-portal-invite failed:", fnErr);
+            setInviteNotice("Work order created. Failed to send invite email (logged).");
+          } else {
+            setInviteNotice("Work order created. Invite email queued to the customer.");
+          }
+        } catch (e) {
+          console.warn("send-portal-invite threw:", e);
+          setInviteNotice("Work order created. Failed to send invite email (caught).");
+        }
+      }
     } catch (ex) {
-      const message = ex instanceof Error ? ex.message : "Failed to enable job adding.";
+      const message = ex instanceof Error ? ex.message : "Failed to create work order.";
       setError(message);
+      setLoading(false);
+      return;
     } finally {
-      setBusyEnable(false);
+      setLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [busyEnable, custFirst, custPhone, custEmail, supabase, woId, inspectionId, notes,
-      photoFiles, docFiles, sendInvite, custEmail]);
+  }
 
-  /* -------------------------- fetch lines (preview) ------------------------ */
+  // refresh lines if we already created a WO
+  const fetchLines = useCallback(async () => {
+    if (!wo?.id) return;
+    const { data } = await supabase
+      .from("work_order_lines")
+      .select("*")
+      .eq("work_order_id", wo.id)
+      .order("created_at", { ascending: true });
+    setLines(data ?? []);
+  }, [supabase, wo?.id, setLines]);
 
-  const fetchLines = useCallback(async (id: string) => {
-    setLinesLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from("work_order_lines")
-        .select("*")
-        .eq("work_order_id", id)
-        .order("created_at", { ascending: true });
-      if (error) throw error;
-      setLines(data ?? []);
-    } catch (e) {
-      console.error("fetchLines error:", e);
-    } finally {
-      setLinesLoading(false);
-    }
-  }, [supabase]);
-
-  // keep lines fresh once a draft exists
   useEffect(() => {
-    if (!woId) return;
-    void fetchLines(woId);
+    if (!wo?.id) return;
+    void fetchLines();
     const ch = supabase
-      .channel(`create-wo:${woId}`)
+      .channel(`create-wo:${wo.id}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "work_order_lines", filter: `work_order_id=eq.${woId}` },
-        () => fetchLines(woId)
+        { event: "*", schema: "public", table: "work_order_lines", filter: `work_order_id=eq.${wo.id}` },
+        () => fetchLines(),
       )
       .subscribe();
-    return () => { try { supabase.removeChannel(ch); } catch {} };
-  }, [woId, fetchLines, supabase]);
+    return () => {
+      try {
+        supabase.removeChannel(ch);
+      } catch {}
+    };
+  }, [supabase, wo?.id, fetchLines]);
 
-  /* ----------------------------- finish flow ------------------------------ */
-
-  const goReview = async () => {
-    if (!woId) {
-      toast.error("Enable jobs (creates the draft) before reviewing.");
-      return;
-    }
-    router.push(`/work-orders/quote-review?woId=${woId}`);
-  };
-
-  /* --------------------------------- UI ----------------------------------- */
-
+  // ----- UI ------------------------------------------------------------------
   return (
-    <div className="mx-auto max-w-6xl p-6 text-white">
-      <PreviousPageButton to="/work-orders" />
+    <div className="mx-auto max-w-5xl p-6 text-white">
       <h1 className="mb-6 text-2xl font-bold">Create Work Order</h1>
 
       {error && <div className="mb-4 rounded bg-red-100 px-4 py-2 text-red-700">{error}</div>}
@@ -426,12 +518,11 @@ export default function CreateWorkOrderPage() {
         <div className="mb-4 rounded bg-neutral-800 px-4 py-2 text-neutral-200 text-sm">{inviteNotice}</div>
       )}
 
-      <div className="mx-auto max-w-5xl grid grid-cols-1 gap-6">
-        {/* LEFT: main form + jobs */}
-        <div className="space-y-6 rounded border border-orange-400 bg-neutral-900 p-4">
-
+      <form onSubmit={handleSubmit}>
+        {/* FULL WIDTH COLUMN */}
+        <div className="grid grid-cols-1 gap-6">
           {/* Customer */}
-          <section>
+          <section className="rounded border border-neutral-800 bg-neutral-900 p-4">
             <h2 className="mb-2 text-lg font-semibold">Customer</h2>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
@@ -486,11 +577,116 @@ export default function CreateWorkOrderPage() {
                   <label htmlFor="send-invite">Email a customer portal sign-up link</label>
                 </div>
               </div>
+
+              {/* NEW address fields */}
+              <div className="sm:col-span-2">
+                <label className="block text-sm">Address</label>
+                <input
+                  value={custAddress}
+                  onChange={(e) => setCustAddress(e.target.value)}
+                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
+                  placeholder="123 Main St"
+                  disabled={loading}
+                />
+              </div>
+              <div>
+                <label className="block text-sm">City</label>
+                <input
+                  value={custCity}
+                  onChange={(e) => setCustCity(e.target.value)}
+                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
+                  placeholder="Calgary"
+                  disabled={loading}
+                />
+              </div>
+              <div>
+                <label className="block text-sm">Province</label>
+                <input
+                  value={custProvince}
+                  onChange={(e) => setCustProvince(e.target.value)}
+                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
+                  placeholder="AB"
+                  disabled={loading}
+                />
+              </div>
+              <div>
+                <label className="block text-sm">Postal code</label>
+                <input
+                  value={custPostal}
+                  onChange={(e) => setCustPostal(e.target.value.toUpperCase())}
+                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
+                  placeholder="T0L 1A1"
+                  disabled={loading}
+                />
+              </div>
             </div>
           </section>
 
+          {/* Quick add — immediate (no buffer) */}
+          {wo?.id && (
+            <section className="rounded border border-neutral-800 bg-neutral-900 p-4">
+              <h2 className="mb-3 text-lg font-semibold text-orange-400">Quick add from menu</h2>
+              <MenuQuickAdd workOrderId={wo.id} />
+            </section>
+          )}
+
+          {/* Manual line form (styled like your screenshot) */}
+          {wo?.id && (
+            <section className="rounded border border-neutral-800 bg-neutral-900 p-4">
+              <h2 className="mb-2 text-lg font-semibold">Add Job Line</h2>
+              <NewWorkOrderLineForm
+                workOrderId={wo.id}
+                vehicleId={vehicleId}
+                defaultJobType={type}
+                onCreated={fetchLines}
+              />
+            </section>
+          )}
+
+          {/* Current Lines (deletable) */}
+          <section className="rounded border border-neutral-800 bg-neutral-900 p-4">
+            <h2 className="mb-2 text-lg font-semibold">Current Lines</h2>
+            {!wo?.id || lines.length === 0 ? (
+              <p className="text-sm text-neutral-400">No lines yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {lines.map((ln) => (
+                  <div
+                    key={ln.id}
+                    className="flex items-start justify-between gap-3 rounded border border-neutral-800 bg-neutral-950 p-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate font-medium">
+                        {ln.description || ln.complaint || "Untitled job"}
+                      </div>
+                      <div className="text-xs text-neutral-400">
+                        {String(ln.job_type ?? "job").replaceAll("_", " ")} •{" "}
+                        {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} •{" "}
+                        {(ln.status ?? "awaiting").replaceAll("_", " ")}
+                      </div>
+                      {(ln.complaint || ln.cause || ln.correction) && (
+                        <div className="text-xs text-neutral-400 mt-1">
+                          {ln.complaint ? `Cmpl: ${ln.complaint}  ` : ""}
+                          {ln.cause ? `| Cause: ${ln.cause}  ` : ""}
+                          {ln.correction ? `| Corr: ${ln.correction}` : ""}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteLine(ln.id)}
+                      className="rounded border border-red-600 px-2 py-1 text-xs text-red-300 hover:bg-red-900/20"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
           {/* Vehicle */}
-          <section>
+          <section className="rounded border border-neutral-800 bg-neutral-900 p-4">
             <h2 className="mb-2 text-lg font-semibold">Vehicle</h2>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
@@ -559,7 +755,7 @@ export default function CreateWorkOrderPage() {
           </section>
 
           {/* Optional: Import from inspection */}
-          <section>
+          <section className="rounded border border-neutral-800 bg-neutral-900 p-4">
             <h2 className="mb-2 text-lg font-semibold">Optional: Import from Inspection</h2>
             <div className="flex gap-2">
               <input
@@ -581,8 +777,8 @@ export default function CreateWorkOrderPage() {
             </div>
           </section>
 
-          {/* Work Order (type select is only a default for menu) */}
-          <section>
+          {/* Work Order (defaults for menu items + notes) */}
+          <section className="rounded border border-neutral-800 bg-neutral-900 p-4">
             <h2 className="mb-2 text-lg font-semibold">Work Order</h2>
             <div className="grid grid-cols-1 gap-3">
               <div>
@@ -613,7 +809,7 @@ export default function CreateWorkOrderPage() {
           </section>
 
           {/* Uploads */}
-          <section>
+          <section className="rounded border border-neutral-800 bg-neutral-900 p-4">
             <h2 className="mb-2 text-lg font-semibold">Uploads</h2>
             <div className="grid grid-cols-1 gap-3">
               <div>
@@ -641,31 +837,15 @@ export default function CreateWorkOrderPage() {
             </div>
           </section>
 
-          {/* Enable jobs / Done */}
-          <div className="flex flex-wrap items-center gap-3 pt-2">
-            {!jobsEnabled ? (
-              <button
-                type="button"
-                onClick={enableJobs}
-                disabled={busyEnable}
-                className="rounded bg-orange-500 px-4 py-2 font-semibold text-black hover:bg-orange-600 disabled:opacity-60"
-              >
-                {busyEnable ? "Creating draft…" : "Enable Jobs"}
-              </button>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={goReview}
-                  className="rounded bg-orange-500 px-4 py-2 font-semibold text-black hover:bg-orange-600"
-                >
-                  Done → Review & Sign
-                </button>
-                <span className="text-xs text-neutral-400">
-                  Draft ID: <code className="text-neutral-200">{woId}</code>
-                </span>
-              </>
-            )}
+          {/* Submit */}
+          <div className="flex items-center gap-4 pt-2">
+            <button
+              type="submit"
+              disabled={loading}
+              className="rounded bg-orange-500 px-4 py-2 font-semibold text-black hover:bg-orange-600 disabled:opacity-60"
+            >
+              {loading ? "Creating..." : "Done → Review & Sign"}
+            </button>
 
             <button
               type="button"
@@ -676,74 +856,8 @@ export default function CreateWorkOrderPage() {
               Cancel
             </button>
           </div>
-
-          {/* JOBS pane (enabled only after a draft WO exists) */}
-          <section className={`mt-6 ${jobsEnabled ? "" : "opacity-50 pointer-events-none select-none"}`}>
-            <div className="mb-2 flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Jobs</h2>
-              {!jobsEnabled && <span className="text-xs text-neutral-400">Click “Enable Jobs” to begin</span>}
-            </div>
-
-            {jobsEnabled && woId && (
-              <div className="space-y-4">
-                {/* Quick Add menu */}
-                <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
-                  <MenuQuickAdd workOrderId={woId} />
-                </div>
-
-                {/* Manual add form */}
-                <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
-                  <NewWorkOrderLineForm
-                    workOrderId={woId}
-                    vehicleId={vehicleId ?? null}
-                    defaultJobType={type}
-                    onCreated={() => fetchLines(woId)}
-                  />
-                </div>
-
-                {/* Current lines preview */}
-                <div className="rounded border border-neutral-800 bg-neutral-900 p-3">
-                  <div className="mb-2 flex items-center justify-between">
-                    <h3 className="font-semibold">Current Lines</h3>
-                    {linesLoading && <span className="text-xs text-neutral-400">Refreshing…</span>}
-                  </div>
-
-                  {lines.length === 0 ? (
-                    <p className="text-sm text-neutral-400">No lines yet.</p>
-                  ) : (
-                    <ul className="space-y-2">
-                      {lines.map((ln) => (
-                        <li key={ln.id} className="rounded border border-neutral-800 bg-neutral-950 p-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="min-w-0">
-                              <div className="truncate font-medium">
-                                {ln.description || ln.complaint || "Untitled job"}
-                              </div>
-                              <div className="text-xs text-neutral-400">
-                                {(ln.job_type ?? "job").toString().replaceAll("_", " ")} •{" "}
-                                {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} •{" "}
-                                {(ln.status ?? "awaiting").replaceAll("_", " ")}
-                              </div>
-                              {(ln.complaint || ln.cause || ln.correction) && (
-                                <div className="text-xs text-neutral-400 mt-1">
-                                  {ln.complaint ? `Cmpl: ${ln.complaint}  ` : ""}
-                                  {ln.cause ? `| Cause: ${ln.cause}  ` : ""}
-                                  {ln.correction ? `| Corr: ${ln.correction}` : ""}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              </div>
-            )}
-          </section>
         </div>
-
-      </div>
+      </form>
     </div>
   );
 }
