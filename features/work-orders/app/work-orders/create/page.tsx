@@ -705,6 +705,25 @@ export default function CreateWorkOrderPage() {
             </div>
           </section>
 
+          {wo?.id && (
+  <section className="rounded border border-neutral-800 bg-neutral-900 p-4">
+    <h2 className="mb-3 text-lg font-semibold text-orange-400">Quick add from menu</h2>
+    <MenuQuickAdd workOrderId={wo.id} />
+  </section>
+)}
+
+{wo?.id && (
+  <section className="rounded border border-neutral-800 bg-neutral-900 p-4">
+    <h2 className="mb-2 text-lg font-semibold">Add Job Line</h2>
+    <NewWorkOrderLineForm
+      workOrderId={wo.id}
+      vehicleId={vehicleId}
+      defaultJobType={type}
+      onCreated={fetchLines}
+    />
+  </section>
+)}
+
           {/* Current Lines (moved here under Uploads) */}
           <section className="rounded border border-neutral-800 bg-neutral-900 p-4">
             <h2 className="mb-2 text-lg font-semibold font-blackops">Current Lines</h2>
