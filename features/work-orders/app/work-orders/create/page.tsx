@@ -448,6 +448,56 @@ export default function CreateWorkOrderPage() {
     setLines(data ?? []);
   }, [supabase, wo?.id, setLines]);
 
+  // === NEW: Auto-start a draft WO when navigated with ?autostart=1 ==========
+  useEffect(() => {
+    if (wo?.id) return; // already have a draft/WO
+
+    const autostart = searchParams.get("autostart");
+    if (autostart !== "1") return;
+
+    void (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user?.id) return;
+
+      const shopId = await getOrLinkShopId(user.id);
+      if (!shopId) return;
+
+      const { data: profileNames } = await supabase
+        .from("profiles")
+        .select("first_name, last_name, full_name")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      const initials = getInitials(
+        profileNames?.first_name,
+        profileNames?.last_name,
+        profileNames?.full_name ?? user.email ?? null,
+      );
+      const customId = await generateCustomId(initials);
+
+      const newId = uuidv4();
+      const { data: inserted, error } = await supabase
+        .from("work_orders")
+        .insert({
+          id: newId,
+          custom_id: customId,
+          user_id: user.id,
+          shop_id: shopId,
+          status: "draft",
+        })
+        .select("*")
+        .single();
+
+      if (!error && inserted) {
+        setWo(inserted);
+        await fetchLines();
+      }
+    })();
+  }, [searchParams, supabase, wo?.id, setWo, fetchLines]);
+  // ==========================================================================
+
   useEffect(() => {
     if (!wo?.id) return;
     void fetchLines();
@@ -705,24 +755,25 @@ export default function CreateWorkOrderPage() {
             </div>
           </section>
 
+          {/* (duplicate Quick add + Manual add blocks preserved as in your file) */}
           {wo?.id && (
-  <section className="rounded border border-neutral-800 bg-neutral-900 p-4">
-    <h2 className="mb-3 text-lg font-semibold text-orange-400">Quick add from menu</h2>
-    <MenuQuickAdd workOrderId={wo.id} />
-  </section>
-)}
+            <section className="rounded border border-neutral-800 bg-neutral-900 p-4">
+              <h2 className="mb-3 text-lg font-semibold text-orange-400">Quick add from menu</h2>
+              <MenuQuickAdd workOrderId={wo.id} />
+            </section>
+          )}
 
-{wo?.id && (
-  <section className="rounded border border-neutral-800 bg-neutral-900 p-4">
-    <h2 className="mb-2 text-lg font-semibold">Add Job Line</h2>
-    <NewWorkOrderLineForm
-      workOrderId={wo.id}
-      vehicleId={vehicleId}
-      defaultJobType={type}
-      onCreated={fetchLines}
-    />
-  </section>
-)}
+          {wo?.id && (
+            <section className="rounded border border-neutral-800 bg-neutral-900 p-4">
+              <h2 className="mb-2 text-lg font-semibold">Add Job Line</h2>
+              <NewWorkOrderLineForm
+                workOrderId={wo.id}
+                vehicleId={vehicleId}
+                defaultJobType={type}
+                onCreated={fetchLines}
+              />
+            </section>
+          )}
 
           {/* Current Lines (moved here under Uploads) */}
           <section className="rounded border border-neutral-800 bg-neutral-900 p-4">

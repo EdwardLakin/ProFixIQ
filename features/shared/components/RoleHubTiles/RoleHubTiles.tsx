@@ -119,26 +119,31 @@ export default function RoleHubTiles({
               {/* Tiles */}
               {isOpen && (
                 <div className="grid gap-3 px-4 pb-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {tiles.map((t) => (
-                    <Link
-                      prefetch={false}
-                      key={t.href}
-                      href={t.href}
-                      className="rounded-lg border border-neutral-800 bg-neutral-900 p-4 hover:border-orange-500"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="font-medium text-white">{t.title}</div>
-                        {t.cta ? (
-                          <span className="rounded bg-orange-600 px-2 py-0.5 text-xs font-semibold text-white">
-                            {t.cta}
-                          </span>
+                  {tiles.map((t) => {
+                    const safeHref =
+                      t.href.startsWith("/work-orders/create") ? "/work-orders/create?autostart=1" : t.href;
+
+                    return (
+                      <Link
+                        prefetch={false}
+                        key={t.href}
+                        href={safeHref}
+                        className="rounded-lg border border-neutral-800 bg-neutral-900 p-4 hover:border-orange-500"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="font-medium text-white">{t.title}</div>
+                          {t.cta ? (
+                            <span className="rounded bg-orange-600 px-2 py-0.5 text-xs font-semibold text-white">
+                              {t.cta}
+                            </span>
+                          ) : null}
+                        </div>
+                        {t.subtitle ? (
+                          <div className="mt-1 text-xs text-neutral-400">{t.subtitle}</div>
                         ) : null}
-                      </div>
-                      {t.subtitle ? (
-                        <div className="mt-1 text-xs text-neutral-400">{t.subtitle}</div>
-                      ) : null}
-                    </Link>
-                  ))}
+                      </Link>
+                    );
+                  })}
                 </div>
               )}
             </section>
