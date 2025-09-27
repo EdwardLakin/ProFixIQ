@@ -300,7 +300,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         <h3 className="mb-2 font-semibold text-orange-400">Quotes</h3>
         <div className="grid gap-2 sm:grid-cols-2">
           <button
-            onClick={() => router.push(`/work-orders/${workOrderId}/quote-review`)}
+            onClick={() => router.push(`/work-orders/quote-review?woId=${workOrderId}`)}
             className="flex items-center justify-between rounded border border-neutral-800 bg-neutral-950 p-3 text-left hover:bg-neutral-900"
             title="Open quote review for this work order"
           >
@@ -345,7 +345,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
             title={inspectionBtnTitle("air")}
             disabled={addingId === "air"}
           >
-            <div className="font-medium">Maintenance 50 – Air (CVIP)</div>
+            <div className="font-medium">Maintenance 50 – Air </div>
             <div className="text-xs text-neutral-400">Air-governor, leakage, push-rod stroke + oil change</div>
             {(vehicleName || customerName) && (
               <div className="mt-1 text-[11px] text-neutral-500">
