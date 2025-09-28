@@ -12,13 +12,12 @@ import { MenuQuickAdd } from "@work-orders/components/MenuQuickAdd";
 import { NewWorkOrderLineForm } from "@work-orders/components/NewWorkOrderLineForm";
 
 type DB = Database;
-type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
-type VehicleRow  = DB["public"]["Tables"]["vehicles"]["Row"];
+type CustomerRow  = DB["public"]["Tables"]["customers"]["Row"];
+type VehicleRow   = DB["public"]["Tables"]["vehicles"]["Row"];
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
-type LineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
+type LineRow      = DB["public"]["Tables"]["work_order_lines"]["Row"];
 
 type WOType = "inspection" | "maintenance" | "diagnosis";
-
 type UploadSummary = { uploaded: number; failed: number };
 
 export default function CreateWorkOrderPage() {
@@ -46,11 +45,11 @@ export default function CreateWorkOrderPage() {
 
   // --- Vehicle form ----------------------------------------------------------
   const [vehicleId, setVehicleId] = useTabState<string | null>("vehicleId", null);
-  const [vin, setVin]     = useTabState("vin", "");
-  const [year, setYear]   = useTabState<string>("year", "");
-  const [make, setMake]   = useTabState("make", "");
-  const [model, setModel] = useTabState("model", "");
-  const [plate, setPlate] = useTabState("plate", "");
+  const [vin, setVin]       = useTabState("vin", "");
+  const [year, setYear]     = useTabState<string>("year", "");
+  const [make, setMake]     = useTabState("make", "");
+  const [model, setModel]   = useTabState("model", "");
+  const [plate, setPlate]   = useTabState("plate", "");
   const [mileage, setMileage] = useTabState<string>("mileage", "");
 
   // --- WO basics -------------------------------------------------------------
@@ -63,8 +62,8 @@ export default function CreateWorkOrderPage() {
   const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(null);
 
   // --- UI state --------------------------------------------------------------
-  const [loading, setLoading]     = useTabState("loading", false);
-  const [error, setError]         = useTabState("error", "");
+  const [loading, setLoading] = useTabState("loading", false);
+  const [error, setError]     = useTabState("error", "");
   const [inviteNotice, setInviteNotice] = useTabState<string>("inviteNotice", "");
 
   // --- Live WO context -------------------------------------------------------
@@ -193,14 +192,14 @@ export default function CreateWorkOrderPage() {
       return found[0];
     }
     const toInsert: any = {
-      first_name: custFirst || null,
-      last_name:  custLast  || null,
-      phone:      custPhone || null,
-      email:      custEmail || null,
-      address:    custAddress || null,
-      city:       custCity || null,
-      province:   custProvince || null,
-      postal_code: custPostal || null,
+      first_name:  custFirst  || null,
+      last_name:   custLast   || null,
+      phone:       custPhone  || null,
+      email:       custEmail  || null,
+      address:     custAddress || null,
+      city:        custCity     || null,
+      province:    custProvince || null,
+      postal_code: custPostal   || null,
     };
     const { data: inserted, error: insErr } =
       await supabase.from("customers").insert(toInsert).select("*").single();
@@ -280,7 +279,7 @@ export default function CreateWorkOrderPage() {
     setLines(refreshed ?? []);
   }, [supabase, wo?.id, setLines]);
 
-  // ----- Submit (creates the WO) --------------------------------------------
+  // ----- Submit --------------------------------------------------------------
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (loading) return;
@@ -294,6 +293,7 @@ export default function CreateWorkOrderPage() {
         return;
       }
 
+      // Fallback path (should rarely run now): create a full WO then route
       if (!custFirst && !custPhone && !custEmail) {
         throw new Error("Please enter at least a name, phone, or email for the customer.");
       }
@@ -311,14 +311,12 @@ export default function CreateWorkOrderPage() {
 
       const veh = await ensureVehicle(cust, shopId);
 
-      // Build custom_id like TU0001
       const initials = getInitials(
         profileNames?.first_name, profileNames?.last_name,
         profileNames?.full_name ?? user.email ?? null
       );
       const customId = await generateCustomId(initials);
 
-      // Create WO
       const newId = uuidv4();
       const { data: inserted, error: insertWOError } = await supabase
         .from("work_orders")
@@ -338,13 +336,11 @@ export default function CreateWorkOrderPage() {
       if (insertWOError || !inserted) throw new Error(insertWOError?.message || "Failed to create work order.");
       setWo(inserted);
 
-      // Optional uploads
       if (photoFiles.length || docFiles.length) {
         const summary = await uploadVehicleFiles(veh.id);
         setUploadSummary(summary);
       }
 
-      // Optional invite
       if (sendInvite && custEmail) {
         try {
           const origin =
@@ -355,19 +351,13 @@ export default function CreateWorkOrderPage() {
           const { error: fnErr } = await supabase.functions.invoke("send-portal-invite", {
             body: { email: custEmail, customer_id: cust.id, portal_url: portalUrl },
           });
-          if (fnErr) {
-            console.warn("send-portal-invite failed:", fnErr);
-            setInviteNotice("Work order created. Failed to send invite email (logged).");
-          } else {
-            setInviteNotice("Work order created. Invite email queued to the customer.");
-          }
-        } catch (e) {
-          console.warn("send-portal-invite threw:", e);
+          if (fnErr) setInviteNotice("Work order created. Failed to send invite email (logged).");
+          else setInviteNotice("Work order created. Invite email queued to the customer.");
+        } catch {
           setInviteNotice("Work order created. Failed to send invite email (caught).");
         }
       }
 
-      // ⬇️ Immediately go to quote-review
       router.push(`/work-orders/quote-review?woId=${inserted.id}`);
       return;
     } catch (ex) {
@@ -378,7 +368,7 @@ export default function CreateWorkOrderPage() {
     }
   }
 
-  // refresh lines (for Quick Add / manual add)
+  // Refresh lines (for Quick Add / manual add)
   const fetchLines = useCallback(async () => {
     if (!wo?.id) return;
     const { data } = await supabase
@@ -389,11 +379,9 @@ export default function CreateWorkOrderPage() {
     setLines(data ?? []);
   }, [supabase, wo?.id, setLines]);
 
-  // Auto-start draft on ?autostart=1
+  // === Auto-create a DRAFT WO on page load ==================================
   useEffect(() => {
     if (wo?.id) return;
-    const autostart = searchParams.get("autostart");
-    if (autostart !== "1") return;
 
     void (async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -403,11 +391,14 @@ export default function CreateWorkOrderPage() {
       if (!shopId) return;
 
       const { data: profileNames } = await supabase
-        .from("profiles").select("first_name, last_name, full_name")
-        .eq("id", user.id).maybeSingle();
+        .from("profiles")
+        .select("first_name, last_name, full_name")
+        .eq("id", user.id)
+        .maybeSingle();
 
       const initials = getInitials(
-        profileNames?.first_name, profileNames?.last_name,
+        profileNames?.first_name,
+        profileNames?.last_name,
         profileNames?.full_name ?? user.email ?? null
       );
       const customId = await generateCustomId(initials);
@@ -424,7 +415,8 @@ export default function CreateWorkOrderPage() {
         await fetchLines();
       }
     })();
-  }, [searchParams, supabase, wo?.id, setWo, fetchLines]);
+  }, [supabase, wo?.id, setWo, fetchLines]);
+  // ==========================================================================
 
   // Listen for Quick-Add events to refresh list immediately
   useEffect(() => {
@@ -592,7 +584,7 @@ export default function CreateWorkOrderPage() {
             </div>
           </section>
 
-          {/* Quick add + Manual add (single set) */}
+          {/* Quick add + Manual add */}
           {wo?.id && (
             <section className="rounded border border-neutral-800 bg-neutral-900 p-4">
               <h2 className="mb-3 text-lg font-semibold text-orange-400 font-blackops">Quick add from menu</h2>
