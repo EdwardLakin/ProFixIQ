@@ -105,9 +105,9 @@ type VehicleLite = {
   vin?: string | null;
   license_plate?: string | null;
   mileage?: string | number | null;
-  color?: string | null;
-  unit_number?: string | null;
-  odometer?: string | number | null;
+  color?: string | null;        // NEW
+  unit_number?: string | null;  // NEW
+  engine_hours?: number | null; // NEW
   id?: string | null;
 };
 
@@ -152,7 +152,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       if (wo?.vehicle_id) {
         const { data: v } = await supabase
           .from("vehicles")
-          .select("id, year, make, model, vin, license_plate, mileage, color, unit_number, odometer")
+          .select("id, year, make, model, vin, license_plate, mileage, color, unit_number, engine_hours")
           .eq("id", wo.vehicle_id)
           .maybeSingle();
         if (v) setVehicle(v as VehicleLite);
@@ -180,7 +180,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     })();
   }, [supabase, workOrderId]);
 
-  /** Adds a single inspection line (no navigation). User then clicks it to open FocusedJob → Open Inspection. */
+  /** Adds a single inspection line (no navigation). */
   async function addInspectionLine(kind: "hydraulic" | "air") {
     setAddingId(kind);
 
@@ -208,7 +208,6 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       return;
     }
 
-    // Let the id page refresh & user can click the new line to open FocusedJob
     window.dispatchEvent(new CustomEvent("wo:line-added"));
   }
 
@@ -240,7 +239,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   async function addPackage(pkg: PackageDef) {
     setAddingId(pkg.id);
 
-    // For inspection packages, create ONE inspection line (no navigation)
+    // Inspections → single line
     if (pkg.jobType === "inspection") {
       if (pkg.id === "insp-diesel") {
         await addInspectionLine("air");
@@ -251,7 +250,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       return;
     }
 
-    // For maintenance packages, create ONE summary line
+    // Maintenance packages → one summary line
     const line: WorkOrderLineInsert = {
       work_order_id: workOrderId,
       description: pkg.name,
@@ -275,10 +274,12 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   }
 
   const visiblePackages = showAllPackages ? packages : packages.slice(0, 2);
-  const visibleSingles = showAllSingles ? singles : singles.slice(0, 2);
+  const visibleSingles  = showAllSingles  ? singles  : singles.slice(0, 6);
 
   const vehicleName =
-    vehicle ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim() : "";
+    vehicle
+      ? `${vehicle.unit_number ? `#${vehicle.unit_number} • ` : ""}${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim()
+      : "";
   const customerName =
     customer ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") : "";
 
@@ -345,7 +346,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
             title={inspectionBtnTitle("air")}
             disabled={addingId === "air"}
           >
-            <div className="font-medium">Maintenance 50 – Air </div>
+            <div className="font-medium">Maintenance 50 – Air</div>
             <div className="text-xs text-neutral-400">Air-governor, leakage, push-rod stroke + oil change</div>
             {(vehicleName || customerName) && (
               <div className="mt-1 text-[11px] text-neutral-500">
@@ -359,7 +360,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
         {!vehicle || !customer ? (
           <p className="mt-2 text-xs text-neutral-500">
-            To prefill the inspection, make sure **both** vehicle and customer are linked on the work order.
+            To prefill the inspection, make sure <strong>both</strong> vehicle and customer are linked on the work order.
           </p>
         ) : null}
       </div>

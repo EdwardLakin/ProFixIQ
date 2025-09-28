@@ -1107,6 +1107,7 @@ export type Database = {
           pdf_url: string | null
           photo_urls: string[] | null
           quote_id: string | null
+          shop_id: string | null
           started_at: string | null
           status: string | null
           summary: Json | null
@@ -1114,6 +1115,7 @@ export type Database = {
           updated_at: string | null
           user_id: string | null
           vehicle_id: string | null
+          work_order_id: string | null
         }
         Insert: {
           ai_summary?: string | null
@@ -1127,6 +1129,7 @@ export type Database = {
           pdf_url?: string | null
           photo_urls?: string[] | null
           quote_id?: string | null
+          shop_id?: string | null
           started_at?: string | null
           status?: string | null
           summary?: Json | null
@@ -1134,6 +1137,7 @@ export type Database = {
           updated_at?: string | null
           user_id?: string | null
           vehicle_id?: string | null
+          work_order_id?: string | null
         }
         Update: {
           ai_summary?: string | null
@@ -1147,6 +1151,7 @@ export type Database = {
           pdf_url?: string | null
           photo_urls?: string[] | null
           quote_id?: string | null
+          shop_id?: string | null
           started_at?: string | null
           status?: string | null
           summary?: Json | null
@@ -1154,6 +1159,7 @@ export type Database = {
           updated_at?: string | null
           user_id?: string | null
           vehicle_id?: string | null
+          work_order_id?: string | null
         }
         Relationships: [
           {
@@ -1161,6 +1167,34 @@ export type Database = {
             columns: ["template_id"]
             isOneToOne: false
             referencedRelation: "inspection_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspections_user_fk"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspections_vehicle_fk"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspections_work_order_fk"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspections_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
         ]
@@ -2830,12 +2864,14 @@ export type Database = {
           color: string | null
           created_at: string | null
           customer_id: string | null
+          engine_hours: number | null
           id: string
           license_plate: string | null
           make: string | null
           mileage: string | null
           model: string | null
           shop_id: string | null
+          unit_number: string | null
           user_id: string | null
           vin: string | null
           year: number | null
@@ -2844,12 +2880,14 @@ export type Database = {
           color?: string | null
           created_at?: string | null
           customer_id?: string | null
+          engine_hours?: number | null
           id?: string
           license_plate?: string | null
           make?: string | null
           mileage?: string | null
           model?: string | null
           shop_id?: string | null
+          unit_number?: string | null
           user_id?: string | null
           vin?: string | null
           year?: number | null
@@ -2858,12 +2896,14 @@ export type Database = {
           color?: string | null
           created_at?: string | null
           customer_id?: string | null
+          engine_hours?: number | null
           id?: string
           license_plate?: string | null
           make?: string | null
           mileage?: string | null
           model?: string | null
           shop_id?: string | null
+          unit_number?: string | null
           user_id?: string | null
           vin?: string | null
           year?: number | null
@@ -3230,8 +3270,12 @@ export type Database = {
           type: string | null
           updated_at: string | null
           user_id: string | null
+          vehicle_color: string | null
+          vehicle_engine_hours: number | null
           vehicle_id: string | null
           vehicle_info: string | null
+          vehicle_mileage: number | null
+          vehicle_unit_number: string | null
         }
         Insert: {
           approval_state?: string | null
@@ -3256,8 +3300,12 @@ export type Database = {
           type?: string | null
           updated_at?: string | null
           user_id?: string | null
+          vehicle_color?: string | null
+          vehicle_engine_hours?: number | null
           vehicle_id?: string | null
           vehicle_info?: string | null
+          vehicle_mileage?: number | null
+          vehicle_unit_number?: string | null
         }
         Update: {
           approval_state?: string | null
@@ -3282,8 +3330,12 @@ export type Database = {
           type?: string | null
           updated_at?: string | null
           user_id?: string | null
+          vehicle_color?: string | null
+          vehicle_engine_hours?: number | null
           vehicle_id?: string | null
           vehicle_info?: string | null
+          vehicle_mileage?: number | null
+          vehicle_unit_number?: string | null
         }
         Relationships: [
           {

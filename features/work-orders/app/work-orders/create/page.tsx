@@ -32,7 +32,7 @@ export default function CreateWorkOrderPage() {
   // --- Customer form ---------------------------------------------------------
   const [customerId, setCustomerId] = useTabState<string | null>("customerId", null);
   const [custFirst, setCustFirst]   = useTabState("custFirst", "");
-  const [custLast, setCustLast]     = useTabState("custLast", "");
+  const [custLast,  setCustLast]    = useTabState("custLast", "");
   const [custPhone, setCustPhone]   = useTabState("custPhone", "");
   const [custEmail, setCustEmail]   = useTabState("custEmail", "");
   const [sendInvite, setSendInvite] = useTabState<boolean>("sendInvite", false);
@@ -51,6 +51,9 @@ export default function CreateWorkOrderPage() {
   const [model, setModel]   = useTabState("model", "");
   const [plate, setPlate]   = useTabState("plate", "");
   const [mileage, setMileage] = useTabState<string>("mileage", "");
+  const [unitNumber, setUnitNumber]       = useTabState("unitNumber", "");   // NEW
+  const [color, setColor]                 = useTabState("color", "");         // NEW
+  const [engineHours, setEngineHours]     = useTabState<string>("engineHours", ""); // NEW
 
   // --- WO basics -------------------------------------------------------------
   const [type, setType]   = useTabState<WOType>("type", "maintenance");
@@ -157,7 +160,11 @@ export default function CreateWorkOrderPage() {
         }
       }
       if (prefillVehicleId) {
-        const { data } = await supabase.from("vehicles").select("*").eq("id", prefillVehicleId).single();
+        const { data } = await supabase
+          .from("vehicles")
+          .select("id, vin, year, make, model, license_plate, mileage, unit_number, color, engine_hours")
+          .eq("id", prefillVehicleId)
+          .single();
         if (!cancelled && data) {
           setVehicleId(data.id);
           setVin(data.vin ?? "");
@@ -165,7 +172,12 @@ export default function CreateWorkOrderPage() {
           setMake(data.make ?? "");
           setModel(data.model ?? "");
           setPlate(data.license_plate ?? "");
-          setMileage(data.mileage ? String(data.mileage) : "");
+          setMileage(typeof data.mileage === "number" ? String(data.mileage) : "");
+          setUnitNumber((data as any)?.unit_number ?? "");
+          setColor((data as any)?.color ?? "");
+          setEngineHours(
+            typeof (data as any)?.engine_hours === "number" ? String((data as any).engine_hours) : ""
+          );
         }
       }
     })();
@@ -174,7 +186,8 @@ export default function CreateWorkOrderPage() {
     prefillCustomerId, prefillVehicleId, supabase,
     setCustomerId, setCustFirst, setCustLast, setCustPhone, setCustEmail,
     setVehicleId, setVin, setYear, setMake, setModel, setPlate, setMileage,
-    setCustAddress, setCustCity, setCustProvince, setCustPostal
+    setCustAddress, setCustCity, setCustProvince, setCustPostal,
+    setUnitNumber, setColor, setEngineHours
   ]);
 
   // ----- Helpers -------------------------------------------------------------
@@ -234,6 +247,9 @@ export default function CreateWorkOrderPage() {
       model: model || null,
       license_plate: plate || null,
       mileage: mileage ? Number(mileage) : null,
+      unit_number: unitNumber || null,     // NEW
+      color: color || null,                // NEW
+      engine_hours: engineHours ? Number(engineHours) : null, // NEW
       shop_id: shopId,
     };
     const { data: inserted, error: insErr } =
@@ -293,7 +309,7 @@ export default function CreateWorkOrderPage() {
         return;
       }
 
-      // Fallback path (should rarely run now): create a full WO then route
+      // Fallback path (rare if draft exists): create full WO then route
       if (!custFirst && !custPhone && !custEmail) {
         throw new Error("Please enter at least a name, phone, or email for the customer.");
       }
@@ -303,7 +319,7 @@ export default function CreateWorkOrderPage() {
       if (!user?.id) throw new Error("Not signed in.");
 
       const { data: profileNames } = await supabase
-        .from("profiles").select("first_name, last_name, full_name")
+        .from("profiles").select("first_name, last_name") // full_name removed
         .eq("id", user.id).maybeSingle();
 
       const shopId = await getOrLinkShopId(user.id);
@@ -312,8 +328,7 @@ export default function CreateWorkOrderPage() {
       const veh = await ensureVehicle(cust, shopId);
 
       const initials = getInitials(
-        profileNames?.first_name, profileNames?.last_name,
-        profileNames?.full_name ?? user.email ?? null
+        profileNames?.first_name, profileNames?.last_name, user.email ?? null
       );
       const customId = await generateCustomId(initials);
 
@@ -392,14 +407,14 @@ export default function CreateWorkOrderPage() {
 
       const { data: profileNames } = await supabase
         .from("profiles")
-        .select("first_name, last_name, full_name")
+        .select("first_name, last_name") // full_name removed
         .eq("id", user.id)
         .maybeSingle();
 
       const initials = getInitials(
         profileNames?.first_name,
         profileNames?.last_name,
-        profileNames?.full_name ?? user.email ?? null
+        user.email ?? null // fix: don't read profileNames.email (doesn't exist)
       );
       const customId = await generateCustomId(initials);
 
@@ -559,6 +574,24 @@ export default function CreateWorkOrderPage() {
                 <input inputMode="numeric" value={mileage} onChange={(e) => setMileage(e.target.value)}
                   className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
                   placeholder="123456" disabled={loading} />
+              </div>
+              <div>
+                <label className="block text-sm">Unit #</label>
+                <input value={unitNumber} onChange={(e) => setUnitNumber(e.target.value)}
+                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
+                  placeholder="Fleet/Asset number" disabled={loading} />
+              </div>
+              <div>
+                <label className="block text-sm">Color</label>
+                <input value={color} onChange={(e) => setColor(e.target.value)}
+                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
+                  placeholder="White" disabled={loading} />
+              </div>
+              <div>
+                <label className="block text-sm">Engine hours</label>
+                <input inputMode="numeric" value={engineHours} onChange={(e) => setEngineHours(e.target.value)}
+                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
+                  placeholder="1234" disabled={loading} />
               </div>
             </div>
           </section>
