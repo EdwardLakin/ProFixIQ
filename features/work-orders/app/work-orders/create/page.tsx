@@ -51,9 +51,9 @@ export default function CreateWorkOrderPage() {
   const [model, setModel]   = useTabState("model", "");
   const [plate, setPlate]   = useTabState("plate", "");
   const [mileage, setMileage] = useTabState<string>("mileage", "");
-  const [unitNumber, setUnitNumber]       = useTabState("unitNumber", "");   // NEW
-  const [color, setColor]                 = useTabState("color", "");         // NEW
-  const [engineHours, setEngineHours]     = useTabState<string>("engineHours", ""); // NEW
+  const [unitNumber, setUnitNumber]       = useTabState("unitNumber", "");
+  const [color, setColor]                 = useTabState("color", "");
+  const [engineHours, setEngineHours]     = useTabState<string>("engineHours", "");
 
   // --- WO basics -------------------------------------------------------------
   const [type, setType]   = useTabState<WOType>("type", "maintenance");
@@ -111,8 +111,8 @@ export default function CreateWorkOrderPage() {
   async function getOrLinkShopId(userId: string): Promise<string | null> {
     const { data: profile, error: profErr } = await supabase
       .from("profiles")
-      .select("id, shop_id")
-      .eq("id", userId)
+      .select("user_id, shop_id")
+      .eq("user_id", userId)
       .maybeSingle();
     if (profErr) throw profErr;
 
@@ -127,7 +127,7 @@ export default function CreateWorkOrderPage() {
 
     if (!ownedShop?.id) return null;
 
-    const { error: updErr } = await supabase.from("profiles").update({ shop_id: ownedShop.id }).eq("id", userId);
+    const { error: updErr } = await supabase.from("profiles").update({ shop_id: ownedShop.id }).eq("user_id", userId);
     if (updErr) throw updErr;
 
     return ownedShop.id;
@@ -175,9 +175,7 @@ export default function CreateWorkOrderPage() {
           setMileage(typeof data.mileage === "number" ? String(data.mileage) : "");
           setUnitNumber((data as any)?.unit_number ?? "");
           setColor((data as any)?.color ?? "");
-          setEngineHours(
-            typeof (data as any)?.engine_hours === "number" ? String((data as any).engine_hours) : ""
-          );
+          setEngineHours(typeof (data as any)?.engine_hours === "number" ? String((data as any).engine_hours) : "");
         }
       }
     })();
@@ -247,9 +245,9 @@ export default function CreateWorkOrderPage() {
       model: model || null,
       license_plate: plate || null,
       mileage: mileage ? Number(mileage) : null,
-      unit_number: unitNumber || null,     // NEW
-      color: color || null,                // NEW
-      engine_hours: engineHours ? Number(engineHours) : null, // NEW
+      unit_number: unitNumber || null,
+      color: color || null,
+      engine_hours: engineHours ? Number(engineHours) : null,
       shop_id: shopId,
     };
     const { data: inserted, error: insErr } =
@@ -303,13 +301,13 @@ export default function CreateWorkOrderPage() {
     setError(""); setInviteNotice(""); setUploadSummary(null);
 
     try {
-      // If a draft WO already exists, go straight to review
+      // If a WO already exists, go straight to review
       if (wo?.id) {
         router.push(`/work-orders/quote-review?woId=${wo.id}`);
         return;
       }
 
-      // Fallback path (rare if draft exists): create full WO then route
+      // Full create (safety fallback)
       if (!custFirst && !custPhone && !custEmail) {
         throw new Error("Please enter at least a name, phone, or email for the customer.");
       }
@@ -319,8 +317,8 @@ export default function CreateWorkOrderPage() {
       if (!user?.id) throw new Error("Not signed in.");
 
       const { data: profileNames } = await supabase
-        .from("profiles").select("first_name, last_name") // full_name removed
-        .eq("id", user.id).maybeSingle();
+        .from("profiles").select("first_name, last_name")
+        .eq("user_id", user.id).maybeSingle();
 
       const shopId = await getOrLinkShopId(user.id);
       if (!shopId) throw new Error("Your profile isn’t linked to a shop yet.");
@@ -394,7 +392,7 @@ export default function CreateWorkOrderPage() {
     setLines(data ?? []);
   }, [supabase, wo?.id, setLines]);
 
-  // === Auto-create a DRAFT WO on page load ==================================
+  // === Auto-create WO on page load: placeholder Customer + Vehicle ===========
   useEffect(() => {
     if (wo?.id) return;
 
@@ -407,27 +405,87 @@ export default function CreateWorkOrderPage() {
 
       const { data: profileNames } = await supabase
         .from("profiles")
-        .select("first_name, last_name") // full_name removed
-        .eq("id", user.id)
+        .select("first_name, last_name")
+        .eq("user_id", user.id)
         .maybeSingle();
 
+      // 1) Ensure a placeholder customer (min fields to pass NOT NULL/RLS)
+      let placeholderCustomer: CustomerRow | null = null;
+      {
+        const { data } = await supabase
+          .from("customers")
+          .select("*")
+          .ilike("first_name", "Walk-in")
+          .ilike("last_name", "Customer")
+          .limit(1);
+        if (data && data.length) placeholderCustomer = data[0] as CustomerRow;
+      }
+      if (!placeholderCustomer) {
+        const { data } = await supabase
+          .from("customers")
+          .insert({ first_name: "Walk-in", last_name: "Customer" })
+          .select("*")
+          .single();
+        placeholderCustomer = data as CustomerRow;
+      }
+
+      // 2) Ensure a placeholder vehicle tied to that customer + shop
+      const { data: maybeVeh } = await supabase
+        .from("vehicles")
+        .select("*")
+        .eq("customer_id", placeholderCustomer!.id)
+        .ilike("model", "Unassigned")
+        .limit(1);
+      let placeholderVehicle: VehicleRow | null =
+        maybeVeh && maybeVeh.length ? (maybeVeh[0] as VehicleRow) : null;
+
+      if (!placeholderVehicle) {
+        const { data } = await supabase
+          .from("vehicles")
+          .insert({
+            customer_id: placeholderCustomer!.id,
+            shop_id: shopId,
+            make: "—",
+            model: "Unassigned",
+            mileage: null,
+            unit_number: null,
+            color: null,
+            engine_hours: null,
+          })
+          .select("*")
+          .single();
+        placeholderVehicle = data as VehicleRow;
+      }
+
+      // 3) Create the WO row right away so QuickAdd + LineForm can mount
       const initials = getInitials(
         profileNames?.first_name,
         profileNames?.last_name,
-        user.email ?? null // fix: don't read profileNames.email (doesn't exist)
+        user.email ?? null
       );
       const customId = await generateCustomId(initials);
 
       const newId = uuidv4();
       const { data: inserted, error } = await supabase
         .from("work_orders")
-        .insert({ id: newId, custom_id: customId, user_id: user.id, shop_id: shopId, status: "draft" })
+        .insert({
+          id: newId,
+          custom_id: customId,
+          user_id: user.id,
+          shop_id: shopId,
+          customer_id: placeholderCustomer!.id,
+          vehicle_id: placeholderVehicle!.id,
+          status: "awaiting_approval", // use a valid enum value
+        })
         .select("*")
         .single();
 
       if (!error && inserted) {
         setWo(inserted);
         await fetchLines();
+      } else if (error) {
+        // Surface the reason so you can see the real PostgREST message if any
+        setError(error.message ?? "Failed to auto-create work order.");
       }
     })();
   }, [supabase, wo?.id, setWo, fetchLines]);

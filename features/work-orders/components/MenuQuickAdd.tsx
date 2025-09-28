@@ -105,9 +105,9 @@ type VehicleLite = {
   vin?: string | null;
   license_plate?: string | null;
   mileage?: string | number | null;
-  color?: string | null;        // NEW
-  unit_number?: string | null;  // NEW
-  engine_hours?: number | null; // NEW
+  color?: string | null;
+  unit_number?: string | null;
+  engine_hours?: number | null;
   id?: string | null;
 };
 
