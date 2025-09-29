@@ -29,7 +29,9 @@ export default function IconMenuItems({
           <Link key={it.href} href={it.href} className="block">
             <AppIcon icon={it.icon} label={it.title} badge={it.badge} active={it.active} />
             {it.subtitle && (
-              <div className="mt-1 line-clamp-1 text-center text-[11px] text-white/60">{it.subtitle}</div>
+              <div className="mt-1 line-clamp-1 text-center text-[11px] text-white/60">
+                {it.subtitle}
+              </div>
             )}
           </Link>
         ))}

@@ -1,11 +1,10 @@
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import IconMenufrom "@/features/launcher/components/IconMenuItems";
+import IconMenuItems, { type IconItem } from "@/features/launcher/components/IconMenuItems";
 import AvatarCircle from "@/features/launcher/components/AvatarCircle";
 
 type DB = Database;
@@ -20,7 +19,6 @@ type Tile = {
 };
 
 export default function ChatListPage(): JSX.Element {
-  // ✅ Hooks declared unconditionally at the top
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const [me, setMe] = useState<string | null>(null);
   const [tiles, setTiles] = useState<Tile[]>([]);
@@ -34,7 +32,6 @@ export default function ChatListPage(): JSX.Element {
     })();
   }, [supabase]);
 
-  // stable loader (referenced by effects + realtime)
   const load = useCallback(async () => {
     setLoading(true);
 
@@ -122,10 +119,8 @@ export default function ChatListPage(): JSX.Element {
     setLoading(false);
   }, [supabase, me]);
 
-  // initial + when 'me' changes
   useEffect(() => { void load(); }, [load]);
 
-  // realtime refresh
   useEffect(() => {
     const ch = supabase
       .channel("chat-list-tiles")
@@ -136,7 +131,6 @@ export default function ChatListPage(): JSX.Element {
     return () => { supabase.removeChannel(ch); };
   }, [supabase, load]);
 
-  // render as IconMenu items
   const items: IconItem[] = tiles.map((t) => ({
     href: `/chat/${t.chatId}`,
     title: t.title,
@@ -151,7 +145,7 @@ export default function ChatListPage(): JSX.Element {
         <h1 className="text-xl font-semibold">Conversations</h1>
         <Link
           href="#"
-          onClick={(e) => { e.preventDefault(); /* open picker here */ }}
+          onClick={(e) => { e.preventDefault(); /* TODO: open picker */ }}
           className="rounded bg-orange-500 px-3 py-2 text-sm font-semibold text-black"
         >
           New
@@ -165,7 +159,7 @@ export default function ChatListPage(): JSX.Element {
           No conversations yet. Start one!
         </div>
       ) : (
-        <IconMenu items={items} colsClass="grid-cols-2 md:grid-cols-4" />
+        <IconMenuItems items={items} colsClass="grid-cols-2 md:grid-cols-4" />
       )}
     </div>
   );

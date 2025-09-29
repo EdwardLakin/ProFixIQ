@@ -29,7 +29,7 @@ export default function IconMenu() {
   }, [supabase]);
 
   const apps = useMemo(
-    () => ALL_LAUNCHABLES.filter(a => !a.roleGate || (role ? a.roleGate.includes(role as any) : false)),
+    () => ALL_LAUNCHABLES.filter((a) => !a.roleGate || (role ? a.roleGate.includes(role as any) : false)),
     [role]
   );
 
