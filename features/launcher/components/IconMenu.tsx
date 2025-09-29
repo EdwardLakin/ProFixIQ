@@ -1,19 +1,62 @@
+// features/launcher/components/IconMenu.tsx
 "use client";
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { ALL_LAUNCHABLES } from "../registry";
 import AppIcon from "./AppIcon";
-import { usePathname } from "next/navigation";
+import type { ReactNode } from "react";
 
 type DB = Database;
 
-export default function IconMenu() {
+export type IconItem = {
+  href: string;
+  title: string;
+  subtitle?: string;
+  icon: ReactNode;
+  badge?: number | "dot";
+  active?: boolean;
+};
+
+type Props =
+  | { items: IconItem[]; colsClass?: string }
+  | { items?: undefined; colsClass?: string };
+
+export default function IconMenu(props: Props) {
+  const pathname = usePathname();
+
+  // If items are passed in
+  if (props.items && props.items.length > 0) {
+    const cols = props.colsClass ?? "grid-cols-4";
+    return (
+      <section className="mt-4">
+        <div className={`grid gap-3 ${cols}`}>
+          {props.items.map((it) => (
+            <Link key={it.href} href={it.href} className="block">
+              <AppIcon
+                icon={it.icon}
+                label={it.title}
+                badge={it.badge}
+                active={it.active}
+              />
+              {it.subtitle && (
+                <div className="mt-1 line-clamp-1 text-center text-[11px] text-white/60">
+                  {it.subtitle}
+                </div>
+              )}
+            </Link>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  // Registry fallback mode
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const [role, setRole] = useState<string | null>(null);
-  const pathname = usePathname();
 
   useEffect(() => {
     (async () => {
@@ -29,7 +72,9 @@ export default function IconMenu() {
   }, [supabase]);
 
   const apps = useMemo(() => {
-    return ALL_LAUNCHABLES.filter(a => !a.roleGate || (role ? a.roleGate.includes(role as any) : false));
+    return ALL_LAUNCHABLES.filter(
+      (a) => !a.roleGate || (role ? a.roleGate.includes(role as any) : false)
+    );
   }, [role]);
 
   if (apps.length === 0) return null;
@@ -37,7 +82,7 @@ export default function IconMenu() {
   return (
     <section className="mt-4">
       <div className="grid grid-cols-4 gap-3">
-        {apps.map(app => {
+        {apps.map((app) => {
           const active = pathname?.startsWith(app.route) ?? false;
           return (
             <Link key={app.slug} href={app.route} className="block">
