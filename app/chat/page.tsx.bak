@@ -12,6 +12,7 @@ import { useFeatureRead } from "@shared/hooks/useFeatureRead";
 type DB = Database;
 type MessageRow = DB["public"]["Tables"]["messages"]["Row"];
 type ProfileRow = DB["public"]["Tables"]["profiles"]["Row"];
+type ReadRow = DB["public"]["Tables"]["message_reads"]["Row"];
 
 type TileItem = {
   chatId: string;

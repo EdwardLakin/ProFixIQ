@@ -1,25 +1,11 @@
-// app/layout.tsx
 import "./globals.css";
 import { Roboto, Black_Ops_One } from "next/font/google";
 import Providers from "./providers";
-import AppShell from "@/features/shared/components/AppShell";
-import TabsBridge from "@/features/shared/components/tabs/TabsBridge";
-
-import { cookies } from "next/headers";
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import PhoneShell from "@/features/launcher/PhoneShell";
 
 // Fonts: body → Roboto, headers/buttons → Black Ops One
-const roboto = Roboto({
-  subsets: ["latin"],
-  weight: ["400", "500", "700"],
-  variable: "--font-roboto",
-});
-const blackOps = Black_Ops_One({
-  weight: "400",
-  subsets: ["latin"],
-  variable: "--font-blackops",
-});
+const roboto = Roboto({ subsets: ["latin"], weight: ["400","500","700"], variable: "--font-roboto" });
+const blackOps = Black_Ops_One({ weight: "400", subsets: ["latin"], variable: "--font-blackops" });
 
 export const metadata = {
   title: "ProFixIQ",
@@ -27,27 +13,13 @@ export const metadata = {
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  // ✅ Server-side session check (no flash of tabs for signed-out users)
-  const supabase = createServerComponentClient<Database>({ cookies });
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
   return (
     <html lang="en">
       <body className={`${roboto.variable} ${blackOps.variable} bg-black text-white`}>
         <Providers>
-          {/* Global app shell (desktop header + mobile shell) */}
-          <AppShell>
-            {/* Tabs with user-scoped persistence – only render when signed in */}
-            {session?.user ? (
-              <TabsBridge>
-                <main>{children}</main>
-              </TabsBridge>
-            ) : (
-              <main>{children}</main>
-            )}
-          </AppShell>
+          <PhoneShell>
+            <main>{children}</main>
+          </PhoneShell>
         </Providers>
       </body>
     </html>

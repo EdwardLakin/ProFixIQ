@@ -116,6 +116,33 @@ export type Database = {
         }
         Relationships: []
       }
+      apps: {
+        Row: {
+          default_route: string
+          icon_url: string | null
+          id: string
+          is_enabled: boolean
+          name: string
+          slug: string
+        }
+        Insert: {
+          default_route: string
+          icon_url?: string | null
+          id?: string
+          is_enabled?: boolean
+          name: string
+          slug: string
+        }
+        Update: {
+          default_route?: string
+          icon_url?: string | null
+          id?: string
+          is_enabled?: boolean
+          name?: string
+          slug?: string
+        }
+        Relationships: []
+      }
       audit_logs: {
         Row: {
           action: string
@@ -796,6 +823,27 @@ export type Database = {
           },
         ]
       }
+      feature_reads: {
+        Row: {
+          feature_slug: string
+          id: string
+          last_read_at: string
+          user_id: string
+        }
+        Insert: {
+          feature_slug: string
+          id?: string
+          last_read_at?: string
+          user_id: string
+        }
+        Update: {
+          feature_slug?: string
+          id?: string
+          last_read_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       followups: {
         Row: {
           created_at: string | null
@@ -1357,6 +1405,27 @@ export type Database = {
         }
         Relationships: []
       }
+      message_reads: {
+        Row: {
+          conversation_id: string
+          id: string
+          last_read_at: string
+          user_id: string
+        }
+        Insert: {
+          conversation_id: string
+          id?: string
+          last_read_at?: string
+          user_id: string
+        }
+        Update: {
+          conversation_id?: string
+          id?: string
+          last_read_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       messages: {
         Row: {
           attachments: Json
@@ -1433,6 +1502,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      notifications: {
+        Row: {
+          body: string | null
+          created_at: string | null
+          data: Json | null
+          id: string
+          is_read: boolean | null
+          kind: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string | null
+          data?: Json | null
+          id?: string
+          is_read?: boolean | null
+          kind: string
+          title: string
+          user_id: string
+        }
+        Update: {
+          body?: string | null
+          created_at?: string | null
+          data?: Json | null
+          id?: string
+          is_read?: boolean | null
+          kind?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       part_compatibility: {
         Row: {
@@ -2711,6 +2813,30 @@ export type Database = {
         }
         Relationships: []
       }
+      user_app_layouts: {
+        Row: {
+          id: string
+          layout: Json
+          updated_at: string | null
+          user_id: string
+          wallpaper: string | null
+        }
+        Insert: {
+          id?: string
+          layout: Json
+          updated_at?: string | null
+          user_id: string
+          wallpaper?: string | null
+        }
+        Update: {
+          id?: string
+          layout?: Json
+          updated_at?: string | null
+          user_id?: string
+          wallpaper?: string | null
+        }
+        Relationships: []
+      }
       user_plans: {
         Row: {
           created_at: string | null
@@ -2732,6 +2858,27 @@ export type Database = {
           id?: string
           plan_name?: string
           user_id?: string | null
+        }
+        Relationships: []
+      }
+      user_widget_layouts: {
+        Row: {
+          id: string
+          layout: Json
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          layout: Json
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          id?: string
+          layout?: Json
+          updated_at?: string | null
+          user_id?: string
         }
         Relationships: []
       }
@@ -2953,6 +3100,65 @@ export type Database = {
           id?: string
           user_id?: string | null
           vin?: string
+        }
+        Relationships: []
+      }
+      widget_instances: {
+        Row: {
+          config: Json
+          created_at: string | null
+          id: string
+          user_id: string
+          widget_slug: string
+        }
+        Insert: {
+          config?: Json
+          created_at?: string | null
+          id?: string
+          user_id: string
+          widget_slug: string
+        }
+        Update: {
+          config?: Json
+          created_at?: string | null
+          id?: string
+          user_id?: string
+          widget_slug?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "widget_instances_widget_slug_fkey"
+            columns: ["widget_slug"]
+            isOneToOne: false
+            referencedRelation: "widgets"
+            referencedColumns: ["slug"]
+          },
+        ]
+      }
+      widgets: {
+        Row: {
+          allowed_sizes: string[]
+          default_route: string
+          default_size: string
+          id: string
+          name: string
+          slug: string
+        }
+        Insert: {
+          allowed_sizes?: string[]
+          default_route: string
+          default_size?: string
+          id?: string
+          name: string
+          slug: string
+        }
+        Update: {
+          allowed_sizes?: string[]
+          default_route?: string
+          default_size?: string
+          id?: string
+          name?: string
+          slug?: string
         }
         Relationships: []
       }

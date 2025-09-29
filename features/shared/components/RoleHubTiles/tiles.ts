@@ -212,4 +212,11 @@ export const TILES: Tile[] = [
     roles: ["mechanic", "manager", "owner", "admin"],
     scopes: ["tech", "all"],
   },
+  {
+  href: "/tech/assistant",
+  title: "Tech Assistant",
+  subtitle: "AI diagnostics & help",
+  roles: ["mechanic", "manager", "owner", "admin", "advisor", "parts"],
+  scopes: ["tech", "all"],
+},
 ];
