@@ -2,20 +2,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import WidgetGrid from "./components/WidgetGrid";
-import IconMenu from "./components/IconMenu";
 import Dock from "./components/Dock";
 import { useBadgeBus, type BadgeKind } from "./useBadgeBus";
 
-// RGB triplets so we can compose rgba(opacity)
 const COLORS = {
-  base: "251,146,60",   // orange-400
-  info: "96,165,250",   // blue-400
-  warn: "245,158,11",   // amber-500
-  error: "248,113,113", // red-400
-  success: "52,211,153" // emerald-400
+  base: "251,146,60",
+  info: "96,165,250",
+  warn: "245,158,11",
+  error: "248,113,113",
+  success: "52,211,153",
 } as const;
-
 type AttentionLevel = keyof typeof COLORS;
 
 function levelForKind(kind: BadgeKind | null): AttentionLevel {
@@ -31,7 +27,6 @@ export default function PhoneShell({ children }: { children: React.ReactNode }) 
   const [hasPulse, setHasPulse] = useState(false);
   const pulseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Stable handler the hook can use
   const onBus = useCallback((kind: BadgeKind) => {
     setRecentKind(kind);
     setHasPulse(true);
@@ -41,11 +36,8 @@ export default function PhoneShell({ children }: { children: React.ReactNode }) 
       setRecentKind(null);
     }, 4000);
   }, []);
-
-  // ✅ Call the hook at top level (not inside another effect)
   useBadgeBus(onBus);
 
-  // Optional external override via event
   const [override, setOverride] = useState<AttentionLevel | null>(null);
   useEffect(() => {
     const onEvt = (e: Event) => {
@@ -60,7 +52,6 @@ export default function PhoneShell({ children }: { children: React.ReactNode }) 
     window.addEventListener("pf:attention", onEvt as EventListener);
     return () => window.removeEventListener("pf:attention", onEvt as EventListener);
   }, []);
-
   useEffect(() => () => { if (pulseTimer.current) clearTimeout(pulseTimer.current); }, []);
 
   const level: AttentionLevel = useMemo(() => {
@@ -74,7 +65,11 @@ export default function PhoneShell({ children }: { children: React.ReactNode }) 
   return (
     <div className="flex min-h-dvh w-full items-start justify-center bg-black text-white">
       <div
-        className="relative mx-auto my-4 w-full max-w-[420px] rounded-[2.2rem] bg-neutral-950/95 ring-1 ring-white/10 backdrop-blur"
+        className="
+          relative mx-auto my-4 w-full
+          max-w-[420px] sm:max-w-[520px] md:max-w-[700px] lg:max-w-[820px]
+          rounded-[2.2rem] bg-neutral-950/95 ring-1 ring-white/10 backdrop-blur
+        "
         style={{
           boxShadow: `
             0 0 0 1px rgba(255,255,255,0.04),
@@ -85,7 +80,6 @@ export default function PhoneShell({ children }: { children: React.ReactNode }) 
           filter: level !== "base" ? "saturate(1.08)" : "saturate(1)",
         }}
       >
-        {/* Inner bezel tint */}
         <div
           className="pointer-events-none absolute inset-0 rounded-[2.2rem]"
           style={{
@@ -97,18 +91,14 @@ export default function PhoneShell({ children }: { children: React.ReactNode }) 
         {/* Status bar space */}
         <div className="h-7 rounded-t-[2.2rem]" />
 
+        {/* Screen content supplied by each page */}
         <div className="px-3 pb-4">
-          {/* Widgets */}
-          <WidgetGrid />
+          {children}
 
-          {/* App icons */}
-          <IconMenu />
-
-          {/* Active route */}
-          <div className="mt-3">{children}</div>
-
-          {/* Dock */}
-          <Dock />
+          {/* Dock pinned to bottom of the screen area */}
+          <div className="mt-3">
+            <Dock />
+          </div>
         </div>
       </div>
     </div>
