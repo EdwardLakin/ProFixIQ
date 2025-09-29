@@ -1,5 +1,5 @@
 // app/layout.tsx  (global, NO PhoneShell here)
-import "globals.css";
+import "app/globals.css";
 import { Roboto, Black_Ops_One } from "next/font/google";
 import Providers from "app/providers";
 
