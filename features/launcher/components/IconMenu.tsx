@@ -22,13 +22,37 @@ export type IconItem = {
 };
 
 type Props =
-  | { items: IconItem[]; colsClass?: string }
-  | { items?: undefined; colsClass?: string };
+  | { items: IconItem[]; colsClass?: string }   // explicit items mode
+  | { items?: undefined; colsClass?: string };  // registry mode
 
 export default function IconMenu(props: Props) {
   const pathname = usePathname();
 
-  // If items are passed in
+  // ✅ Hooks must run on every render, even if we later render "items" mode.
+  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const [role, setRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .maybeSingle();
+      setRole(data?.role ?? null);
+    })();
+  }, [supabase]);
+
+  const apps = useMemo(() => {
+    return ALL_LAUNCHABLES.filter(
+      (a) => !a.roleGate || (role ? a.roleGate.includes(role as any) : false)
+    );
+  }, [role]);
+
+  // ---------- Render ----------
+  // Items mode
   if (props.items && props.items.length > 0) {
     const cols = props.colsClass ?? "grid-cols-4";
     return (
@@ -54,29 +78,7 @@ export default function IconMenu(props: Props) {
     );
   }
 
-  // Registry fallback mode
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
-  const [role, setRole] = useState<string | null>(null);
-
-  useEffect(() => {
-    (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .maybeSingle();
-      setRole(data?.role ?? null);
-    })();
-  }, [supabase]);
-
-  const apps = useMemo(() => {
-    return ALL_LAUNCHABLES.filter(
-      (a) => !a.roleGate || (role ? a.roleGate.includes(role as any) : false)
-    );
-  }, [role]);
-
+  // Registry mode
   if (apps.length === 0) return null;
 
   return (
