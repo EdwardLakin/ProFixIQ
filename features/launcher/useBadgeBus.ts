@@ -1,3 +1,4 @@
+// features/launcher/useBadgeBus.ts
 "use client";
 
 import { useEffect } from "react";
@@ -6,24 +7,19 @@ import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 
-// What kinds of events we surface to the shell
+// What kinds of events we surface to the UI
 export type BadgeKind = "message" | "work_order" | "notification";
 
 /**
- * Subscribes to Supabase realtime changes and calls `onTick(kind)` whenever
- * a relevant event happens. We scope to three tables you showed earlier:
- *  - messages (INSERT)
- *  - work_orders (any event)
- *  - notifications (INSERT)
+ * Subscribes to Supabase realtime changes and calls `onTick(kind)`
+ * whenever a relevant event happens.
  */
-export function useBadgeBus(
-  onTick: (kind: BadgeKind) => void
-): void {
-  useEffect(() => {
-    const supabase = createClientComponentClient<DB>();
+export function useBadgeBus(onTick: (kind: BadgeKind) => void) {
+  const supabase = createClientComponentClient<DB>();
 
+  useEffect(() => {
     // Messages → "message"
-    const chMsg = supabase
+    const chMsgs = supabase
       .channel("pf-msg-insert")
       .on(
         "postgres_changes",
@@ -32,7 +28,7 @@ export function useBadgeBus(
       )
       .subscribe();
 
-    // Work Orders (create/update/delete) → "work_order"
+    // Any work_orders change → "work_order"
     const chWO = supabase
       .channel("pf-wo-any")
       .on(
@@ -43,7 +39,7 @@ export function useBadgeBus(
       .subscribe();
 
     // Notifications → "notification"
-    const chNotif = supabase
+    const chNotifs = supabase
       .channel("pf-notif-insert")
       .on(
         "postgres_changes",
@@ -53,9 +49,9 @@ export function useBadgeBus(
       .subscribe();
 
     return () => {
-      supabase.removeChannel(chMsg);
+      supabase.removeChannel(chMsgs);
       supabase.removeChannel(chWO);
-      supabase.removeChannel(chNotif);
+      supabase.removeChannel(chNotifs);
     };
-  }, [onTick]);
+  }, [supabase, onTick]);
 }

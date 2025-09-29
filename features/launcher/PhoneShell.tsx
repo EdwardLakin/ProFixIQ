@@ -1,60 +1,56 @@
+// features/launcher/PhoneShell.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import WidgetGrid from "./components/WidgetGrid";
 import IconMenu from "./components/IconMenu";
 import Dock from "./components/Dock";
 import { useBadgeBus, type BadgeKind } from "./useBadgeBus";
 
-// Colors as RGB triplets so we can build rgba() with any opacity
+// RGB triplets so we can compose rgba(opacity)
 const COLORS = {
-  base: "251,146,60",      // orange-400
-  info: "96,165,250",      // blue-400
-  warn: "245,158,11",      // amber-500
-  error: "248,113,113",    // red-400
-  success: "52,211,153",   // emerald-400
+  base: "251,146,60",   // orange-400
+  info: "96,165,250",   // blue-400
+  warn: "245,158,11",   // amber-500
+  error: "248,113,113", // red-400
+  success: "52,211,153" // emerald-400
 } as const;
 
 type AttentionLevel = keyof typeof COLORS;
 
-// Map bus kinds → glow “attention level”
 function levelForKind(kind: BadgeKind | null): AttentionLevel {
   if (!kind) return "base";
-  if (kind === "message") return "error";        // red pulse for new messages
-  if (kind === "work_order") return "warn";      // amber for WO changes
-  if (kind === "notification") return "info";    // blue for generic notifs
+  if (kind === "message") return "error";
+  if (kind === "work_order") return "warn";
+  if (kind === "notification") return "info";
   return "base";
 }
 
 export default function PhoneShell({ children }: { children: React.ReactNode }) {
-  // Show a brief glow when a DB event arrives
   const [recentKind, setRecentKind] = useState<BadgeKind | null>(null);
   const [hasPulse, setHasPulse] = useState(false);
+  const pulseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | null = null;
-
-    // When the bus ticks, store the kind and start a 4s pulse
-    useBadgeBus((kind) => {
-      setRecentKind(kind);
-      setHasPulse(true);
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => {
-        setHasPulse(false);
-        setRecentKind(null);
-      }, 4000);
-    });
-
-    return () => {
-      if (timer) clearTimeout(timer);
-    };
+  // Stable handler the hook can use
+  const onBus = useCallback((kind: BadgeKind) => {
+    setRecentKind(kind);
+    setHasPulse(true);
+    if (pulseTimer.current) clearTimeout(pulseTimer.current);
+    pulseTimer.current = setTimeout(() => {
+      setHasPulse(false);
+      setRecentKind(null);
+    }, 4000);
   }, []);
 
-  // External override via event (optional)
+  // ✅ Call the hook at top level (not inside another effect)
+  useBadgeBus(onBus);
+
+  // Optional external override via event
   const [override, setOverride] = useState<AttentionLevel | null>(null);
   useEffect(() => {
     const onEvt = (e: Event) => {
       const level = (e as CustomEvent<AttentionLevel>).detail;
+      if (!level) return;
       setOverride(level);
       if (level !== "base") {
         const t = setTimeout(() => setOverride(null), 4000);
@@ -65,7 +61,8 @@ export default function PhoneShell({ children }: { children: React.ReactNode }) 
     return () => window.removeEventListener("pf:attention", onEvt as EventListener);
   }, []);
 
-  // Priority: override > bus pulse > base
+  useEffect(() => () => { if (pulseTimer.current) clearTimeout(pulseTimer.current); }, []);
+
   const level: AttentionLevel = useMemo(() => {
     if (override) return override;
     if (hasPulse) return levelForKind(recentKind);
@@ -79,7 +76,6 @@ export default function PhoneShell({ children }: { children: React.ReactNode }) 
       <div
         className="relative mx-auto my-4 w-full max-w-[420px] rounded-[2.2rem] bg-neutral-950/95 ring-1 ring-white/10 backdrop-blur"
         style={{
-          // Outer glow (subtle bloom)
           boxShadow: `
             0 0 0 1px rgba(255,255,255,0.04),
             0 0 26px 6px rgba(${rgb}, 0.20),
@@ -89,7 +85,7 @@ export default function PhoneShell({ children }: { children: React.ReactNode }) 
           filter: level !== "base" ? "saturate(1.08)" : "saturate(1)",
         }}
       >
-        {/* Inner bezel stroke that also tints with the glow */}
+        {/* Inner bezel tint */}
         <div
           className="pointer-events-none absolute inset-0 rounded-[2.2rem]"
           style={{
@@ -102,7 +98,7 @@ export default function PhoneShell({ children }: { children: React.ReactNode }) 
         <div className="h-7 rounded-t-[2.2rem]" />
 
         <div className="px-3 pb-4">
-          {/* Widgets row */}
+          {/* Widgets */}
           <WidgetGrid />
 
           {/* App icons */}
