@@ -14,9 +14,20 @@ function isAssetPath(p: string) {
   );
 }
 
+// Safer: forward all Set-Cookie headers (avoid splitting on commas)
 function withSupabaseCookies(from: NextResponse, to: NextResponse) {
-  const setCookie = from.headers.get("set-cookie");
-  if (setCookie) setCookie.split(",").forEach((c) => to.headers.append("set-cookie", c.trim()));
+  
+  const getSetCookie = from.headers.getSetCookie?.bind(from.headers) as
+    | (() => string[])
+    | undefined;
+
+  const cookiesArr = getSetCookie ? getSetCookie() : undefined;
+  if (Array.isArray(cookiesArr)) {
+    for (const c of cookiesArr) to.headers.append("set-cookie", c);
+  } else {
+    const single = from.headers.get("set-cookie");
+    if (single) to.headers.append("set-cookie", single);
+  }
   return to;
 }
 
@@ -38,7 +49,8 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/confirm") ||
     pathname.startsWith("/signup") ||
     pathname.startsWith("/sign-in") ||
-    pathname.startsWith("/portal");
+    pathname.startsWith("/portal") ||
+    pathname.startsWith("/onboarding");
 
   // Only the onboarding flag matters for routing decisions
   let completed = false;
@@ -51,10 +63,22 @@ export async function middleware(req: NextRequest) {
         .maybeSingle();
       completed = !!profile?.completed_onboarding;
     } catch {
-      // treat as not completed if profile lookup fails
       completed = false;
     }
   }
+
+  // ---- Diagnostics (remove after debugging) ----
+  // Shows in Vercel > Deployment > Logs
+  console.log(
+    "MW",
+    JSON.stringify({
+      path: pathname,
+      uid: session?.user?.id ?? null,
+      completed,
+      isPublic,
+    })
+  );
+  // ---------------------------------------------
 
   // Signed-in user on landing → go to dashboard or onboarding
   if (pathname === "/" && session?.user) {
@@ -66,13 +90,13 @@ export async function middleware(req: NextRequest) {
 
   // Public routes
   if (isPublic) {
-    // Signed-in user trying to visit auth pages → bounce to right place
+    // Signed-in user trying to visit auth pages → bounce to the right place
     if (session?.user && (pathname.startsWith("/sign-in") || pathname.startsWith("/signup"))) {
       const redirectParam = req.nextUrl.searchParams.get("redirect");
       const to = redirectParam || (completed ? "/dashboard" : "/onboarding");
       return withSupabaseCookies(res, NextResponse.redirect(new URL(to, req.url)));
     }
-    // If already finished, keep them off /onboarding even if linked
+    // Finished users should not see /onboarding again
     if (pathname.startsWith("/onboarding") && session?.user && completed) {
       return withSupabaseCookies(res, NextResponse.redirect(new URL("/dashboard", req.url)));
     }
@@ -86,17 +110,17 @@ export async function middleware(req: NextRequest) {
     return withSupabaseCookies(res, NextResponse.redirect(login));
   }
 
-  // Only force onboarding if we explicitly know it's not completed
-if (completed === false && !pathname.startsWith("/onboarding")) {
-  return withSupabaseCookies(res, NextResponse.redirect(new URL("/onboarding", req.url)));
-}
+  // Only force onboarding if explicitly incomplete
+  if (completed === false && !pathname.startsWith("/onboarding")) {
+    return withSupabaseCookies(res, NextResponse.redirect(new URL("/onboarding", req.url)));
+  }
 
   return res;
 }
 
 export const config = {
   matcher: [
-    "/",
+    "/",                       // landing
     "/compare-plans",
     "/subscribe",
     "/confirm",
@@ -104,8 +128,15 @@ export const config = {
     "/sign-in",
     "/portal",
     "/onboarding/:path*",
+
+    // ---- protected app areas (expand as you add features) ----
     "/dashboard/:path*",
     "/work-orders/:path*",
     "/inspections/:path*",
+    "/parts/:path*",
+    "/tech/:path*",
+    "/chat/:path*",
+    "/appointments/:path*",
+    "/menu", // service menu
   ],
 };
