@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import IconMenu, { type IconItem } from "@/features/launcher/components/IconMenu";
+import IconMenu, { type IconItem } from "@/features/launcher/components/IconMenuItems";
 import AvatarCircle from "@/features/launcher/components/AvatarCircle";
 
 type DB = Database;

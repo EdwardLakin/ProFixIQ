@@ -1,4 +1,3 @@
-// features/launcher/components/IconMenu.tsx
 "use client";
 
 import Link from "next/link";
@@ -8,27 +7,11 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { ALL_LAUNCHABLES } from "../registry";
 import AppIcon from "./AppIcon";
-import type { ReactNode } from "react";
 
 type DB = Database;
 
-export type IconItem = {
-  href: string;
-  title: string;
-  subtitle?: string;
-  icon: ReactNode;
-  badge?: number | "dot";
-  active?: boolean;
-};
-
-type Props =
-  | { items: IconItem[]; colsClass?: string }   // explicit items mode
-  | { items?: undefined; colsClass?: string };  // registry mode
-
-export default function IconMenu(props: Props) {
+export default function IconMenu() {
   const pathname = usePathname();
-
-  // ✅ Hooks must run on every render, even if we later render "items" mode.
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const [role, setRole] = useState<string | null>(null);
 
@@ -45,40 +28,11 @@ export default function IconMenu(props: Props) {
     })();
   }, [supabase]);
 
-  const apps = useMemo(() => {
-    return ALL_LAUNCHABLES.filter(
-      (a) => !a.roleGate || (role ? a.roleGate.includes(role as any) : false)
-    );
-  }, [role]);
+  const apps = useMemo(
+    () => ALL_LAUNCHABLES.filter(a => !a.roleGate || (role ? a.roleGate.includes(role as any) : false)),
+    [role]
+  );
 
-  // ---------- Render ----------
-  // Items mode
-  if (props.items && props.items.length > 0) {
-    const cols = props.colsClass ?? "grid-cols-4";
-    return (
-      <section className="mt-4">
-        <div className={`grid gap-3 ${cols}`}>
-          {props.items.map((it) => (
-            <Link key={it.href} href={it.href} className="block">
-              <AppIcon
-                icon={it.icon}
-                label={it.title}
-                badge={it.badge}
-                active={it.active}
-              />
-              {it.subtitle && (
-                <div className="mt-1 line-clamp-1 text-center text-[11px] text-white/60">
-                  {it.subtitle}
-                </div>
-              )}
-            </Link>
-          ))}
-        </div>
-      </section>
-    );
-  }
-
-  // Registry mode
   if (apps.length === 0) return null;
 
   return (
