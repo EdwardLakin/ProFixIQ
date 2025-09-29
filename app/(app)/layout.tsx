@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import PhoneShell from "@launcher/PhoneShell";
-export default function AppAreaLayout({ children }: { children: React.ReactNode }) {
+import PhoneShell from "@/features/launcher/PhoneShell";
+
+export default function AppAreaLayout({ children }: { children: ReactNode }) {
   return <PhoneShell>{children}</PhoneShell>;
 }
