@@ -1,13 +1,19 @@
-// PhoneShell component
-"use client";
-import React from "react";
+// app/layout.tsx  (global, NO PhoneShell here)
+import "./globals.css";
+import { Roboto, Black_Ops_One } from "next/font/google";
+import Providers from "app/providers";
 
-export default function PhoneShell({ children }:{ children: React.ReactNode }) {
+const roboto = Roboto({ subsets: ["latin"], weight: ["400","500","700"], variable: "--font-roboto" });
+const blackOps = Black_Ops_One({ weight: "400", subsets: ["latin"], variable: "--font-blackops" });
+
+export const metadata = { title: "ProFixIQ", description: "Tech tools for modern shops" };
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-dvh bg-[color:var(--bg,#0b0f13)]">
-      <div className="mx-auto w-full md:max-w-[420px] md:mt-6 md:rounded-[42px] md:border-8 md:border-black md:shadow-2xl">
-        {children}
-      </div>
-    </div>
+    <html lang="en">
+      <body className={`${roboto.variable} ${blackOps.variable} bg-black text-white`}>
+        <Providers>{children}</Providers>
+      </body>
+    </html>
   );
 }
