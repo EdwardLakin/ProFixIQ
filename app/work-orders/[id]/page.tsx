@@ -2,6 +2,7 @@
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cookies } from "next/headers";
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
@@ -51,12 +52,12 @@ export default async function WorkOrderBasic({
 
   return (
     <div className="mx-auto max-w-3xl p-6 text-white">
-      <a
+      <Link
         href="/work-orders"
         className="text-sm text-orange-400 hover:underline"
       >
         ← Back to Work Orders
-      </a>
+      </Link>
 
       <h1 className="mt-3 text-2xl font-semibold">
         Work Order {wo.custom_id || `#${wo.id.slice(0, 8)}`}
