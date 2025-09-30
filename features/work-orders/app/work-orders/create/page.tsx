@@ -18,6 +18,9 @@ import type {
   SessionVehicle,
 } from "@/features/inspections/lib/inspection/types";
 
+/* =============================================================================
+   Types
+============================================================================= */
 type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
 type LineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
@@ -27,6 +30,9 @@ type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
 type WOType = "inspection" | "maintenance" | "diagnosis";
 type UploadSummary = { uploaded: number; failed: number };
 
+/* =============================================================================
+   Page
+============================================================================= */
 export default function CreateWorkOrderPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -35,22 +41,31 @@ export default function CreateWorkOrderPage() {
   // ---------------------------------------------------------------------------
   // Prefill from querystring (vehicleId, customerId)
   // ---------------------------------------------------------------------------
-  const [prefillVehicleId, setPrefillVehicleId] = useTabState<string | null>("prefillVehicleId", null);
-  const [prefillCustomerId, setPrefillCustomerId] = useTabState<string | null>("prefillCustomerId", null);
+  const [prefillVehicleId, setPrefillVehicleId] = useTabState<string | null>(
+    "prefillVehicleId",
+    null
+  );
+  const [prefillCustomerId, setPrefillCustomerId] = useTabState<string | null>(
+    "prefillCustomerId",
+    null
+  );
 
   // ---------------------------------------------------------------------------
   // Customer & Vehicle (session-shaped state for CustomerVehicleForm)
   // ---------------------------------------------------------------------------
-  const [customer, setCustomer] = useTabState<SessionCustomer>("__cv_customer", {
-    first_name: null,
-    last_name: null,
-    phone: null,
-    email: null,
-    address: null,
-    city: null,
-    province: null,
-    postal_code: null,
-  });
+  const [customer, setCustomer] = useTabState<SessionCustomer>(
+    "__cv_customer",
+    {
+      first_name: null,
+      last_name: null,
+      phone: null,
+      email: null,
+      address: null,
+      city: null,
+      province: null,
+      postal_code: null,
+    }
+  );
 
   const [vehicle, setVehicle] = useTabState<SessionVehicle>("__cv_vehicle", {
     year: null,
@@ -58,22 +73,32 @@ export default function CreateWorkOrderPage() {
     model: null,
     vin: null,
     license_plate: null,
-    mileage: null,
+    mileage: null, // DB is text
     color: null,
     unit_number: null,
-    engine_hours: null,
+    engine_hours: null, // DB is integer
   });
 
-  // 🔧 accept string | null (form sends nulls for empty)
-  const onCustomerChange = (field: keyof SessionCustomer, value: string | null) =>
-    setCustomer((c) => ({ ...c, [field]: value }));
+  // 🔧 accept string | null (form emits nulls for empty)
+  const onCustomerChange = (
+    field: keyof SessionCustomer,
+    value: string | null
+  ) => setCustomer((c) => ({ ...c, [field]: value }));
 
-  const onVehicleChange = (field: keyof SessionVehicle, value: string | null) =>
-    setVehicle((v) => ({ ...v, [field]: value }));
+  const onVehicleChange = (
+    field: keyof SessionVehicle,
+    value: string | null
+  ) => setVehicle((v) => ({ ...v, [field]: value }));
 
   // DB ids captured as we create/look up records
-  const [customerId, setCustomerId] = useTabState<string | null>("customerId", null);
-  const [vehicleId, setVehicleId] = useTabState<string | null>("vehicleId", null);
+  const [customerId, setCustomerId] = useTabState<string | null>(
+    "customerId",
+    null
+  );
+  const [vehicleId, setVehicleId] = useTabState<string | null>(
+    "vehicleId",
+    null
+  );
 
   // ---------------------------------------------------------------------------
   // Work order context + lines
@@ -88,26 +113,45 @@ export default function CreateWorkOrderPage() {
   // Uploads
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [docFiles, setDocFiles] = useState<File[]>([]);
-  const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(null);
+  const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(
+    null
+  );
 
   // UI state
   const [loading, setLoading] = useTabState("loading", false);
   const [error, setError] = useTabState("error", "");
-  const [inviteNotice, setInviteNotice] = useTabState<string>("inviteNotice", "");
+  const [inviteNotice, setInviteNotice] = useTabState<string>(
+    "inviteNotice",
+    ""
+  );
   const [sendInvite, setSendInvite] = useTabState<boolean>("sendInvite", false);
+
+  // Track current user for initials fallback + auth guard
+  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
+  const [, setCurrentUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      setCurrentUserEmail(user?.email ?? null);
+      setCurrentUserId(user?.id ?? null);
+    })();
+  }, [supabase]);
 
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
-  function getInitials(first?: string | null, last?: string | null, fallback?: string | null): string {
+  function getInitials(
+    first?: string | null,
+    last?: string | null,
+    fallback?: string | null
+  ): string {
     const f = (first ?? "").trim();
     const l = (last ?? "").trim();
     if (f || l) return `${f[0] ?? ""}${l[0] ?? ""}`.toUpperCase() || "WO";
     const fb = (fallback ?? "").trim();
-    if (fb.includes(" ")) {
-      const parts = fb.split(/\s+/);
-      return `${parts[0]?.[0] ?? ""}${parts[1]?.[0] ?? ""}`.toUpperCase() || "WO";
-    }
     if (fb.includes("@")) return fb.split("@")[0].slice(0, 2).toUpperCase() || "WO";
     return fb.slice(0, 2).toUpperCase() || "WO";
   }
@@ -134,6 +178,7 @@ export default function CreateWorkOrderPage() {
   }
 
   async function getOrLinkShopId(userId: string): Promise<string | null> {
+    // We only need shop_id here; avoid relying on profile name fields
     const { data: profile, error: profErr } = await supabase
       .from("profiles")
       .select("user_id, shop_id")
@@ -143,6 +188,7 @@ export default function CreateWorkOrderPage() {
 
     if (profile?.shop_id) return profile.shop_id;
 
+    // If there is logic to link shop from ownership, keep it — otherwise return null
     const { data: ownedShop, error: shopErr } = await supabase
       .from("shops")
       .select("id")
@@ -152,7 +198,10 @@ export default function CreateWorkOrderPage() {
 
     if (!ownedShop?.id) return null;
 
-    const { error: updErr } = await supabase.from("profiles").update({ shop_id: ownedShop.id }).eq("user_id", userId);
+    const { error: updErr } = await supabase
+      .from("profiles")
+      .update({ shop_id: ownedShop.id })
+      .eq("user_id", userId);
     if (updErr) throw updErr;
 
     return ownedShop.id;
@@ -170,14 +219,18 @@ export default function CreateWorkOrderPage() {
     postal_code: c.postal_code || null,
   });
 
-  const buildVehicleInsert = (v: SessionVehicle, customerId: string, shopId: string | null) => ({
+  const buildVehicleInsert = (
+    v: SessionVehicle,
+    customerId: string,
+    shopId: string | null
+  ) => ({
     customer_id: customerId,
     vin: v.vin || null,
     year: v.year ? Number(v.year) : null,
     make: v.make || null,
     model: v.model || null,
     license_plate: v.license_plate || null,
-    mileage: v.mileage || null, // DB is string | null
+    mileage: v.mileage || null, // DB type is text | null
     unit_number: v.unit_number || null,
     color: v.color || null,
     engine_hours: v.engine_hours ? Number(v.engine_hours) : null,
@@ -201,7 +254,11 @@ export default function CreateWorkOrderPage() {
     let cancelled = false;
     (async () => {
       if (prefillCustomerId) {
-        const { data } = await supabase.from("customers").select("*").eq("id", prefillCustomerId).single();
+        const { data } = await supabase
+          .from("customers")
+          .select("*")
+          .eq("id", prefillCustomerId)
+          .single();
         if (!cancelled && data) {
           setCustomer({
             first_name: data.first_name ?? null,
@@ -219,7 +276,9 @@ export default function CreateWorkOrderPage() {
       if (prefillVehicleId) {
         const { data } = await supabase
           .from("vehicles")
-          .select("id, vin, year, make, model, license_plate, mileage, unit_number, color, engine_hours")
+          .select(
+            "id, vin, year, make, model, license_plate, mileage, unit_number, color, engine_hours"
+          )
           .eq("id", prefillVehicleId)
           .single();
         if (!cancelled && data) {
@@ -229,10 +288,13 @@ export default function CreateWorkOrderPage() {
             make: data.make ?? null,
             model: data.model ?? null,
             license_plate: data.license_plate ?? null,
-            mileage: data.mileage ?? null,
+            mileage: (data as any).mileage ?? null,
             unit_number: (data as any).unit_number ?? null,
             color: (data as any).color ?? null,
-            engine_hours: (data as any).engine_hours != null ? String((data as any).engine_hours) : null,
+            engine_hours:
+              (data as any).engine_hours != null
+                ? String((data as any).engine_hours)
+                : null,
           });
           setVehicleId(data.id);
         }
@@ -241,14 +303,26 @@ export default function CreateWorkOrderPage() {
     return () => {
       cancelled = true;
     };
-  }, [prefillCustomerId, prefillVehicleId, supabase, setCustomer, setVehicle, setCustomerId, setVehicleId]);
+  }, [
+    prefillCustomerId,
+    prefillVehicleId,
+    supabase,
+    setCustomer,
+    setVehicle,
+    setCustomerId,
+    setVehicleId,
+  ]);
 
   // ---------------------------------------------------------------------------
   // Ensure / create customer + vehicle
   // ---------------------------------------------------------------------------
   async function ensureCustomer(): Promise<CustomerRow> {
     if (customerId) {
-      const { data } = await supabase.from("customers").select("*").eq("id", customerId).single();
+      const { data } = await supabase
+        .from("customers")
+        .select("*")
+        .eq("id", customerId)
+        .single();
       if (data) return data;
     }
 
@@ -268,14 +342,22 @@ export default function CreateWorkOrderPage() {
       .insert(buildCustomerInsert(customer))
       .select("*")
       .single();
-    if (insErr || !inserted) throw new Error(insErr?.message ?? "Failed to create customer");
+    if (insErr || !inserted)
+      throw new Error(insErr?.message ?? "Failed to create customer");
     setCustomerId(inserted.id);
     return inserted;
   }
 
-  async function ensureVehicleRow(cust: CustomerRow, shopId: string | null): Promise<VehicleRow> {
+  async function ensureVehicleRow(
+    cust: CustomerRow,
+    shopId: string | null
+  ): Promise<VehicleRow> {
     if (vehicleId) {
-      const { data } = await supabase.from("vehicles").select("*").eq("id", vehicleId).single();
+      const { data } = await supabase
+        .from("vehicles")
+        .select("*")
+        .eq("id", vehicleId)
+        .single();
       if (data) return data;
     }
 
@@ -292,7 +374,7 @@ export default function CreateWorkOrderPage() {
         .or(orParts.join(","));
       if (maybe && maybe.length > 0) {
         setVehicleId(maybe[0].id);
-        return maybe[0];
+        return maybe[0] as VehicleRow;
       }
     }
 
@@ -302,9 +384,10 @@ export default function CreateWorkOrderPage() {
       .insert(buildVehicleInsert(vehicle, cust.id, shopId))
       .select("*")
       .single();
-    if (insErr || !inserted) throw new Error(insErr?.message ?? "Failed to create vehicle");
+    if (insErr || !inserted)
+      throw new Error(insErr?.message ?? "Failed to create vehicle");
     setVehicleId(inserted.id);
-    return inserted;
+    return inserted as VehicleRow;
   }
 
   // ---------------------------------------------------------------------------
@@ -321,10 +404,12 @@ export default function CreateWorkOrderPage() {
     const uploadAndRecord = async (
       bucket: "vehicle-photos" | "vehicle-docs",
       f: File,
-      mediaType: "photo" | "document",
+      mediaType: "photo" | "document"
     ) => {
       const key = `veh_${vId}/${Date.now()}_${f.name}`;
-      const up = await supabase.storage.from(bucket).upload(key, f, { upsert: false });
+      const up = await supabase.storage.from(bucket).upload(key, f, {
+        upsert: false,
+      });
       if (up.error) {
         failed += 1;
         return;
@@ -352,7 +437,10 @@ export default function CreateWorkOrderPage() {
       if (!wo?.id) return;
       const ok = confirm("Delete this line?");
       if (!ok) return;
-      const { error: delErr } = await supabase.from("work_order_lines").delete().eq("id", lineId);
+      const { error: delErr } = await supabase
+        .from("work_order_lines")
+        .delete()
+        .eq("id", lineId);
       if (delErr) {
         alert(delErr.message || "Delete failed");
         return;
@@ -364,7 +452,7 @@ export default function CreateWorkOrderPage() {
         .order("created_at", { ascending: true });
       setLines(refreshed ?? []);
     },
-    [supabase, wo?.id, setLines],
+    [supabase, wo?.id, setLines]
   );
 
   // ---------------------------------------------------------------------------
@@ -387,7 +475,9 @@ export default function CreateWorkOrderPage() {
 
       // Full create path (safety)
       if (!customer.first_name && !customer.phone && !customer.email) {
-        throw new Error("Please enter at least a name, phone, or email for the customer.");
+        throw new Error(
+          "Please enter at least a name, phone, or email for the customer."
+        );
       }
 
       const cust = await ensureCustomer();
@@ -399,15 +489,14 @@ export default function CreateWorkOrderPage() {
       const shopId = await getOrLinkShopId(user.id);
       if (!shopId) throw new Error("Your profile isn’t linked to a shop yet.");
 
-      const { data: profileNames } = await supabase
-        .from("profiles")
-        .select("first_name, last_name")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
       const veh = await ensureVehicleRow(cust, shopId);
 
-      const initials = getInitials(profileNames?.first_name, profileNames?.last_name, user.email ?? null);
+      // Initials from customer first/last if present; fallback to user's email
+      const initials = getInitials(
+        cust.first_name ?? customer.first_name,
+        cust.last_name ?? customer.last_name,
+        user.email ?? currentUserEmail
+      );
       const customId = await generateCustomId(initials);
 
       const newId = uuidv4();
@@ -421,12 +510,13 @@ export default function CreateWorkOrderPage() {
           notes,
           user_id: user.id,
           shop_id: shopId,
-          status: "awaiting_approval",
+          status: "awaiting_approval", // allowed by your check constraint
         })
         .select("*")
         .single();
 
-      if (insertWOError || !inserted) throw new Error(insertWOError?.message || "Failed to create work order.");
+      if (insertWOError || !inserted)
+        throw new Error(insertWOError?.message || "Failed to create work order.");
       setWo(inserted);
 
       if (photoFiles.length || docFiles.length) {
@@ -440,23 +530,32 @@ export default function CreateWorkOrderPage() {
             typeof window !== "undefined"
               ? window.location.origin
               : (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
-          const portalUrl = `${origin || "https://profixiq.com"}/portal/signup?email=${encodeURIComponent(
-            customer.email,
-          )}`;
-          const { error: fnErr } = await supabase.functions.invoke("send-portal-invite", {
-            body: { email: customer.email, customer_id: cust.id, portal_url: portalUrl },
-          });
-          if (fnErr) setInviteNotice("Work order created. Failed to send invite email (logged).");
+          const portalUrl = `${
+            origin || "https://profixiq.com"
+          }/portal/signup?email=${encodeURIComponent(customer.email)}`;
+          const { error: fnErr } = await supabase.functions.invoke(
+            "send-portal-invite",
+            {
+              body: { email: customer.email, customer_id: cust.id, portal_url: portalUrl },
+            }
+          );
+          if (fnErr)
+            setInviteNotice(
+              "Work order created. Failed to send invite email (logged)."
+            );
           else setInviteNotice("Work order created. Invite email queued to the customer.");
         } catch {
-          setInviteNotice("Work order created. Failed to send invite email (caught).");
+          setInviteNotice(
+            "Work order created. Failed to send invite email (caught)."
+          );
         }
       }
 
       router.push(`/work-orders/quote-review?woId=${inserted.id}`);
       return;
     } catch (ex) {
-      const message = ex instanceof Error ? ex.message : "Failed to create work order.";
+      const message =
+        ex instanceof Error ? ex.message : "Failed to create work order.";
       setError(message);
     } finally {
       setLoading(false);
@@ -483,8 +582,13 @@ export default function CreateWorkOrderPage() {
       .channel(`create-wo:${wo.id}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "work_order_lines", filter: `work_order_id=eq.${wo.id}` },
-        () => fetchLines(),
+        {
+          event: "*",
+          schema: "public",
+          table: "work_order_lines",
+          filter: `work_order_id=eq.${wo.id}`,
+        },
+        () => fetchLines()
       )
       .subscribe();
     return () => {
@@ -517,13 +621,7 @@ export default function CreateWorkOrderPage() {
       const shopId = await getOrLinkShopId(user.id);
       if (!shopId) return;
 
-      const { data: profileNames } = await supabase
-        .from("profiles")
-        .select("first_name, last_name")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      // 1) Ensure placeholder customer
+      // 1) Ensure a placeholder customer (min fields to pass NOT NULL/RLS)
       let placeholderCustomer: CustomerRow | null = null;
       {
         const { data } = await supabase
@@ -543,14 +641,15 @@ export default function CreateWorkOrderPage() {
         placeholderCustomer = data as CustomerRow;
       }
 
-      // 2) Ensure placeholder vehicle
+      // 2) Ensure a placeholder vehicle tied to that customer + shop
       const { data: maybeVeh } = await supabase
         .from("vehicles")
         .select("*")
         .eq("customer_id", placeholderCustomer!.id)
         .ilike("model", "Unassigned")
         .limit(1);
-      let placeholderVehicle: VehicleRow | null = maybeVeh && maybeVeh.length ? (maybeVeh[0] as VehicleRow) : null;
+      let placeholderVehicle: VehicleRow | null =
+        maybeVeh && maybeVeh.length ? (maybeVeh[0] as VehicleRow) : null;
 
       if (!placeholderVehicle) {
         const { data } = await supabase
@@ -570,8 +669,13 @@ export default function CreateWorkOrderPage() {
         placeholderVehicle = data as VehicleRow;
       }
 
-      // 3) Create WO row
-      const initials = getInitials(profileNames?.first_name, profileNames?.last_name, user.email ?? null);
+      // 3) Create the WO row right away so QuickAdd + LineForm can mount
+      const initials = getInitials(
+        // Use placeholder customer or fallback to current user email
+        placeholderCustomer?.first_name ?? customer.first_name,
+        placeholderCustomer?.last_name ?? customer.last_name,
+        user.email ?? currentUserEmail
+      );
       const customId = await generateCustomId(initials);
 
       const newId = uuidv4();
@@ -593,10 +697,12 @@ export default function CreateWorkOrderPage() {
         setWo(inserted);
         await fetchLines();
       } else if (error) {
+        // Surface the reason so you can see the real PostgREST message if any
         setError(error.message ?? "Failed to auto-create work order.");
       }
     })();
-  }, [supabase, wo?.id, setWo, fetchLines, setError]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase, wo?.id, setWo, fetchLines, setError, currentUserEmail, customer.first_name, customer.last_name]);
 
   // ---------------------------------------------------------------------------
   // UI
@@ -605,15 +711,20 @@ export default function CreateWorkOrderPage() {
     <div className="mx-auto max-w-5xl p-6 text-white font-roboto">
       <h1 className="mb-6 text-2xl font-bold font-blackops">Create Work Order</h1>
 
-      {error && <div className="mb-4 rounded bg-red-100 px-4 py-2 text-red-700">{error}</div>}
+      {error && (
+        <div className="mb-4 rounded bg-red-100 px-4 py-2 text-red-700">{error}</div>
+      )}
 
       {uploadSummary && (
         <div className="mb-4 rounded bg-neutral-800 px-4 py-2 text-neutral-200 text-sm">
-          Uploaded {uploadSummary.uploaded} file(s){uploadSummary.failed ? `, ${uploadSummary.failed} failed` : ""}.
+          Uploaded {uploadSummary.uploaded} file(s)
+          {uploadSummary.failed ? `, ${uploadSummary.failed} failed` : ""}.
         </div>
       )}
       {inviteNotice && (
-        <div className="mb-4 rounded bg-neutral-800 px-4 py-2 text-neutral-200 text-sm">{inviteNotice}</div>
+        <div className="mb-4 rounded bg-neutral-800 px-4 py-2 text-neutral-200 text-sm">
+          {inviteNotice}
+        </div>
       )}
 
       <form onSubmit={handleSubmit}>
@@ -636,7 +747,9 @@ export default function CreateWorkOrderPage() {
                 className="h-4 w-4"
                 disabled={loading}
               />
-              <label htmlFor="send-invite">Email a customer portal sign-up link</label>
+              <label htmlFor="send-invite">
+                Email a customer portal sign-up link
+              </label>
             </div>
           </section>
 
@@ -650,13 +763,17 @@ export default function CreateWorkOrderPage() {
                   type="file"
                   accept="image/*"
                   multiple
-                  onChange={(e) => setPhotoFiles(Array.from(e.target.files ?? []))}
+                  onChange={(e) =>
+                    setPhotoFiles(Array.from(e.target.files ?? []))
+                  }
                   className="input"
                   disabled={loading}
                 />
               </div>
               <div>
-                <label className="block text-sm mb-1">Documents (PDF/JPG/PNG)</label>
+                <label className="block text-sm mb-1">
+                  Documents (PDF/JPG/PNG)
+                </label>
                 <input
                   type="file"
                   accept="application/pdf,image/*"
@@ -672,7 +789,9 @@ export default function CreateWorkOrderPage() {
           {/* Quick add from menu */}
           {wo?.id && (
             <section className="card">
-              <h2 className="font-header text-lg mb-3 text-orange-400">Quick add from menu</h2>
+              <h2 className="font-header text-lg mb-3 text-orange-400">
+                Quick add from menu
+              </h2>
               <MenuQuickAdd workOrderId={wo.id} />
             </section>
           )}
@@ -703,11 +822,15 @@ export default function CreateWorkOrderPage() {
                     className="flex items-start justify-between gap-3 rounded border border-neutral-800 bg-neutral-950 p-3"
                   >
                     <div className="min-w-0">
-                      <div className="truncate font-medium">{ln.description || ln.complaint || "Untitled job"}</div>
+                      <div className="truncate font-medium">
+                        {ln.description || ln.complaint || "Untitled job"}
+                      </div>
                       <div className="text-xs text-neutral-400">
                         {String(ln.job_type ?? "job").replaceAll("_", " ")} •{" "}
-                        {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} •{" "}
-                        {(ln.status ?? "awaiting").replaceAll("_", " ")}
+                        {typeof ln.labor_time === "number"
+                          ? `${ln.labor_time}h`
+                          : "—"}{" "}
+                        • {(ln.status ?? "awaiting").replaceAll("_", " ")}
                       </div>
                       {(ln.complaint || ln.cause || ln.correction) && (
                         <div className="text-xs text-neutral-400 mt-1">
@@ -730,12 +853,14 @@ export default function CreateWorkOrderPage() {
             )}
           </section>
 
-          {/* WO defaults */}
+          {/* Work Order defaults */}
           <section className="card">
             <h2 className="font-header text-lg mb-2">Work Order</h2>
             <div className="grid grid-cols-1 gap-3">
               <div>
-                <label className="block text-sm mb-1">Default job type for added menu items</label>
+                <label className="block text-sm mb-1">
+                  Default job type for added menu items
+                </label>
                 <select
                   value={type}
                   onChange={(e) => setType(e.target.value as WOType)}
@@ -763,7 +888,11 @@ export default function CreateWorkOrderPage() {
 
           {/* Submit */}
           <div className="flex items-center gap-4 pt-2">
-            <button type="submit" disabled={loading} className="btn btn-orange disabled:opacity-60">
+            <button
+              type="submit"
+              disabled={loading}
+              className="btn btn-orange disabled:opacity-60"
+            >
               {loading ? "Creating..." : "Done → Review & Sign"}
             </button>
 

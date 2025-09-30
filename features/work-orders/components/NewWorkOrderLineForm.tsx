@@ -14,9 +14,10 @@ export function NewWorkOrderLineForm(props: {
   workOrderId: string;
   vehicleId: string | null;
   defaultJobType: WOJobType | null;
+  shopId?: string | null;                // ← optional (used to satisfy RLS)
   onCreated?: () => void;
 }) {
-  const { workOrderId, vehicleId, defaultJobType, onCreated } = props;
+  const { workOrderId, vehicleId, defaultJobType, shopId, onCreated } = props;
   const supabase = createClientComponentClient<DB>();
 
   const [complaint, setComplaint] = useState("");
@@ -54,13 +55,16 @@ export function NewWorkOrderLineForm(props: {
       labor_time: labor ? Number(labor) : null,
       status: status ?? "awaiting",
       job_type: normalizeJobType(jobType),
+      // RLS: wol_shop_insert → check (shop_id = current_shop_id())
+      shop_id: shopId ?? null,
     };
 
     const { error } = await supabase.from("work_order_lines").insert(payload);
     if (error) {
-      // friendlier copy for job_type check constraint issues
       if (/(job_type).*check/i.test(error.message)) {
-        setErr("This job type isn’t allowed by the database. Pick another type or ask an admin to enable it.");
+        setErr("This job type isn’t allowed by the database. Pick another type.");
+      } else if (/shop_id.*current_shop_id/i.test(error.message)) {
+        setErr("Shop mismatch: shop_id is missing or you’re not in this shop.");
       } else {
         setErr(error.message);
       }
@@ -88,6 +92,7 @@ export function NewWorkOrderLineForm(props: {
             placeholder="Describe the issue"
           />
         </div>
+
         <div>
           <label className="block text-xs text-neutral-400 mb-1">Cause</label>
           <input
@@ -97,6 +102,7 @@ export function NewWorkOrderLineForm(props: {
             placeholder="Root cause (optional)"
           />
         </div>
+
         <div>
           <label className="block text-xs text-neutral-400 mb-1">Correction</label>
           <input
@@ -106,6 +112,7 @@ export function NewWorkOrderLineForm(props: {
             placeholder="What to do (optional)"
           />
         </div>
+
         <div>
           <label className="block text-xs text-neutral-400 mb-1">Labor (hrs)</label>
           <input
@@ -116,6 +123,7 @@ export function NewWorkOrderLineForm(props: {
             placeholder="0.0"
           />
         </div>
+
         <div>
           <label className="block text-xs text-neutral-400 mb-1">Status</label>
           <select
@@ -131,6 +139,7 @@ export function NewWorkOrderLineForm(props: {
             <option value="unassigned">Unassigned</option>
           </select>
         </div>
+
         <div>
           <label className="block text-xs text-neutral-400 mb-1">Job type</label>
           <select
@@ -161,3 +170,5 @@ export function NewWorkOrderLineForm(props: {
     </div>
   );
 }
+
+export default NewWorkOrderLineForm;
