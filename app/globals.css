@@ -8,9 +8,11 @@ html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* body font is Roboto via next/font variable in <html> */
 body { @apply bg-background text-white antialiased; }
 
-/* Optional utility: force Black Ops */
+/* Optional utility: force Black Ops anywhere */
 .font-blackops { font-family: var(--font-blackops), var(--font-roboto), ui-sans-serif, system-ui, sans-serif; }
 
 /* Inputs + small UX bits */

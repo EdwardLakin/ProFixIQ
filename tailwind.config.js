@@ -11,9 +11,9 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        // Body → Roboto (regular). Headers/buttons → Black Ops One.
+        // Body → Roboto. Headers/buttons → Black Ops One (falls back to Roboto).
         sans: ['var(--font-roboto)', "ui-sans-serif", "system-ui", "sans-serif"],
-        header: ['var(--font-blackops)', "var(--font-roboto)", "ui-sans-serif", "system-ui", "sans-serif"],
+        header: ['var(--font-blackops)', 'var(--font-roboto)', "ui-sans-serif", "system-ui", "sans-serif"],
       },
       colors: {
         background: "#101010",

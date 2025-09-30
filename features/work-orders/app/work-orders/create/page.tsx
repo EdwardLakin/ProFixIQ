@@ -1,21 +1,28 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { useTabState } from "@/features/shared/hooks/useTabState";
 
-// Components
+// UI blocks
+import CustomerVehicleForm from "@/features/inspections/components/inspection/CustomerVehicleForm";
 import { MenuQuickAdd } from "@work-orders/components/MenuQuickAdd";
 import { NewWorkOrderLineForm } from "@work-orders/components/NewWorkOrderLineForm";
 
+// Session (form) types
+import type {
+  SessionCustomer,
+  SessionVehicle,
+} from "@/features/inspections/lib/inspection/types";
+
 type DB = Database;
-type CustomerRow  = DB["public"]["Tables"]["customers"]["Row"];
-type VehicleRow   = DB["public"]["Tables"]["vehicles"]["Row"];
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
-type LineRow      = DB["public"]["Tables"]["work_order_lines"]["Row"];
+type LineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
+type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
+type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
 
 type WOType = "inspection" | "maintenance" | "diagnosis";
 type UploadSummary = { uploaded: number; failed: number };
@@ -25,55 +32,73 @@ export default function CreateWorkOrderPage() {
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
-  // --- Preselects ------------------------------------------------------------
-  const [prefillVehicleId, setPrefillVehicleId]   = useTabState<string | null>("prefillVehicleId", null);
+  // ---------------------------------------------------------------------------
+  // Prefill from querystring (vehicleId, customerId)
+  // ---------------------------------------------------------------------------
+  const [prefillVehicleId, setPrefillVehicleId] = useTabState<string | null>("prefillVehicleId", null);
   const [prefillCustomerId, setPrefillCustomerId] = useTabState<string | null>("prefillCustomerId", null);
 
-  // --- Customer form ---------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Customer & Vehicle (session-shaped state for CustomerVehicleForm)
+  // ---------------------------------------------------------------------------
+  const [customer, setCustomer] = useTabState<SessionCustomer>("__cv_customer", {
+    first_name: null,
+    last_name: null,
+    phone: null,
+    email: null,
+    address: null,
+    city: null,
+    province: null,
+    postal_code: null,
+  });
+
+  const [vehicle, setVehicle] = useTabState<SessionVehicle>("__cv_vehicle", {
+    year: null,
+    make: null,
+    model: null,
+    vin: null,
+    license_plate: null,
+    mileage: null,
+    color: null,
+    // extra fields supported by your updated SessionVehicle
+    unit_number: null,
+    engine_hours: null,
+  });
+
+  const onCustomerChange = (field: keyof SessionCustomer, value: string) =>
+    setCustomer((c) => ({ ...c, [field]: value }));
+
+  const onVehicleChange = (field: keyof SessionVehicle, value: string) =>
+    setVehicle((v) => ({ ...v, [field]: value }));
+
+  // DB ids captured as we create/look up records
   const [customerId, setCustomerId] = useTabState<string | null>("customerId", null);
-  const [custFirst, setCustFirst]   = useTabState("custFirst", "");
-  const [custLast,  setCustLast]    = useTabState("custLast", "");
-  const [custPhone, setCustPhone]   = useTabState("custPhone", "");
-  const [custEmail, setCustEmail]   = useTabState("custEmail", "");
-  const [sendInvite, setSendInvite] = useTabState<boolean>("sendInvite", false);
-
-  // Address
-  const [custAddress, setCustAddress]   = useTabState("custAddress", "");
-  const [custCity, setCustCity]         = useTabState("custCity", "");
-  const [custProvince, setCustProvince] = useTabState("custProvince", "");
-  const [custPostal, setCustPostal]     = useTabState("custPostal", "");
-
-  // --- Vehicle form ----------------------------------------------------------
   const [vehicleId, setVehicleId] = useTabState<string | null>("vehicleId", null);
-  const [vin, setVin]       = useTabState("vin", "");
-  const [year, setYear]     = useTabState<string>("year", "");
-  const [make, setMake]     = useTabState("make", "");
-  const [model, setModel]   = useTabState("model", "");
-  const [plate, setPlate]   = useTabState("plate", "");
-  const [mileage, setMileage] = useTabState<string>("mileage", "");
-  const [unitNumber, setUnitNumber]       = useTabState("unitNumber", "");
-  const [color, setColor]                 = useTabState("color", "");
-  const [engineHours, setEngineHours]     = useTabState<string>("engineHours", "");
 
-  // --- WO basics -------------------------------------------------------------
-  const [type, setType]   = useTabState<WOType>("type", "maintenance");
-  const [notes, setNotes] = useTabState("notes", "");
-
-  // --- Uploads ---------------------------------------------------------------
-  const [photoFiles, setPhotoFiles] = useState<File[]>([]);
-  const [docFiles, setDocFiles]     = useState<File[]>([]);
-  const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(null);
-
-  // --- UI state --------------------------------------------------------------
-  const [loading, setLoading] = useTabState("loading", false);
-  const [error, setError]     = useTabState("error", "");
-  const [inviteNotice, setInviteNotice] = useTabState<string>("inviteNotice", "");
-
-  // --- Live WO context -------------------------------------------------------
-  const [wo, setWo]       = useTabState<WorkOrderRow | null>("__create_wo", null);
+  // ---------------------------------------------------------------------------
+  // Work order context + lines
+  // ---------------------------------------------------------------------------
+  const [wo, setWo] = useTabState<WorkOrderRow | null>("__create_wo", null);
   const [lines, setLines] = useTabState<LineRow[]>("__create_lines", []);
 
-  // Helpers: initials + custom id
+  // Defaults / notes
+  const [type, setType] = useTabState<WOType>("type", "maintenance");
+  const [notes, setNotes] = useTabState("notes", "");
+
+  // Uploads
+  const [photoFiles, setPhotoFiles] = useState<File[]>([]);
+  const [docFiles, setDocFiles] = useState<File[]>([]);
+  const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(null);
+
+  // UI state
+  const [loading, setLoading] = useTabState("loading", false);
+  const [error, setError] = useTabState("error", "");
+  const [inviteNotice, setInviteNotice] = useTabState<string>("inviteNotice", "");
+  const [sendInvite, setSendInvite] = useTabState<boolean>("sendInvite", false);
+
+  // ---------------------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------------------
   function getInitials(first?: string | null, last?: string | null, fallback?: string | null): string {
     const f = (first ?? "").trim();
     const l = (last ?? "").trim();
@@ -133,7 +158,35 @@ export default function CreateWorkOrderPage() {
     return ownedShop.id;
   }
 
-  // ----- Read query params ---------------------------------------------------
+  // Convert session → DB inserts
+  const buildCustomerInsert = (c: SessionCustomer) => ({
+    first_name: c.first_name || null,
+    last_name: c.last_name || null,
+    phone: c.phone || null,
+    email: c.email || null,
+    address: c.address || null,
+    city: c.city || null,
+    province: c.province || null,
+    postal_code: c.postal_code || null,
+  });
+
+  const buildVehicleInsert = (v: SessionVehicle, customerId: string, shopId: string | null) => ({
+    customer_id: customerId,
+    vin: v.vin || null,
+    year: v.year ? Number(v.year) : null,
+    make: v.make || null,
+    model: v.model || null,
+    license_plate: v.license_plate || null,
+    mileage: v.mileage || null, // DB type is string | null
+    unit_number: v.unit_number || null,
+    color: v.color || null,
+    engine_hours: v.engine_hours ? Number(v.engine_hours) : null,
+    shop_id: shopId,
+  });
+
+  // ---------------------------------------------------------------------------
+  // Read query params for prefill
+  // ---------------------------------------------------------------------------
   useEffect(() => {
     const v = searchParams.get("vehicleId");
     const c = searchParams.get("customerId");
@@ -141,22 +194,26 @@ export default function CreateWorkOrderPage() {
     if (c) setPrefillCustomerId(c);
   }, [searchParams, setPrefillVehicleId, setPrefillCustomerId]);
 
-  // ----- Prefill data --------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Prefill from DB → session shapes
+  // ---------------------------------------------------------------------------
   useEffect(() => {
     let cancelled = false;
     (async () => {
       if (prefillCustomerId) {
         const { data } = await supabase.from("customers").select("*").eq("id", prefillCustomerId).single();
         if (!cancelled && data) {
+          setCustomer({
+            first_name: data.first_name ?? null,
+            last_name: data.last_name ?? null,
+            phone: (data as any).phone ?? (data as any).phone_number ?? null,
+            email: data.email ?? null,
+            address: (data as any).address ?? null,
+            city: (data as any).city ?? null,
+            province: (data as any).province ?? null,
+            postal_code: (data as any).postal_code ?? null,
+          });
           setCustomerId(data.id);
-          setCustFirst(data.first_name ?? "");
-          setCustLast(data.last_name ?? "");
-          setCustPhone(data.phone ?? "");
-          setCustEmail(data.email ?? "");
-          setCustAddress((data as any)?.address ?? "");
-          setCustCity((data as any)?.city ?? "");
-          setCustProvince((data as any)?.province ?? "");
-          setCustPostal((data as any)?.postal_code ?? "");
         }
       }
       if (prefillVehicleId) {
@@ -166,100 +223,99 @@ export default function CreateWorkOrderPage() {
           .eq("id", prefillVehicleId)
           .single();
         if (!cancelled && data) {
+          setVehicle({
+            vin: data.vin ?? null,
+            year: data.year != null ? String(data.year) : null,
+            make: data.make ?? null,
+            model: data.model ?? null,
+            license_plate: data.license_plate ?? null,
+            mileage: data.mileage ?? null,
+            unit_number: (data as any).unit_number ?? null,
+            color: (data as any).color ?? null,
+            engine_hours: (data as any).engine_hours != null ? String((data as any).engine_hours) : null,
+          });
           setVehicleId(data.id);
-          setVin(data.vin ?? "");
-          setYear(data.year ? String(data.year) : "");
-          setMake(data.make ?? "");
-          setModel(data.model ?? "");
-          setPlate(data.license_plate ?? "");
-          setMileage(typeof data.mileage === "number" ? String(data.mileage) : "");
-          setUnitNumber((data as any)?.unit_number ?? "");
-          setColor((data as any)?.color ?? "");
-          setEngineHours(typeof (data as any)?.engine_hours === "number" ? String((data as any).engine_hours) : "");
         }
       }
     })();
-    return () => { cancelled = true; };
-  }, [
-    prefillCustomerId, prefillVehicleId, supabase,
-    setCustomerId, setCustFirst, setCustLast, setCustPhone, setCustEmail,
-    setVehicleId, setVin, setYear, setMake, setModel, setPlate, setMileage,
-    setCustAddress, setCustCity, setCustProvince, setCustPostal,
-    setUnitNumber, setColor, setEngineHours
-  ]);
+    return () => {
+      cancelled = true;
+    };
+  }, [prefillCustomerId, prefillVehicleId, supabase, setCustomer, setVehicle, setCustomerId, setVehicleId]);
 
-  // ----- Helpers -------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Ensure / create customer + vehicle
+  // ---------------------------------------------------------------------------
   async function ensureCustomer(): Promise<CustomerRow> {
     if (customerId) {
       const { data } = await supabase.from("customers").select("*").eq("id", customerId).single();
       if (data) return data;
     }
+
+    // Try find by phone/email
     const query = supabase.from("customers").select("*").limit(1);
-    if (custPhone) query.ilike("phone", custPhone);
-    else if (custEmail) query.ilike("email", custEmail);
+    if (customer.phone) query.ilike("phone", customer.phone);
+    else if (customer.email) query.ilike("email", customer.email);
     const { data: found } = await query;
     if (found && found.length > 0) {
       setCustomerId(found[0].id);
       return found[0];
     }
-    const toInsert: any = {
-      first_name:  custFirst  || null,
-      last_name:   custLast   || null,
-      phone:       custPhone  || null,
-      email:       custEmail  || null,
-      address:     custAddress || null,
-      city:        custCity     || null,
-      province:    custProvince || null,
-      postal_code: custPostal   || null,
-    };
-    const { data: inserted, error: insErr } =
-      await supabase.from("customers").insert(toInsert).select("*").single();
+
+    // Insert
+    const { data: inserted, error: insErr } = await supabase
+      .from("customers")
+      .insert(buildCustomerInsert(customer))
+      .select("*")
+      .single();
     if (insErr || !inserted) throw new Error(insErr?.message ?? "Failed to create customer");
     setCustomerId(inserted.id);
     return inserted;
   }
 
-  async function ensureVehicle(cust: CustomerRow, shopId: string | null): Promise<VehicleRow> {
+  async function ensureVehicleRow(cust: CustomerRow, shopId: string | null): Promise<VehicleRow> {
     if (vehicleId) {
       const { data } = await supabase.from("vehicles").select("*").eq("id", vehicleId).single();
       if (data) return data;
     }
-    let existing: VehicleRow | null = null;
-    if (vin || plate) {
+
+    // Attempt match by vin/plate
+    const orParts = [
+      vehicle.vin ? `vin.eq.${vehicle.vin}` : "",
+      vehicle.license_plate ? `license_plate.eq.${vehicle.license_plate}` : "",
+    ].filter(Boolean);
+    if (orParts.length) {
       const { data: maybe } = await supabase
         .from("vehicles")
         .select("*")
         .eq("customer_id", cust.id)
-        .or([vin ? `vin.eq.${vin}` : "", plate ? `license_plate.eq.${plate}` : ""].filter(Boolean).join(","));
-      if (maybe && maybe.length > 0) existing = maybe[0] ?? null;
+        .or(orParts.join(","));
+      if (maybe && maybe.length > 0) {
+        setVehicleId(maybe[0].id);
+        return maybe[0];
+      }
     }
-    if (existing) {
-      setVehicleId(existing.id);
-      return existing;
-    }
-    const toInsert = {
-      customer_id: cust.id,
-      vin: vin || null,
-      year: year ? Number(year) : null,
-      make: make || null,
-      model: model || null,
-      license_plate: plate || null,
-      mileage: mileage ? Number(mileage) : null,
-      unit_number: unitNumber || null,
-      color: color || null,
-      engine_hours: engineHours ? Number(engineHours) : null,
-      shop_id: shopId,
-    };
-    const { data: inserted, error: insErr } =
-      await supabase.from("vehicles").insert(toInsert).select("*").single();
+
+    // Insert
+    const { data: inserted, error: insErr } = await supabase
+      .from("vehicles")
+      .insert(buildVehicleInsert(vehicle, cust.id, shopId))
+      .select("*")
+      .single();
     if (insErr || !inserted) throw new Error(insErr?.message ?? "Failed to create vehicle");
     setVehicleId(inserted.id);
     return inserted;
   }
 
+  // ---------------------------------------------------------------------------
+  // Upload helpers
+  // ---------------------------------------------------------------------------
   async function uploadVehicleFiles(vId: string): Promise<UploadSummary> {
-    let uploaded = 0, failed = 0;
-    const { data: { user } } = await supabase.auth.getUser();
+    let uploaded = 0,
+      failed = 0;
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     const uploader = user?.id ?? null;
 
     const uploadAndRecord = async (
@@ -269,65 +325,89 @@ export default function CreateWorkOrderPage() {
     ) => {
       const key = `veh_${vId}/${Date.now()}_${f.name}`;
       const up = await supabase.storage.from(bucket).upload(key, f, { upsert: false });
-      if (up.error) { failed += 1; return; }
+      if (up.error) {
+        failed += 1;
+        return;
+      }
       const { error: rowErr } = await supabase.from("vehicle_media").insert({
-        vehicle_id: vId, type: mediaType, storage_path: key, uploaded_by: uploader,
+        vehicle_id: vId,
+        type: mediaType,
+        storage_path: key,
+        uploaded_by: uploader,
       });
-      if (rowErr) failed += 1; else uploaded += 1;
+      if (rowErr) failed += 1;
+      else uploaded += 1;
     };
 
     for (const f of photoFiles) await uploadAndRecord("vehicle-photos", f, "photo");
-    for (const f of docFiles)   await uploadAndRecord("vehicle-docs",   f, "document");
+    for (const f of docFiles) await uploadAndRecord("vehicle-docs", f, "document");
     return { uploaded, failed };
   }
 
-  const handleDeleteLine = useCallback(async (lineId: string) => {
-    if (!wo?.id) return;
-    const ok = confirm("Delete this line?");
-    if (!ok) return;
-    const { error: delErr } = await supabase.from("work_order_lines").delete().eq("id", lineId);
-    if (delErr) { alert(delErr.message || "Delete failed"); return; }
-    const { data: refreshed } = await supabase
-      .from("work_order_lines").select("*")
-      .eq("work_order_id", wo.id).order("created_at", { ascending: true });
-    setLines(refreshed ?? []);
-  }, [supabase, wo?.id, setLines]);
+  // ---------------------------------------------------------------------------
+  // Delete line
+  // ---------------------------------------------------------------------------
+  const handleDeleteLine = useCallback(
+    async (lineId: string) => {
+      if (!wo?.id) return;
+      const ok = confirm("Delete this line?");
+      if (!ok) return;
+      const { error: delErr } = await supabase.from("work_order_lines").delete().eq("id", lineId);
+      if (delErr) {
+        alert(delErr.message || "Delete failed");
+        return;
+      }
+      const { data: refreshed } = await supabase
+        .from("work_order_lines")
+        .select("*")
+        .eq("work_order_id", wo.id)
+        .order("created_at", { ascending: true });
+      setLines(refreshed ?? []);
+    },
+    [supabase, wo?.id, setLines],
+  );
 
-  // ----- Submit --------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Submit: finalize and jump to review
+  // ---------------------------------------------------------------------------
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (loading) return;
     setLoading(true);
-    setError(""); setInviteNotice(""); setUploadSummary(null);
+    setError("");
+    setInviteNotice("");
+    setUploadSummary(null);
 
     try {
-      // If a WO already exists, go straight to review
+      // If we already created a WO (auto phase), just proceed to review
       if (wo?.id) {
         router.push(`/work-orders/quote-review?woId=${wo.id}`);
         return;
       }
 
-      // Full create (safety fallback)
-      if (!custFirst && !custPhone && !custEmail) {
+      // Full create path (safety)
+      if (!customer.first_name && !customer.phone && !customer.email) {
         throw new Error("Please enter at least a name, phone, or email for the customer.");
       }
 
       const cust = await ensureCustomer();
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user?.id) throw new Error("Not signed in.");
-
-      const { data: profileNames } = await supabase
-        .from("profiles").select("first_name, last_name")
-        .eq("user_id", user.id).maybeSingle();
 
       const shopId = await getOrLinkShopId(user.id);
       if (!shopId) throw new Error("Your profile isn’t linked to a shop yet.");
 
-      const veh = await ensureVehicle(cust, shopId);
+      const { data: profileNames } = await supabase
+        .from("profiles")
+        .select("first_name, last_name")
+        .eq("user_id", user.id)
+        .maybeSingle();
 
-      const initials = getInitials(
-        profileNames?.first_name, profileNames?.last_name, user.email ?? null
-      );
+      const veh = await ensureVehicleRow(cust, shopId);
+
+      const initials = getInitials(profileNames?.first_name, profileNames?.last_name, user.email ?? null);
       const customId = await generateCustomId(initials);
 
       const newId = uuidv4();
@@ -354,15 +434,17 @@ export default function CreateWorkOrderPage() {
         setUploadSummary(summary);
       }
 
-      if (sendInvite && custEmail) {
+      if (sendInvite && customer.email) {
         try {
           const origin =
             typeof window !== "undefined"
               ? window.location.origin
               : (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
-          const portalUrl = `${origin || "https://profixiq.com"}/portal/signup?email=${encodeURIComponent(custEmail)}`;
+          const portalUrl = `${origin || "https://profixiq.com"}/portal/signup?email=${encodeURIComponent(
+            customer.email,
+          )}`;
           const { error: fnErr } = await supabase.functions.invoke("send-portal-invite", {
-            body: { email: custEmail, customer_id: cust.id, portal_url: portalUrl },
+            body: { email: customer.email, customer_id: cust.id, portal_url: portalUrl },
           });
           if (fnErr) setInviteNotice("Work order created. Failed to send invite email (logged).");
           else setInviteNotice("Work order created. Invite email queued to the customer.");
@@ -381,7 +463,9 @@ export default function CreateWorkOrderPage() {
     }
   }
 
-  // Refresh lines (for Quick Add / manual add)
+  // ---------------------------------------------------------------------------
+  // Fetch lines + realtime
+  // ---------------------------------------------------------------------------
   const fetchLines = useCallback(async () => {
     if (!wo?.id) return;
     const { data } = await supabase
@@ -392,12 +476,42 @@ export default function CreateWorkOrderPage() {
     setLines(data ?? []);
   }, [supabase, wo?.id, setLines]);
 
-  // === Auto-create WO on page load: placeholder Customer + Vehicle ===========
+  useEffect(() => {
+    if (!wo?.id) return;
+    void fetchLines();
+    const ch = supabase
+      .channel(`create-wo:${wo.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "work_order_lines", filter: `work_order_id=eq.${wo.id}` },
+        () => fetchLines(),
+      )
+      .subscribe();
+    return () => {
+      try {
+        supabase.removeChannel(ch);
+      } catch {}
+    };
+  }, [supabase, wo?.id, fetchLines]);
+
+  useEffect(() => {
+    const h = () => {
+      void fetchLines();
+    };
+    window.addEventListener("wo:line-added", h);
+    return () => window.removeEventListener("wo:line-added", h);
+  }, [fetchLines]);
+
+  // ---------------------------------------------------------------------------
+  // Auto-create WO (placeholder customer & vehicle) so the page is functional
+  // ---------------------------------------------------------------------------
   useEffect(() => {
     if (wo?.id) return;
 
     void (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user?.id) return;
 
       const shopId = await getOrLinkShopId(user.id);
@@ -409,7 +523,7 @@ export default function CreateWorkOrderPage() {
         .eq("user_id", user.id)
         .maybeSingle();
 
-      // 1) Ensure a placeholder customer (min fields to pass NOT NULL/RLS)
+      // 1) Ensure placeholder customer
       let placeholderCustomer: CustomerRow | null = null;
       {
         const { data } = await supabase
@@ -429,15 +543,14 @@ export default function CreateWorkOrderPage() {
         placeholderCustomer = data as CustomerRow;
       }
 
-      // 2) Ensure a placeholder vehicle tied to that customer + shop
+      // 2) Ensure placeholder vehicle
       const { data: maybeVeh } = await supabase
         .from("vehicles")
         .select("*")
         .eq("customer_id", placeholderCustomer!.id)
         .ilike("model", "Unassigned")
         .limit(1);
-      let placeholderVehicle: VehicleRow | null =
-        maybeVeh && maybeVeh.length ? (maybeVeh[0] as VehicleRow) : null;
+      let placeholderVehicle: VehicleRow | null = maybeVeh && maybeVeh.length ? (maybeVeh[0] as VehicleRow) : null;
 
       if (!placeholderVehicle) {
         const { data } = await supabase
@@ -457,12 +570,8 @@ export default function CreateWorkOrderPage() {
         placeholderVehicle = data as VehicleRow;
       }
 
-      // 3) Create the WO row right away so QuickAdd + LineForm can mount
-      const initials = getInitials(
-        profileNames?.first_name,
-        profileNames?.last_name,
-        user.email ?? null
-      );
+      // 3) Create WO row
+      const initials = getInitials(profileNames?.first_name, profileNames?.last_name, user.email ?? null);
       const customId = await generateCustomId(initials);
 
       const newId = uuidv4();
@@ -475,7 +584,7 @@ export default function CreateWorkOrderPage() {
           shop_id: shopId,
           customer_id: placeholderCustomer!.id,
           vehicle_id: placeholderVehicle!.id,
-          status: "awaiting_approval", // use a valid enum value
+          status: "awaiting_approval",
         })
         .select("*")
         .single();
@@ -484,36 +593,14 @@ export default function CreateWorkOrderPage() {
         setWo(inserted);
         await fetchLines();
       } else if (error) {
-        // Surface the reason so you can see the real PostgREST message if any
         setError(error.message ?? "Failed to auto-create work order.");
       }
     })();
-  }, [supabase, wo?.id, setWo, fetchLines]);
-  // ==========================================================================
+  }, [supabase, wo?.id, setWo, fetchLines, setError]);
 
-  // Listen for Quick-Add events to refresh list immediately
-  useEffect(() => {
-    const h = () => { void fetchLines(); };
-    window.addEventListener("wo:line-added", h);
-    return () => window.removeEventListener("wo:line-added", h);
-  }, [fetchLines]);
-
-  // Realtime subscription to lines
-  useEffect(() => {
-    if (!wo?.id) return;
-    void fetchLines();
-    const ch = supabase
-      .channel(`create-wo:${wo.id}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "work_order_lines", filter: `work_order_id=eq.${wo.id}` },
-        () => fetchLines(),
-      )
-      .subscribe();
-    return () => { try { supabase.removeChannel(ch); } catch {} };
-  }, [supabase, wo?.id, fetchLines]);
-
-  // ----- UI ------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // UI
+  // ---------------------------------------------------------------------------
   return (
     <div className="mx-auto max-w-5xl p-6 text-white font-roboto">
       <h1 className="mb-6 text-2xl font-bold font-blackops">Create Work Order</h1>
@@ -531,161 +618,69 @@ export default function CreateWorkOrderPage() {
 
       <form onSubmit={handleSubmit}>
         <div className="grid grid-cols-1 gap-6">
-          {/* Customer */}
-          <section className="rounded border border-neutral-800 bg-neutral-900 p-4">
-            <h2 className="mb-2 text-lg font-semibold font-blackops">Customer</h2>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <label className="block text-sm">First name</label>
-                <input value={custFirst} onChange={(e) => setCustFirst(e.target.value)}
-                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
-                  placeholder="Jane" disabled={loading} />
-              </div>
-              <div>
-                <label className="block text-sm">Last name</label>
-                <input value={custLast} onChange={(e) => setCustLast(e.target.value)}
-                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
-                  placeholder="Doe" disabled={loading} />
-              </div>
-              <div>
-                <label className="block text-sm">Phone</label>
-                <input value={custPhone} onChange={(e) => setCustPhone(e.target.value)}
-                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
-                  placeholder="(555) 555-5555" disabled={loading} />
-              </div>
-              <div>
-                <label className="block text-sm">Email</label>
-                <input type="email" value={custEmail} onChange={(e) => setCustEmail(e.target.value)}
-                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
-                  placeholder="jane@example.com" disabled={loading} />
-                <div className="mt-1 flex items-center gap-2 text-xs text-neutral-300">
-                  <input id="send-invite" type="checkbox" checked={sendInvite}
-                    onChange={(e) => setSendInvite(e.target.checked)} className="h-4 w-4" disabled={loading} />
-                  <label htmlFor="send-invite">Email a customer portal sign-up link</label>
-                </div>
-              </div>
-
-              {/* Address */}
-              <div className="sm:col-span-2">
-                <label className="block text-sm">Address</label>
-                <input value={custAddress} onChange={(e) => setCustAddress(e.target.value)}
-                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
-                  placeholder="123 Main St" disabled={loading} />
-              </div>
-              <div>
-                <label className="block text-sm">City</label>
-                <input value={custCity} onChange={(e) => setCustCity(e.target.value)}
-                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
-                  placeholder="Calgary" disabled={loading} />
-              </div>
-              <div>
-                <label className="block text-sm">Province</label>
-                <input value={custProvince} onChange={(e) => setCustProvince(e.target.value)}
-                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
-                  placeholder="AB" disabled={loading} />
-              </div>
-              <div>
-                <label className="block text-sm">Postal code</label>
-                <input value={custPostal} onChange={(e) => setCustPostal(e.target.value.toUpperCase())}
-                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
-                  placeholder="T0L 1A1" disabled={loading} />
-              </div>
-            </div>
-          </section>
-
-          {/* Vehicle */}
-          <section className="rounded border border-neutral-800 bg-neutral-900 p-4">
-            <h2 className="mb-2 text-lg font-semibold font-blackops">Vehicle</h2>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <label className="block text-sm">VIN</label>
-                <input value={vin} onChange={(e) => setVin(e.target.value)}
-                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
-                  placeholder="1HGBH41JXMN109186" disabled={loading} />
-              </div>
-              <div>
-                <label className="block text-sm">Year</label>
-                <input inputMode="numeric" value={year} onChange={(e) => setYear(e.target.value)}
-                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
-                  placeholder="2018" disabled={loading} />
-              </div>
-              <div>
-                <label className="block text-sm">Make</label>
-                <input value={make} onChange={(e) => setMake(e.target.value)}
-                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
-                  placeholder="Toyota" disabled={loading} />
-              </div>
-              <div>
-                <label className="block text-sm">Model</label>
-                <input value={model} onChange={(e) => setModel(e.target.value)}
-                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
-                  placeholder="Camry" disabled={loading} />
-              </div>
-              <div>
-                <label className="block text-sm">Plate</label>
-                <input value={plate} onChange={(e) => setPlate(e.target.value)}
-                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
-                  placeholder="ABC-123" disabled={loading} />
-              </div>
-              <div>
-                <label className="block text-sm">Mileage</label>
-                <input inputMode="numeric" value={mileage} onChange={(e) => setMileage(e.target.value)}
-                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
-                  placeholder="123456" disabled={loading} />
-              </div>
-              <div>
-                <label className="block text-sm">Unit #</label>
-                <input value={unitNumber} onChange={(e) => setUnitNumber(e.target.value)}
-                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
-                  placeholder="Fleet/Asset number" disabled={loading} />
-              </div>
-              <div>
-                <label className="block text-sm">Color</label>
-                <input value={color} onChange={(e) => setColor(e.target.value)}
-                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
-                  placeholder="White" disabled={loading} />
-              </div>
-              <div>
-                <label className="block text-sm">Engine hours</label>
-                <input inputMode="numeric" value={engineHours} onChange={(e) => setEngineHours(e.target.value)}
-                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
-                  placeholder="1234" disabled={loading} />
-              </div>
+          {/* Customer & Vehicle — session-shaped form */}
+          <section className="card">
+            <h2 className="font-header text-lg mb-3">Customer &amp; Vehicle</h2>
+            <CustomerVehicleForm
+              customer={customer}
+              vehicle={vehicle}
+              onCustomerChange={onCustomerChange}
+              onVehicleChange={onVehicleChange}
+            />
+            <div className="mt-2 flex items-center gap-2 text-xs text-neutral-300">
+              <input
+                id="send-invite"
+                type="checkbox"
+                checked={sendInvite}
+                onChange={(e) => setSendInvite(e.target.checked)}
+                className="h-4 w-4"
+                disabled={loading}
+              />
+              <label htmlFor="send-invite">Email a customer portal sign-up link</label>
             </div>
           </section>
 
           {/* Uploads */}
-          <section className="rounded border border-neutral-800 bg-neutral-900 p-4">
-            <h2 className="mb-2 text-lg font-semibold font-blackops">Uploads</h2>
+          <section className="card">
+            <h2 className="font-header text-lg mb-2">Uploads</h2>
             <div className="grid grid-cols-1 gap-3">
               <div>
-                <label className="block text-sm">Vehicle Photos</label>
-                <input type="file" accept="image/*" multiple
+                <label className="block text-sm mb-1">Vehicle Photos</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
                   onChange={(e) => setPhotoFiles(Array.from(e.target.files ?? []))}
-                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
-                  disabled={loading} />
+                  className="input"
+                  disabled={loading}
+                />
               </div>
               <div>
-                <label className="block text-sm">Documents (PDF/JPG/PNG)</label>
-                <input type="file" accept="application/pdf,image/*" multiple
+                <label className="block text-sm mb-1">Documents (PDF/JPG/PNG)</label>
+                <input
+                  type="file"
+                  accept="application/pdf,image/*"
+                  multiple
                   onChange={(e) => setDocFiles(Array.from(e.target.files ?? []))}
-                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
-                  disabled={loading} />
+                  className="input"
+                  disabled={loading}
+                />
               </div>
             </div>
           </section>
 
-          {/* Quick add + Manual add */}
+          {/* Quick add from menu */}
           {wo?.id && (
-            <section className="rounded border border-neutral-800 bg-neutral-900 p-4">
-              <h2 className="mb-3 text-lg font-semibold text-orange-400 font-blackops">Quick add from menu</h2>
+            <section className="card">
+              <h2 className="font-header text-lg mb-3 text-orange-400">Quick add from menu</h2>
               <MenuQuickAdd workOrderId={wo.id} />
             </section>
           )}
 
+          {/* Manual add line */}
           {wo?.id && (
-            <section className="rounded border border-neutral-800 bg-neutral-900 p-4">
-              <h2 className="mb-2 text-lg font-semibold font-blackops">Add Job Line</h2>
+            <section className="card">
+              <h2 className="font-header text-lg mb-2">Add Job Line</h2>
               <NewWorkOrderLineForm
                 workOrderId={wo.id}
                 vehicleId={vehicleId}
@@ -696,14 +691,17 @@ export default function CreateWorkOrderPage() {
           )}
 
           {/* Current Lines */}
-          <section className="rounded border border-neutral-800 bg-neutral-900 p-4">
-            <h2 className="mb-2 text-lg font-semibold font-blackops">Current Lines</h2>
+          <section className="card">
+            <h2 className="font-header text-lg mb-2">Current Lines</h2>
             {!wo?.id || lines.length === 0 ? (
               <p className="text-sm text-neutral-400">No lines yet.</p>
             ) : (
               <div className="space-y-2">
                 {lines.map((ln) => (
-                  <div key={ln.id} className="flex items-start justify-between gap-3 rounded border border-neutral-800 bg-neutral-950 p-3">
+                  <div
+                    key={ln.id}
+                    className="flex items-start justify-between gap-3 rounded border border-neutral-800 bg-neutral-950 p-3"
+                  >
                     <div className="min-w-0">
                       <div className="truncate font-medium">{ln.description || ln.complaint || "Untitled job"}</div>
                       <div className="text-xs text-neutral-400">
@@ -732,24 +730,33 @@ export default function CreateWorkOrderPage() {
             )}
           </section>
 
-          {/* Work Order defaults */}
-          <section className="rounded border border-neutral-800 bg-neutral-900 p-4">
-            <h2 className="mb-2 text-lg font-semibold font-blackops">Work Order</h2>
+          {/* WO defaults */}
+          <section className="card">
+            <h2 className="font-header text-lg mb-2">Work Order</h2>
             <div className="grid grid-cols-1 gap-3">
               <div>
-                <label className="block text-sm">Default job type for added menu items</label>
-                <select value={type} onChange={(e) => setType(e.target.value as WOType)}
-                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white" disabled={loading}>
+                <label className="block text-sm mb-1">Default job type for added menu items</label>
+                <select
+                  value={type}
+                  onChange={(e) => setType(e.target.value as WOType)}
+                  className="input"
+                  disabled={loading}
+                >
                   <option value="maintenance">Maintenance</option>
                   <option value="diagnosis">Diagnosis</option>
                   <option value="inspection">Inspection</option>
                 </select>
               </div>
               <div>
-                <label className="block text-sm">Notes</label>
-                <textarea value={notes} onChange={(e) => setNotes(e.target.value)}
-                  className="w-full rounded border border-neutral-600 bg-neutral-800 p-2 text-white"
-                  rows={3} placeholder="Optional notes for technician" disabled={loading} />
+                <label className="block text-sm mb-1">Notes</label>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="input"
+                  rows={3}
+                  placeholder="Optional notes for technician"
+                  disabled={loading}
+                />
               </div>
             </div>
           </section>
@@ -759,7 +766,7 @@ export default function CreateWorkOrderPage() {
             <button
               type="submit"
               disabled={loading}
-              className="rounded bg-orange-500 px-4 py-2 font-semibold text-black hover:bg-orange-600 disabled:opacity-60"
+              className="btn btn-orange disabled:opacity-60"
             >
               {loading ? "Creating..." : "Done → Review & Sign"}
             </button>
