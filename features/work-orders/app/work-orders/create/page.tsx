@@ -60,15 +60,15 @@ export default function CreateWorkOrderPage() {
     license_plate: null,
     mileage: null,
     color: null,
-    // extra fields supported by your updated SessionVehicle
     unit_number: null,
     engine_hours: null,
   });
 
-  const onCustomerChange = (field: keyof SessionCustomer, value: string) =>
+  // 🔧 accept string | null (form sends nulls for empty)
+  const onCustomerChange = (field: keyof SessionCustomer, value: string | null) =>
     setCustomer((c) => ({ ...c, [field]: value }));
 
-  const onVehicleChange = (field: keyof SessionVehicle, value: string) =>
+  const onVehicleChange = (field: keyof SessionVehicle, value: string | null) =>
     setVehicle((v) => ({ ...v, [field]: value }));
 
   // DB ids captured as we create/look up records
@@ -177,7 +177,7 @@ export default function CreateWorkOrderPage() {
     make: v.make || null,
     model: v.model || null,
     license_plate: v.license_plate || null,
-    mileage: v.mileage || null, // DB type is string | null
+    mileage: v.mileage || null, // DB is string | null
     unit_number: v.unit_number || null,
     color: v.color || null,
     engine_hours: v.engine_hours ? Number(v.engine_hours) : null,
@@ -763,11 +763,7 @@ export default function CreateWorkOrderPage() {
 
           {/* Submit */}
           <div className="flex items-center gap-4 pt-2">
-            <button
-              type="submit"
-              disabled={loading}
-              className="btn btn-orange disabled:opacity-60"
-            >
+            <button type="submit" disabled={loading} className="btn btn-orange disabled:opacity-60">
               {loading ? "Creating..." : "Done → Review & Sign"}
             </button>
 
