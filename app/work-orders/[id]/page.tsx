@@ -1,3 +1,4 @@
+// app/work-orders/[id]/page.tsx
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
@@ -13,8 +14,11 @@ export default async function WorkOrderBasic({
 }: { params: { id: string } }) {
   const supabase = createServerComponentClient<DB>({ cookies });
 
-  // Session check (prevents auth races)
-  const { data: { session }, error: sessErr } = await supabase.auth.getSession();
+  // Session check
+  const {
+    data: { session },
+    error: sessErr,
+  } = await supabase.auth.getSession();
   if (sessErr) console.error("[wo/[id]] getSession error:", sessErr);
   if (!session?.user) {
     return <div className="p-6 text-sm text-red-400">Not signed in.</div>;
@@ -22,7 +26,7 @@ export default async function WorkOrderBasic({
 
   const id = params.id;
 
-  // Try by id, then by custom_id if short
+  // Lookup by UUID
   const { data: byId, error: idErr } = await supabase
     .from("work_orders")
     .select("*")
@@ -31,6 +35,8 @@ export default async function WorkOrderBasic({
   if (idErr) console.error("[wo/[id]] select by id error:", idErr);
 
   let wo = byId ?? null;
+
+  // Fallback: lookup by custom_id if shorter
   if (!wo && id.length < 36) {
     const { data: byCustom, error: customErr } = await supabase
       .from("work_orders")
@@ -45,10 +51,17 @@ export default async function WorkOrderBasic({
 
   return (
     <div className="mx-auto max-w-3xl p-6 text-white">
-      <a href="/work-orders" className="text-sm text-orange-400 hover:underline">← Back to Work Orders</a>
+      <a
+        href="/work-orders"
+        className="text-sm text-orange-400 hover:underline"
+      >
+        ← Back to Work Orders
+      </a>
+
       <h1 className="mt-3 text-2xl font-semibold">
-        Work Order {wo.custom_id || \`#\${wo.id.slice(0,8)}\`}
+        Work Order {wo.custom_id || `#${wo.id.slice(0, 8)}`}
       </h1>
+
       <div className="mt-4 rounded border border-neutral-800 bg-neutral-900 p-4">
         <div className="grid gap-2 text-sm text-neutral-300 sm:grid-cols-2">
           <div>
@@ -57,7 +70,7 @@ export default async function WorkOrderBasic({
           </div>
           <div>
             <div className="text-neutral-400">Status</div>
-            <div>{(wo.status ?? "—").toString().replaceAll("_"," ")}</div>
+            <div>{(wo.status ?? "—").toString().replaceAll("_", " ")}</div>
           </div>
           <div>
             <div className="text-neutral-400">Vehicle</div>
@@ -69,8 +82,10 @@ export default async function WorkOrderBasic({
           </div>
         </div>
       </div>
+
       <p className="mt-6 text-sm text-neutral-400">
-        Minimal view loaded. If this works, we’ll re-enable features step-by-step.
+        Minimal view loaded. If this renders, we’ll reintroduce features
+        step-by-step.
       </p>
     </div>
   );
