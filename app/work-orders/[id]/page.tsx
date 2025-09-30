@@ -12,7 +12,9 @@ type DB = Database;
 
 export default async function WorkOrderBasic({
   params,
-}: { params: { id: string } }) {
+}: {
+  params: { id: string };
+}) {
   const supabase = createServerComponentClient<DB>({ cookies });
 
   // Session check
