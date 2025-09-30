@@ -10,44 +10,48 @@ import WorkOrderClient from "@/features/work-orders/components/WorkOrderClient";
 
 type DB = Database;
 
-type PageProps = { params: { id: string } };
+type PageProps = {
+  params: {
+    id: string;
+  };
+};
 
 export default async function WorkOrderPage({ params }: PageProps) {
   const supabase = createServerComponentClient<DB>({ cookies });
 
-  // Require a session (prevents auth races)
+  // Require a session (prevents auth races).
   const {
     data: { session },
   } = await supabase.auth.getSession();
   if (!session?.user) {
-    return (
-      <div className="mx-auto max-w-3xl p-6 text-white">
-        Not signed in.
-      </div>
-    );
+    return <div className="mx-auto max-w-3xl p-6 text-white">Not signed in.</div>;
   }
 
   const raw = params.id;
 
-  // Look up by id; if not found and param looks short, try custom_id
-  const { data: byId } = await supabase
+  // Try primary key first
+  const byId = await supabase
     .from("work_orders")
     .select("id")
     .eq("id", raw)
     .maybeSingle();
 
-  let woId: string | null = byId?.id ?? null;
+  let woId: string | null = byId.data?.id ?? null;
 
+  // Fallback: if it's a short value, try custom_id
   if (!woId && raw.length < 36) {
-    const { data: byCustom } = await supabase
+    const byCustom = await supabase
       .from("work_orders")
       .select("id")
       .eq("custom_id", raw)
       .maybeSingle();
-    woId = byCustom?.id ?? null;
+
+    woId = byCustom.data?.id ?? null;
   }
 
-  if (!woId) return notFound();
+  if (!woId) {
+    notFound();
+  }
 
   return <WorkOrderClient woId={woId} />;
 }
