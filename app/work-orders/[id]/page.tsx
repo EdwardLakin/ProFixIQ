@@ -10,26 +10,20 @@ import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 
-export default async function WorkOrderBasic({
-  params,
-}: {
-  params: { id: string };
-}) {
+// NOTE: keep typing loose to avoid Next's PageProps constraint issues
+export default async function WorkOrderBasic(props: any) {
   const supabase = createServerComponentClient<DB>({ cookies });
 
-  // Session check
-  const {
-    data: { session },
-    error: sessErr,
-  } = await supabase.auth.getSession();
+  // Auth
+  const { data: { session }, error: sessErr } = await supabase.auth.getSession();
   if (sessErr) console.error("[wo/[id]] getSession error:", sessErr);
   if (!session?.user) {
     return <div className="p-6 text-sm text-red-400">Not signed in.</div>;
   }
 
-  const id = params.id;
+  const id: string = props?.params?.id as string;
 
-  // Lookup by UUID
+  // Try by id
   const { data: byId, error: idErr } = await supabase
     .from("work_orders")
     .select("*")
@@ -39,8 +33,8 @@ export default async function WorkOrderBasic({
 
   let wo = byId ?? null;
 
-  // Fallback: lookup by custom_id if shorter
-  if (!wo && id.length < 36) {
+  // Fallback: custom_id if the id looks short
+  if (!wo && id && id.length < 36) {
     const { data: byCustom, error: customErr } = await supabase
       .from("work_orders")
       .select("*")
@@ -54,10 +48,7 @@ export default async function WorkOrderBasic({
 
   return (
     <div className="mx-auto max-w-3xl p-6 text-white">
-      <Link
-        href="/work-orders"
-        className="text-sm text-orange-400 hover:underline"
-      >
+      <Link href="/work-orders" className="text-sm text-orange-400 hover:underline">
         ← Back to Work Orders
       </Link>
 
@@ -87,8 +78,7 @@ export default async function WorkOrderBasic({
       </div>
 
       <p className="mt-6 text-sm text-neutral-400">
-        Minimal view loaded. If this renders, we’ll reintroduce features
-        step-by-step.
+        Minimal view loaded. We can reintroduce jobs, modals, timers, etc. step-by-step.
       </p>
     </div>
   );
