@@ -1,4 +1,3 @@
-// app/work-orders/[id]/page.tsx
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
@@ -10,18 +9,28 @@ import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 
-// NOTE: keep typing loose to avoid Next's PageProps constraint issues
-export default async function WorkOrderBasic(props: any) {
+export default async function WorkOrderBasic({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+
   const supabase = createServerComponentClient<DB>({ cookies });
 
-  // Auth
-  const { data: { session }, error: sessErr } = await supabase.auth.getSession();
+  // Check session
+  const {
+    data: { session },
+    error: sessErr,
+  } = await supabase.auth.getSession();
   if (sessErr) console.error("[wo/[id]] getSession error:", sessErr);
   if (!session?.user) {
-    return <div className="p-6 text-sm text-red-400">Not signed in.</div>;
+    return (
+      <div className="p-6 text-sm text-red-400">
+        Not signed in.
+      </div>
+    );
   }
-
-  const id: string = props?.params?.id as string;
 
   // Try by id
   const { data: byId, error: idErr } = await supabase
@@ -33,8 +42,8 @@ export default async function WorkOrderBasic(props: any) {
 
   let wo = byId ?? null;
 
-  // Fallback: custom_id if the id looks short
-  if (!wo && id && id.length < 36) {
+  // Try by custom_id if short
+  if (!wo && id.length < 36) {
     const { data: byCustom, error: customErr } = await supabase
       .from("work_orders")
       .select("*")
@@ -78,7 +87,7 @@ export default async function WorkOrderBasic(props: any) {
       </div>
 
       <p className="mt-6 text-sm text-neutral-400">
-        Minimal view loaded. We can reintroduce jobs, modals, timers, etc. step-by-step.
+        Minimal view loaded. If this works, we’ll re-enable features step-by-step.
       </p>
     </div>
   );
