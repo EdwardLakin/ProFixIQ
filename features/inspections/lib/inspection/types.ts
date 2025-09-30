@@ -222,25 +222,29 @@ export interface InspectionSummary {
 }
 
 /** ---------- Session (customer/vehicle) ---------- */
+/** ---------- Session (customer/vehicle) ---------- */
 export interface SessionCustomer {
-  first_name: string;
-  last_name: string;
-  phone: string;
-  email: string;
-  address: string;
-  city: string;
-  province: string;
-  postal_code: string;
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  city: string | null;
+  province: string | null;
+  postal_code: string | null;
 }
 
 export interface SessionVehicle {
-  year: string;
-  make: string;
-  model: string;
-  vin: string;
-  license_plate: string;
-  mileage: string;
-  color: string;
+  year: string | null;
+  make: string | null;
+  model: string | null;
+  vin: string | null;
+  license_plate: string | null;
+  mileage: string | null;
+  color: string | null;
+  /** Added for your form */
+  unit_number?: string | null;
+  engine_hours?: string | null;
 }
 
 /** ---------- Session status ---------- */
