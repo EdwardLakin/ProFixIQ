@@ -3,7 +3,7 @@ import { useRef, useState } from "react";
 import SignatureCanvas from "react-signature-canvas";
 
 type Props = {
-  shopName?: string;                       // branding on the modal
+  shopName?: string;  // branding on the modal
   onSave: (base64: string) => void | Promise<void>;
   onCancel: () => void;
 };
@@ -24,7 +24,7 @@ export default function SignaturePad({ shopName, onSave, onCancel }: Props) {
     try {
       setSaving(true);
       const base64 = canvas.getTrimmedCanvas().toDataURL("image/png");
-      await onSave(base64);               // parent can be async
+      await onSave(base64);
     } finally {
       setSaving(false);
     }
@@ -33,9 +33,12 @@ export default function SignaturePad({ shopName, onSave, onCancel }: Props) {
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
       <div className="bg-white dark:bg-gray-900 rounded-lg p-6 shadow-lg w-full max-w-md">
-        <h2 className="text-lg font-semibold mb-4 text-center text-gray-800 dark:text-white">
-          {shopName ? `${shopName} — Customer Approval` : "Sign Below"}
+        <h2 className="text-lg font-semibold mb-1 text-center text-gray-800 dark:text-white">
+          {shopName ? `${shopName} — Customer Approval` : "Customer Approval"}
         </h2>
+        <p className="mb-4 text-center text-xs text-gray-600 dark:text-gray-300">
+          By signing, I approve the described work and acknowledge the estimate.
+        </p>
 
         <SignatureCanvas
           ref={sigRef}
@@ -56,19 +59,21 @@ export default function SignaturePad({ shopName, onSave, onCancel }: Props) {
             <button
               onClick={onCancel}
               className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
-              disabled={saving}
             >
               Cancel
             </button>
             <button
               onClick={handleSave}
-              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-60"
-              disabled={saving}
+              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
             >
-              {saving ? "Saving…" : "Save"}
+              Save
             </button>
           </div>
         </div>
+
+        <p className="mt-3 text-[10px] leading-snug text-center text-gray-500 dark:text-gray-400">
+          Signature is stored securely and associated to this work order. A copy can be requested at any time.
+        </p>
       </div>
     </div>
   );

@@ -10,15 +10,15 @@ import { formatCurrency } from "@/features/shared/lib/formatCurrency";
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
-type Shop = DB["public"]["Tables"]["shops"]["Row"]; // now actually used
+type Shop = DB["public"]["Tables"]["shops"]["Row"];
 
 const SIGNATURE_BUCKET = "signatures";
 
-/** Convert a dataURL to a Blob (no window.atob assumption differences). */
+// Convert data:URL to Blob (avoids fetch() issues on some browsers)
 function dataUrlToBlob(dataUrl: string): Blob {
-  const [header, base64] = dataUrl.split(",");
+  const [header, b64] = dataUrl.split(",");
   const mime = /data:(.*?);base64/.exec(header)?.[1] ?? "image/png";
-  const bin = atob(base64);
+  const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return new Blob([bytes], { type: mime });
@@ -40,116 +40,118 @@ export default function QuoteReviewPage() {
       if (!woId) return;
       setLoading(true);
 
-      // Work order
-      const { data: woRow } = await supabase
+      // work order
+      const { data: woRow, error: woErr } = await supabase
         .from("work_orders")
         .select("*")
         .eq("id", woId)
         .maybeSingle();
+      if (woErr) console.warn("WO fetch error:", woErr.message);
       setWo(woRow ?? null);
 
-      // Lines
-      const { data: lineRows } = await supabase
-        .from("work_order_lines")
-        .select("*")
-        .eq("work_order_id", woId)
-        .order("created_at", { ascending: true });
-      setLines(lineRows ?? []);
-
-      // Fetch shop (for branding & key prefix) if we have a shop_id
+      // shop (for branding)
       if (woRow?.shop_id) {
-        const { data: s } = await supabase
+        const { data: shopRow, error: shErr } = await supabase
           .from("shops")
           .select("*")
           .eq("id", woRow.shop_id)
           .maybeSingle();
-        setShop((s as Shop) ?? null);
+        if (shErr) console.warn("Shop fetch error:", shErr.message);
+        setShop(shopRow ?? null);
       } else {
         setShop(null);
       }
+
+      // lines
+      const { data: lineRows, error: lnErr } = await supabase
+        .from("work_order_lines")
+        .select("*")
+        .eq("work_order_id", woId)
+        .order("created_at", { ascending: true });
+      if (lnErr) console.warn("Lines fetch error:", lnErr.message);
+      setLines(lineRows ?? []);
 
       setLoading(false);
     })();
   }, [woId, supabase]);
 
-  // Pricing (simple placeholder)
-  const laborRate = 120; // TODO: fetch from org settings
+  // Pricing
+  const laborRate = 120;
   const totalLaborHours = (lines ?? [])
     .map((l) => (typeof l.labor_time === "number" ? l.labor_time : 0))
     .reduce((a, b) => a + b, 0);
   const laborTotal = totalLaborHours * laborRate;
-  const partsTotal = 0; // TODO: sum real parts
+  const partsTotal = 0;
   const grandTotal = laborTotal + partsTotal;
 
-  // Currency formatter fallback
-  function fmt(n: number) {
-    try {
-      return formatCurrency(n);
-    } catch {
-      return `$${n.toFixed(2)}`;
-    }
-  }
+  // Currency fallback
+  const fmt = (n: number) => {
+    try { return formatCurrency(n); } catch { return `$${n.toFixed(2)}`; }
+  };
 
   async function handleSignatureSave(base64: string) {
-    if (!woId || !wo) return;
+    if (!woId) return;
 
     try {
-      // Build a shop-scoped storage key so private bucket policies can allow R/W by shop
-      const shopId = wo.shop_id as string | null;
-      // If shop_id is missing, still allow saving but under a neutral prefix
-      const keyPrefix = shopId ?? "unscoped";
-      const filename = `${keyPrefix}/wo-${woId}-${Date.now()}.png`;
-
-      // Upload to private bucket
       const blob = dataUrlToBlob(base64);
+
+      // Path: keep it unique; avoid upsert to skip UPDATE policy
+      const filename = `wo/${wo?.shop_id ?? "unknown"}/${woId}/${Date.now()}.png`;
       const { error: upErr } = await supabase.storage
         .from(SIGNATURE_BUCKET)
         .upload(filename, blob, {
           contentType: "image/png",
-          upsert: true,
+          upsert: false,
         });
       if (upErr) throw upErr;
 
-      // For private buckets we usually store the storage path (not a public URL).
-      // If you also want a short-lived link later, generate a signed URL on demand.
-      const signaturePath = filename;
+      // Prefer storing the storage path for a private bucket
+      // If you don't have this column yet, the fallback below tries the *_url column.
+      let updated = false;
 
-      // Update WO (use whatever columns you have—keep both to be permissive)
-      const updatePayload: Partial<WorkOrder> = {
-        // if you created these columns:
-        // @ts-ignore - tolerate missing columns in typings
-        customer_approval_signature_path: signaturePath,
-        // @ts-ignore - tolerate missing columns in typings
-        customer_approval_signature_url: null,
-        // @ts-ignore - tolerate missing columns in typings
-        customer_approval_at: new Date().toISOString() as any,
-        status: "queued" as any,
-      };
-
-      const { error: updErr } = await supabase
+      const { error: updPathErr } = await supabase
         .from("work_orders")
-        .update(updatePayload)
+        .update({
+          // @ts-ignore – may not exist yet in your schema
+          customer_approval_signature_path: filename,
+          // safe columns that exist:
+          // @ts-ignore – your schema may have this casted
+          customer_approval_at: new Date().toISOString() as any,
+          status: "queued" as any,
+        })
         .eq("id", woId);
+      if (!updPathErr) updated = true;
 
-      if (updErr) {
-        console.warn(
-          "Work order update failed (columns may not exist):",
-          updErr.message
-        );
+      // Fallback to URL column if the path column doesn't exist
+      if (!updated) {
+        const { data: pub } = await supabase.storage
+          .from(SIGNATURE_BUCKET)
+          .getPublicUrl(filename);
+        const url = pub?.publicUrl ?? null;
+
+        const { error: updUrlErr } = await supabase
+          .from("work_orders")
+          .update({
+            // @ts-ignore – if your schema has a url column instead
+            customer_approval_signature_url: url as any,
+            // @ts-ignore
+            customer_approval_at: new Date().toISOString() as any,
+            status: "queued" as any,
+          })
+          .eq("id", woId);
+
+        if (updUrlErr) {
+          console.warn("WO update failed:", updUrlErr.message);
+          // still continue; the signature is uploaded either way
+        }
       }
 
       setSigOpen(false);
 
-      // Confirmation toast/alert
       if (typeof window !== "undefined") {
-        if ((window as any).toast) {
-          (window as any).toast.success("Work order approved and signed!");
-        } else {
-          alert("Work order approved and signed!");
-        }
+        alert("Work order approved and signed!");
       }
 
-      // Redirect to new create page
       router.push("/work-orders/create?from=review&new=1");
     } catch (e: any) {
       alert(e?.message || "Failed to save signature");
@@ -159,13 +161,6 @@ export default function QuoteReviewPage() {
   if (!woId) {
     return <div className="p-6 text-red-500">Missing woId in URL.</div>;
   }
-
-  const shopDisplayName =
-    // prefer a name-like field if available; fall back gently
-    (shop as any)?.name ??
-    (shop as any)?.title ??
-    (shop as any)?.shop_name ??
-    undefined;
 
   return (
     <div className="p-6 text-white">
@@ -186,13 +181,12 @@ export default function QuoteReviewPage() {
         <div className="mt-6 text-red-500">Work order not found.</div>
       ) : (
         <>
-          {/* WO Info */}
           <div className="mt-2 text-sm text-neutral-300">
             <div>Work Order ID: {wo.id}</div>
             <div>Status: {(wo.status ?? "").replaceAll("_", " ") || "—"}</div>
+            {shop?.name && <div>Shop: {shop.name}</div>}
           </div>
 
-          {/* Lines */}
           <div className="mt-6 rounded border border-neutral-800 bg-neutral-900">
             <div className="border-b border-neutral-800 px-4 py-2 font-semibold">
               Line Items
@@ -210,16 +204,12 @@ export default function QuoteReviewPage() {
                         </div>
                         <div className="text-xs text-neutral-400">
                           {String(l.job_type ?? "job").replaceAll("_", " ")} •{" "}
-                          {typeof l.labor_time === "number"
-                            ? `${l.labor_time}h`
-                            : "—"}{" "}
-                          • {(l.status ?? "awaiting").replaceAll("_", " ")}
+                          {typeof l.labor_time === "number" ? `${l.labor_time}h` : "—"} •{" "}
+                          {(l.status ?? "awaiting").replaceAll("_", " ")}
                         </div>
                       </div>
                       <div className="text-right text-sm">
-                        {typeof l.labor_time === "number"
-                          ? fmt(l.labor_time * laborRate)
-                          : "—"}
+                        {typeof l.labor_time === "number" ? fmt(l.labor_time * laborRate) : "—"}
                       </div>
                     </div>
                   </div>
@@ -227,12 +217,9 @@ export default function QuoteReviewPage() {
               )}
             </div>
 
-            {/* Totals */}
             <div className="px-4 py-3 text-sm">
               <div className="flex items-center justify-between">
-                <span>
-                  Labor ({totalLaborHours.toFixed(1)}h @ {fmt(laborRate)}/hr)
-                </span>
+                <span>Labor ({totalLaborHours.toFixed(1)}h @ {fmt(laborRate)}/hr)</span>
                 <span className="font-medium">{fmt(laborTotal)}</span>
               </div>
               <div className="mt-1 flex items-center justify-between">
@@ -241,14 +228,11 @@ export default function QuoteReviewPage() {
               </div>
               <div className="mt-2 border-t border-neutral-800 pt-2 flex items-center justify-between">
                 <span className="font-semibold">Total</span>
-                <span className="font-bold text-orange-400">
-                  {fmt(grandTotal)}
-                </span>
+                <span className="font-bold text-orange-400">{fmt(grandTotal)}</span>
               </div>
             </div>
           </div>
 
-          {/* Actions */}
           <div className="mt-6 flex flex-wrap gap-2">
             <button
               onClick={() => setSigOpen(true)}
@@ -267,10 +251,9 @@ export default function QuoteReviewPage() {
         </>
       )}
 
-      {/* Signature Pad */}
       {sigOpen && (
         <SignaturePad
-          shopName={shopDisplayName}
+          shopName={shop?.name ?? undefined}
           onSave={handleSignatureSave}
           onCancel={() => setSigOpen(false)}
         />

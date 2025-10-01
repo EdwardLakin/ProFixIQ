@@ -1,4 +1,3 @@
-
 import React from "react";
 import {
   SessionCustomer as CustomerInfo,
@@ -11,10 +10,13 @@ interface Props {
   onCustomerChange: (field: keyof CustomerInfo, value: string | null) => void;
   onVehicleChange: (field: keyof VehicleInfo, value: string | null) => void;
 
-  /** New: optional “Save & Continue” to create WO early */
+  /** Optional: “Save & Continue” to create/link the WO early */
   onSave?: () => void;
   saving?: boolean;
   workOrderExists?: boolean;
+
+  /** NEW: optional Clear action (parent resets fields/ids/state) */
+  onClear?: () => void;
 }
 
 export default function CustomerVehicleForm({
@@ -25,6 +27,7 @@ export default function CustomerVehicleForm({
   onSave,
   saving = false,
   workOrderExists = false,
+  onClear,
 }: Props) {
   return (
     <div className="w-full max-w-3xl mx-auto text-white space-y-8">
@@ -150,24 +153,39 @@ export default function CustomerVehicleForm({
         />
       </div>
 
-      {/* New: Save & Continue (optional; page passes onSave) */}
-      {onSave ? (
-        <div className="pt-2 flex items-center gap-3">
-          <button
-            type="button"
-            onClick={onSave}
-            disabled={saving}
-            className="btn btn-orange disabled:opacity-60"
-          >
-            {saving ? "Saving…" : workOrderExists ? "Update & Continue" : "Save & Continue"}
-          </button>
+      {/* Actions */}
+      {(onSave || onClear) && (
+        <div className="pt-2 flex flex-wrap items-center gap-3">
+          {onSave && (
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={saving}
+              className="btn btn-orange disabled:opacity-60"
+              title={workOrderExists ? "Update Work Order with these details" : "Create Work Order with these details"}
+            >
+              {saving ? "Saving…" : workOrderExists ? "Update & Continue" : "Save & Continue"}
+            </button>
+          )}
+
+          {onClear && (
+            <button
+              type="button"
+              onClick={onClear}
+              className="rounded border border-neutral-700 px-3 py-1 text-sm hover:border-red-500"
+              title="Clear Customer & Vehicle fields (does not delete an existing Work Order)"
+            >
+              Clear
+            </button>
+          )}
+
           {workOrderExists ? (
             <span className="text-xs text-neutral-400">
               Work order already exists — you can add lines now.
             </span>
           ) : null}
         </div>
-      ) : null}
+      )}
     </div>
   );
 }
