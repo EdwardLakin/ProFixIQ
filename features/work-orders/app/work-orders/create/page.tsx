@@ -1,6 +1,48 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+/**
+ * Create Work Order (Front Desk)
+ * ---------------------------------------------------------------------------
+ * This page lets the front desk:
+ *  - Enter Customer + Vehicle information (session-shaped form).
+ *  - Attach photos and documents to the vehicle immediately.
+ *  - Auto-create a Work Order row ASAP so QuickAdd + Manual Add Line can mount.
+ *  - Add lines (jobs) manually or via the menu.
+ *  - See current lines with live updates.
+ *  - Jump to Quote Review & Signature once ready.
+ *
+ * Design Notes
+ * ------------
+ * - Fonts: Roboto body, Black Ops One for titles (already wired in layout/tailwind).
+ * - Inputs: use `.input` from globals.css (white text, orange focus ring).
+ * - We never rely on profile `full_name`. We only use `first_name/last_name`
+ *   on customers (if provided), otherwise fall back to the current user's email
+ *   when generating the "custom_id" prefix.
+ *
+ * RLS Considerations
+ * ------------------
+ * - work_orders policies require either (shop_id = current_shop_id()) OR
+ *   "by profile shop" (exists profile match). We set `shop_id` on insert.
+ * - work_order_lines insert requires (shop_id = current_shop_id()). We therefore
+ *   pass `shopId={wo.shop_id}` into NewWorkOrderLineForm so it inserts with that.
+ *
+ * DB Columns Used
+ * ---------------
+ *  customers: id, first_name, last_name, phone/phone_number, email,
+ *             address, city, province, postal_code, shop_id (nullable)
+ *  vehicles : id, customer_id, shop_id, vin, year(int), make, model,
+ *             license_plate, mileage(text), unit_number(text), color(text),
+ *             engine_hours(int)
+ *  work_orders: id, custom_id, user_id, shop_id, customer_id, vehicle_id,
+ *               status, notes, created_at (etc.)
+ *  work_order_lines: id, work_order_id, vehicle_id, user_id, shop_id,
+ *                    complaint, cause, correction, labor_time(numeric),
+ *                    job_type(text), status(text), created_at, ...
+ *
+ * ---------------------------------------------------------------------------
+ */
+
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
@@ -19,19 +61,50 @@ import type {
 } from "@/features/inspections/lib/inspection/types";
 
 /* =============================================================================
-   Types
+   Type Aliases
 ============================================================================= */
 type DB = Database;
-type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
-type LineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
-type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
-type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
+
+type WorkOrderTable = DB["public"]["Tables"]["work_orders"];
+type WorkOrderRow = WorkOrderTable["Row"];
+type WorkOrderInsert = WorkOrderTable["Insert"];
+
+type LineTable = DB["public"]["Tables"]["work_order_lines"];
+type LineRow = LineTable["Row"];
+
+type CustomerTable = DB["public"]["Tables"]["customers"];
+type CustomerRow = CustomerTable["Row"];
+type CustomerInsert = CustomerTable["Insert"];
+
+type VehicleTable = DB["public"]["Tables"]["vehicles"];
+type VehicleRow = VehicleTable["Row"];
+type VehicleInsert = VehicleTable["Insert"];
 
 type WOType = "inspection" | "maintenance" | "diagnosis";
 type UploadSummary = { uploaded: number; failed: number };
 
 /* =============================================================================
-   Page
+   Tiny Utilities
+============================================================================= */
+
+
+/** Normalize a string field to (string|null). */
+function strOrNull(v: string | null | undefined): string | null {
+  const t = (v ?? "").trim();
+  return t.length ? t : null;
+}
+
+/** Convert possibly-numberish string to number | null. */
+function numOrNull(v: string | number | null | undefined): number | null {
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim();
+  if (!s) return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+/* =============================================================================
+   Component
 ============================================================================= */
 export default function CreateWorkOrderPage() {
   const router = useRouter();
@@ -49,6 +122,13 @@ export default function CreateWorkOrderPage() {
     "prefillCustomerId",
     null
   );
+
+  // Also keep a tiny trace for debugging view (optional)
+  const [sourceFlags, setSourceFlags] = useTabState<{
+    queryVehicle: boolean;
+    queryCustomer: boolean;
+    autoWO: boolean;
+  }>("__create_sources", { queryVehicle: false, queryCustomer: false, autoWO: false });
 
   // ---------------------------------------------------------------------------
   // Customer & Vehicle (session-shaped state for CustomerVehicleForm)
@@ -73,10 +153,10 @@ export default function CreateWorkOrderPage() {
     model: null,
     vin: null,
     license_plate: null,
-    mileage: null, // DB is text
+    mileage: null,           // DB is text
     color: null,
-    unit_number: null,
-    engine_hours: null, // DB is integer
+    unit_number: null,       // DB is text
+    engine_hours: null,      // DB is integer
   });
 
   // 🔧 accept string | null (form emits nulls for empty)
@@ -130,6 +210,12 @@ export default function CreateWorkOrderPage() {
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   const [, setCurrentUserId] = useState<string | null>(null);
 
+  // keep a "isMount" ref for guarding useEffects if ever needed
+  const isMounted = useRef(false);
+
+  /* ===========================================================================
+     CURRENT USER
+  ============================================================================*/
   useEffect(() => {
     (async () => {
       const {
@@ -140,9 +226,17 @@ export default function CreateWorkOrderPage() {
     })();
   }, [supabase]);
 
-  // ---------------------------------------------------------------------------
-  // Helpers
-  // ---------------------------------------------------------------------------
+  /* ===========================================================================
+     HELPERS
+  ============================================================================*/
+
+  /**
+   * getInitials
+   * ----------
+   * 1) If we have a first/last pair, use first letter of each.
+   * 2) Else if we have an email, use first 2 chars of the local part.
+   * 3) Else fallback to "WO".
+   */
   function getInitials(
     first?: string | null,
     last?: string | null,
@@ -156,14 +250,25 @@ export default function CreateWorkOrderPage() {
     return fb.slice(0, 2).toUpperCase() || "WO";
   }
 
+  /**
+   * generateCustomId
+   * ----------------
+   * Build a monotonic ID like "AB0001", "AB0002" using a short alphabetic prefix.
+   * We scan recent rows with same prefix and pick the next count.
+   */
   async function generateCustomId(prefix: string): Promise<string> {
     const p = prefix.replace(/[^A-Z]/g, "").slice(0, 3) || "WO";
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("work_orders")
       .select("custom_id")
       .ilike("custom_id", `${p}%`)
       .order("created_at", { ascending: false })
       .limit(50);
+
+    if (error) {
+      // Avoid blocking WO creation due to a read error
+      console.warn("[create] generateCustomId warning:", error.message);
+    }
 
     let max = 0;
     (data ?? []).forEach((r) => {
@@ -177,6 +282,12 @@ export default function CreateWorkOrderPage() {
     return `${p}${next}`;
   }
 
+  /**
+   * getOrLinkShopId
+   * ---------------
+   * We only need `shop_id`; do not read profile name fields. If no profile.shop_id,
+   * try linking to owned shop (owner_id == userId). Otherwise return null.
+   */
   async function getOrLinkShopId(userId: string): Promise<string | null> {
     // We only need shop_id here; avoid relying on profile name fields
     const { data: profile, error: profErr } = await supabase
@@ -207,102 +318,147 @@ export default function CreateWorkOrderPage() {
     return ownedShop.id;
   }
 
-  // Convert session → DB inserts
-  const buildCustomerInsert = (c: SessionCustomer) => ({
-    first_name: c.first_name || null,
-    last_name: c.last_name || null,
-    phone: c.phone || null,
-    email: c.email || null,
-    address: c.address || null,
-    city: c.city || null,
-    province: c.province || null,
-    postal_code: c.postal_code || null,
+  /**
+   * buildCustomerInsert
+   * -------------------
+   * Session → DB insert payload (customers table).
+   */
+  const buildCustomerInsert = (c: SessionCustomer): CustomerInsert => ({
+    first_name: strOrNull(c.first_name),
+    last_name: strOrNull(c.last_name),
+    phone: strOrNull(c.phone),
+    email: strOrNull(c.email),
+    address: strOrNull(c.address),
+    city: strOrNull(c.city),
+    province: strOrNull(c.province),
+    postal_code: strOrNull(c.postal_code),
+    // shop_id: nullable; we don't force it here
   });
 
+  /**
+   * buildVehicleInsert
+   * ------------------
+   * Session → DB insert payload (vehicles table).
+   */
   const buildVehicleInsert = (
     v: SessionVehicle,
     customerId: string,
     shopId: string | null
-  ) => ({
+  ): VehicleInsert => ({
     customer_id: customerId,
-    vin: v.vin || null,
-    year: v.year ? Number(v.year) : null,
-    make: v.make || null,
-    model: v.model || null,
-    license_plate: v.license_plate || null,
-    mileage: v.mileage || null, // DB type is text | null
-    unit_number: v.unit_number || null,
-    color: v.color || null,
-    engine_hours: v.engine_hours ? Number(v.engine_hours) : null,
-    shop_id: shopId,
+    vin: strOrNull(v.vin),
+    year: numOrNull(v.year),
+    make: strOrNull(v.make),
+    model: strOrNull(v.model),
+    license_plate: strOrNull(v.license_plate),
+    mileage: strOrNull(v.mileage),         // DB is text | null
+    unit_number: strOrNull(v.unit_number), // DB is text | null
+    color: strOrNull(v.color),
+    engine_hours: numOrNull(v.engine_hours), // DB is int | null
+    shop_id: shopId ?? null,
   });
 
-  // ---------------------------------------------------------------------------
-  // Read query params for prefill
-  // ---------------------------------------------------------------------------
+  /* ===========================================================================
+     READ QUERY PARAMS FOR PREFILL
+  ============================================================================*/
   useEffect(() => {
     const v = searchParams.get("vehicleId");
     const c = searchParams.get("customerId");
-    if (v) setPrefillVehicleId(v);
-    if (c) setPrefillCustomerId(c);
-  }, [searchParams, setPrefillVehicleId, setPrefillCustomerId]);
+    if (v) {
+      setPrefillVehicleId(v);
+      setSourceFlags((s) => ({ ...s, queryVehicle: true }));
+    }
+    if (c) {
+      setPrefillCustomerId(c);
+      setSourceFlags((s) => ({ ...s, queryCustomer: true }));
+    }
+  }, [searchParams, setPrefillVehicleId, setPrefillCustomerId, setSourceFlags]);
 
-  // ---------------------------------------------------------------------------
-  // Prefill from DB → session shapes
-  // ---------------------------------------------------------------------------
+  /* ===========================================================================
+     PREFILL FROM DB → SESSION SHAPES
+  ============================================================================*/
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (prefillCustomerId) {
-        const { data } = await supabase
-          .from("customers")
-          .select("*")
-          .eq("id", prefillCustomerId)
-          .single();
-        if (!cancelled && data) {
-          setCustomer({
-            first_name: data.first_name ?? null,
-            last_name: data.last_name ?? null,
-            phone: (data as any).phone ?? (data as any).phone_number ?? null,
-            email: data.email ?? null,
-            address: (data as any).address ?? null,
-            city: (data as any).city ?? null,
-            province: (data as any).province ?? null,
-            postal_code: (data as any).postal_code ?? null,
-          });
-          setCustomerId(data.id);
+      try {
+        if (prefillCustomerId) {
+          const { data, error } = await supabase
+            .from("customers")
+            .select("*")
+            .eq("id", prefillCustomerId)
+            .single();
+
+          if (!cancelled && data && !error) {
+            setCustomer({
+              first_name: data.first_name ?? null,
+              last_name: data.last_name ?? null,
+              phone: (data as any).phone ?? (data as any).phone_number ?? null,
+              email: data.email ?? null,
+              address: (data as any).address ?? null,
+              city: (data as any).city ?? null,
+              province: (data as any).province ?? null,
+              postal_code: (data as any).postal_code ?? null,
+            });
+            setCustomerId(data.id);
+          }
         }
-      }
-      if (prefillVehicleId) {
-        const { data } = await supabase
-          .from("vehicles")
-          .select(
-            "id, vin, year, make, model, license_plate, mileage, unit_number, color, engine_hours"
-          )
-          .eq("id", prefillVehicleId)
-          .single();
-        if (!cancelled && data) {
-          setVehicle({
-            vin: data.vin ?? null,
-            year: data.year != null ? String(data.year) : null,
-            make: data.make ?? null,
-            model: data.model ?? null,
-            license_plate: data.license_plate ?? null,
-            mileage: (data as any).mileage ?? null,
-            unit_number: (data as any).unit_number ?? null,
-            color: (data as any).color ?? null,
-            engine_hours:
-              (data as any).engine_hours != null
-                ? String((data as any).engine_hours)
-                : null,
-          });
-          setVehicleId(data.id);
+
+        if (prefillVehicleId) {
+          const { data, error } = await supabase
+            .from("vehicles")
+            .select(
+              "id, vin, year, make, model, license_plate, mileage, unit_number, color, engine_hours, customer_id, shop_id"
+            )
+            .eq("id", prefillVehicleId)
+            .single();
+
+          if (!cancelled && data && !error) {
+            setVehicle({
+              vin: data.vin ?? null,
+              year: data.year != null ? String(data.year) : null,
+              make: data.make ?? null,
+              model: data.model ?? null,
+              license_plate: data.license_plate ?? null,
+              mileage: (data as any).mileage ?? null,
+              unit_number: (data as any).unit_number ?? null,
+              color: (data as any).color ?? null,
+              engine_hours:
+                (data as any).engine_hours != null
+                  ? String((data as any).engine_hours)
+                  : null,
+            });
+            setVehicleId(data.id);
+            // If we didn't have customer but the vehicle points to one, hydrate it
+            if (!customerId && data.customer_id) {
+              const { data: cust } = await supabase
+                .from("customers")
+                .select("*")
+                .eq("id", data.customer_id)
+                .maybeSingle();
+              if (cust) {
+                setCustomer({
+                  first_name: cust.first_name ?? null,
+                  last_name: cust.last_name ?? null,
+                  phone: (cust as any).phone ?? (cust as any).phone_number ?? null,
+                  email: cust.email ?? null,
+                  address: (cust as any).address ?? null,
+                  city: (cust as any).city ?? null,
+                  province: (cust as any).province ?? null,
+                  postal_code: (cust as any).postal_code ?? null,
+                });
+                setCustomerId(cust.id);
+              }
+            }
+          }
         }
+      } catch (err) {
+        console.warn("[create] prefill error", err);
       }
     })();
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     prefillCustomerId,
     prefillVehicleId,
@@ -311,11 +467,12 @@ export default function CreateWorkOrderPage() {
     setVehicle,
     setCustomerId,
     setVehicleId,
+    customerId,
   ]);
 
-  // ---------------------------------------------------------------------------
-  // Ensure / create customer + vehicle
-  // ---------------------------------------------------------------------------
+  /* ===========================================================================
+     ENSURE / CREATE CUSTOMER + VEHICLE
+  ============================================================================*/
   async function ensureCustomer(): Promise<CustomerRow> {
     if (customerId) {
       const { data } = await supabase
@@ -327,19 +484,28 @@ export default function CreateWorkOrderPage() {
     }
 
     // Try find by phone/email
-    const query = supabase.from("customers").select("*").limit(1);
-    if (customer.phone) query.ilike("phone", customer.phone);
-    else if (customer.email) query.ilike("email", customer.email);
-    const { data: found } = await query;
-    if (found && found.length > 0) {
-      setCustomerId(found[0].id);
-      return found[0];
+    const normalizedPhone = strOrNull(customer.phone);
+    const normalizedEmail = strOrNull(customer.email);
+
+    if (normalizedPhone || normalizedEmail) {
+      let q = supabase.from("customers").select("*").limit(1);
+
+      // Prioritize phone match if available; else use email
+      if (normalizedPhone) q = q.ilike("phone", normalizedPhone);
+      else if (normalizedEmail) q = q.ilike("email", normalizedEmail);
+
+      const { data: found } = await q;
+      if (found && found.length > 0) {
+        setCustomerId(found[0].id);
+        return found[0];
+      }
     }
 
-    // Insert
+    // Insert minimal row (RLS will allow if authenticated)
+    const insertPayload = buildCustomerInsert(customer);
     const { data: inserted, error: insErr } = await supabase
       .from("customers")
-      .insert(buildCustomerInsert(customer))
+      .insert(insertPayload)
       .select("*")
       .single();
     if (insErr || !inserted)
@@ -361,7 +527,7 @@ export default function CreateWorkOrderPage() {
       if (data) return data;
     }
 
-    // Attempt match by vin/plate
+    // Attempt match by vin/plate for this customer
     const orParts = [
       vehicle.vin ? `vin.eq.${vehicle.vin}` : "",
       vehicle.license_plate ? `license_plate.eq.${vehicle.license_plate}` : "",
@@ -379,9 +545,10 @@ export default function CreateWorkOrderPage() {
     }
 
     // Insert
+    const insertPayload = buildVehicleInsert(vehicle, cust.id, shopId);
     const { data: inserted, error: insErr } = await supabase
       .from("vehicles")
-      .insert(buildVehicleInsert(vehicle, cust.id, shopId))
+      .insert(insertPayload)
       .select("*")
       .single();
     if (insErr || !inserted)
@@ -390,9 +557,9 @@ export default function CreateWorkOrderPage() {
     return inserted as VehicleRow;
   }
 
-  // ---------------------------------------------------------------------------
-  // Upload helpers
-  // ---------------------------------------------------------------------------
+  /* ===========================================================================
+     UPLOAD HELPERS
+  ============================================================================*/
   async function uploadVehicleFiles(vId: string): Promise<UploadSummary> {
     let uploaded = 0,
       failed = 0;
@@ -429,9 +596,9 @@ export default function CreateWorkOrderPage() {
     return { uploaded, failed };
   }
 
-  // ---------------------------------------------------------------------------
-  // Delete line
-  // ---------------------------------------------------------------------------
+  /* ===========================================================================
+     DELETE LINE
+  ============================================================================*/
   const handleDeleteLine = useCallback(
     async (lineId: string) => {
       if (!wo?.id) return;
@@ -455,9 +622,9 @@ export default function CreateWorkOrderPage() {
     [supabase, wo?.id, setLines]
   );
 
-  // ---------------------------------------------------------------------------
-  // Submit: finalize and jump to review
-  // ---------------------------------------------------------------------------
+  /* ===========================================================================
+     SUBMIT: finalize and jump to review
+  ============================================================================*/
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (loading) return;
@@ -500,18 +667,20 @@ export default function CreateWorkOrderPage() {
       const customId = await generateCustomId(initials);
 
       const newId = uuidv4();
+      const insertPayload: WorkOrderInsert = {
+        id: newId,
+        custom_id: customId,
+        vehicle_id: veh.id,
+        customer_id: cust.id,
+        notes: strOrNull(notes),
+        user_id: user.id,
+        shop_id: shopId,
+        status: "awaiting_approval", // allowed by your check constraint
+      };
+
       const { data: inserted, error: insertWOError } = await supabase
         .from("work_orders")
-        .insert({
-          id: newId,
-          custom_id: customId,
-          vehicle_id: veh.id,
-          customer_id: cust.id,
-          notes,
-          user_id: user.id,
-          shop_id: shopId,
-          status: "awaiting_approval", // allowed by your check constraint
-        })
+        .insert(insertPayload)
         .select("*")
         .single();
 
@@ -562,17 +731,21 @@ export default function CreateWorkOrderPage() {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Fetch lines + realtime
-  // ---------------------------------------------------------------------------
+  /* ===========================================================================
+     FETCH LINES + REALTIME
+  ============================================================================*/
   const fetchLines = useCallback(async () => {
     if (!wo?.id) return;
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("work_order_lines")
       .select("*")
       .eq("work_order_id", wo.id)
       .order("created_at", { ascending: true });
-    setLines(data ?? []);
+    if (!error) {
+      setLines(data ?? []);
+    } else {
+      console.warn("[create] fetchLines error:", error.message);
+    }
   }, [supabase, wo?.id, setLines]);
 
   useEffect(() => {
@@ -606,11 +779,17 @@ export default function CreateWorkOrderPage() {
     return () => window.removeEventListener("wo:line-added", h);
   }, [fetchLines]);
 
-  // ---------------------------------------------------------------------------
-  // Auto-create WO (placeholder customer & vehicle) so the page is functional
-  // ---------------------------------------------------------------------------
+  /* ===========================================================================
+     AUTO-CREATE WO (placeholder customer & vehicle) so the page is functional
+  ============================================================================*/
   useEffect(() => {
+    // Guard: only on mount and only if not already created
+    if (isMounted.current) return;
+    isMounted.current = true;
+
     if (wo?.id) return;
+
+    setSourceFlags((s) => ({ ...s, autoWO: true }));
 
     void (async () => {
       const {
@@ -623,7 +802,8 @@ export default function CreateWorkOrderPage() {
 
       // 1) Ensure a placeholder customer (min fields to pass NOT NULL/RLS)
       let placeholderCustomer: CustomerRow | null = null;
-      {
+
+      try {
         const { data } = await supabase
           .from("customers")
           .select("*")
@@ -631,14 +811,22 @@ export default function CreateWorkOrderPage() {
           .ilike("last_name", "Customer")
           .limit(1);
         if (data && data.length) placeholderCustomer = data[0] as CustomerRow;
+      } catch (err) {
+        console.warn("[create] check placeholder customer error", err);
       }
+
       if (!placeholderCustomer) {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from("customers")
           .insert({ first_name: "Walk-in", last_name: "Customer" })
           .select("*")
           .single();
-        placeholderCustomer = data as CustomerRow;
+        if (!error && data) placeholderCustomer = data as CustomerRow;
+      }
+
+      if (!placeholderCustomer) {
+        setError("Could not ensure a placeholder customer for auto-create.");
+        return;
       }
 
       // 2) Ensure a placeholder vehicle tied to that customer + shop
@@ -652,7 +840,7 @@ export default function CreateWorkOrderPage() {
         maybeVeh && maybeVeh.length ? (maybeVeh[0] as VehicleRow) : null;
 
       if (!placeholderVehicle) {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from("vehicles")
           .insert({
             customer_id: placeholderCustomer!.id,
@@ -666,7 +854,13 @@ export default function CreateWorkOrderPage() {
           })
           .select("*")
           .single();
-        placeholderVehicle = data as VehicleRow;
+
+        if (!error && data) placeholderVehicle = data as VehicleRow;
+      }
+
+      if (!placeholderVehicle) {
+        setError("Could not ensure a placeholder vehicle for auto-create.");
+        return;
       }
 
       // 3) Create the WO row right away so QuickAdd + LineForm can mount
@@ -704,34 +898,51 @@ export default function CreateWorkOrderPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, wo?.id, setWo, fetchLines, setError, currentUserEmail, customer.first_name, customer.last_name]);
 
-  // ---------------------------------------------------------------------------
-  // UI
-  // ---------------------------------------------------------------------------
+  /* ===========================================================================
+     UI SECTIONS
+  ============================================================================*/
+
+  // Small inline component for section headers (keeps fonts consistent)
+  const SectionTitle = ({ children }: { children: React.ReactNode }) => (
+    <h2 className="font-header text-lg mb-2">{children}</h2>
+  );
+
   return (
     <div className="mx-auto max-w-5xl p-6 text-white font-roboto">
+      {/* Page Title */}
       <h1 className="mb-6 text-2xl font-bold font-blackops">Create Work Order</h1>
 
+      {/* Error / Notices */}
       {error && (
-        <div className="mb-4 rounded bg-red-100 px-4 py-2 text-red-700">{error}</div>
+        <div className="mb-4 rounded border border-red-500/40 bg-red-500/10 px-4 py-2 text-red-300">
+          {error}
+        </div>
       )}
 
       {uploadSummary && (
-        <div className="mb-4 rounded bg-neutral-800 px-4 py-2 text-neutral-200 text-sm">
+        <div className="mb-4 rounded border border-neutral-700 bg-neutral-900 px-4 py-2 text-neutral-200 text-sm">
           Uploaded {uploadSummary.uploaded} file(s)
           {uploadSummary.failed ? `, ${uploadSummary.failed} failed` : ""}.
         </div>
       )}
       {inviteNotice && (
-        <div className="mb-4 rounded bg-neutral-800 px-4 py-2 text-neutral-200 text-sm">
+        <div className="mb-4 rounded border border-neutral-700 bg-neutral-900 px-4 py-2 text-neutral-200 text-sm">
           {inviteNotice}
         </div>
       )}
+
+      {/* DEBUG: show sources used (optional, can be removed) */}
+      <div className="mb-3 text-xs text-neutral-500">
+        <span className="mr-2">Prefill (customer): {sourceFlags.queryCustomer ? "yes" : "no"}</span>
+        <span className="mr-2">Prefill (vehicle): {sourceFlags.queryVehicle ? "yes" : "no"}</span>
+        <span>Auto-WO: {sourceFlags.autoWO ? "yes" : "no"}</span>
+      </div>
 
       <form onSubmit={handleSubmit}>
         <div className="grid grid-cols-1 gap-6">
           {/* Customer & Vehicle — session-shaped form */}
           <section className="card">
-            <h2 className="font-header text-lg mb-3">Customer &amp; Vehicle</h2>
+            <SectionTitle>Customer &amp; Vehicle</SectionTitle>
             <CustomerVehicleForm
               customer={customer}
               vehicle={vehicle}
@@ -755,7 +966,7 @@ export default function CreateWorkOrderPage() {
 
           {/* Uploads */}
           <section className="card">
-            <h2 className="font-header text-lg mb-2">Uploads</h2>
+            <SectionTitle>Uploads</SectionTitle>
             <div className="grid grid-cols-1 gap-3">
               <div>
                 <label className="block text-sm mb-1">Vehicle Photos</label>
@@ -792,6 +1003,7 @@ export default function CreateWorkOrderPage() {
               <h2 className="font-header text-lg mb-3 text-orange-400">
                 Quick add from menu
               </h2>
+              {/* No extra props required; MenuQuickAdd reads by work order id */}
               <MenuQuickAdd workOrderId={wo.id} />
             </section>
           )}
@@ -799,19 +1011,20 @@ export default function CreateWorkOrderPage() {
           {/* Manual add line */}
           {wo?.id && (
             <section className="card">
-              <h2 className="font-header text-lg mb-2">Add Job Line</h2>
-              <NewWorkOrderLineForm
-                workOrderId={wo.id}
-                vehicleId={vehicleId}
-                defaultJobType={type}
-                onCreated={fetchLines}
-              />
-            </section>
-          )}
+            <h2 className="font-header text-lg mb-2">Add Job Line</h2>
+                <NewWorkOrderLineForm
+                  workOrderId={wo.id}
+                  vehicleId={vehicleId}
+                  defaultJobType={type}
+                  shopId={wo.shop_id ?? undefined}     
+                  onCreated={fetchLines}
+                />
+              </section>
+            )}
 
           {/* Current Lines */}
           <section className="card">
-            <h2 className="font-header text-lg mb-2">Current Lines</h2>
+            <SectionTitle>Current Lines</SectionTitle>
             {!wo?.id || lines.length === 0 ? (
               <p className="text-sm text-neutral-400">No lines yet.</p>
             ) : (
@@ -855,7 +1068,7 @@ export default function CreateWorkOrderPage() {
 
           {/* Work Order defaults */}
           <section className="card">
-            <h2 className="font-header text-lg mb-2">Work Order</h2>
+            <SectionTitle>Work Order</SectionTitle>
             <div className="grid grid-cols-1 gap-3">
               <div>
                 <label className="block text-sm mb-1">
@@ -892,6 +1105,7 @@ export default function CreateWorkOrderPage() {
               type="submit"
               disabled={loading}
               className="btn btn-orange disabled:opacity-60"
+              title={wo?.id ? "Proceed to review" : "Create and proceed"}
             >
               {loading ? "Creating..." : "Done → Review & Sign"}
             </button>
@@ -907,6 +1121,13 @@ export default function CreateWorkOrderPage() {
           </div>
         </div>
       </form>
+
+      {/* Footer note for support */}
+      <div className="mt-6 text-xs text-neutral-500">
+        If you experience issues adding lines, verify that <code>wo.shop_id</code> is set and
+        that your RLS policies on <code>work_order_lines</code> accept
+        <code>shop_id = current_shop_id()</code>. This form passes <code>shopId</code> to the insert.
+      </div>
     </div>
   );
 }
