@@ -2,28 +2,21 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import { format, formatDistanceStrict } from "date-fns";
+import { format } from "date-fns";
 import { toast } from "sonner";
 
 import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
 import VehiclePhotoUploader from "@parts/components/VehiclePhotoUploader";
 import VehiclePhotoGallery from "@parts/components/VehiclePhotoGallery";
 
-// kept tech features
+// Focused modal (now contains all other modals internally)
 import FocusedJobModal from "@/features/work-orders/components/workorders/FocusedJobModal";
+// Add Job modal (still launched from this page header)
 import AddJobModal from "@work-orders/components/workorders/AddJobModal";
-import DtcSuggestionPopup from "@work-orders/components/workorders/DtcSuggestionPopup";
-import PartsRequestModal from "@work-orders/components/workorders/PartsRequestModal";
-import CauseCorrectionModal from "@work-orders/components/workorders/CauseCorrectionModal";
-import InspectionModal from "@/features/inspections/components/InspectionModal";
 
-// NEW (per request): AI quick add on tech page
-import SuggestedQuickAdd from "@work-orders/components/SuggestedQuickAdd";
-
-// local helpers/hooks
 import { useTabState } from "@/features/shared/hooks/useTabState";
 
 /* --------------------------------- Types --------------------------------- */
@@ -32,32 +25,10 @@ type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
-type Profile = DB["public"]["Tables"]["profiles"]["Row"];
-type WorkOrderWithMaybeNotes = WorkOrder & { notes?: string | null };
-
-type WOStatus =
-  | "awaiting_approval"
-  | "awaiting"
-  | "queued"
-  | "in_progress"
-  | "on_hold"
-  | "planned"
-  | "new"
-  | "completed";
-type JobType =
-  | "diagnosis"
-  | "diagnosis-followup"
-  | "maintenance"
-  | "repair"
-  | "tech-suggested"
-  | "inspection"
-  | string;
 
 type ParamsShape = Record<string, string | string[]>;
-function paramToString(v: string | string[] | undefined): string | null {
-  if (!v) return null;
-  return Array.isArray(v) ? v[0] ?? null : v;
-}
+const paramToString = (v: string | string[] | undefined): string | null =>
+  !v ? null : Array.isArray(v) ? v[0] ?? null : v;
 const looksLikeUuid = (s: string) => s.includes("-") && s.length >= 36;
 
 /* ---------------------------- Status -> Styles ---------------------------- */
@@ -92,32 +63,11 @@ const statusRowTint: Record<string, string> = {
   new: "bg-neutral-950",
 };
 
-/* ------------------------------ Small helpers ----------------------------- */
-function showErr(prefix: string, err?: { message?: string } | null) {
-  const msg = err?.message ?? "Something went wrong.";
-  console.error(prefix, err);
-  toast.error(`${prefix}: ${msg}`);
-}
-function sleep(ms: number) {
-  return new Promise((res) => setTimeout(res, ms));
-}
-function msToTenthHours(ms: number): string {
-  const tenths = Math.max(0, Math.round(ms / 360000));
-  const hours = (tenths / 10).toFixed(1);
-  return `${hours} hr`;
-}
-
 /* ---------------------------------- Page --------------------------------- */
 export default function WorkOrderTechPage(): JSX.Element {
   const params = useParams();
-  const searchParams = useSearchParams();
+  const woParam = useMemo(() => paramToString((params as ParamsShape)?.id), [params]);
 
-  const woId = useMemo(() => {
-    const raw = (params as ParamsShape)?.id;
-    return paramToString(raw);
-  }, [params]);
-
-  const urlJobId = searchParams.get("jobId") ?? null;
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   // Core entities
@@ -126,36 +76,23 @@ export default function WorkOrderTechPage(): JSX.Element {
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
 
-  // UI / page state
+  // UI state
   const [loading, setLoading] = useState<boolean>(true);
   const [viewError, setViewError] = useState<string | null>(null);
 
-  // tech focus & timing
-  const [line, setLine] = useState<WorkOrderLine | null>(null);
-  const [activeJobId, setActiveJobId] = useState<string | null>(null);
-  const [duration, setDuration] = useState("");
-
-  // tech (assignee)
-  const [tech, setTech] = useState<Profile | null>(null);
-
-  // photos + user cache
+  // user
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
 
-  // keep "Show details" persisted with useTabState (still used on this page)
+  // persisted UI toggle
   const [showDetails, setShowDetails] = useTabState<boolean>("wo:showDetails", true);
 
-  // modals
-  const [isPartsModalOpen, setIsPartsModalOpen] = useState(false);
-  const [isCauseModalOpen, setIsCauseModalOpen] = useState(false);
+  // Add Job modal
   const [isAddJobModalOpen, setIsAddJobModalOpen] = useState(false);
 
-  // Inspection modal state (triggered from FocusedJob via window event)
-  const [inspectionOpen, setInspectionOpen] = useState(false);
-  const [inspectionSrc, setInspectionSrc] = useState<string | null>(null);
-
-  // normalize tracker
-  const [fixedStatus, setFixedStatus] = useState<Set<string>>(new Set());
+  // Focused job modal (now the single place for all job actions)
+  const [focusedJobId, setFocusedJobId] = useState<string | null>(null);
+  const [focusedOpen, setFocusedOpen] = useState(false);
 
   // one-time missing notice
   const [warnedMissing, setWarnedMissing] = useState(false);
@@ -176,31 +113,31 @@ export default function WorkOrderTechPage(): JSX.Element {
     })();
   }, [supabase]);
 
-  // ---------------------- FETCH (guarded by user session) ----------------------
+  /* ---------------------- FETCH ---------------------- */
   const fetchAll = useCallback(
     async (retry = 0) => {
-      if (!woId || !userId) return;
+      if (!woParam || !userId) return;
+
       setLoading(true);
       setViewError(null);
 
       try {
-        // Primary: try UUID id
+        // Try by id first, then custom_id
         let { data: woRow, error: woErr } = await supabase
           .from("work_orders")
           .select("*")
-          .eq("id", woId)
+          .eq("id", woParam)
           .maybeSingle();
         if (woErr) throw woErr;
 
-        // Fallback: custom_id if param looks short
-        if (!woRow && !looksLikeUuid(woId)) {
-          const byCustom = await supabase.from("work_orders").select("*").eq("custom_id", woId).maybeSingle();
+        if (!woRow && !looksLikeUuid(woParam)) {
+          const byCustom = await supabase.from("work_orders").select("*").eq("custom_id", woParam).maybeSingle();
           if (byCustom.data) woRow = byCustom.data;
         }
 
         if (!woRow) {
           if (retry < 2) {
-            await sleep(200 * Math.pow(2, retry));
+            await new Promise((r) => setTimeout(r, 200 * Math.pow(2, retry)));
             return fetchAll(retry + 1);
           }
           setViewError("Work order not visible / not found.");
@@ -208,8 +145,6 @@ export default function WorkOrderTechPage(): JSX.Element {
           setLines([]);
           setVehicle(null);
           setCustomer(null);
-          setLine(null);
-          setActiveJobId(null);
           setLoading(false);
           return;
         }
@@ -238,71 +173,50 @@ export default function WorkOrderTechPage(): JSX.Element {
         ]);
 
         if (linesRes.error) throw linesRes.error;
-        const list = (linesRes.data ?? []) as WorkOrderLine[];
-        setLines(list);
+        setLines((linesRes.data ?? []) as WorkOrderLine[]);
 
         if (vehRes?.error) throw vehRes.error;
         setVehicle((vehRes?.data as Vehicle | null) ?? null);
 
         if (custRes?.error) throw custRes.error;
         setCustomer((custRes?.data as Customer | null) ?? null);
-
-        let pick: WorkOrderLine | null =
-          (urlJobId && list.find((j) => j.id === urlJobId)) ||
-          list.find((j) => j.status === "in_progress") ||
-          list.find((j) => !j.punched_out_at) ||
-          list[0] ||
-          null;
-
-        setLine(pick ?? null);
-        setActiveJobId(pick && !pick?.punched_out_at ? pick.id : null);
-
-        if (pick?.assigned_to) {
-          const { data: p } = await supabase.from("profiles").select("*").eq("id", pick.assigned_to).single();
-          setTech(p ?? null);
-        } else {
-          setTech(null);
-        }
       } catch (e: any) {
-        const msg = e?.message ?? "Failed to load work order.";
-        setViewError(msg);
+        setViewError(e?.message ?? "Failed to load work order.");
         console.error("[WO id page] load error:", e);
       } finally {
         setLoading(false);
       }
     },
-    [supabase, woId, userId, urlJobId, warnedMissing]
+    [supabase, woParam, userId, warnedMissing]
   );
 
   useEffect(() => {
-    if (!woId || !userId) return;
+    if (!woParam || !userId) return;
     void fetchAll();
-  }, [fetchAll, woId, userId]);
+  }, [fetchAll, woParam, userId]);
 
   // Real-time refresh
   useEffect(() => {
-    if (!woId || !userId) return;
-
+    if (!woParam || !userId) return;
     const ch = supabase
-      .channel(`wo:${woId}`)
+      .channel(`wo:${woParam}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "work_orders", filter: `id=eq.${woId}` },
+        { event: "*", schema: "public", table: "work_orders", filter: `id=eq.${woParam}` },
         () => fetchAll()
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "work_order_lines", filter: `work_order_id=eq.${woId}` },
+        { event: "*", schema: "public", table: "work_order_lines", filter: `work_order_id=eq.${woParam}` },
         () => fetchAll()
       )
       .subscribe();
-
     return () => {
       try {
         supabase.removeChannel(ch);
       } catch {}
     };
-  }, [supabase, woId, userId, fetchAll]);
+  }, [supabase, woParam, userId, fetchAll]);
 
   // Legacy refresh event
   useEffect(() => {
@@ -311,112 +225,7 @@ export default function WorkOrderTechPage(): JSX.Element {
     return () => window.removeEventListener("wo:line-added", handler);
   }, [fetchAll]);
 
-  // Listen for "open inspection" requests (from focused job)
-  useEffect(() => {
-    const onOpen = (e: Event) => {
-      const ce = e as CustomEvent<{ path: string; params: string }>;
-      if (!ce?.detail) return;
-      const url = `${ce.detail.path}?${ce.detail.params}`;
-      setInspectionSrc(url);
-      setInspectionOpen(true);
-    };
-    window.addEventListener("inspection:open", onOpen as EventListener);
-    return () => window.removeEventListener("inspection:open", onOpen as EventListener);
-  }, []);
-
-  // Live timer for focused job badge + header timer
-  useEffect(() => {
-    const t = setInterval(() => {
-      if (line?.punched_in_at && !line?.punched_out_at) {
-        setDuration(formatDistanceStrict(new Date(), new Date(line.punched_in_at)));
-      } else {
-        setDuration("");
-      }
-    }, 10_000);
-    return () => clearInterval(t);
-  }, [line]);
-
-  /* -------- Normalize any newly created lines to status 'awaiting' -------- */
-  useEffect(() => {
-    (async () => {
-      if (!lines.length) return;
-      const toFix = lines
-        .filter((l) => !l.status || l.status === (null as any))
-        .map((l) => l.id)
-        .filter((id) => !fixedStatus.has(id));
-
-      if (toFix.length === 0) return;
-
-      const { error } = await supabase.from("work_order_lines").update({ status: "awaiting" }).in("id", toFix);
-
-      if (!error) {
-        const next = new Set(fixedStatus);
-        toFix.forEach((id) => next.add(id));
-        setFixedStatus(next);
-        fetchAll();
-      }
-    })();
-  }, [lines, fixedStatus, supabase, fetchAll]);
-
-  /* ------------------------------ Tech Actions ----------------------------- */
-  const handleStart = async (jobId: string) => {
-    if (activeJobId && activeJobId !== jobId) {
-      const ok = confirm("You are currently on another job. Finish it and switch?");
-      if (!ok) return;
-      const { error: outErr } = await supabase
-        .from("work_order_lines")
-        .update({ punched_out_at: new Date().toISOString(), status: "awaiting" })
-        .eq("id", activeJobId);
-      if (outErr) return showErr("Finish current job failed", outErr);
-      setActiveJobId(null);
-    } else if (activeJobId) {
-      toast.error("You have already started a job.");
-      return;
-    }
-
-    const { error } = await supabase
-      .from("work_order_lines")
-      .update({ punched_in_at: new Date().toISOString(), status: "in_progress" })
-      .eq("id", jobId);
-    if (error) return showErr("Start failed", error);
-    toast.success("Started job");
-    setActiveJobId(jobId);
-    fetchAll();
-  };
-
-  const handleFinish = async (jobId: string) => {
-    const { error } = await supabase
-      .from("work_order_lines")
-      .update({ punched_out_at: new Date().toISOString(), status: "awaiting" })
-      .eq("id", jobId);
-    if (error) return showErr("Finish failed", error);
-    toast.success("Finished job");
-    setActiveJobId(null);
-    fetchAll();
-  };
-
-  const handleCompleteJob = async (cause: string, correction: string) => {
-    if (!line) return;
-    const { error } = await supabase
-      .from("work_order_lines")
-      .update({
-        cause,
-        correction,
-        punched_out_at: new Date().toISOString(),
-        status: "completed",
-      })
-      .eq("id", line.id);
-    if (error) return showErr("Complete job failed", error);
-    toast.success("Job completed");
-    setIsCauseModalOpen(false);
-    fetchAll();
-  };
-
-  // Sorting & helpers
-  const chipClass = (s: string | null): string => {
-    const key = (s ?? "awaiting").toLowerCase().replaceAll(" ", "_");
-    return `text-xs px-2 py-1 rounded ${statusBadge[key] ?? "bg-gray-200 text-gray-800"}`;
-  };
+  /* ----------------------- Helpers ----------------------- */
   const sortedLines = useMemo(() => {
     const pr: Record<string, number> = { diagnosis: 1, inspection: 2, maintenance: 3, repair: 4 };
     return [...lines].sort((a, b) => {
@@ -429,26 +238,16 @@ export default function WorkOrderTechPage(): JSX.Element {
     });
   }, [lines]);
 
-  const notes: string | null = ((wo as WorkOrderWithMaybeNotes | null)?.notes ?? null) || null;
+  const chipClass = (s: string | null): string => {
+    const key = (s ?? "awaiting").toLowerCase().replaceAll(" ", "_");
+    return `text-xs px-2 py-1 rounded ${statusBadge[key] ?? "bg-gray-200 text-gray-800"}`;
+  };
+
   const createdAt = wo?.created_at ? new Date(wo.created_at) : null;
   const createdAtText = createdAt && !isNaN(createdAt.getTime()) ? format(createdAt, "PPpp") : "—";
 
-  const badgeClass =
-    statusBadge[(line?.status ?? "awaiting") as keyof typeof statusBadge] ?? "bg-gray-200 text-gray-800";
-
-  const renderJobDuration = (job: WorkOrderLine) => {
-    if (job.punched_in_at && !job.punched_out_at) {
-      const ms = Date.now() - new Date(job.punched_in_at).getTime();
-      return msToTenthHours(ms);
-    }
-    if (job.punched_in_at && job.punched_out_at) {
-      const ms = new Date(job.punched_out_at).getTime() - new Date(job.punched_in_at).getTime();
-      return msToTenthHours(ms);
-    }
-    return "0.0 hr";
-  };
-
-  if (!woId) {
+  /* -------------------------- UI -------------------------- */
+  if (!woParam) {
     return <div className="p-6 text-red-500">Missing work order id.</div>;
   }
 
@@ -484,16 +283,16 @@ export default function WorkOrderTechPage(): JSX.Element {
             <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h1 className="text-2xl font-semibold">
-                  Work Order {wo.custom_id || `#${wo.id.slice(0, 8)}`}{" "}
-                  {line ? (
-                    <span
-                      className={`ml-2 align-middle text-[11px] px-2 py-1 rounded ${badgeClass}`}
-                      title="Focused job status"
-                    >
-                      {(line.status ?? "awaiting").replaceAll("_", " ")}
-                    </span>
-                  ) : null}
+                  Work Order {wo.custom_id || `#${wo.id.slice(0, 8)}`}
                 </h1>
+                <button
+                  type="button"
+                  onClick={() => setIsAddJobModalOpen(true)}
+                  className="rounded bg-orange-500 px-3 py-1.5 text-sm font-semibold text-black hover:bg-orange-400"
+                  title="Add a job to this work order"
+                >
+                  + Add Job
+                </button>
               </div>
               <div className="mt-2 grid gap-2 text-sm text-neutral-300 sm:grid-cols-3">
                 <div>
@@ -502,7 +301,7 @@ export default function WorkOrderTechPage(): JSX.Element {
                 </div>
                 <div>
                   <div className="text-neutral-400">Notes</div>
-                  <div className="truncate">{notes ?? "—"}</div>
+                  <div className="truncate">{(wo as any)?.notes ?? "—"}</div>
                 </div>
                 <div>
                   <div className="text-neutral-400">WO ID</div>
@@ -569,7 +368,7 @@ export default function WorkOrderTechPage(): JSX.Element {
               )}
             </div>
 
-            {/* Jobs (list only; front-desk add/approval controls removed) */}
+            {/* Jobs list (click -> FocusedJobModal) */}
             <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold">Jobs in this Work Order</h2>
@@ -585,14 +384,6 @@ export default function WorkOrderTechPage(): JSX.Element {
                     const tintCls = statusRowTint[statusKey] || "bg-neutral-950";
                     const punchedIn = !!ln.punched_in_at && !ln.punched_out_at;
 
-                    const isInspection = (ln.job_type ?? "") === "inspection";
-                    const holdMsg =
-                      (ln.status as WOStatus) === "on_hold" && ln.hold_reason
-                        ? `on hold for ${ln.hold_reason}`
-                        : (ln.status as WOStatus) === "on_hold"
-                        ? "on hold"
-                        : "";
-
                     return (
                       <div
                         key={ln.id}
@@ -600,8 +391,8 @@ export default function WorkOrderTechPage(): JSX.Element {
                           punchedIn ? "ring-2 ring-orange-500" : ""
                         } cursor-pointer`}
                         onClick={() => {
-                          setLine(ln);
-                          setActiveJobId(ln.punched_out_at ? null : ln.id);
+                          setFocusedJobId(ln.id);
+                          setFocusedOpen(true);
                         }}
                         title="Open focused job"
                       >
@@ -611,26 +402,19 @@ export default function WorkOrderTechPage(): JSX.Element {
                               {ln.description || ln.complaint || "Untitled job"}
                             </div>
                             <div className="text-xs text-neutral-400">
-                              {String((ln.job_type as JobType) ?? "job").replaceAll("_", " ")} •{" "}
+                              {String(ln.job_type ?? "job").replaceAll("_", " ")} •{" "}
                               {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} • Status:{" "}
-                              {(ln.status ?? "awaiting").replaceAll("_", " ")} • Time: {renderJobDuration(ln)}
-                              {holdMsg ? <span className="ml-2 italic text-amber-300">{`(${holdMsg})`}</span> : null}
+                              {(ln.status ?? "awaiting").replaceAll("_", " ")}
                             </div>
-                            {(ln.complaint || ln.cause || ln.correction || isInspection) && (
+                            {(ln.complaint || ln.cause || ln.correction) && (
                               <div className="text-xs text-neutral-400 mt-1 flex flex-wrap items-center gap-2">
                                 {ln.complaint ? <span>Cmpl: {ln.complaint}</span> : null}
                                 {ln.cause ? <span>| Cause: {ln.cause}</span> : null}
                                 {ln.correction ? <span>| Corr: {ln.correction}</span> : null}
-                                {isInspection ? (
-                                  <span className="rounded border border-neutral-700 px-1.5 py-0.5 text-[11px] text-neutral-300">
-                                    Inspection available — open from Focused Job
-                                  </span>
-                                ) : null}
                               </div>
                             )}
                           </div>
-
-                          <span className={chipClass(ln.status as WOStatus)}>
+                          <span className={chipClass(ln.status)}>
                             {(ln.status ?? "awaiting").replaceAll("_", " ")}
                           </span>
                         </div>
@@ -642,115 +426,11 @@ export default function WorkOrderTechPage(): JSX.Element {
             </div>
           </div>
 
-          {/* RIGHT rail */}
+          {/* RIGHT rail – kept simple now that Focused modal owns actions */}
           <aside className="space-y-6">
-            {/* Suggested AI quick add (uses current focused/active/sensible job) */}
-            <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
-              {(() => {
-                // pick a sensible job to suggest for
-                const chosen =
-                  line?.id ||
-                  sortedLines.find((l) => l.status === "in_progress")?.id ||
-                  sortedLines.find((l) => !l.punched_out_at)?.id ||
-                  sortedLines[0]?.id ||
-                  null;
-
-                return chosen ? (
-                  <SuggestedQuickAdd
-                    jobId={chosen}
-                    workOrderId={wo.id}
-                    vehicleId={vehicle?.id ?? null}
-                    onAdded={fetchAll}
-                  />
-                ) : (
-                  <div className="text-sm text-neutral-400">Add a job line to enable AI suggestions.</div>
-                );
-              })()}
+            <div className="rounded border border-neutral-800 bg-neutral-900 p-4 text-sm text-neutral-400">
+              Select a job to open the focused panel with full controls.
             </div>
-
-            {/* Focused job controls */}
-            {line ? (
-              <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold">Focused Job</h3>
-                  <span className={`text-xs px-2 py-1 rounded ${badgeClass}`}>
-                    {(line.status ?? "awaiting").replaceAll("_", " ")}
-                  </span>
-                </div>
-
-                <div className="mt-2 p-3 rounded border border-neutral-800 bg-neutral-950">
-                  <p>
-                    <strong>Complaint:</strong> {line.complaint || "—"}
-                  </p>
-                  <p>
-                    <strong>Status:</strong> {line.status ?? "—"}
-                  </p>
-                  <p>
-                    <strong>Live Timer:</strong> {duration}
-                  </p>
-                  <p>
-                    <strong>Punched In:</strong>{" "}
-                    {line.punched_in_at ? format(new Date(line.punched_in_at), "PPpp") : "—"}
-                  </p>
-                  <p>
-                    <strong>Punched Out:</strong>{" "}
-                    {line.punched_out_at ? format(new Date(line.punched_out_at), "PPpp") : "—"}
-                  </p>
-                  <p>
-                    <strong>Labor Time:</strong> {line.labor_time ?? "—"} hrs
-                  </p>
-                  <p>
-                    <strong>Hold Reason:</strong> {line.hold_reason || "—"}
-                  </p>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
-                    <button
-                      className="bg-green-600 hover:bg-green-700 px-3 py-2 rounded text-white"
-                      onClick={() => handleStart(line.id)}
-                    >
-                      Start
-                    </button>
-                    <button
-                      className="bg-zinc-700 hover:bg-zinc-800 px-3 py-2 rounded text-white"
-                      onClick={() => handleFinish(line.id)}
-                    >
-                      Finish
-                    </button>
-                    <button
-                      className="bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded text-white"
-                      onClick={() => setIsCauseModalOpen(true)}
-                    >
-                      Complete Job
-                    </button>
-                    <button
-                      className="bg-red-500 hover:bg-red-600 px-3 py-2 rounded text-white"
-                      onClick={() => setIsPartsModalOpen(true)}
-                    >
-                      Request Parts
-                    </button>
-                  </div>
-                </div>
-
-                {/* Diagnosis DTC helper (unchanged usage) */}
-                {line.job_type === "diagnosis" && line.punched_in_at && !line.cause && !line.correction && vehicle && (
-                  <div className="mt-4">
-                    <DtcSuggestionPopup
-                      jobId={line.id}
-                      vehicle={{
-                        id: vehicle.id,
-                        year: (vehicle.year ?? "").toString(),
-                        make: vehicle.make ?? "",
-                        model: vehicle.model ?? "",
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="rounded border border-neutral-800 bg-neutral-900 p-4 text-sm text-neutral-400">
-                No focused job yet.
-              </div>
-            )}
           </aside>
         </div>
       )}
@@ -771,48 +451,20 @@ export default function WorkOrderTechPage(): JSX.Element {
           onClose={() => setIsAddJobModalOpen(false)}
           workOrderId={wo.id}
           vehicleId={vehicle.id}
-          techId={tech?.id || "system"}
+          techId={currentUserId || "system"}
           onJobAdded={fetchAll}
         />
       )}
 
-      {/* Focused Job modal — hosts “Open Inspection” & tech actions */}
-      {line && (
+      {/* Focused job modal (contains ALL sub-modals and actions) */}
+      {focusedOpen && focusedJobId && (
         <FocusedJobModal
-          isOpen={!!line}
-          onClose={() => setLine(null)}
-          workOrderLineId={line.id}
-          workOrderId={wo?.id ?? ""}
-          vehicleId={vehicle?.id ?? null}
+          isOpen={focusedOpen}
+          onClose={() => setFocusedOpen(false)}
+          workOrderLineId={focusedJobId}
           onChanged={fetchAll}
-          onStart={handleStart}
-          onFinish={handleFinish}
+          mode="tech"
         />
-      )}
-
-      {/* Tech modals */}
-      {isPartsModalOpen && wo?.id && line && (
-        <PartsRequestModal
-          isOpen={isPartsModalOpen}
-          onClose={() => setIsPartsModalOpen(false)}
-          jobId={line.id}
-          workOrderId={wo.id}
-          requested_by={tech?.id || "system"}
-        />
-      )}
-
-      {isCauseModalOpen && line && (
-        <CauseCorrectionModal
-          isOpen={isCauseModalOpen}
-          onClose={() => setIsCauseModalOpen(false)}
-          jobId={line.id}
-          onSubmit={handleCompleteJob}
-        />
-      )}
-
-      {/* INSPECTION MODAL (dark, never navigates away) */}
-      {inspectionOpen && inspectionSrc && (
-        <InspectionModal isOpen={inspectionOpen} onClose={() => setInspectionOpen(false)} src={inspectionSrc} />
       )}
     </div>
   );
