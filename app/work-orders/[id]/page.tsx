@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams, } from "next/navigation";
+import { useParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
@@ -66,7 +66,10 @@ const statusRowTint: Record<string, string> = {
 /* ---------------------------------- Page --------------------------------- */
 export default function WorkOrderTechPage(): JSX.Element {
   const params = useParams();
-  const woParam = useMemo(() => paramToString((params as ParamsShape)?.id), [params]);
+  const woParam = useMemo(
+    () => paramToString((params as ParamsShape)?.id),
+    [params]
+  );
 
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
@@ -90,7 +93,7 @@ export default function WorkOrderTechPage(): JSX.Element {
   // Add Job modal
   const [isAddJobModalOpen, setIsAddJobModalOpen] = useState(false);
 
-  // Focused job modal (now the single place for all job actions)
+  // Focused job modal
   const [focusedJobId, setFocusedJobId] = useState<string | null>(null);
   const [focusedOpen, setFocusedOpen] = useState(false);
 
@@ -123,15 +126,21 @@ export default function WorkOrderTechPage(): JSX.Element {
 
       try {
         // Try by id first, then custom_id
-        let { data: woRow, error: woErr } = await supabase
+        const { data: woRowById, error: woErr } = await supabase
           .from("work_orders")
           .select("*")
           .eq("id", woParam)
           .maybeSingle();
         if (woErr) throw woErr;
 
+        let woRow = woRowById;
+
         if (!woRow && !looksLikeUuid(woParam)) {
-          const byCustom = await supabase.from("work_orders").select("*").eq("custom_id", woParam).maybeSingle();
+          const byCustom = await supabase
+            .from("work_orders")
+            .select("*")
+            .eq("custom_id", woParam)
+            .maybeSingle();
           if (byCustom.data) woRow = byCustom.data;
         }
 
@@ -152,9 +161,10 @@ export default function WorkOrderTechPage(): JSX.Element {
         setWo(woRow);
 
         if (!warnedMissing && (!woRow.vehicle_id || !woRow.customer_id)) {
-          toast.error("This work order is missing vehicle and/or customer. Open the Create form to set them.", {
-            important: true,
-          } as any);
+          // keep this simple to avoid extra typings
+          toast.error(
+            "This work order is missing vehicle and/or customer. Open the Create form to set them."
+          );
           setWarnedMissing(true);
         }
 
@@ -165,10 +175,18 @@ export default function WorkOrderTechPage(): JSX.Element {
             .eq("work_order_id", woRow.id)
             .order("created_at", { ascending: true }),
           woRow.vehicle_id
-            ? supabase.from("vehicles").select("*").eq("id", woRow.vehicle_id).maybeSingle()
+            ? supabase
+                .from("vehicles")
+                .select("*")
+                .eq("id", woRow.vehicle_id)
+                .maybeSingle()
             : Promise.resolve({ data: null, error: null }),
           woRow.customer_id
-            ? supabase.from("customers").select("*").eq("id", woRow.customer_id).maybeSingle()
+            ? supabase
+                .from("customers")
+                .select("*")
+                .eq("id", woRow.customer_id)
+                .maybeSingle()
             : Promise.resolve({ data: null, error: null }),
         ]);
 
@@ -180,8 +198,11 @@ export default function WorkOrderTechPage(): JSX.Element {
 
         if (custRes?.error) throw custRes.error;
         setCustomer((custRes?.data as Customer | null) ?? null);
-      } catch (e: any) {
-        setViewError(e?.message ?? "Failed to load work order.");
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Failed to load work order.";
+        setViewError(msg);
+        // keep console for debugging
+        // eslint-disable-next-line no-console
         console.error("[WO id page] load error:", e);
       } finally {
         setLoading(false);
@@ -214,7 +235,9 @@ export default function WorkOrderTechPage(): JSX.Element {
     return () => {
       try {
         supabase.removeChannel(ch);
-      } catch {}
+      } catch {
+        // ignore
+      }
     };
   }, [supabase, woParam, userId, fetchAll]);
 
@@ -240,7 +263,9 @@ export default function WorkOrderTechPage(): JSX.Element {
 
   const chipClass = (s: string | null): string => {
     const key = (s ?? "awaiting").toLowerCase().replaceAll(" ", "_");
-    return `text-xs px-2 py-1 rounded ${statusBadge[key] ?? "bg-gray-200 text-gray-800"}`;
+    return `text-xs px-2 py-1 rounded ${
+      (statusBadge as Record<string, string>)[key] ?? "bg-gray-200 text-gray-800"
+    }`;
   };
 
   const createdAt = wo?.created_at ? new Date(wo.created_at) : null;
@@ -273,7 +298,9 @@ export default function WorkOrderTechPage(): JSX.Element {
         </div>
       )}
 
-      {!loading && !wo && !viewError && <div className="mt-6 text-red-500">Work order not found.</div>}
+      {!loading && !wo && !viewError && (
+        <div className="mt-6 text-red-500">Work order not found.</div>
+      )}
 
       {!loading && wo && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px]">
@@ -301,7 +328,7 @@ export default function WorkOrderTechPage(): JSX.Element {
                 </div>
                 <div>
                   <div className="text-neutral-400">Notes</div>
-                  <div className="truncate">{(wo as any)?.notes ?? "—"}</div>
+                  <div className="truncate">{(wo as unknown as { notes?: string | null })?.notes ?? "—"}</div>
                 </div>
                 <div>
                   <div className="text-neutral-400">WO ID</div>
@@ -346,7 +373,11 @@ export default function WorkOrderTechPage(): JSX.Element {
                     <h3 className="mb-1 font-semibold">Customer</h3>
                     {customer ? (
                       <>
-                        <p>{[customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") || "—"}</p>
+                        <p>
+                          {[customer.first_name ?? "", customer.last_name ?? ""]
+                            .filter(Boolean)
+                            .join(" ") || "—"}
+                        </p>
                         <p className="text-sm text-neutral-400">
                           {customer.phone ?? "—"} {customer.email ? `• ${customer.email}` : ""}
                         </p>
@@ -440,7 +471,10 @@ export default function WorkOrderTechPage(): JSX.Element {
         <div className="mt-8 space-y-4">
           <h2 className="text-xl font-semibold">Vehicle Photos</h2>
           <VehiclePhotoUploader vehicleId={vehicle.id} />
-          <VehiclePhotoGallery vehicleId={vehicle.id} currentUserId={currentUserId!} />
+          <VehiclePhotoGallery
+            vehicleId={vehicle.id}
+            currentUserId={currentUserId}
+          />
         </div>
       )}
 
