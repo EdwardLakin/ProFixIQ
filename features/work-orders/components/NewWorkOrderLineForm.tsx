@@ -14,8 +14,7 @@ export function NewWorkOrderLineForm(props: {
   workOrderId: string;
   vehicleId: string | null;
   defaultJobType: WOJobType | null;
-  /** Optional on purpose — pass `undefined` when unknown */
-  shopId?: string;                     // <-- made optional string (not required)
+  shopId?: string | null;                // ← optional (used to satisfy RLS)
   onCreated?: () => void;
 }) {
   const { workOrderId, vehicleId, defaultJobType, shopId, onCreated } = props;
@@ -57,7 +56,7 @@ export function NewWorkOrderLineForm(props: {
       status: status ?? "awaiting",
       job_type: normalizeJobType(jobType),
       // RLS: wol_shop_insert → check (shop_id = current_shop_id())
-      shop_id: shopId ?? null,          // <-- tolerate undefined from parent
+      shop_id: shopId ?? null,
     };
 
     const { error } = await supabase.from("work_order_lines").insert(payload);

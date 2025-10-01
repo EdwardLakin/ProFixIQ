@@ -1,5 +1,4 @@
 
-
 import React from "react";
 import {
   SessionCustomer as CustomerInfo,
@@ -11,6 +10,11 @@ interface Props {
   vehicle: VehicleInfo;
   onCustomerChange: (field: keyof CustomerInfo, value: string | null) => void;
   onVehicleChange: (field: keyof VehicleInfo, value: string | null) => void;
+
+  /** New: optional “Save & Continue” to create WO early */
+  onSave?: () => void;
+  saving?: boolean;
+  workOrderExists?: boolean;
 }
 
 export default function CustomerVehicleForm({
@@ -18,6 +22,9 @@ export default function CustomerVehicleForm({
   vehicle,
   onCustomerChange,
   onVehicleChange,
+  onSave,
+  saving = false,
+  workOrderExists = false,
 }: Props) {
   return (
     <div className="w-full max-w-3xl mx-auto text-white space-y-8">
@@ -142,6 +149,25 @@ export default function CustomerVehicleForm({
           onChange={(e) => onVehicleChange("engine_hours", e.target.value || null)}
         />
       </div>
+
+      {/* New: Save & Continue (optional; page passes onSave) */}
+      {onSave ? (
+        <div className="pt-2 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={saving}
+            className="btn btn-orange disabled:opacity-60"
+          >
+            {saving ? "Saving…" : workOrderExists ? "Update & Continue" : "Save & Continue"}
+          </button>
+          {workOrderExists ? (
+            <span className="text-xs text-neutral-400">
+              Work order already exists — you can add lines now.
+            </span>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
