@@ -1,16 +1,14 @@
-"use client";
 
 import { useRef, useState } from "react";
 import SignatureCanvas from "react-signature-canvas";
 
 type Props = {
+  shopName?: string;                       // branding on the modal
   onSave: (base64: string) => void | Promise<void>;
   onCancel: () => void;
 };
 
-export default function SignaturePad(props: Props) {
-  // NOTE: this is a client component; function props are fine.
-  const { onSave, onCancel } = props;
+export default function SignaturePad({ shopName, onSave, onCancel }: Props) {
   const sigRef = useRef<SignatureCanvas | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -36,7 +34,7 @@ export default function SignaturePad(props: Props) {
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
       <div className="bg-white dark:bg-gray-900 rounded-lg p-6 shadow-lg w-full max-w-md">
         <h2 className="text-lg font-semibold mb-4 text-center text-gray-800 dark:text-white">
-          Sign Below
+          {shopName ? `${shopName} — Customer Approval` : "Sign Below"}
         </h2>
 
         <SignatureCanvas

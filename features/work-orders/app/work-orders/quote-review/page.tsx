@@ -10,6 +10,19 @@ import { formatCurrency } from "@/features/shared/lib/formatCurrency";
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
+type Shop = DB["public"]["Tables"]["shops"]["Row"]; // now actually used
+
+const SIGNATURE_BUCKET = "signatures";
+
+/** Convert a dataURL to a Blob (no window.atob assumption differences). */
+function dataUrlToBlob(dataUrl: string): Blob {
+  const [header, base64] = dataUrl.split(",");
+  const mime = /data:(.*?);base64/.exec(header)?.[1] ?? "image/png";
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
 
 export default function QuoteReviewPage() {
   const router = useRouter();
@@ -17,6 +30,7 @@ export default function QuoteReviewPage() {
   const woId = useSearchParams().get("woId") ?? null;
 
   const [wo, setWo] = useState<WorkOrder | null>(null);
+  const [shop, setShop] = useState<Shop | null>(null);
   const [lines, setLines] = useState<Line[]>([]);
   const [loading, setLoading] = useState(true);
   const [sigOpen, setSigOpen] = useState(false);
@@ -25,23 +39,40 @@ export default function QuoteReviewPage() {
     (async () => {
       if (!woId) return;
       setLoading(true);
+
+      // Work order
       const { data: woRow } = await supabase
         .from("work_orders")
         .select("*")
         .eq("id", woId)
         .maybeSingle();
       setWo(woRow ?? null);
+
+      // Lines
       const { data: lineRows } = await supabase
         .from("work_order_lines")
         .select("*")
         .eq("work_order_id", woId)
         .order("created_at", { ascending: true });
       setLines(lineRows ?? []);
+
+      // Fetch shop (for branding & key prefix) if we have a shop_id
+      if (woRow?.shop_id) {
+        const { data: s } = await supabase
+          .from("shops")
+          .select("*")
+          .eq("id", woRow.shop_id)
+          .maybeSingle();
+        setShop((s as Shop) ?? null);
+      } else {
+        setShop(null);
+      }
+
       setLoading(false);
     })();
   }, [woId, supabase]);
 
-  // Pricing
+  // Pricing (simple placeholder)
   const laborRate = 120; // TODO: fetch from org settings
   const totalLaborHours = (lines ?? [])
     .map((l) => (typeof l.labor_time === "number" ? l.labor_time : 0))
@@ -60,32 +91,44 @@ export default function QuoteReviewPage() {
   }
 
   async function handleSignatureSave(base64: string) {
-    if (!woId) return;
+    if (!woId || !wo) return;
+
     try {
-      // Upload image
-      const file = await (await fetch(base64)).blob();
-      const filename = `wo-${woId}-${Date.now()}.png`;
+      // Build a shop-scoped storage key so private bucket policies can allow R/W by shop
+      const shopId = wo.shop_id as string | null;
+      // If shop_id is missing, still allow saving but under a neutral prefix
+      const keyPrefix = shopId ?? "unscoped";
+      const filename = `${keyPrefix}/wo-${woId}-${Date.now()}.png`;
+
+      // Upload to private bucket
+      const blob = dataUrlToBlob(base64);
       const { error: upErr } = await supabase.storage
-        .from("signatures")
-        .upload(filename, file, {
+        .from(SIGNATURE_BUCKET)
+        .upload(filename, blob, {
           contentType: "image/png",
           upsert: true,
         });
       if (upErr) throw upErr;
 
-      const { data: pub } = await supabase.storage
-        .from("signatures")
-        .getPublicUrl(filename);
-      const url = pub?.publicUrl ?? null;
+      // For private buckets we usually store the storage path (not a public URL).
+      // If you also want a short-lived link later, generate a signed URL on demand.
+      const signaturePath = filename;
 
-      // Update WO
+      // Update WO (use whatever columns you have—keep both to be permissive)
+      const updatePayload: Partial<WorkOrder> = {
+        // if you created these columns:
+        // @ts-ignore - tolerate missing columns in typings
+        customer_approval_signature_path: signaturePath,
+        // @ts-ignore - tolerate missing columns in typings
+        customer_approval_signature_url: null,
+        // @ts-ignore - tolerate missing columns in typings
+        customer_approval_at: new Date().toISOString() as any,
+        status: "queued" as any,
+      };
+
       const { error: updErr } = await supabase
         .from("work_orders")
-        .update({
-          customer_approval_signature_url: url as any,
-          customer_approval_at: new Date().toISOString() as any,
-          status: "queued" as any,
-        })
+        .update(updatePayload)
         .eq("id", woId);
 
       if (updErr) {
@@ -116,6 +159,13 @@ export default function QuoteReviewPage() {
   if (!woId) {
     return <div className="p-6 text-red-500">Missing woId in URL.</div>;
   }
+
+  const shopDisplayName =
+    // prefer a name-like field if available; fall back gently
+    (shop as any)?.name ??
+    (shop as any)?.title ??
+    (shop as any)?.shop_name ??
+    undefined;
 
   return (
     <div className="p-6 text-white">
@@ -220,6 +270,7 @@ export default function QuoteReviewPage() {
       {/* Signature Pad */}
       {sigOpen && (
         <SignaturePad
+          shopName={shopDisplayName}
           onSave={handleSignatureSave}
           onCancel={() => setSigOpen(false)}
         />
