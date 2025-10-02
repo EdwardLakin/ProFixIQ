@@ -14,7 +14,6 @@ import VehiclePhotoGallery from "@parts/components/VehiclePhotoGallery";
 
 import FocusedJobModal from "@/features/work-orders/components/workorders/FocusedJobModal";
 import AddJobModal from "@work-orders/components/workorders/AddJobModal";
-
 import { useTabState } from "@/features/shared/hooks/useTabState";
 
 /* --------------------------------- Types --------------------------------- */
@@ -27,7 +26,9 @@ type Customer = DB["public"]["Tables"]["customers"]["Row"];
 type ParamsShape = Record<string, string | string[]>;
 const paramToString = (v: string | string[] | undefined): string | null =>
   !v ? null : Array.isArray(v) ? v[0] ?? null : v;
-const looksLikeUuid = (s: string) => s.includes("-") && s.length >= 36;
+
+const looksLikeUuid = (s: string) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
 
 /* ---------------------------- Status -> Styles ---------------------------- */
 const statusBadge: Record<string, string> = {
@@ -64,11 +65,7 @@ const statusRowTint: Record<string, string> = {
 /* ---------------------------------- Page --------------------------------- */
 export default function WorkOrderTechPage(): JSX.Element {
   const params = useParams();
-  const woParam = useMemo(
-    () => paramToString((params as ParamsShape)?.id),
-    [params]
-  );
-
+  const woParam = useMemo(() => paramToString((params as ParamsShape)?.id), [params]);
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   // Core entities
@@ -81,10 +78,14 @@ export default function WorkOrderTechPage(): JSX.Element {
   const [loading, setLoading] = useState<boolean>(true);
   const [viewError, setViewError] = useState<string | null>(null);
 
-  // current user (for photo gallery controls)
+  // user
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
 
-  // persisted UI toggle
+  // shop diagnostics
+  const [profileShopId, setProfileShopId] = useState<string | null>(null);
+
+  // persisted UI toggle (via useTabState)
   const [showDetails, setShowDetails] = useTabState<boolean>("wo:showDetails", true);
 
   // Add Job modal
@@ -97,40 +98,64 @@ export default function WorkOrderTechPage(): JSX.Element {
   // one-time missing notice
   const [warnedMissing, setWarnedMissing] = useState(false);
 
-  // Current user (only for UI affordances; NOT used to gate fetch)
+  // Current user + profile.shop_id
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setCurrentUserId(user?.id ?? null);
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        setCurrentUserId(user.id);
+        setUserId(user.id);
+
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("id, shop_id")
+          .eq("id", user.id)
+          .maybeSingle();
+        setProfileShopId(prof?.shop_id ?? null);
+      } else {
+        setCurrentUserId(null);
+        setUserId(null);
+        setProfileShopId(null);
+      }
     })();
   }, [supabase]);
 
   /* ---------------------- FETCH ---------------------- */
   const fetchAll = useCallback(
     async (retry = 0) => {
-      if (!woParam) return;
+      if (!woParam || !userId) return;
 
       setLoading(true);
       setViewError(null);
 
       try {
-        // Try by id first, then custom_id
-        const { data: woRowById, error: woErr } = await supabase
-          .from("work_orders")
-          .select("*")
-          .eq("id", woParam)
-          .maybeSingle();
-        if (woErr) throw woErr;
+        let woRow: WorkOrder | null = null;
 
-        let woRow = woRowById;
+        // 1) UUID path
+        if (looksLikeUuid(woParam)) {
+          const byId = await supabase.from("work_orders").select("*").eq("id", woParam).maybeSingle();
+          if (byId.error) throw byId.error;
+          woRow = (byId.data as WorkOrder | null) ?? null;
+        }
 
-        if (!woRow && !looksLikeUuid(woParam)) {
+        // 2) exact custom_id
+        if (!woRow) {
           const byCustom = await supabase
             .from("work_orders")
             .select("*")
             .eq("custom_id", woParam)
             .maybeSingle();
-          if (byCustom.data) woRow = byCustom.data;
+          if (byCustom.error && byCustom.error.code !== "PGRST116") throw byCustom.error;
+          if (byCustom.data) woRow = byCustom.data as WorkOrder;
+        }
+
+        // 3) ilike fallback
+        if (!woRow) {
+          const byIlike = await supabase.from("work_orders").select("*").ilike("custom_id", woParam).limit(1);
+          if (byIlike.error) throw byIlike.error;
+          if (byIlike.data?.length) woRow = byIlike.data[0] as WorkOrder;
         }
 
         if (!woRow) {
@@ -155,11 +180,7 @@ export default function WorkOrderTechPage(): JSX.Element {
         }
 
         const [linesRes, vehRes, custRes] = await Promise.all([
-          supabase
-            .from("work_order_lines")
-            .select("*")
-            .eq("work_order_id", woRow.id)
-            .order("created_at", { ascending: true }),
+          supabase.from("work_order_lines").select("*").eq("work_order_id", woRow.id).order("created_at", { ascending: true }),
           woRow.vehicle_id
             ? supabase.from("vehicles").select("*").eq("id", woRow.vehicle_id).maybeSingle()
             : Promise.resolve({ data: null, error: null }),
@@ -180,22 +201,22 @@ export default function WorkOrderTechPage(): JSX.Element {
         const msg = e instanceof Error ? e.message : "Failed to load work order.";
         setViewError(msg);
         // eslint-disable-next-line no-console
-        console.error("[WO id page] load error:", e);
+        console.error("[WO id page] load error:", e, { woParam, userId, profileShopId });
       } finally {
         setLoading(false);
       }
     },
-    [supabase, woParam, warnedMissing]
+    [supabase, woParam, userId, warnedMissing, profileShopId]
   );
 
   useEffect(() => {
-    if (!woParam) return;
+    if (!woParam || !userId) return;
     void fetchAll();
-  }, [fetchAll, woParam]);
+  }, [fetchAll, woParam, userId]);
 
-  // Real-time refresh (no userId gating)
+  // Real-time refresh
   useEffect(() => {
-    if (!woParam) return;
+    if (!woParam || !userId) return;
     const ch = supabase
       .channel(`wo:${woParam}`)
       .on(
@@ -205,14 +226,16 @@ export default function WorkOrderTechPage(): JSX.Element {
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "work_order_lines", filter: `work_order_id=eq.${woParam}` },
+        { event: "*", schema: "public", table: "work_order_lines", filter: `work_order_id=eq.${wo?.id ?? woParam}` },
         () => fetchAll()
       )
       .subscribe();
     return () => {
-      try { supabase.removeChannel(ch); } catch {}
+      try {
+        supabase.removeChannel(ch);
+      } catch {}
     };
-  }, [supabase, woParam, fetchAll]);
+  }, [supabase, woParam, userId, fetchAll, wo?.id]);
 
   // Legacy refresh event
   useEffect(() => {
@@ -257,8 +280,16 @@ export default function WorkOrderTechPage(): JSX.Element {
     <div className="p-4 sm:p-6 text-white">
       <PreviousPageButton to="/work-orders" />
 
+      {/* tiny debug strip; remove when fixed */}
+      <div className="mt-2 mb-4 text-[11px] text-neutral-400">
+        woParam: <code className="text-orange-400">{String(woParam)}</code> • userId:{" "}
+        <code className="text-orange-400">{currentUserId ?? "—"}</code> • profile.shop_id:{" "}
+        <code className="text-orange-400">{profileShopId ?? "—"}</code> • WO.shop_id:{" "}
+        <code className="text-orange-400">{wo?.shop_id ?? "—"}</code>
+      </div>
+
       {viewError && (
-        <div className="mt-4 whitespace-pre-wrap rounded border border-red-500/40 bg-red-500/10 p-3 text-red-300">
+        <div className="mt-2 whitespace-pre-wrap rounded border border-red-500/40 bg-red-500/10 p-3 text-red-300">
           {viewError}
         </div>
       )}
@@ -288,7 +319,7 @@ export default function WorkOrderTechPage(): JSX.Element {
                 <button
                   type="button"
                   onClick={() => setIsAddJobModalOpen(true)}
-                  className="rounded bg-orange-500 px-3 py-1.5 text-sm font-semibold text:black text-black hover:bg-orange-400"
+                  className="rounded bg-orange-500 px-3 py-1.5 text-sm font-semibold text-black hover:bg-orange-400"
                   title="Add a job to this work order"
                 >
                   + Add Job
@@ -372,11 +403,9 @@ export default function WorkOrderTechPage(): JSX.Element {
               )}
             </div>
 
-            {/* Jobs list (click -> FocusedJobModal) */}
+            {/* Jobs list */}
             <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
-              <div className="mb-3 flex items-center justify-between gap-2">
-                <h2 className="text-lg font-semibold">Jobs in this Work Order</h2>
-              </div>
+              <h2 className="mb-3 text-lg font-semibold">Jobs in this Work Order</h2>
 
               {sortedLines.length === 0 ? (
                 <p className="text-sm text-neutral-400">No lines yet.</p>
@@ -456,8 +485,6 @@ export default function WorkOrderTechPage(): JSX.Element {
           workOrderId={wo.id}
           vehicleId={vehicle.id}
           techId={currentUserId || "system"}
-          // optional, if you wire AddJobModal to accept it:
-          shopId={wo.shop_id ?? null}
           onJobAdded={fetchAll}
         />
       )}
