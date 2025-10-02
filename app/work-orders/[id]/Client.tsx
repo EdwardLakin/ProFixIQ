@@ -72,11 +72,11 @@ const statusRowTint: Record<string, string> = {
 export default function Client({
   routeId,
   userId: userIdFromServer,
-  /** optional: wrapper may pass this; fine to ignore */
 }: {
   routeId: string;
   userId: string | null;
-  searchParams?: Record<string, string | string[]>;
+  // match Next.js typing here too
+  searchParams?: { [key: string]: string | string[] | undefined };
 }): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 

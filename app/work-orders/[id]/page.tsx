@@ -5,15 +5,16 @@ export default function WorkOrderIdPage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams?: Record<string, string | string[]>;
+  // Allow undefined per key (what Next.js actually provides)
+  searchParams?: { [key: string]: string | string[] | undefined };
 }) {
   const woId = params.id;
 
   return (
     <WorkOrderIdClient
       routeId={woId}
-      userId={null}            // (server can pass a real userId later)
-      searchParams={searchParams}
+      userId={null}                 // (server can pass a real userId later)
+      searchParams={searchParams}   // optional
     />
   );
 }
