@@ -1,26 +1,20 @@
 // app/work-orders/[id]/page.tsx
-export const dynamic = "force-dynamic";
-
 import { cookies } from "next/headers";
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import Client from "./Client";
+import Client from "./Client"; // <-- default export from Client.tsx
 
-type DB = Database;
-
-export default async function WorkOrderIdServerPage({
-  params,
-}: {
+type PageProps = {
   params: { id: string };
   searchParams: Record<string, string | string[] | undefined>;
-}) {
-  const supabase = createServerComponentClient<DB>({ cookies });
+};
+
+export default async function WorkOrderIdPage({ params }: PageProps) {
+  const supabase = createServerComponentClient<Database>({ cookies });
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Pass the user id (if any) to the client page to avoid Safari bad_jwt churn.
-  const userId = user?.id ?? null;
-
-  return <Client routeId={params.id} userId={userId} />;
+  // Pass exactly what the client expects
+  return <Client routeId={params.id} userId={user?.id ?? null} />;
 }

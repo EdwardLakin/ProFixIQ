@@ -116,7 +116,9 @@ export default function Client({
         } catch {/* ignore */}
       }
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
         const uid = user?.id ?? null;
         setCurrentUserId(uid);
         setUserId(uid);
@@ -162,7 +164,9 @@ export default function Client({
                 .ilike("custom_id", `${prefix}%`)
                 .limit(50);
               const wanted = `${prefix}${n}`;
-              const match = (cands ?? []).find((r) => (r.custom_id ?? "").toUpperCase().replace(/^([A-Z]+)0+/, "$1") === wanted);
+              const match = (cands ?? []).find(
+                (r) => (r.custom_id ?? "").toUpperCase().replace(/^([A-Z]+)0+/, "$1") === wanted,
+              );
               if (match) woRow = match as WorkOrder;
             }
           }
@@ -190,7 +194,11 @@ export default function Client({
         }
 
         const [linesRes, vehRes, custRes] = await Promise.all([
-          supabase.from("work_order_lines").select("*").eq("work_order_id", woRow.id).order("created_at", { ascending: true }),
+          supabase
+            .from("work_order_lines")
+            .select("*")
+            .eq("work_order_id", woRow.id)
+            .order("created_at", { ascending: true }),
           woRow.vehicle_id
             ? supabase.from("vehicles").select("*").eq("id", woRow.vehicle_id).maybeSingle()
             : Promise.resolve({ data: null, error: null } as const),
@@ -216,7 +224,7 @@ export default function Client({
         setLoading(false);
       }
     },
-    [supabase, routeId, warnedMissing, setWo, setLines, setVehicle, setCustomer]
+    [supabase, routeId, warnedMissing, setWo, setLines, setVehicle, setCustomer],
   );
 
   useEffect(() => {
@@ -232,18 +240,20 @@ export default function Client({
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "work_orders", filter: `id=eq.${routeId}` },
-        () => fetchAll()
+        () => fetchAll(),
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "work_order_lines", filter: `work_order_id=eq.${routeId}` },
-        () => fetchAll()
+        () => fetchAll(),
       )
       .subscribe();
     return () => {
       try {
         supabase.removeChannel(ch);
-      } catch {/* ignore */}
+      } catch {
+        /* ignore */
+      }
     };
   }, [supabase, routeId, fetchAll]);
 
