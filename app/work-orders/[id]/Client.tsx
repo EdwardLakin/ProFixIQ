@@ -2,10 +2,11 @@
 
 /**
  * Work Order — ID Page (Tech/View)
- * - Reads route id with useParams().
- * - Auth-stabilized fetches: retry on 401/403/bad_jwt with refreshSession().
+ * - Reads route id with useParams() (no props from wrapper).
+ * - Stabilized Supabase auth (getSession → refreshSession → getUser).
  * - Falls back to custom_id (case-insensitive, leading-zero tolerant).
  * - Realtime updates for WO & WO lines.
+ * - Same UI/UX (header, jobs list, photos, modals).
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -23,14 +24,13 @@ import FocusedJobModal from "@/features/work-orders/components/workorders/Focuse
 import AddJobModal from "@work-orders/components/workorders/AddJobModal";
 import { useTabState } from "@/features/shared/hooks/useTabState";
 
-/* ------------------------------- Types -------------------------------- */
+/* --------------------------------- Types --------------------------------- */
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
 
-/* --------------------------- Utilities -------------------------------- */
 const looksLikeUuid = (s: string) => s.includes("-") && s.length >= 36;
 
 /** Normalize a custom id like WC00003 → {prefix:"WC", n:3}. */
@@ -41,24 +41,7 @@ function splitCustomId(raw: string): { prefix: string; n: number | null } {
   return { prefix: m[1], n: Number.isFinite(n!) ? n : null };
 }
 
-function isAuthError(e: unknown): boolean {
-  if (!e) return false;
-  const msg = (e as any)?.message?.toString?.() ?? "";
-  const status = (e as any)?.status ?? (e as any)?.code ?? (e as any)?.statusCode;
-  return (
-    msg.includes("JWT") ||
-    msg.includes("bad jwt") ||
-    msg.includes("invalid token") ||
-    status === 401 ||
-    status === 403
-  );
-}
-
-async function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-/* ------------------------- Status → Styles ---------------------------- */
+/* ---------------------------- Status -> Styles ---------------------------- */
 const statusBadge: Record<string, string> = {
   awaiting_approval: "bg-blue-100 text-blue-800",
   awaiting: "bg-slate-200 text-slate-800",
@@ -96,196 +79,170 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
-  // Core entities (persist some UI state per tab)
+  // Core entities (persist per tab where it helps UX)
   const [wo, setWo] = useTabState<WorkOrder | null>("wo:id:wo", null);
   const [lines, setLines] = useTabState<WorkOrderLine[]>("wo:id:lines", []);
   const [vehicle, setVehicle] = useTabState<Vehicle | null>("wo:id:veh", null);
   const [customer, setCustomer] = useTabState<Customer | null>("wo:id:cust", null);
 
-  // UI/auth/debug state
-  const [loading, setLoading] = useState(true);
+  // UI state
+  const [loading, setLoading] = useState<boolean>(true);
   const [viewError, setViewError] = useState<string | null>(null);
-  const [lastErrDetail, setLastErrDetail] = useState<string | null>(null);
 
+  // user (local; used for banner + photo uploader)
   const [currentUserId, setCurrentUserId] = useTabState<string | null>("wo:id:uid", null);
   const [, setUserId] = useTabState<string | null>("wo:id:effectiveUid", null);
 
+  // persisted UI toggle
   const [showDetails, setShowDetails] = useTabState<boolean>("wo:showDetails", true);
+
+  // Add Job modal
   const [isAddJobModalOpen, setIsAddJobModalOpen] = useState(false);
+
+  // Focused job modal
   const [focusedJobId, setFocusedJobId] = useState<string | null>(null);
   const [focusedOpen, setFocusedOpen] = useState(false);
+
+  // one-time missing notice
   const [warnedMissing, setWarnedMissing] = useState(false);
 
-  /* ---------------------- Auth bootstrap + listener ---------------------- */
+  /* ---------------------- AUTH (stabilized) ---------------------- */
   useEffect(() => {
     (async () => {
       const { data: sessionData } = await supabase.auth.getSession();
       if (!sessionData?.session) {
         try {
           await supabase.auth.refreshSession();
-        } catch {/* ignore */}
+        } catch {
+          /* ignore */
+        }
       }
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
         const uid = user?.id ?? null;
         setCurrentUserId(uid);
         setUserId(uid);
-      } catch {/* keep null */}
-    })();
-
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_evt, session) => {
-      const uid = session?.user?.id ?? null;
-      setCurrentUserId(uid);
-      setUserId(uid);
-      // When we *gain* a user, refetch
-      if (uid) void fetchAll();
-    });
-
-    return () => {
-      try { sub?.subscription.unsubscribe(); } catch { /* ignore */ }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supabase]);
-
-  /* ---------------------- Auth-aware fetch helper ---------------------- */
-  const authFetch = useCallback(
-    async <T,>(fn: () => Promise<{ data: T | null; error: any }>, label: string): Promise<T | null> => {
-      let attempt = 0;
-      let lastErr: any = null;
-
-      while (attempt < 5) {
-        const { data, error } = await fn();
-        if (!error) {
-          setLastErrDetail(null);
-          return data as T;
-        }
-
-        lastErr = error;
-        const detail = `${label} failed (try ${attempt + 1}/5) — ${error?.message ?? error}`;
-        setLastErrDetail(detail);
-
-        if (isAuthError(error)) {
-          try { await supabase.auth.refreshSession(); } catch {/* ignore */}
-          await sleep(150 * Math.pow(2, attempt)); // 150ms, 300ms, 600ms, ...
-          attempt += 1;
-          continue;
-        }
-
-        // Non-auth error → break immediately
-        break;
+      } catch {
+        /* keep null */
       }
+    })();
+  }, [supabase, setCurrentUserId, setUserId]);
 
-      throw lastErr ?? new Error(`${label} failed`);
-    },
-    [supabase],
-  );
+  /* ---------------------- FETCH ---------------------- */
+  const fetchAll = useCallback(
+    async (retry = 0) => {
+      if (!routeId) return;
+      setLoading(true);
+      setViewError(null);
 
-  /* ------------------------------ Fetch all ------------------------------ */
-  const fetchAll = useCallback(async () => {
-    if (!routeId) return;
-    setLoading(true);
-    setViewError(null);
+      try {
+        // Try by id first, then by custom_id (case-insensitive, zero-padding tolerant)
+        const { data: woRowById, error: woErr } = await supabase
+          .from("work_orders")
+          .select("*")
+          .eq("id", routeId)
+          .maybeSingle();
+        if (woErr) throw woErr;
 
-    try {
-      // 1) Load WO (by id, then by custom id with smart matching)
-      let woRow = await authFetch<WorkOrder | null>(
-        () => supabase.from("work_orders").select("*").eq("id", routeId).maybeSingle(),
-        "Select work_order by id",
-      );
+        let woRow = (woRowById as WorkOrder | null) ?? null;
 
-      if (!woRow && !looksLikeUuid(routeId)) {
-        const eq = await authFetch<WorkOrder | null>(
-          () => supabase.from("work_orders").select("*").eq("custom_id", routeId).maybeSingle(),
-          "Select work_order by custom_id (eq)",
-        );
-        woRow = eq;
+        if (!woRow && !looksLikeUuid(routeId)) {
+          const eqRes = await supabase
+            .from("work_orders")
+            .select("*")
+            .eq("custom_id", routeId)
+            .maybeSingle();
+          woRow = (eqRes.data as WorkOrder | null) ?? null;
 
-        if (!woRow) {
-          const ilike = await authFetch<WorkOrder | null>(
-            () => supabase.from("work_orders").select("*").ilike("custom_id", routeId.toUpperCase()).maybeSingle(),
-            "Select work_order by custom_id (ilike)",
-          );
-          woRow = ilike;
-        }
+          if (!woRow) {
+            const ilikeRes = await supabase
+              .from("work_orders")
+              .select("*")
+              .ilike("custom_id", routeId.toUpperCase())
+              .maybeSingle();
+            woRow = (ilikeRes.data as WorkOrder | null) ?? null;
+          }
 
-        if (!woRow) {
-          const { prefix, n } = splitCustomId(routeId);
-          if (n !== null) {
-            const cands = await authFetch<WorkOrder[] | null>(
-              () => supabase.from("work_orders").select("*").ilike("custom_id", `${prefix}%`).limit(50),
-              "Scan custom_id candidates",
-            );
-            const wanted = `${prefix}${n}`;
-            const match =
-              (cands ?? []).find((r) => (r.custom_id ?? "").toUpperCase().replace(/^([A-Z]+)0+/, "$1") === wanted) ||
-              null;
-            woRow = match;
+          if (!woRow) {
+            const { prefix, n } = splitCustomId(routeId);
+            if (n !== null) {
+              const { data: cands } = await supabase
+                .from("work_orders")
+                .select("*")
+                .ilike("custom_id", `${prefix}%`)
+                .limit(50);
+              const wanted = `${prefix}${n}`;
+              const match = (cands ?? []).find(
+                (r) => (r.custom_id ?? "").toUpperCase().replace(/^([A-Z]+)0+/, "$1") === wanted,
+              );
+              if (match) woRow = match as WorkOrder;
+            }
           }
         }
+
+        if (!woRow) {
+          if (retry < 2) {
+            await new Promise((r) => setTimeout(r, 200 * Math.pow(2, retry)));
+            return fetchAll(retry + 1);
+          }
+          setViewError("Work order not visible / not found.");
+          setWo(null);
+          setLines([]);
+          setVehicle(null);
+          setCustomer(null);
+          setLoading(false);
+          return;
+        }
+
+        setWo(woRow);
+
+        if (!warnedMissing && (!woRow.vehicle_id || !woRow.customer_id)) {
+          toast.error("This work order is missing vehicle and/or customer. Open the Create form to set them.");
+          setWarnedMissing(true);
+        }
+
+        const [linesRes, vehRes, custRes] = await Promise.all([
+          supabase
+            .from("work_order_lines")
+            .select("*")
+            .eq("work_order_id", woRow.id)
+            .order("created_at", { ascending: true }),
+          woRow.vehicle_id
+            ? supabase.from("vehicles").select("*").eq("id", woRow.vehicle_id).maybeSingle()
+            : Promise.resolve({ data: null, error: null } as const),
+          woRow.customer_id
+            ? supabase.from("customers").select("*").eq("id", woRow.customer_id).maybeSingle()
+            : Promise.resolve({ data: null, error: null } as const),
+        ]);
+
+        if (linesRes.error) throw linesRes.error;
+        setLines((linesRes.data ?? []) as WorkOrderLine[]);
+
+        if (vehRes?.error) throw vehRes.error;
+        setVehicle((vehRes?.data as Vehicle | null) ?? null);
+
+        if (custRes?.error) throw custRes.error;
+        setCustomer((custRes?.data as Customer | null) ?? null);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "Failed to load work order.";
+        setViewError(msg);
+        // eslint-disable-next-line no-console
+        console.error("[WO id page] load error:", e);
+      } finally {
+        setLoading(false);
       }
-
-      if (!woRow) {
-        setViewError("Work order not visible / not found.");
-        setWo(null);
-        setLines([]);
-        setVehicle(null);
-        setCustomer(null);
-        return;
-      }
-
-      setWo(woRow);
-
-      if (!warnedMissing && (!woRow.vehicle_id || !woRow.customer_id)) {
-        toast.error("This work order is missing vehicle and/or customer. Open the Create form to set them.");
-        setWarnedMissing(true);
-      }
-
-      // 2) Related rows (lines, vehicle, customer)
-      const [linesRes, vehRes, custRes] = await Promise.all([
-        authFetch<WorkOrderLine[]>(
-          () =>
-            supabase
-              .from("work_order_lines")
-              .select("*")
-              .eq("work_order_id", woRow!.id)
-              .order("created_at", { ascending: true }),
-          "Select work_order_lines",
-        ),
-        woRow.vehicle_id
-          ? authFetch<Vehicle | null>(
-              () => supabase.from("vehicles").select("*").eq("id", woRow!.vehicle_id!).maybeSingle(),
-              "Select vehicle",
-            )
-          : Promise.resolve(null),
-        woRow.customer_id
-          ? authFetch<Customer | null>(
-              () => supabase.from("customers").select("*").eq("id", woRow!.customer_id!).maybeSingle(),
-              "Select customer",
-            )
-          : Promise.resolve(null),
-      ]);
-
-      setLines(linesRes ?? []);
-      setVehicle(vehRes ?? null);
-      setCustomer(custRes ?? null);
-      setLastErrDetail(null);
-    } catch (e: any) {
-      const msg = e?.message || "Failed to load work order.";
-      setViewError(msg);
-      setLastErrDetail(String(msg));
-      // eslint-disable-next-line no-console
-      console.error("[WO id page] load error:", e);
-    } finally {
-      setLoading(false);
-    }
-  }, [routeId, supabase, authFetch, warnedMissing, setWo, setLines, setVehicle, setCustomer]);
+    },
+    [supabase, routeId, warnedMissing, setWo, setLines, setVehicle, setCustomer],
+  );
 
   useEffect(() => {
     if (!routeId) return;
     void fetchAll();
   }, [fetchAll, routeId]);
 
-  // Realtime
+  // Real-time refresh
   useEffect(() => {
     if (!routeId) return;
     const ch = supabase
@@ -302,7 +259,11 @@ export default function WorkOrderIdClient(): JSX.Element {
       )
       .subscribe();
     return () => {
-      try { supabase.removeChannel(ch); } catch {/* ignore */}
+      try {
+        supabase.removeChannel(ch);
+      } catch {
+        /* ignore */
+      }
     };
   }, [supabase, routeId, fetchAll]);
 
@@ -330,7 +291,9 @@ export default function WorkOrderIdClient(): JSX.Element {
   const createdAtText = createdAt && !isNaN(createdAt.getTime()) ? format(createdAt, "PPpp") : "—";
 
   /* -------------------------- UI -------------------------- */
-  if (!routeId) return <div className="p-6 text-red-500">Missing work order id.</div>;
+  if (!routeId) {
+    return <div className="p-6 text-red-500">Missing work order id.</div>;
+  }
 
   const Skeleton = ({ className = "" }: { className?: string }) => (
     <div className={`animate-pulse rounded bg-neutral-800/60 ${className}`} />
@@ -348,16 +311,6 @@ export default function WorkOrderIdClient(): JSX.Element {
             Sign In
           </Link>{" "}
           and reauthenticate, then return here.
-        </div>
-      )}
-
-      {/* Debug detail (only when we have an error detail) */}
-      {lastErrDetail && (
-        <div className="mt-3 rounded border border-neutral-800 bg-neutral-900 p-3 text-xs text-neutral-300">
-          <div className="font-semibold text-orange-400 mb-1">Debug</div>
-          <div>routeId: <code className="text-neutral-400">{routeId}</code></div>
-          <div>uid: <code className="text-neutral-400">{currentUserId || "null"}</code></div>
-          <div className="truncate">last error: <code className="text-red-300">{lastErrDetail}</code></div>
         </div>
       )}
 
@@ -476,7 +429,7 @@ export default function WorkOrderIdClient(): JSX.Element {
               )}
             </div>
 
-            {/* Jobs list */}
+            {/* Jobs list (click -> FocusedJobModal) */}
             <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold">Jobs in this Work Order</h2>
@@ -487,10 +440,15 @@ export default function WorkOrderIdClient(): JSX.Element {
               ) : (
                 <div className="space-y-2">
                   {sortedLines.map((ln) => {
-                    const statusKey = (ln.status ?? "awaiting").toLowerCase().replaceAll(" ", "_");
-                    const borderCls = statusBorder[statusKey] || "border-l-4 border-gray-400";
-                    const tintCls = statusRowTint[statusKey] || "bg-neutral-950";
-                    const punchedIn = !!ln.punched_in_at && !ln.punched_out_at;
+                    const statusKey = (ln.status ?? "awaiting")
+                      .toLowerCase()
+                      .replaceAll(" ", "_");
+                    const borderCls =
+                      statusBorder[statusKey] || "border-l-4 border-gray-400";
+                    const tintCls =
+                      statusRowTint[statusKey] || "bg-neutral-950";
+                    const punchedIn =
+                      !!ln.punched_in_at && !ln.punched_out_at;
 
                     return (
                       <div
@@ -511,14 +469,21 @@ export default function WorkOrderIdClient(): JSX.Element {
                             </div>
                             <div className="text-xs text-neutral-400">
                               {String(ln.job_type ?? "job").replaceAll("_", " ")} •{" "}
-                              {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} • Status:{" "}
+                              {typeof ln.labor_time === "number"
+                                ? `${ln.labor_time}h`
+                                : "—"}{" "}
+                              • Status:{" "}
                               {(ln.status ?? "awaiting").replaceAll("_", " ")}
                             </div>
                             {(ln.complaint || ln.cause || ln.correction) && (
                               <div className="text-xs text-neutral-400 mt-1 flex flex-wrap items-center gap-2">
-                                {ln.complaint ? <span>Cmpl: {ln.complaint}</span> : null}
+                                {ln.complaint ? (
+                                  <span>Cmpl: {ln.complaint}</span>
+                                ) : null}
                                 {ln.cause ? <span>| Cause: {ln.cause}</span> : null}
-                                {ln.correction ? <span>| Corr: {ln.correction}</span> : null}
+                                {ln.correction ? (
+                                  <span>| Corr: {ln.correction}</span>
+                                ) : null}
                               </div>
                             )}
                           </div>
@@ -548,7 +513,10 @@ export default function WorkOrderIdClient(): JSX.Element {
         <div className="mt-8 space-y-4">
           <h2 className="text-xl font-semibold">Vehicle Photos</h2>
           <VehiclePhotoUploader vehicleId={vehicle.id} />
-          <VehiclePhotoGallery vehicleId={vehicle.id} currentUserId={currentUserId || "anon"} />
+          <VehiclePhotoGallery
+            vehicleId={vehicle.id}
+            currentUserId={currentUserId || "anon"}
+          />
         </div>
       )}
 
