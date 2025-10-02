@@ -3,10 +3,10 @@
 /**
  * Work Order — ID Page (Tech/View)
  * -----------------------------------------------------------------------------
- * - Robust auth bootstrap for Safari/iPad (uses getSession() + refreshSession()).
- * - Falls back to custom_id when the route param isn’t a UUID.
- * - Uses realtime channels to keep lines fresh.
- * - Keeps UI/UX from your previous version (header, jobs list, photos, modals).
+ * - Robust auth bootstrap for Safari/iPad (getSession → refresh → getUser).
+ * - Looks up by UUID first, then custom_id (case-insensitive, zero-padding tolerant).
+ * - Realtime channels keep WO + lines fresh.
+ * - Same UI as before (header, jobs list, photos, modals).
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -39,6 +39,14 @@ type ParamsShape = Record<string, string | string[]>;
 const paramToString = (v: string | string[] | undefined): string | null =>
   !v ? null : Array.isArray(v) ? v[0] ?? null : v;
 const looksLikeUuid = (s: string) => s.includes("-") && s.length >= 36;
+
+/** Normalize a custom id like WC00003 → {prefix:"WC", n:3}. */
+function splitCustomId(raw: string): { prefix: string; n: number | null } {
+  const m = raw.toUpperCase().match(/^([A-Z]+)\s*0*?(\d+)?$/);
+  if (!m) return { prefix: raw.toUpperCase(), n: null };
+  const n = m[2] ? parseInt(m[2], 10) : null;
+  return { prefix: m[1], n: Number.isFinite(n!) ? n : null };
+}
 
 /* ---------------------------- Status -> Styles ---------------------------- */
 const statusBadge: Record<string, string> = {
@@ -148,7 +156,7 @@ export default function WorkOrderIdPage(): JSX.Element {
       setViewError(null);
 
       try {
-        // Try by id first, then custom_id
+        // 1) Try by UUID id
         const { data: woRowById, error: woErr } = await supabase
           .from("work_orders")
           .select("*")
@@ -156,15 +164,45 @@ export default function WorkOrderIdPage(): JSX.Element {
           .maybeSingle();
         if (woErr) throw woErr;
 
-        let woRow = woRowById;
+        let woRow = woRowById as WorkOrder | null;
 
+        // 2) Fallbacks by custom_id
         if (!woRow && !looksLikeUuid(woParam)) {
-          const byCustom = await supabase
+          // 2a) strict equality
+          const byCustomEq = await supabase
             .from("work_orders")
             .select("*")
             .eq("custom_id", woParam)
             .maybeSingle();
-          if (byCustom.data) woRow = byCustom.data as WorkOrder | null;
+
+          woRow = (byCustomEq.data as WorkOrder | null) ?? null;
+
+          // 2b) case-insensitive match
+          if (!woRow) {
+            const byIlike = await supabase
+              .from("work_orders")
+              .select("*")
+              .ilike("custom_id", woParam.toUpperCase())
+              .maybeSingle();
+            woRow = (byIlike.data as WorkOrder | null) ?? null;
+          }
+
+          // 2c) tolerate extra leading zeros in numeric suffix (WC00003 → WC0003)
+          if (!woRow) {
+            const { prefix, n } = splitCustomId(woParam);
+            if (n !== null) {
+              // search a small window around that number just in case (e.g., WC3, WC03, WC0003)
+              const { data: candidates } = await supabase
+                .from("work_orders")
+                .select("*")
+                .ilike("custom_id", `${prefix}%`)
+                .limit(50);
+
+              const wanted = `${prefix}${n}`;
+              const match = (candidates ?? []).find((r) => (r.custom_id ?? "").toUpperCase().replace(/^([A-Z]+)0+/, "$1") === wanted);
+              if (match) woRow = match as WorkOrder;
+            }
+          }
         }
 
         if (!woRow) {
@@ -203,14 +241,14 @@ export default function WorkOrderIdPage(): JSX.Element {
                 .select("*")
                 .eq("id", woRow.vehicle_id)
                 .maybeSingle()
-            : Promise.resolve({ data: null, error: null }),
+            : Promise.resolve({ data: null, error: null } as const),
           woRow.customer_id
             ? supabase
                 .from("customers")
                 .select("*")
                 .eq("id", woRow.customer_id)
                 .maybeSingle()
-            : Promise.resolve({ data: null, error: null }),
+            : Promise.resolve({ data: null, error: null } as const),
         ]);
 
         if (linesRes.error) throw linesRes.error;
@@ -221,7 +259,7 @@ export default function WorkOrderIdPage(): JSX.Element {
 
         if (custRes?.error) throw custRes.error;
         setCustomer((custRes?.data as Customer | null) ?? null);
-      } catch (e) {
+      } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "Failed to load work order.";
         setViewError(msg);
         // eslint-disable-next-line no-console
@@ -504,10 +542,7 @@ export default function WorkOrderIdPage(): JSX.Element {
         <div className="mt-8 space-y-4">
           <h2 className="text-xl font-semibold">Vehicle Photos</h2>
           <VehiclePhotoUploader vehicleId={vehicle.id} />
-          <VehiclePhotoGallery
-            vehicleId={vehicle.id}
-            currentUserId={currentUserId || "anon"}
-          />
+          <VehiclePhotoGallery vehicleId={vehicle.id} currentUserId={currentUserId || "anon"} />
         </div>
       )}
 
