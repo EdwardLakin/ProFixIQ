@@ -66,10 +66,7 @@ const statusRowTint: Record<string, string> = {
 /* ---------------------------------- Page --------------------------------- */
 export default function WorkOrderTechPage(): JSX.Element {
   const params = useParams();
-  const woParam = useMemo(
-    () => paramToString((params as ParamsShape)?.id),
-    [params]
-  );
+  const woParam = useMemo(() => paramToString((params as ParamsShape)?.id), [params]);
 
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
@@ -85,7 +82,7 @@ export default function WorkOrderTechPage(): JSX.Element {
 
   // user
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
+  const [currentShopId, setCurrentShopId] = useState<string | null>(null);
 
   // persisted UI toggle
   const [showDetails, setShowDetails] = useTabState<boolean>("wo:showDetails", true);
@@ -100,48 +97,66 @@ export default function WorkOrderTechPage(): JSX.Element {
   // one-time missing notice
   const [warnedMissing, setWarnedMissing] = useState(false);
 
-  // Current user
+  // Current user + shop
   useEffect(() => {
     (async () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (user) {
-        setCurrentUserId(user.id);
-        setUserId(user.id);
-      } else {
+
+      if (!user?.id) {
         setCurrentUserId(null);
-        setUserId(null);
+        setCurrentShopId(null);
+        return;
       }
+
+      setCurrentUserId(user.id);
+
+      // profiles.id == auth.uid(); read shop_id to satisfy wo_*_shop_select policies
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("id, shop_id")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      setCurrentShopId(profile?.shop_id ?? null);
     })();
   }, [supabase]);
 
   /* ---------------------- FETCH ---------------------- */
   const fetchAll = useCallback(
     async (retry = 0) => {
-      if (!woParam || !userId) return;
+      if (!woParam) return;
+      if (!currentUserId || !currentShopId) {
+        // Wait for session + shop to resolve
+        return;
+      }
 
       setLoading(true);
       setViewError(null);
 
       try {
-        // Try by id first, then custom_id
-        const { data: woRowById, error: woErr } = await supabase
+        // Try by id first (scoped by shop), then by custom_id (also scoped by shop)
+        const byId = await supabase
           .from("work_orders")
           .select("*")
           .eq("id", woParam)
+          .eq("shop_id", currentShopId)
           .maybeSingle();
-        if (woErr) throw woErr;
 
-        let woRow = woRowById;
+        if (byId.error) throw byId.error;
+
+        let woRow = byId.data as WorkOrder | null;
 
         if (!woRow && !looksLikeUuid(woParam)) {
           const byCustom = await supabase
             .from("work_orders")
             .select("*")
             .eq("custom_id", woParam)
+            .eq("shop_id", currentShopId)
             .maybeSingle();
-          if (byCustom.data) woRow = byCustom.data;
+          if (byCustom.error) throw byCustom.error;
+          woRow = (byCustom.data as WorkOrder | null) ?? null;
         }
 
         if (!woRow) {
@@ -158,13 +173,21 @@ export default function WorkOrderTechPage(): JSX.Element {
           return;
         }
 
+        // sanity: enforce same shop visibility
+        if (woRow.shop_id !== currentShopId) {
+          setViewError("You don't have access to this work order (shop mismatch).");
+          setWo(null);
+          setLines([]);
+          setVehicle(null);
+          setCustomer(null);
+          setLoading(false);
+          return;
+        }
+
         setWo(woRow);
 
         if (!warnedMissing && (!woRow.vehicle_id || !woRow.customer_id)) {
-          // keep this simple to avoid extra typings
-          toast.error(
-            "This work order is missing vehicle and/or customer. Open the Create form to set them."
-          );
+          toast.error("This work order is missing vehicle and/or customer. Open the Create form to set them.");
           setWarnedMissing(true);
         }
 
@@ -173,25 +196,30 @@ export default function WorkOrderTechPage(): JSX.Element {
             .from("work_order_lines")
             .select("*")
             .eq("work_order_id", woRow.id)
+            .eq("shop_id", currentShopId) // satisfy wol_shop_select
             .order("created_at", { ascending: true }),
+
           woRow.vehicle_id
             ? supabase
                 .from("vehicles")
                 .select("*")
                 .eq("id", woRow.vehicle_id)
+                .eq("shop_id", currentShopId) // satisfy vehicles_shop_select
                 .maybeSingle()
             : Promise.resolve({ data: null, error: null }),
+
           woRow.customer_id
             ? supabase
                 .from("customers")
                 .select("*")
                 .eq("id", woRow.customer_id)
+                .eq("shop_id", currentShopId) // satisfy customers_shop_select
                 .maybeSingle()
             : Promise.resolve({ data: null, error: null }),
         ]);
 
         if (linesRes.error) throw linesRes.error;
-        setLines((linesRes.data ?? []) as WorkOrderLine[]);
+        setLines((linesRes.data as WorkOrderLine[]) ?? []);
 
         if (vehRes?.error) throw vehRes.error;
         setVehicle((vehRes?.data as Vehicle | null) ?? null);
@@ -201,24 +229,24 @@ export default function WorkOrderTechPage(): JSX.Element {
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Failed to load work order.";
         setViewError(msg);
-        // keep console for debugging
         // eslint-disable-next-line no-console
         console.error("[WO id page] load error:", e);
       } finally {
         setLoading(false);
       }
     },
-    [supabase, woParam, userId, warnedMissing]
+    [supabase, woParam, currentUserId, currentShopId, warnedMissing]
   );
 
   useEffect(() => {
-    if (!woParam || !userId) return;
+    if (!woParam || !currentUserId || !currentShopId) return;
     void fetchAll();
-  }, [fetchAll, woParam, userId]);
+  }, [fetchAll, woParam, currentUserId, currentShopId]);
 
   // Real-time refresh
   useEffect(() => {
-    if (!woParam || !userId) return;
+    if (!woParam || !currentUserId || !currentShopId) return;
+
     const ch = supabase
       .channel(`wo:${woParam}`)
       .on(
@@ -232,14 +260,15 @@ export default function WorkOrderTechPage(): JSX.Element {
         () => fetchAll()
       )
       .subscribe();
+
     return () => {
       try {
         supabase.removeChannel(ch);
       } catch {
-        // ignore
+        /* noop */
       }
     };
-  }, [supabase, woParam, userId, fetchAll]);
+  }, [supabase, woParam, currentUserId, currentShopId, fetchAll]);
 
   // Legacy refresh event
   useEffect(() => {
@@ -261,11 +290,9 @@ export default function WorkOrderTechPage(): JSX.Element {
     });
   }, [lines]);
 
-  const chipClass = (s: string | null): string => {
+  const chipClass = (s: string | null | undefined): string => {
     const key = (s ?? "awaiting").toLowerCase().replaceAll(" ", "_");
-    return `text-xs px-2 py-1 rounded ${
-      (statusBadge as Record<string, string>)[key] ?? "bg-gray-200 text-gray-800"
-    }`;
+    return `text-xs px-2 py-1 rounded ${statusBadge[key] ?? "bg-gray-200 text-gray-800"}`;
   };
 
   const createdAt = wo?.created_at ? new Date(wo.created_at) : null;
@@ -374,9 +401,7 @@ export default function WorkOrderTechPage(): JSX.Element {
                     {customer ? (
                       <>
                         <p>
-                          {[customer.first_name ?? "", customer.last_name ?? ""]
-                            .filter(Boolean)
-                            .join(" ") || "—"}
+                          {[customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") || "—"}
                         </p>
                         <p className="text-sm text-neutral-400">
                           {customer.phone ?? "—"} {customer.email ? `• ${customer.email}` : ""}
@@ -471,10 +496,7 @@ export default function WorkOrderTechPage(): JSX.Element {
         <div className="mt-8 space-y-4">
           <h2 className="text-xl font-semibold">Vehicle Photos</h2>
           <VehiclePhotoUploader vehicleId={vehicle.id} />
-          <VehiclePhotoGallery
-            vehicleId={vehicle.id}
-            currentUserId={currentUserId}
-          />
+          <VehiclePhotoGallery vehicleId={vehicle.id} currentUserId={currentUserId} />
         </div>
       )}
 
