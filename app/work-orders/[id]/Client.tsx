@@ -2,12 +2,16 @@
 
 /**
  * Work Order — ID Page (Tech/View)
- * Server passes userId → avoids Safari/iPad bad_jwt loops.
- * Also falls back to custom_id (case-insensitive, leading-zero tolerant).
+ * - Reads route id with useParams() (no props from wrapper).
+ * - Stabilized Supabase auth (getSession → refreshSession → getUser).
+ * - Falls back to custom_id (case-insensitive, leading-zero tolerant).
+ * - Realtime updates for WO & WO lines.
+ * - Same UI/UX (header, jobs list, photos, modals).
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
@@ -69,18 +73,13 @@ const statusRowTint: Record<string, string> = {
   new: "bg-neutral-950",
 };
 
-export default function Client({
-  routeId,
-  userId: userIdFromServer,
-}: {
-  routeId: string;
-  userId: string | null;
-  // match Next.js typing here too
-  searchParams?: { [key: string]: string | string[] | undefined };
-}): JSX.Element {
+export default function WorkOrderIdClient(): JSX.Element {
+  const params = useParams();
+  const routeId = (params?.id as string) || "";
+
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
-  // Core entities (persist line selections per tab where it helps UX)
+  // Core entities (persist per tab where it helps UX)
   const [wo, setWo] = useTabState<WorkOrder | null>("wo:id:wo", null);
   const [lines, setLines] = useTabState<WorkOrderLine[]>("wo:id:lines", []);
   const [vehicle, setVehicle] = useTabState<Vehicle | null>("wo:id:veh", null);
@@ -90,9 +89,9 @@ export default function Client({
   const [loading, setLoading] = useState<boolean>(true);
   const [viewError, setViewError] = useState<string | null>(null);
 
-  // user (seed from server so the banner doesn’t flash / loop)
-  const [currentUserId, setCurrentUserId] = useTabState<string | null>("wo:id:uid", userIdFromServer);
-  const [, setUserId] = useTabState<string | null>("wo:id:effectiveUid", userIdFromServer);
+  // user (local; used for banner + photo uploader)
+  const [currentUserId, setCurrentUserId] = useTabState<string | null>("wo:id:uid", null);
+  const [, setUserId] = useTabState<string | null>("wo:id:effectiveUid", null);
 
   // persisted UI toggle
   const [showDetails, setShowDetails] = useTabState<boolean>("wo:showDetails", true);
@@ -110,7 +109,6 @@ export default function Client({
   /* ---------------------- AUTH (stabilized) ---------------------- */
   useEffect(() => {
     (async () => {
-      // If we already have a server-provided user id, keep it unless a newer one appears.
       const { data: sessionData } = await supabase.auth.getSession();
       if (!sessionData?.session) {
         try {
@@ -127,7 +125,7 @@ export default function Client({
         setCurrentUserId(uid);
         setUserId(uid);
       } catch {
-        // keep whatever we had from the server
+        /* keep null */
       }
     })();
   }, [supabase, setCurrentUserId, setUserId]);
@@ -148,10 +146,14 @@ export default function Client({
           .maybeSingle();
         if (woErr) throw woErr;
 
-        let woRow = woRowById as WorkOrder | null;
+        let woRow = (woRowById as WorkOrder | null) ?? null;
 
         if (!woRow && !looksLikeUuid(routeId)) {
-          const eqRes = await supabase.from("work_orders").select("*").eq("custom_id", routeId).maybeSingle();
+          const eqRes = await supabase
+            .from("work_orders")
+            .select("*")
+            .eq("custom_id", routeId)
+            .maybeSingle();
           woRow = (eqRes.data as WorkOrder | null) ?? null;
 
           if (!woRow) {
@@ -438,10 +440,15 @@ export default function Client({
               ) : (
                 <div className="space-y-2">
                   {sortedLines.map((ln) => {
-                    const statusKey = (ln.status ?? "awaiting").toLowerCase().replaceAll(" ", "_");
-                    const borderCls = statusBorder[statusKey] || "border-l-4 border-gray-400";
-                    const tintCls = statusRowTint[statusKey] || "bg-neutral-950";
-                    const punchedIn = !!ln.punched_in_at && !ln.punched_out_at;
+                    const statusKey = (ln.status ?? "awaiting")
+                      .toLowerCase()
+                      .replaceAll(" ", "_");
+                    const borderCls =
+                      statusBorder[statusKey] || "border-l-4 border-gray-400";
+                    const tintCls =
+                      statusRowTint[statusKey] || "bg-neutral-950";
+                    const punchedIn =
+                      !!ln.punched_in_at && !ln.punched_out_at;
 
                     return (
                       <div
@@ -462,14 +469,21 @@ export default function Client({
                             </div>
                             <div className="text-xs text-neutral-400">
                               {String(ln.job_type ?? "job").replaceAll("_", " ")} •{" "}
-                              {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} • Status:{" "}
+                              {typeof ln.labor_time === "number"
+                                ? `${ln.labor_time}h`
+                                : "—"}{" "}
+                              • Status:{" "}
                               {(ln.status ?? "awaiting").replaceAll("_", " ")}
                             </div>
                             {(ln.complaint || ln.cause || ln.correction) && (
                               <div className="text-xs text-neutral-400 mt-1 flex flex-wrap items-center gap-2">
-                                {ln.complaint ? <span>Cmpl: {ln.complaint}</span> : null}
+                                {ln.complaint ? (
+                                  <span>Cmpl: {ln.complaint}</span>
+                                ) : null}
                                 {ln.cause ? <span>| Cause: {ln.cause}</span> : null}
-                                {ln.correction ? <span>| Corr: {ln.correction}</span> : null}
+                                {ln.correction ? (
+                                  <span>| Corr: {ln.correction}</span>
+                                ) : null}
                               </div>
                             )}
                           </div>
@@ -499,7 +513,10 @@ export default function Client({
         <div className="mt-8 space-y-4">
           <h2 className="text-xl font-semibold">Vehicle Photos</h2>
           <VehiclePhotoUploader vehicleId={vehicle.id} />
-          <VehiclePhotoGallery vehicleId={vehicle.id} currentUserId={currentUserId || "anon"} />
+          <VehiclePhotoGallery
+            vehicleId={vehicle.id}
+            currentUserId={currentUserId || "anon"}
+          />
         </div>
       )}
 
