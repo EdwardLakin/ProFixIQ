@@ -141,13 +141,18 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   const [showAllPackages, setShowAllPackages] = useState(false);
   const [showAllSingles, setShowAllSingles] = useState(false);
 
+  // NEW: capture shopId so inserts satisfy RLS
+  const [shopId, setShopId] = useState<string | null>(null);
+
   useEffect(() => {
     (async () => {
       const { data: wo } = await supabase
         .from("work_orders")
-        .select("id, vehicle_id, customer_id")
+        .select("id, vehicle_id, customer_id, shop_id")
         .eq("id", workOrderId)
         .maybeSingle();
+
+      setShopId(wo?.shop_id ?? null);
 
       if (wo?.vehicle_id) {
         const { data: v } = await supabase
@@ -197,6 +202,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       priority: 3,
       labor_time: null,
       notes: null,
+      shop_id: shopId ?? null, // ← IMPORTANT
     };
 
     const { error } = await supabase.from("work_order_lines").insert(newLine);
@@ -222,6 +228,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       priority: 3,
       job_type: item.jobType,
       notes: item.notes ?? null,
+      shop_id: shopId ?? null, // ← IMPORTANT
     };
 
     const { error } = await supabase.from("work_order_lines").insert([line]);
@@ -259,6 +266,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       priority: 3,
       job_type: "maintenance",
       notes: pkg.summary,
+      shop_id: shopId ?? null, // ← IMPORTANT
     };
 
     const { error } = await supabase.from("work_order_lines").insert(line);

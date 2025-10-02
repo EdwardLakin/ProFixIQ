@@ -2,8 +2,8 @@
 
 import { Dialog } from "@headlessui/react";
 import { useMemo, useState } from "react";
-import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { v4 as uuidv4 } from "uuid";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 interface Props {
   isOpen: boolean;
@@ -12,19 +12,30 @@ interface Props {
   vehicleId: string;
   techId: string;
   onJobAdded?: () => void;
+  /** Optional. If not provided, we’ll read it from work_orders before insert. */
+  shopId?: string | null;
 }
+
 type Urgency = "low" | "medium" | "high";
 
 // NOTE: accept `any` to bypass Next's serializable-props check, then cast.
 export default function AddJobModal(props: any) {
-  const { isOpen, onClose, workOrderId, vehicleId, techId, onJobAdded } =
-    props as Props;
+  const {
+    isOpen,
+    onClose,
+    workOrderId,
+    vehicleId,
+    techId,
+    onJobAdded,
+    shopId,
+  } = props as Props;
 
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const [jobName, setJobName] = useState("");
   const [notes, setNotes] = useState("");
   const [urgency, setUrgency] = useState<Urgency>("medium");
   const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
   const handleSubmit = async () => {
     const name = jobName.trim();
@@ -32,23 +43,43 @@ export default function AddJobModal(props: any) {
       alert("Job name is required.");
       return;
     }
+
     setSubmitting(true);
+    setErr(null);
+
     try {
-      const { error } = await supabase.from("work_order_lines").insert({
+      // Resolve shop_id (needed by RLS on work_order_lines)
+      let useShopId = shopId ?? null;
+      if (!useShopId) {
+        const { data: wo, error } = await supabase
+          .from("work_orders")
+          .select("shop_id")
+          .eq("id", workOrderId)
+          .maybeSingle();
+        if (error) throw error;
+        useShopId = wo?.shop_id ?? null;
+      }
+
+      const { error: insErr } = await supabase.from("work_order_lines").insert({
         id: uuidv4(),
         work_order_id: workOrderId,
         vehicle_id: vehicleId,
         complaint: name,
         hold_reason: notes.trim() || null,
         status: "queued",
-        job_type: "tech-suggested",
+        // If your DB CHECK only allows specific job_types, pick one of them (e.g. "repair")
+        job_type: "repair",
         assigned_to: techId,
         urgency,
+        shop_id: useShopId, // ← IMPORTANT for RLS
       });
-      if (error) {
-        alert("Failed to add job: " + error.message);
+
+      if (insErr) {
+        setErr(insErr.message);
+        alert("Failed to add job: " + insErr.message);
         return;
       }
+
       onJobAdded?.();
       onClose();
       setJobName("");
@@ -96,6 +127,10 @@ export default function AddJobModal(props: any) {
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
           />
+
+          {err && (
+            <div className="mb-2 text-sm text-red-400">{err}</div>
+          )}
 
           <div className="flex justify-end gap-2">
             <button
