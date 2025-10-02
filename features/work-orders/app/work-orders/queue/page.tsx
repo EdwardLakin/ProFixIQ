@@ -24,7 +24,9 @@ function rollupStatus(lines: Line[]): RollupStatus {
 export default async function QueuePage() {
   const supabase = createServerComponentClient<DB>({ cookies });
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) return <div className="p-6 text-white">You must be signed in.</div>;
 
   const { data: profile } = await supabase
@@ -85,25 +87,41 @@ export default async function QueuePage() {
         <div className="font-semibold text-orange-400 mb-1">Debug</div>
         <div className="grid gap-2 sm:grid-cols-2">
           <div className="space-y-1">
-            <div><span className="text-neutral-400">User:</span> {user.id}</div>
-            <div><span className="text-neutral-400">Role:</span> {profile.role ?? "—"}</div>
-            <div><span className="text-neutral-400">Shop:</span> {profile.shop_id ?? "—"}</div>
+            <div>
+              <span className="text-neutral-400">User:</span> {user.id}
+            </div>
+            <div>
+              <span className="text-neutral-400">Role:</span> {profile.role ?? "—"}
+            </div>
+            <div>
+              <span className="text-neutral-400">Shop:</span> {profile.shop_id ?? "—"}
+            </div>
           </div>
           <div className="space-y-1">
-            <div><span className="text-neutral-400">Fetched WOs (RLS):</span> {wos.length}</div>
-            <div><span className="text-neutral-400">Fetched Lines:</span> {lines?.length ?? 0}</div>
-            <div><span className="text-neutral-400">Visible WOs:</span> {visibleWos.length}{isTech ? ` (tech filter on)` : ""}</div>
+            <div>
+              <span className="text-neutral-400">Fetched WOs (RLS):</span> {wos.length}
+            </div>
+            <div>
+              <span className="text-neutral-400">Fetched Lines:</span> {lines?.length ?? 0}
+            </div>
+            <div>
+              <span className="text-neutral-400">Visible WOs:</span> {visibleWos.length}
+              {isTech ? ` (tech filter on)` : ""}
+            </div>
             {isTech && <div><span className="text-neutral-400">Filtered Out:</span> {filteredOut.length}</div>}
           </div>
         </div>
 
         {isTech && filteredOut.length > 0 && (
           <div className="mt-2">
-            <div className="text-neutral-400 mb-1">Filtered-out WO ids (no lines assigned to this user):</div>
+            <div className="text-neutral-400 mb-1">
+              Filtered-out WO ids (no lines assigned to this user):
+            </div>
             <div className="flex flex-wrap gap-1">
               {filteredOut.slice(0, 12).map((wo) => (
                 <span key={wo.id} className="text-xs rounded border border-neutral-700 px-2 py-0.5">
-                  {wo.id.slice(0, 8)}{wo.created_at ? ` • ${new Date(wo.created_at).toLocaleDateString()}` : ""}
+                  {wo.id.slice(0, 8)}
+                  {wo.created_at ? ` • ${new Date(wo.created_at).toLocaleDateString()}` : ""}
                 </span>
               ))}
               {filteredOut.length > 12 && (
@@ -134,15 +152,23 @@ export default async function QueuePage() {
           const onHold   = lns.filter((l) => (l.status ?? "") === "on_hold").length;
           const done     = lns.filter((l) => (l.status ?? "") === "completed").length;
 
+          // Prefer custom_id when present
+          const slug = wo.custom_id ?? wo.id;
+
           return (
             <Link
               key={wo.id}
-                href={`/work-orders/${wo.id}?mode=tech`}
-                className="block rounded border border-neutral-800 bg-neutral-900 p-3 hover:border-orange-500 transition"
-              >
+              href={`/work-orders/${slug}?mode=tech`}
+              className="block rounded border border-neutral-800 bg-neutral-900 p-3 hover:border-orange-500 transition"
+            >
               <div className="flex items-center justify-between">
                 <div className="min-w-0">
-                  <div className="font-medium truncate">WO #{wo.id.slice(0, 8)}</div>
+                  <div className="font-medium truncate">
+                    {wo.custom_id ? wo.custom_id : `#${wo.id.slice(0, 8)}`}
+                  </div>
+                  {wo.custom_id && (
+                    <div className="text-[10px] text-neutral-400">#{wo.id.slice(0, 8)}</div>
+                  )}
                   <div className="text-xs text-neutral-400">
                     {awaiting} awaiting · {inProg} in progress · {onHold} on hold · {done} completed
                   </div>

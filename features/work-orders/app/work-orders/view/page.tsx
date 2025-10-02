@@ -47,7 +47,7 @@ export default function WorkOrdersView(): JSX.Element {
           *,
           customers:customers(first_name,last_name,phone,email),
           vehicles:vehicles(year,make,model,license_plate)
-        `,
+        `
       )
       .order("created_at", { ascending: false })
       .limit(100);
@@ -172,60 +172,62 @@ export default function WorkOrdersView(): JSX.Element {
         <div className="text-neutral-400">No work orders found.</div>
       ) : (
         <div className="divide-y divide-neutral-800 border border-neutral-800 rounded bg-neutral-900">
-          {rows.map((r) => (
-            <div key={r.id} className="p-3 flex items-center gap-3">
-              <div className="w-28 text-xs text-neutral-400">
-                {r.created_at ? format(new Date(r.created_at), "PP") : "—"}
-              </div>
+          {rows.map((r) => {
+            const href = `/work-orders/${r.custom_id ?? r.id}?mode=view`;
+            return (
+              <div key={r.id} className="p-3 flex items-center gap-3">
+                <div className="w-28 text-xs text-neutral-400">
+                  {r.created_at ? format(new Date(r.created_at), "PP") : "—"}
+                </div>
 
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  {/* Link to unified id page, forcing view mode */}
-                  <Link
-                    href={`/work-orders/${r.id}?mode=view`}
-                    className="font-medium underline underline-offset-2 decoration-neutral-600 hover:decoration-orange-500"
-                  >
-                    {r.custom_id ? r.custom_id : `#${r.id.slice(0, 8)}`}
-                  </Link>
-                  {r.custom_id && (
-                    <span className="text-[10px] rounded border border-neutral-700 px-1 py-0.5 text-neutral-300">
-                      #{r.id.slice(0, 6)}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    {/* Link to unified id page, forcing view mode */}
+                    <Link
+                      href={href}
+                      className="font-medium underline underline-offset-2 decoration-neutral-600 hover:decoration-orange-500"
+                    >
+                      {r.custom_id ? r.custom_id : `#${r.id.slice(0, 8)}`}
+                    </Link>
+                    {r.custom_id && (
+                      <span className="text-[10px] rounded border border-neutral-700 px-1 py-0.5 text-neutral-300">
+                        #{r.id.slice(0, 6)}
+                      </span>
+                    )}
+                    <span className={chip(r.status)}>
+                      {(r.status ?? "awaiting").replaceAll("_", " ")}
                     </span>
-                  )}
-                  <span className={chip(r.status)}>
-                    {(r.status ?? "awaiting").replaceAll("_", " ")}
-                  </span>
+                  </div>
+                  <div className="text-sm text-neutral-300 truncate">
+                    {r.customers
+                      ? `${[r.customers.first_name ?? "", r.customers.last_name ?? ""]
+                          .filter(Boolean)
+                          .join(" ")}`
+                      : "—"}{" "}
+                    •{" "}
+                    {r.vehicles
+                      ? `${r.vehicles.year ?? ""} ${r.vehicles.make ?? ""} ${r.vehicles.model ?? ""} ${
+                          r.vehicles.license_plate ? `(${r.vehicles.license_plate})` : ""
+                        }`
+                      : "—"}
+                  </div>
                 </div>
-                <div className="text-sm text-neutral-300 truncate">
-                  {r.customers
-                    ? `${[r.customers.first_name ?? "", r.customers.last_name ?? ""].filter(Boolean).join(" ")}`
-                    : "—"}{" "}
-                  •{" "}
-                  {r.vehicles
-                    ? `${r.vehicles.year ?? ""} ${r.vehicles.make ?? ""} ${r.vehicles.model ?? ""} ${
-                        r.vehicles.license_plate ? `(${r.vehicles.license_plate})` : ""
-                      }`
-                    : "—"}
-                </div>
-              </div>
 
-              <div className="flex items-center gap-2">
-                {/* Open → also goes to unified id page in view mode */}
-                <Link
-                  href={`/work-orders/${r.id}?mode=view`}
-                  className="rounded border border-neutral-700 px-2 py-1 text-sm hover:bg-neutral-800"
-                >
-                  Open
-                </Link>
-                <button
-                  onClick={() => handleDelete(r.id)}
-                  className="rounded border border-red-600/60 text-red-300 px-2 py-1 text-sm hover:bg-red-900/20"
-                >
-                  Delete
-                </button>
+                <div className="flex items-center gap-2">
+                  {/* Open → also goes to unified id page in view mode */}
+                  <Link href={href} className="rounded border border-neutral-700 px-2 py-1 text-sm hover:bg-neutral-800">
+                    Open
+                  </Link>
+                  <button
+                    onClick={() => handleDelete(r.id)}
+                    className="rounded border border-red-600/60 text-red-300 px-2 py-1 text-sm hover:bg-red-900/20"
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
