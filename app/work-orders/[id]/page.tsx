@@ -117,16 +117,26 @@ export default function WorkOrderIdPage(): JSX.Element {
 
       // If there’s no session, try to refresh it
       if (!sessionData?.session) {
-        await supabase.auth.refreshSession().catch(() => null);
+        try {
+          await supabase.auth.refreshSession();
+        } catch {
+          // ignore refresh errors (we'll proceed unauthenticated)
+        }
       }
 
-      // Now ask for user; if it still fails, we’ll remain null and show a hint
-      const {
-        data: { user },
-      } = await supabase.auth.getUser().catch(() => ({ data: { user: null } as any }));
+      // Now ask for user; if it throws (bad_jwt), keep user as null
+      let uid: string | null = null;
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        uid = user?.id ?? null;
+      } catch {
+        uid = null;
+      }
 
-      setCurrentUserId(user?.id ?? null);
-      setUserId(user?.id ?? null);
+      setCurrentUserId(uid);
+      setUserId(uid);
     })();
   }, [supabase, setCurrentUserId, setUserId]);
 
@@ -134,8 +144,6 @@ export default function WorkOrderIdPage(): JSX.Element {
   const fetchAll = useCallback(
     async (retry = 0) => {
       if (!woParam) return;
-      // If we truly can’t see a user, allow read anyway — RLS on public tables
-      // should be satisfied by row’s shop policies already.
       setLoading(true);
       setViewError(null);
 
