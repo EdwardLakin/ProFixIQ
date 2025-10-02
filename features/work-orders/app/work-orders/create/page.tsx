@@ -3,13 +3,9 @@
 /**
  * Create Work Order (Front Desk)
  * ---------------------------------------------------------------------------
- * Superset version:
- *  - Keeps previous auto-create-on-mount behavior (toggleable).
- *  - Adds “Save & Continue” to create WO immediately after entering C/V.
- *  - Adds “Clear form” to reset Customer/Vehicle inputs & related UI state.
- *  - Preserves: prefill from query, ensure C/V, uploads, realtime lines,
- *    delete line, notices, default job type, review & sign flow.
- *  - Wire NewWorkOrderLineForm with shopId to satisfy RLS.
+ * Superset version with RLS-safe inserts:
+ *  - Ensures shop_id is included on Customers, Vehicles, Vehicle Media.
+ *  - Scopes lookups by shop to avoid cross-shop collisions.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -181,11 +177,12 @@ export default function CreateWorkOrderPage() {
     return `${p}${next}`;
   }
 
+  // NOTE: profiles.id is the auth uid in your schema
   async function getOrLinkShopId(userId: string): Promise<string | null> {
     const { data: profile, error: profErr } = await supabase
       .from("profiles")
-      .select("user_id, shop_id")
-      .eq("user_id", userId)
+      .select("id, shop_id")
+      .eq("id", userId)
       .maybeSingle();
     if (profErr) throw profErr;
     if (profile?.shop_id) return profile.shop_id;
@@ -201,13 +198,13 @@ export default function CreateWorkOrderPage() {
     const { error: updErr } = await supabase
       .from("profiles")
       .update({ shop_id: ownedShop.id })
-      .eq("user_id", userId);
+      .eq("id", userId);
     if (updErr) throw updErr;
 
     return ownedShop.id;
   }
 
-  const buildCustomerInsert = (c: SessionCustomer) => ({
+  const buildCustomerInsert = (c: SessionCustomer, shopId: string | null) => ({
     first_name: strOrNull(c.first_name),
     last_name: strOrNull(c.last_name),
     phone: strOrNull(c.phone),
@@ -216,6 +213,7 @@ export default function CreateWorkOrderPage() {
     city: strOrNull(c.city),
     province: strOrNull(c.province),
     postal_code: strOrNull(c.postal_code),
+    shop_id: shopId,
   });
 
   const buildVehicleInsert = (v: SessionVehicle, customerId: string, shopId: string | null) => ({
@@ -317,14 +315,16 @@ export default function CreateWorkOrderPage() {
   }, [prefillCustomerId, prefillVehicleId, supabase, setCustomer, setVehicle, setCustomerId, setVehicleId, customerId]);
 
   /* Ensure / create: Customer & Vehicle */
-  async function ensureCustomer(): Promise<CustomerRow> {
+  async function ensureCustomer(shopId: string): Promise<CustomerRow> {
     if (customerId) {
       const { data } = await supabase.from("customers").select("*").eq("id", customerId).single();
       if (data) return data;
     }
-    const q = supabase.from("customers").select("*").limit(1);
-    if (customer.phone) q.ilike("phone", customer.phone);
-    else if (customer.email) q.ilike("email", customer.email);
+
+    // search within this shop
+    let q = supabase.from("customers").select("*").eq("shop_id", shopId).limit(1);
+    if (customer.phone) q = q.ilike("phone", customer.phone);
+    else if (customer.email) q = q.ilike("email", customer.email);
     const { data: found } = await q;
     if (found?.length) {
       setCustomerId(found[0].id);
@@ -333,7 +333,7 @@ export default function CreateWorkOrderPage() {
 
     const { data: inserted, error: insErr } = await supabase
       .from("customers")
-      .insert(buildCustomerInsert(customer))
+      .insert(buildCustomerInsert(customer, shopId))
       .select("*")
       .single();
     if (insErr || !inserted) throw new Error(insErr?.message ?? "Failed to create customer");
@@ -400,7 +400,7 @@ export default function CreateWorkOrderPage() {
       const shopId = await getOrLinkShopId(user.id);
       if (!shopId) throw new Error("Your profile isn’t linked to a shop yet.");
 
-      const cust = await ensureCustomer();
+      const cust = await ensureCustomer(shopId);
       const veh = await ensureVehicleRow(cust, shopId);
 
       // If WO exists, just link it to this C/V pair (don’t regenerate custom_id)
@@ -494,6 +494,7 @@ export default function CreateWorkOrderPage() {
       data: { user },
     } = await supabase.auth.getUser();
     const uploader = user?.id ?? null;
+    const currentShopId = wo?.shop_id ?? null;
 
     const upOne = async (bucket: "vehicle-photos" | "vehicle-docs", f: File, mediaType: "photo" | "document") => {
       const key = `veh_${vId}/${Date.now()}_${f.name}`;
@@ -507,6 +508,7 @@ export default function CreateWorkOrderPage() {
         type: mediaType,
         storage_path: key,
         uploaded_by: uploader,
+        shop_id: currentShopId, // <-- satisfy vehicle_media shop policy
       });
       if (rowErr) failed += 1;
       else uploaded += 1;
@@ -631,12 +633,13 @@ export default function CreateWorkOrderPage() {
       const shopId = await getOrLinkShopId(user.id);
       if (!shopId) return;
 
-      // Ensure placeholder customer
+      // Ensure placeholder customer (per shop)
       let placeholderCustomer: CustomerRow | null = null;
       try {
         const { data } = await supabase
           .from("customers")
           .select("*")
+          .eq("shop_id", shopId)
           .ilike("first_name", "Walk-in")
           .ilike("last_name", "Customer")
           .limit(1);
@@ -646,7 +649,7 @@ export default function CreateWorkOrderPage() {
       if (!placeholderCustomer) {
         const { data } = await supabase
           .from("customers")
-          .insert({ first_name: "Walk-in", last_name: "Customer" })
+          .insert({ first_name: "Walk-in", last_name: "Customer", shop_id: shopId })
           .select("*")
           .single();
         placeholderCustomer = (data as CustomerRow) ?? null;
@@ -656,11 +659,12 @@ export default function CreateWorkOrderPage() {
         return;
       }
 
-      // Ensure placeholder vehicle
+      // Ensure placeholder vehicle (per shop)
       const { data: maybeVeh } = await supabase
         .from("vehicles")
         .select("*")
         .eq("customer_id", placeholderCustomer.id)
+        .eq("shop_id", shopId)
         .ilike("model", "Unassigned")
         .limit(1);
       let placeholderVehicle: VehicleRow | null =
@@ -765,12 +769,12 @@ export default function CreateWorkOrderPage() {
               vehicle={vehicle}
               onCustomerChange={onCustomerChange}
               onVehicleChange={onVehicleChange}
-              onSave={handleSaveCustomerVehicle} // in case the form renders a save button
+              onSave={handleSaveCustomerVehicle}
               saving={savingCv}
               workOrderExists={!!wo?.id}
             />
 
-            {/* Local buttons row to guarantee Save & Continue + Clear Form are available */}
+            {/* Local buttons row */}
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <button
                 type="button"
