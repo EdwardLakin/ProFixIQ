@@ -1,5 +1,14 @@
 "use client";
 
+/**
+ * Work Order — ID Page (Tech/View)
+ * -----------------------------------------------------------------------------
+ * - Robust auth bootstrap for Safari/iPad (uses getSession() + refreshSession()).
+ * - Falls back to custom_id when the route param isn’t a UUID.
+ * - Uses realtime channels to keep lines fresh.
+ * - Keeps UI/UX from your previous version (header, jobs list, photos, modals).
+ */
+
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -12,8 +21,11 @@ import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
 import VehiclePhotoUploader from "@parts/components/VehiclePhotoUploader";
 import VehiclePhotoGallery from "@parts/components/VehiclePhotoGallery";
 
+// Focused modal (contains all other modals internally)
 import FocusedJobModal from "@/features/work-orders/components/workorders/FocusedJobModal";
+// Add Job modal
 import AddJobModal from "@work-orders/components/workorders/AddJobModal";
+
 import { useTabState } from "@/features/shared/hooks/useTabState";
 
 /* --------------------------------- Types --------------------------------- */
@@ -26,9 +38,7 @@ type Customer = DB["public"]["Tables"]["customers"]["Row"];
 type ParamsShape = Record<string, string | string[]>;
 const paramToString = (v: string | string[] | undefined): string | null =>
   !v ? null : Array.isArray(v) ? v[0] ?? null : v;
-
-const looksLikeUuid = (s: string) =>
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
+const looksLikeUuid = (s: string) => s.includes("-") && s.length >= 36;
 
 /* ---------------------------- Status -> Styles ---------------------------- */
 const statusBadge: Record<string, string> = {
@@ -63,29 +73,30 @@ const statusRowTint: Record<string, string> = {
 };
 
 /* ---------------------------------- Page --------------------------------- */
-export default function WorkOrderTechPage(): JSX.Element {
+export default function WorkOrderIdPage(): JSX.Element {
   const params = useParams();
-  const woParam = useMemo(() => paramToString((params as ParamsShape)?.id), [params]);
+  const woParam = useMemo(
+    () => paramToString((params as ParamsShape)?.id),
+    [params]
+  );
+
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
-  // Core entities
-  const [wo, setWo] = useState<WorkOrder | null>(null);
-  const [lines, setLines] = useState<WorkOrderLine[]>([]);
-  const [vehicle, setVehicle] = useState<Vehicle | null>(null);
-  const [customer, setCustomer] = useState<Customer | null>(null);
+  // Core entities (persist line selections per tab where it helps UX)
+  const [wo, setWo] = useTabState<WorkOrder | null>("wo:id:wo", null);
+  const [lines, setLines] = useTabState<WorkOrderLine[]>("wo:id:lines", []);
+  const [vehicle, setVehicle] = useTabState<Vehicle | null>("wo:id:veh", null);
+  const [customer, setCustomer] = useTabState<Customer | null>("wo:id:cust", null);
 
   // UI state
   const [loading, setLoading] = useState<boolean>(true);
   const [viewError, setViewError] = useState<string | null>(null);
 
-  // user
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
+  // user (persist so re-visiting stays smooth)
+  const [currentUserId, setCurrentUserId] = useTabState<string | null>("wo:id:uid", null);
+  const [, setUserId] = useTabState<string | null>("wo:id:effectiveUid", null);
 
-  // shop diagnostics
-  const [profileShopId, setProfileShopId] = useState<string | null>(null);
-
-  // persisted UI toggle (via useTabState)
+  // persisted UI toggle
   const [showDetails, setShowDetails] = useTabState<boolean>("wo:showDetails", true);
 
   // Add Job modal
@@ -98,67 +109,58 @@ export default function WorkOrderTechPage(): JSX.Element {
   // one-time missing notice
   const [warnedMissing, setWarnedMissing] = useState(false);
 
-  // Current user + profile.shop_id
+  /* ---------------------- AUTH (Safari/iPad friendly) ---------------------- */
   useEffect(() => {
     (async () => {
+      // Prefer session-first to avoid /auth/v1/user 403s (bad_jwt)
+      const { data: sessionData } = await supabase.auth.getSession();
+
+      // If there’s no session, try to refresh it
+      if (!sessionData?.session) {
+        await supabase.auth.refreshSession().catch(() => null);
+      }
+
+      // Now ask for user; if it still fails, we’ll remain null and show a hint
       const {
         data: { user },
-      } = await supabase.auth.getUser();
-      if (user) {
-        setCurrentUserId(user.id);
-        setUserId(user.id);
+      } = await supabase.auth.getUser().catch(() => ({ data: { user: null } as any }));
 
-        const { data: prof } = await supabase
-          .from("profiles")
-          .select("id, shop_id")
-          .eq("id", user.id)
-          .maybeSingle();
-        setProfileShopId(prof?.shop_id ?? null);
-      } else {
-        setCurrentUserId(null);
-        setUserId(null);
-        setProfileShopId(null);
-      }
+      setCurrentUserId(user?.id ?? null);
+      setUserId(user?.id ?? null);
     })();
-  }, [supabase]);
+  }, [supabase, setCurrentUserId, setUserId]);
 
   /* ---------------------- FETCH ---------------------- */
   const fetchAll = useCallback(
     async (retry = 0) => {
-      if (!woParam || !userId) return;
-
+      if (!woParam) return;
+      // If we truly can’t see a user, allow read anyway — RLS on public tables
+      // should be satisfied by row’s shop policies already.
       setLoading(true);
       setViewError(null);
 
       try {
-        let woRow: WorkOrder | null = null;
+        // Try by id first, then custom_id
+        const { data: woRowById, error: woErr } = await supabase
+          .from("work_orders")
+          .select("*")
+          .eq("id", woParam)
+          .maybeSingle();
+        if (woErr) throw woErr;
 
-        // 1) UUID path
-        if (looksLikeUuid(woParam)) {
-          const byId = await supabase.from("work_orders").select("*").eq("id", woParam).maybeSingle();
-          if (byId.error) throw byId.error;
-          woRow = (byId.data as WorkOrder | null) ?? null;
-        }
+        let woRow = woRowById;
 
-        // 2) exact custom_id
-        if (!woRow) {
+        if (!woRow && !looksLikeUuid(woParam)) {
           const byCustom = await supabase
             .from("work_orders")
             .select("*")
             .eq("custom_id", woParam)
             .maybeSingle();
-          if (byCustom.error && byCustom.error.code !== "PGRST116") throw byCustom.error;
-          if (byCustom.data) woRow = byCustom.data as WorkOrder;
-        }
-
-        // 3) ilike fallback
-        if (!woRow) {
-          const byIlike = await supabase.from("work_orders").select("*").ilike("custom_id", woParam).limit(1);
-          if (byIlike.error) throw byIlike.error;
-          if (byIlike.data?.length) woRow = byIlike.data[0] as WorkOrder;
+          if (byCustom.data) woRow = byCustom.data as WorkOrder | null;
         }
 
         if (!woRow) {
+          // soft-retry in case of race with auth refresh
           if (retry < 2) {
             await new Promise((r) => setTimeout(r, 200 * Math.pow(2, retry)));
             return fetchAll(retry + 1);
@@ -175,17 +177,31 @@ export default function WorkOrderTechPage(): JSX.Element {
         setWo(woRow);
 
         if (!warnedMissing && (!woRow.vehicle_id || !woRow.customer_id)) {
-          toast.error("This work order is missing vehicle and/or customer. Open the Create form to set them.");
+          toast.error(
+            "This work order is missing vehicle and/or customer. Open the Create form to set them."
+          );
           setWarnedMissing(true);
         }
 
         const [linesRes, vehRes, custRes] = await Promise.all([
-          supabase.from("work_order_lines").select("*").eq("work_order_id", woRow.id).order("created_at", { ascending: true }),
+          supabase
+            .from("work_order_lines")
+            .select("*")
+            .eq("work_order_id", woRow.id)
+            .order("created_at", { ascending: true }),
           woRow.vehicle_id
-            ? supabase.from("vehicles").select("*").eq("id", woRow.vehicle_id).maybeSingle()
+            ? supabase
+                .from("vehicles")
+                .select("*")
+                .eq("id", woRow.vehicle_id)
+                .maybeSingle()
             : Promise.resolve({ data: null, error: null }),
           woRow.customer_id
-            ? supabase.from("customers").select("*").eq("id", woRow.customer_id).maybeSingle()
+            ? supabase
+                .from("customers")
+                .select("*")
+                .eq("id", woRow.customer_id)
+                .maybeSingle()
             : Promise.resolve({ data: null, error: null }),
         ]);
 
@@ -201,22 +217,22 @@ export default function WorkOrderTechPage(): JSX.Element {
         const msg = e instanceof Error ? e.message : "Failed to load work order.";
         setViewError(msg);
         // eslint-disable-next-line no-console
-        console.error("[WO id page] load error:", e, { woParam, userId, profileShopId });
+        console.error("[WO id page] load error:", e);
       } finally {
         setLoading(false);
       }
     },
-    [supabase, woParam, userId, warnedMissing, profileShopId]
+    [supabase, woParam, warnedMissing, setWo, setLines, setVehicle, setCustomer]
   );
 
   useEffect(() => {
-    if (!woParam || !userId) return;
+    if (!woParam) return;
     void fetchAll();
-  }, [fetchAll, woParam, userId]);
+  }, [fetchAll, woParam]);
 
   // Real-time refresh
   useEffect(() => {
-    if (!woParam || !userId) return;
+    if (!woParam) return;
     const ch = supabase
       .channel(`wo:${woParam}`)
       .on(
@@ -226,16 +242,18 @@ export default function WorkOrderTechPage(): JSX.Element {
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "work_order_lines", filter: `work_order_id=eq.${wo?.id ?? woParam}` },
+        { event: "*", schema: "public", table: "work_order_lines", filter: `work_order_id=eq.${woParam}` },
         () => fetchAll()
       )
       .subscribe();
     return () => {
       try {
         supabase.removeChannel(ch);
-      } catch {}
+      } catch {
+        // ignore
+      }
     };
-  }, [supabase, woParam, userId, fetchAll, wo?.id]);
+  }, [supabase, woParam, fetchAll]);
 
   // Legacy refresh event
   useEffect(() => {
@@ -280,16 +298,19 @@ export default function WorkOrderTechPage(): JSX.Element {
     <div className="p-4 sm:p-6 text-white">
       <PreviousPageButton to="/work-orders" />
 
-      {/* tiny debug strip; remove when fixed */}
-      <div className="mt-2 mb-4 text-[11px] text-neutral-400">
-        woParam: <code className="text-orange-400">{String(woParam)}</code> • userId:{" "}
-        <code className="text-orange-400">{currentUserId ?? "—"}</code> • profile.shop_id:{" "}
-        <code className="text-orange-400">{profileShopId ?? "—"}</code> • WO.shop_id:{" "}
-        <code className="text-orange-400">{wo?.shop_id ?? "—"}</code>
-      </div>
+      {/* Auth hint (iPad/Safari cookies) */}
+      {!currentUserId && (
+        <div className="mt-3 rounded border border-amber-500/30 bg-amber-500/10 p-3 text-amber-200 text-sm">
+          You appear signed out on this tab. If actions fail, open{" "}
+          <Link href="/login" className="underline hover:text-white">
+            Sign In
+          </Link>{" "}
+          and reauthenticate, then return here.
+        </div>
+      )}
 
       {viewError && (
-        <div className="mt-2 whitespace-pre-wrap rounded border border-red-500/40 bg-red-500/10 p-3 text-red-300">
+        <div className="mt-4 whitespace-pre-wrap rounded border border-red-500/40 bg-red-500/10 p-3 text-red-300">
           {viewError}
         </div>
       )}
@@ -403,9 +424,11 @@ export default function WorkOrderTechPage(): JSX.Element {
               )}
             </div>
 
-            {/* Jobs list */}
+            {/* Jobs list (click -> FocusedJobModal) */}
             <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
-              <h2 className="mb-3 text-lg font-semibold">Jobs in this Work Order</h2>
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h2 className="text-lg font-semibold">Jobs in this Work Order</h2>
+              </div>
 
               {sortedLines.length === 0 ? (
                 <p className="text-sm text-neutral-400">No lines yet.</p>
@@ -469,11 +492,14 @@ export default function WorkOrderTechPage(): JSX.Element {
       )}
 
       {/* Vehicle photos */}
-      {vehicle?.id && currentUserId && (
+      {vehicle?.id && (
         <div className="mt-8 space-y-4">
           <h2 className="text-xl font-semibold">Vehicle Photos</h2>
           <VehiclePhotoUploader vehicleId={vehicle.id} />
-          <VehiclePhotoGallery vehicleId={vehicle.id} currentUserId={currentUserId} />
+          <VehiclePhotoGallery
+            vehicleId={vehicle.id}
+            currentUserId={currentUserId || "anon"}
+          />
         </div>
       )}
 
@@ -489,7 +515,7 @@ export default function WorkOrderTechPage(): JSX.Element {
         />
       )}
 
-      {/* Focused job modal */}
+      {/* Focused job modal (contains ALL sub-modals and actions) */}
       {focusedOpen && focusedJobId && (
         <FocusedJobModal
           isOpen={focusedOpen}
