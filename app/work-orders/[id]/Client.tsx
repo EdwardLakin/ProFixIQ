@@ -72,9 +72,11 @@ const statusRowTint: Record<string, string> = {
 export default function Client({
   routeId,
   userId: userIdFromServer,
+  /** optional: wrapper may pass this; fine to ignore */
 }: {
   routeId: string;
   userId: string | null;
+  searchParams?: Record<string, string | string[]>;
 }): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
@@ -113,7 +115,9 @@ export default function Client({
       if (!sessionData?.session) {
         try {
           await supabase.auth.refreshSession();
-        } catch {/* ignore */}
+        } catch {
+          /* ignore */
+        }
       }
       try {
         const {
@@ -151,7 +155,11 @@ export default function Client({
           woRow = (eqRes.data as WorkOrder | null) ?? null;
 
           if (!woRow) {
-            const ilikeRes = await supabase.from("work_orders").select("*").ilike("custom_id", routeId.toUpperCase()).maybeSingle();
+            const ilikeRes = await supabase
+              .from("work_orders")
+              .select("*")
+              .ilike("custom_id", routeId.toUpperCase())
+              .maybeSingle();
             woRow = (ilikeRes.data as WorkOrder | null) ?? null;
           }
 
