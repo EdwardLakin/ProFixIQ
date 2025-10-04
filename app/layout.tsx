@@ -1,4 +1,3 @@
-// app/layout.tsx
 import "./globals.css";
 import { Roboto, Black_Ops_One } from "next/font/google";
 import Providers from "./providers";
@@ -9,7 +8,6 @@ import { cookies } from "next/headers";
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
-// Fonts: body → Roboto, headers/buttons → Black Ops One
 const roboto = Roboto({
   subsets: ["latin"],
   weight: ["400", "500", "700"],
@@ -29,7 +27,6 @@ export const metadata = {
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  // Server-side session check (no flash of tabs for signed-out users)
   const supabase = createServerComponentClient<Database>({ cookies });
   const {
     data: { session },
@@ -38,7 +35,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en" className={`${roboto.variable} ${blackOps.variable}`}>
       <body className="bg-black text-white">
-        <Providers>
+        {/* 👇 pass the server session into Providers */}
+        <Providers initialSession={session ?? null}>
           <AppShell>
             {session?.user ? (
               <TabsBridge>
