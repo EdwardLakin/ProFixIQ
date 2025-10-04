@@ -1,50 +1,70 @@
-// app/menu/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { useUser } from "@auth/hooks/useUser";
 import { toast } from "sonner";
 
 type DB = Database;
-type MenuItem = DB["public"]["Tables"]["menu_items"]["Row"];
-type InsertMenuItem = DB["public"]["Tables"]["menu_items"]["Insert"];
 
-type PartForm = { name: string; qty: number; unit_cost: number };
+// Rows / inserts we use
+type MenuItemRow = DB["public"]["Tables"]["menu_items"]["Row"];
+type InsertMenuItem = DB["public"]["Tables"]["menu_items"]["Insert"];
+type InsertMenuItemPart = DB["public"]["Tables"]["menu_item_parts"]["Insert"];
+
+// Local form types (only fields we actually edit)
+type PartFormRow = {
+  name: string;
+  quantity: number;
+  unit_cost: number;
+};
 
 type FormState = {
   name: string;
-  labor_time: number;  // hours
-  labor_rate: number;  // preview only unless your schema supports it
-  description: string; // preview only unless your schema supports it
-  category: string;    // preview only unless your schema supports it
-  parts: PartForm[];
+  description: string;
+  labor_time: number; // hours
+  labor_rate: number; // $/hr (defaults to shop.labor_rate if available)
 };
 
 export default function MenuItemsPage() {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
-  const { user, isLoading } = useUser();
+  const supabase = createClientComponentClient<DB>();
+  const { user, isLoading } = useUser(); // your hook exposes `user` (profile), optionally with shop
 
-  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [menuItems, setMenuItems] = useState<MenuItemRow[]>([]);
+  const [parts, setParts] = useState<PartFormRow[]>([
+    { name: "", quantity: 1, unit_cost: 0 },
+  ]);
+
   const [form, setForm] = useState<FormState>({
     name: "",
+    description: "",
     labor_time: 0,
     labor_rate: 0,
-    description: "",
-    category: "",
-    parts: [{ name: "", qty: 1, unit_cost: 0 }],
   });
 
-  const laborTotal = (form.labor_time || 0) * (form.labor_rate || 0);
-  const partsTotal = form.parts.reduce(
-    (sum, p) => sum + (Number(p.qty) || 0) * (Number(p.unit_cost) || 0),
-    0
+  // derive totals
+  const partsTotal = useMemo(
+    () =>
+      parts.reduce((sum, p) => {
+        const q = Number.isFinite(p.quantity) ? p.quantity : 0;
+        const u = Number.isFinite(p.unit_cost) ? p.unit_cost : 0;
+        return sum + q * u;
+      }, 0),
+    [parts],
   );
-  const grandTotal = laborTotal + partsTotal;
 
-  async function fetchItems() {
+  const laborTotal = useMemo(
+    () => (Number.isFinite(form.labor_time) ? form.labor_time : 0) * (Number.isFinite(form.labor_rate) ? form.labor_rate : 0),
+    [form.labor_time, form.labor_rate],
+  );
+
+  const grandTotal = useMemo(() => partsTotal + laborTotal, [partsTotal, laborTotal]);
+
+  // Load existing items
+  const fetchItems = useCallback(async () => {
     if (!user?.id) return;
+
     const { data, error } = await supabase
       .from("menu_items")
       .select("*")
@@ -53,226 +73,235 @@ export default function MenuItemsPage() {
 
     if (error) {
       console.error("Failed to fetch menu items:", error);
-      toast.error("Failed to load menu items.");
       return;
     }
     setMenuItems(data ?? []);
-  }
+  }, [supabase, user?.id]);
 
+  // bootstrap defaults (labor_rate from shop if present) + realtime sync
   useEffect(() => {
     if (!user?.id) return;
 
-    fetchItems();
 
+    // If you want to default from profile.shop/labor_rate and your hook exposes it,
+    // uncomment & adjust:
+    // if (userShop?.labor_rate != null) {
+    //   setForm((f) => ({ ...f, labor_rate: userShop.labor_rate ?? 0 }));
+    // }
+
+    // initial load
+    void fetchItems();
+
+    // realtime for this user’s rows
     const channel = supabase
       .channel("menu-items-sync")
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "menu_items", filter: `user_id=eq.${user.id}` },
-        () => fetchItems()
+        {
+          event: "*",
+          schema: "public",
+          table: "menu_items",
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => void fetchItems(),
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
+  }, [supabase, user?.id, fetchItems]);
 
-  function setPart(idx: number, patch: Partial<PartForm>) {
-    setForm((f) => {
-      const next = [...f.parts];
-      next[idx] = { ...next[idx], ...patch };
-      return { ...f, parts: next };
-    });
-  }
-  function addPartRow() {
-    setForm((f) => ({ ...f, parts: [...f.parts, { name: "", qty: 1, unit_cost: 0 }] }));
-  }
-  function removePartRow(idx: number) {
-    setForm((f) => ({ ...f, parts: f.parts.filter((_, i) => i !== idx) }));
-  }
+  // parts row helpers
+  const setPartField = (idx: number, field: keyof PartFormRow, value: string) => {
+    setParts((rows) =>
+      rows.map((r, i) =>
+        i === idx
+          ? {
+              ...r,
+              [field]:
+                field === "name"
+                  ? value
+                  : Number.isNaN(parseFloat(value))
+                    ? 0
+                    : parseFloat(value),
+            }
+          : r,
+      ),
+    );
+  };
 
-  async function handleSubmit() {
+  const addPartRow = () => {
+    setParts((rows) => [...rows, { name: "", quantity: 1, unit_cost: 0 }]);
+  };
+  const removePartRow = (idx: number) => {
+    setParts((rows) => rows.filter((_, i) => i !== idx));
+  };
+
+  // submit
+  const handleSubmit = useCallback(async () => {
     if (!user?.id) return;
+
     if (!form.name.trim()) {
       toast.error("Name is required");
       return;
     }
 
-    // Only columns we KNOW exist on menu_items
-    const payload: InsertMenuItem = {
-      name: form.name.trim(),
-      labor_time: Number(form.labor_time) || 0,
+    // Build the menu_items insert
+    const itemInsert: InsertMenuItem = {
+      name: form.name,
+      description: form.description || null,
+      labor_time: Number.isFinite(form.labor_time) ? form.labor_time : 0,
+      labor_hours: null, // unused in this form, but exists in schema
+      part_cost: partsTotal,
+      total_price: grandTotal,
       user_id: user.id,
+      shop_id: (user as unknown as { shop_id?: string | null })?.shop_id ?? null,
+      // keep other nullable columns absent so defaults/NULL apply
     };
 
-    const { data: created, error } = await supabase
+    // Create the menu item, returning the new id
+    const { data: created, error: createErr } = await supabase
       .from("menu_items")
-      .insert([payload])
-      .select("*")
+      .insert(itemInsert)
+      .select("id")
       .single();
 
-    if (error || !created) {
-      console.error("Insert failed:", error);
-      toast.error(error?.message ?? "Failed to create menu item");
+    if (createErr || !created) {
+      console.error("Create menu item failed:", createErr);
+      toast.error("Failed to create menu item");
       return;
     }
 
-    // Try to insert parts if you have a menu_item_parts table
-    const cleanedParts = form.parts
-      .map((p) => ({
+    // Insert parts if provided (skip empty rows)
+    const cleanedParts: InsertMenuItemPart[] = parts
+      .filter((p) => p.name.trim().length > 0 && p.quantity > 0)
+      .map<InsertMenuItemPart>((p) => ({
+        menu_item_id: created.id,
         name: p.name.trim(),
-        qty: Number(p.qty) || 0,
-        unit_cost: Number(p.unit_cost) || 0,
-      }))
-      .filter((p) => p.name && p.qty > 0);
+        quantity: p.quantity,
+        unit_cost: p.unit_cost,
+        user_id: user.id,
+      }));
 
     if (cleanedParts.length > 0) {
       try {
-        // Shape expected by your (optional) parts table
-        // Adjust column names here if your schema differs.
-        const partsPayload = cleanedParts.map((p) => ({
-          menu_item_id: created.id,
-          name: p.name,
-          quantity: p.qty,
-          unit_cost: p.unit_cost,
-          user_id: user.id, // remove if your table doesn't have user_id
-        }));
-
-        // If the table/columns don't exist, this will error and we'll catch it.
-        const { error: partsErr } = await supabase.from("menu_item_parts").insert(partsPayload);
+        const { error: partsErr } = await supabase
+          .from("menu_item_parts")
+          .insert(cleanedParts);
         if (partsErr) throw partsErr;
-      } catch (e: any) {
-        console.warn("Parts not saved:", e?.message || e);
-        toast.warning("Menu saved, but parts weren’t stored (table/columns not found).");
+      } catch (e: unknown) {
+        const err = e as { message?: string };
+        console.warn("Parts not saved:", err?.message ?? e);
+        toast.warning(
+          "Menu item saved, but parts weren't stored (table/columns missing or RLS denied).",
+        );
       }
     }
 
     toast.success("Menu item created");
+
+    // reset form
     setForm({
       name: "",
-      labor_time: 0,
-      labor_rate: 0,
       description: "",
-      category: "",
-      parts: [{ name: "", qty: 1, unit_cost: 0 }],
+      labor_time: 0,
+      labor_rate: form.labor_rate, // keep rate sticky
     });
-    fetchItems();
-  }
-
-  async function handleDelete(id: string) {
-    const { error } = await supabase.from("menu_items").delete().eq("id", id);
-    if (error) {
-      console.error("Delete failed:", error);
-      toast.error("Delete failed");
-    }
-  }
+    setParts([{ name: "", quantity: 1, unit_cost: 0 }]);
+  }, [form, parts, supabase, user?.id, partsTotal, grandTotal]);
 
   if (isLoading) return <div className="p-4">Loading...</div>;
 
   return (
     <div className="p-6 text-white">
-      <h1 className="text-2xl font-blackops text-orange-400 mb-2">Menu Items</h1>
-      <p className="text-sm text-neutral-400 mb-6">
-        Create preset jobs with labor time and an optional list of parts.
-      </p>
+      <h1 className="text-2xl font-blackops text-orange-400 mb-4">Menu Items</h1>
 
       {/* Form */}
-      <div className="rounded border border-neutral-800 bg-neutral-900 p-4 mb-8 max-w-3xl">
-        <h2 className="font-blackops text-lg text-orange-300">New Menu Item</h2>
+      <div className="grid gap-3 mb-8 max-w-2xl">
+        <div className="grid gap-2">
+          <label className="text-sm text-neutral-300">Service name</label>
+          <input
+            placeholder="e.g. Front brake pads & rotors"
+            value={form.name}
+            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+            className="border border-neutral-700 bg-neutral-900 px-3 py-2 rounded"
+          />
+        </div>
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <div className="sm:col-span-2">
-            <label className="block text-xs text-neutral-400 mb-1">Name *</label>
-            <input
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              className="w-full border border-neutral-700 bg-neutral-950 px-3 py-2 rounded"
-              placeholder="e.g. Front brake service"
-            />
-          </div>
+        <div className="grid gap-2">
+          <label className="text-sm text-neutral-300">Description</label>
+          <textarea
+            placeholder="Optional details visible to customer"
+            value={form.description}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, description: e.target.value }))
+            }
+            className="border border-neutral-700 bg-neutral-900 px-3 py-2 rounded min-h-[80px]"
+          />
+        </div>
 
-          <div>
-            <label className="block text-xs text-neutral-400 mb-1">Category</label>
-            <input
-              value={form.category}
-              onChange={(e) => setForm({ ...form, category: e.target.value })}
-              className="w-full border border-neutral-700 bg-neutral-950 px-3 py-2 rounded"
-              placeholder="e.g. Brakes"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs text-neutral-400 mb-1">Labor Time (hours)</label>
+        {/* Labor */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-2">
+            <label className="text-sm text-neutral-300">Labor time (hrs)</label>
             <input
               type="number"
               inputMode="decimal"
               value={form.labor_time}
               onChange={(e) =>
-                setForm({ ...form, labor_time: Number.isNaN(+e.target.value) ? 0 : +e.target.value })
+                setForm((f) => ({
+                  ...f,
+                  labor_time: Number.isNaN(parseFloat(e.target.value))
+                    ? 0
+                    : parseFloat(e.target.value),
+                }))
               }
-              className="w-full border border-neutral-700 bg-neutral-950 px-3 py-2 rounded"
-              placeholder="e.g. 1.5"
+              className="border border-neutral-700 bg-neutral-900 px-3 py-2 rounded"
             />
           </div>
-
-          <div>
-            <label className="block text-xs text-neutral-400 mb-1">Labor Rate ($/hr)</label>
+          <div className="grid gap-2">
+            <label className="text-sm text-neutral-300">Labor rate ($/hr)</label>
             <input
               type="number"
               inputMode="decimal"
               value={form.labor_rate}
               onChange={(e) =>
-                setForm({ ...form, labor_rate: Number.isNaN(+e.target.value) ? 0 : +e.target.value })
+                setForm((f) => ({
+                  ...f,
+                  labor_rate: Number.isNaN(parseFloat(e.target.value))
+                    ? 0
+                    : parseFloat(e.target.value),
+                }))
               }
-              className="w-full border border-neutral-700 bg-neutral-950 px-3 py-2 rounded"
-              placeholder="preview only"
-            />
-          </div>
-
-          <div className="sm:col-span-2">
-            <label className="block text-xs text-neutral-400 mb-1">Description</label>
-            <textarea
-              value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-              className="w-full border border-neutral-700 bg-neutral-950 px-3 py-2 rounded min-h-[80px]"
-              placeholder="Notes about what’s included"
+              className="border border-neutral-700 bg-neutral-900 px-3 py-2 rounded"
             />
           </div>
         </div>
 
         {/* Parts */}
-        <div className="mt-6">
-          <div className="flex items-center justify-between">
-            <h3 className="font-semibold">Parts</h3>
-            <button
-              onClick={addPartRow}
-              className="text-sm text-orange-400 hover:underline"
-              type="button"
-            >
-              + Add Part
-            </button>
+        <div className="border border-neutral-800 rounded">
+          <div className="px-3 py-2 border-b border-neutral-800 bg-neutral-950/60 text-sm text-neutral-300">
+            Parts
           </div>
-
-          <div className="mt-2 space-y-2">
-            {form.parts.map((p, idx) => (
+          <div className="p-3 space-y-2">
+            {parts.map((p, idx) => (
               <div
                 key={idx}
-                className="grid gap-2 sm:grid-cols-[2fr_1fr_1fr_auto] items-center border border-neutral-800 bg-neutral-950 p-2 rounded"
+                className="grid grid-cols-[2fr_1fr_1fr_auto] gap-2 items-center"
               >
                 <input
                   placeholder="Part name"
                   value={p.name}
-                  onChange={(e) => setPart(idx, { name: e.target.value })}
+                  onChange={(e) => setPartField(idx, "name", e.target.value)}
                   className="border border-neutral-700 bg-neutral-900 px-3 py-2 rounded"
                 />
                 <input
                   placeholder="Qty"
                   type="number"
                   inputMode="numeric"
-                  value={p.qty}
-                  onChange={(e) => setPart(idx, { qty: Number.isNaN(+e.target.value) ? 0 : +e.target.value })}
+                  value={p.quantity}
+                  onChange={(e) => setPartField(idx, "quantity", e.target.value)}
                   className="border border-neutral-700 bg-neutral-900 px-3 py-2 rounded"
                 />
                 <input
@@ -280,77 +309,79 @@ export default function MenuItemsPage() {
                   type="number"
                   inputMode="decimal"
                   value={p.unit_cost}
-                  onChange={(e) =>
-                    setPart(idx, { unit_cost: Number.isNaN(+e.target.value) ? 0 : +e.target.value })
-                  }
+                  onChange={(e) => setPartField(idx, "unit_cost", e.target.value)}
                   className="border border-neutral-700 bg-neutral-900 px-3 py-2 rounded"
                 />
                 <button
-                  type="button"
                   onClick={() => removePartRow(idx)}
-                  className="text-red-400 hover:text-red-300 px-2 py-1"
+                  className="text-red-400 hover:text-red-300 px-2 py-2"
                   aria-label="Remove part"
                 >
-                  Remove
+                  ✕
                 </button>
               </div>
             ))}
-            {form.parts.length === 0 && <div className="text-sm text-neutral-400">No parts added.</div>}
+            <button
+              onClick={addPartRow}
+              className="text-sm text-orange-400 hover:text-orange-300"
+              type="button"
+            >
+              + Add part
+            </button>
           </div>
         </div>
 
         {/* Totals */}
-        <div className="mt-6 grid gap-1 text-sm text-neutral-300">
-          <div className="flex items-center justify-between">
-            <span>Labor total</span>
-            <span className="tabular-nums">${laborTotal.toFixed(2)}</span>
+        <div className="flex items-center justify-end gap-6 text-sm">
+          <div className="text-neutral-300">
+            Parts: <span className="text-white">${partsTotal.toFixed(2)}</span>
           </div>
-          <div className="flex items-center justify-between">
-            <span>Parts total</span>
-            <span className="tabular-nums">${partsTotal.toFixed(2)}</span>
+          <div className="text-neutral-300">
+            Labor: <span className="text-white">${laborTotal.toFixed(2)}</span>
           </div>
-          <div className="flex items-center justify-between font-semibold text-orange-300">
-            <span>Grand total (preview)</span>
-            <span className="tabular-nums">${grandTotal.toFixed(2)}</span>
+          <div className="text-neutral-300">
+            Total: <span className="text-orange-400 font-semibold">${grandTotal.toFixed(2)}</span>
           </div>
         </div>
 
-        <div className="mt-6">
+        <div className="flex justify-end">
           <button
             onClick={handleSubmit}
-            className="bg-orange-500 hover:bg-orange-400 text-black font-semibold px-4 py-2 rounded"
+            className="bg-orange-600 hover:bg-orange-700 text-black font-semibold px-4 py-2 rounded"
           >
             Save Menu Item
           </button>
         </div>
       </div>
 
-      {/* Saved list */}
-      <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
-        <h2 className="font-blackops text-lg text-orange-300 mb-3">Saved Items</h2>
-        <ul className="space-y-2">
-          {menuItems.map((item) => (
-            <li
-              key={item.id}
-              className="border border-neutral-800 bg-neutral-950 p-3 rounded flex justify-between items-center"
-            >
-              <span className="min-w-0">
-                <strong className="text-orange-400">{item.name}</strong>{" "}
-                {typeof item.labor_time === "number" && (
-                  <span className="text-xs text-neutral-400">({item.labor_time.toFixed(1)}h)</span>
+      {/* Existing items */}
+      <ul className="space-y-2 max-w-3xl">
+        {menuItems.map((item) => (
+          <li
+            key={item.id}
+            className="border border-neutral-800 bg-neutral-950 p-3 rounded"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <strong className="text-orange-400">{item.name}</strong>
+                {item.description && (
+                  <span className="block text-xs text-neutral-400">
+                    {item.description}
+                  </span>
                 )}
-              </span>
-              <button
-                onClick={() => handleDelete(item.id)}
-                className="text-red-400 hover:text-red-300"
-              >
-                Delete
-              </button>
-            </li>
-          ))}
-          {menuItems.length === 0 && <li className="text-sm text-neutral-400">No items yet.</li>}
-        </ul>
-      </div>
+              </div>
+              <div className="text-sm text-neutral-300">
+                {typeof item.total_price === "number" && (
+                  <span className="ml-3">Total ${item.total_price.toFixed(2)}</span>
+                )}
+              </div>
+            </div>
+          </li>
+        ))}
+        {menuItems.length === 0 && (
+          <li className="text-sm text-neutral-400">No items yet.</li>
+        )}
+      </ul>
     </div>
   );
 }
