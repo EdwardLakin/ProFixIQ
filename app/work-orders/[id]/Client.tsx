@@ -188,7 +188,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                 .limit(50);
               const wanted = `${prefix}${n}`;
               const match = (cands ?? []).find(
-                (r) => (r.custom_id ?? "").toUpperCase().replace(/^([A-Z]+)0+/, "$1") === wanted
+                (r) => (r.custom_id ?? "").toUpperCase().replace(/^([A-Z]+)0+/, "$1") === wanted,
               );
               if (match) woRow = match as WorkOrder;
             }
@@ -247,7 +247,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         setLoading(false);
       }
     },
-    [supabase, routeId, warnedMissing, setWo, setLines, setVehicle, setCustomer]
+    [supabase, routeId, warnedMissing, setWo, setLines, setVehicle, setCustomer],
   );
 
   useEffect(() => {
@@ -263,12 +263,12 @@ export default function WorkOrderIdClient(): JSX.Element {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "work_orders", filter: `id=eq.${routeId}` },
-        () => fetchAll()
+        () => fetchAll(),
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "work_order_lines", filter: `work_order_id=eq.${routeId}` },
-        () => fetchAll()
+        () => fetchAll(),
       )
       .subscribe();
     return () => {
