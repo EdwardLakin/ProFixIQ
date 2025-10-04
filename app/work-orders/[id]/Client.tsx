@@ -117,6 +117,11 @@ export default function WorkOrderIdClient(): JSX.Element {
           /* ignore */
         }
       }
+
+      // Re-check after refresh; if still no session, don't call getUser (avoids 403 spam)
+      const { data: s2 } = await supabase.auth.getSession();
+      if (!s2?.session) return;
+
       try {
         const {
           data: { user },
@@ -138,17 +143,25 @@ export default function WorkOrderIdClient(): JSX.Element {
       setViewError(null);
 
       try {
-        // Try by id first, then by custom_id (case-insensitive, zero-padding tolerant)
-        const { data: woRowById, error: woErr } = await supabase
-          .from("work_orders")
-          .select("*")
-          .eq("id", routeId)
-          .maybeSingle();
-        if (woErr) throw woErr;
+        // Only query id if it looks like a UUID; otherwise start with custom_id to avoid 400s
+        let woRow: WorkOrder | null = null;
 
-        let woRow = (woRowById as WorkOrder | null) ?? null;
+        if (looksLikeUuid(routeId)) {
+          const { data, error } = await supabase
+            .from("work_orders")
+            .select("*")
+            .eq("id", routeId)
+            .maybeSingle();
+          if (!error) {
+            woRow = (data as WorkOrder | null) ?? null;
+          } else {
+            // Non-fatal: fall through to custom_id attempts
+            // eslint-disable-next-line no-console
+            console.warn("[WO id page] id lookup failed, will try custom_id:", error.message);
+          }
+        }
 
-        if (!woRow && !looksLikeUuid(routeId)) {
+        if (!woRow) {
           const eqRes = await supabase
             .from("work_orders")
             .select("*")
@@ -175,7 +188,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                 .limit(50);
               const wanted = `${prefix}${n}`;
               const match = (cands ?? []).find(
-                (r) => (r.custom_id ?? "").toUpperCase().replace(/^([A-Z]+)0+/, "$1") === wanted,
+                (r) => (r.custom_id ?? "").toUpperCase().replace(/^([A-Z]+)0+/, "$1") === wanted
               );
               if (match) woRow = match as WorkOrder;
             }
@@ -234,7 +247,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         setLoading(false);
       }
     },
-    [supabase, routeId, warnedMissing, setWo, setLines, setVehicle, setCustomer],
+    [supabase, routeId, warnedMissing, setWo, setLines, setVehicle, setCustomer]
   );
 
   useEffect(() => {
@@ -250,12 +263,12 @@ export default function WorkOrderIdClient(): JSX.Element {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "work_orders", filter: `id=eq.${routeId}` },
-        () => fetchAll(),
+        () => fetchAll()
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "work_order_lines", filter: `work_order_id=eq.${routeId}` },
-        () => fetchAll(),
+        () => fetchAll()
       )
       .subscribe();
     return () => {
@@ -440,15 +453,10 @@ export default function WorkOrderIdClient(): JSX.Element {
               ) : (
                 <div className="space-y-2">
                   {sortedLines.map((ln) => {
-                    const statusKey = (ln.status ?? "awaiting")
-                      .toLowerCase()
-                      .replaceAll(" ", "_");
-                    const borderCls =
-                      statusBorder[statusKey] || "border-l-4 border-gray-400";
-                    const tintCls =
-                      statusRowTint[statusKey] || "bg-neutral-950";
-                    const punchedIn =
-                      !!ln.punched_in_at && !ln.punched_out_at;
+                    const statusKey = (ln.status ?? "awaiting").toLowerCase().replaceAll(" ", "_");
+                    const borderCls = statusBorder[statusKey] || "border-l-4 border-gray-400";
+                    const tintCls = statusRowTint[statusKey] || "bg-neutral-950";
+                    const punchedIn = !!ln.punched_in_at && !ln.punched_out_at;
 
                     return (
                       <div
@@ -469,21 +477,14 @@ export default function WorkOrderIdClient(): JSX.Element {
                             </div>
                             <div className="text-xs text-neutral-400">
                               {String(ln.job_type ?? "job").replaceAll("_", " ")} •{" "}
-                              {typeof ln.labor_time === "number"
-                                ? `${ln.labor_time}h`
-                                : "—"}{" "}
-                              • Status:{" "}
+                              {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} • Status:{" "}
                               {(ln.status ?? "awaiting").replaceAll("_", " ")}
                             </div>
                             {(ln.complaint || ln.cause || ln.correction) && (
                               <div className="text-xs text-neutral-400 mt-1 flex flex-wrap items-center gap-2">
-                                {ln.complaint ? (
-                                  <span>Cmpl: {ln.complaint}</span>
-                                ) : null}
+                                {ln.complaint ? <span>Cmpl: {ln.complaint}</span> : null}
                                 {ln.cause ? <span>| Cause: {ln.cause}</span> : null}
-                                {ln.correction ? (
-                                  <span>| Corr: {ln.correction}</span>
-                                ) : null}
+                                {ln.correction ? <span>| Corr: {ln.correction}</span> : null}
                               </div>
                             )}
                           </div>
@@ -513,10 +514,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         <div className="mt-8 space-y-4">
           <h2 className="text-xl font-semibold">Vehicle Photos</h2>
           <VehiclePhotoUploader vehicleId={vehicle.id} />
-          <VehiclePhotoGallery
-            vehicleId={vehicle.id}
-            currentUserId={currentUserId || "anon"}
-          />
+          <VehiclePhotoGallery vehicleId={vehicle.id} currentUserId={currentUserId || "anon"} />
         </div>
       )}
 

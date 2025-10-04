@@ -1,4 +1,3 @@
-// middleware.ts
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
@@ -14,9 +13,10 @@ function isAssetPath(p: string) {
   );
 }
 
+// Don’t split multi-cookie header; copy as-is
 function withSupabaseCookies(from: NextResponse, to: NextResponse) {
   const setCookie = from.headers.get("set-cookie");
-  if (setCookie) setCookie.split(",").forEach((c) => to.headers.append("set-cookie", c.trim()));
+  if (setCookie) to.headers.set("set-cookie", setCookie);
   return to;
 }
 
@@ -48,10 +48,10 @@ export async function middleware(req: NextRequest) {
         .from("profiles")
         .select("completed_onboarding")
         .eq("id", session.user.id)
+        .limit(1)
         .maybeSingle();
       completed = !!profile?.completed_onboarding;
     } catch {
-      // treat as not completed if profile lookup fails
       completed = false;
     }
   }
@@ -66,13 +66,11 @@ export async function middleware(req: NextRequest) {
 
   // Public routes
   if (isPublic) {
-    // Signed-in user trying to visit auth pages → bounce to right place
     if (session?.user && (pathname.startsWith("/sign-in") || pathname.startsWith("/signup"))) {
       const redirectParam = req.nextUrl.searchParams.get("redirect");
       const to = redirectParam || (completed ? "/dashboard" : "/onboarding");
       return withSupabaseCookies(res, NextResponse.redirect(new URL(to, req.url)));
     }
-    // If already finished, keep them off /onboarding even if linked
     if (pathname.startsWith("/onboarding") && session?.user && completed) {
       return withSupabaseCookies(res, NextResponse.redirect(new URL("/dashboard", req.url)));
     }
@@ -87,9 +85,9 @@ export async function middleware(req: NextRequest) {
   }
 
   // Only force onboarding if we explicitly know it's not completed
-if (completed === false && !pathname.startsWith("/onboarding")) {
-  return withSupabaseCookies(res, NextResponse.redirect(new URL("/onboarding", req.url)));
-}
+  if (completed === false && !pathname.startsWith("/onboarding")) {
+    return withSupabaseCookies(res, NextResponse.redirect(new URL("/onboarding", req.url)));
+  }
 
   return res;
 }

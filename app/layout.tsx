@@ -35,7 +35,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en" className={`${roboto.variable} ${blackOps.variable}`}>
       <body className="bg-black text-white">
-        {/* 👇 pass the server session into Providers */}
         <Providers initialSession={session ?? null}>
           <AppShell>
             {session?.user ? (

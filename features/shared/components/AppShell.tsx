@@ -1,4 +1,3 @@
-// features/shared/components/AppShell.tsx
 "use client";
 
 import Link from "next/link";
@@ -24,7 +23,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   };
 
   return (
-    <div className="min-h-screen bg-background text-white">
+    <div className="min-h-screen bg-black text-white">
       {/* Desktop header (hidden on mobile) */}
       <header className="hidden md:block fixed top-0 inset-x-0 z-30 bg-black/80 backdrop-blur border-b border-white/10">
         <div className="mx-auto max-w-7xl px-4 py-3 flex items-center justify-between">
