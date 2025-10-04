@@ -6,11 +6,11 @@ import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 type Profile = DB["public"]["Tables"]["profiles"]["Row"];
-type Shop = DB["public"]["Tables"]["shops"]["Row"];
-type Role = DB["public"]["Enums"]["user_role_enum"];
+type Shop    = DB["public"]["Tables"]["shops"]["Row"];
+type Role    = DB["public"]["Enums"]["user_role_enum"];
 
-// The profile with its joined shop (available as `user.shops`)
-type UserWithShop = Profile & { shops: Shop | null };
+// Keep the old UI contract: shop lives at `user.shops`
+export type UserWithShop = Profile & { shops: Shop | null };
 
 export function useUser() {
   const supabase = createClientComponentClient<DB>();
@@ -21,12 +21,11 @@ export function useUser() {
   const load = useCallback(async () => {
     setIsLoading(true);
 
-    // 1) current auth user
+    // 1) Get current auth user
     const {
       data: { user: authUser },
       error: authErr,
     } = await supabase.auth.getUser();
-
     if (authErr) console.warn("auth.getUser() failed:", authErr);
 
     if (!authUser) {
@@ -35,43 +34,110 @@ export function useUser() {
       return;
     }
 
-    // 2) profile + joined shop in one query
-    const { data, error } = await supabase
+    // 2) Fetch profile ONLY (no embedded select)
+    //    Select the columns you actually use to keep payload small.
+    const { data: pData, error: pErr } = await supabase
       .from("profiles")
-      .select("*, shops(*)")
+      .select(
+        [
+          "id",
+          "role",
+          "shop_id",
+          "plan",
+          "business_name",
+          "city",
+          "province",
+          "postal_code",
+          "phone",
+          "email",
+          "full_name",
+          "street",
+          "shop_name",
+          "created_at",
+          "updated_at",
+          "user_id",
+          "completed_onboarding",
+        ].join(","),
+      )
       .eq("id", authUser.id)
       .maybeSingle();
 
-    if (error) {
-      console.error("Failed to fetch profile + shop:", error);
+    if (pErr) {
+      console.error("Failed to fetch profile:", pErr);
       setUser(null);
-    } else {
-      setUser((data ?? null) as unknown as UserWithShop);
+      setIsLoading(false);
+      return;
     }
 
+    const profile = (pData ?? null) as Profile | null;
+    if (!profile) {
+      setUser(null);
+      setIsLoading(false);
+      return;
+    }
+
+    // 3) Optional shop lookup (separate query)
+    let shop: Shop | null = null;
+    if (profile.shop_id) {
+      const { data: sData, error: sErr } = await supabase
+        .from("shops")
+        .select(
+          [
+            "id",
+            "name",
+            "city",
+            "province",
+            "address",
+            "street",
+            "postal_code",
+            "email",
+            "phone_number",
+            "owner_id",
+            "plan",
+            "user_limit",
+            "labor_rate",
+            "tax_rate",
+            "supplies_percent",
+            "timezone",
+            "created_at",
+            "updated_at",
+          ].join(","),
+        )
+        .eq("id", profile.shop_id)
+        .maybeSingle();
+
+      if (sErr) {
+        console.warn("Shop lookup failed:", sErr);
+      } else {
+        shop = (sData ?? null) as Shop | null;
+      }
+    }
+
+    // Keep the 'shops' property name for back-compat with existing UI
+    const merged: UserWithShop = { ...(profile as Profile), shops: shop };
+    setUser(merged);
     setIsLoading(false);
   }, [supabase]);
 
   useEffect(() => {
-    // initial load
+    // Initial load
     void load();
 
-    // react to auth changes
+    // Re-load on auth state changes (sign in/out, token refresh, etc.)
     const { data: authSub } = supabase.auth.onAuthStateChange(() => {
       void load();
     });
 
-    // realtime: watch this profile row and its shop row (if any)
+    // Realtime: watch this profile row and the current shop row (if any)
     let profileChannel: ReturnType<typeof supabase.channel> | null = null;
     let shopChannel: ReturnType<typeof supabase.channel> | null = null;
 
     (async () => {
-      const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser();
+      const { data: auth } = await supabase.auth.getUser();
+      const authUser = auth.user;
       if (!authUser) return;
 
-      // profile changes
+      // Profile changes
       profileChannel = supabase
         .channel(`profile-${authUser.id}`)
         .on(
@@ -81,7 +147,7 @@ export function useUser() {
         )
         .subscribe();
 
-      // find current shop id (lightweight)
+      // Determine current shop id (light call)
       const { data: p } = await supabase
         .from("profiles")
         .select("shop_id")
@@ -108,7 +174,7 @@ export function useUser() {
     };
   }, [supabase, load]);
 
-  // handy typed role
+  // Handy typed role export
   const role: Role | null = (user?.role as Role | null) ?? null;
 
   return { user, role, isLoading, refresh: load };
