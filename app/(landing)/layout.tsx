@@ -20,7 +20,7 @@ export default function RootLayout({
         id="root"
         className="bg-gradient-to-br from-black via-neutral-900 to-[#1a1a1a] text-white font-header"
       >
-        <Providers>
+        <Providers initialSession={null}>
           <Toaster position="top-center" />
           {children}
         </Providers>
