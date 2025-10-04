@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, } from "react";
+import { Dialog } from "@headlessui/react";
 import { format, formatDistanceStrict } from "date-fns";
 import { toast } from "sonner";
 import { v4 as uuidv4 } from "uuid";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
-import ModalShell from "@/features/shared/components/ModalShell";
 
 // existing modals
 import CauseCorrectionModal from "@work-orders/components/workorders/CauseCorrectionModal";
@@ -39,8 +39,8 @@ const statusTextColor: Record<string, string> = {
   new: "text-neutral-200",
 };
 const chip = (s: string | null) =>
-  (statusTextColor[(s ?? "awaiting").toLowerCase().replaceAll(" ", "_")] ??
-    "text-neutral-200");
+  statusTextColor[(s ?? "awaiting").toLowerCase().replaceAll(" ", "_")] ??
+  "text-neutral-200";
 
 const outlineBtn = "font-header rounded border px-3 py-2 text-sm transition-colors";
 const outlineNeutral = `${outlineBtn} border-neutral-700 text-neutral-200 hover:bg-neutral-800`;
@@ -297,9 +297,6 @@ export default function FocusedJobModal(props: any) {
   const titleText =
     (line?.description || line?.complaint || "Focused Job") +
     (line?.job_type ? ` — ${String(line.job_type).replaceAll("_", " ")}` : "");
-  const titleEl = (
-    <span className={`font-header ${chip(line?.status)}`}>{titleText}</span>
-  );
 
   const startedText = startAt ? format(new Date(startAt), "PPpp") : "—";
   const finishedText = finishAt ? format(new Date(finishAt), "PPpp") : "—";
@@ -308,12 +305,10 @@ export default function FocusedJobModal(props: any) {
   const openInspection = async () => {
     if (!line) return;
 
-    // Pick template by heuristic
     const isAir = String(line.description ?? "").toLowerCase().includes("air");
     const template: "maintenance50" | "maintenance50-air" = isAir ? "maintenance50-air" : "maintenance50";
 
     try {
-      // Ensure a session exists (or get existing)
       const res = await fetch("/api/inspections/session/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -331,7 +326,6 @@ export default function FocusedJobModal(props: any) {
 
       const sessionId: string = j.sessionId;
 
-      // Build params for your InspectionModal iframe
       const sp = new URLSearchParams();
       if (workOrder?.id) sp.set("workOrderId", workOrder.id);
       sp.set("workOrderLineId", line.id);
@@ -339,8 +333,6 @@ export default function FocusedJobModal(props: any) {
       sp.set("template", template);
 
       const path = `/inspections/${template}`;
-
-      // Tell the WO id page to open the InspectionModal (it already listens for this)
       window.dispatchEvent(
         new CustomEvent("inspection:open", {
           detail: { path, params: sp.toString() },
@@ -355,210 +347,229 @@ export default function FocusedJobModal(props: any) {
 
   return (
     <>
-      <ModalShell
-        isOpen={isOpen}
+      <Dialog
+        open={isOpen}
         onClose={onClose}
-        title={titleEl}
-        subtitle={
-          workOrder ? (
-            <span className="text-neutral-400">
-              WO #{workOrder.custom_id || workOrder.id?.slice(0, 8)}
-            </span>
-          ) : undefined
-        }
-        size="lg"
+        className="fixed inset-0 z-[60] flex items-center justify-center"
       >
-        {loading || !line ? (
-          <div className="grid gap-3">
-            <div className="h-6 w-40 animate-pulse rounded bg-neutral-800/60" />
-            <div className="h-24 animate-pulse rounded bg-neutral-800/60" />
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {/* Meta (force dark blocks) */}
-            <div className="grid gap-2 sm:grid-cols-2">
-              <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
-                <div className="text-xs text-neutral-400">Status</div>
-                <div className={`font-medium ${chip(line.status)}`}>
-                  {String(line.status || "awaiting").replaceAll("_", " ")}
-                </div>
+        {/* Dark overlay */}
+        <div className="fixed inset-0 bg-black/70" aria-hidden="true" />
+
+        {/* Panel */}
+        <div className="relative z-[61] mx-4 my-6 w-full max-w-5xl">
+          <div className="max-h-[85vh] overflow-y-auto rounded-lg border border-orange-400 bg-neutral-950 p-5 text-white shadow-xl">
+            {/* Title row */}
+            <div className="mb-2 flex items-start justify-between gap-3">
+              <div className="text-lg font-header font-semibold tracking-wide">
+                <span className={chip(line?.status)}>{titleText}</span>
+                {workOrder ? (
+                  <span className="ml-2 text-sm font-normal text-neutral-400">
+                    WO #{workOrder.custom_id || workOrder.id?.slice(0, 8)}
+                  </span>
+                ) : null}
               </div>
-              <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
-                <div className="text-xs text-neutral-400">Start</div>
-                <div className="font-medium">{startedText}</div>
-              </div>
-              <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
-                <div className="text-xs text-neutral-400">Finish</div>
-                <div className="font-medium">{finishedText}</div>
-              </div>
-              <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
-                <div className="text-xs text-neutral-400">Hold Reason</div>
-                <div className="font-medium">{line.hold_reason ?? "—"}</div>
-              </div>
+
+              <button
+                onClick={onClose}
+                className="rounded border border-neutral-700 px-2 py-1 text-sm text-neutral-200 hover:bg-neutral-800"
+                title="Close"
+              >
+                ✕
+              </button>
             </div>
 
-            {/* Vehicle & Customer */}
-            <div className="rounded border border-neutral-800 bg-neutral-950 p-3 text-sm">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <div className="text-neutral-400">Vehicle</div>
-                  <div className="truncate">
-                    {vehicle
-                      ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim() || "—"
-                      : "—"}
-                  </div>
-                  <div className="text-xs text-neutral-500">
-                    VIN: {vehicle?.vin ?? "—"} • Plate: {vehicle?.license_plate ?? "—"}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-neutral-400">Customer</div>
-                  <div className="truncate">
-                    {customer
-                      ? [customer.first_name ?? "", customer.last_name ?? ""]
-                          .filter(Boolean)
-                          .join(" ") || "—"
-                      : "—"}
-                  </div>
-                  <div className="text-xs text-neutral-500">
-                    {customer?.phone ?? "—"} {customer?.email ? `• ${customer.email}` : ""}
-                  </div>
-                </div>
+            {/* Body */}
+            {loading || !line ? (
+              <div className="grid gap-3">
+                <div className="h-6 w-40 animate-pulse rounded bg-neutral-800/60" />
+                <div className="h-24 animate-pulse rounded bg-neutral-800/60" />
               </div>
-            </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Meta (dark blocks) */}
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
+                    <div className="text-xs text-neutral-400">Status</div>
+                    <div className={`font-medium ${chip(line.status)}`}>
+                      {String(line.status || "awaiting").replaceAll("_", " ")}
+                    </div>
+                  </div>
+                  <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
+                    <div className="text-xs text-neutral-400">Start</div>
+                    <div className="font-medium">{startedText}</div>
+                  </div>
+                  <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
+                    <div className="text-xs text-neutral-400">Finish</div>
+                    <div className="font-medium">{finishedText}</div>
+                  </div>
+                  <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
+                    <div className="text-xs text-neutral-400">Hold Reason</div>
+                    <div className="font-medium">{line.hold_reason ?? "—"}</div>
+                  </div>
+                </div>
 
-            {/* Controls — outline buttons, gated by mode */}
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {mode === "tech" ? (
-                <>
-                  {!startAt || finishAt ? (
-                    <button className={outlineSuccess} onClick={startJob}>Start</button>
+                {/* Vehicle & Customer (dark) */}
+                <div className="rounded border border-neutral-800 bg-neutral-950 p-3 text-sm">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <div className="text-neutral-400">Vehicle</div>
+                      <div className="truncate">
+                        {vehicle
+                          ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim() || "—"
+                          : "—"}
+                      </div>
+                      <div className="text-xs text-neutral-500">
+                        VIN: {vehicle?.vin ?? "—"} • Plate: {vehicle?.license_plate ?? "—"}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-neutral-400">Customer</div>
+                      <div className="truncate">
+                        {customer
+                          ? [customer.first_name ?? "", customer.last_name ?? ""]
+                              .filter(Boolean)
+                              .join(" ") || "—"
+                          : "—"}
+                      </div>
+                      <div className="text-xs text-neutral-500">
+                        {customer?.phone ?? "—"} {customer?.email ? `• ${customer.email}` : ""}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Controls */}
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {mode === "tech" ? (
+                    <>
+                      {!startAt || finishAt ? (
+                        <button className={outlineSuccess} onClick={startJob}>Start</button>
+                      ) : (
+                        <button className={outlineFinish} onClick={finishJob}>Finish</button>
+                      )}
+
+                      <button className={outlinePurple} onClick={() => setOpenComplete(true)}>
+                        Complete (Cause/Correction)
+                      </button>
+
+                      <button className={outlineDanger} onClick={() => setOpenParts(true)}>
+                        Request Parts
+                      </button>
+
+                      <button className={outlineWarn} onClick={() => setOpenHold(true)}>
+                        {line.status === "on_hold" ? "On Hold" : "Hold"}
+                      </button>
+
+                      <button className={outlineInfo} onClick={() => setOpenStatus(true)}>
+                        Change Status
+                      </button>
+
+                      <button className={outlineNeutral} onClick={() => setOpenTime(true)}>
+                        Adjust Time
+                      </button>
+
+                      <button className={outlineNeutral} onClick={() => setOpenAssign(true)}>
+                        Assign Tech
+                      </button>
+
+                      <button className={outlineNeutral} onClick={() => setOpenPhoto(true)}>
+                        Add Photo
+                      </button>
+
+                      <button className={outlineNeutral} onClick={() => setOpenCost(true)}>
+                        Cost / Estimate
+                      </button>
+
+                      <button className={outlineNeutral} onClick={() => setOpenContact(true)}>
+                        Contact Customer
+                      </button>
+
+                      <button
+                        className={`${outlineInfo} ${line?.job_type === "inspection" ? "" : "opacity-50 cursor-not-allowed"}`}
+                        onClick={line?.job_type === "inspection" ? openInspection : undefined}
+                        title={line?.job_type === "inspection" ? "Open inspection" : "Not an inspection line"}
+                      >
+                        Open Inspection
+                      </button>
+
+                      <button className={outlineInfo} onClick={() => setOpenChat(true)}>
+                        Chat
+                      </button>
+                    </>
                   ) : (
-                    <button className={outlineFinish} onClick={finishJob}>Finish</button>
+                    <>
+                      <button className={outlineNeutral} onClick={() => setOpenCost(true)}>
+                        Cost / Estimate
+                      </button>
+                      <button className={outlineNeutral} onClick={() => setOpenContact(true)}>
+                        Contact Customer
+                      </button>
+                      <button className={outlineInfo} onClick={() => setOpenStatus(true)}>
+                        Change Status
+                      </button>
+                      <button
+                        className={`${outlineInfo} ${line?.job_type === "inspection" ? "" : "opacity-50 cursor-not-allowed"}`}
+                        onClick={line?.job_type === "inspection" ? openInspection : undefined}
+                      >
+                        Open Inspection
+                      </button>
+                      <button className={outlineInfo} onClick={() => setOpenChat(true)}>
+                        Chat
+                      </button>
+                    </>
                   )}
+                </div>
 
-                  <button className={outlinePurple} onClick={() => setOpenComplete(true)}>
-                    Complete (Cause/Correction)
-                  </button>
+                {/* Live timer (dark) */}
+                <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
+                  <div className="text-xs text-neutral-400">Live Timer</div>
+                  <div className="font-medium">{duration || renderLiveTenthHours()}</div>
+                </div>
 
-                  <button className={outlineDanger} onClick={() => setOpenParts(true)}>
-                    Request Parts
-                  </button>
+                {/* Tech notes */}
+                <div>
+                  <label className="mb-1 block text-sm font-header">Tech Notes</label>
+                  <textarea
+                    rows={4}
+                    value={techNotes}
+                    onChange={(e) => setTechNotes(e.target.value)}
+                    onBlur={saveNotes}
+                    disabled={savingNotes}
+                    className="w-full rounded border border-orange-500 bg-neutral-900 p-2 text-white placeholder-neutral-400"
+                    placeholder="Add notes for this job…"
+                  />
+                </div>
 
-                  <button className={outlineWarn} onClick={() => setOpenHold(true)}>
-                    {line.status === "on_hold" ? "On Hold" : "Hold"}
-                  </button>
+                {/* AI suggestions (dark) */}
+                <div className="rounded border border-neutral-800 bg-neutral-900 p-3">
+                  <h3 className="mb-2 font-semibold">AI Suggested Repairs</h3>
+                  {line && workOrder ? (
+                    <SuggestedQuickAdd
+                      jobId={line.id}
+                      workOrderId={workOrder.id}
+                      vehicleId={vehicle?.id ?? null}
+                      onAdded={async () => {
+                        toast.success("Suggested line added");
+                        await refresh();
+                      }}
+                    />
+                  ) : (
+                    <div className="text-sm text-neutral-400">Vehicle/work order details required.</div>
+                  )}
+                </div>
 
-                  <button className={outlineInfo} onClick={() => setOpenStatus(true)}>
-                    Change Status
-                  </button>
-
-                  <button className={outlineNeutral} onClick={() => setOpenTime(true)}>
-                    Adjust Time
-                  </button>
-
-                  <button className={outlineNeutral} onClick={() => setOpenAssign(true)}>
-                    Assign Tech
-                  </button>
-
-                  <button className={outlineNeutral} onClick={() => setOpenPhoto(true)}>
-                    Add Photo
-                  </button>
-
-                  <button className={outlineNeutral} onClick={() => setOpenCost(true)}>
-                    Cost / Estimate
-                  </button>
-
-                  <button className={outlineNeutral} onClick={() => setOpenContact(true)}>
-                    Contact Customer
-                  </button>
-
-                  {/* Open Inspection (only for inspection lines) */}
-                  <button
-                    className={`${outlineInfo} ${line?.job_type === "inspection" ? "" : "opacity-50 cursor-not-allowed"}`}
-                    onClick={line?.job_type === "inspection" ? openInspection : undefined}
-                    title={line?.job_type === "inspection" ? "Open inspection" : "Not an inspection line"}
-                  >
-                    Open Inspection
-                  </button>
-
-                  {/* NEW: Chat */}
-                  <button className={outlineInfo} onClick={() => setOpenChat(true)}>
-                    Chat
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button className={outlineNeutral} onClick={() => setOpenCost(true)}>
-                    Cost / Estimate
-                  </button>
-                  <button className={outlineNeutral} onClick={() => setOpenContact(true)}>
-                    Contact Customer
-                  </button>
-                  <button className={outlineInfo} onClick={() => setOpenStatus(true)}>
-                    Change Status
-                  </button>
-                  <button
-                    className={`${outlineInfo} ${line?.job_type === "inspection" ? "" : "opacity-50 cursor-not-allowed"}`}
-                    onClick={line?.job_type === "inspection" ? openInspection : undefined}
-                  >
-                    Open Inspection
-                  </button>
-                  <button className={outlineInfo} onClick={() => setOpenChat(true)}>
-                    Chat
-                  </button>
-                </>
-              )}
-            </div>
-
-            {/* Live timer (dark block) */}
-            <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
-              <div className="text-xs text-neutral-400">Live Timer</div>
-              <div className="font-medium">{duration || renderLiveTenthHours()}</div>
-            </div>
-
-            {/* Tech notes */}
-            <div>
-              <label className="mb-1 block text-sm font-header">Tech Notes</label>
-              <textarea
-                rows={4}
-                value={techNotes}
-                onChange={(e) => setTechNotes(e.target.value)}
-                onBlur={saveNotes}
-                disabled={savingNotes}
-                className="w-full rounded border border-orange-500 bg-neutral-900 p-2 text-white placeholder-neutral-400"
-                placeholder="Add notes for this job…"
-              />
-            </div>
-
-            {/* NEW: AI suggestions (now inside Focused modal) */}
-            <div className="rounded border border-neutral-800 bg-neutral-900 p-3">
-              <h3 className="mb-2 font-semibold">AI Suggested Repairs</h3>
-              {line && workOrder ? (
-                <SuggestedQuickAdd
-                  jobId={line.id}
-                  workOrderId={workOrder.id}
-                  vehicleId={vehicle?.id ?? null}
-                  onAdded={async () => {
-                    toast.success("Suggested line added");
-                    await refresh();
-                  }}
-                />
-              ) : (
-                <div className="text-sm text-neutral-400">Vehicle/work order details required.</div>
-              )}
-            </div>
-
-            <div className="text-xs text-neutral-500">
-              Job ID: {line.id}
-              {typeof line.labor_time === "number" ? ` • Labor: ${line.labor_time.toFixed(1)}h` : ""}
-              {line.hold_reason ? ` • Hold: ${line.hold_reason}` : ""}
-            </div>
+                <div className="text-xs text-neutral-500">
+                  Job ID: {line.id}
+                  {typeof line.labor_time === "number" ? ` • Labor: ${line.labor_time.toFixed(1)}h` : ""}
+                  {line.hold_reason ? ` • Hold: ${line.hold_reason}` : ""}
+                </div>
+              </div>
+            )}
           </div>
-        )}
-      </ModalShell>
+        </div>
+      </Dialog>
 
-      {/* Sub-modals */}
+      {/* Sub-modals (unchanged) */}
       {openComplete && line && (
         <CauseCorrectionModal
           isOpen={openComplete}
@@ -604,11 +615,21 @@ export default function FocusedJobModal(props: any) {
       )}
 
       {openAssign && line && (
-        <AssignTechModal isOpen={openAssign} onClose={() => setOpenAssign(false)} workOrderLineId={line.id} onAssigned={refresh} />
+        <AssignTechModal
+          isOpen={openAssign}
+          onClose={() => setOpenAssign(false)}
+          workOrderLineId={line.id}
+          onAssigned={refresh}
+        />
       )}
 
       {openStatus && line && (
-        <StatusPickerModal isOpen={openStatus} onClose={() => setOpenStatus(false)} current={(line.status || "awaiting") as any} onChange={changeStatus} />
+        <StatusPickerModal
+          isOpen={openStatus}
+          onClose={() => setOpenStatus(false)}
+          current={(line.status || "awaiting") as any}
+          onChange={changeStatus}
+        />
       )}
 
       {openTime && line && (
@@ -621,7 +642,13 @@ export default function FocusedJobModal(props: any) {
         />
       )}
 
-      {openPhoto && <PhotoCaptureModal isOpen={openPhoto} onClose={() => setOpenPhoto(false)} onCapture={uploadPhoto} />}
+      {openPhoto && (
+        <PhotoCaptureModal
+          isOpen={openPhoto}
+          onClose={() => setOpenPhoto(false)}
+          onCapture={uploadPhoto}
+        />
+      )}
 
       {openCost && line && (
         <CostEstimateModal
@@ -637,7 +664,9 @@ export default function FocusedJobModal(props: any) {
         <CustomerContactModal
           isOpen={openContact}
           onClose={() => setOpenContact(false)}
-          customerName={customer ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") : ""}
+          customerName={
+            customer ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") : ""
+          }
           customerEmail={customer?.email ?? ""}
           customerPhone={customer?.phone ?? ""}
           onSendEmail={sendEmail}
@@ -645,7 +674,6 @@ export default function FocusedJobModal(props: any) {
         />
       )}
 
-      {/* NEW: chat modal */}
       {openChat && (
         <NewChatModal
           isOpen={openChat}
