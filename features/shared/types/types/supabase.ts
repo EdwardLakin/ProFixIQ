@@ -116,6 +116,33 @@ export type Database = {
         }
         Relationships: []
       }
+      apps: {
+        Row: {
+          default_route: string
+          icon_url: string | null
+          id: string
+          is_enabled: boolean
+          name: string
+          slug: string
+        }
+        Insert: {
+          default_route: string
+          icon_url?: string | null
+          id?: string
+          is_enabled?: boolean
+          name: string
+          slug: string
+        }
+        Update: {
+          default_route?: string
+          icon_url?: string | null
+          id?: string
+          is_enabled?: boolean
+          name?: string
+          slug?: string
+        }
+        Relationships: []
+      }
       audit_logs: {
         Row: {
           action: string
@@ -796,6 +823,27 @@ export type Database = {
           },
         ]
       }
+      feature_reads: {
+        Row: {
+          feature_slug: string
+          id: string
+          last_read_at: string
+          user_id: string
+        }
+        Insert: {
+          feature_slug: string
+          id?: string
+          last_read_at?: string
+          user_id: string
+        }
+        Update: {
+          feature_slug?: string
+          id?: string
+          last_read_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       followups: {
         Row: {
           created_at: string | null
@@ -1243,6 +1291,44 @@ export type Database = {
           },
         ]
       }
+      menu_item_parts: {
+        Row: {
+          created_at: string | null
+          id: string
+          menu_item_id: string
+          name: string
+          quantity: number
+          unit_cost: number
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          menu_item_id: string
+          name: string
+          quantity?: number
+          unit_cost?: number
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          menu_item_id?: string
+          name?: string
+          quantity?: number
+          unit_cost?: number
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "menu_item_parts_menu_item_id_fkey"
+            columns: ["menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       menu_items: {
         Row: {
           category: string | null
@@ -1357,6 +1443,27 @@ export type Database = {
         }
         Relationships: []
       }
+      message_reads: {
+        Row: {
+          conversation_id: string
+          id: string
+          last_read_at: string
+          user_id: string
+        }
+        Insert: {
+          conversation_id: string
+          id?: string
+          last_read_at?: string
+          user_id: string
+        }
+        Update: {
+          conversation_id?: string
+          id?: string
+          last_read_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       messages: {
         Row: {
           attachments: Json
@@ -1433,6 +1540,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      notifications: {
+        Row: {
+          body: string | null
+          created_at: string | null
+          data: Json | null
+          id: string
+          is_read: boolean | null
+          kind: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string | null
+          data?: Json | null
+          id?: string
+          is_read?: boolean | null
+          kind: string
+          title: string
+          user_id: string
+        }
+        Update: {
+          body?: string | null
+          created_at?: string | null
+          data?: Json | null
+          id?: string
+          is_read?: boolean | null
+          kind?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       part_compatibility: {
         Row: {
@@ -1859,6 +1999,7 @@ export type Database = {
           shop_name: string | null
           street: string | null
           updated_at: string | null
+          user_id: string | null
         }
         Insert: {
           business_name?: string | null
@@ -1879,6 +2020,7 @@ export type Database = {
           shop_name?: string | null
           street?: string | null
           updated_at?: string | null
+          user_id?: string | null
         }
         Update: {
           business_name?: string | null
@@ -1899,6 +2041,7 @@ export type Database = {
           shop_name?: string | null
           street?: string | null
           updated_at?: string | null
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -2711,6 +2854,30 @@ export type Database = {
         }
         Relationships: []
       }
+      user_app_layouts: {
+        Row: {
+          id: string
+          layout: Json
+          updated_at: string | null
+          user_id: string
+          wallpaper: string | null
+        }
+        Insert: {
+          id?: string
+          layout: Json
+          updated_at?: string | null
+          user_id: string
+          wallpaper?: string | null
+        }
+        Update: {
+          id?: string
+          layout?: Json
+          updated_at?: string | null
+          user_id?: string
+          wallpaper?: string | null
+        }
+        Relationships: []
+      }
       user_plans: {
         Row: {
           created_at: string | null
@@ -2732,6 +2899,27 @@ export type Database = {
           id?: string
           plan_name?: string
           user_id?: string | null
+        }
+        Relationships: []
+      }
+      user_widget_layouts: {
+        Row: {
+          id: string
+          layout: Json
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          layout: Json
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          id?: string
+          layout?: Json
+          updated_at?: string | null
+          user_id?: string
         }
         Relationships: []
       }
@@ -2953,6 +3141,65 @@ export type Database = {
           id?: string
           user_id?: string | null
           vin?: string
+        }
+        Relationships: []
+      }
+      widget_instances: {
+        Row: {
+          config: Json
+          created_at: string | null
+          id: string
+          user_id: string
+          widget_slug: string
+        }
+        Insert: {
+          config?: Json
+          created_at?: string | null
+          id?: string
+          user_id: string
+          widget_slug: string
+        }
+        Update: {
+          config?: Json
+          created_at?: string | null
+          id?: string
+          user_id?: string
+          widget_slug?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "widget_instances_widget_slug_fkey"
+            columns: ["widget_slug"]
+            isOneToOne: false
+            referencedRelation: "widgets"
+            referencedColumns: ["slug"]
+          },
+        ]
+      }
+      widgets: {
+        Row: {
+          allowed_sizes: string[]
+          default_route: string
+          default_size: string
+          id: string
+          name: string
+          slug: string
+        }
+        Insert: {
+          allowed_sizes?: string[]
+          default_route: string
+          default_size?: string
+          id?: string
+          name: string
+          slug: string
+        }
+        Update: {
+          allowed_sizes?: string[]
+          default_route?: string
+          default_size?: string
+          id?: string
+          name?: string
+          slug?: string
         }
         Relationships: []
       }
@@ -3252,6 +3499,10 @@ export type Database = {
           assigned_tech: string | null
           created_at: string | null
           custom_id: string | null
+          customer_approval_at: string | null
+          customer_approval_signature_path: string | null
+          customer_approval_signature_url: string | null
+          customer_approved_by: string | null
           customer_id: string | null
           customer_name: string | null
           id: string
@@ -3282,6 +3533,10 @@ export type Database = {
           assigned_tech?: string | null
           created_at?: string | null
           custom_id?: string | null
+          customer_approval_at?: string | null
+          customer_approval_signature_path?: string | null
+          customer_approval_signature_url?: string | null
+          customer_approved_by?: string | null
           customer_id?: string | null
           customer_name?: string | null
           id?: string
@@ -3312,6 +3567,10 @@ export type Database = {
           assigned_tech?: string | null
           created_at?: string | null
           custom_id?: string | null
+          customer_approval_at?: string | null
+          customer_approval_signature_path?: string | null
+          customer_approval_signature_url?: string | null
+          customer_approved_by?: string | null
           customer_id?: string | null
           customer_name?: string | null
           id?: string
