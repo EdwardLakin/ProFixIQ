@@ -5,7 +5,7 @@
  * - Reads route id with useParams() (no props from wrapper).
  * - Stabilized Supabase auth (getSession → refreshSession → getUser).
  * - Falls back to custom_id (case-insensitive, leading-zero tolerant).
- * - Realtime updates for WO & WO lines.
+ * - Realtime updates for WO & WO lines (UUID-safe when route id is a custom code).
  * - Same UI/UX (header, jobs list, photos, modals).
  */
 
@@ -255,30 +255,52 @@ export default function WorkOrderIdClient(): JSX.Element {
     void fetchAll();
   }, [fetchAll, routeId]);
 
-  // Real-time refresh
+  /* ---------------------- REALTIME (UUID-safe) ---------------------- */
   useEffect(() => {
     if (!routeId) return;
-    const ch = supabase
-      .channel(`wo:${routeId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "work_orders", filter: `id=eq.${routeId}` },
-        () => fetchAll(),
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "work_order_lines", filter: `work_order_id=eq.${routeId}` },
-        () => fetchAll(),
-      )
-      .subscribe();
+
+    const chans: ReturnType<typeof supabase.channel>[] = [];
+
+    // If we already resolved the real WO (so we have a UUID), subscribe by UUID.
+    if (wo?.id) {
+      const ch = supabase
+        .channel(`wo:${wo.id}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "work_orders", filter: `id=eq.${wo.id}` },
+          () => fetchAll(),
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "work_order_lines", filter: `work_order_id=eq.${wo.id}` },
+          () => fetchAll(),
+        )
+        .subscribe();
+      chans.push(ch);
+    }
+    // If we only have a custom code (e.g., WC0001), watch the WO by custom_id to avoid UUID casts.
+    else if (routeId && !looksLikeUuid(routeId)) {
+      const chByCode = supabase
+        .channel(`wo:bycode:${routeId}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "work_orders", filter: `custom_id=eq.${routeId}` },
+          () => fetchAll(),
+        )
+        .subscribe();
+      chans.push(chByCode);
+    }
+
     return () => {
-      try {
-        supabase.removeChannel(ch);
-      } catch {
-        /* ignore */
-      }
+      chans.forEach((c) => {
+        try {
+          supabase.removeChannel(c);
+        } catch {
+          /* noop */
+        }
+      });
     };
-  }, [supabase, routeId, fetchAll]);
+  }, [supabase, routeId, wo?.id, fetchAll]);
 
   /* ----------------------- Helpers ----------------------- */
   const sortedLines = useMemo(() => {
