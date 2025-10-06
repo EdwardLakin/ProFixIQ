@@ -3,11 +3,11 @@
 /**
  * Work Order — ID Page (Tech/View)
  * - Reads route id with useParams() (no props from wrapper).
- * - Robust Supabase auth: subscribe to onAuthStateChange so the page recovers
- *   when Safari restores/refreshes the session a moment after mount.
+ * - Waits for a real Supabase session before the first fetch (prevents
+ *   the iPad/Safari "signed out / not found" race when opening new tabs).
  * - Falls back to custom_id (case-insensitive, leading-zero tolerant).
  * - Realtime updates for WO & WO lines (UUID-safe: subscribe with wo.id).
- * - Same UI/UX (header, jobs list, photos, modals).
+ * - Includes a tiny AuthDebug panel at the top.
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -76,6 +76,7 @@ type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
 
 const looksLikeUuid = (s: string) => s.includes("-") && s.length >= 36;
+
 /** Normalize a custom id like WC00003 → {prefix:"WC", n:3}. */
 function splitCustomId(raw: string): { prefix: string; n: number | null } {
   const m = raw.toUpperCase().match(/^([A-Z]+)\s*0*?(\d+)?$/);
@@ -153,29 +154,47 @@ export default function WorkOrderIdClient(): JSX.Element {
   useEffect(() => {
     let mounted = true;
 
-    const assureUser = async () => {
+    const ensureSessionThenFetch = async () => {
+      // Try to ensure a live session (covers Safari/iPad resume cases)
       const { data: s1 } = await supabase.auth.getSession();
       if (!s1?.session) {
         try {
           await supabase.auth.refreshSession();
-        } catch {/* ignore */}
+        } catch {
+          /* ignore */
+        }
       }
 
-      const { data: u } = await supabase.auth.getUser();
+      // If the session is still missing, poll briefly (new-tab cookie race)
+      let sess = (await supabase.auth.getSession()).data.session;
+      if (!sess) {
+        for (let i = 0; i < 5; i++) {
+          await new Promise((r) => setTimeout(r, 250 * (i + 1)));
+          sess = (await supabase.auth.getSession()).data.session;
+          if (sess) break;
+        }
+      }
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
       if (!mounted) return;
 
-      const uid = u?.user?.id ?? null;
+      const uid = user?.id ?? null;
       setCurrentUserId(uid);
       setUserId(uid);
 
-      if (routeId) void fetchAll();
+      // Only fetch once a real user is present (prevents RLS-empty flicker)
+      if (uid && routeId) void fetchAll();
     };
 
-    void assureUser();
+    void ensureSessionThenFetch();
 
-    const { data: sub } = supabase.auth.onAuthStateChange((evt) => {
-      if (evt === "SIGNED_IN" || evt === "TOKEN_REFRESHED") void assureUser();
-      if (evt === "SIGNED_OUT") {
+    // Subscribe so we recover automatically after token refresh or late sign-in
+    const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
+      if (session?.user) void ensureSessionThenFetch();
+      else {
         setCurrentUserId(null);
         setUserId(null);
       }
@@ -198,6 +217,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       try {
         let woRow: WorkOrder | null = null;
 
+        // Fast path: UUID id
         if (looksLikeUuid(routeId)) {
           const { data, error } = await supabase
             .from("work_orders")
@@ -207,6 +227,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           if (!error) woRow = (data as WorkOrder | null) ?? null;
         }
 
+        // Fall back: custom_id with case/zero-tolerance
         if (!woRow) {
           const eqRes = await supabase.from("work_orders").select("*").eq("custom_id", routeId).maybeSingle();
           woRow = (eqRes.data as WorkOrder | null) ?? null;
@@ -237,6 +258,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           }
         }
 
+        // None found → retry briefly, then show message
         if (!woRow) {
           if (retry < 2) {
             await new Promise((r) => setTimeout(r, 200 * Math.pow(2, retry)));
@@ -283,6 +305,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "Failed to load work order.";
         setViewError(msg);
+        // eslint-disable-next-line no-console
         console.error("[WO id page] load error:", e);
       } finally {
         setLoading(false);
@@ -292,9 +315,9 @@ export default function WorkOrderIdClient(): JSX.Element {
   );
 
   useEffect(() => {
-    if (!routeId) return;
-    void fetchAll();
-  }, [fetchAll, routeId]);
+  if (!routeId || !currentUserId) return; // wait until we *know* we have a user
+  void fetchAll();
+}, [fetchAll, routeId, currentUserId]);
 
   /* ---------------------- REALTIME (UUID-safe) ---------------------- */
   useEffect(() => {
@@ -302,8 +325,10 @@ export default function WorkOrderIdClient(): JSX.Element {
 
     const ch = supabase
       .channel(`wo:${wo.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "work_orders", filter: `id=eq.${wo.id}` }, () =>
-        fetchAll(),
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "work_orders", filter: `id=eq.${wo.id}` },
+        () => fetchAll(),
       )
       .on(
         "postgres_changes",
@@ -315,7 +340,9 @@ export default function WorkOrderIdClient(): JSX.Element {
     return () => {
       try {
         supabase.removeChannel(ch);
-      } catch {/* ignore */}
+      } catch {
+        /* ignore */
+      }
     };
   }, [supabase, wo?.id, fetchAll]);
 
@@ -334,7 +361,9 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   const chipClass = (s: string | null): string => {
     const key = (s ?? "awaiting").toLowerCase().replaceAll(" ", "_");
-    return `text-xs px-2 py-1 rounded ${statusBadge[key] ?? "bg-gray-200 text-gray-800"}`;
+    return `text-xs px-2 py-1 rounded ${
+      (statusBadge as Record<string, string>)[key] ?? "bg-gray-200 text-gray-800"
+    }`;
   };
 
   const createdAt = wo?.created_at ? new Date(wo.created_at) : null;
@@ -349,7 +378,7 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   return (
     <div className="p-4 sm:p-6 text-white">
-      {/* auth debug at the very top */}
+      {/* Small auth debug at the very top */}
       <AuthDebug sb={supabase} />
 
       <PreviousPageButton to="/work-orders" />
@@ -386,7 +415,9 @@ export default function WorkOrderIdClient(): JSX.Element {
             {/* Header */}
             <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h1 className="text-2xl font-semibold">Work Order {wo.custom_id || `#${wo.id.slice(0, 8)}`}</h1>
+                <h1 className="text-2xl font-semibold">
+                  Work Order {wo.custom_id || `#${wo.id.slice(0, 8)}`}
+                </h1>
                 <button
                   type="button"
                   onClick={() => setIsAddJobModalOpen(true)}
@@ -403,7 +434,9 @@ export default function WorkOrderIdClient(): JSX.Element {
                 </div>
                 <div>
                   <div className="text-neutral-400">Notes</div>
-                  <div className="truncate">{(wo as unknown as { notes?: string | null })?.notes ?? "—"}</div>
+                  <div className="truncate">
+                    {(wo as unknown as { notes?: string | null })?.notes ?? "—"}
+                  </div>
                 </div>
                 <div>
                   <div className="text-neutral-400">WO ID</div>
@@ -448,7 +481,11 @@ export default function WorkOrderIdClient(): JSX.Element {
                     <h3 className="mb-1 font-semibold">Customer</h3>
                     {customer ? (
                       <>
-                        <p>{[customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") || "—"}</p>
+                        <p>
+                          {[customer.first_name ?? "", customer.last_name ?? ""]
+                            .filter(Boolean)
+                            .join(" ") || "—"}
+                        </p>
                         <p className="text-sm text-neutral-400">
                           {customer.phone ?? "—"} {customer.email ? `• ${customer.email}` : ""}
                         </p>
@@ -470,7 +507,7 @@ export default function WorkOrderIdClient(): JSX.Element {
               )}
             </div>
 
-            {/* Jobs list */}
+            {/* Jobs list (click -> FocusedJobModal) */}
             <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold">Jobs in this Work Order</h2>
@@ -500,7 +537,9 @@ export default function WorkOrderIdClient(): JSX.Element {
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <div className="truncate font-medium">{ln.description || ln.complaint || "Untitled job"}</div>
+                            <div className="truncate font-medium">
+                              {ln.description || ln.complaint || "Untitled job"}
+                            </div>
                             <div className="text-xs text-neutral-400">
                               {String(ln.job_type ?? "job").replaceAll("_", " ")} •{" "}
                               {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} • Status:{" "}
@@ -514,7 +553,9 @@ export default function WorkOrderIdClient(): JSX.Element {
                               </div>
                             )}
                           </div>
-                          <span className={chipClass(ln.status)}>{(ln.status ?? "awaiting").replaceAll("_", " ")}</span>
+                          <span className={chipClass(ln.status)}>
+                            {(ln.status ?? "awaiting").replaceAll("_", " ")}
+                          </span>
                         </div>
                       </div>
                     );
