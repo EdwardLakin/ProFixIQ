@@ -3,7 +3,8 @@
 /**
  * Work Order — ID Page (Tech/View)
  * - Reads route id with useParams() (no props from wrapper).
- * - Stabilized Supabase auth (getSession → refreshSession → getUser).
+ * - Robust Supabase auth: subscribe to onAuthStateChange so the page recovers
+ *   when Safari restores/refreshes the session a moment after mount.
  * - Falls back to custom_id (case-insensitive, leading-zero tolerant).
  * - Realtime updates for WO & WO lines (UUID-safe: subscribe with wo.id).
  * - Same UI/UX (header, jobs list, photos, modals).
@@ -106,34 +107,55 @@ export default function WorkOrderIdClient(): JSX.Element {
   // one-time missing notice
   const [warnedMissing, setWarnedMissing] = useState(false);
 
-  /* ---------------------- AUTH (stabilized) ---------------------- */
+  /* ---------------------- AUTH (robust & self-healing) ---------------------- */
   useEffect(() => {
-    (async () => {
-      const { data: sessionData } = await supabase.auth.getSession();
-      if (!sessionData?.session) {
+    let mounted = true;
+
+    const assureUser = async () => {
+      // Try to ensure a live session (covers Safari/iPad resume cases)
+      const { data: s1 } = await supabase.auth.getSession();
+      if (!s1?.session) {
         try {
           await supabase.auth.refreshSession();
         } catch {
-          /* ignore */
+          /* ignore refresh failures */
         }
       }
 
-      // Re-check after refresh; if still no session, don't call getUser (avoids 403 spam)
-      const { data: s2 } = await supabase.auth.getSession();
-      if (!s2?.session) return;
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        const uid = user?.id ?? null;
-        setCurrentUserId(uid);
-        setUserId(uid);
-      } catch {
-        /* keep null */
+      if (!mounted) return;
+
+      const uid = user?.id ?? null;
+      setCurrentUserId(uid);
+      setUserId(uid);
+
+      // After auth is assured, (re)fetch data
+      if (routeId) void fetchAll();
+    };
+
+    // Initial attempt
+    void assureUser();
+
+    // Subscribe so we recover automatically after token refresh or late sign-in
+    const { data: sub } = supabase.auth.onAuthStateChange((evt) => {
+      if (evt === "SIGNED_IN" || evt === "TOKEN_REFRESHED") {
+        void assureUser();
       }
-    })();
-  }, [supabase, setCurrentUserId, setUserId]);
+      if (evt === "SIGNED_OUT") {
+        setCurrentUserId(null);
+        setUserId(null);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase, routeId]);
 
   /* ---------------------- FETCH ---------------------- */
   const fetchAll = useCallback(
@@ -152,13 +174,7 @@ export default function WorkOrderIdClient(): JSX.Element {
             .select("*")
             .eq("id", routeId)
             .maybeSingle();
-          if (!error) {
-            woRow = (data as WorkOrder | null) ?? null;
-          } else {
-            // Non-fatal: fall through to custom_id attempts
-            // eslint-disable-next-line no-console
-            console.warn("[WO id page] id lookup failed, will try custom_id:", error.message);
-          }
+          if (!error) woRow = (data as WorkOrder | null) ?? null;
         }
 
         if (!woRow) {
@@ -212,7 +228,9 @@ export default function WorkOrderIdClient(): JSX.Element {
         setWo(woRow);
 
         if (!warnedMissing && (!woRow.vehicle_id || !woRow.customer_id)) {
-          toast.error("This work order is missing vehicle and/or customer. Open the Create form to set them.");
+          toast.error(
+            "This work order is missing vehicle and/or customer. Open the Create form to set them.",
+          );
           setWarnedMissing(true);
         }
 
@@ -255,10 +273,7 @@ export default function WorkOrderIdClient(): JSX.Element {
     void fetchAll();
   }, [fetchAll, routeId]);
 
-  /* ---------------------- REALTIME (UUID-safe) ----------------------
-   * Subscribe AFTER we know the actual UUID (wo.id). This avoids errors like:
-   * "invalid input syntax for type uuid: 'WC0001'".
-   */
+  /* ---------------------- REALTIME (UUID-safe) ---------------------- */
   useEffect(() => {
     if (!wo?.id) return;
 
@@ -376,7 +391,9 @@ export default function WorkOrderIdClient(): JSX.Element {
                 </div>
                 <div>
                   <div className="text-neutral-400">Notes</div>
-                  <div className="truncate">{(wo as unknown as { notes?: string | null })?.notes ?? "—"}</div>
+                  <div className="truncate">
+                    {(wo as unknown as { notes?: string | null })?.notes ?? "—"}
+                  </div>
                 </div>
                 <div>
                   <div className="text-neutral-400">WO ID</div>
@@ -458,7 +475,9 @@ export default function WorkOrderIdClient(): JSX.Element {
               ) : (
                 <div className="space-y-2">
                   {sortedLines.map((ln) => {
-                    const statusKey = (ln.status ?? "awaiting").toLowerCase().replaceAll(" ", "_");
+                    const statusKey = (ln.status ?? "awaiting")
+                      .toLowerCase()
+                      .replaceAll(" ", "_");
                     const borderCls = statusBorder[statusKey] || "border-l-4 border-gray-400";
                     const tintCls = statusRowTint[statusKey] || "bg-neutral-950";
                     const punchedIn = !!ln.punched_in_at && !ln.punched_out_at;

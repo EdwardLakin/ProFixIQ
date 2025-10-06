@@ -56,7 +56,7 @@ export const TILES: Tile[] = [
     scopes: ["work_orders", "all"],
   },
   {
-    href: "/work-orders/view/[id]",
+    href: "/work-orders",
     title: "Tech View",
     subtitle: "Browse & manage",
     roles: ["advisor", "manager", "owner", "admin"],

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
@@ -29,14 +29,13 @@ const statusBadge: Record<string, string> = {
 
 export default function WorkOrdersView(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
-
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<string>("");
   const [err, setErr] = useState<string | null>(null);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     setErr(null);
 
@@ -44,10 +43,10 @@ export default function WorkOrdersView(): JSX.Element {
       .from("work_orders")
       .select(
         `
-          *,
-          customers:customers(first_name,last_name,phone,email),
-          vehicles:vehicles(year,make,model,license_plate)
-        `
+        *,
+        customers:customers(first_name,last_name,phone,email),
+        vehicles:vehicles(year,make,model,license_plate)
+      `
       )
       .order("created_at", { ascending: false })
       .limit(100);
@@ -87,39 +86,39 @@ export default function WorkOrdersView(): JSX.Element {
 
     setRows(filtered);
     setLoading(false);
-  }
+  }, [q, status, supabase]);
 
   useEffect(() => {
     void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status]);
+  }, [load]);
 
   const chip = (s: string | null | undefined) =>
     `text-xs px-2 py-1 rounded ${
       statusBadge[(s ?? "awaiting") as keyof typeof statusBadge] ?? "bg-gray-200 text-gray-800"
     }`;
 
-  async function handleDelete(id: string) {
-    if (!confirm("Delete this work order? This cannot be undone.")) return;
+  const handleDelete = useCallback(
+    async (id: string) => {
+      if (!confirm("Delete this work order? This cannot be undone.")) return;
 
-    // optimistic UI
-    const prev = rows;
-    setRows((r) => r.filter((x) => x.id !== id));
+      const prev = rows;
+      setRows((r) => r.filter((x) => x.id !== id));
 
-    // Delete children first to avoid FK blocking
-    const { error: lineErr } = await supabase.from("work_order_lines").delete().eq("work_order_id", id);
-    if (lineErr) {
-      alert("Failed to delete job lines: " + lineErr.message);
-      setRows(prev);
-      return;
-    }
+      const { error: lineErr } = await supabase.from("work_order_lines").delete().eq("work_order_id", id);
+      if (lineErr) {
+        alert("Failed to delete job lines: " + lineErr.message);
+        setRows(prev);
+        return;
+      }
 
-    const { error } = await supabase.from("work_orders").delete().eq("id", id);
-    if (error) {
-      alert("Failed to delete: " + error.message);
-      setRows(prev);
-    }
-  }
+      const { error } = await supabase.from("work_orders").delete().eq("id", id);
+      if (error) {
+        alert("Failed to delete: " + error.message);
+        setRows(prev);
+      }
+    },
+    [rows, supabase]
+  );
 
   return (
     <div className="mx-auto max-w-6xl p-6 text-white">
@@ -135,7 +134,7 @@ export default function WorkOrdersView(): JSX.Element {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && load()}
+            onKeyDown={(e) => e.key === "Enter" && void load()}
             placeholder="Search id, custom id, name, plate, YMM…"
             className="rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-sm"
           />
@@ -156,7 +155,7 @@ export default function WorkOrdersView(): JSX.Element {
             <option value="completed">Completed</option>
           </select>
           <button
-            onClick={load}
+            onClick={() => void load()}
             className="rounded border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800"
           >
             Refresh
@@ -179,10 +178,8 @@ export default function WorkOrdersView(): JSX.Element {
                 <div className="w-28 text-xs text-neutral-400">
                   {r.created_at ? format(new Date(r.created_at), "PP") : "—"}
                 </div>
-
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    {/* Link to unified id page, forcing view mode */}
                     <Link
                       href={href}
                       className="font-medium underline underline-offset-2 decoration-neutral-600 hover:decoration-orange-500"
@@ -212,14 +209,12 @@ export default function WorkOrdersView(): JSX.Element {
                       : "—"}
                   </div>
                 </div>
-
                 <div className="flex items-center gap-2">
-                  {/* Open → also goes to unified id page in view mode */}
                   <Link href={href} className="rounded border border-neutral-700 px-2 py-1 text-sm hover:bg-neutral-800">
                     Open
                   </Link>
                   <button
-                    onClick={() => handleDelete(r.id)}
+                    onClick={() => void handleDelete(r.id)}
                     className="rounded border border-red-600/60 text-red-300 px-2 py-1 text-sm hover:bg-red-900/20"
                   >
                     Delete
