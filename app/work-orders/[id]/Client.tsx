@@ -14,6 +14,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -25,6 +26,48 @@ import FocusedJobModal from "@/features/work-orders/components/workorders/Focuse
 import AddJobModal from "@work-orders/components/workorders/AddJobModal";
 import { useTabState } from "@/features/shared/hooks/useTabState";
 
+/* --------------------------- Small auth debugger -------------------------- */
+function AuthDebug<DB extends object>({ sb }: { sb: SupabaseClient<DB> }) {
+  const [info, setInfo] = React.useState<{
+    hasSession: boolean;
+    userId: string | null;
+    expiresInSec: number | null;
+  } | null>(null);
+
+  React.useEffect(() => {
+    (async () => {
+      const { data: s } = await sb.auth.getSession();
+      const { data: u } = await sb.auth.getUser();
+      const sess = s?.session;
+      setInfo({
+        hasSession: !!sess,
+        userId: u?.user?.id ?? null,
+        expiresInSec: sess?.expires_at ? sess.expires_at - Math.floor(Date.now() / 1000) : null,
+      });
+    })();
+
+    const sub = sb.auth.onAuthStateChange((_e, session) => {
+      setInfo({
+        hasSession: !!session,
+        userId: session?.user?.id ?? null,
+        expiresInSec: session?.expires_at ? session.expires_at - Math.floor(Date.now() / 1000) : null,
+      });
+    });
+
+    return () => sub.data.subscription.unsubscribe();
+  }, [sb]);
+
+  if (!info) return null;
+  return (
+    <div className="mb-2 rounded border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-200">
+      <div className="font-semibold">Auth debug</div>
+      <div>hasSession: {String(info.hasSession)}</div>
+      <div>userId: {info.userId ?? "null"}</div>
+      <div>expiresIn: {info.expiresInSec ?? "?"}s</div>
+    </div>
+  );
+}
+
 /* --------------------------------- Types --------------------------------- */
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -33,7 +76,6 @@ type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
 
 const looksLikeUuid = (s: string) => s.includes("-") && s.length >= 36;
-
 /** Normalize a custom id like WC00003 → {prefix:"WC", n:3}. */
 function splitCustomId(raw: string): { prefix: string; n: number | null } {
   const m = raw.toUpperCase().match(/^([A-Z]+)\s*0*?(\d+)?$/);
@@ -112,38 +154,27 @@ export default function WorkOrderIdClient(): JSX.Element {
     let mounted = true;
 
     const assureUser = async () => {
-      // Try to ensure a live session (covers Safari/iPad resume cases)
       const { data: s1 } = await supabase.auth.getSession();
       if (!s1?.session) {
         try {
           await supabase.auth.refreshSession();
-        } catch {
-          /* ignore refresh failures */
-        }
+        } catch {/* ignore */}
       }
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
+      const { data: u } = await supabase.auth.getUser();
       if (!mounted) return;
 
-      const uid = user?.id ?? null;
+      const uid = u?.user?.id ?? null;
       setCurrentUserId(uid);
       setUserId(uid);
 
-      // After auth is assured, (re)fetch data
       if (routeId) void fetchAll();
     };
 
-    // Initial attempt
     void assureUser();
 
-    // Subscribe so we recover automatically after token refresh or late sign-in
     const { data: sub } = supabase.auth.onAuthStateChange((evt) => {
-      if (evt === "SIGNED_IN" || evt === "TOKEN_REFRESHED") {
-        void assureUser();
-      }
+      if (evt === "SIGNED_IN" || evt === "TOKEN_REFRESHED") void assureUser();
       if (evt === "SIGNED_OUT") {
         setCurrentUserId(null);
         setUserId(null);
@@ -165,7 +196,6 @@ export default function WorkOrderIdClient(): JSX.Element {
       setViewError(null);
 
       try {
-        // Only query id if it looks like a UUID; otherwise start with custom_id to avoid 400s
         let woRow: WorkOrder | null = null;
 
         if (looksLikeUuid(routeId)) {
@@ -178,11 +208,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         }
 
         if (!woRow) {
-          const eqRes = await supabase
-            .from("work_orders")
-            .select("*")
-            .eq("custom_id", routeId)
-            .maybeSingle();
+          const eqRes = await supabase.from("work_orders").select("*").eq("custom_id", routeId).maybeSingle();
           woRow = (eqRes.data as WorkOrder | null) ?? null;
 
           if (!woRow) {
@@ -228,9 +254,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         setWo(woRow);
 
         if (!warnedMissing && (!woRow.vehicle_id || !woRow.customer_id)) {
-          toast.error(
-            "This work order is missing vehicle and/or customer. Open the Create form to set them.",
-          );
+          toast.error("This work order is missing vehicle and/or customer. Open the Create form to set them.");
           setWarnedMissing(true);
         }
 
@@ -259,7 +283,6 @@ export default function WorkOrderIdClient(): JSX.Element {
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "Failed to load work order.";
         setViewError(msg);
-        // eslint-disable-next-line no-console
         console.error("[WO id page] load error:", e);
       } finally {
         setLoading(false);
@@ -279,10 +302,8 @@ export default function WorkOrderIdClient(): JSX.Element {
 
     const ch = supabase
       .channel(`wo:${wo.id}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "work_orders", filter: `id=eq.${wo.id}` },
-        () => fetchAll(),
+      .on("postgres_changes", { event: "*", schema: "public", table: "work_orders", filter: `id=eq.${wo.id}` }, () =>
+        fetchAll(),
       )
       .on(
         "postgres_changes",
@@ -294,9 +315,7 @@ export default function WorkOrderIdClient(): JSX.Element {
     return () => {
       try {
         supabase.removeChannel(ch);
-      } catch {
-        /* ignore */
-      }
+      } catch {/* ignore */}
     };
   }, [supabase, wo?.id, fetchAll]);
 
@@ -315,18 +334,14 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   const chipClass = (s: string | null): string => {
     const key = (s ?? "awaiting").toLowerCase().replaceAll(" ", "_");
-    return `text-xs px-2 py-1 rounded ${
-      (statusBadge as Record<string, string>)[key] ?? "bg-gray-200 text-gray-800"
-    }`;
+    return `text-xs px-2 py-1 rounded ${statusBadge[key] ?? "bg-gray-200 text-gray-800"}`;
   };
 
   const createdAt = wo?.created_at ? new Date(wo.created_at) : null;
   const createdAtText = createdAt && !isNaN(createdAt.getTime()) ? format(createdAt, "PPpp") : "—";
 
   /* -------------------------- UI -------------------------- */
-  if (!routeId) {
-    return <div className="p-6 text-red-500">Missing work order id.</div>;
-  }
+  if (!routeId) return <div className="p-6 text-red-500">Missing work order id.</div>;
 
   const Skeleton = ({ className = "" }: { className?: string }) => (
     <div className={`animate-pulse rounded bg-neutral-800/60 ${className}`} />
@@ -334,6 +349,9 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   return (
     <div className="p-4 sm:p-6 text-white">
+      {/* auth debug at the very top */}
+      <AuthDebug sb={supabase} />
+
       <PreviousPageButton to="/work-orders" />
 
       {/* Auth hint (iPad/Safari cookies) */}
@@ -353,28 +371,22 @@ export default function WorkOrderIdClient(): JSX.Element {
         </div>
       )}
 
-      {loading && (
+      {loading ? (
         <div className="mt-6 grid gap-4">
           <Skeleton className="h-24" />
           <Skeleton className="h-40" />
           <Skeleton className="h-56" />
         </div>
-      )}
-
-      {!loading && !wo && !viewError && (
+      ) : !wo ? (
         <div className="mt-6 text-red-500">Work order not found.</div>
-      )}
-
-      {!loading && wo && (
+      ) : (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px]">
           {/* LEFT */}
           <div className="space-y-6">
             {/* Header */}
             <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h1 className="text-2xl font-semibold">
-                  Work Order {wo.custom_id || `#${wo.id.slice(0, 8)}`}
-                </h1>
+                <h1 className="text-2xl font-semibold">Work Order {wo.custom_id || `#${wo.id.slice(0, 8)}`}</h1>
                 <button
                   type="button"
                   onClick={() => setIsAddJobModalOpen(true)}
@@ -391,9 +403,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                 </div>
                 <div>
                   <div className="text-neutral-400">Notes</div>
-                  <div className="truncate">
-                    {(wo as unknown as { notes?: string | null })?.notes ?? "—"}
-                  </div>
+                  <div className="truncate">{(wo as unknown as { notes?: string | null })?.notes ?? "—"}</div>
                 </div>
                 <div>
                   <div className="text-neutral-400">WO ID</div>
@@ -438,11 +448,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                     <h3 className="mb-1 font-semibold">Customer</h3>
                     {customer ? (
                       <>
-                        <p>
-                          {[customer.first_name ?? "", customer.last_name ?? ""]
-                            .filter(Boolean)
-                            .join(" ") || "—"}
-                        </p>
+                        <p>{[customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") || "—"}</p>
                         <p className="text-sm text-neutral-400">
                           {customer.phone ?? "—"} {customer.email ? `• ${customer.email}` : ""}
                         </p>
@@ -464,7 +470,7 @@ export default function WorkOrderIdClient(): JSX.Element {
               )}
             </div>
 
-            {/* Jobs list (click -> FocusedJobModal) */}
+            {/* Jobs list */}
             <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold">Jobs in this Work Order</h2>
@@ -475,9 +481,7 @@ export default function WorkOrderIdClient(): JSX.Element {
               ) : (
                 <div className="space-y-2">
                   {sortedLines.map((ln) => {
-                    const statusKey = (ln.status ?? "awaiting")
-                      .toLowerCase()
-                      .replaceAll(" ", "_");
+                    const statusKey = (ln.status ?? "awaiting").toLowerCase().replaceAll(" ", "_");
                     const borderCls = statusBorder[statusKey] || "border-l-4 border-gray-400";
                     const tintCls = statusRowTint[statusKey] || "bg-neutral-950";
                     const punchedIn = !!ln.punched_in_at && !ln.punched_out_at;
@@ -496,9 +500,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <div className="truncate font-medium">
-                              {ln.description || ln.complaint || "Untitled job"}
-                            </div>
+                            <div className="truncate font-medium">{ln.description || ln.complaint || "Untitled job"}</div>
                             <div className="text-xs text-neutral-400">
                               {String(ln.job_type ?? "job").replaceAll("_", " ")} •{" "}
                               {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} • Status:{" "}
@@ -512,9 +514,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                               </div>
                             )}
                           </div>
-                          <span className={chipClass(ln.status)}>
-                            {(ln.status ?? "awaiting").replaceAll("_", " ")}
-                          </span>
+                          <span className={chipClass(ln.status)}>{(ln.status ?? "awaiting").replaceAll("_", " ")}</span>
                         </div>
                       </div>
                     );
