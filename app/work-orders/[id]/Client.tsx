@@ -54,7 +54,7 @@ function AuthDebug<DB extends object>({ sb }: { sb: SupabaseClient<DB> }) {
       });
     });
 
-    return () => sub.data.subscription?.unsubscribe?.();
+    return () => sub?.data?.subscription?.unsubscribe?.();
   }, [sb]);
 
   if (!info) return null;
@@ -130,7 +130,7 @@ export default function WorkOrderIdClient(): JSX.Element {
   const [customer, setCustomer] = useTabState<Customer | null>("wo:id:cust", null);
 
   // UI state
-  const [loading, setLoading] = useState<boolean>(false); // start false to avoid infinite skeleton
+  const [loading, setLoading] = useState<boolean>(false); // start false; fetch toggles it
   const [viewError, setViewError] = useState<string | null>(null);
 
   // user (local; used for banner + photo uploader)
@@ -154,61 +154,49 @@ export default function WorkOrderIdClient(): JSX.Element {
   useEffect(() => {
     let mounted = true;
 
-    const ensureSessionThenFetch = async () => {
-      // Try to ensure a live session (covers Safari/iPad resume cases)
-      const { data: s1 } = await supabase.auth.getSession();
-      if (!s1?.session) {
-        try {
-          await supabase.auth.refreshSession();
-        } catch {
-          /* ignore */
-        }
-      }
+    const waitForSession = async () => {
+      // Ask for current session (do NOT refresh blindly; it can clear cookies on iOS)
+      let {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-      // If the session is still missing, poll briefly (new-tab cookie race)
-      let sess = (await supabase.auth.getSession()).data.session;
-      if (!sess) {
-        for (let i = 0; i < 5; i++) {
-          await new Promise((r) => setTimeout(r, 250 * (i + 1)));
-          sess = (await supabase.auth.getSession()).data.session;
-          if (sess) break;
+      // If the cookie hasn't hydrated yet (new tab / Safari), poll briefly
+      if (!session) {
+        for (let i = 0; i < 8; i++) {
+          await new Promise((r) => setTimeout(r, 150 * (i + 1))); // ~1.8s total
+          const res = await supabase.auth.getSession();
+          session = res.data.session;
+          if (session) break;
         }
       }
 
       const {
         data: { user },
       } = await supabase.auth.getUser();
-
       if (!mounted) return;
 
       const uid = user?.id ?? null;
       setCurrentUserId(uid);
       setUserId(uid);
 
-      // Only fetch once a real user is present (prevents RLS-empty flicker)
-      if (uid && routeId) {
-        void fetchAll();
-      } else {
-        // No session yet → ensure skeleton stops
-        setLoading(false);
-      }
+      // Do not call fetchAll here; the gated effect below will run once uid exists.
+      if (!uid) setLoading(false);
     };
 
-    void ensureSessionThenFetch();
+    void waitForSession();
 
-    // Subscribe so we recover automatically after token refresh or late sign-in
-    const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
-      if (session?.user) void ensureSessionThenFetch();
+    const { data: sub } = supabase.auth.onAuthStateChange((_evt, s) => {
+      if (s?.user) void waitForSession();
       else {
         setCurrentUserId(null);
         setUserId(null);
-        setLoading(false); // also clear loading if we got signed out
+        setLoading(false);
       }
     });
 
     return () => {
       mounted = false;
-      sub.subscription?.unsubscribe?.();
+      sub?.subscription?.unsubscribe?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, routeId]);
@@ -233,7 +221,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           if (!error) woRow = (data as WorkOrder | null) ?? null;
         }
 
-        // Fall back: custom_id with case/zero-tolerance
+        // Fall back: custom_id with case/zero tolerance
         if (!woRow) {
           const eqRes = await supabase.from("work_orders").select("*").eq("custom_id", routeId).maybeSingle();
           woRow = (eqRes.data as WorkOrder | null) ?? null;
@@ -368,9 +356,7 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   const chipClass = (s: string | null): string => {
     const key = (s ?? "awaiting").toLowerCase().replaceAll(" ", "_");
-    return `text-xs px-2 py-1 rounded ${
-      (statusBadge as Record<string, string>)[key] ?? "bg-gray-200 text-gray-800"
-    }`;
+    return `text-xs px-2 py-1 rounded ${statusBadge[key] ?? "bg-gray-200 text-gray-800"}`;
   };
 
   const createdAt = wo?.created_at ? new Date(wo.created_at) : null;
@@ -489,9 +475,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                     {customer ? (
                       <>
                         <p>
-                          {[customer.first_name ?? "", customer.last_name ?? ""]
-                            .filter(Boolean)
-                            .join(" ") || "—"}
+                          {[customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") || "—"}
                         </p>
                         <p className="text-sm text-neutral-400">
                           {customer.phone ?? "—"} {customer.email ? `• ${customer.email}` : ""}
