@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -18,6 +18,9 @@ export function useUser() {
   const [user, setUser] = useState<UserWithShop | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // avoid repeating the same RPC over and over when nothing changed
+  const lastShopIdRef = useRef<string | null>(null);
+
   const load = useCallback(async () => {
     setIsLoading(true);
 
@@ -31,11 +34,11 @@ export function useUser() {
     if (!authUser) {
       setUser(null);
       setIsLoading(false);
+      lastShopIdRef.current = null; // clear local memory
       return;
     }
 
     // 2) Fetch profile ONLY (no embedded select)
-    //    Select the columns you actually use to keep payload small.
     const { data: pData, error: pErr } = await supabase
       .from("profiles")
       .select(
@@ -73,7 +76,20 @@ export function useUser() {
     if (!profile) {
       setUser(null);
       setIsLoading(false);
+      lastShopIdRef.current = null;
       return;
+    }
+
+    // 2.5) IMPORTANT: set session-scoped shop id for RLS
+    // Only call when it changed and only if we have a shop_id.
+    if (profile.shop_id && lastShopIdRef.current !== profile.shop_id) {
+      try {
+        await supabase.rpc("set_current_shop_id", { new_shop_id: profile.shop_id });
+        lastShopIdRef.current = profile.shop_id;
+      } catch (e) {
+        // non-fatal; UI still works for tables that don't use current_shop_id()
+        console.warn("set_current_shop_id RPC failed:", e);
+      }
     }
 
     // 3) Optional shop lookup (separate query)

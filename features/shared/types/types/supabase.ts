@@ -3829,6 +3829,10 @@ export type Database = {
         Args: { uid: string }
         Returns: undefined
       }
+      set_current_shop_id: {
+        Args: { new_shop_id: string }
+        Returns: undefined
+      }
       set_last_active_now: {
         Args: Record<PropertyKey, never>
         Returns: undefined
