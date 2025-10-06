@@ -1,4 +1,3 @@
-// features/auth/components/Signin.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -20,21 +19,22 @@ export default function AuthPage() {
   const [notice, setNotice] = useState<string>("");
   const [loading, setLoading] = useState(false);
 
-  // Where magic links land
+  // Where magic links land (preserve ?redirect if present)
   const emailRedirectTo = useMemo(() => {
     const origin =
       typeof window !== "undefined"
         ? window.location.origin
         : (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
-    return `${origin || "https://profixiq.com"}/onboarding`;
-  }, []);
+    const redirect = sp.get("redirect");
+    const tail = redirect ? `?redirect=${encodeURIComponent(redirect)}` : "";
+    return `${origin || "https://profixiq.com"}/confirm${tail}`;
+  }, [sp]);
 
-  // If already signed in, send away from /sign-in immediately
+  // If already signed in, bounce immediately
   useEffect(() => {
     (async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      const { data } = await supabase.auth.getSession();
+      const session = data.session;
       if (!session?.user) return;
 
       const { data: profile } = await supabase
@@ -43,23 +43,28 @@ export default function AuthPage() {
         .eq("id", session.user.id)
         .maybeSingle();
 
-      router.replace(profile?.completed_onboarding ? "/dashboard" : "/onboarding");
+      const redirect = sp.get("redirect");
+      if (redirect && profile?.completed_onboarding) {
+        router.replace(redirect);
+      } else {
+        router.replace(profile?.completed_onboarding ? "/dashboard" : "/onboarding");
+      }
     })();
-  }, [router, supabase]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Stronger "go" that ensures the session is visible to RSC/middleware
+  // Ensure cookies are synced to RSC/middleware before navigating
   const go = async (href: string) => {
-    // Confirm cookie/session is persisted before navigating
     await supabase.auth.getSession();
-    await router.push(href);
     router.refresh();
+    router.replace(href);
 
-    // Fallback for stubborn client caches (rare)
+    // Hard fallback for stubborn mobile caches
     setTimeout(() => {
-      if (typeof window !== "undefined" && window.location.pathname !== href) {
+      if (typeof window !== "undefined" && window.location.pathname + window.location.search !== href) {
         window.location.assign(href);
       }
-    }, 50);
+    }, 60);
   };
 
   const handleSignIn = async (e: React.FormEvent) => {
@@ -68,40 +73,27 @@ export default function AuthPage() {
     setError("");
     setNotice("");
 
-    const { error: signInErr } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
+    const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
     if (signInErr) {
-      console.error("[signIn] error:", signInErr);
       setError(signInErr.message || "Sign in failed.");
       setLoading(false);
       return;
     }
 
-    // Confirm session exists on the client
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
+    // Make sure session is here
+    const { data: u } = await supabase.auth.getUser();
+    if (!u.user) {
       setError("Signed in, but no session is visible yet. Try again.");
       setLoading(false);
       return;
     }
 
-    // Optional: look up onboarding state here (middleware also guards this)
-    const { data: profile, error: profErr } = await supabase
+    const { data: profile } = await supabase
       .from("profiles")
       .select("completed_onboarding")
-      .eq("id", user.id)
+      .eq("id", u.user.id)
       .maybeSingle();
 
-    if (profErr) {
-      console.warn("[profile lookup] warning:", profErr);
-    }
-
-    // Respect ?redirect=/foo if present and user finished onboarding
     const redirect = sp.get("redirect");
     if (redirect && profile?.completed_onboarding) {
       await go(redirect);
@@ -125,15 +117,14 @@ export default function AuthPage() {
     });
 
     if (signUpErr) {
-      console.error("[signUp] error:", signUpErr);
       setError(signUpErr.message || "Sign up failed.");
       setLoading(false);
       return;
     }
 
-    // If email confirmation is required, there won’t be a session yet
+    // If email confirmation required, no session yet
     if (!data.session) {
-      setNotice("Check your inbox to confirm your email. We’ll take you to onboarding after that.");
+      setNotice("Check your inbox to confirm your email. We’ll continue after that.");
       setLoading(false);
       return;
     }
@@ -151,14 +142,18 @@ export default function AuthPage() {
 
         <div className="flex justify-center gap-4 text-sm">
           <button
-            className={`px-3 py-1 rounded ${mode === "sign-in" ? "bg-orange-500 text-black" : "bg-neutral-800 text-neutral-300"}`}
+            className={`px-3 py-1 rounded ${
+              mode === "sign-in" ? "bg-orange-500 text-black" : "bg-neutral-800 text-neutral-300"
+            }`}
             onClick={() => setMode("sign-in")}
             disabled={loading}
           >
             Sign In
           </button>
           <button
-            className={`px-3 py-1 rounded ${mode === "sign-up" ? "bg-orange-500 text-black" : "bg-neutral-800 text-neutral-300"}`}
+            className={`px-3 py-1 rounded ${
+              mode === "sign-up" ? "bg-orange-500 text-black" : "bg-neutral-800 text-neutral-300"
+            }`}
             onClick={() => setMode("sign-up")}
             disabled={loading}
           >

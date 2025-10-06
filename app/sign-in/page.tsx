@@ -1,6 +1,5 @@
 "use client";
 
-// app/sign-in/page.tsx
 import { Suspense } from "react";
 import AuthPage from "@/features/auth/components/SignIn";
 
