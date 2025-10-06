@@ -54,7 +54,7 @@ function AuthDebug<DB extends object>({ sb }: { sb: SupabaseClient<DB> }) {
       });
     });
 
-    return () => sub.data.subscription.unsubscribe();
+    return () => sub.data.subscription?.unsubscribe?.();
   }, [sb]);
 
   if (!info) return null;
@@ -130,7 +130,7 @@ export default function WorkOrderIdClient(): JSX.Element {
   const [customer, setCustomer] = useTabState<Customer | null>("wo:id:cust", null);
 
   // UI state
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(false); // start false to avoid infinite skeleton
   const [viewError, setViewError] = useState<string | null>(null);
 
   // user (local; used for banner + photo uploader)
@@ -186,7 +186,12 @@ export default function WorkOrderIdClient(): JSX.Element {
       setUserId(uid);
 
       // Only fetch once a real user is present (prevents RLS-empty flicker)
-      if (uid && routeId) void fetchAll();
+      if (uid && routeId) {
+        void fetchAll();
+      } else {
+        // No session yet → ensure skeleton stops
+        setLoading(false);
+      }
     };
 
     void ensureSessionThenFetch();
@@ -197,12 +202,13 @@ export default function WorkOrderIdClient(): JSX.Element {
       else {
         setCurrentUserId(null);
         setUserId(null);
+        setLoading(false); // also clear loading if we got signed out
       }
     });
 
     return () => {
       mounted = false;
-      sub.subscription.unsubscribe();
+      sub.subscription?.unsubscribe?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, routeId]);
@@ -314,10 +320,11 @@ export default function WorkOrderIdClient(): JSX.Element {
     [supabase, routeId, warnedMissing, setWo, setLines, setVehicle, setCustomer],
   );
 
+  // Only fetch when we know we have a user
   useEffect(() => {
-  if (!routeId || !currentUserId) return; // wait until we *know* we have a user
-  void fetchAll();
-}, [fetchAll, routeId, currentUserId]);
+    if (!routeId || !currentUserId) return;
+    void fetchAll();
+  }, [fetchAll, routeId, currentUserId]);
 
   /* ---------------------- REALTIME (UUID-safe) ---------------------- */
   useEffect(() => {
