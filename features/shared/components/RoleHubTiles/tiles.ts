@@ -11,6 +11,23 @@ export type Tile = {
 };
 
 export const TILES: Tile[] = [
+  
+  // --- Debug (owner only) ---
+{
+  href: "/debug/client",
+  title: "Client Auth Debug",
+  subtitle: "Session & cookies (client)",
+  roles: ["owner"],
+  scopes: ["settings", "all"],
+},
+{
+  href: "/debug/session",
+  title: "Server Auth Debug",
+  subtitle: "Cookies & session (server)",
+  roles: ["owner"],
+  scopes: ["settings", "all"],
+},
+  
   // --- Work Orders ---
   {
     href: "/work-orders/create?autostart=1", // ✅ auto-start work order draft
