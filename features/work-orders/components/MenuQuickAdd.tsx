@@ -141,7 +141,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   const [showAllPackages, setShowAllPackages] = useState(false);
   const [showAllSingles, setShowAllSingles] = useState(false);
 
-  // NEW: capture shopId so inserts satisfy RLS
+  // Capture shopId so inserts satisfy RLS
   const [shopId, setShopId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -185,8 +185,12 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     })();
   }, [supabase, workOrderId]);
 
+  const shopReady = !!shopId;
+  const vehicleId = vehicle?.id ?? null;
+
   /** Adds a single inspection line (no navigation). */
   async function addInspectionLine(kind: "hydraulic" | "air") {
+    if (!shopReady) return;
     setAddingId(kind);
 
     const description =
@@ -196,13 +200,14 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
     const newLine: WorkOrderLineInsert = {
       work_order_id: workOrderId,
+      vehicle_id: vehicleId,
       description,
       job_type: "inspection",
       status: "awaiting",
       priority: 3,
       labor_time: null,
       notes: null,
-      shop_id: shopId ?? null, // ← IMPORTANT
+      shop_id: shopId!, // known due to shopReady
     };
 
     const { error } = await supabase.from("work_order_lines").insert(newLine);
@@ -218,17 +223,19 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   }
 
   async function addSingle(item: SimpleService) {
+    if (!shopReady) return;
     setAddingId(item.name);
 
     const line: WorkOrderLineInsert = {
       work_order_id: workOrderId,
+      vehicle_id: vehicleId,
       description: item.name,
       labor_time: item.laborHours ?? null,
       status: "awaiting",
       priority: 3,
       job_type: item.jobType,
       notes: item.notes ?? null,
-      shop_id: shopId ?? null, // ← IMPORTANT
+      shop_id: shopId!,
     };
 
     const { error } = await supabase.from("work_order_lines").insert([line]);
@@ -244,6 +251,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   }
 
   async function addPackage(pkg: PackageDef) {
+    if (!shopReady) return;
     setAddingId(pkg.id);
 
     // Inspections → single line
@@ -260,13 +268,14 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     // Maintenance packages → one summary line
     const line: WorkOrderLineInsert = {
       work_order_id: workOrderId,
+      vehicle_id: vehicleId,
       description: pkg.name,
       labor_time: pkg.estLaborHours,
       status: "awaiting",
       priority: 3,
       job_type: "maintenance",
       notes: pkg.summary,
-      shop_id: shopId ?? null, // ← IMPORTANT
+      shop_id: shopId!,
     };
 
     const { error } = await supabase.from("work_order_lines").insert(line);
@@ -335,7 +344,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
             onClick={() => addInspectionLine("hydraulic")}
             className="rounded border border-neutral-800 bg-neutral-950 p-3 text-left hover:bg-neutral-900"
             title={inspectionBtnTitle("hydraulic")}
-            disabled={addingId === "hydraulic"}
+            disabled={addingId === "hydraulic" || !shopReady}
           >
             <div className="font-medium">Maintenance 50 – Hydraulic</div>
             <div className="text-xs text-neutral-400">Measurements + oil change section</div>
@@ -352,7 +361,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
             onClick={() => addInspectionLine("air")}
             className="rounded border border-neutral-800 bg-neutral-950 p-3 text-left hover:bg-neutral-900"
             title={inspectionBtnTitle("air")}
-            disabled={addingId === "air"}
+            disabled={addingId === "air" || !shopReady}
           >
             <div className="font-medium">Maintenance 50 – Air</div>
             <div className="text-xs text-neutral-400">Air-governor, leakage, push-rod stroke + oil change</div>
@@ -373,7 +382,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         ) : null}
       </div>
 
-      {/* PACKAGES (collapsible) */}
+      {/* PACKAGES */}
       <div>
         <div className="mb-2 flex items-center justify-between">
           <h3 className="font-semibold text-orange-400">Packages</h3>
@@ -389,7 +398,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
             <button
               key={p.id}
               onClick={() => addPackage(p)}
-              disabled={addingId === p.id}
+              disabled={addingId === p.id || !shopReady}
               className="rounded border border-neutral-800 bg-neutral-950 p-3 text-left hover:bg-neutral-900 disabled:opacity-60"
               title={p.summary}
             >
@@ -403,7 +412,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         </div>
       </div>
 
-      {/* SINGLE SERVICES (collapsible) */}
+      {/* SINGLE SERVICES */}
       <div>
         <div className="mb-2 flex items-center justify-between">
           <h3 className="font-semibold text-orange-400">Quick add from menu</h3>
@@ -420,7 +429,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
             <button
               key={m.name}
               onClick={() => addSingle(m)}
-              disabled={addingId === m.name}
+              disabled={addingId === m.name || !shopReady}
               className="rounded border border-neutral-800 bg-neutral-950 p-3 text-left hover:bg-neutral-900 disabled:opacity-60"
               title={
                 customerName || vehicleName

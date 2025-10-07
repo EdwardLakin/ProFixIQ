@@ -10,7 +10,7 @@ interface Props {
   onClose: () => void;
   workOrderId: string;
   vehicleId: string;
-  techId: string;
+  techId: string;          // pass the real auth.uid() when possible
   onJobAdded?: () => void;
   /** Optional. If not provided, we’ll read it from work_orders before insert. */
   shopId?: string | null;
@@ -60,19 +60,31 @@ export default function AddJobModal(props: any) {
         useShopId = wo?.shop_id ?? null;
       }
 
-      const { error: insErr } = await supabase.from("work_order_lines").insert({
+      if (!useShopId) {
+        setErr("Couldn’t determine shop for this work order. Try refreshing.");
+        setSubmitting(false);
+        return;
+      }
+
+      // If your RLS requires assigned_to = auth.uid(), ensure techId is the real uid.
+      const payload = {
         id: uuidv4(),
         work_order_id: workOrderId,
-        vehicle_id: vehicleId,
+        vehicle_id: vehicleId ?? null,
         complaint: name,
         hold_reason: notes.trim() || null,
-        status: "queued",
-        // If your DB CHECK only allows specific job_types, pick one of them (e.g. "repair")
-        job_type: "repair",
-        assigned_to: techId,
-        urgency,
-        shop_id: useShopId, // ← IMPORTANT for RLS
-      });
+        status: "queued" as const,
+        job_type: "repair" as const, // ensure this matches your enum/check
+        urgency,                      // 'low' | 'medium' | 'high'
+        shop_id: useShopId,
+      } as const;
+
+      const insertRow =
+        techId && techId !== "system"
+          ? { ...payload, assigned_to: techId }
+          : payload;
+
+      const { error: insErr } = await supabase.from("work_order_lines").insert(insertRow);
 
       if (insErr) {
         setErr(insErr.message);
@@ -128,9 +140,7 @@ export default function AddJobModal(props: any) {
             onChange={(e) => setNotes(e.target.value)}
           />
 
-          {err && (
-            <div className="mb-2 text-sm text-red-400">{err}</div>
-          )}
+          {err && <div className="mb-2 text-sm text-red-400">{err}</div>}
 
           <div className="flex justify-end gap-2">
             <button
