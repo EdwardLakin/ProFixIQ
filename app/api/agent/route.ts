@@ -1,19 +1,29 @@
 import { NextResponse } from "next/server";
 import { startAgent } from "@/features/agent/server/runAgent";
 
+export const runtime = "nodejs";
+
+function toMessage(e: unknown): string {
+  if (e && typeof e === "object" && "message" in e && typeof (e as { message?: unknown }).message === "string") {
+    return (e as Error).message;
+  }
+  try { return String(e); } catch { return "Unknown error"; }
+}
+
 export async function POST(req: Request) {
-  const body = await req.json().catch(() => ({}));
-  const goal: string = body.goal ?? "";
-  const context: Record<string, unknown> = body.context ?? {};
-  const idempotencyKey: string | null = body.idempotencyKey ?? null;
-  const planner: "simple" | "openai" | undefined = body.planner;
+  const body = await req.json().catch(() => ({} as Record<string, unknown>));
+
+  const goal = (body.goal as string | undefined) ?? "";
+  const context = (body.context as Record<string, unknown> | undefined) ?? {};
+  const idempotencyKey = (body.idempotencyKey as string | null | undefined) ?? null;
+  const planner = body.planner as ("simple" | "openai" | undefined);
 
   if (!goal) return NextResponse.json({ error: "goal required" }, { status: 400 });
 
   try {
     const out = await startAgent({ goal, context, idempotencyKey, planner });
     return NextResponse.json(out);
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? "Agent failed" }, { status: 500 });
+  } catch (e: unknown) {
+    return NextResponse.json({ error: toMessage(e) }, { status: 500 });
   }
 }

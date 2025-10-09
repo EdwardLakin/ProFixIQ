@@ -1,6 +1,7 @@
-import { NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 import { getServerSupabase } from "@/features/agent/server/supabase";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
@@ -9,22 +10,19 @@ export async function GET(req: NextRequest) {
   if (!runId) return new Response("runId required", { status: 400 });
 
   const supabase = getServerSupabase();
-
-  // Parse Last-Event-ID for resumable streams
   const lastEventId = Number(req.headers.get("last-event-id") ?? "0");
 
   const stream = new ReadableStream({
     async start(controller) {
       let step = lastEventId || 0;
       const encoder = new TextEncoder();
-
-      // Helper to push events
+      const write = (chunk: string) => controller.enqueue(encoder.encode(chunk));
       const push = (id: number, data: unknown) => {
-        controller.enqueue(encoder.encode(`id: ${id}\n`));
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+        write(`id: ${id}\n`);
+        write(`data: ${JSON.stringify(data)}\n\n`);
       };
 
-      // Initial backfill
+      // Backfill
       const initial = await supabase
         .from("agent_events")
         .select("step, kind, content, created_at, id")
@@ -33,28 +31,26 @@ export async function GET(req: NextRequest) {
         .order("step", { ascending: true });
 
       if (initial.error) {
-        controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify(initial.error)}\n\n`));
+        write(`event: error\ndata: ${JSON.stringify(initial.error)}\n\n`);
         controller.close();
         return;
       }
-
       for (const ev of initial.data ?? []) {
         step = ev.step;
         push(step, { step: ev.step, kind: ev.kind, content: ev.content, created_at: ev.created_at, id: ev.id });
       }
 
-      // Polling loop (simple, robust). Stops when run is not running.
+      // Polling loop
       async function loop() {
         try {
-          // Check run status
           const statusRes = await supabase
             .from("agent_runs")
             .select("status")
             .eq("id", runId)
             .single();
           if (statusRes.error) throw statusRes.error;
+          const status: string | null | undefined = statusRes.data?.status;
 
-          const status = statusRes.data?.status;
           const more = await supabase
             .from("agent_events")
             .select("step, kind, content, created_at, id")
@@ -70,12 +66,12 @@ export async function GET(req: NextRequest) {
           }
 
           if (status === "running") {
-            setTimeout(loop, 900); // ~1s cadence
+            setTimeout(loop, 900);
           } else {
             controller.close();
           }
         } catch (e) {
-          controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ message: String(e) })}\n\n`));
+          write(`event: error\ndata: ${JSON.stringify({ message: (e as Error)?.message ?? String(e) })}\n\n`);
           controller.close();
         }
       }
