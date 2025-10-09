@@ -26,6 +26,11 @@ import {
   type EmailInvoiceIn,
   type EmailInvoiceOut,
 } from "../tools/emailInvoice";
+import {
+  toolAttachPhoto,
+  type AttachPhotoIn,
+  type AttachPhotoOut,
+} from "../tools/toolAttachPhoto";
 
 export const TOOLSET = [
   toolCreateWorkOrder,
@@ -33,18 +38,50 @@ export const TOOLSET = [
   toolFindCustomerVehicle,
   toolGenerateInvoiceHtml,
   toolEmailInvoice,
+  toolAttachPhoto,
 ] as const;
 
 export type ToolName = typeof TOOLSET[number]["name"];
-export const TOOL_MAP = Object.fromEntries(TOOLSET.map(t => [t.name, t])) as Record<ToolName, typeof TOOLSET[number]>;
+export const TOOL_MAP = Object.fromEntries(
+  TOOLSET.map((t) => [t.name, t])
+) as Record<ToolName, typeof TOOLSET[number]>;
 
 /* Overloads (kept for external callers) */
-export async function validateAndRun(name: "create_work_order",     input: CreateWorkOrderIn,       ctx: ToolContext): Promise<CreateWorkOrderOut>;
-export async function validateAndRun(name: "add_work_order_line",   input: AddWorkOrderLineIn,      ctx: ToolContext): Promise<AddWorkOrderLineOut>;
-export async function validateAndRun(name: "find_customer_vehicle", input: FindCustomerVehicleIn,   ctx: ToolContext): Promise<FindCustomerVehicleOut>;
-export async function validateAndRun(name: "generate_invoice_html", input: GenerateInvoiceHtmlIn,   ctx: ToolContext): Promise<GenerateInvoiceHtmlOut>;
-export async function validateAndRun(name: "email_invoice",         input: EmailInvoiceIn,          ctx: ToolContext): Promise<EmailInvoiceOut>;
-export async function validateAndRun(name: ToolName, input: unknown, ctx: ToolContext): Promise<unknown> {
+export async function validateAndRun(
+  name: "create_work_order",
+  input: CreateWorkOrderIn,
+  ctx: ToolContext
+): Promise<CreateWorkOrderOut>;
+export async function validateAndRun(
+  name: "add_work_order_line",
+  input: AddWorkOrderLineIn,
+  ctx: ToolContext
+): Promise<AddWorkOrderLineOut>;
+export async function validateAndRun(
+  name: "find_customer_vehicle",
+  input: FindCustomerVehicleIn,
+  ctx: ToolContext
+): Promise<FindCustomerVehicleOut>;
+export async function validateAndRun(
+  name: "generate_invoice_html",
+  input: GenerateInvoiceHtmlIn,
+  ctx: ToolContext
+): Promise<GenerateInvoiceHtmlOut>;
+export async function validateAndRun(
+  name: "email_invoice",
+  input: EmailInvoiceIn,
+  ctx: ToolContext
+): Promise<EmailInvoiceOut>;
+export async function validateAndRun(
+  name: "attach_photo_to_work_order",
+  input: AttachPhotoIn,
+  ctx: ToolContext
+): Promise<AttachPhotoOut>;
+export async function validateAndRun(
+  name: ToolName,
+  input: unknown,
+  ctx: ToolContext
+): Promise<unknown> {
   const tool = TOOL_MAP[name];
   const parsed = (tool.inputSchema as z.ZodType<unknown>).parse(input);
   const out = await tool.run(parsed as never, ctx);
@@ -62,9 +99,11 @@ export const runGenerateInvoiceHtml = (input: GenerateInvoiceHtmlIn, ctx: ToolCo
   validateAndRun("generate_invoice_html", input, ctx) as Promise<GenerateInvoiceHtmlOut>;
 export const runEmailInvoice = (input: EmailInvoiceIn, ctx: ToolContext) =>
   validateAndRun("email_invoice", input, ctx) as Promise<EmailInvoiceOut>;
+export const runAttachPhoto = (input: AttachPhotoIn, ctx: ToolContext) =>
+  validateAndRun("attach_photo_to_work_order", input, ctx) as Promise<AttachPhotoOut>;
 
 export const ToolCallSchema = z.object({
   name: z.enum(Object.keys(TOOL_MAP) as [ToolName, ...ToolName[]]),
-  input: z.unknown()
+  input: z.unknown(),
 });
 export type ToolCall = z.infer<typeof ToolCallSchema>;

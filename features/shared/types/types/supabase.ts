@@ -3513,6 +3513,58 @@ export type Database = {
           },
         ]
       }
+      work_order_media: {
+        Row: {
+          created_at: string | null
+          id: string
+          kind: string | null
+          shop_id: string
+          url: string
+          user_id: string | null
+          work_order_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          kind?: string | null
+          shop_id: string
+          url: string
+          user_id?: string | null
+          work_order_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          kind?: string | null
+          shop_id?: string
+          url?: string
+          user_id?: string | null
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_order_media_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_media_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_media_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       work_order_parts: {
         Row: {
           created_at: string | null
