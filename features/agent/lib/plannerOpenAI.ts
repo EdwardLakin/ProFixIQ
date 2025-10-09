@@ -23,13 +23,24 @@ export async function runOpenAIPlanner(
   let vehicleId  = get<string>(context, "vehicleId");
 
   if (!customerId || !vehicleId) {
-    const findInput = { customerQuery: get<string>(context, "customerQuery"), plateOrVin: get<string>(context, "plateOrVin") };
-    await onEvent?.({ kind: "tool_call", name: "find_customer_vehicle", input: findInput });
-    const found = await runFindCustomerVehicle(findInput, ctx);
-    await onEvent?.({ kind: "tool_result", name: "find_customer_vehicle", output: found });
-    customerId = found.customerId;
-    vehicleId  = found.vehicleId;
-    if (!customerId || !vehicleId) { await onEvent?.({ kind: "final", text: "Searched but need a specific match to proceed." }); return; }
+    const nameFromQuery = (get<string>(context, "customerQuery") || "").trim() || "Walk-in Customer";
+    const createdCust = await validateAndRun("create_customer", {
+      name: nameFromQuery,
+      email: get<string>(context, "emailInvoiceTo")
+    }, ctx) as { customerId: string };
+    customerId = createdCust.customerId;
+    const pov = get<string>(context, "plateOrVin")?.trim();
+    if (pov) {
+      const createdVeh = await validateAndRun(
+        "create_vehicle",
+        /^[A-HJ-NPR-Z0-9]{11,17}$/i.test(pov) ? { customerId, vin: pov } : { customerId, license_plate: pov },
+        ctx
+      ) as { vehicleId: string };
+      vehicleId = createdVeh.vehicleId;
+    }
+    await onEvent?.({ kind: "tool_result", name: "create_customer", output: { customerId } });
+    if (vehicleId) await onEvent?.({ kind: "tool_result", name: "create_vehicle", output: { vehicleId } });
+  }
   }
 
   const createInput = {
