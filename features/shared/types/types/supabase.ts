@@ -44,6 +44,74 @@ export type Database = {
         }
         Relationships: []
       }
+      agent_events: {
+        Row: {
+          content: Json
+          created_at: string
+          id: string
+          kind: string
+          run_id: string
+          step: number
+        }
+        Insert: {
+          content: Json
+          created_at?: string
+          id?: string
+          kind: string
+          run_id: string
+          step: number
+        }
+        Update: {
+          content?: Json
+          created_at?: string
+          id?: string
+          kind?: string
+          run_id?: string
+          step?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_events_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "agent_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_runs: {
+        Row: {
+          created_at: string
+          goal: string
+          id: string
+          idempotency_key: string | null
+          shop_id: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          goal: string
+          id?: string
+          idempotency_key?: string | null
+          shop_id: string
+          status: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          goal?: string
+          id?: string
+          idempotency_key?: string | null
+          shop_id?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       ai_requests: {
         Row: {
           created_at: string | null
@@ -3737,6 +3805,10 @@ export type Database = {
     Functions: {
       _ensure_same_shop: {
         Args: { _wo: string }
+        Returns: boolean
+      }
+      agent_can_start: {
+        Args: Record<PropertyKey, never>
         Returns: boolean
       }
       approve_lines: {

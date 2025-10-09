@@ -13,7 +13,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+// NOTE: use the app's singleton client (no auth-helpers client here)
+import { supabaseBrowser } from "@/features/shared/lib/supabase/client";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
@@ -46,7 +47,7 @@ function AuthDebug<DB extends object>({ sb }: { sb: SupabaseClient<DB> }) {
       });
     })();
 
-    const sub = sb.auth.onAuthStateChange((_e, session) => {
+    const { data: authSub } = sb.auth.onAuthStateChange((_e, session) => {
       setInfo({
         hasSession: !!session,
         userId: session?.user?.id ?? null,
@@ -54,7 +55,7 @@ function AuthDebug<DB extends object>({ sb }: { sb: SupabaseClient<DB> }) {
       });
     });
 
-    return () => sub?.data?.subscription?.unsubscribe?.();
+    return () => authSub?.subscription?.unsubscribe();
   }, [sb]);
 
   if (!info) return null;
@@ -121,7 +122,8 @@ export default function WorkOrderIdClient(): JSX.Element {
   const params = useParams();
   const routeId = (params?.id as string) || "";
 
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  // Use the shared singleton client
+  const supabase = supabaseBrowser as SupabaseClient<DB>;
 
   // Core entities (persist per tab where it helps UX)
   const [wo, setWo] = useTabState<WorkOrder | null>("wo:id:wo", null);
@@ -155,7 +157,7 @@ export default function WorkOrderIdClient(): JSX.Element {
     let mounted = true;
 
     const waitForSession = async () => {
-      // Ask for current session (do NOT refresh blindly; it can clear cookies on iOS)
+      // Ask for current session (don’t refresh blindly on iOS)
       let {
         data: { session },
       } = await supabase.auth.getSession();

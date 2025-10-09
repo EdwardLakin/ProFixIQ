@@ -1,0 +1,2 @@
+-- full SQL migration
+-- (copy full block from the "SQL: Agent tables, indexes, RLS, and realtime" section)
