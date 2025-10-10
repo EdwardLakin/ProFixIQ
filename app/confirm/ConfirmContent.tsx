@@ -9,43 +9,64 @@ export default function ConfirmContent() {
   const router = useRouter();
   const sp = useSearchParams();
   const supabase = createClientComponentClient<Database>();
-  const jumped = useRef(false);
+  const ran = useRef(false);
 
   useEffect(() => {
-    const go = async () => {
-      if (jumped.current) return;
-      jumped.current = true;
+    const run = async () => {
+      if (ran.current) return;
+      ran.current = true;
 
-      const code = sp.get("code");
-      const sessionId = sp.get("session_id");
+      try {
+        // ✅ Exchange the code in the URL for a session (safe for all typings)
+        const url = typeof window !== "undefined" ? window.location.href : "";
+        await supabase.auth.exchangeCodeForSession(url);
 
-      // 1) Exchange magic-link code if present
-      if (code) {
-        try {
-          await supabase.auth.exchangeCodeForSession(code);
-        } catch {
-          // ignore; we'll still try to continue
-        }
+        // ✅ Ensure cookies are written and middleware can see the session
+        await supabase.auth.getSession();
+        router.refresh();
+      } catch (err) {
+        console.warn("exchangeCodeForSession failed (continuing):", err);
       }
 
-      // 2) Always forward to onboarding (carry session_id if present)
-      const dest = sessionId
-        ? `/onboarding?session_id=${encodeURIComponent(sessionId)}`
-        : "/onboarding";
+      // ✅ Decide where to go next
+      const redirect = sp.get("redirect") || undefined;
+      let completed = false;
 
+      try {
+        const { data: u } = await supabase.auth.getUser();
+        if (u?.user?.id) {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("completed_onboarding")
+            .eq("id", u.user.id)
+            .maybeSingle();
+          completed = !!profile?.completed_onboarding;
+        }
+      } catch {
+        /* ignore */
+      }
+
+      // ✅ Route depending on onboarding status
+      const dest = completed ? (redirect ?? "/dashboard") : "/onboarding";
       router.replace(dest);
-      // strip query completely to avoid loops
-      setTimeout(() => router.refresh(), 0);
+
+      // ✅ Hard fallback for Safari / mobile cache
+      setTimeout(() => {
+        if (typeof window !== "undefined") {
+          const want = new URL(dest, window.location.origin).href;
+          if (window.location.href !== want) window.location.assign(dest);
+        }
+      }, 100);
     };
 
-    void go();
+    void run();
   }, [router, sp, supabase]);
 
   return (
     <div className="min-h-[60vh] grid place-items-center text-white">
       <div className="text-center">
-        <h1 className="text-2xl font-bold">Confirming your account…</h1>
-        <p className="text-sm text-neutral-400">You’ll be redirected automatically.</p>
+        <h1 className="text-2xl font-bold">Finishing sign-in…</h1>
+        <p className="text-sm text-neutral-400">One moment while we set things up.</p>
       </div>
     </div>
   );
