@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Dialog } from "@headlessui/react";
 import { format, formatDistanceStrict } from "date-fns";
 import { toast } from "sonner";
@@ -19,6 +19,10 @@ import TimeAdjustModal from "@/features/work-orders/components/workorders/extras
 import PhotoCaptureModal from "@/features/work-orders/components/workorders/extras/PhotoCaptureModal";
 import CostEstimateModal from "@/features/work-orders/components/workorders/extras/CostEstimateModal";
 import CustomerContactModal from "@/features/work-orders/components/workorders/extras/CustomerContactModal";
+
+// voice control
+import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
+import VoiceButton from "@/features/shared/voice/VoiceButton";
 
 // NEW: chat in the focused modal
 import NewChatModal from "@/features/ai/components/chat/NewChatModal";
@@ -347,6 +351,16 @@ export default function FocusedJobModal(props: any) {
 
   return (
     <>
+      {isOpen && (
+        <VoiceContextSetter
+          currentView="focused_job"
+          workOrderId={workOrder?.id}
+          vehicleId={vehicle?.id}
+          customerId={customer?.id}
+          lineId={line?.id}
+        />
+      )}
+
       <Dialog
         open={isOpen}
         onClose={onClose}
@@ -568,6 +582,9 @@ export default function FocusedJobModal(props: any) {
           </div>
         </div>
       </Dialog>
+
+      {/* Float the voice mic ABOVE the modal overlay */}
+      {isOpen && <VoiceButton />}
 
       {/* Sub-modals (unchanged) */}
       {openComplete && line && (

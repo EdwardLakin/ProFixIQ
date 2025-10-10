@@ -8,6 +8,10 @@ import { cookies } from "next/headers";
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
+// 🆕 Voice imports
+import { VoiceProvider } from "@/features/shared/voice/VoiceProvider";
+import VoiceButton from "@/features/shared/voice/VoiceButton";
+
 const roboto = Roboto({
   subsets: ["latin"],
   weight: ["400", "500", "700"],
@@ -26,7 +30,11 @@ export const metadata = {
   description: "Tech tools for modern shops",
 };
 
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const supabase = createServerComponentClient<Database>({ cookies });
   const {
     data: { session },
@@ -36,15 +44,21 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang="en" className={`${roboto.variable} ${blackOps.variable}`}>
       <body className="bg-black text-white">
         <Providers initialSession={session ?? null}>
-          <AppShell>
-            {session?.user ? (
-              <TabsBridge>
+          {/* 🆕 Wrap everything in the VoiceProvider so it's available globally */}
+          <VoiceProvider>
+            <AppShell>
+              {session?.user ? (
+                <TabsBridge>
+                  <main>{children}</main>
+                </TabsBridge>
+              ) : (
                 <main>{children}</main>
-              </TabsBridge>
-            ) : (
-              <main>{children}</main>
-            )}
-          </AppShell>
+              )}
+            </AppShell>
+
+            {/* 🆕 Floating push-to-talk button visible on all pages */}
+            <VoiceButton />
+          </VoiceProvider>
         </Providers>
       </body>
     </html>

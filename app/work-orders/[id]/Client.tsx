@@ -27,6 +27,10 @@ import FocusedJobModal from "@/features/work-orders/components/workorders/Focuse
 import AddJobModal from "@work-orders/components/workorders/AddJobModal";
 import { useTabState } from "@/features/shared/hooks/useTabState";
 
+// voice control
+import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
+import VoiceButton from "@/features/shared/voice/VoiceButton";
+
 /* --------------------------- Small auth debugger -------------------------- */
 function AuthDebug<DB extends object>({ sb }: { sb: SupabaseClient<DB> }) {
   const [info, setInfo] = React.useState<{
@@ -162,7 +166,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         data: { session },
       } = await supabase.auth.getSession();
 
-      // If the cookie hasn't hydrated yet (new tab / Safari), poll briefly
+    // If the cookie hasn't hydrated yet (new tab / Safari), poll briefly
       if (!session) {
         for (let i = 0; i < 8; i++) {
           await new Promise((r) => setTimeout(r, 150 * (i + 1))); // ~1.8s total
@@ -373,6 +377,15 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   return (
     <div className="p-4 sm:p-6 text-white">
+      {/* voice context for this page */}
+      <VoiceContextSetter
+        currentView="work_order_page"
+        workOrderId={wo?.id }
+        vehicleId={vehicle?.id }
+        customerId={customer?.id}
+        lineId={null}
+      />
+
       {/* Small auth debug at the very top */}
       <AuthDebug sb={supabase} />
 
@@ -598,6 +611,9 @@ export default function WorkOrderIdClient(): JSX.Element {
           mode="tech"
         />
       )}
+
+      {/* Floating voice mic for this page */}
+      <VoiceButton />
     </div>
   );
 }

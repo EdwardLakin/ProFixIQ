@@ -19,16 +19,21 @@ export default function AuthPage() {
   const [notice, setNotice] = useState<string>("");
   const [loading, setLoading] = useState(false);
 
-  // Where magic links land (preserve ?redirect if present)
+  // Build a dynamic origin that works in browser, preview, or prod
+  const origin = useMemo(() => {
+    if (typeof window !== "undefined") return window.location.origin;
+    if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "");
+    if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+    return "http://localhost:3000";
+  }, []);
+
+  // Where magic links / OAuth should land (preserve ?redirect)
   const emailRedirectTo = useMemo(() => {
-    const origin =
-      typeof window !== "undefined"
-        ? window.location.origin
-        : (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
     const redirect = sp.get("redirect");
     const tail = redirect ? `?redirect=${encodeURIComponent(redirect)}` : "";
-    return `${origin || "https://profixiq.com"}/confirm${tail}`;
-  }, [sp]);
+    // Critical: /auth/callback so the helper can exchange the code for a session
+    return `${origin}/auth/callback${tail}`;
+  }, [origin, sp]);
 
   // If already signed in, bounce immediately
   useEffect(() => {
@@ -55,13 +60,16 @@ export default function AuthPage() {
 
   // Ensure cookies are synced to RSC/middleware before navigating
   const go = async (href: string) => {
-    await supabase.auth.getSession();
+    await supabase.auth.getSession(); // hydrate cookies for SSR/RSC
     router.refresh();
     router.replace(href);
 
     // Hard fallback for stubborn mobile caches
     setTimeout(() => {
-      if (typeof window !== "undefined" && window.location.pathname + window.location.search !== href) {
+      if (
+        typeof window !== "undefined" &&
+        window.location.pathname + window.location.search !== href
+      ) {
         window.location.assign(href);
       }
     }, 60);
@@ -113,7 +121,7 @@ export default function AuthPage() {
     const { data, error: signUpErr } = await supabase.auth.signUp({
       email,
       password,
-      options: { emailRedirectTo },
+      options: { emailRedirectTo }, // << dynamic redirect
     });
 
     if (signUpErr) {

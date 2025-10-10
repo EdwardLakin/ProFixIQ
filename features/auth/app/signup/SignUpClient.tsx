@@ -17,14 +17,20 @@ export default function SignUpClient() {
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // ✅ Magic link goes to /confirm (then middleware/confirm page can route further)
-  const emailRedirectTo = useMemo(() => {
-    const base =
-      (typeof window !== "undefined"
-        ? window.location.origin
-        : process.env.NEXT_PUBLIC_SITE_URL) || "https://profixiq.com";
-    return `${base.replace(/\/$/, "")}/confirm`;
+  // Compute origin for prod/preview/local
+  const origin = useMemo(() => {
+    if (typeof window !== "undefined") return window.location.origin;
+    if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "");
+    if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+    return "http://localhost:3000";
   }, []);
+
+  // ✅ Magic link / OAuth callback goes to /auth/callback and preserves ?redirect
+  const emailRedirectTo = useMemo(() => {
+    const redirect = sp.get("redirect");
+    const tail = redirect ? `?redirect=${encodeURIComponent(redirect)}` : "";
+    return `${origin}/auth/callback${tail}`;
+  }, [origin, sp]);
 
   // Prefill from Stripe if present
   useEffect(() => {
@@ -41,13 +47,33 @@ export default function SignUpClient() {
     })();
   }, [sp]);
 
-  // Already signed in? go to /dashboard (middleware handles onboarding)
+  // Already signed in? send to redirect (if any) else dashboard
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getUser();
-      if (data?.user) router.replace("/dashboard");
+      if (data?.user) {
+        const redirect = sp.get("redirect");
+        router.replace(redirect || "/dashboard");
+      }
     })();
-  }, [router, supabase]);
+  }, [router, sp, supabase]);
+
+  // Ensure cookies sync to RSC/middleware before navigating
+  const go = async (href: string) => {
+    await supabase.auth.getSession(); // hydrate cookies
+    router.refresh();
+    router.replace(href);
+
+    // Hard fallback for stubborn mobile caches
+    setTimeout(() => {
+      if (
+        typeof window !== "undefined" &&
+        window.location.pathname + window.location.search !== href
+      ) {
+        window.location.assign(href);
+      }
+    }, 60);
+  };
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,7 +88,7 @@ export default function SignUpClient() {
     });
 
     if (signUpError) {
-      setError(signUpError.message);
+      setError(signUpError.message || "Sign up failed.");
       setLoading(false);
       return;
     }
@@ -76,9 +102,9 @@ export default function SignUpClient() {
       return;
     }
 
-    // Session exists (e.g., email confirm disabled) → go to dashboard
-    router.refresh();
-    router.replace("/dashboard");
+    // Session exists (e.g., confirm disabled) → go to redirect or dashboard
+    const redirect = sp.get("redirect");
+    await go(redirect || "/dashboard");
     setLoading(false);
   };
 
