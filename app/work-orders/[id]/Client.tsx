@@ -8,17 +8,18 @@
  * - Falls back to custom_id (case-insensitive, leading-zero tolerant).
  * - Realtime updates for WO & WO lines (UUID-safe: subscribe with wo.id).
  * - Includes a tiny AuthDebug panel at the top.
+ * - Voice context + floating VoiceButton.
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-// NOTE: use the app's singleton client (no auth-helpers client here)
-import { supabaseBrowser } from "@/features/shared/lib/supabase/client";
-import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
 import { toast } from "sonner";
+
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import type { Database } from "@shared/types/types/supabase";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
 import VehiclePhotoUploader from "@parts/components/VehiclePhotoUploader";
@@ -27,7 +28,7 @@ import FocusedJobModal from "@/features/work-orders/components/workorders/Focuse
 import AddJobModal from "@work-orders/components/workorders/AddJobModal";
 import { useTabState } from "@/features/shared/hooks/useTabState";
 
-// voice control
+// Voice
 import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
 import VoiceButton from "@/features/shared/voice/VoiceButton";
 
@@ -126,8 +127,8 @@ export default function WorkOrderIdClient(): JSX.Element {
   const params = useParams();
   const routeId = (params?.id as string) || "";
 
-  // Use the shared singleton client
-  const supabase = supabaseBrowser as SupabaseClient<DB>;
+  // Use the cookie-backed auth-helpers browser client (plays nice with middleware & /confirm)
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   // Core entities (persist per tab where it helps UX)
   const [wo, setWo] = useTabState<WorkOrder | null>("wo:id:wo", null);
@@ -166,7 +167,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         data: { session },
       } = await supabase.auth.getSession();
 
-    // If the cookie hasn't hydrated yet (new tab / Safari), poll briefly
+      // If the cookie hasn't hydrated yet (new tab / Safari), poll briefly
       if (!session) {
         for (let i = 0; i < 8; i++) {
           await new Promise((r) => setTimeout(r, 150 * (i + 1))); // ~1.8s total
@@ -380,8 +381,8 @@ export default function WorkOrderIdClient(): JSX.Element {
       {/* voice context for this page */}
       <VoiceContextSetter
         currentView="work_order_page"
-        workOrderId={wo?.id }
-        vehicleId={vehicle?.id }
+        workOrderId={wo?.id}
+        vehicleId={vehicle?.id}
         customerId={customer?.id}
         lineId={null}
       />
