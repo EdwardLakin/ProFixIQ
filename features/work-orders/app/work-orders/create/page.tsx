@@ -3,10 +3,12 @@
 /**
  * Create Work Order (Front Desk)
  * ---------------------------------------------------------------------------
- * RLS-safe version:
- *  - Ensures shop_id on Customers, Vehicles, Vehicle Media.
- *  - Scopes lookups by shop to avoid cross-shop collisions.
- *  - Preserves: prefill, Save & Continue, Clear form, uploads, realtime lines.
+ * Integrated with VIN scanner + draft store.
+ * Notes:
+ *   - VIN modal (client wrapper) pre-fills vehicle fields when decoded.
+ *   - Zustand draft store hydrates on mount, then resets.
+ *   - Optional VIN/Scan button added in the Customer & Vehicle section.
+ *   - Sections labeled “DEBUG / TEMP” may be deleted later.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -15,6 +17,10 @@ import { v4 as uuidv4 } from "uuid";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { useTabState } from "@/features/shared/hooks/useTabState";
+
+// 🧩 NEW: VIN modal (client wrapper) + tiny draft store for prefill
+import VinCaptureModal from "app/vehicle/VinCaptureModal";
+import { useWorkOrderDraft } from "app/work-orders/state/useWorkOrderDraft";
 
 // UI
 import CustomerVehicleForm from "@/features/inspections/components/inspection/CustomerVehicleForm";
@@ -71,7 +77,9 @@ export default function CreateWorkOrderPage() {
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
-  // Expose for quick console probes if needed
+  /* -------------------------------------------------------------------------
+     DEBUG / TEMP: expose client for quick console probes (delete later)
+  ------------------------------------------------------------------------- */
   useEffect(() => {
     (window as unknown as Record<string, unknown>)._sb = supabase;
   }, [supabase]);
@@ -80,7 +88,7 @@ export default function CreateWorkOrderPage() {
   const [prefillVehicleId, setPrefillVehicleId] = useTabState<string | null>("prefillVehicleId", null);
   const [prefillCustomerId, setPrefillCustomerId] = useTabState<string | null>("prefillCustomerId", null);
 
-  // Debug flags (optional visual breadcrumb)
+  // DEBUG / TEMP: visual breadcrumb so you know where prefill came from
   const [sourceFlags, setSourceFlags] = useTabState(
     "__create_sources",
     { queryVehicle: false, queryCustomer: false, autoWO: false } as {
@@ -147,10 +155,49 @@ export default function CreateWorkOrderPage() {
 
   // Current user (email for custom_id prefix fallback)
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
-  const [, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // Mount guard
   const isMounted = useRef(false);
+
+  /* -------------------------------------------------------------------------
+     🧩 Draft store hydration (VIN / OCR prefill) — keep if using scanners
+  ------------------------------------------------------------------------- */
+  const draft = useWorkOrderDraft();
+  useEffect(() => {
+    const hasVeh = Object.values(draft.vehicle || {}).some((v) => v);
+    const hasCust = Object.values(draft.customer || {}).some((v) => v);
+
+    if (hasVeh) {
+      setVehicle((prev) => ({
+        ...prev,
+        vin: draft.vehicle.vin ?? prev.vin,
+        year: draft.vehicle.year ?? prev.year,
+        make: draft.vehicle.make ?? prev.make,
+        model: draft.vehicle.model ?? prev.model,
+        license_plate: draft.vehicle.plate ?? prev.license_plate,
+      }));
+    }
+    if (hasCust) {
+      setCustomer((prev) => ({
+        ...prev,
+        first_name: draft.customer.first_name ?? prev.first_name,
+        last_name: draft.customer.last_name ?? prev.last_name,
+        phone: draft.customer.phone ?? prev.phone,
+        email: draft.customer.email ?? prev.email,
+      }));
+    }
+
+    if (hasVeh || hasCust) {
+      setSourceFlags((s) => ({
+        ...s,
+        queryVehicle: s.queryVehicle || hasVeh,
+        queryCustomer: s.queryCustomer || hasCust,
+      }));
+      draft.reset(); // 🧹 one-shot apply
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* Current user */
   useEffect(() => {
@@ -766,7 +813,7 @@ export default function CreateWorkOrderPage() {
         </div>
       )}
 
-      {/* Optional debug breadcrumbs */}
+      {/* Optional debug breadcrumbs (DEBUG / TEMP) */}
       <div className="mb-3 text-xs text-neutral-500">
         <span className="mr-2">Prefill (customer): {sourceFlags.queryCustomer ? "yes" : "no"}</span>
         <span className="mr-2">Prefill (vehicle): {sourceFlags.queryVehicle ? "yes" : "no"}</span>
@@ -808,6 +855,33 @@ export default function CreateWorkOrderPage() {
               >
                 Clear form
               </button>
+
+              {/* 🔶 Optional VIN Modal (Scanner + Manual Entry) */}
+              <VinCaptureModal
+                userId={currentUserId ?? "anon"}
+                action="/api/vin"
+                onDecoded={(d) => {
+                  // Save to draft (for any other pages that might read it)
+                  draft.setVehicle({
+                    vin: d.vin,
+                    year: d.year ?? null,
+                    make: d.make ?? null,
+                    model: d.model ?? null,
+                  });
+                  // Apply immediately to this form
+                  setVehicle((prev) => ({
+                    ...prev,
+                    vin: d.vin || prev.vin,
+                    year: d.year ?? prev.year,
+                    make: d.make ?? prev.make,
+                    model: d.model ?? prev.model,
+                  }));
+                }}
+              >
+                <span className="rounded border border-orange-500 px-3 py-1 text-sm text-orange-400 hover:bg-orange-500/10 cursor-pointer">
+                  Add by VIN / Scan
+                </span>
+              </VinCaptureModal>
             </div>
 
             <div className="mt-2 flex items-center gap-2 text-xs text-neutral-300">

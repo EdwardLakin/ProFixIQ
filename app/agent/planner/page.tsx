@@ -5,6 +5,9 @@ import { Button } from "@shared/components/ui/Button";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
+// ✅ Added import for VIN modal
+import VinCaptureModal from "app/vehicle/VinCaptureModal";
+
 type PlannerKind = "simple" | "openai";
 type AgentStartOut = { runId: string; alreadyExists: boolean };
 
@@ -199,7 +202,22 @@ export default function PlannerPage() {
             </label>
 
             <label className="block">
-              <div className="text-sm text-neutral-400 mb-1">Plate or VIN</div>
+              <div className="text-sm text-neutral-400 mb-1 flex items-center justify-between">
+                <span>Plate or VIN</span>
+
+                {/* ✅ Added VIN modal trigger (same behavior as Create page) */}
+                <VinCaptureModal
+                  userId="anon"
+                  action="/api/vin"
+                  onDecoded={(d) => {
+                    if (d.vin) setPlateOrVin(d.vin);
+                  }}
+                >
+                  <span className="text-xs text-orange-400 border border-orange-500 px-2 py-0.5 rounded hover:bg-orange-500/10 cursor-pointer">
+                    Scan VIN
+                  </span>
+                </VinCaptureModal>
+              </div>
               <input
                 value={plateOrVin}
                 onChange={(e) => setPlateOrVin(e.target.value)}

@@ -1,99 +1,76 @@
+"use server";
+
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
 
-interface VinDecodeRequestBody {
-  vin: string;
-  user_id: string;
-}
+type VinRequestBody = { vin?: string; user_id?: string };
 
-interface VinDecodeResponse {
+type VpicResponse = {
   Results: Array<{
-    Year: string;
-    Make: string;
-    Model: string;
-    Trim: string;
-    EngineModel: string;
+    Year?: string;
+    Make?: string;
+    Model?: string;
+    Trim?: string;
+    EngineModel?: string;
   }>;
-}
+};
 
 export async function POST(req: Request) {
-  // Adapt next/headers cookies() for @supabase/ssr
-  const cookieStore = await cookies();
-  const supabase = createServerClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
-        },
-        set(name: string, value: string, options: CookieOptions) {
-          cookieStore.set({ name, value, ...options });
-        },
-        remove(name: string, options: CookieOptions) {
-          cookieStore.set({ name, value: "", ...options, maxAge: 0 });
-        },
-      },
-    }
-  );
-
-  let body: VinDecodeRequestBody;
+  let body: VinRequestBody;
   try {
-    body = await req.json();
+    body = (await req.json()) as VinRequestBody;
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { vin, user_id } = body;
+  const vin = (body.vin || "").trim().toUpperCase();
+  const userId = body.user_id?.trim();
 
-  try {
-    const vinRes = await fetch(
-      `https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/${vin}?format=json`
-    );
-
-    if (!vinRes.ok) {
-      return NextResponse.json(
-        { error: "Failed to fetch from VIN API" },
-        { status: 502 }
-      );
-    }
-
-    const vinData: VinDecodeResponse = await vinRes.json();
-    const decoded = vinData?.Results?.[0] || {};
-    const { Year, Make, Model, Trim, EngineModel } = decoded;
-
-    const { error } = await supabase.from("vin_decodes").upsert({
-      vin,
-      user_id,
-      year: Year || null,
-      make: Make || null,
-      model: Model || null,
-      trim: Trim || null,
-      engine: EngineModel || null,
-    });
-
-    if (error) {
-      console.error("❌ Supabase upsert error:", error);
-      return NextResponse.json(
-        { error: "Database insert failed" },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({
-      year: Year,
-      make: Make,
-      model: Model,
-      trim: Trim,
-      engine: EngineModel,
-    });
-  } catch (err) {
-    console.error("❌ VIN decode failed:", err);
-    return NextResponse.json(
-      { error: "Failed to decode VIN" },
-      { status: 500 }
-    );
+  if (vin.length !== 17) {
+    return NextResponse.json({ error: "VIN must be 17 characters" }, { status: 400 });
   }
+
+  // ── Fetch VIN decode from NHTSA (no API key needed)
+  const res = await fetch(
+    `https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/${encodeURIComponent(vin)}?format=json`,
+    { cache: "no-store" }
+  );
+
+  if (!res.ok) {
+    return NextResponse.json({ error: "VIN API error" }, { status: 502 });
+  }
+
+  const data = (await res.json()) as VpicResponse;
+  const r = data.Results?.[0] ?? {};
+
+  const decoded = {
+    year: r.Year || null,
+    make: r.Make || null,
+    model: r.Model || null,
+    trim: r.Trim || null,
+    engine: r.EngineModel || null,
+  };
+
+  // ── Use your unified RSC helper (no @supabase/ssr)
+  try {
+    const supabase = await createServerSupabaseRSC();
+
+    if (userId) {
+      const { error } = await supabase
+        .from("vin_decodes")
+        .upsert({
+          vin,
+          user_id: userId,
+          ...decoded,
+        } satisfies Database["public"]["Tables"]["vin_decodes"]["Insert"]);
+
+      if (error) console.error("[vin upsert]", error);
+    }
+  } catch (err) {
+    console.error("[vin save error]", err);
+    // Don’t throw, still return decoded data
+  }
+
+  return NextResponse.json({ vin, ...decoded });
 }
