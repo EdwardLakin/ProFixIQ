@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getSupabase } from "@/features/shared/lib/supabase/client";
+import { supabaseBrowser } from "@/features/shared/lib/supabase/client";
 
 type WorkOrder = {
   id: string;
@@ -18,7 +18,7 @@ export default function RecentWorkOrders() {
 
   useEffect(() => {
     const fetchWorkOrders = async () => {
-      const supabase = getSupabase();
+      const supabase = supabaseBrowser;
 
       const { data, error } = await supabase
         .from("work_orders")
@@ -26,7 +26,8 @@ export default function RecentWorkOrders() {
         .order("created_at", { ascending: false })
         .limit(3);
 
-      if (!error && data) setWorkOrders(data);
+      if (!error && data) setWorkOrders(data as WorkOrder[]);
+      else if (error) console.error("RecentWorkOrders error:", error.message);
     };
 
     fetchWorkOrders();

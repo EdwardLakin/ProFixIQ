@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { getSupabase } from "@/features/shared/lib/supabase/client";
+import { supabaseBrowser } from "@/features/shared/lib/supabase/client";
 
 export default function AccountPlanPanel() {
   const [email, setEmail] = useState<string | null>(null);
@@ -9,7 +9,7 @@ export default function AccountPlanPanel() {
 
   useEffect(() => {
     const fetchUserPlan = async () => {
-      const supabase = getSupabase();
+      const supabase = supabaseBrowser;
 
       const {
         data: { user },

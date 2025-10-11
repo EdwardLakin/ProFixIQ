@@ -1,9 +1,8 @@
 "use client";
 
-import { getSupabase } from "@/features/shared/lib/supabase/client";
+import { supabaseBrowser } from "@/features/shared/lib/supabase/client";
 
-// Prefer a getter so this file can be imported anywhere in the client safely.
-export const supa = () => getSupabase();
+export const supa = () => supabaseBrowser;
 
 export const getCurrentUser = async () => {
   const supabase = supa();

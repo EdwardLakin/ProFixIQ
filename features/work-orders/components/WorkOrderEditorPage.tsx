@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { supabaseBrowser } from "@/features/shared/lib/supabase/client";
 import useVehicleInfo from "@shared/hooks/useVehicleInfo";
 import { useUser } from "@auth/hooks/useUser";
 import WorkOrderLineEditor from "@work-orders/components/WorkOrderLineEditor";
@@ -23,20 +22,12 @@ type WorkOrderLine = {
   correction?: string;
   labor_time?: number;
   tools?: string;
-  status?:
-    | "unassigned"
-    | "assigned"
-    | "in_progress"
-    | "on_hold"
-    | "completed"
-    | "awaiting";
+  status?: "unassigned" | "assigned" | "in_progress" | "on_hold" | "completed" | "awaiting";
   hold_reason?: "parts" | "authorization" | "diagnosis_pending" | "other" | "";
 };
 
 export default function WorkOrderEditorPage() {
-  // ✅ Use auth-helpers client that automatically attaches the user session
-  const supabase = createClientComponentClient<Database>();
-
+  const supabase = supabaseBrowser;
   const { vehicleInfo } = useVehicleInfo();
   const { user } = useUser();
 
@@ -45,7 +36,6 @@ export default function WorkOrderEditorPage() {
   const [query, setQuery] = useState("");
   const [filtered, setFiltered] = useState<MenuItem[]>([]);
 
-  // Fetch menu items scoped to this vehicle
   useEffect(() => {
     const fetchMenuItems = async () => {
       if (user && vehicleInfo?.id) {
@@ -54,31 +44,21 @@ export default function WorkOrderEditorPage() {
           .select("*")
           .eq("vehicle_id", vehicleInfo.id);
 
-        if (!error && data) {
-          setMenuItems(data as MenuItem[]);
-        } else if (error) {
-          console.error("Error fetching menu items:", error.message);
-        }
+        if (!error && data) setMenuItems(data as unknown as MenuItem[]);
       }
     };
     void fetchMenuItems();
   }, [user, vehicleInfo?.id, supabase]);
 
-  // Live search filter
   useEffect(() => {
     if (query.trim().length > 1) {
       const q = query.toLowerCase();
-      setFiltered(
-        menuItems.filter((item) =>
-          (item.complaint ?? "").toLowerCase().includes(q)
-        )
-      );
+      setFiltered(menuItems.filter((item) => (item.complaint ?? "").toLowerCase().includes(q)));
     } else {
       setFiltered([]);
     }
   }, [query, menuItems]);
 
-  // Add selected menu item to work order
   const handleSuggestionClick = (item: MenuItem) => {
     setLines((prev) => [
       ...prev,

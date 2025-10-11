@@ -1,6 +1,6 @@
 "use client";
 
-import { getSupabase } from "@/features/shared/lib/supabase/client";
+import { supabaseBrowser } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
 // Shape of the joined row we get back from Supabase for this query
@@ -37,7 +37,7 @@ const SELECT_WITH_JOINS = `
 `;
 
 export async function fetchAllJobLines(): Promise<JobLine[]> {
-  const supabase = getSupabase();
+  const supabase = supabaseBrowser;
 
   const { data, error } = await supabase
     .from("work_order_lines")

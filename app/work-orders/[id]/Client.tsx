@@ -17,7 +17,7 @@ import { useParams } from "next/navigation";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
-import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import { supabaseBrowser as supabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -127,8 +127,10 @@ export default function WorkOrderIdClient(): JSX.Element {
   const params = useParams();
   const routeId = (params?.id as string) || "";
 
-  // Use the cookie-backed auth-helpers browser client (plays nice with middleware & /confirm)
-  const supabase = useMemo(() => createBrowserSupabase(), []);
+  // Use the cookie-backed auth-helpers browser client singleton
+  // (plays nice with middleware & /confirm)
+  // NOTE: do NOT re-create a client here; use the singleton directly.
+  // const supabase (already imported as singleton)
 
   // Core entities (persist per tab where it helps UX)
   const [wo, setWo] = useTabState<WorkOrder | null>("wo:id:wo", null);
@@ -388,7 +390,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       />
 
       {/* Small auth debug at the very top */}
-      <AuthDebug sb={supabase} />
+      <AuthDebug sb={supabase as unknown as SupabaseClient<{}>} />
 
       <PreviousPageButton to="/work-orders" />
 
