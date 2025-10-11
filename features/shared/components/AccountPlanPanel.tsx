@@ -1,8 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { createBrowserClient } from "@supabase/ssr";
-import { Database } from "@shared/types/types/supabase";
+import { getSupabase } from "@/features/shared/lib/supabase/client";
 
 export default function AccountPlanPanel() {
   const [email, setEmail] = useState<string | null>(null);
@@ -10,10 +9,7 @@ export default function AccountPlanPanel() {
 
   useEffect(() => {
     const fetchUserPlan = async () => {
-      const supabase = createBrowserClient<Database>(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      );
+      const supabase = getSupabase();
 
       const {
         data: { user },
@@ -27,12 +23,12 @@ export default function AccountPlanPanel() {
           .from("user_plans")
           .select("plan")
           .eq("user_id", user.id)
-          .single();
+          .maybeSingle();
 
         if (planData?.plan) {
           setPlan(planData.plan);
-        } else {
-          console.error("Error fetching plan:", planError?.message);
+        } else if (planError) {
+          console.error("Error fetching plan:", planError.message);
         }
       } else if (userError) {
         console.error("Error fetching user:", userError.message);
@@ -44,7 +40,7 @@ export default function AccountPlanPanel() {
 
   return (
     <div className="bg-surface text-accent p-6 rounded-md shadow-card mb-8">
-      <h2 className="text-lg font-semibold mb-2">Account & Plan</h2>
+      <h2 className="text-lg font-semibold mb-2">Account &amp; Plan</h2>
       <div className="text-muted text-sm mb-2">
         Logged in as: {email || "Loading..."}
       </div>

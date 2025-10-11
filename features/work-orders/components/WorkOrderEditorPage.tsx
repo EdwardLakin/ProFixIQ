@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createBrowserClient } from "@supabase/ssr";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import useVehicleInfo from "@shared/hooks/useVehicleInfo";
 import { useUser } from "@auth/hooks/useUser";
@@ -34,10 +34,8 @@ type WorkOrderLine = {
 };
 
 export default function WorkOrderEditorPage() {
-  const supabase = createBrowserClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  );
+  // ✅ Use auth-helpers client that automatically attaches the user session
+  const supabase = createClientComponentClient<Database>();
 
   const { vehicleInfo } = useVehicleInfo();
   const { user } = useUser();
@@ -47,6 +45,7 @@ export default function WorkOrderEditorPage() {
   const [query, setQuery] = useState("");
   const [filtered, setFiltered] = useState<MenuItem[]>([]);
 
+  // Fetch menu items scoped to this vehicle
   useEffect(() => {
     const fetchMenuItems = async () => {
       if (user && vehicleInfo?.id) {
@@ -56,26 +55,30 @@ export default function WorkOrderEditorPage() {
           .eq("vehicle_id", vehicleInfo.id);
 
         if (!error && data) {
-          setMenuItems(data as unknown as MenuItem[]);
+          setMenuItems(data as MenuItem[]);
+        } else if (error) {
+          console.error("Error fetching menu items:", error.message);
         }
       }
     };
     void fetchMenuItems();
   }, [user, vehicleInfo?.id, supabase]);
 
+  // Live search filter
   useEffect(() => {
     if (query.trim().length > 1) {
       const q = query.toLowerCase();
       setFiltered(
         menuItems.filter((item) =>
-          (item.complaint ?? "").toLowerCase().includes(q),
-        ),
+          (item.complaint ?? "").toLowerCase().includes(q)
+        )
       );
     } else {
       setFiltered([]);
     }
   }, [query, menuItems]);
 
+  // Add selected menu item to work order
   const handleSuggestionClick = (item: MenuItem) => {
     setLines((prev) => [
       ...prev,

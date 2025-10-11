@@ -1,15 +1,12 @@
 "use client";
 
-import { createBrowserClient } from "@supabase/ssr";
-import type { Database } from "@shared/types/types/supabase";
+import { getSupabase } from "@/features/shared/lib/supabase/client";
 
-export const supabase = createBrowserClient<Database>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-);
+// Prefer a getter so this file can be imported anywhere in the client safely.
+export const supa = () => getSupabase();
 
-// Optional wrapper to get user session in client component
 export const getCurrentUser = async () => {
+  const supabase = supa();
   const {
     data: { session },
     error,
@@ -19,6 +16,5 @@ export const getCurrentUser = async () => {
     console.error("Session error:", error);
     return null;
   }
-
   return session?.user ?? null;
 };

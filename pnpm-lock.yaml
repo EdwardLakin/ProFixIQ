@@ -35,9 +35,6 @@ importers:
       '@supabase/auth-helpers-shared':
         specifier: 0.7.0
         version: 0.7.0(@supabase/supabase-js@2.39.5)
-      '@supabase/ssr':
-        specifier: 0.6.1
-        version: 0.6.1(@supabase/supabase-js@2.39.5)
       '@supabase/supabase-js':
         specifier: 2.39.5
         version: 2.39.5
@@ -806,11 +803,6 @@ packages:
 
   '@supabase/realtime-js@2.9.3':
     resolution: {integrity: sha512-lAp50s2n3FhGJFq+wTSXLNIDPw5Y0Wxrgt44eM5nLSA3jZNUUP3Oq2Ccd1CbZdVntPCWLZvJaU//pAd2NE+QnQ==}
-
-  '@supabase/ssr@0.6.1':
-    resolution: {integrity: sha512-QtQgEMvaDzr77Mk3vZ3jWg2/y+D8tExYF7vcJT+wQ8ysuvOeGGjYbZlvj5bHYsj/SpC0bihcisnwPrM4Gp5G4g==}
-    peerDependencies:
-      '@supabase/supabase-js': ^2.43.4
 
   '@supabase/storage-js@2.5.5':
     resolution: {integrity: sha512-OpLoDRjFwClwc2cjTJZG8XviTiQH4Ik8sCiMK5v7et0MDu2QlXjCAW3ljxJB5+z/KazdMOTnySi+hysxWUPu3w==}
@@ -4483,11 +4475,6 @@ snapshots:
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
-
-  '@supabase/ssr@0.6.1(@supabase/supabase-js@2.39.5)':
-    dependencies:
-      '@supabase/supabase-js': 2.39.5
-      cookie: 1.0.2
 
   '@supabase/storage-js@2.5.5':
     dependencies:

@@ -1,20 +1,13 @@
-// features/shared/lib/supabase/client.ts
 "use client";
 
-import { createBrowserClient } from "@supabase/ssr";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
-let _client:
-  | ReturnType<typeof createBrowserClient<Database>>
-  | null = null;
+// Small memoized getter — avoid exporting a global singleton from ssr package.
+let _client: ReturnType<typeof createClientComponentClient<Database>> | null = null;
 
-export function createBrowserSupabase() {
+export function getSupabase() {
   if (_client) return _client;
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-  _client = createBrowserClient<Database>(url, anon);
+  _client = createClientComponentClient<Database>();
   return _client;
 }
-
-// optional ready-to-use singleton
-export const supabaseBrowser = createBrowserSupabase();

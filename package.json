@@ -25,7 +25,6 @@
     "@supabase/auth-helpers-nextjs": "0.10.0",
     "@supabase/auth-helpers-react": "0.5.0",
     "@supabase/auth-helpers-shared": "0.7.0",
-    "@supabase/ssr": "0.6.1",
     "@supabase/supabase-js": "2.39.5",
     "@tsparticles/interaction-external-bubble": "^3.9.1",
     "@tsparticles/interaction-particles-links": "^3.9.1",
