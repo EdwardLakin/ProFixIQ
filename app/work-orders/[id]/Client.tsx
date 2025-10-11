@@ -390,7 +390,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       />
 
       {/* Small auth debug at the very top */}
-      <AuthDebug sb={supabase as unknown as SupabaseClient<{}>} />
+      <AuthDebug sb={supabase as unknown as SupabaseClient<Database>} />
 
       <PreviousPageButton to="/work-orders" />
 
