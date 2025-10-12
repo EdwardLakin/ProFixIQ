@@ -9,6 +9,7 @@ import type { Database } from "@shared/types/types/supabase";
 import { useWorkOrderDraft } from "app/work-orders/state/useWorkOrderDraft";
 /* ✅ NEW: two-part preview modal */
 import { WorkOrderPreviewTrigger } from "app/work-orders/components/WorkOrderPreviewTrigger";
+import {WorkOrderPreview } from "app/work-orders/components/WorkOrderPreview"
 
 type PlannerKind = "simple" | "openai";
 type AgentStartOut = { runId: string; alreadyExists: boolean };
@@ -363,14 +364,16 @@ export default function PlannerPage() {
 
       {/* 🔶 Preview modal: trigger + server preview (only when we have a new WO) */}
       {previewWoId && (
-        <div className="mt-6">
-          <WorkOrderPreviewTrigger
-            woId={previewWoId}
-            open={previewOpen}
-            onOpenChange={setPreviewOpen}
-          />
-        </div>
-      )}
+  <div className="mt-6">
+    <WorkOrderPreviewTrigger
+      open={previewOpen}
+      onOpenChange={setPreviewOpen}
+    >
+      {/* Server component rendered by the page (allowed) */}
+      <WorkOrderPreview woId={previewWoId} />
+    </WorkOrderPreviewTrigger>
+  </div>
+)}
     </div>
   );
 }
