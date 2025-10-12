@@ -5,15 +5,20 @@ import { Button } from "@shared/components/ui/Button";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
-/* ✅ Planner + OCR + VIN Draft Link-Up */
+/* Draft linkage */
 import { useWorkOrderDraft } from "app/work-orders/state/useWorkOrderDraft";
-/* ✅ NEW: two-part preview modal */
+
+/* Modal trigger + preview (both client) */
 import { WorkOrderPreviewTrigger } from "app/work-orders/components/WorkOrderPreviewTrigger";
-import {WorkOrderPreview } from "app/work-orders/components/WorkOrderPreview"
+import { WorkOrderPreview } from "app/work-orders/components/WorkOrderPreview";
+
+/* ✅ VIN capture modal (client shell you already use on Create) — singular path */
+import VinCaptureModal from "app/vehicle/VinCaptureModal";
 
 type PlannerKind = "simple" | "openai";
 type AgentStartOut = { runId: string; alreadyExists: boolean };
 
+/** OCR response shape (server may return a subset) */
 type OcrFields = {
   vin?: string | null;
   plate?: string | null;
@@ -33,28 +38,33 @@ function toMsg(e: unknown): string {
   if (e && typeof e === "object" && "message" in e && typeof (e as { message?: unknown }).message === "string") {
     return (e as Error).message;
   }
-  try {
-    return String(e);
-  } catch {
-    return "Unknown error";
-  }
+  try { return String(e); } catch { return "Unknown error"; }
 }
 
-/** Types for agent SSE events (no `any`) */
+/** Types for agent SSE events (no any) */
 type AgentEvent = Record<string, unknown> & { kind?: string };
 
 function asString(v: unknown): string | null {
   return typeof v === "string" ? v : null;
 }
-
 function extractWorkOrderId(evt: AgentEvent): string | null {
   return (
-    asString(evt.work_order_id) ?? // snake_case
-    asString(evt.workOrderId) ??   // camelCase
-    asString(evt.wo_id) ??         // short
-    asString(evt.id)               // generic id
+    asString(evt.work_order_id) ??
+    asString(evt.workOrderId) ??
+    asString(evt.wo_id) ??
+    asString(evt.id)
   );
 }
+
+/** From VIN modal callback */
+type VinDecodedDetail = {
+  vin: string;
+  year: string | null;
+  make: string | null;
+  model: string | null;
+  trim: string | null;
+  engine?: string | null;
+};
 
 export default function PlannerPage() {
   const [goal, setGoal] = useState("");
@@ -68,16 +78,33 @@ export default function PlannerPage() {
   const [runId, setRunId] = useState<string | null>(null);
   const esRef = useRef<EventSource | null>(null);
 
-  // 🎯 NEW: Preview modal state
+  // Preview modal state
   const [previewWoId, setPreviewWoId] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+
+  // VIN capture modal state
+  const [vinOpen, setVinOpen] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // ✅ Simple toast/banner for VIN success
+  const [toast, setToast] = useState<string | null>(null);
 
   const supabase = createClientComponentClient<Database>();
   const draft = useWorkOrderDraft();
   const setVehicleDraft = useWorkOrderDraft((s) => s.setVehicle);
   const setCustomerDraft = useWorkOrderDraft((s) => s.setCustomer);
 
-  // ✅ cleanup preview URL & SSE
+  // Load user id for VIN modal
+  useEffect(() => {
+    let mounted = true;
+    supabase.auth.getUser().then(({ data }) => {
+      if (!mounted) return;
+      setUserId(data.user?.id ?? null);
+    });
+    return () => { mounted = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     return () => {
       if (photoPreview) URL.revokeObjectURL(photoPreview);
@@ -86,7 +113,7 @@ export default function PlannerPage() {
     };
   }, [photoPreview]);
 
-  // ✅ prefill from draft once on mount
+  // Prefill from draft once
   useEffect(() => {
     const v = (draft?.vehicle?.vin ?? "").trim();
     if (v && !plateOrVin) setPlateOrVin(v);
@@ -114,8 +141,26 @@ export default function PlannerPage() {
     return pub.data.publicUrl;
   }
 
-  function usePresetOilBrake() {
-    setGoal("Create a work order and add lines for oil change and brake inspection. Then generate an invoice.");
+  // 🔧 Presets (4)
+  function presetOilGas() {
+    setGoal(
+      "Create a work order for oil change (gas engine). Add line items for engine oil and filter, reset maintenance light, quick multi-point inspection, then generate and email the invoice."
+    );
+  }
+  function presetOilDiesel() {
+    setGoal(
+      "Create a work order for oil change (diesel). Add engine oil and filter, include fuel filter check, DEF level check, reset maintenance message, then generate and email the invoice."
+    );
+  }
+  function presetMaint50() {
+    setGoal(
+      "Create a work order for 50-point maintenance inspection. Add inspection checklist line, top off fluids, rotate tires if needed, report any issues, and produce a summarized estimate/invoice."
+    );
+  }
+  function presetMaint50Air() {
+    setGoal(
+      "Create a work order for 50-point maintenance inspection plus air filters. Include engine air filter and cabin air filter lines if due, top off fluids, rotate tires if needed, and produce estimate/invoice."
+    );
   }
 
   async function start() {
@@ -126,14 +171,14 @@ export default function PlannerPage() {
     try {
       const imageUrl = await uploadPhotoIfAny();
 
-      // ✅ clear file + preview for next run
+      // clear file + preview for next run
       if (imageUrl && photoPreview) URL.revokeObjectURL(photoPreview);
       if (imageUrl) {
         setPhoto(null);
         setPhotoPreview(null);
       }
 
-      /* ✅ D: OCR call if image present */
+      // OCR call if image present
       let ocrFields: OcrFields | null = null;
       if (imageUrl) {
         setStatus((s) => `${s}${s ? "\n" : ""}[ocr] uploading & parsing…`);
@@ -147,19 +192,14 @@ export default function PlannerPage() {
             const j = (await res.json()) as { fields?: OcrFields | null };
             const f = j?.fields || {};
             setVehicleDraft({
-              vin: f.vin ?? undefined,
-              plate: f.plate ?? undefined,
-              year: f.year ?? undefined,
-              make: f.make ?? undefined,
-              model: f.model ?? undefined,
-              trim: f.trim ?? undefined,
+              vin: f.vin ?? undefined, plate: f.plate ?? undefined,
+              year: f.year ?? undefined, make: f.make ?? undefined,
+              model: f.model ?? undefined, trim: f.trim ?? undefined,
               engine: f.engine ?? undefined,
             });
             setCustomerDraft({
-              first_name: f.first_name ?? undefined,
-              last_name: f.last_name ?? undefined,
-              phone: f.phone ?? undefined,
-              email: f.email ?? undefined,
+              first_name: f.first_name ?? undefined, last_name: f.last_name ?? undefined,
+              phone: f.phone ?? undefined, email: f.email ?? undefined,
             });
 
             if (!plateOrVin && (f.vin || f.plate)) setPlateOrVin(f.vin || f.plate || "");
@@ -176,7 +216,7 @@ export default function PlannerPage() {
         }
       }
 
-      /* ✅ C: include VIN/vehicle hints */
+      // include VIN/vehicle hints
       const vinFromDraft = (draft?.vehicle?.vin ?? "").trim() || undefined;
       const decodedVehicle =
         draft?.vehicle &&
@@ -203,12 +243,7 @@ export default function PlannerPage() {
       const res = await fetch("/api/agent", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          goal,
-          planner,
-          context: ctx,
-          idempotencyKey: crypto.randomUUID(),
-        }),
+        body: JSON.stringify({ goal, planner, context: ctx, idempotencyKey: crypto.randomUUID() }),
       });
 
       if (!res.ok) {
@@ -220,7 +255,7 @@ export default function PlannerPage() {
       setRunId(out.runId);
       setStatus((s) => `${s}${s ? "\n" : ""}Run ${out.runId} ${out.alreadyExists ? "(resumed)" : "started"} — streaming…`);
 
-      // ✅ SSE stream
+      // SSE
       const url = `/api/agent/events?runId=${encodeURIComponent(out.runId)}`;
       const es = new EventSource(url, { withCredentials: false });
       esRef.current = es;
@@ -228,9 +263,8 @@ export default function PlannerPage() {
       es.onmessage = (ev) => {
         try {
           const data = JSON.parse(ev.data) as AgentEvent;
-
-          // ⭐ Auto-open preview when agent signals a created WO
           const maybeId = extractWorkOrderId(data);
+
           if ((data.kind === "wo.created" || data.kind === "work_order.created") && typeof maybeId === "string") {
             setPreviewWoId(maybeId);
             setPreviewOpen(true);
@@ -254,10 +288,7 @@ export default function PlannerPage() {
   return (
     <div className="p-6">
       <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-5 space-y-4">
-        <h1
-          className="text-2xl font-black text-orange-400"
-          style={{ fontFamily: "'Black Ops One', system-ui, sans-serif" }}
-        >
+        <h1 className="text-2xl font-black text-orange-400" style={{ fontFamily: "'Black Ops One', system-ui, sans-serif" }}>
           AI Planner
         </h1>
 
@@ -270,9 +301,18 @@ export default function PlannerPage() {
               placeholder="e.g. Find John Smith, create inspection WO, add note, email invoice"
               className="w-full min-h-[96px] p-2 rounded border border-neutral-800 bg-neutral-900 text-neutral-100"
             />
-            <div className="mt-2 flex gap-2">
-              <Button variant="outline" size="sm" onClick={usePresetOilBrake}>
-                Use preset: Oil + Brake
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={presetOilGas}>
+                Oil change (gas)
+              </Button>
+              <Button variant="outline" size="sm" onClick={presetOilDiesel}>
+                Oil change (diesel)
+              </Button>
+              <Button variant="outline" size="sm" onClick={presetMaint50}>
+                Maintenance 50
+              </Button>
+              <Button variant="outline" size="sm" onClick={presetMaint50Air}>
+                Maintenance 50 + Air
               </Button>
             </div>
           </label>
@@ -302,12 +342,25 @@ export default function PlannerPage() {
 
             <label className="block">
               <div className="text-sm text-neutral-400 mb-1">Plate or VIN</div>
-              <input
-                value={plateOrVin}
-                onChange={(e) => setPlateOrVin(e.target.value)}
-                className="w-full p-2 rounded border border-neutral-800 bg-neutral-900 text-neutral-100"
-                placeholder="e.g. 8ABC123 or 1FT…"
-              />
+              <div className="flex gap-2">
+                <input
+                  value={plateOrVin}
+                  onChange={(e) => setPlateOrVin(e.target.value)}
+                  className="w-full p-2 rounded border border-neutral-800 bg-neutral-900 text-neutral-100"
+                  placeholder="e.g. 8ABC123 or 1FT…"
+                />
+                {/* VIN capture trigger */}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setVinOpen(true)}
+                  title="Open VIN capture"
+                  disabled={!userId}
+                >
+                  Scan VIN
+                </Button>
+              </div>
             </label>
 
             <label className="block">
@@ -362,18 +415,49 @@ export default function PlannerPage() {
         </pre>
       </div>
 
-      {/* 🔶 Preview modal: trigger + server preview (only when we have a new WO) */}
       {previewWoId && (
-  <div className="mt-6">
-    <WorkOrderPreviewTrigger
-      open={previewOpen}
-      onOpenChange={setPreviewOpen}
-    >
-      {/* Server component rendered by the page (allowed) */}
-      <WorkOrderPreview woId={previewWoId} />
-    </WorkOrderPreviewTrigger>
-  </div>
-)}
+        <div className="mt-6">
+          <WorkOrderPreviewTrigger open={previewOpen} onOpenChange={setPreviewOpen}>
+            <WorkOrderPreview woId={previewWoId} />
+          </WorkOrderPreviewTrigger>
+        </div>
+      )}
+
+      {/* 🔶 VIN Capture Modal (client shell) */}
+      {userId ? (
+        <VinCaptureModal
+          userId={userId}
+          open={vinOpen}
+          onOpenChange={(open: boolean) => setVinOpen(open)} // typed param ✅
+          onDecoded={(d: VinDecodedDetail) => {
+            setVehicleDraft({
+              vin: d.vin,
+              year: d.year ?? null,
+              make: d.make ?? null,
+              model: d.model ?? null,
+              trim: d.trim ?? null,
+              engine: d.engine ?? null,
+            });
+            setPlateOrVin(d.vin);
+            // Toast confirm
+            setToast("VIN decoded and recalls queued ✅");
+            window.setTimeout(() => setToast(null), 4000);
+          }}
+        />
+      ) : null}
+
+      {/* ✅ Toast / banner */}
+      {toast && (
+        <div
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 rounded border px-4 py-2 shadow-xl"
+          style={{ borderColor: "#f97316", backgroundColor: "#0a0a0a" }}
+        >
+          <div className="flex items-center gap-2 text-sm text-neutral-100">
+            <span className="inline-block h-4 w-4 rounded-full border-2 border-orange-500 border-t-transparent animate-spin" />
+            {toast}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
