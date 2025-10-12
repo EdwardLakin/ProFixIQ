@@ -25,7 +25,7 @@ import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
 import VehiclePhotoUploader from "@parts/components/VehiclePhotoUploader";
 import VehiclePhotoGallery from "@parts/components/VehiclePhotoGallery";
 import FocusedJobModal from "@/features/work-orders/components/workorders/FocusedJobModal";
-import AddJobModal from "@work-orders/components/workorders/AddJobModal";
+
 import { useTabState } from "@/features/shared/hooks/useTabState";
 
 // Voice
@@ -148,9 +148,6 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   // persisted UI toggle
   const [showDetails, setShowDetails] = useTabState<boolean>("wo:showDetails", true);
-
-  // Add Job modal
-  const [isAddJobModalOpen, setIsAddJobModalOpen] = useState(false);
 
   // Focused job modal
   const [focusedJobId, setFocusedJobId] = useState<string | null>(null);
@@ -429,14 +426,8 @@ export default function WorkOrderIdClient(): JSX.Element {
                 <h1 className="text-2xl font-semibold">
                   Work Order {wo.custom_id || `#${wo.id.slice(0, 8)}`}
                 </h1>
-                <button
-                  type="button"
-                  onClick={() => setIsAddJobModalOpen(true)}
-                  className="rounded bg-orange-500 px-3 py-1.5 text-sm font-semibold text-black hover:bg-orange-400"
-                  title="Add a job to this work order"
-                >
+                
                   + Add Job
-                </button>
               </div>
               <div className="mt-2 grid gap-2 text-sm text-neutral-300 sm:grid-cols-3">
                 <div>
@@ -590,18 +581,6 @@ export default function WorkOrderIdClient(): JSX.Element {
           <VehiclePhotoUploader vehicleId={vehicle.id} />
           <VehiclePhotoGallery vehicleId={vehicle.id} currentUserId={currentUserId || "anon"} />
         </div>
-      )}
-
-      {/* Add Job modal */}
-      {isAddJobModalOpen && wo?.id && vehicle?.id && (
-        <AddJobModal
-          isOpen={isAddJobModalOpen}
-          onClose={() => setIsAddJobModalOpen(false)}
-          workOrderId={wo.id}
-          vehicleId={vehicle.id}
-          techId={currentUserId || "system"}
-          onJobAdded={fetchAll}
-        />
       )}
 
       {/* Focused job modal */}

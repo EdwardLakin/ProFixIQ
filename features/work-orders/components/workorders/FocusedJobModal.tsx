@@ -19,6 +19,7 @@ import TimeAdjustModal from "@/features/work-orders/components/workorders/extras
 import PhotoCaptureModal from "@/features/work-orders/components/workorders/extras/PhotoCaptureModal";
 import CostEstimateModal from "@/features/work-orders/components/workorders/extras/CostEstimateModal";
 import CustomerContactModal from "@/features/work-orders/components/workorders/extras/CustomerContactModal";
+import AddJobModal from "@work-orders/components/workorders/AddJobModal";
 
 // voice control
 import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
@@ -92,6 +93,7 @@ export default function FocusedJobModal(props: any) {
   const [openCost, setOpenCost] = useState(false);
   const [openContact, setOpenContact] = useState(false);
   const [openChat, setOpenChat] = useState(false); // NEW
+  const [openAddJob, setOpenAddJob] = useState(false);
 
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
@@ -383,13 +385,25 @@ export default function FocusedJobModal(props: any) {
                 ) : null}
               </div>
 
-              <button
-                onClick={onClose}
-                className="rounded border border-neutral-700 px-2 py-1 text-sm text-neutral-200 hover:bg-neutral-800"
-                title="Close"
-              >
-                ✕
-              </button>
+              {/* RIGHT actions: Add Job + Close */}
+              <div className="flex items-center gap-2">
+                {workOrder?.id && (
+                  <button
+                    className="rounded bg-orange-500 px-3 py-1.5 text-sm font-semibold text-black hover:bg-orange-400"
+                    onClick={() => setOpenAddJob(true)}
+                    title="Add a job to this work order"
+                  >
+                    + Add Job
+                  </button>
+                )}
+                <button
+                  onClick={onClose}
+                  className="rounded border border-neutral-700 px-2 py-1 text-sm text-neutral-200 hover:bg-neutral-800"
+                  title="Close"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
 
             {/* Body */}
@@ -699,6 +713,22 @@ export default function FocusedJobModal(props: any) {
           onCreated={() => setOpenChat(false)}
           context_type="work_order_line"
           context_id={line?.id ?? null}
+        />
+      )}
+
+      {/* NEW: Add Job modal */}
+      {openAddJob && workOrder?.id && (
+        <AddJobModal
+          isOpen={openAddJob}
+          onClose={() => setOpenAddJob(false)}
+          workOrderId={workOrder.id}
+          vehicleId={vehicle?.id ?? null}
+          techId={line?.assigned_to || "system"}
+          shopId={workOrder?.shop_id ?? null}
+          onJobAdded={async () => {
+            await refresh();
+            setOpenAddJob(false);
+          }}
         />
       )}
     </>

@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@shared/components/ui/Button";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+/* ➕ router for redirect after VIN decode */
+import { useRouter } from "next/navigation";
 
 /* Draft linkage */
 import { useWorkOrderDraft } from "app/work-orders/state/useWorkOrderDraft";
@@ -93,6 +95,8 @@ export default function PlannerPage() {
   const draft = useWorkOrderDraft();
   const setVehicleDraft = useWorkOrderDraft((s) => s.setVehicle);
   const setCustomerDraft = useWorkOrderDraft((s) => s.setCustomer);
+  /* ➕ router */
+  const router = useRouter();
 
   // Load user id for VIN modal
   useEffect(() => {
@@ -263,7 +267,7 @@ export default function PlannerPage() {
       es.onmessage = (ev) => {
         try {
           const data = JSON.parse(ev.data) as AgentEvent;
-          const maybeId = extractWorkOrderId(data);
+        const maybeId = extractWorkOrderId(data);
 
           if ((data.kind === "wo.created" || data.kind === "work_order.created") && typeof maybeId === "string") {
             setPreviewWoId(maybeId);
@@ -442,6 +446,16 @@ export default function PlannerPage() {
             // Toast confirm
             setToast("VIN decoded and recalls queued ✅");
             window.setTimeout(() => setToast(null), 4000);
+
+            // ⬇️ Your requested block — added verbatim (mapped to `d` and available vars)
+            // After decoding VIN in Planner
+            setVehicleDraft({
+              vin: d.vin, year: d.year, make: d.make, model: d.model, trim: d.trim, engine: d.engine,
+            });
+            setCustomerDraft({
+              first_name: undefined, last_name: undefined, email: emailInvoiceTo || undefined, phone: undefined,
+            });
+            router.push("/work-orders/create?source=ai");
           }}
         />
       ) : null}
