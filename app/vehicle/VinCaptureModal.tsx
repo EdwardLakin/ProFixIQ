@@ -43,9 +43,11 @@ function isLikelyVin(s: string) {
 /** Minimal scanner pane for the modal's scanSlot */
 function ScannerPane({
   onFoundVin,
+  isBusy,
 }: {
   userId: string;
   onFoundVin: (vin: string) => void;
+  isBusy: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -119,7 +121,15 @@ function ScannerPane({
   }, [onFoundVin]);
 
   return (
-    <div className="space-y-3">
+    <div className={`space-y-3 ${isBusy ? "ring-2 ring-orange-500 rounded-md animate-pulse" : ""}`}>
+      {/* Busy banner */}
+      {isBusy && (
+        <div className="flex items-center gap-2 rounded border border-orange-500/60 bg-neutral-950 px-3 py-2">
+          <span className="inline-block h-4 w-4 rounded-full border-2 border-orange-500 border-t-transparent animate-spin" />
+          <span className="text-xs text-orange-300">Decoding VIN… this can take a moment</span>
+        </div>
+      )}
+
       <div className="rounded border border-neutral-800 bg-neutral-950 p-2">
         <video
           ref={videoRef}
@@ -145,8 +155,10 @@ function ScannerPane({
           type="file"
           accept="image/*"
           capture="environment"
-          className="block w-full text-xs text-neutral-300 file:mr-3 file:rounded file:border-0 file:bg-orange-500 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-black hover:file:bg-orange-400"
+          disabled={isBusy}
+          className="block w-full text-xs text-neutral-300 file:mr-3 file:rounded file:border-0 file:bg-orange-500 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-black hover:file:bg-orange-400 disabled:opacity-60"
           onChange={async (e) => {
+            if (isBusy) return;
             const file = e.target.files?.[0];
             if (!file) return;
             const typed = window.prompt("Type the 17-character VIN from the photo:");
@@ -175,6 +187,8 @@ export default function VinCaptureModal({
   triggerClassName,
 }: Props) {
   const [internalOpen, setInternalOpen] = useState(false);
+  const [isDecoding, setIsDecoding] = useState(false);   // 🟠 NEW
+
   const isControlled = typeof open === "boolean";
   const isOpen = isControlled ? (open as boolean) : internalOpen;
 
@@ -212,56 +226,62 @@ export default function VinCaptureModal({
   // When scanner finds a VIN: decode & upsert, stash draft, kick recalls, then jump to Create.
   const handleFoundVin = useCallback(
     async (vin: string) => {
-      const resp = await decodeVin(vin, userId);
-      if (resp?.error) {
-        alert(resp.error);
-        return;
-      }
-
-      // Stash into your Zustand draft (Create page reads this on mount)
-      setVehicleDraft({
-        vin,
-        year: resp.year ?? null,
-        make: resp.make ?? null,
-        model: resp.model ?? null,
-        trim: resp.trim ?? null,
-        engine: resp.engine ?? null,
-      });
-
-      const detail: VinDecodedDetail = {
-        vin,
-        year: resp.year ?? null,
-        make: resp.make ?? null,
-        model: resp.model ?? null,
-        trim: resp.trim ?? null,
-        engine: resp.engine ?? null,
-      };
-
-      // Optional callback for inline usage (if on Create page already)
-      onDecodedRef.current?.(detail);
-
-      // 🔶 Fire-and-forget recalls fetch with richer payload
+      if (isDecoding) return;              // prevent double fires
+      setIsDecoding(true);                 // 🟠 show busy UX
       try {
-        void fetch("/api/recalls/fetch", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            vin,
-            year: resp.year ?? undefined,
-            make: resp.make ?? undefined,
-            model: resp.model ?? undefined,
-            user_id: userId,
-          }),
-          keepalive: true,
-        });
-      } catch {
-        /* non-blocking */
-      }
+        const resp = await decodeVin(vin, userId);
+        if (resp?.error) {
+          alert(resp.error);
+          return;
+        }
 
-      setOpen(false);
-      router.push("/work-orders/create?source=vin");
+        // Stash into your Zustand draft (Create page reads this on mount)
+        setVehicleDraft({
+          vin,
+          year: resp.year ?? null,
+          make: resp.make ?? null,
+          model: resp.model ?? null,
+          trim: resp.trim ?? null,
+          engine: resp.engine ?? null,
+        });
+
+        const detail: VinDecodedDetail = {
+          vin,
+          year: resp.year ?? null,
+          make: resp.make ?? null,
+          model: resp.model ?? null,
+          trim: resp.trim ?? null,
+          engine: resp.engine ?? null,
+        };
+
+        // Optional callback for inline usage (if on Create page already)
+        onDecodedRef.current?.(detail);
+
+        // 🔶 Fire-and-forget recalls fetch with richer payload
+        try {
+          void fetch("/api/recalls/fetch", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              vin,
+              year: resp.year ?? undefined,
+              make: resp.make ?? undefined,
+              model: resp.model ?? undefined,
+              user_id: userId,
+            }),
+            keepalive: true,
+          });
+        } catch {
+          /* non-blocking */
+        }
+
+        setOpen(false);
+        router.push("/work-orders/create?source=vin");
+      } finally {
+        setIsDecoding(false);              // 🟠 stop busy UX
+      }
     },
-    [userId, setVehicleDraft, router, setOpen],
+    [userId, setVehicleDraft, router, setOpen, isDecoding],
   );
 
   const defaultTrigger = useMemo(
@@ -296,7 +316,7 @@ export default function VinCaptureModal({
         userId={userId}
         action={action}
         // inject the scanner UI into the server shell
-        scanSlot={<ScannerPane userId={userId} onFoundVin={handleFoundVin} />}
+        scanSlot={<ScannerPane userId={userId} onFoundVin={handleFoundVin} isBusy={isDecoding} />}
       />
     </>
   );
