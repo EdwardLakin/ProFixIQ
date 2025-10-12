@@ -3280,23 +3280,38 @@ export type Database = {
         Row: {
           created_at: string | null
           decoded_data: Json | null
+          engine: string | null
           id: string
+          make: string | null
+          model: string | null
+          trim: string | null
           user_id: string | null
           vin: string
+          year: string | null
         }
         Insert: {
           created_at?: string | null
           decoded_data?: Json | null
+          engine?: string | null
           id?: string
+          make?: string | null
+          model?: string | null
+          trim?: string | null
           user_id?: string | null
           vin: string
+          year?: string | null
         }
         Update: {
           created_at?: string | null
           decoded_data?: Json | null
+          engine?: string | null
           id?: string
+          make?: string | null
+          model?: string | null
+          trim?: string | null
           user_id?: string | null
           vin?: string
+          year?: string | null
         }
         Relationships: []
       }

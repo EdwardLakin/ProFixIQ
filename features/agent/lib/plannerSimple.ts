@@ -1,4 +1,3 @@
-// features/agent/lib/plannerSimple.ts
 import type { ToolContext } from "./toolTypes";
 
 import {
@@ -13,6 +12,7 @@ export type PlannerEvent =
   | { kind: "plan"; text: string }
   | { kind: "tool_call"; name: string; input: unknown }
   | { kind: "tool_result"; name: string; output: unknown }
+  | { kind: "wo.created"; workOrderId: string; customerId: string; vehicleId: string } // 👈 NEW event
   | { kind: "final"; text: string };
 
 function get<T>(obj: Record<string, unknown>, key: string): T | undefined {
@@ -69,6 +69,14 @@ export async function runSimplePlan(
   await onEvent?.({ kind: "tool_call", name: "create_work_order", input: createInput });
   const created = await runCreateWorkOrder(createInput, ctx);
   await onEvent?.({ kind: "tool_result", name: "create_work_order", output: created });
+
+  // 👇 Emit a dedicated event your UI can listen for to pop the preview modal
+  await onEvent?.({
+    kind: "wo.created",
+    workOrderId: created.workOrderId,
+    customerId,
+    vehicleId,
+  });
 
   // Optional: add one line
   const lineDescription = get<string>(context, "lineDescription");

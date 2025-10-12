@@ -7,11 +7,11 @@ import type { Database } from "@shared/types/types/supabase";
 
 /* ✅ Planner + OCR + VIN Draft Link-Up */
 import { useWorkOrderDraft } from "app/work-orders/state/useWorkOrderDraft";
-
+/* ✅ NEW: two-part preview modal */
+import { WorkOrderPreviewTrigger } from "app/work-orders/components/WorkOrderPreviewTrigger";
 type PlannerKind = "simple" | "openai";
 type AgentStartOut = { runId: string; alreadyExists: boolean };
 
-/** OCR response shape (server may return a subset) */
 type OcrFields = {
   vin?: string | null;
   plate?: string | null;
@@ -26,16 +26,11 @@ type OcrFields = {
   email?: string | null;
 };
 
-/** Safe error → string */
 function toMsg(e: unknown): string {
   if (e && typeof e === "object" && "message" in e && typeof (e as { message?: unknown }).message === "string") {
     return (e as Error).message;
   }
-  try {
-    return String(e);
-  } catch {
-    return "Unknown error";
-  }
+  try { return String(e); } catch { return "Unknown error"; }
 }
 
 export default function PlannerPage() {
@@ -49,6 +44,10 @@ export default function PlannerPage() {
   const [status, setStatus] = useState<string>("");
   const [runId, setRunId] = useState<string | null>(null);
   const esRef = useRef<EventSource | null>(null);
+
+  // 🎯 NEW: Preview modal state
+  const [previewWoId, setPreviewWoId] = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const supabase = createClientComponentClient<Database>();
   const draft = useWorkOrderDraft();
@@ -196,12 +195,7 @@ export default function PlannerPage() {
 
       const out = (await res.json()) as AgentStartOut;
       setRunId(out.runId);
-      setStatus(
-        (s) =>
-          `${s}${s ? "\n" : ""}Run ${out.runId} ${
-            out.alreadyExists ? "(resumed)" : "started"
-          } — streaming…`
-      );
+      setStatus((s) => `${s}${s ? "\n" : ""}Run ${out.runId} ${out.alreadyExists ? "(resumed)" : "started"} — streaming…`);
 
       // ✅ SSE stream
       const url = `/api/agent/events?runId=${encodeURIComponent(out.runId)}`;
@@ -211,6 +205,19 @@ export default function PlannerPage() {
       es.onmessage = (ev) => {
         try {
           const data = JSON.parse(ev.data) as { kind?: string; [k: string]: unknown };
+
+          // ⭐ Auto-open preview when agent signals a created WO
+          const maybeId =
+            (data as any)?.work_order_id ??
+            (data as any)?.workOrderId ??
+            (data as any)?.wo_id ??
+            (data as any)?.id;
+
+          if ((data.kind === "wo.created" || data.kind === "work_order.created") && typeof maybeId === "string") {
+            setPreviewWoId(String(maybeId));
+            setPreviewOpen(true);
+          }
+
           const line = data?.kind ? `[${data.kind}] ${JSON.stringify(data)}` : JSON.stringify(data);
           setStatus((s) => (s ? s + "\n" + line : line));
         } catch {
@@ -336,6 +343,17 @@ export default function PlannerPage() {
           {status}
         </pre>
       </div>
+
+      {/* 🔶 Preview modal: trigger + server preview (only when we have a new WO) */}
+      {previewWoId && (
+  <div className="mt-6">
+    <WorkOrderPreviewTrigger
+      woId={previewWoId}
+      open={previewOpen}
+      onOpenChange={setPreviewOpen}
+    />
+  </div>
+)}
     </div>
   );
 }

@@ -1,6 +1,5 @@
-// features/agent/lib/plannerOpenAI.ts
 import type { ToolContext } from "./toolTypes";
-import type { PlannerEvent } from "./plannerSimple"; // reuse the shared type
+import type { PlannerEvent } from "./plannerSimple"; // includes "wo.created"
 
 import {
   runCreateWorkOrder,
@@ -37,13 +36,7 @@ function coerceOrderType(
 }
 
 /**
- * "OpenAI" planner — the logic here is deterministic and structured so you can
- * drop any LLM planning in later without changing your tools. Includes:
- * - find-or-create customer/vehicle
- * - create work order
- * - add one optional line (if provided)
- * - optional photo attach
- * - optional invoice generation + email
+ * "OpenAI" planner — deterministic/sequenced orchestration of tools.
  */
 export async function runOpenAIPlanner(
   goal: string,
@@ -53,7 +46,7 @@ export async function runOpenAIPlanner(
 ) {
   await onEvent?.({ kind: "plan", text: `Goal: ${goal}` });
 
-  // 1) Resolve a customer + vehicle (find first; if not found, create if data available)
+  // 1) Resolve customer + vehicle (find first; else create if data available)
   let customerId = get<string>(context, "customerId");
   let vehicleId = get<string>(context, "vehicleId");
 
@@ -69,7 +62,6 @@ export async function runOpenAIPlanner(
     customerId = customerId ?? found.customerId;
     vehicleId = vehicleId ?? found.vehicleId;
 
-    // If not found, attempt to create customer/vehicle from context (optional)
     if (!customerId) {
       const name = get<string>(context, "customerQuery")?.trim();
       if (name) {
@@ -84,7 +76,6 @@ export async function runOpenAIPlanner(
     }
 
     if (!vehicleId && customerId) {
-      // Try creating a basic vehicle record from the available hints
       const vinOrPlate = get<string>(context, "plateOrVin");
       const make = get<string>(context, "make");
       const model = get<string>(context, "model");
@@ -93,15 +84,15 @@ export async function runOpenAIPlanner(
       if (vinOrPlate || make || model || typeof year === "number") {
         const createdV = await runCreateVehicle(
           {
-           customerId,
-    vin: vinOrPlate && vinOrPlate.length > 10 ? vinOrPlate : undefined,
-    license_plate: vinOrPlate && vinOrPlate.length <= 10 ? vinOrPlate : undefined,
-    make: make ?? undefined,
-    model: model ?? undefined,
-    year: typeof year === "number" ? year : undefined,
-  },
-  ctx
-);
+            customerId,
+            vin: vinOrPlate && vinOrPlate.length > 10 ? vinOrPlate : undefined,
+            license_plate: vinOrPlate && vinOrPlate.length <= 10 ? vinOrPlate : undefined,
+            make: make ?? undefined,
+            model: model ?? undefined,
+            year: typeof year === "number" ? year : undefined,
+          },
+          ctx
+        );
         vehicleId = createdV.vehicleId;
         await onEvent?.({
           kind: "tool_result",
@@ -120,18 +111,26 @@ export async function runOpenAIPlanner(
     }
   }
 
-  // 2) Create the work order (with safe coercions)
+  // 2) Create the work order
   const createInput = {
     customerId,
     vehicleId,
     type: coerceOrderType(get<string>(context, "type")),
-    notes: get<string>(context, "notes") ?? undefined, // undefined, not null
+    notes: get<string>(context, "notes") ?? undefined,
   };
   await onEvent?.({ kind: "tool_call", name: "create_work_order", input: createInput });
   const created = await runCreateWorkOrder(createInput, ctx);
   await onEvent?.({ kind: "tool_result", name: "create_work_order", output: created });
 
-  // 3) (optional) Add one line
+  // 👇 Emit a dedicated event your UI can use to open a preview modal
+  await onEvent?.({
+    kind: "wo.created",
+    workOrderId: created.workOrderId,
+    customerId,
+    vehicleId,
+  });
+
+  // 3) Optional: add one line
   const lineDescription = get<string>(context, "lineDescription");
   if (lineDescription) {
     const addInput = {
@@ -146,7 +145,7 @@ export async function runOpenAIPlanner(
     await onEvent?.({ kind: "tool_result", name: "add_work_order_line", output: added });
   }
 
-  // 4) (optional) Attach photo
+  // 4) Optional: attach photo
   const photoUrl = get<string>(context, "photoUrl");
   if (photoUrl) {
     const attachInput = {
@@ -159,7 +158,7 @@ export async function runOpenAIPlanner(
     await onEvent?.({ kind: "tool_result", name: "attach_photo_to_work_order", output: attached });
   }
 
-  // 5) (optional) Generate + email invoice
+  // 5) Optional: invoice + email
   const emailTo = get<string>(context, "emailInvoiceTo");
   if (emailTo) {
     const genInput = { workOrderId: created.workOrderId };
