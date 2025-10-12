@@ -3115,6 +3115,94 @@ export type Database = {
           },
         ]
       }
+      vehicle_recalls: {
+        Row: {
+          campaign_number: string
+          component: string | null
+          consequence: string | null
+          created_at: string
+          id: string
+          make: string | null
+          manufacturer: string | null
+          model: string | null
+          model_year: string | null
+          nhtsa_campaign: string | null
+          notes: string | null
+          remedy: string | null
+          report_date: string | null
+          report_received_date: string | null
+          shop_id: string | null
+          summary: string | null
+          user_id: string | null
+          vehicle_id: string | null
+          vin: string
+        }
+        Insert: {
+          campaign_number: string
+          component?: string | null
+          consequence?: string | null
+          created_at?: string
+          id?: string
+          make?: string | null
+          manufacturer?: string | null
+          model?: string | null
+          model_year?: string | null
+          nhtsa_campaign?: string | null
+          notes?: string | null
+          remedy?: string | null
+          report_date?: string | null
+          report_received_date?: string | null
+          shop_id?: string | null
+          summary?: string | null
+          user_id?: string | null
+          vehicle_id?: string | null
+          vin: string
+        }
+        Update: {
+          campaign_number?: string
+          component?: string | null
+          consequence?: string | null
+          created_at?: string
+          id?: string
+          make?: string | null
+          manufacturer?: string | null
+          model?: string | null
+          model_year?: string | null
+          nhtsa_campaign?: string | null
+          notes?: string | null
+          remedy?: string | null
+          report_date?: string | null
+          report_received_date?: string | null
+          shop_id?: string | null
+          summary?: string | null
+          user_id?: string | null
+          vehicle_id?: string | null
+          vin?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_recalls_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_recalls_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_recalls_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       vehicles: {
         Row: {
           color: string | null

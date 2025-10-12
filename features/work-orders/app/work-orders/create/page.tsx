@@ -795,7 +795,7 @@ export default function CreateWorkOrderPage() {
   /* UI */
   return (
     <div className="mx-auto max-w-5xl p-6 text-white font-roboto">
-      <h1 className="mb-6 text-2xl font-bold font-blackops">Create Work Order</h1>
+      <h1 className="mb-6 text-2xl text-orange-400 font-bold font-blackops">Create Work Order</h1>
 
       {error && (
         <div className="mb-4 rounded border border-red-500/40 bg-red-500/10 px-4 py-2 text-red-300">{error}</div>
