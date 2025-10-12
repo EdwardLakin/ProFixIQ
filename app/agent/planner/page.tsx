@@ -9,6 +9,7 @@ import type { Database } from "@shared/types/types/supabase";
 import { useWorkOrderDraft } from "app/work-orders/state/useWorkOrderDraft";
 /* ✅ NEW: two-part preview modal */
 import { WorkOrderPreviewTrigger } from "app/work-orders/components/WorkOrderPreviewTrigger";
+
 type PlannerKind = "simple" | "openai";
 type AgentStartOut = { runId: string; alreadyExists: boolean };
 
@@ -26,11 +27,32 @@ type OcrFields = {
   email?: string | null;
 };
 
+/** Safe error → string */
 function toMsg(e: unknown): string {
   if (e && typeof e === "object" && "message" in e && typeof (e as { message?: unknown }).message === "string") {
     return (e as Error).message;
   }
-  try { return String(e); } catch { return "Unknown error"; }
+  try {
+    return String(e);
+  } catch {
+    return "Unknown error";
+  }
+}
+
+/** Types for agent SSE events (no `any`) */
+type AgentEvent = Record<string, unknown> & { kind?: string };
+
+function asString(v: unknown): string | null {
+  return typeof v === "string" ? v : null;
+}
+
+function extractWorkOrderId(evt: AgentEvent): string | null {
+  return (
+    asString(evt.work_order_id) ?? // snake_case
+    asString(evt.workOrderId) ??   // camelCase
+    asString(evt.wo_id) ??         // short
+    asString(evt.id)               // generic id
+  );
 }
 
 export default function PlannerPage() {
@@ -204,17 +226,12 @@ export default function PlannerPage() {
 
       es.onmessage = (ev) => {
         try {
-          const data = JSON.parse(ev.data) as { kind?: string; [k: string]: unknown };
+          const data = JSON.parse(ev.data) as AgentEvent;
 
           // ⭐ Auto-open preview when agent signals a created WO
-          const maybeId =
-            (data as any)?.work_order_id ??
-            (data as any)?.workOrderId ??
-            (data as any)?.wo_id ??
-            (data as any)?.id;
-
+          const maybeId = extractWorkOrderId(data);
           if ((data.kind === "wo.created" || data.kind === "work_order.created") && typeof maybeId === "string") {
-            setPreviewWoId(String(maybeId));
+            setPreviewWoId(maybeId);
             setPreviewOpen(true);
           }
 
@@ -346,14 +363,14 @@ export default function PlannerPage() {
 
       {/* 🔶 Preview modal: trigger + server preview (only when we have a new WO) */}
       {previewWoId && (
-  <div className="mt-6">
-    <WorkOrderPreviewTrigger
-      woId={previewWoId}
-      open={previewOpen}
-      onOpenChange={setPreviewOpen}
-    />
-  </div>
-)}
+        <div className="mt-6">
+          <WorkOrderPreviewTrigger
+            woId={previewWoId}
+            open={previewOpen}
+            onOpenChange={setPreviewOpen}
+          />
+        </div>
+      )}
     </div>
   );
 }
