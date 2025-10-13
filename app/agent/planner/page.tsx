@@ -17,12 +17,6 @@ import { WorkOrderPreview } from "app/work-orders/components/WorkOrderPreview";
 /* ✅ VIN capture modal (client shell you already use on Create) — singular path */
 import VinCaptureModal from "app/vehicle/VinCaptureModal";
 
-/* 🟠 NEW: friendly activity timeline */
-import PlannerStream, { PlannerEvent } from "@/features/agent/lib/PlannerStream";
-
-type PlannerKind = "simple" | "openai";
-type AgentStartOut = { runId: string; alreadyExists: boolean };
-
 /** OCR response shape (server may return a subset) */
 type OcrFields = {
   vin?: string | null;
@@ -38,9 +32,17 @@ type OcrFields = {
   email?: string | null;
 };
 
+type PlannerKind = "simple" | "openai";
+type AgentStartOut = { runId: string; alreadyExists: boolean };
+
 /** Safe error → string */
 function toMsg(e: unknown): string {
-  if (e && typeof e === "object" && "message" in e && typeof (e as { message?: unknown }).message === "string") {
+  if (
+    e &&
+    typeof e === "object" &&
+    "message" in e &&
+    typeof (e as { message?: unknown }).message === "string"
+  ) {
     return (e as Error).message;
   }
   try {
@@ -51,12 +53,12 @@ function toMsg(e: unknown): string {
 }
 
 /** Types for agent SSE events (no any) */
-type AnyEvent = Record<string, unknown> & { kind?: string };
+type AgentEvent = Record<string, unknown> & { kind?: string };
 
 function asString(v: unknown): string | null {
   return typeof v === "string" ? v : null;
 }
-function extractWorkOrderId(evt: AnyEvent): string | null {
+function extractWorkOrderId(evt: AgentEvent): string | null {
   return (
     asString(evt.work_order_id) ??
     asString(evt.workOrderId) ??
@@ -83,19 +85,11 @@ export default function PlannerPage() {
   const [emailInvoiceTo, setEmailInvoiceTo] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-
-  /** RAW status text (kept for debugging / “Show raw log”) */
   const [status, setStatus] = useState<string>("");
-
-  /** NEW: structured events for PlannerStream */
-  const [events, setEvents] = useState<PlannerEvent[]>([]);
-
   const [runId, setRunId] = useState<string | null>(null);
   const esRef = useRef<EventSource | null>(null);
 
   // Preview modal state
-  thePreview: {
-  }
   const [previewWoId, setPreviewWoId] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
 
@@ -151,11 +145,15 @@ export default function PlannerPage() {
 
   async function uploadPhotoIfAny(): Promise<string | undefined> {
     if (!photo) return undefined;
-    const path = `agent-uploads/${crypto.randomUUID().replace(/-/g, "")}-${photo.name.replace(/[^a-zA-Z0-9.\-_]/g, "_")}`;
-    const up = await supabase.storage.from("agent-uploads").upload(path, photo, {
-      cacheControl: "3600",
-      upsert: false,
-    });
+    const path = `agent-uploads/${crypto
+      .randomUUID()
+      .replace(/-/g, "")}-${photo.name.replace(/[^a-zA-Z0-9.\-_]/g, "_")}`;
+    const up = await supabase.storage
+      .from("agent-uploads")
+      .upload(path, photo, {
+        cacheControl: "3600",
+        upsert: false,
+      });
     if (up.error) throw new Error(`Upload failed: ${up.error.message}`);
     const pub = supabase.storage.from("agent-uploads").getPublicUrl(path);
     if (!pub.data?.publicUrl) throw new Error("Could not resolve public URL");
@@ -184,7 +182,7 @@ export default function PlannerPage() {
     );
   }
 
-  /** Manual clear (form + logs + stream + preview) */
+  // 🔄 Clear button
   function clearAll() {
     setGoal("");
     setCustomerQuery("");
@@ -194,7 +192,6 @@ export default function PlannerPage() {
     setPhoto(null);
     setPhotoPreview(null);
     setStatus("");
-    setEvents([]);
     setRunId(null);
     setPreviewWoId(null);
     setPreviewOpen(false);
@@ -204,7 +201,6 @@ export default function PlannerPage() {
 
   async function start() {
     setStatus("Starting…");
-    setEvents([]); // clear timeline
     esRef.current?.close();
     esRef.current = null;
 
@@ -247,11 +243,17 @@ export default function PlannerPage() {
               email: f.email ?? undefined,
             });
 
-            if (!plateOrVin && (f.vin || f.plate)) setPlateOrVin(f.vin || f.plate || "");
-            if (!emailInvoiceTo && f.email) setEmailInvoiceTo(f.email || "");
+            if (!plateOrVin && (f.vin || f.plate))
+              setPlateOrVin(f.vin || f.plate || "");
+            if (!emailInvoiceTo && f.email)
+              setEmailInvoiceTo(f.email || "");
 
-            const compact = Object.fromEntries(Object.entries(f).filter(([, v]) => v && String(v).trim()));
-            setStatus((s) => `${s}${s ? "\n" : ""}[ocr] parsed: ${JSON.stringify(compact)}`);
+            const compact = Object.fromEntries(
+              Object.entries(f).filter(([, v]) => v && String(v).trim())
+            );
+            setStatus(
+              (s) => `${s}${s ? "\n" : ""}[ocr] parsed: ${JSON.stringify(compact)}`
+            );
             ocrFields = f;
           } else {
             setStatus((s) => `${s}${s ? "\n" : ""}[ocr] HTTP ${res.status}`);
@@ -265,7 +267,11 @@ export default function PlannerPage() {
       const vinFromDraft = (draft?.vehicle?.vin ?? "").trim() || undefined;
       const decodedVehicle =
         draft?.vehicle &&
-        (draft.vehicle.year || draft.vehicle.make || draft.vehicle.model || draft.vehicle.trim || draft.vehicle.engine)
+        (draft.vehicle.year ||
+          draft.vehicle.make ||
+          draft.vehicle.model ||
+          draft.vehicle.trim ||
+          draft.vehicle.engine)
           ? {
               year: draft.vehicle.year ?? null,
               make: draft.vehicle.make ?? null,
@@ -275,7 +281,6 @@ export default function PlannerPage() {
             }
           : undefined;
 
-      // 🟠 IMPORTANT: pass lineDescription so a line gets added
       const ctx = {
         customerQuery: customerQuery || undefined,
         plateOrVin: plateOrVin || vinFromDraft || undefined,
@@ -284,26 +289,34 @@ export default function PlannerPage() {
         vin: vinFromDraft || (plateOrVin?.length === 17 ? plateOrVin : undefined),
         decodedVehicle,
         ocr: ocrFields || undefined,
-
-        // NEW → let the planner add at least one line from the goal
-        lineDescription: goal?.trim() || undefined,
-        jobType: "repair" as const,
       } as Record<string, unknown>;
 
       const res = await fetch("/api/agent", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ goal, planner, context: ctx, idempotencyKey: crypto.randomUUID() }),
+        body: JSON.stringify({
+          goal,
+          planner,
+          context: ctx,
+          idempotencyKey: crypto.randomUUID(),
+        }),
       });
 
       if (!res.ok) {
         const j = (await res.json().catch(() => ({}))) as { error?: unknown };
-        throw new Error(typeof j?.error === "string" ? j.error : `HTTP ${res.status}`);
+        throw new Error(
+          typeof j?.error === "string" ? j.error : `HTTP ${res.status}`
+        );
       }
 
       const out = (await res.json()) as AgentStartOut;
       setRunId(out.runId);
-      setStatus((s) => `${s}${s ? "\n" : ""}Run ${out.runId} ${out.alreadyExists ? "(resumed)" : "started"} — streaming…`);
+      setStatus(
+        (s) =>
+          `${s}${s ? "\n" : ""}Run ${out.runId} ${
+            out.alreadyExists ? "(resumed)" : "started"
+          } — streaming…`
+      );
 
       // SSE
       const url = `/api/agent/events?runId=${encodeURIComponent(out.runId)}`;
@@ -312,23 +325,23 @@ export default function PlannerPage() {
 
       es.onmessage = (ev) => {
         try {
-          const data = JSON.parse(ev.data) as AnyEvent;
+          const data = JSON.parse(ev.data) as AgentEvent;
           const maybeId = extractWorkOrderId(data);
 
-          // open preview when work order is created
-          if ((data.kind === "wo.created" || data.kind === "work_order.created") && typeof maybeId === "string") {
+          if (
+            (data.kind === "wo.created" ||
+              data.kind === "work_order.created") &&
+            typeof maybeId === "string"
+          ) {
             setPreviewWoId(maybeId);
             setPreviewOpen(true);
           }
 
-          // push into structured events (for PlannerStream)
-          setEvents((prev) => [...prev, data as unknown as PlannerEvent]);
-
-          // keep raw text as well (hidden behind toggle in PlannerStream)
-          const line = data?.kind ? `[${data.kind}] ${JSON.stringify(data)}` : JSON.stringify(data);
+          const line = data?.kind
+            ? `[${data.kind}] ${JSON.stringify(data)}`
+            : JSON.stringify(data);
           setStatus((s) => (s ? s + "\n" + line : line));
         } catch {
-          // if it isn't JSON, still append to raw log
           setStatus((s) => (s ? s + "\n" + ev.data : ev.data));
         }
       };
@@ -381,7 +394,9 @@ export default function PlannerPage() {
               <div className="text-sm text-neutral-400 mb-1">Planner</div>
               <select
                 value={planner}
-                onChange={(e) => setPlanner((e.target.value as PlannerKind) ?? "openai")}
+                onChange={(e) =>
+                  setPlanner((e.target.value as PlannerKind) ?? "openai")
+                }
                 className="w-full p-2 rounded border border-neutral-800 bg-neutral-900 text-neutral-100"
               >
                 <option value="openai">OpenAI (rich)</option>
@@ -390,7 +405,9 @@ export default function PlannerPage() {
             </label>
 
             <label className="block">
-              <div className="text-sm text-neutral-400 mb-1">Customer query (name)</div>
+              <div className="text-sm text-neutral-400 mb-1">
+                Customer query (name)
+              </div>
               <input
                 value={customerQuery}
                 onChange={(e) => setCustomerQuery(e.target.value)}
@@ -423,7 +440,9 @@ export default function PlannerPage() {
             </label>
 
             <label className="block">
-              <div className="text-sm text-neutral-400 mb-1">Email invoice to (optional)</div>
+              <div className="text-sm text-neutral-400 mb-1">
+                Email invoice to (optional)
+              </div>
               <input
                 value={emailInvoiceTo}
                 onChange={(e) => setEmailInvoiceTo(e.target.value)}
@@ -435,7 +454,9 @@ export default function PlannerPage() {
             </label>
 
             <label className="block">
-              <div className="text-sm text-neutral-400 mb-1">Photo (DL / Registration)</div>
+              <div className="text-sm text-neutral-400 mb-1">
+                Photo (DL / Registration)
+              </div>
               <input
                 type="file"
                 accept="image/*"
@@ -466,14 +487,7 @@ export default function PlannerPage() {
             Run Plan
           </Button>
 
-          {/* Manual Clear */}
-          <Button
-            type="button"
-            variant="outline"
-            size="md"
-            onClick={clearAll}
-            title="Clear form and activity"
-          >
+          <Button onClick={clearAll} variant="outline" size="md">
             Clear
           </Button>
         </div>
@@ -486,13 +500,17 @@ export default function PlannerPage() {
           ) : null}
         </div>
 
-        {/* 🟠 NEW: Friendly activity feed + optional raw log toggle */}
-        <PlannerStream events={events} raw={status} />
+        <pre className="whitespace-pre-wrap bg-neutral-900 p-4 rounded text-sm text-neutral-200 border border-neutral-800 min-h-[160px]">
+          {status}
+        </pre>
       </div>
 
       {previewWoId && (
         <div className="mt-6">
-          <WorkOrderPreviewTrigger open={previewOpen} onOpenChange={setPreviewOpen}>
+          <WorkOrderPreviewTrigger
+            open={previewOpen}
+            onOpenChange={setPreviewOpen}
+          >
             <WorkOrderPreview woId={previewWoId} />
           </WorkOrderPreviewTrigger>
         </div>
@@ -503,7 +521,7 @@ export default function PlannerPage() {
         <VinCaptureModal
           userId={userId}
           open={vinOpen}
-          onOpenChange={(open: boolean) => setVinOpen(open)} // typed param ✅
+          onOpenChange={(open: boolean) => setVinOpen(open)}
           onDecoded={(d: VinDecodedDetail) => {
             setVehicleDraft({
               vin: d.vin,
@@ -518,7 +536,6 @@ export default function PlannerPage() {
             setToast("VIN decoded and recalls queued ✅");
             window.setTimeout(() => setToast(null), 4000);
 
-            // ⬇️ Your requested block — added verbatim (mapped to `d` and available vars)
             // After decoding VIN in Planner
             setVehicleDraft({
               vin: d.vin,
