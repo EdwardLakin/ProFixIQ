@@ -366,13 +366,13 @@ export default function FocusedJobModal(props: any) {
       <Dialog
         open={isOpen}
         onClose={onClose}
-        className="fixed inset-0 z-[60] flex items-center justify-center"
+        className="fixed inset-0 z-[40] flex items-center justify-center"
       >
         {/* Dark overlay */}
-        <div className="fixed inset-0 bg-black/70" aria-hidden="true" />
+        <div className="fixed inset-0 z-[40] bg-black/70" aria-hidden="true" />
 
         {/* Panel */}
-        <div className="relative z-[61] mx-4 my-6 w-full max-w-5xl">
+        <div className="relative z-[41] mx-4 my-6 w-full max-w-5xl">
           <div className="max-h-[85vh] overflow-y-auto rounded-lg border border-orange-400 bg-neutral-950 p-5 text-white shadow-xl">
             {/* Title row */}
             <div className="mb-2 flex items-start justify-between gap-3">
