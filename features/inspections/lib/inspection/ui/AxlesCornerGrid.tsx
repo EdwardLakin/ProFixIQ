@@ -40,7 +40,7 @@ export default function AxlesCornerGrid({ sectionIndex, items, unitHint }: Props
       row.right = (it.value as any) ?? "";
       row.rightIdx = idx;
     }
-    row.unit = it.unit ?? (unitHint ? unitHint(it.item || "") : "");
+    row.unit = it.unit || (unitHint ? unitHint(it.item || "") : "");
     map.set(key, row);
   });
 

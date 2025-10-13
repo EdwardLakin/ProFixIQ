@@ -11,16 +11,6 @@ type Props = {
   unitHint?: (label: string) => string;
 };
 
-/**
- * Panelized grid for AIR axles.
- * Groups items by axle label (e.g., "Steer 1", "Drive 2") and renders a compact
- * Left/Right input row for each metric inside that axle’s card.
- *
- * It expects item labels of the form:
- *   "<AXLE> Left <METRIC>"
- *   "<AXLE> Right <METRIC>"
- *   (e.g., "Steer 1 Left Tread Depth")
- */
 export default function AirCornerGrid({ sectionIndex, items, unitHint }: Props) {
   const { updateItem } = useInspectionForm();
 
@@ -35,11 +25,7 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint }: Props) 
     leftVal?: string | number | null;
     rightVal?: string | number | null;
   };
-
-  type AxleGroup = {
-    axle: string;
-    rows: Row[];
-  };
+  type AxleGroup = { axle: string; rows: Row[] };
 
   const groups: AxleGroup[] = useMemo(() => {
     const byAxle = new Map<string, Map<string, Row>>();
@@ -64,14 +50,13 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint }: Props) 
         existing.rightVal = it.value ?? "";
       }
 
-      // Prefer an explicit unit on the item; else ask unitHint
-      existing.unit = it.unit ?? (unitHint ? unitHint(label) : it.unit ?? "");
+      // Prefer item.unit; else try unitHint
+      existing.unit = it.unit ?? (unitHint ? unitHint(label) : "");
 
       axleMap.set(metric, existing);
       byAxle.set(axle, axleMap);
     });
 
-    // Convert map structure to a stable array for rendering
     return Array.from(byAxle.entries()).map(([axle, rowsMap]) => ({
       axle,
       rows: Array.from(rowsMap.values()),
@@ -81,18 +66,13 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint }: Props) 
   return (
     <div className="grid gap-4 md:grid-cols-2">
       {groups.map((group) => (
-        <div
-          key={group.axle}
-          className="rounded-lg border border-zinc-800 bg-zinc-900 p-3"
-        >
+        <div key={group.axle} className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
           <div className="mb-2 font-semibold text-orange-400">{group.axle}</div>
 
           <div className="space-y-3">
             {group.rows.map((row) => (
               <div key={row.metric} className="rounded bg-zinc-950/70 p-3">
-                <div className="mb-2 text-sm font-semibold text-orange-300">
-                  {row.metric}
-                </div>
+                <div className="mb-2 text-sm font-semibold text-orange-300">{row.metric}</div>
 
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
                   <div className="flex flex-col gap-1">
@@ -111,9 +91,7 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint }: Props) 
 
                   <div className="text-center text-xs text-zinc-400">
                     {row.unit ??
-                      (unitHint
-                        ? unitHint(`${group.axle} Left ${row.metric}`)
-                        : "")}
+                      (unitHint ? unitHint(`${group.axle} Left ${row.metric}`) : "")}
                   </div>
 
                   <div className="flex flex-col gap-1">

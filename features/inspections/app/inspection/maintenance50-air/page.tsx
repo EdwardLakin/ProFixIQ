@@ -6,7 +6,6 @@ import { useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 
 import PauseResumeButton from "@inspections/lib/inspection/PauseResume";
-import PhotoUploadButton from "@inspections/lib/inspection/PhotoUploadButton";
 import StartListeningButton from "@inspections/lib/inspection/StartListeningButton";
 import ProgressTracker from "@inspections/lib/inspection/ProgressTracker";
 import useInspectionSession from "@inspections/hooks/useInspectionSession";
@@ -19,53 +18,128 @@ import type {
   InspectionItemStatus,
   InspectionStatus,
   InspectionSection,
-  InspectionItem,
+  InspectionSession,
+  SessionCustomer,
+  SessionVehicle,
 } from "@inspections/lib/inspection/types";
 
-import CornerGrid from "@inspections/lib/inspection/ui/CornerGrid";
+import AirCornerGrid from "@inspections/lib/inspection/ui/AirCornerGrid";
+import SectionDisplay from "@inspections/lib/inspection/SectionDisplay";
 import { InspectionFormCtx } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import { SaveInspectionButton } from "@inspections/components/inspection/SaveInspectionButton";
 import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
+import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicleHeader";
 
 /* -------------------------------------------------------------------------- */
-/*                                   Builders                                 */
+/* Web Speech — minimal local typings (no `any`)                               */
+/* -------------------------------------------------------------------------- */
+
+type WebSpeechResultCell = { transcript: string };
+type WebSpeechResultRow = { [index: number]: WebSpeechResultCell };
+type WebSpeechResults = { [index: number]: WebSpeechResultRow };
+
+type WebSpeechRecognition = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start: () => void;
+  stop: () => void;
+  onresult: (event: { results: WebSpeechResults; length: number }) => void;
+  onerror: (event: { error?: string }) => void;
+};
+
+type SRConstructor = new () => WebSpeechRecognition;
+
+function resolveSR(): SRConstructor | undefined {
+  if (typeof window === "undefined") return undefined;
+  const w = window as unknown as {
+    SpeechRecognition?: SRConstructor;
+    webkitSpeechRecognition?: SRConstructor;
+  };
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? undefined;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Header adapters (strict types)                                              */
+/* -------------------------------------------------------------------------- */
+
+type HeaderCustomer = {
+  first_name: string;
+  last_name: string;
+  phone: string;
+  email: string;
+  address: string;
+  city: string;
+  province: string;
+  postal_code: string;
+};
+
+type HeaderVehicle = {
+  year: string;
+  make: string;
+  model: string;
+  vin: string;
+  license_plate: string;
+  mileage: string;
+  color: string;
+  unit_number: string;
+  engine_hours: string;
+};
+
+function toHeaderCustomer(c?: SessionCustomer | null): HeaderCustomer {
+  return {
+    first_name: c?.first_name ?? "",
+    last_name: c?.last_name ?? "",
+    phone: c?.phone ?? "",
+    email: c?.email ?? "",
+    address: c?.address ?? "",
+    city: c?.city ?? "",
+    province: c?.province ?? "",
+    postal_code: c?.postal_code ?? "",
+  };
+}
+
+function toHeaderVehicle(v?: SessionVehicle | null): HeaderVehicle {
+  return {
+    year: v?.year ?? "",
+    make: v?.make ?? "",
+    model: v?.model ?? "",
+    vin: v?.vin ?? "",
+    license_plate: v?.license_plate ?? "",
+    mileage: v?.mileage ?? "",
+    color: v?.color ?? "",
+    unit_number: v?.unit_number ?? "",
+    engine_hours: v?.engine_hours ?? "",
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Section builders                                                            */
 /* -------------------------------------------------------------------------- */
 
 function buildAirCornerMeasurementsSection(): InspectionSection {
   return {
     title: "Measurements (Air – Corner Checks)",
     items: [
-      // Tire Pressures
-      { item: "LF Tire Pressure", unit: "psi", value: "" },
-      { item: "RF Tire Pressure", unit: "psi", value: "" },
-      { item: "LR Tire Pressure", unit: "psi", value: "" },
-      { item: "RR Tire Pressure", unit: "psi", value: "" },
+      // Tire pressures (explicitly included)
+      { item: "Steer 1 Left Tire Pressure", unit: "psi", value: "" },
+      { item: "Steer 1 Right Tire Pressure", unit: "psi", value: "" },
 
       // Tread depth
-      { item: "LF Tread Depth", unit: "mm", value: "" },
-      { item: "RF Tread Depth", unit: "mm", value: "" },
-      { item: "LR Tread Depth (Outer)", unit: "mm", value: "" },
-      { item: "LR Tread Depth (Inner)", unit: "mm", value: "" },
-      { item: "RR Tread Depth (Outer)", unit: "mm", value: "" },
-      { item: "RR Tread Depth (Inner)", unit: "mm", value: "" },
+      { item: "Steer 1 Left Tread Depth", unit: "mm", value: "" },
+      { item: "Steer 1 Right Tread Depth", unit: "mm", value: "" },
 
-      // Lining / Shoe thickness
-      { item: "LF Lining/Shoe Thickness", unit: "mm", value: "" },
-      { item: "RF Lining/Shoe Thickness", unit: "mm", value: "" },
-      { item: "LR Lining/Shoe Thickness", unit: "mm", value: "" },
-      { item: "RR Lining/Shoe Thickness", unit: "mm", value: "" },
+      // Linings/Shoes
+      { item: "Steer 1 Left Lining/Shoe Thickness", unit: "mm", value: "" },
+      { item: "Steer 1 Right Lining/Shoe Thickness", unit: "mm", value: "" },
 
-      // Drum / Rotor condition or thickness
-      { item: "LF Drum/Rotor Condition", unit: "mm", value: "" },
-      { item: "RF Drum/Rotor Condition", unit: "mm", value: "" },
-      { item: "LR Drum/Rotor Condition", unit: "mm", value: "" },
-      { item: "RR Drum/Rotor Condition", unit: "mm", value: "" },
+      // Drum/Rotor condition
+      { item: "Steer 1 Left Drum/Rotor Condition", unit: "", value: "" },
+      { item: "Steer 1 Right Drum/Rotor Condition", unit: "", value: "" },
 
-      // Push-rod stroke
-      { item: "LF Push Rod Travel", unit: "mm", value: "" },
-      { item: "RF Push Rod Travel", unit: "mm", value: "" },
-      { item: "LR Push Rod Travel", unit: "mm", value: "" },
-      { item: "RR Push Rod Travel", unit: "mm", value: "" },
+      // Air-brake push-rod travels (explicitly included)
+      { item: "Steer 1 Left Push Rod Travel", unit: "in", value: "" },
+      { item: "Steer 1 Right Push Rod Travel", unit: "in", value: "" },
     ],
   };
 }
@@ -129,44 +203,22 @@ function buildDrivelineSection(): InspectionSection {
   };
 }
 
-// Minimal lube/oil/filters + engine-bay checks for CVIP-style basic service
-function buildOilLubeFiltersSection(): InspectionSection {
-  return {
-    title: "Oil / Lube / Filters (Diesel or Gas – quick bay checks)",
-    items: [
-      { item: "Engine Oil Level / Condition" },
-      { item: "Oil Filter (replaced?)" },
-      { item: "Fuel Water Separator (drain if needed)" },
-      { item: "DEF Level (if equipped)" },
-      { item: "Coolant Level" },
-      { item: "Power Steering Fluid Level" },
-      { item: "Brake Fluid Level" },
-      { item: "Windshield Washer Fluid Level" },
-      { item: "Engine Air Filter Condition" },
-      { item: "Battery/Batteries State & Connections" },
-      // single section notes line
-      { item: "Section Notes", value: "", unit: "", notes: "" },
-    ],
-  };
-}
-
 /* -------------------------------------------------------------------------- */
-/*                                  Unit map                                  */
+/* Units + unit toggle                                                         */
 /* -------------------------------------------------------------------------- */
 
-function unitForAir(label: string, mode: "metric" | "imperial") {
+function unitForAir(label: string, mode: "metric" | "imperial"): string {
   const l = label.toLowerCase();
+  if (l.includes("tire pressure")) return mode === "imperial" ? "psi" : "kPa";
   if (l.includes("tread")) return mode === "metric" ? "mm" : "in";
   if (l.includes("lining") || l.includes("shoe")) return mode === "metric" ? "mm" : "in";
   if (l.includes("drum") || l.includes("rotor")) return mode === "metric" ? "mm" : "in";
   if (l.includes("push rod")) return mode === "metric" ? "mm" : "in";
-  if (l.includes("pressure")) return mode === "imperial" ? "psi" : "kPa";
   if (l.includes("torque")) return mode === "metric" ? "N·m" : "ft·lb";
-  // Air system rows keep their specific units unless toggled below
   return "";
 }
 
-function applyUnitsAir(sections: InspectionSection[], mode: "metric" | "imperial") {
+function applyUnitsAir(sections: InspectionSection[], mode: "metric" | "imperial"): InspectionSection[] {
   return sections.map((s) => {
     const isCorner = (s.title || "").toLowerCase().includes("corner");
     const isAirMeas = (s.title || "").toLowerCase().includes("air system");
@@ -183,12 +235,10 @@ function applyUnitsAir(sections: InspectionSection[], mode: "metric" | "imperial
       const items = s.items.map((it) => {
         const label = (it.item ?? "").toLowerCase();
         if (label.includes("build time")) return { ...it, unit: "sec" };
-        if (label.includes("leak") && mode === "metric") return { ...it, unit: "kPa/min" };
-        if (label.includes("leak") && mode === "imperial") return { ...it, unit: "psi/min" };
-        if ((label.includes("gov") || label.includes("warning") || label.includes("compressor")) && mode === "metric")
-          return { ...it, unit: "kPa" };
-        if ((label.includes("gov") || label.includes("warning") || label.includes("compressor")) && mode === "imperial")
-          return { ...it, unit: "psi" };
+        if (label.includes("leak")) return { ...it, unit: mode === "metric" ? "kPa/min" : "psi/min" };
+        if (label.includes("gov") || label.includes("warning") || label.includes("compressor")) {
+          return { ...it, unit: mode === "metric" ? "kPa" : "psi" };
+        }
         if (label.includes("torque")) return { ...it, unit: mode === "metric" ? "N·m" : "ft·lb" };
         return it;
       });
@@ -200,31 +250,26 @@ function applyUnitsAir(sections: InspectionSection[], mode: "metric" | "imperial
 }
 
 /* -------------------------------------------------------------------------- */
-/*                                 Page logic                                  */
+/* Page                                                                        */
 /* -------------------------------------------------------------------------- */
 
-type SRConstructor = new () => SpeechRecognition;
-function resolveSR(): SRConstructor | undefined {
-  if (typeof window === "undefined") return undefined;
-  const w = window as any;
-  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? undefined;
-}
-
-export default function Maintenance50AirPage() {
+export default function Maintenance50AirPage(): JSX.Element {
   const searchParams = useSearchParams();
 
-  // Stable id for persistence
-  const inspectionId = useMemo(() => searchParams.get("inspectionId") || uuidv4(), [searchParams]);
+  // Stable session id
+  const inspectionId = useMemo<string>(() => searchParams.get("inspectionId") || uuidv4(), [searchParams]);
 
+  // UI state
   const [unit, setUnit] = useState<"metric" | "imperial">("metric");
-  const [isListening, setIsListening] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
-  const [, setTranscript] = useState("");
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const [isListening, setIsListening] = useState<boolean>(false);
+  const [isPaused, setIsPaused] = useState<boolean>(false);
+  const [, setTranscript] = useState<string>("");
+  const recognitionRef = useRef<WebSpeechRecognition | null>(null);
 
-  const templateName = searchParams.get("template") || "Maintenance 50 (Air Brake CVIP)";
+  const templateName: string = searchParams.get("template") || "Maintenance 50 (Air Brake CVIP)";
 
-  const customer = {
+  // Customer + vehicle from URL (string-only for header)
+  const customer: SessionCustomer = {
     first_name: searchParams.get("first_name") || "",
     last_name: searchParams.get("last_name") || "",
     phone: searchParams.get("phone") || "",
@@ -235,7 +280,7 @@ export default function Maintenance50AirPage() {
     postal_code: searchParams.get("postal_code") || "",
   };
 
-  const vehicle = {
+  const vehicle: SessionVehicle = {
     year: searchParams.get("year") || "",
     make: searchParams.get("make") || "",
     model: searchParams.get("model") || "",
@@ -244,10 +289,11 @@ export default function Maintenance50AirPage() {
     mileage: searchParams.get("mileage") || "",
     color: searchParams.get("color") || "",
     unit_number: searchParams.get("unit_number") || "",
-    odometer: searchParams.get("odometer") || "",
+    engine_hours: searchParams.get("engine_hours") || "",
   };
 
-  const initialSession = useMemo(
+  // Initial session
+  const initialSession = useMemo<Partial<InspectionSession>>(
     () => ({
       id: inspectionId,
       templateitem: templateName,
@@ -260,7 +306,7 @@ export default function Maintenance50AirPage() {
       vehicle,
       sections: [],
     }),
-    [inspectionId, templateName],
+    [inspectionId, templateName, customer, vehicle]
   );
 
   const {
@@ -275,13 +321,14 @@ export default function Maintenance50AirPage() {
     addQuoteLine,
   } = useInspectionSession(initialSession);
 
-  // Hydrate from localStorage or start fresh
+  /* -------------------------- LocalStorage hydrate/persist -------------------------- */
+
   useEffect(() => {
     const key = `inspection-${inspectionId}`;
     const saved = typeof window !== "undefined" ? localStorage.getItem(key) : null;
     if (saved) {
       try {
-        const parsed = JSON.parse(saved);
+        const parsed = JSON.parse(saved) as InspectionSession;
         updateInspection(parsed);
       } catch {
         startSession(initialSession);
@@ -292,7 +339,6 @@ export default function Maintenance50AirPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Persist to localStorage
   useEffect(() => {
     if (session) {
       const key = `inspection-${inspectionId}`;
@@ -300,36 +346,40 @@ export default function Maintenance50AirPage() {
     }
   }, [session, inspectionId]);
 
-  // Scaffold sections once
+  /* -------------------------- Sections scaffold + unit toggle ----------------------- */
+
   useEffect(() => {
     if (!session) return;
     if ((session.sections?.length ?? 0) > 0) return;
 
     const next: InspectionSection[] = [
-      buildAirCornerMeasurementsSection(),
+      buildAirCornerMeasurementsSection(), // includes tire pressures + push-rod travel
       buildAirSystemMeasurementsSection(),
-      buildOilLubeFiltersSection(),
       buildLightsSection(),
       buildSuspensionSection(),
       buildDrivelineSection(),
     ];
     updateInspection({ sections: applyUnitsAir(next, unit) as typeof session.sections });
-  }, [session, updateInspection]); // reapply unit below
+  }, [session, updateInspection, unit]);
 
-  // Re-apply units on toggle
   useEffect(() => {
     if (!session?.sections?.length) return;
     updateInspection({ sections: applyUnitsAir(session.sections, unit) as typeof session.sections });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unit]);
 
-  const handleTranscript = async (text: string) => {
+  /* -------------------------- Voice -> commands ------------------------------------ */
+
+  const handleTranscript = async (text: string): Promise<void> => {
     setTranscript(text);
     const commands: ParsedCommand[] = await interpretCommand(text);
-    for (const cmd of commands) {
+    const sess: InspectionSession | undefined = session ?? undefined;
+    if (!sess) return;
+
+    for (const command of commands) {
       await handleTranscriptFn({
-        command: cmd,
-        session,
+        command,
+        session: sess,
         updateInspection,
         updateItem,
         updateSection,
@@ -338,44 +388,47 @@ export default function Maintenance50AirPage() {
     }
   };
 
-  const startListening = () => {
+  const startListening = (): void => {
     const SR = resolveSR();
-    if (!SR) return console.error("SpeechRecognition API not supported");
+    if (!SR) {
+      console.error("SpeechRecognition API not supported");
+      return;
+    }
     const recognition = new SR();
     recognition.continuous = true;
     recognition.interimResults = false;
     recognition.lang = "en-US";
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      const last = event.results.length - 1;
-      const t = event.results[last][0].transcript;
-      handleTranscript(t);
+    recognition.onresult = (event) => {
+      const lastIndex = (event as unknown as { results: WebSpeechResults }).results
+        ? Object.keys(event.results).length - 1
+        : 0;
+      const transcript =
+        (event.results as WebSpeechResults)[lastIndex]?.[0]?.transcript ?? "";
+      if (transcript) void handleTranscript(transcript);
     };
-    recognition.onerror = (event: any) => console.error("Speech recognition error:", event.error);
+    recognition.onerror = (event) =>
+      console.error("Speech recognition error:", event.error ?? "unknown");
     recognitionRef.current = recognition;
     recognition.start();
     setIsListening(true);
   };
 
+  /* -------------------------- Render ----------------------------------------------- */
+
   if (!session || !session.sections || session.sections.length === 0) {
-    return <div className="text-white p-4">Loading inspection…</div>;
+    return <div className="p-4 text-white">Loading inspection…</div>;
   }
 
-  const isMeasurements = (t?: string) => (t || "").toLowerCase().includes("measurements");
-  const isOilLube = (t?: string) => (t || "").toLowerCase().includes("oil / lube / filters");
+  const isCorner = (t?: string): boolean => (t || "").toLowerCase().includes("corner");
 
   return (
     <div className="px-4 pb-14">
-      {/* Top: template + customer/vehicle */}
-      <div className="mb-4 border-b border-zinc-800 pb-2">
-        <h1 className="text-xl font-bold text-orange-400">{templateName}</h1>
-        <div className="text-sm text-zinc-300">
-          <span className="text-zinc-400">Customer:</span>{" "}
-          {[customer.first_name, customer.last_name].filter(Boolean).join(" ") || "—"} ·{" "}
-          <span className="text-zinc-400">Vehicle:</span>{" "}
-          {[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(" ")}{" "}
-          {vehicle.license_plate ? `(${vehicle.license_plate})` : ""}
-        </div>
-      </div>
+      {/* Header */}
+      <CustomerVehicleHeader
+        templateName={templateName}
+        customer={toHeaderCustomer(session.customer ?? null)}
+        vehicle={toHeaderVehicle(session.vehicle ?? null)}
+      />
 
       {/* Controls */}
       <div className="mb-4 flex flex-wrap items-center justify-center gap-3">
@@ -388,21 +441,25 @@ export default function Maintenance50AirPage() {
           isPaused={isPaused}
           isListening={isListening}
           setIsListening={setIsListening}
-          onPause={() => {
+          onPause={(): void => {
             setIsPaused(true);
             pauseSession();
             recognitionRef.current?.stop();
           }}
-          onResume={() => {
+          onResume={(): void => {
             setIsPaused(false);
             resumeSession();
             startListening();
           }}
-          recognitionInstance={recognitionRef.current}
-          setRecognitionRef={(instance) => (recognitionRef.current = instance)}
+          recognitionInstance={recognitionRef.current as unknown as SpeechRecognition | null}
+          setRecognitionRef={(instance: SpeechRecognition | null): void => {
+            // keep internal ref in sync; cast only at this boundary
+            (recognitionRef as React.MutableRefObject<WebSpeechRecognition | null>).current =
+              (instance as unknown as WebSpeechRecognition) ?? null;
+          }}
         />
         <button
-          onClick={() => setUnit(unit === "metric" ? "imperial" : "metric")}
+          onClick={(): void => setUnit(unit === "metric" ? "imperial" : "metric")}
           className="rounded bg-zinc-700 px-3 py-2 text-white hover:bg-zinc-600"
         >
           Unit: {unit === "metric" ? "Metric" : "Imperial"}
@@ -420,146 +477,67 @@ export default function Maintenance50AirPage() {
       <InspectionFormCtx.Provider value={{ updateItem }}>
         {session.sections.map((section: InspectionSection, sectionIndex: number) => (
           <div
-            key={sectionIndex}
+            key={`${section.title}-${sectionIndex}`}
             className="mb-8 rounded-lg border border-zinc-800 bg-zinc-900 p-4"
           >
             <div className="mb-2 flex items-end justify-between">
               <h2 className="text-xl font-semibold text-orange-400">{section.title}</h2>
-              {isMeasurements(section.title) && (
+              {isCorner(section.title) && (
                 <span className="text-xs text-zinc-400">
                   {unit === "metric" ? "Enter mm / kPa / N·m" : "Enter in / psi / ft·lb"}
                 </span>
               )}
             </div>
 
-            {isMeasurements(section.title) ? (
-              <CornerGrid sectionIndex={sectionIndex} items={section.items} />
+            {isCorner(section.title) ? (
+              <AirCornerGrid
+                sectionIndex={sectionIndex}
+                items={section.items}
+                unitHint={(label: string) => unitForAir(label, unit)}
+              />
             ) : (
-              <>
-                {section.items.map((item: InspectionItem, itemIndex: number) => {
-                  // The last row in the Oil/Lube section is the single notes box
-                  const isOilNotes =
-                    isOilLube(section.title) && (item.item ?? "").toLowerCase() === "section notes";
+              <SectionDisplay
+                title={section.title}
+                section={section}
+                sectionIndex={sectionIndex}
+                showNotes={true}
+                showPhotos={true}
+                onUpdateStatus={(
+                  secIdx: number,
+                  itemIdx: number,
+                  status: InspectionItemStatus
+                ): void => {
+                  updateItem(secIdx, itemIdx, { status });
 
-                  if (isOilNotes) {
-                    return (
-                      <div
-                        key={itemIndex}
-                        className="rounded border border-zinc-800 bg-zinc-950 p-3"
-                      >
-                        <div className="mb-1 text-xs font-medium text-orange-400">
-                          {item.item}
-                        </div>
-                        <textarea
-                          className="h-24 w-full resize-y rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white"
-                          value={String((item.notes ?? "") as string)}
-                          onChange={(e) =>
-                            updateItem(sectionIndex, itemIndex, { notes: e.target.value })
-                          }
-                          placeholder="Any recommendations or comments…"
-                        />
-                      </div>
-                    );
+                  // Add a quote line when a non-measurement item is FAIL/RECOMMEND
+                  if (status === "fail" || status === "recommend") {
+                    const it = session.sections[secIdx].items[itemIdx];
+                    const desc = it.item ?? it.name ?? "Item";
+                    addQuoteLine({
+                      id: uuidv4(),
+                      description: desc,
+                      item: desc,
+                      name: desc,
+                      status,
+                      notes: it.notes ?? "",
+                      price: 0,
+                      laborTime: 0.5,
+                      laborRate: 0,
+                      editable: true,
+                      source: "inspection",
+                      value: it.value ?? "",
+                      photoUrls: it.photoUrls ?? [],
+                    });
                   }
-
-                  const selected = (val: InspectionItemStatus) => item.status === val;
-                  const onStatusClick = (val: InspectionItemStatus) => {
-                    updateItem(sectionIndex, itemIndex, { status: val });
-                    if ((val === "fail" || val === "recommend") && item.item) {
-                      addQuoteLine({
-                        item: item.item,
-                        description: item.notes || "",
-                        status: val,
-                        value: item.value || "",
-                        notes: item.notes || "",
-                        laborTime: 0.5,
-                        laborRate: 0,
-                        parts: [],
-                        totalCost: 0,
-                        editable: true,
-                        source: "inspection",
-                        id: "",
-                        name: "",
-                        price: 0,
-                        partName: "",
-                      });
-                    }
-                  };
-
-                  return (
-                    <div
-                      key={itemIndex}
-                      className="mb-3 rounded border border-zinc-800 bg-zinc-950 p-3"
-                    >
-                      <div className="mb-2 flex items-start justify-between gap-3">
-                        <h3 className="min-w-0 truncate text-base font-medium text-white">
-                          {item.item ?? "Item"}
-                        </h3>
-                        <div className="flex shrink-0 flex-wrap gap-1">
-                          {(
-                            ["ok", "fail", "na", "recommend"] as InspectionItemStatus[]
-                          ).map((val) => (
-                            <button
-                              key={val}
-                              onClick={() => onStatusClick(val)}
-                              className={
-                                "rounded px-2 py-1 text-xs " +
-                                (selected(val)
-                                  ? val === "ok"
-                                    ? "bg-green-600 text-white"
-                                    : val === "fail"
-                                    ? "bg-red-600 text-white"
-                                    : val === "na"
-                                    ? "bg-yellow-500 text-white"
-                                    : "bg-blue-500 text-white"
-                                  : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700")
-                              }
-                            >
-                              {val.toUpperCase()}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto]">
-                        <input
-                          value={(item.value as string) ?? ""}
-                          onChange={(e) =>
-                            updateItem(sectionIndex, itemIndex, { value: e.target.value })
-                          }
-                          placeholder="Value"
-                          className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400"
-                        />
-                        <input
-                          value={item.unit ?? ""}
-                          onChange={(e) =>
-                            updateItem(sectionIndex, itemIndex, { unit: e.target.value })
-                          }
-                          placeholder="Unit"
-                          className="sm:w-28 w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400"
-                        />
-                        <input
-                          value={item.notes ?? ""}
-                          onChange={(e) =>
-                            updateItem(sectionIndex, itemIndex, { notes: e.target.value })
-                          }
-                          placeholder="Notes"
-                          className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400 sm:col-span-1 col-span-1"
-                        />
-                      </div>
-
-                      {(item.status === "fail" || item.status === "recommend") && (
-                        <PhotoUploadButton
-                          photoUrls={item.photoUrls || []}
-                          onChange={(urls: string[]) => {
-                            updateItem(sectionIndex, itemIndex, { photoUrls: urls });
-                          }}
-                        />
-                      )}
-                    </div>
-                  );
-                })}
-              </>
+                }}
+                onUpdateNote={(secIdx: number, itemIdx: number, note: string): void => {
+                  updateItem(secIdx, itemIdx, { notes: note });
+                }}
+                onUpload={(photoUrl: string, secIdx: number, itemIdx: number): void => {
+                  const prev = session.sections[secIdx].items[itemIdx].photoUrls ?? [];
+                  updateItem(secIdx, itemIdx, { photoUrls: [...prev, photoUrl] });
+                }}
+              />
             )}
           </div>
         ))}
@@ -568,9 +546,7 @@ export default function Maintenance50AirPage() {
       <div className="mt-8 flex items-center justify-between gap-4">
         <SaveInspectionButton />
         <FinishInspectionButton />
-        <div className="text-xs text-zinc-400">
-          P = PASS, F = FAIL, NA = Not Applicable
-        </div>
+        <div className="text-xs text-zinc-400">P = PASS, F = FAIL, NA = Not Applicable</div>
       </div>
     </div>
   );

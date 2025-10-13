@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 
 import PauseResumeButton from "@inspections/lib/inspection/PauseResume";
-import PhotoUploadButton from "@inspections/lib/inspection/PhotoUploadButton";
 import StartListeningButton from "@inspections/lib/inspection/StartListeningButton";
 import ProgressTracker from "@inspections/lib/inspection/ProgressTracker";
 import useInspectionSession from "@inspections/hooks/useInspectionSession";
@@ -19,12 +18,69 @@ import type {
   InspectionStatus,
   InspectionSection,
   InspectionItem,
+  InspectionSession,
+  SessionCustomer,
+  SessionVehicle,
 } from "@inspections/lib/inspection/types";
 
 import CornerGrid from "@inspections/lib/inspection/ui/CornerGrid";
 import { InspectionFormCtx } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import { SaveInspectionButton } from "@inspections/components/inspection/SaveInspectionButton";
 import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
+import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicleHeader";
+
+/* -------------------------------------------------------------------------- */
+/* Small typed helpers for the header (keeps the page 100% type-safe)         */
+/* -------------------------------------------------------------------------- */
+
+type HeaderCustomer = {
+  first_name: string;
+  last_name: string;
+  phone: string;
+  email: string;
+  address: string;
+  city: string;
+  province: string;
+  postal_code: string;
+};
+type HeaderVehicle = {
+  year: string;
+  make: string;
+  model: string;
+  vin: string;
+  license_plate: string;
+  mileage: string;
+  color: string;
+  unit_number: string;
+  engine_hours: string;
+};
+
+function toHeaderCustomer(c: SessionCustomer | null | undefined): HeaderCustomer {
+  return {
+    first_name: c?.first_name ?? "",
+    last_name:  c?.last_name  ?? "",
+    phone:      c?.phone      ?? "",
+    email:      c?.email      ?? "",
+    address:    c?.address    ?? "",
+    city:       c?.city       ?? "",
+    province:   c?.province   ?? "",
+    postal_code:c?.postal_code?? "",
+  };
+}
+
+function toHeaderVehicle(v: SessionVehicle | null | undefined): HeaderVehicle {
+  return {
+    year:          v?.year          ?? "",
+    make:          v?.make          ?? "",
+    model:         v?.model         ?? "",
+    vin:           v?.vin           ?? "",
+    license_plate: v?.license_plate ?? "",
+    mileage:       v?.mileage       ?? "",   // ✅ mileage (no odometer here)
+    color:         v?.color         ?? "",
+    unit_number:   v?.unit_number   ?? "",
+    engine_hours:  v?.engine_hours  ?? "",
+  };
+}
 
 /* ----------------------------- Section Builders ---------------------------- */
 
@@ -32,6 +88,12 @@ function buildHydraulicMeasurementsSection(): InspectionSection {
   return {
     title: "Measurements (Hydraulic)",
     items: [
+      // Tire pressures (added)
+      { item: "LF Tire Pressure", unit: "psi", value: "" },
+      { item: "RF Tire Pressure", unit: "psi", value: "" },
+      { item: "LR Tire Pressure", unit: "psi", value: "" },
+      { item: "RR Tire Pressure", unit: "psi", value: "" },
+
       // Tread
       { item: "LF Tire Tread", unit: "mm", value: "" },
       { item: "RF Tire Tread", unit: "mm", value: "" },
@@ -108,6 +170,9 @@ function buildDrivelineSection(): InspectionSection {
     items: [
       { item: "Driveshaft / U-joints" },
       { item: "Center support bearing" },
+      { item: "CV shafts / joints" },          // ✅ added
+      { item: "Transmission leaks / mounts" }, // ✅ added
+      { item: "Transfer case leaks / mounts" },// ✅ added
       { item: "Slip yokes / seals" },
       { item: "Axle seals / leaks" },
       { item: "Differential leaks / play" },
@@ -119,6 +184,7 @@ function buildDrivelineSection(): InspectionSection {
 
 function unitForHydraulic(label: string, mode: "metric" | "imperial") {
   const l = label.toLowerCase();
+  if (l.includes("pressure")) return mode === "imperial" ? "psi" : "kPa";
   if (l.includes("tire tread")) return mode === "metric" ? "mm" : "in";
   if (l.includes("pad thickness")) return mode === "metric" ? "mm" : "in";
   if (l.includes("rotor")) return mode === "metric" ? "mm" : "in";
@@ -167,7 +233,7 @@ export default function Maintenance50HydraulicPage() {
   const templateName =
     searchParams.get("template") || "Maintenance 50 (Hydraulic)";
 
-  const customer = {
+  const customer: SessionCustomer = {
     first_name: searchParams.get("first_name") || "",
     last_name: searchParams.get("last_name") || "",
     phone: searchParams.get("phone") || "",
@@ -178,21 +244,22 @@ export default function Maintenance50HydraulicPage() {
     postal_code: searchParams.get("postal_code") || "",
   };
 
-  const vehicle = {
+  const vehicle: SessionVehicle = {
     year: searchParams.get("year") || "",
     make: searchParams.get("make") || "",
     model: searchParams.get("model") || "",
     vin: searchParams.get("vin") || "",
     license_plate: searchParams.get("license_plate") || "",
-    mileage: searchParams.get("mileage") || "",
+    mileage: searchParams.get("mileage") || "",       // ✅ mileage
     color: searchParams.get("color") || "",
     unit_number: searchParams.get("unit_number") || "",
-    odometer: searchParams.get("odometer") || "",
+    engine_hours: searchParams.get("engine_hours") || "",
   };
 
-  const initialSession = useMemo(
+  const inspectionId = useMemo(() => uuidv4(), []);
+  const initialSession = useMemo<Partial<InspectionSession>>(
     () => ({
-      id: uuidv4(),
+      id: inspectionId,
       templateitem: templateName,
       status: "not_started" as InspectionStatus,
       isPaused: false,
@@ -203,7 +270,7 @@ export default function Maintenance50HydraulicPage() {
       vehicle,
       sections: [],
     }),
-    [templateName],
+    [inspectionId, templateName, customer, vehicle],
   );
 
   const {
@@ -218,11 +285,27 @@ export default function Maintenance50HydraulicPage() {
     addQuoteLine,
   } = useInspectionSession(initialSession);
 
-  // Start session once
+  // Load/save to localStorage (parity with Air page)
+  const storageKey = `inspection-${inspectionId}`;
+
   useEffect(() => {
+    const saved = typeof window !== "undefined" ? localStorage.getItem(storageKey) : null;
+    if (saved) {
+      try {
+        const parsed: InspectionSession = JSON.parse(saved);
+        updateInspection(parsed);
+        return;
+      } catch { /* fall through */ }
+    }
     startSession(initialSession);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (session) {
+      localStorage.setItem(storageKey, JSON.stringify(session));
+    }
+  }, [session, storageKey]);
 
   // Scaffold sections once
   useEffect(() => {
@@ -250,13 +333,16 @@ export default function Maintenance50HydraulicPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unit]);
 
-  const handleTranscript = async (text: string) => {
+  const handleTranscript = async (text: string): Promise<void> => {
     setTranscript(text);
     const commands: ParsedCommand[] = await interpretCommand(text);
-    for (const cmd of commands) {
+    const sess: InspectionSession | null = session ?? null;
+    if (!sess) return;
+
+    for (const command of commands) {
       await handleTranscriptFn({
-        command: cmd,
-        session,
+        command, // ✅ exact property expected
+        session: sess,
         updateInspection,
         updateItem,
         updateSection,
@@ -293,6 +379,13 @@ export default function Maintenance50HydraulicPage() {
 
   return (
     <div className="px-4 pb-14">
+      {/* Shared header */}
+      <CustomerVehicleHeader
+        templateName={templateName}
+        customer={toHeaderCustomer(session.customer)}
+        vehicle={toHeaderVehicle(session.vehicle)}
+      />
+
       {/* Controls */}
       <div className="mb-4 flex flex-wrap items-center justify-center gap-3">
         <StartListeningButton
@@ -347,7 +440,7 @@ export default function Maintenance50HydraulicPage() {
               </h2>
               {isMeasurements(section.title) && (
                 <span className="text-xs text-zinc-400">
-                  {unit === "metric" ? "Enter mm / N·m" : "Enter in / ft·lb"}
+                  {unit === "metric" ? "Enter mm / kPa / N·m" : "Enter in / psi / ft·lb"}
                 </span>
               )}
             </div>
@@ -416,27 +509,8 @@ export default function Maintenance50HydraulicPage() {
                       </div>
                     </div>
 
-                    <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto]">
-                      <input
-                        value={(item.value as string) ?? ""}
-                        onChange={(e) =>
-                          updateItem(sectionIndex, itemIndex, {
-                            value: e.target.value,
-                          })
-                        }
-                        placeholder="Value"
-                        className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400"
-                      />
-                      <input
-                        value={item.unit ?? ""}
-                        onChange={(e) =>
-                          updateItem(sectionIndex, itemIndex, {
-                            unit: e.target.value,
-                          })
-                        }
-                        placeholder="Unit"
-                        className="sm:w-28 w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400"
-                      />
+                    {/* Only notes for non-measurement items */}
+                    <div className="mb-2 grid grid-cols-1 gap-2">
                       <input
                         value={item.notes ?? ""}
                         onChange={(e) =>
@@ -445,20 +519,9 @@ export default function Maintenance50HydraulicPage() {
                           })
                         }
                         placeholder="Notes"
-                        className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400 sm:col-span-1 col-span-1"
+                        className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400"
                       />
                     </div>
-
-                    {(item.status === "fail" || item.status === "recommend") && (
-                      <PhotoUploadButton
-                        photoUrls={item.photoUrls || []}
-                        onChange={(urls: string[]) => {
-                          updateItem(sectionIndex, itemIndex, {
-                            photoUrls: urls,
-                          });
-                        }}
-                      />
-                    )}
                   </div>
                 );
               })
