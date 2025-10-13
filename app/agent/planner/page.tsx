@@ -281,6 +281,7 @@ export default function PlannerPage() {
             }
           : undefined;
 
+      // ✅ pass info the planner expects to create a line
       const ctx = {
         customerQuery: customerQuery || undefined,
         plateOrVin: plateOrVin || vinFromDraft || undefined,
@@ -289,6 +290,11 @@ export default function PlannerPage() {
         vin: vinFromDraft || (plateOrVin?.length === 17 ? plateOrVin : undefined),
         decodedVehicle,
         ocr: ocrFields || undefined,
+
+        // 👇 Added so a line gets created (PlannerSimple/OpenAI both support these)
+        lineDescription: goal?.trim() || undefined,
+        jobType: "repair" as const,
+        laborHours: 1,
       } as Record<string, unknown>;
 
       const res = await fetch("/api/agent", {
@@ -346,7 +352,7 @@ export default function PlannerPage() {
         }
       };
       es.onerror = () => {
-        setStatus((s) => (s ? s + "\n(stream closed)" : "(stream closed)"));
+        setStatus((s) => (s ? "\n" : "") + "(stream closed)");
         es.close();
       };
     } catch (e: unknown) {
