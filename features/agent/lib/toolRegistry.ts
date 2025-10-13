@@ -49,6 +49,13 @@ import {
   type AttachPhotoOut,
 } from "../tools/toolAttachPhoto";
 
+/* 🔶 NEW: Custom inspection tool */
+import {
+  toolCreateCustomInspection,
+  type CreateCustomInspectionIn,
+  type CreateCustomInspectionOut,
+} from "../tools/createCustomInspection";
+
 /** Register all tools here (order doesn't matter) */
 export const TOOLSET = [
   toolCreateWorkOrder,
@@ -59,9 +66,11 @@ export const TOOLSET = [
   toolCreateCustomer,
   toolCreateVehicle,
   toolAttachPhoto,
+  toolCreateCustomInspection, // ← NEW
 ] as const;
 
 export type ToolName = (typeof TOOLSET)[number]["name"];
+
 export const TOOL_MAP = Object.fromEntries(
   TOOLSET.map((t) => [t.name, t])
 ) as Record<ToolName, (typeof TOOLSET)[number]>;
@@ -118,6 +127,13 @@ export async function validateAndRun(
   ctx: ToolContext
 ): Promise<AttachPhotoOut>;
 
+/* 🔶 NEW overload */
+export async function validateAndRun(
+  name: "create_custom_inspection",
+  input: CreateCustomInspectionIn,
+  ctx: ToolContext
+): Promise<CreateCustomInspectionOut>;
+
 /** Generic implementation (types above resolve to this) */
 export async function validateAndRun(
   name: ToolName,
@@ -157,6 +173,13 @@ export const runCreateVehicle = (input: CreateVehicleIn, ctx: ToolContext) =>
 
 export const runAttachPhoto = (input: AttachPhotoIn, ctx: ToolContext) =>
   validateAndRun("attach_photo_to_work_order", input, ctx) as Promise<AttachPhotoOut>;
+
+/* 🔶 NEW thin wrapper */
+export const runCreateCustomInspection = (
+  input: CreateCustomInspectionIn,
+  ctx: ToolContext
+) =>
+  validateAndRun("create_custom_inspection", input, ctx) as Promise<CreateCustomInspectionOut>;
 
 /* -------------------------------------------------------------------------- */
 

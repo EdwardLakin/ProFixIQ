@@ -1,4 +1,4 @@
-// src/lib/inspection/masterServicesList.ts
+
 
 import type { ServiceCategory } from "@shared/types/types/services";
 export const masterServicesList: ServiceCategory[] = [
