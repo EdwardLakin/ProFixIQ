@@ -393,7 +393,6 @@ export default function FocusedJobModal(props: any) {
                     onClick={() => setOpenAddJob(true)}
                     title="Add a job to this work order"
                   >
-                    + Add Job
                   </button>
                 )}
                 <button

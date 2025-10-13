@@ -17,6 +17,9 @@ import { WorkOrderPreview } from "app/work-orders/components/WorkOrderPreview";
 /* ✅ VIN capture modal (client shell you already use on Create) — singular path */
 import VinCaptureModal from "app/vehicle/VinCaptureModal";
 
+/* 🆕 User-friendly agent stream */
+import PlannerStream, { type PlannerEvent } from "@/features/agent/lib/PlannerStream";
+
 type PlannerKind = "simple" | "openai";
 type AgentStartOut = { runId: string; alreadyExists: boolean };
 
@@ -76,9 +79,12 @@ export default function PlannerPage() {
   const [emailInvoiceTo, setEmailInvoiceTo] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-  const [status, setStatus] = useState<string>("");
+  const [status, setStatus] = useState<string>(""); // kept for debug/log
   const [runId, setRunId] = useState<string | null>(null);
   const esRef = useRef<EventSource | null>(null);
+
+  // 🆕 Collected planner events for the nice bullet feed
+  const [events, setEvents] = useState<PlannerEvent[]>([]);
 
   // Preview modal state
   const [previewWoId, setPreviewWoId] = useState<string | null>(null);
@@ -169,6 +175,7 @@ export default function PlannerPage() {
 
   async function start() {
     setStatus("Starting…");
+    setEvents([]); // 🆕 reset the activity list
     esRef.current?.close();
     esRef.current = null;
 
@@ -267,13 +274,17 @@ export default function PlannerPage() {
       es.onmessage = (ev) => {
         try {
           const data = JSON.parse(ev.data) as AgentEvent;
-        const maybeId = extractWorkOrderId(data);
 
+          // 🆕 push into the friendly stream
+          setEvents((prev) => [...prev, data as PlannerEvent]);
+
+          const maybeId = extractWorkOrderId(data);
           if ((data.kind === "wo.created" || data.kind === "work_order.created") && typeof maybeId === "string") {
             setPreviewWoId(maybeId);
             setPreviewOpen(true);
           }
 
+          // keep original text log for debugging
           const line = data?.kind ? `[${data.kind}] ${JSON.stringify(data)}` : JSON.stringify(data);
           setStatus((s) => (s ? s + "\n" + line : line));
         } catch {
@@ -414,9 +425,8 @@ export default function PlannerPage() {
           {runId ? <>Run ID: <code>{runId}</code></> : null}
         </div>
 
-        <pre className="whitespace-pre-wrap bg-neutral-900 p-4 rounded text-sm text-neutral-200 border border-neutral-800 min-h-[160px]">
-          {status}
-        </pre>
+        {/* 🆕 Friendly, point-form activity feed with raw-toggle inside */}
+        <PlannerStream events={events} title="Activity" />
       </div>
 
       {previewWoId && (

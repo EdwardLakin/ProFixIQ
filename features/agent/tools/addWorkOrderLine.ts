@@ -1,3 +1,4 @@
+// tools/addWorkOrderLine.ts
 import { z } from "zod";
 import { getServerSupabase } from "../server/supabase";
 import type { ToolDef } from "../lib/toolTypes";
@@ -28,8 +29,9 @@ export const toolAddWorkOrderLine: ToolDef<AddWorkOrderLineIn, AddWorkOrderLineO
       job_type: input.jobType,
       labor_time: input.laborHours,
       notes: input.notes ?? null,
-      status: "open" as const
+      status: "awaiting" as const, // ← FIX: was "open"
     };
+
     const { data, error } = await supabase
       .from("work_order_lines")
       .insert(payload)
