@@ -17,8 +17,8 @@ import { WorkOrderPreview } from "app/work-orders/components/WorkOrderPreview";
 /* ✅ VIN capture modal (client shell you already use on Create) — singular path */
 import VinCaptureModal from "app/vehicle/VinCaptureModal";
 
-/* 🆕 User-friendly agent stream */
-import PlannerStream, { type PlannerEvent } from "@/features/agent/lib/PlannerStream";
+/* 🟠 NEW: friendly activity timeline */
+import PlannerStream, { PlannerEvent } from "@/features/agent/lib/PlannerStream";
 
 type PlannerKind = "simple" | "openai";
 type AgentStartOut = { runId: string; alreadyExists: boolean };
@@ -43,16 +43,20 @@ function toMsg(e: unknown): string {
   if (e && typeof e === "object" && "message" in e && typeof (e as { message?: unknown }).message === "string") {
     return (e as Error).message;
   }
-  try { return String(e); } catch { return "Unknown error"; }
+  try {
+    return String(e);
+  } catch {
+    return "Unknown error";
+  }
 }
 
 /** Types for agent SSE events (no any) */
-type AgentEvent = Record<string, unknown> & { kind?: string };
+type AnyEvent = Record<string, unknown> & { kind?: string };
 
 function asString(v: unknown): string | null {
   return typeof v === "string" ? v : null;
 }
-function extractWorkOrderId(evt: AgentEvent): string | null {
+function extractWorkOrderId(evt: AnyEvent): string | null {
   return (
     asString(evt.work_order_id) ??
     asString(evt.workOrderId) ??
@@ -79,14 +83,19 @@ export default function PlannerPage() {
   const [emailInvoiceTo, setEmailInvoiceTo] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-  const [status, setStatus] = useState<string>(""); // kept for debug/log
+
+  /** RAW status text (kept for debugging / “Show raw log”) */
+  const [status, setStatus] = useState<string>("");
+
+  /** NEW: structured events for PlannerStream */
+  const [events, setEvents] = useState<PlannerEvent[]>([]);
+
   const [runId, setRunId] = useState<string | null>(null);
   const esRef = useRef<EventSource | null>(null);
 
-  // 🆕 Collected planner events for the nice bullet feed
-  const [events, setEvents] = useState<PlannerEvent[]>([]);
-
   // Preview modal state
+  thePreview: {
+  }
   const [previewWoId, setPreviewWoId] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
 
@@ -111,7 +120,9 @@ export default function PlannerPage() {
       if (!mounted) return;
       setUserId(data.user?.id ?? null);
     });
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -173,9 +184,27 @@ export default function PlannerPage() {
     );
   }
 
+  /** Manual clear (form + logs + stream + preview) */
+  function clearAll() {
+    setGoal("");
+    setCustomerQuery("");
+    setPlateOrVin("");
+    setEmailInvoiceTo("");
+    if (photoPreview) URL.revokeObjectURL(photoPreview);
+    setPhoto(null);
+    setPhotoPreview(null);
+    setStatus("");
+    setEvents([]);
+    setRunId(null);
+    setPreviewWoId(null);
+    setPreviewOpen(false);
+    esRef.current?.close();
+    esRef.current = null;
+  }
+
   async function start() {
     setStatus("Starting…");
-    setEvents([]); // 🆕 reset the activity list
+    setEvents([]); // clear timeline
     esRef.current?.close();
     esRef.current = null;
 
@@ -203,14 +232,19 @@ export default function PlannerPage() {
             const j = (await res.json()) as { fields?: OcrFields | null };
             const f = j?.fields || {};
             setVehicleDraft({
-              vin: f.vin ?? undefined, plate: f.plate ?? undefined,
-              year: f.year ?? undefined, make: f.make ?? undefined,
-              model: f.model ?? undefined, trim: f.trim ?? undefined,
+              vin: f.vin ?? undefined,
+              plate: f.plate ?? undefined,
+              year: f.year ?? undefined,
+              make: f.make ?? undefined,
+              model: f.model ?? undefined,
+              trim: f.trim ?? undefined,
               engine: f.engine ?? undefined,
             });
             setCustomerDraft({
-              first_name: f.first_name ?? undefined, last_name: f.last_name ?? undefined,
-              phone: f.phone ?? undefined, email: f.email ?? undefined,
+              first_name: f.first_name ?? undefined,
+              last_name: f.last_name ?? undefined,
+              phone: f.phone ?? undefined,
+              email: f.email ?? undefined,
             });
 
             if (!plateOrVin && (f.vin || f.plate)) setPlateOrVin(f.vin || f.plate || "");
@@ -241,6 +275,7 @@ export default function PlannerPage() {
             }
           : undefined;
 
+      // 🟠 IMPORTANT: pass lineDescription so a line gets added
       const ctx = {
         customerQuery: customerQuery || undefined,
         plateOrVin: plateOrVin || vinFromDraft || undefined,
@@ -249,6 +284,10 @@ export default function PlannerPage() {
         vin: vinFromDraft || (plateOrVin?.length === 17 ? plateOrVin : undefined),
         decodedVehicle,
         ocr: ocrFields || undefined,
+
+        // NEW → let the planner add at least one line from the goal
+        lineDescription: goal?.trim() || undefined,
+        jobType: "repair" as const,
       } as Record<string, unknown>;
 
       const res = await fetch("/api/agent", {
@@ -273,21 +312,23 @@ export default function PlannerPage() {
 
       es.onmessage = (ev) => {
         try {
-          const data = JSON.parse(ev.data) as AgentEvent;
-
-          // 🆕 push into the friendly stream
-          setEvents((prev) => [...prev, data as PlannerEvent]);
-
+          const data = JSON.parse(ev.data) as AnyEvent;
           const maybeId = extractWorkOrderId(data);
+
+          // open preview when work order is created
           if ((data.kind === "wo.created" || data.kind === "work_order.created") && typeof maybeId === "string") {
             setPreviewWoId(maybeId);
             setPreviewOpen(true);
           }
 
-          // keep original text log for debugging
+          // push into structured events (for PlannerStream)
+          setEvents((prev) => [...prev, data as unknown as PlannerEvent]);
+
+          // keep raw text as well (hidden behind toggle in PlannerStream)
           const line = data?.kind ? `[${data.kind}] ${JSON.stringify(data)}` : JSON.stringify(data);
           setStatus((s) => (s ? s + "\n" + line : line));
         } catch {
+          // if it isn't JSON, still append to raw log
           setStatus((s) => (s ? s + "\n" + ev.data : ev.data));
         }
       };
@@ -303,7 +344,10 @@ export default function PlannerPage() {
   return (
     <div className="p-6">
       <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-5 space-y-4">
-        <h1 className="text-2xl font-black text-orange-400" style={{ fontFamily: "'Black Ops One', system-ui, sans-serif" }}>
+        <h1
+          className="text-2xl font-black text-orange-400"
+          style={{ fontFamily: "'Black Ops One', system-ui, sans-serif" }}
+        >
           AI Planner
         </h1>
 
@@ -410,23 +454,40 @@ export default function PlannerPage() {
           </div>
         </div>
 
-        <Button
-          onClick={start}
-          variant="orange"
-          size="md"
-          isLoading={status?.startsWith("Starting…") === true}
-          disabled={!goal.trim()}
-          className="font-black"
-        >
-          Run Plan
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={start}
+            variant="orange"
+            size="md"
+            isLoading={status?.startsWith("Starting…") === true}
+            disabled={!goal.trim()}
+            className="font-black"
+          >
+            Run Plan
+          </Button>
 
-        <div className="text-xs text-neutral-500">
-          {runId ? <>Run ID: <code>{runId}</code></> : null}
+          {/* Manual Clear */}
+          <Button
+            type="button"
+            variant="outline"
+            size="md"
+            onClick={clearAll}
+            title="Clear form and activity"
+          >
+            Clear
+          </Button>
         </div>
 
-        {/* 🆕 Friendly, point-form activity feed with raw-toggle inside */}
-        <PlannerStream events={events} title="Activity" />
+        <div className="text-xs text-neutral-500">
+          {runId ? (
+            <>
+              Run ID: <code>{runId}</code>
+            </>
+          ) : null}
+        </div>
+
+        {/* 🟠 NEW: Friendly activity feed + optional raw log toggle */}
+        <PlannerStream events={events} raw={status} />
       </div>
 
       {previewWoId && (
@@ -460,10 +521,18 @@ export default function PlannerPage() {
             // ⬇️ Your requested block — added verbatim (mapped to `d` and available vars)
             // After decoding VIN in Planner
             setVehicleDraft({
-              vin: d.vin, year: d.year, make: d.make, model: d.model, trim: d.trim, engine: d.engine,
+              vin: d.vin,
+              year: d.year,
+              make: d.make,
+              model: d.model,
+              trim: d.trim,
+              engine: d.engine,
             });
             setCustomerDraft({
-              first_name: undefined, last_name: undefined, email: emailInvoiceTo || undefined, phone: undefined,
+              first_name: undefined,
+              last_name: undefined,
+              email: emailInvoiceTo || undefined,
+              phone: undefined,
             });
             router.push("/work-orders/create?source=ai");
           }}

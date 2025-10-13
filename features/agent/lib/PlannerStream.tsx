@@ -9,12 +9,17 @@ export type PlannerEvent =
   | { kind: "final"; text: string }
   | { kind: "error"; message?: string };
 
-type Props = { events: PlannerEvent[]; title?: string };
+type Props = {
+  events: PlannerEvent[];
+  title?: string;
+  /** Optional raw text stream to show in the toggle area */
+  raw?: string;
+};
 
 const ICON: Record<string, string> = {
   plan: "🧭",
-  "tool_call": "🛠️",
-  "tool_result": "📦",
+  tool_call: "🛠️",
+  tool_result: "📦",
   "wo.created": "📄",
   final: "✅",
   error: "⚠️",
@@ -25,8 +30,8 @@ function looksLikeBlob(x: unknown): boolean {
   if (!x) return false;
   const s = typeof x === "string" ? x : JSON.stringify(x);
   if (s.length > 1200) return true;
-  if (/<(html|head|body)[\s>]/i.test(s)) return true;
-  if (/```/.test(s)) return true;
+  if (/<(html|head|body)[\s>]/i.test(s)) return true; // HTML
+  if (/```/.test(s)) return true; // fenced code
   return false;
 }
 
@@ -41,7 +46,7 @@ function summarizeTool(name: string, inputOrOutput: unknown, isResult: boolean):
     return id ? `Added line ${id.slice(0, 8)}…` : "Added a work order line.";
   }
   if (name === "find_customer_vehicle") {
-    const top = (isResult ? (inputOrOutput as any) : (inputOrOutput as any)) ?? {};
+    const top = (inputOrOutput as any) ?? {};
     const c = top.customerId ? "customer ✓" : "customer ?";
     const v = top.vehicleId ? "vehicle ✓" : "vehicle ?";
     return `Matched ${c}, ${v}.`;
@@ -54,12 +59,14 @@ function summarizeTool(name: string, inputOrOutput: unknown, isResult: boolean):
   }
   if (name === "create_customer" && isResult) return "Created customer.";
   if (name === "create_vehicle" && isResult) return "Created vehicle.";
-  if (name === "attach_photo_to_work_order") return isResult ? "Attached photo." : "Attaching photo…";
+  if (name === "attach_photo_to_work_order") {
+    return isResult ? "Attached photo." : "Attaching photo…";
+  }
   return isResult ? `Finished ${name}.` : `Calling ${name}…`;
 }
 
 /** Main user-friendly agent stream component */
-export default function PlannerStream({ events, title = "Activity" }: Props) {
+export default function PlannerStream({ events, title = "Activity", raw }: Props) {
   const [showRaw, setShowRaw] = useState(false);
 
   const bullets = useMemo(() => {
@@ -73,13 +80,13 @@ export default function PlannerStream({ events, title = "Activity" }: Props) {
 
         case "tool_call": {
           const note = summarizeTool(e.name, e.input, false);
-          if (note) out.push({ icon: ICON["tool_call"], text: note });
+          if (note) out.push({ icon: ICON.tool_call, text: note });
           break;
         }
 
         case "tool_result": {
           const note = summarizeTool(e.name, e.output, true);
-          if (note) out.push({ icon: ICON["tool_result"], text: note });
+          if (note) out.push({ icon: ICON.tool_result, text: note });
           break;
         }
 
@@ -100,7 +107,7 @@ export default function PlannerStream({ events, title = "Activity" }: Props) {
       }
     }
 
-    // collapse duplicates
+    // collapse consecutive duplicates
     const collapsed: { icon: string; text: string }[] = [];
     for (const b of out) {
       const prev = collapsed[collapsed.length - 1];
@@ -140,7 +147,13 @@ export default function PlannerStream({ events, title = "Activity" }: Props) {
       {/* Toggleable raw log */}
       {showRaw && (
         <pre className="mt-3 max-h-64 overflow-auto rounded bg-black/40 p-2 text-[11px] leading-snug">
-{JSON.stringify(events, (_k, v) => (looksLikeBlob(v) ? "[hidden payload]" : v), 2)}
+          {raw && raw.trim()
+            ? raw
+            : JSON.stringify(
+                events,
+                (_k, v) => (looksLikeBlob(v) ? "[hidden payload]" : v),
+                2
+              )}
         </pre>
       )}
     </div>
