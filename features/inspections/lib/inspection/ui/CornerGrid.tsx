@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useInspectionForm } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import type { InspectionItem } from "@inspections/lib/inspection/types";
 
 type Props = {
   sectionIndex: number;
   items: InspectionItem[];
+  /** Optional hint used when a row/unit is blank */
   unitHint?: (label: string) => string;
 };
 
@@ -80,7 +81,7 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
     return [build("LF"), build("RF"), build("LR"), build("RR")];
   }, [items, unitHint]);
 
-  /* -------- Local buffer with focused guard (no timers) -------- */
+  /* -------- Local buffer (init once; resync only when not focused) -------- */
   const [localVals, setLocalVals] = useState<Record<number, string>>(() => {
     const init: Record<number, string> = {};
     items.forEach((it, i) => (init[i] = String(it.value ?? "")));
@@ -88,21 +89,22 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
   });
   const [focusedIdx, setFocusedIdx] = useState<number | null>(null);
 
+  const prevItemsRef = useRef<InspectionItem[] | null>(null);
   useEffect(() => {
-    setLocalVals((prev) => {
-      const next = { ...prev };
-      items.forEach((it, i) => {
-        if (focusedIdx === i) return;
-        const want = String(it.value ?? "");
-        if (next[i] !== want) next[i] = want;
-      });
-      return next;
-    });
+    if (focusedIdx !== null) return;
+    if (prevItemsRef.current === items) return;
+    prevItemsRef.current = items;
+
+    const next: Record<number, string> = {};
+    items.forEach((it, i) => (next[i] = String(it.value ?? "")));
+    setLocalVals(next);
   }, [items, focusedIdx]);
 
-  const commitValue = (itemIdx: number) => updateItem(sectionIndex, itemIdx, { value: localVals[itemIdx] ?? "" });
+  const commitValue = (itemIdx: number) => {
+    updateItem(sectionIndex, itemIdx, { value: localVals[itemIdx] ?? "" });
+  };
 
-  /* ---------------- Header summary + collapse ------------------ */
+  /* ------------------------ Header summary + collapse --------------------- */
   const [open, setOpen] = useState(true);
 
   const filledCounts = useMemo(() => {
@@ -123,48 +125,40 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
     RR: "Right Rear",
   };
 
-  /** --------------------------- Row (memo) ---------------------- */
-  const RowView = React.memo(function RowView({ row }: { row: Row }) {
-    const idx = row.idx;
-    const id = `hydro-cell-${idx}`;
+  /* -------------------------------- UI ----------------------------------- */
+  const RowView = ({ row }: { row: Row }) => (
+    <div className="rounded bg-zinc-950/70 p-3">
+      <div className="flex items-center gap-3">
+        <div
+          className="min-w-0 grow truncate text-sm font-semibold text-white"
+          style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+        >
+          {row.metric}
+        </div>
 
-    return (
-      <div className="rounded bg-zinc-950/70 p-3">
-        <div className="flex items-center gap-3">
-          <label
-            htmlFor={id}
-            className="min-w-0 grow truncate text-sm font-semibold text-white"
-            style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-          >
-            {row.metric}
-          </label>
-
-          <input
-            id={id}
-            name={id}
-            className="w-40 rounded border border-gray-600 bg-black px-2 py-1 text-sm text-white outline-none placeholder:text-zinc-400"
-            value={localVals[idx] ?? ""}
-            onFocus={() => setFocusedIdx(idx)}
-            onChange={(e) => setLocalVals((p) => ({ ...p, [idx]: e.target.value }))}
-            onBlur={() => {
-              commitValue(idx);
-              setFocusedIdx(null);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
-            }}
-            placeholder="Value"
-            autoComplete="off"
-            inputMode="decimal"
-            enterKeyHint="done"
-          />
-          <div className="text-right text-xs text-zinc-400">
-            {row.unit ?? (unitHint ? unitHint(row.labelForHint) : "")}
-          </div>
+        <input
+          name={`v-${row.idx}`}
+          className="w-40 rounded border border-gray-600 bg-black px-2 py-1 text-sm text-white outline-none placeholder:text-zinc-400"
+          value={localVals[row.idx] ?? ""}
+          onFocus={() => setFocusedIdx(row.idx)}
+          onChange={(e) => setLocalVals((p) => ({ ...p, [row.idx]: e.target.value }))}
+          onBlur={() => {
+            commitValue(row.idx);
+            setFocusedIdx((cur) => (cur === row.idx ? null : cur));
+          }}
+          onKeyDown={(e) => {
+            if ((e as any).key === "Enter") (e.currentTarget as HTMLInputElement).blur();
+          }}
+          placeholder="Value"
+          autoComplete="off"
+          inputMode="decimal"
+        />
+        <div className="text-right text-xs text-zinc-400">
+          {row.unit ?? (unitHint ? unitHint(row.labelForHint) : "")}
         </div>
       </div>
-    );
-  });
+    </div>
+  );
 
   const CornerCard = ({ group }: { group: CornerGroup }) => (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
@@ -178,7 +172,7 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
       {open && (
         <div className="space-y-3">
           {group.rows.map((row) => (
-            <RowView key={row.idx} row={row} />   
+            <RowView key={`${group.corner}-${row.idx}-${row.metric}`} row={row} />
           ))}
         </div>
       )}
