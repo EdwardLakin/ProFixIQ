@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useInspectionForm } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import type { InspectionItem } from "@inspections/lib/inspection/types";
 
@@ -8,7 +8,6 @@ type Props = {
   sectionIndex: number;
   items: InspectionItem[];
   unitHint?: (label: string) => string;
-  /** Provide to enable the Add-Axle control */
   onAddAxle?: (axleLabel: string) => void;
 };
 
@@ -21,7 +20,6 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
   type MetricCell = {
     metric: string;
     idx?: number;
-    val?: string | number | null;
     unit?: string | null;
     fullLabel: string;
   };
@@ -44,7 +42,6 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
 
   const groups: AxleGroup[] = useMemo(() => {
     const byAxle = new Map<string, { Left: Map<string, MetricCell>; Right: Map<string, MetricCell> }>();
-
     items.forEach((it, idx) => {
       const label = it.item ?? "";
       const m = label.match(labelRe);
@@ -56,7 +53,6 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
 
       const bucket =
         byAxle.get(axle) ?? { Left: new Map<string, MetricCell>(), Right: new Map<string, MetricCell>() };
-
       const map = bucket[side];
       const existing =
         map.get(metric) ??
@@ -66,7 +62,6 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
         } as MetricCell);
 
       existing.idx = idx;
-      existing.val = it.value ?? "";
       existing.unit = it.unit ?? (unitHint ? unitHint(label) : "");
       map.set(metric, existing);
       byAxle.set(axle, bucket);
@@ -79,7 +74,7 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
     });
   }, [items, unitHint]);
 
-  /** ---------------- local buffer with focused guard (no timers) ----------- */
+  /* ---------------- local buffer with focused guard (no timers) ----------- */
   const [localVals, setLocalVals] = useState<Record<number, string>>({});
   const [focusedIdx, setFocusedIdx] = useState<number | null>(null);
 
@@ -95,10 +90,7 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
     });
   }, [items, focusedIdx]);
 
-  const commitValue = (idx: number) => {
-    const value = localVals[idx] ?? "";
-    updateItem(sectionIndex, idx, { value });
-  };
+  const commitValue = (idx: number) => updateItem(sectionIndex, idx, { value: localVals[idx] ?? "" });
 
   /** --------------------- grid header summary + collapse ------------------- */
   const [open, setOpen] = useState(true);
@@ -107,12 +99,66 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
     return groups.map((g) => {
       const rows = [...g.left.rows, ...g.right.rows];
       const filled = rows.reduce(
-        (a, r) => (String(localVals[r.idx ?? -1] ?? "").trim() ? a + 1 : a),
+        (a, r) => (r.idx != null && String(localVals[r.idx] ?? "").trim() ? a + 1 : a),
         0,
       );
       return { axle: g.axle, filled, total: rows.length };
     });
   }, [groups, localVals]);
+
+  /** ----------------------------- Row (memo) ------------------------------- */
+  const RowView = React.memo(function RowView({
+    row,
+    hint,
+  }: {
+    row: MetricCell;
+    hint: (label: string) => string;
+  }) {
+    const idx = row.idx ?? -1;
+    const id = idx >= 0 ? `air-cell-${idx}` : undefined;
+
+    return (
+      <div className="rounded bg-zinc-950/70 p-3">
+        <div className="flex items-center gap-3">
+          <label
+            htmlFor={id}
+            className="min-w-0 grow truncate text-sm font-semibold text-white"
+            style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+          >
+            {row.metric}
+          </label>
+
+          <input
+            id={id}
+            name={id}
+            className="w-40 rounded border border-gray-600 bg-black px-2 py-1 text-sm text-white outline-none placeholder:text-zinc-400"
+            value={idx >= 0 ? localVals[idx] ?? "" : ""}
+            onFocus={() => idx >= 0 && setFocusedIdx(idx)}
+            onChange={(e) => {
+              if (idx >= 0) {
+                const v = e.target.value;
+                setLocalVals((prev) => ({ ...prev, [idx]: v }));
+              }
+            }}
+            onBlur={() => {
+              if (idx >= 0) commitValue(idx);
+              setFocusedIdx(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && idx >= 0) (e.currentTarget as HTMLInputElement).blur();
+            }}
+            placeholder="Value"
+            autoComplete="off"
+            inputMode="decimal"
+            enterKeyHint="done"
+          />
+          <div className="text-right text-xs text-zinc-400">
+            {row.unit ?? hint(row.fullLabel)}
+          </div>
+        </div>
+      </div>
+    );
+  });
 
   const SideCardView = ({ side, rows }: { side: Side; rows: MetricCell[] }) => (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
@@ -125,46 +171,19 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
 
       {open && (
         <div className="space-y-3">
-          {rows.map((row) => (
-            <div key={`${row.idx}-${row.metric}`} className="rounded bg-zinc-950/70 p-3">
-              <div className="flex items-center gap-3">
-                <div
-                  className="min-w-0 grow truncate text-sm font-semibold text-white"
-                  style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-                >
-                  {row.metric}
-                </div>
-
-                <input
-                  name={`v-${row.idx ?? "x"}`}
-                  className="w-40 rounded border border-gray-600 bg-black px-2 py-1 text-sm text-white outline-none placeholder:text-zinc-400"
-                  value={row.idx != null ? localVals[row.idx] ?? "" : ""}
-                  onFocus={() => row.idx != null && setFocusedIdx(row.idx)}
-                  onChange={(e) => {
-                    if (row.idx != null) {
-                      const v = e.target.value;
-                      setLocalVals((prev) => ({ ...prev, [row.idx!]: v }));
-                    }
-                  }}
-                  onBlur={() => {
-                    if (row.idx != null) commitValue(row.idx);
-                    setFocusedIdx((cur) => (cur === row.idx ? null : cur));
-                  }}
-                  onKeyDown={(e) => {
-                    if ((e as any).key === "Enter" && row.idx != null) {
-                      (e.currentTarget as HTMLInputElement).blur(); // commit
-                    }
-                  }}
-                  placeholder="Value"
-                  autoComplete="off"
-                  inputMode="decimal"
-                />
-                <div className="text-right text-xs text-zinc-400">
-                  {row.unit ?? (unitHint ? unitHint(row.fullLabel) : "")}
-                </div>
+          {rows.map((row) =>
+            row.idx != null ? (
+              <RowView
+                key={row.idx}                // ← stable, numeric key
+                row={row}
+                hint={(label) => (unitHint ? unitHint(label) : "")}
+              />
+            ) : (
+              <div key={`${row.metric}-noidx`} className="rounded bg-zinc-950/70 p-3 opacity-70">
+                <div className="text-sm font-semibold text-white">{row.metric}</div>
               </div>
-            </div>
-          ))}
+            )
+          )}
         </div>
       )}
     </div>
