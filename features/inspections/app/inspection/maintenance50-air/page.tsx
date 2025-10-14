@@ -349,7 +349,7 @@ export default function Maintenance50AirPage(): JSX.Element {
     }
   }, [session, inspectionId]);
 
-  // ✅ NEW: extra-safe persistence on tab switch/close
+  // ✅ extra-safe persistence on tab switch/close
   useEffect(() => {
     const key = `inspection-${inspectionId}`;
     const persistNow = () => {
@@ -451,6 +451,9 @@ export default function Maintenance50AirPage(): JSX.Element {
 
   const isCorner = (t?: string): boolean => (t || "").toLowerCase().includes("corner");
 
+  // ✅ memoize the context value to prevent input remounts while typing
+  const formCtxValue = useMemo(() => ({ updateItem }), [updateItem]);
+
   return (
     <div className="px-4 pb-14">
       {/* Header */}
@@ -504,7 +507,7 @@ export default function Maintenance50AirPage(): JSX.Element {
       />
 
       {/* Sections */}
-      <InspectionFormCtx.Provider value={{ updateItem }}>
+      <InspectionFormCtx.Provider value={formCtxValue}>
         {session.sections.map((section: InspectionSection, sectionIndex: number) => (
           <div
             key={`${section.title}-${sectionIndex}`}

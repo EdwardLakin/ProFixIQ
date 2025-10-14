@@ -443,6 +443,9 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
   const isMeasurements = (t?: string): boolean =>
     (t || "").toLowerCase().includes("measurements");
 
+  // ✅ memoize the context value to prevent input remounts while typing
+  const formCtxValue = useMemo(() => ({ updateItem }), [updateItem]);
+
   return (
     <div className="px-4 pb-14">
       {/* Header */}
@@ -495,7 +498,7 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
       />
 
       {/* Sections */}
-      <InspectionFormCtx.Provider value={{ updateItem }}>
+      <InspectionFormCtx.Provider value={formCtxValue}>
         {session.sections.map((section: InspectionSection, sectionIndex: number) => (
           <div
             key={`${section.title}-${sectionIndex}`}
