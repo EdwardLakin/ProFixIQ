@@ -155,6 +155,8 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
                     }
                   }}
                   placeholder="Value"
+                  autoComplete="off"
+                  inputMode="decimal"
                 />
                 <div className="text-right text-xs text-zinc-400">
                   {row.unit ?? (unitHint ? unitHint(row.fullLabel) : "")}

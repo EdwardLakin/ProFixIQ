@@ -154,6 +154,8 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
             if ((e as any).key === "Enter") (e.currentTarget as HTMLInputElement).blur(); // commits via onBlur
           }}
           placeholder="Value"
+          autoComplete="off"
+          inputMode="decimal"
         />
         <div className="text-right text-xs text-zinc-400">
           {row.unit ?? (unitHint ? unitHint(row.labelForHint) : "")}
