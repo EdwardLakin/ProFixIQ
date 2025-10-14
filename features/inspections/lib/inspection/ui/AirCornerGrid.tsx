@@ -1,6 +1,7 @@
+// features/inspections/lib/inspection/ui/AirCornerGrid.tsx
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useInspectionForm } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import type { InspectionItem } from "@inspections/lib/inspection/types";
 
@@ -38,7 +39,7 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
     "Wheel Torque Outer",
   ];
   const orderIndex = (metric: string) => {
-    const i = metricOrder.findIndex(m => metric.toLowerCase().includes(m.toLowerCase()));
+    const i = metricOrder.findIndex((m) => metric.toLowerCase().includes(m.toLowerCase()));
     return i === -1 ? Number.MAX_SAFE_INTEGER : i;
   };
 
@@ -55,8 +56,7 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
       const metric = m.groups.metric.trim();
 
       const bucket =
-        byAxle.get(axle) ??
-        { Left: new Map<string, MetricCell>(), Right: new Map<string, MetricCell>() };
+        byAxle.get(axle) ?? { Left: new Map<string, MetricCell>(), Right: new Map<string, MetricCell>() };
 
       const map = bucket[side];
       const existing =
@@ -80,28 +80,47 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
     });
   }, [items, unitHint]);
 
+  // --- Local buffered values (fixes “typing stops after 1 char”) ---
+  // We maintain a local value map keyed by item index, and debounce writes to store.
+  const [localVals, setLocalVals] = useState<Record<number, string>>({});
+  const timersRef = useRef<Record<number, number>>({});
+
+  // Seed/refresh local values when items change externally
+  useEffect(() => {
+    const seed: Record<number, string> = {};
+    items.forEach((it, idx) => {
+      seed[idx] = String(it.value ?? "");
+    });
+    setLocalVals(seed);
+  }, [items]);
+
+  const setBuffered = (idx: number, value: string) => {
+    setLocalVals((prev) => ({ ...prev, [idx]: value }));
+    // clear old timer
+    const timers = timersRef.current;
+    if (timers[idx]) window.clearTimeout(timers[idx]);
+    // debounce write to store
+    timers[idx] = window.setTimeout(() => {
+      updateItem(sectionIndex, idx, { value });
+      delete timersRef.current[idx];
+    }, 250);
+  };
+
   // Suggest next axle labels (max 2 steer, 4 drive)
-  const existingAxles = useMemo(() => groups.map(g => g.axle), [groups]);
+  const existingAxles = useMemo(() => groups.map((g) => g.axle), [groups]);
   const [pendingAxle, setPendingAxle] = useState<string>("");
 
   const candidateAxles = useMemo(() => {
     const wants: string[] = [];
-    // steer 1..2
     for (let i = 1; i <= 2; i++) wants.push(`Steer ${i}`);
-    // drive 1..4
     for (let i = 1; i <= 4; i++) wants.push(`Drive ${i}`);
-    // tag/trailer as optional extras if you name them that way
     wants.push("Tag", "Trailer 1", "Trailer 2", "Trailer 3");
-
-    return wants.filter(l => !existingAxles.includes(l));
+    return wants.filter((l) => !existingAxles.includes(l));
   }, [existingAxles]);
 
   const SideCardView = ({ side, rows }: { side: Side; rows: MetricCell[] }) => (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
-      <div
-        className="mb-2 font-semibold text-orange-400"
-        style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-      >
+      <div className="mb-2 font-semibold text-orange-400" style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}>
         {side}
       </div>
 
@@ -119,11 +138,9 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
               <input
                 className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white"
                 style={{ fontFamily: "Roboto, system-ui, sans-serif" }}
-                value={String(row.val ?? "")}
+                value={row.idx != null ? localVals[row.idx] ?? "" : ""}
                 onChange={(e) => {
-                  if (row.idx != null) {
-                    updateItem(sectionIndex, row.idx, { value: e.target.value });
-                  }
+                  if (row.idx != null) setBuffered(row.idx, e.target.value);
                 }}
                 placeholder="Value"
               />
@@ -149,7 +166,9 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
           >
             <option value="">Add axle…</option>
             {candidateAxles.map((l) => (
-              <option key={l} value={l}>{l}</option>
+              <option key={l} value={l}>
+                {l}
+              </option>
             ))}
           </select>
           <button

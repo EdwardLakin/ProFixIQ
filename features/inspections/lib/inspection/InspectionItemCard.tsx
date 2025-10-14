@@ -1,6 +1,6 @@
-// features/inspections/lib/inspection/ui/InspectionItemCard.tsx
 "use client";
 
+import type React from "react";
 import type {
   InspectionItem,
   InspectionItemStatus,

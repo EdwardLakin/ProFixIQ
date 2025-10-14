@@ -1,3 +1,4 @@
+// features/inspections/app/maintenance50-hydraulic/page.tsx
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -17,20 +18,49 @@ import type {
   InspectionItemStatus,
   InspectionStatus,
   InspectionSection,
-  InspectionItem,
   InspectionSession,
   SessionCustomer,
   SessionVehicle,
 } from "@inspections/lib/inspection/types";
 
 import CornerGrid from "@inspections/lib/inspection/ui/CornerGrid";
+import SectionDisplay from "@inspections/lib/inspection/SectionDisplay";
 import { InspectionFormCtx } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import { SaveInspectionButton } from "@inspections/components/inspection/SaveInspectionButton";
 import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
 import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicleHeader";
 
 /* -------------------------------------------------------------------------- */
-/* Small typed helpers for the header (keeps the page 100% type-safe)         */
+/* Web Speech — minimal local typings (parity with Air page)                   */
+/* -------------------------------------------------------------------------- */
+
+type WebSpeechResultCell = { transcript: string };
+type WebSpeechResultRow = { [index: number]: WebSpeechResultCell };
+type WebSpeechResults = { [index: number]: WebSpeechResultRow };
+
+type WebSpeechRecognition = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start: () => void;
+  stop: () => void;
+  onresult: (event: { results: WebSpeechResults; length: number }) => void;
+  onerror: (event: { error?: string }) => void;
+};
+
+type SRConstructor = new () => WebSpeechRecognition;
+
+function resolveSR(): SRConstructor | undefined {
+  if (typeof window === "undefined") return undefined;
+  const w = window as unknown as {
+    SpeechRecognition?: SRConstructor;
+    webkitSpeechRecognition?: SRConstructor;
+  };
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? undefined;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Header adapters (strict types, string-only for header)                      */
 /* -------------------------------------------------------------------------- */
 
 type HeaderCustomer = {
@@ -43,6 +73,7 @@ type HeaderCustomer = {
   province: string;
   postal_code: string;
 };
+
 type HeaderVehicle = {
   year: string;
   make: string;
@@ -55,40 +86,42 @@ type HeaderVehicle = {
   engine_hours: string;
 };
 
-function toHeaderCustomer(c: SessionCustomer | null | undefined): HeaderCustomer {
+function toHeaderCustomer(c?: SessionCustomer | null): HeaderCustomer {
   return {
     first_name: c?.first_name ?? "",
-    last_name:  c?.last_name  ?? "",
-    phone:      c?.phone      ?? "",
-    email:      c?.email      ?? "",
-    address:    c?.address    ?? "",
-    city:       c?.city       ?? "",
-    province:   c?.province   ?? "",
-    postal_code:c?.postal_code?? "",
+    last_name: c?.last_name ?? "",
+    phone: c?.phone ?? "",
+    email: c?.email ?? "",
+    address: c?.address ?? "",
+    city: c?.city ?? "",
+    province: c?.province ?? "",
+    postal_code: c?.postal_code ?? "",
   };
 }
 
-function toHeaderVehicle(v: SessionVehicle | null | undefined): HeaderVehicle {
+function toHeaderVehicle(v?: SessionVehicle | null): HeaderVehicle {
   return {
-    year:          v?.year          ?? "",
-    make:          v?.make          ?? "",
-    model:         v?.model         ?? "",
-    vin:           v?.vin           ?? "",
+    year: v?.year ?? "",
+    make: v?.make ?? "",
+    model: v?.model ?? "",
+    vin: v?.vin ?? "",
     license_plate: v?.license_plate ?? "",
-    mileage:       v?.mileage       ?? "",   // ✅ mileage (no odometer here)
-    color:         v?.color         ?? "",
-    unit_number:   v?.unit_number   ?? "",
-    engine_hours:  v?.engine_hours  ?? "",
+    mileage: v?.mileage ?? "",
+    color: v?.color ?? "",
+    unit_number: v?.unit_number ?? "",
+    engine_hours: v?.engine_hours ?? "",
   };
 }
 
-/* ----------------------------- Section Builders ---------------------------- */
+/* -------------------------------------------------------------------------- */
+/* Hydraulic section builders                                                  */
+/* -------------------------------------------------------------------------- */
 
 function buildHydraulicMeasurementsSection(): InspectionSection {
   return {
     title: "Measurements (Hydraulic)",
     items: [
-      // Tire pressures (added)
+      // Tire pressures
       { item: "LF Tire Pressure", unit: "psi", value: "" },
       { item: "RF Tire Pressure", unit: "psi", value: "" },
       { item: "LR Tire Pressure", unit: "psi", value: "" },
@@ -170,9 +203,9 @@ function buildDrivelineSection(): InspectionSection {
     items: [
       { item: "Driveshaft / U-joints" },
       { item: "Center support bearing" },
-      { item: "CV shafts / joints" },          // ✅ added
-      { item: "Transmission leaks / mounts" }, // ✅ added
-      { item: "Transfer case leaks / mounts" },// ✅ added
+      { item: "CV shafts / joints" },
+      { item: "Transmission leaks / mounts" },
+      { item: "Transfer case leaks / mounts" },
       { item: "Slip yokes / seals" },
       { item: "Axle seals / leaks" },
       { item: "Differential leaks / play" },
@@ -180,9 +213,11 @@ function buildDrivelineSection(): InspectionSection {
   };
 }
 
-/* ---------------------- Unit helpers (hydraulic) --------------------------- */
+/* -------------------------------------------------------------------------- */
+/* Units (hydraulic)                                                           */
+/* -------------------------------------------------------------------------- */
 
-function unitForHydraulic(label: string, mode: "metric" | "imperial") {
+function unitForHydraulic(label: string, mode: "metric" | "imperial"): string {
   const l = label.toLowerCase();
   if (l.includes("pressure")) return mode === "imperial" ? "psi" : "kPa";
   if (l.includes("tire tread")) return mode === "metric" ? "mm" : "in";
@@ -195,7 +230,7 @@ function unitForHydraulic(label: string, mode: "metric" | "imperial") {
 function applyUnitsHydraulic(
   sections: InspectionSection[],
   mode: "metric" | "imperial",
-) {
+): InspectionSection[] {
   return sections.map((s) => {
     if ((s.title || "").toLowerCase().includes("measurements")) {
       const items = s.items.map((it) => ({
@@ -208,31 +243,26 @@ function applyUnitsHydraulic(
   });
 }
 
-/* -------------------------------- Page ------------------------------------- */
+/* -------------------------------------------------------------------------- */
+/* Page                                                                        */
+/* -------------------------------------------------------------------------- */
 
-type SRConstructor = new () => SpeechRecognition;
-function resolveSR(): SRConstructor | undefined {
-  if (typeof window === "undefined") return undefined;
-  const w = window as any;
-  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? undefined;
-}
-
-export default function Maintenance50HydraulicPage() {
+export default function Maintenance50HydraulicPage(): JSX.Element {
   const searchParams = useSearchParams();
 
-  // Unit toggle
+  // Stable id (parity with Air)
+  const inspectionId = useMemo<string>(() => searchParams.get("inspectionId") || uuidv4(), [searchParams]);
+
+  // UI state
   const [unit, setUnit] = useState<"metric" | "imperial">("metric");
+  const [isListening, setIsListening] = useState<boolean>(false);
+  const [isPaused, setIsPaused] = useState<boolean>(false);
+  const [, setTranscript] = useState<string>("");
+  const recognitionRef = useRef<WebSpeechRecognition | null>(null);
 
-  // Voice controls
-  const [isListening, setIsListening] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
-  const [, setTranscript] = useState("");
+  const templateName: string = searchParams.get("template") || "Maintenance 50 (Hydraulic)";
 
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
-
-  const templateName =
-    searchParams.get("template") || "Maintenance 50 (Hydraulic)";
-
+  // Header data (string-only)
   const customer: SessionCustomer = {
     first_name: searchParams.get("first_name") || "",
     last_name: searchParams.get("last_name") || "",
@@ -250,13 +280,13 @@ export default function Maintenance50HydraulicPage() {
     model: searchParams.get("model") || "",
     vin: searchParams.get("vin") || "",
     license_plate: searchParams.get("license_plate") || "",
-    mileage: searchParams.get("mileage") || "",       // ✅ mileage
+    mileage: searchParams.get("mileage") || "",
     color: searchParams.get("color") || "",
     unit_number: searchParams.get("unit_number") || "",
     engine_hours: searchParams.get("engine_hours") || "",
   };
 
-  const inspectionId = useMemo(() => uuidv4(), []);
+  // Initial session (parity with Air)
   const initialSession = useMemo<Partial<InspectionSession>>(
     () => ({
       id: inspectionId,
@@ -270,7 +300,7 @@ export default function Maintenance50HydraulicPage() {
       vehicle,
       sections: [],
     }),
-    [inspectionId, templateName, customer, vehicle],
+    [inspectionId, templateName, customer, vehicle]
   );
 
   const {
@@ -285,29 +315,60 @@ export default function Maintenance50HydraulicPage() {
     addQuoteLine,
   } = useInspectionSession(initialSession);
 
-  // Load/save to localStorage (parity with Air page)
-  const storageKey = `inspection-${inspectionId}`;
+  /* -------------------------- LocalStorage hydrate/persist -------------------------- */
 
   useEffect(() => {
-    const saved = typeof window !== "undefined" ? localStorage.getItem(storageKey) : null;
+    const key = `inspection-${inspectionId}`;
+    const saved = typeof window !== "undefined" ? localStorage.getItem(key) : null;
     if (saved) {
       try {
-        const parsed: InspectionSession = JSON.parse(saved);
+        const parsed = JSON.parse(saved) as InspectionSession;
         updateInspection(parsed);
-        return;
-      } catch { /* fall through */ }
+      } catch {
+        startSession(initialSession);
+      }
+    } else {
+      startSession(initialSession);
     }
-    startSession(initialSession);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     if (session) {
-      localStorage.setItem(storageKey, JSON.stringify(session));
+      const key = `inspection-${inspectionId}`;
+      localStorage.setItem(key, JSON.stringify(session));
     }
-  }, [session, storageKey]);
+  }, [session, inspectionId]);
 
-  // Scaffold sections once
+  // extra-safe persistence on tab switch/close (parity with Air)
+  useEffect(() => {
+    const key = `inspection-${inspectionId}`;
+    const persistNow = () => {
+      try {
+        const payload = session ?? initialSession;
+        localStorage.setItem(key, JSON.stringify(payload));
+      } catch {
+        /* no-op */
+      }
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") persistNow();
+    };
+
+    window.addEventListener("beforeunload", persistNow);
+    window.addEventListener("pagehide", persistNow);
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      window.removeEventListener("beforeunload", persistNow);
+      window.removeEventListener("pagehide", persistNow);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [session, inspectionId, initialSession]);
+
+  /* -------------------------- Sections scaffold + unit toggle ----------------------- */
+
   useEffect(() => {
     if (!session) return;
     if ((session.sections?.length ?? 0) > 0) return;
@@ -319,29 +380,26 @@ export default function Maintenance50HydraulicPage() {
       buildSuspensionSection(),
       buildDrivelineSection(),
     ];
-    updateInspection({
-      sections: applyUnitsHydraulic(next, unit) as typeof session.sections,
-    });
-  }, [session, updateInspection]); // unit applied below
+    updateInspection({ sections: applyUnitsHydraulic(next, unit) as typeof session.sections });
+  }, [session, updateInspection, unit]);
 
-  // Re-apply units when toggled
   useEffect(() => {
     if (!session?.sections?.length) return;
-    updateInspection({
-      sections: applyUnitsHydraulic(session.sections, unit) as typeof session.sections,
-    });
+    updateInspection({ sections: applyUnitsHydraulic(session.sections, unit) as typeof session.sections });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unit]);
+
+  /* -------------------------- Voice -> commands ------------------------------------ */
 
   const handleTranscript = async (text: string): Promise<void> => {
     setTranscript(text);
     const commands: ParsedCommand[] = await interpretCommand(text);
-    const sess: InspectionSession | null = session ?? null;
+    const sess: InspectionSession | undefined = session ?? undefined;
     if (!sess) return;
 
     for (const command of commands) {
       await handleTranscriptFn({
-        command, // ✅ exact property expected
+        command,
         session: sess,
         updateInspection,
         updateItem,
@@ -351,39 +409,47 @@ export default function Maintenance50HydraulicPage() {
     }
   };
 
-  const startListening = () => {
+  const startListening = (): void => {
     const SR = resolveSR();
-    if (!SR) return console.error("SpeechRecognition API not supported");
+    if (!SR) {
+      console.error("SpeechRecognition API not supported");
+      return;
+    }
     const recognition = new SR();
     recognition.continuous = true;
     recognition.interimResults = false;
     recognition.lang = "en-US";
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      const last = event.results.length - 1;
-      const t = event.results[last][0].transcript;
-      handleTranscript(t);
+    recognition.onresult = (event) => {
+      const lastIndex = (event as unknown as { results: WebSpeechResults }).results
+        ? Object.keys(event.results).length - 1
+        : 0;
+      const transcript =
+        (event.results as WebSpeechResults)[lastIndex]?.[0]?.transcript ?? "";
+      if (transcript) void handleTranscript(transcript);
     };
-    recognition.onerror = (event: any) =>
-      console.error("Speech recognition error:", event.error);
+    recognition.onerror = (event) =>
+      console.error("Speech recognition error:", event.error ?? "unknown");
     recognitionRef.current = recognition;
     recognition.start();
     setIsListening(true);
   };
 
+  /* -------------------------- Render ----------------------------------------------- */
+
   if (!session || !session.sections || session.sections.length === 0) {
-    return <div className="text-white p-4">Loading inspection…</div>;
+    return <div className="p-4 text-white">Loading inspection…</div>;
   }
 
-  const isMeasurements = (t?: string) =>
+  const isMeasurements = (t?: string): boolean =>
     (t || "").toLowerCase().includes("measurements");
 
   return (
     <div className="px-4 pb-14">
-      {/* Shared header */}
+      {/* Header */}
       <CustomerVehicleHeader
         templateName={templateName}
-        customer={toHeaderCustomer(session.customer)}
-        vehicle={toHeaderVehicle(session.vehicle)}
+        customer={toHeaderCustomer(session.customer ?? null)}
+        vehicle={toHeaderVehicle(session.vehicle ?? null)}
       />
 
       {/* Controls */}
@@ -397,21 +463,24 @@ export default function Maintenance50HydraulicPage() {
           isPaused={isPaused}
           isListening={isListening}
           setIsListening={setIsListening}
-          onPause={() => {
+          onPause={(): void => {
             setIsPaused(true);
             pauseSession();
             recognitionRef.current?.stop();
           }}
-          onResume={() => {
+          onResume={(): void => {
             setIsPaused(false);
             resumeSession();
             startListening();
           }}
-          recognitionInstance={recognitionRef.current}
-          setRecognitionRef={(instance) => (recognitionRef.current = instance)}
+          recognitionInstance={recognitionRef.current as unknown as SpeechRecognition | null}
+          setRecognitionRef={(instance: SpeechRecognition | null): void => {
+            (recognitionRef as React.MutableRefObject<WebSpeechRecognition | null>).current =
+              (instance as unknown as WebSpeechRecognition) ?? null;
+          }}
         />
         <button
-          onClick={() => setUnit(unit === "metric" ? "imperial" : "metric")}
+          onClick={(): void => setUnit(unit === "metric" ? "imperial" : "metric")}
           className="rounded bg-zinc-700 px-3 py-2 text-white hover:bg-zinc-600"
         >
           Unit: {unit === "metric" ? "Metric" : "Imperial"}
@@ -422,22 +491,18 @@ export default function Maintenance50HydraulicPage() {
         currentItem={session.currentItemIndex}
         currentSection={session.currentSectionIndex}
         totalSections={session.sections.length}
-        totalItems={
-          session.sections[session.currentSectionIndex]?.items.length || 0
-        }
+        totalItems={session.sections[session.currentSectionIndex]?.items.length || 0}
       />
 
       {/* Sections */}
       <InspectionFormCtx.Provider value={{ updateItem }}>
         {session.sections.map((section: InspectionSection, sectionIndex: number) => (
           <div
-            key={sectionIndex}
+            key={`${section.title}-${sectionIndex}`}
             className="mb-8 rounded-lg border border-zinc-800 bg-zinc-900 p-4"
           >
             <div className="mb-2 flex items-end justify-between">
-              <h2 className="text-xl font-semibold text-orange-400">
-                {section.title}
-              </h2>
+              <h2 className="text-xl font-semibold text-orange-400">{section.title}</h2>
               {isMeasurements(section.title) && (
                 <span className="text-xs text-zinc-400">
                   {unit === "metric" ? "Enter mm / kPa / N·m" : "Enter in / psi / ft·lb"}
@@ -448,83 +513,48 @@ export default function Maintenance50HydraulicPage() {
             {isMeasurements(section.title) ? (
               <CornerGrid sectionIndex={sectionIndex} items={section.items} />
             ) : (
-              section.items.map((item: InspectionItem, itemIndex: number) => {
-                const selected = (val: InspectionItemStatus) =>
-                  item.status === val;
-                const onStatusClick = (val: InspectionItemStatus) => {
-                  updateItem(sectionIndex, itemIndex, { status: val });
-                  if ((val === "fail" || val === "recommend") && item.item) {
+              <SectionDisplay
+                title={section.title}
+                section={section}
+                sectionIndex={sectionIndex}
+                showNotes={true}
+                showPhotos={true}
+                onUpdateStatus={(
+                  secIdx: number,
+                  itemIdx: number,
+                  status: InspectionItemStatus
+                ): void => {
+                  updateItem(secIdx, itemIdx, { status });
+
+                  // Add a quote line when a non-measurement item is FAIL/RECOMMEND
+                  if (status === "fail" || status === "recommend") {
+                    const it = session.sections[secIdx].items[itemIdx];
+                    const desc = it.item ?? it.name ?? "Item";
                     addQuoteLine({
-                      item: item.item,
-                      description: item.notes || "",
-                      status: val,
-                      value: item.value || "",
-                      notes: item.notes || "",
+                      id: uuidv4(),
+                      description: desc,
+                      item: desc,
+                      name: desc,
+                      status,
+                      notes: it.notes ?? "",
+                      price: 0,
                       laborTime: 0.5,
                       laborRate: 0,
-                      parts: [],
-                      totalCost: 0,
                       editable: true,
                       source: "inspection",
-                      id: "",
-                      name: "",
-                      price: 0,
-                      partName: "",
+                      value: it.value ?? "",
+                      photoUrls: it.photoUrls ?? [],
                     });
                   }
-                };
-
-                return (
-                  <div
-                    key={itemIndex}
-                    className="mb-3 rounded border border-zinc-800 bg-zinc-950 p-3"
-                  >
-                    <div className="mb-2 flex items-start justify-between gap-3">
-                      <h3 className="min-w-0 truncate text-base font-medium text-white">
-                        {item.item ?? (item as any).name ?? "Item"}
-                      </h3>
-                      <div className="flex shrink-0 flex-wrap gap-1">
-                        {(
-                          ["ok", "fail", "na", "recommend"] as InspectionItemStatus[]
-                        ).map((val) => (
-                          <button
-                            key={val}
-                            onClick={() => onStatusClick(val)}
-                            className={
-                              "rounded px-2 py-1 text-xs " +
-                              (selected(val)
-                                ? val === "ok"
-                                  ? "bg-green-600 text-white"
-                                  : val === "fail"
-                                  ? "bg-red-600 text-white"
-                                  : val === "na"
-                                  ? "bg-yellow-500 text-white"
-                                  : "bg-blue-500 text-white"
-                                : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700")
-                            }
-                          >
-                            {val.toUpperCase()}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Only notes for non-measurement items */}
-                    <div className="mb-2 grid grid-cols-1 gap-2">
-                      <input
-                        value={item.notes ?? ""}
-                        onChange={(e) =>
-                          updateItem(sectionIndex, itemIndex, {
-                            notes: e.target.value,
-                          })
-                        }
-                        placeholder="Notes"
-                        className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400"
-                      />
-                    </div>
-                  </div>
-                );
-              })
+                }}
+                onUpdateNote={(secIdx: number, itemIdx: number, note: string): void => {
+                  updateItem(secIdx, itemIdx, { notes: note });
+                }}
+                onUpload={(photoUrl: string, secIdx: number, itemIdx: number): void => {
+                  const prev = session.sections[secIdx].items[itemIdx].photoUrls ?? [];
+                  updateItem(secIdx, itemIdx, { photoUrls: [...prev, photoUrl] });
+                }}
+              />
             )}
           </div>
         ))}
@@ -533,9 +563,7 @@ export default function Maintenance50HydraulicPage() {
       <div className="mt-8 flex items-center justify-between gap-4">
         <SaveInspectionButton />
         <FinishInspectionButton />
-        <div className="text-xs text-zinc-400">
-          P = PASS, F = FAIL, NA = Not Applicable
-        </div>
+        <div className="text-xs text-zinc-400">P = PASS, F = FAIL, NA = Not Applicable</div>
       </div>
     </div>
   );

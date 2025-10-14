@@ -349,6 +349,33 @@ export default function Maintenance50AirPage(): JSX.Element {
     }
   }, [session, inspectionId]);
 
+  // ✅ NEW: extra-safe persistence on tab switch/close
+  useEffect(() => {
+    const key = `inspection-${inspectionId}`;
+    const persistNow = () => {
+      try {
+        const payload = session ?? initialSession;
+        localStorage.setItem(key, JSON.stringify(payload));
+      } catch {
+        /* no-op */
+      }
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") persistNow();
+    };
+
+    window.addEventListener("beforeunload", persistNow);
+    window.addEventListener("pagehide", persistNow);
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      window.removeEventListener("beforeunload", persistNow);
+      window.removeEventListener("pagehide", persistNow);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [session, inspectionId, initialSession]);
+
   /* -------------------------- Sections scaffold + unit toggle ----------------------- */
 
   useEffect(() => {

@@ -15,9 +15,8 @@ type StatusButtonsProps = {
 };
 
 /**
- * NOTE:
- * To avoid Next.js ts(71007) “Props must be serializable…” in Client files,
- * accept `any` at the export boundary and cast immediately to a strong type.
+ * Accept `any` at export boundary to avoid Next.js ts(71007) in client files,
+ * then cast immediately to strong types.
  */
 export default function StatusButtons(_props: any) {
   const {
@@ -28,21 +27,49 @@ export default function StatusButtons(_props: any) {
     onStatusChange,
   } = _props as StatusButtonsProps;
 
-  // grey-until-selected
-  const base = "px-3 py-1 rounded font-bold text-white mr-2 mb-2 transition duration-200";
-  const selected = item.status;
+  // Neutral until selected
+  const base =
+    "px-3 py-1 rounded text-xs font-bold mr-2 mb-2 transition-colors duration-150 " +
+    "bg-zinc-700 text-zinc-200 hover:bg-zinc-600 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-zinc-400";
 
-  const getStyle = (key: InspectionItemStatus) => {
+  const selectedRing = " ring-2 ring-offset-1";
+  const selectedText = " text-white";
+
+  const cls = (key: InspectionItemStatus) => {
+    const isSel = item.status === key;
+
     switch (key) {
-      case "fail":
-        return `${base} ${selected === "fail" ? "bg-red-600" : "bg-red-400"}`;
-      case "recommend":
-        return `${base} ${selected === "recommend" ? "bg-yellow-600 text-black" : "bg-yellow-400 text-black"}`;
       case "ok":
-        return `${base} ${selected === "ok" ? "bg-green-600" : "bg-green-400"}`;
+        // brighter green when selected
+        return (
+          base +
+          (isSel
+            ? " bg-green-600 hover:bg-green-600" + selectedRing + selectedText
+            : "")
+        );
+      case "fail":
+        return (
+          base +
+          (isSel
+            ? " bg-red-600 hover:bg-red-600" + selectedRing + selectedText
+            : "")
+        );
+      case "recommend":
+        // readable yellow w/ black text when selected
+        return (
+          base +
+          (isSel
+            ? " bg-yellow-400 hover:bg-yellow-400 text-black ring-2 ring-offset-1"
+            : "")
+        );
       case "na":
       default:
-        return `${base} ${selected === "na" ? "bg-gray-600" : "bg-gray-400"}`;
+        return (
+          base +
+          (isSel
+            ? " bg-zinc-500 hover:bg-zinc-500" + selectedRing + selectedText
+            : "")
+        );
     }
   };
 
@@ -52,21 +79,37 @@ export default function StatusButtons(_props: any) {
   };
 
   return (
-    <div className="flex flex-wrap mt-2">
-      <button className={getStyle("ok")} onClick={() => handleClick("ok")} aria-pressed={selected === "ok"}>
+    <div className="mt-2 flex flex-wrap">
+      <button
+        className={cls("ok")}
+        onClick={() => handleClick("ok")}
+        aria-pressed={item.status === "ok"}
+        title="Mark OK"
+      >
         OK
       </button>
-      <button className={getStyle("fail")} onClick={() => handleClick("fail")} aria-pressed={selected === "fail"}>
+      <button
+        className={cls("fail")}
+        onClick={() => handleClick("fail")}
+        aria-pressed={item.status === "fail"}
+        title="Mark FAIL"
+      >
         FAIL
       </button>
       <button
-        className={getStyle("recommend")}
+        className={cls("recommend")}
         onClick={() => handleClick("recommend")}
-        aria-pressed={selected === "recommend"}
+        aria-pressed={item.status === "recommend"}
+        title="Mark Recommend"
       >
         Recommend
       </button>
-      <button className={getStyle("na")} onClick={() => handleClick("na")} aria-pressed={selected === "na"}>
+      <button
+        className={cls("na")}
+        onClick={() => handleClick("na")}
+        aria-pressed={item.status === "na"}
+        title="Mark N/A"
+      >
         N/A
       </button>
     </div>
