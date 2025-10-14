@@ -14,6 +14,24 @@ type Props = {
 export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
   const { updateItem } = useInspectionForm();
 
+  // ------------------------ DEBUG: mount/unmount + items ref ------------------------
+  useEffect(() => {
+    // eslint-disable-next-line no-console
+    console.log("[CornerGrid] mounted");
+    return () => {
+      // eslint-disable-next-line no-console
+      console.log("[CornerGrid] unmounted");
+    };
+  }, []);
+  const lastItemsRef = useRef(items);
+  useEffect(() => {
+    if (lastItemsRef.current !== items) {
+      // eslint-disable-next-line no-console
+      console.log("[CornerGrid] items reference changed");
+      lastItemsRef.current = items;
+    }
+  }, [items]);
+
   type CornerKey = "LF" | "RF" | "LR" | "RR";
   const abbrevRE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
   const fullRE = /^(?<corner>(Left|Right)\s+(Front|Rear))\s+(?<metric>.+)$/i;
@@ -101,7 +119,10 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
   }, [items, focusedIdx]);
 
   const commitValue = (itemIdx: number) => {
-    updateItem(sectionIndex, itemIdx, { value: localVals[itemIdx] ?? "" });
+    const value = localVals[itemIdx] ?? "";
+    // eslint-disable-next-line no-console
+    console.log("[CornerGrid] commit", { itemIdx, value });
+    updateItem(sectionIndex, itemIdx, { value });
   };
 
   /* ------------------------ Header summary + collapse --------------------- */
@@ -140,7 +161,11 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
           name={`v-${row.idx}`}
           className="w-40 rounded border border-gray-600 bg-black px-2 py-1 text-sm text-white outline-none placeholder:text-zinc-400"
           value={localVals[row.idx] ?? ""}
-          onFocus={() => setFocusedIdx(row.idx)}
+          onFocus={() => {
+            // eslint-disable-next-line no-console
+            console.log("[CornerGrid] focus", row.idx);
+            setFocusedIdx(row.idx);
+          }}
           onChange={(e) => setLocalVals((p) => ({ ...p, [row.idx]: e.target.value }))}
           onBlur={() => {
             commitValue(row.idx);

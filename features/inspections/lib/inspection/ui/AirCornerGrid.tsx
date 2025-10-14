@@ -15,6 +15,24 @@ type Props = {
 export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle }: Props) {
   const { updateItem } = useInspectionForm();
 
+  // ------------------------ DEBUG: mount/unmount + items ref ------------------------
+  useEffect(() => {
+    // eslint-disable-next-line no-console
+    console.log("[AirCornerGrid] mounted");
+    return () => {
+      // eslint-disable-next-line no-console
+      console.log("[AirCornerGrid] unmounted");
+    };
+  }, []);
+  const lastItemsRef = useRef(items);
+  useEffect(() => {
+    if (lastItemsRef.current !== items) {
+      // eslint-disable-next-line no-console
+      console.log("[AirCornerGrid] items reference changed");
+      lastItemsRef.current = items;
+    }
+  }, [items]);
+
   type Side = "Left" | "Right";
   const labelRe = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
 
@@ -101,6 +119,8 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
 
   const commitValue = (idx: number) => {
     const value = localVals[idx] ?? "";
+    // eslint-disable-next-line no-console
+    console.log("[AirCornerGrid] commit", { idx, value });
     updateItem(sectionIndex, idx, { value });
   };
 
@@ -143,7 +163,13 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
                   name={`v-${row.idx ?? "x"}`}
                   className="w-40 rounded border border-gray-600 bg-black px-2 py-1 text-sm text-white outline-none placeholder:text-zinc-400"
                   value={row.idx != null ? localVals[row.idx] ?? "" : ""}
-                  onFocus={() => row.idx != null && setFocusedIdx(row.idx)}
+                  onFocus={() => {
+                    if (row.idx != null) {
+                      // eslint-disable-next-line no-console
+                      console.log("[AirCornerGrid] focus", row.idx);
+                      setFocusedIdx(row.idx);
+                    }
+                  }}
                   onChange={(e) => {
                     if (row.idx != null) {
                       const v = e.target.value;
