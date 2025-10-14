@@ -27,29 +27,28 @@ export default function StatusButtons(_props: any) {
     onStatusChange,
   } = _props as StatusButtonsProps;
 
-  // Neutral until selected; stronger “pressed” state
+  // Neutral pill; selected state adds a colored ring (outline)
   const base =
     "px-3 py-1 rounded text-xs font-bold mr-2 mb-2 transition-colors duration-150 " +
-    "bg-zinc-700 text-zinc-200 hover:bg-zinc-600 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-zinc-400 active:brightness-110 active:scale-[.98]";
+    "bg-zinc-700 text-zinc-200 hover:bg-zinc-600 focus:outline-none active:brightness-110 active:scale-[.98]";
 
-  const selectedRing = " ring-2 ring-offset-1";
-  const selectedText = " text-white";
-
-  const cls = (key: InspectionItemStatus) => {
+  const ringFor = (key: InspectionItemStatus) => {
     const isSel = item.status === key;
-
+    if (!isSel) return "";
     switch (key) {
       case "ok":
-        return base + (isSel ? " bg-green-600 hover:bg-green-600" + selectedRing + selectedText : "");
+        return " ring-2 ring-green-500 ring-offset-2 ring-offset-zinc-900";
       case "fail":
-        return base + (isSel ? " bg-red-600 hover:bg-red-600" + selectedRing + selectedText : "");
+        return " ring-2 ring-red-500 ring-offset-2 ring-offset-zinc-900";
       case "recommend":
-        return base + (isSel ? " bg-yellow-400 hover:bg-yellow-400 text-black ring-2 ring-offset-1" : "");
+        return " ring-2 ring-yellow-400 ring-offset-2 ring-offset-zinc-900";
       case "na":
       default:
-        return base + (isSel ? " bg-zinc-500 hover:bg-zinc-500" + selectedRing + selectedText : "");
+        return " ring-2 ring-blue-500 ring-offset-2 ring-offset-zinc-900";
     }
   };
+
+  const cls = (key: InspectionItemStatus) => base + ringFor(key);
 
   const handleClick = (status: InspectionItemStatus) => {
     updateItem(sectionIndex, itemIndex, { status });
