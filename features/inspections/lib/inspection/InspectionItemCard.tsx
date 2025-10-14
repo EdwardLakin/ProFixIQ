@@ -58,54 +58,72 @@ export default function InspectionItemCard(_props: any) {
     name.includes("wheel torque") || name.includes("park lining");
 
   return (
-    <div className="mb-4 rounded-md bg-white/10 p-4 shadow-md">
-      <h3 className="mb-2 text-lg font-bold text-white">
-        {item.item ?? item.name}
-      </h3>
+    <div className="rounded-md border border-zinc-800 bg-zinc-950 p-3">
+      {/* Compact two-column layout: left = title + controls, right = single bordered notes */}
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="min-w-0">
+          <h3 className="truncate text-base font-semibold text-white">
+            {item.item ?? item.name}
+          </h3>
 
-      {isMeasurementItem ? (
-        <div className="mb-3 flex gap-2">
-          <input
-            type="number"
-            value={item.value ?? ""}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-              onUpdateValue?.(sectionIndex, itemIndex, e.target.value)
-            }
-            placeholder="Value"
-            className="w-24 rounded bg-zinc-800 px-2 py-1 text-white"
-          />
-          <input
-            type="text"
-            value={item.unit ?? ""}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-              onUpdateUnit?.(sectionIndex, itemIndex, e.target.value)
-            }
-            placeholder="Unit"
-            className="w-20 rounded bg-zinc-800 px-2 py-1 text-white"
-          />
+          {isMeasurementItem ? (
+            <div className="mt-2 flex gap-2">
+              <input
+                type="number"
+                value={item.value ?? ""}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  onUpdateValue?.(sectionIndex, itemIndex, e.target.value)
+                }
+                placeholder="Value"
+                className="w-24 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-white"
+              />
+              <input
+                type="text"
+                value={item.unit ?? ""}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  onUpdateUnit?.(sectionIndex, itemIndex, e.target.value)
+                }
+                placeholder="Unit"
+                className="w-20 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-white"
+              />
+            </div>
+          ) : (
+            <StatusButtons
+              item={item}
+              sectionIndex={sectionIndex}
+              itemIndex={itemIndex}
+              updateItem={(
+                secIdx: number,
+                itmIdx: number,
+                updates: Partial<InspectionItem>,
+              ) => {
+                if (updates.status) {
+                  onUpdateStatus(secIdx, itmIdx, updates.status);
+                }
+              }}
+              onStatusChange={(status: InspectionItemStatus) =>
+                onUpdateStatus(sectionIndex, itemIndex, status)
+              }
+            />
+          )}
         </div>
-      ) : (
-        <StatusButtons
-          item={item}
-          sectionIndex={sectionIndex}
-          itemIndex={itemIndex}
-          updateItem={(
-            secIdx: number,
-            itmIdx: number,
-            updates: Partial<InspectionItem>,
-          ) => {
-            if (updates.status) {
-              onUpdateStatus(secIdx, itmIdx, updates.status);
-            }
-          }}
-          onStatusChange={(status: InspectionItemStatus) =>
-            onUpdateStatus(sectionIndex, itemIndex, status)
-          }
-        />
-      )}
+
+        {showNotes && (
+          <div className="min-w-0">
+            <textarea
+              className="h-[44px] w-full resize-y rounded border border-zinc-700 bg-black/60 px-2 py-2 text-white outline-none placeholder:text-zinc-400"
+              placeholder="Enter notes..."
+              value={item.notes || ""}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                onUpdateNote(sectionIndex, itemIndex, e.target.value)
+              }
+            />
+          </div>
+        )}
+      </div>
 
       {showPhotos && (item.status === "fail" || item.status === "recommend") && (
-        <div className="mt-4">
+        <div className="mt-2">
           <PhotoUploadButton
             photoUrls={item.photoUrls ?? []}
             onChange={(urls: string[]) => {
@@ -120,19 +138,6 @@ export default function InspectionItemCard(_props: any) {
               ))}
             </div>
           )}
-        </div>
-      )}
-
-      {showNotes && (
-        <div className="mt-2 w-full rounded border border-gray-600 bg-black p-2">
-          <textarea
-            className="w-full bg-transparent text-white outline-none"
-            placeholder="Enter notes..."
-            value={item.notes || ""}
-            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-              onUpdateNote(sectionIndex, itemIndex, e.target.value)
-            }
-          />
         </div>
       )}
     </div>

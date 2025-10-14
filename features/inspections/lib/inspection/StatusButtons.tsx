@@ -27,10 +27,10 @@ export default function StatusButtons(_props: any) {
     onStatusChange,
   } = _props as StatusButtonsProps;
 
-  // Neutral until selected
+  // Neutral until selected; stronger “pressed” state
   const base =
     "px-3 py-1 rounded text-xs font-bold mr-2 mb-2 transition-colors duration-150 " +
-    "bg-zinc-700 text-zinc-200 hover:bg-zinc-600 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-zinc-400";
+    "bg-zinc-700 text-zinc-200 hover:bg-zinc-600 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-zinc-400 active:brightness-110 active:scale-[.98]";
 
   const selectedRing = " ring-2 ring-offset-1";
   const selectedText = " text-white";
@@ -40,36 +40,14 @@ export default function StatusButtons(_props: any) {
 
     switch (key) {
       case "ok":
-        // brighter green when selected
-        return (
-          base +
-          (isSel
-            ? " bg-green-600 hover:bg-green-600" + selectedRing + selectedText
-            : "")
-        );
+        return base + (isSel ? " bg-green-600 hover:bg-green-600" + selectedRing + selectedText : "");
       case "fail":
-        return (
-          base +
-          (isSel
-            ? " bg-red-600 hover:bg-red-600" + selectedRing + selectedText
-            : "")
-        );
+        return base + (isSel ? " bg-red-600 hover:bg-red-600" + selectedRing + selectedText : "");
       case "recommend":
-        // readable yellow w/ black text when selected
-        return (
-          base +
-          (isSel
-            ? " bg-yellow-400 hover:bg-yellow-400 text-black ring-2 ring-offset-1"
-            : "")
-        );
+        return base + (isSel ? " bg-yellow-400 hover:bg-yellow-400 text-black ring-2 ring-offset-1" : "");
       case "na":
       default:
-        return (
-          base +
-          (isSel
-            ? " bg-zinc-500 hover:bg-zinc-500" + selectedRing + selectedText
-            : "")
-        );
+        return base + (isSel ? " bg-zinc-500 hover:bg-zinc-500" + selectedRing + selectedText : "");
     }
   };
 

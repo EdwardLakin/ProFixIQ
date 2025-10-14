@@ -73,33 +73,36 @@ export default function SectionDisplay(_props: any) {
         </button>
 
         <div className="flex items-center gap-2">
-          <span className="hidden text-xs text-zinc-400 md:inline" style={{ fontFamily: "Roboto, system-ui, sans-serif" }}>
+          <span
+            className="hidden text-xs text-zinc-400 md:inline"
+            style={{ fontFamily: "Roboto, system-ui, sans-serif" }}
+          >
             {stats.ok} OK · {stats.fail} FAIL · {stats.na} NA · {stats.recommend} REC · {stats.unset} —
           </span>
           <div className="flex gap-1">
             <button
-              className="rounded bg-zinc-700 px-2 py-1 text-xs text-white hover:bg-green-600"
+              className="rounded bg-zinc-700 px-2 py-1 text-xs text-white hover:bg-green-600 active:brightness-110"
               onClick={() => markAll("ok")}
               title="Mark all OK"
             >
               All OK
             </button>
             <button
-              className="rounded bg-zinc-700 px-2 py-1 text-xs text-white hover:bg-red-600"
+              className="rounded bg-zinc-700 px-2 py-1 text-xs text-white hover:bg-red-600 active:brightness-110"
               onClick={() => markAll("fail")}
               title="Mark all FAIL"
             >
               All FAIL
             </button>
             <button
-              className="rounded bg-zinc-700 px-2 py-1 text-xs text-white hover:bg-yellow-600"
+              className="rounded bg-zinc-700 px-2 py-1 text-xs text-white hover:bg-yellow-600 active:brightness-110"
               onClick={() => markAll("na")}
               title="Mark all NA"
             >
               All NA
             </button>
             <button
-              className="rounded bg-zinc-700 px-2 py-1 text-xs text-white hover:bg-blue-600"
+              className="rounded bg-zinc-700 px-2 py-1 text-xs text-white hover:bg-blue-600 active:brightness-110"
               onClick={() => markAll("recommend")}
               title="Mark all Recommend"
             >
@@ -111,7 +114,7 @@ export default function SectionDisplay(_props: any) {
 
       {/* Body */}
       {open && (
-        <div className="space-y-4 p-3">
+        <div className="space-y-3 p-3">
           {section.items.map((item, itemIndex) => {
             const key =
               (item.item ?? item.name ?? `item-${sectionIndex}-${itemIndex}`) +

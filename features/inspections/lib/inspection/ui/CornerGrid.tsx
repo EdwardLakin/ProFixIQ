@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useInspectionForm } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import type { InspectionItem } from "@inspections/lib/inspection/types";
 
@@ -12,110 +12,146 @@ type Props = {
 };
 
 /**
- * AirCornerGrid
- * - Renders each AXLE as a header (e.g., "Steer 1", "Drive 1")
- * - Under each axle, shows **two cards**: Left and Right
- * - Each card contains all metrics (Tire Pressure, Tread Depth, Lining/Shoe, Drum/Rotor, Push Rod)
- * - Uses existing items (labels like "Steer 1 Left Tread Depth", etc.)
+ * CornerGrid (Hydraulic)
+ * - Always renders 4 corners: LF, RF, LR, RR (also accepts "Left Front", etc.)
+ * - Each corner card contains its metrics (Tire Pressure, Tread, Pad Thickness, Rotor, etc.)
+ * - Debounced inputs buffer locally and sync to form state after a short delay.
  */
-export default function AirCornerGrid({ sectionIndex, items, unitHint }: Props) {
+export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
   const { updateItem } = useInspectionForm();
 
-  type Side = "Left" | "Right";
-  const labelRe = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
+  // Accept both abbreviations and full corner names
+  type CornerKey = "LF" | "RF" | "LR" | "RR";
+  const abbrevRE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
+  const fullRE = /^(?<corner>(Left|Right)\s+(Front|Rear))\s+(?<metric>.+)$/i;
 
-  type MetricCell = {
+  const normalizeCorner = (raw: string): CornerKey | null => {
+    const s = raw.toLowerCase();
+    if (s.startsWith("lf") || s === "left front") return "LF";
+    if (s.startsWith("rf") || s === "right front") return "RF";
+    if (s.startsWith("lr") || s === "left rear") return "LR";
+    if (s.startsWith("rr") || s === "right rear") return "RR";
+    return null;
+  };
+
+  type Row = {
+    idx: number;
     metric: string;
-    idx?: number;
-    val?: string | number | null;
+    labelForHint: string;
     unit?: string | null;
-    labelForHint: string; // full label for unitHint lookup
   };
-  type SideCard = {
-    side: Side;
-    rows: MetricCell[];
-  };
-  type AxleGroup = { axle: string; left: SideCard; right: SideCard };
 
+  type CornerGroup = {
+    corner: CornerKey;
+    rows: Row[];
+  };
+
+  // Order metrics in a sensible way for hydraulic checks
   const metricOrder = [
     "Tire Pressure",
-    "Tread Depth",
-    "Lining/Shoe Thickness",
-    "Drum/Rotor Condition",
-    "Push Rod Travel",
-    "Wheel Torque Inner",
-    "Wheel Torque Outer",
+    "Tire Tread",
+    "Brake Pad",
+    "Rotor",
+    "Rotor Condition",
+    "Rotor Thickness",
+    "Wheel Torque",
   ];
+  const orderIndex = (m: string) => {
+    const i = metricOrder.findIndex(x => m.toLowerCase().includes(x.toLowerCase()));
+    return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+  };
 
-  const groups: AxleGroup[] = useMemo(() => {
-    // Map: axle -> side -> metric -> cell
-    const byAxle = new Map<
-      string,
-      { Left: Map<string, MetricCell>; Right: Map<string, MetricCell> }
-    >();
+  // Group items into the 4 corners
+  const groups: CornerGroup[] = useMemo(() => {
+    const base: Record<CornerKey, Row[]> = { LF: [], RF: [], LR: [], RR: [] };
 
     items.forEach((it, idx) => {
       const label = it.item ?? "";
-      const m = label.match(labelRe);
-      if (!m?.groups) return;
+      let corner: CornerKey | null = null;
+      let metric = "";
 
-      const axle = m.groups.axle.trim();
-      const side = m.groups.side as Side;
-      const metric = m.groups.metric.trim();
+      const m1 = label.match(abbrevRE);
+      if (m1?.groups) {
+        corner = normalizeCorner(m1.groups.corner);
+        metric = m1.groups.metric.trim();
+      } else {
+        const m2 = label.match(fullRE);
+        if (m2?.groups) {
+          corner = normalizeCorner(m2.groups.corner);
+          metric = m2.groups.metric.trim();
+        }
+      }
+      if (!corner) return;
 
-      const bucket =
-        byAxle.get(axle) ??
-        { Left: new Map<string, MetricCell>(), Right: new Map<string, MetricCell>() };
-
-      const map = bucket[side];
-      const existing =
-        map.get(metric) ??
-        ({
-          metric,
-          labelForHint: label,
-        } as MetricCell);
-
-      existing.idx = idx;
-      existing.val = it.value ?? "";
-      // prefer item.unit; else unitHint
-      existing.unit = it.unit ?? (unitHint ? unitHint(label) : "");
-
-      map.set(metric, existing);
-      byAxle.set(axle, bucket);
+      base[corner].push({
+        idx,
+        metric,
+        labelForHint: label,
+        unit: it.unit ?? (unitHint ? unitHint(label) : ""),
+      });
     });
 
-    // Convert into stable arrays and sort by metricOrder
-    const orderIndex = (m: string) => {
-      const base = metricOrder.findIndex((x) =>
-        m.toLowerCase().includes(x.toLowerCase()),
-      );
-      return base === -1 ? Number.MAX_SAFE_INTEGER : base;
-    };
-
-    return Array.from(byAxle.entries()).map(([axle, sides]) => {
-      const leftRows = Array.from(sides.Left.values()).sort(
-        (a, b) => orderIndex(a.metric) - orderIndex(b.metric),
-      );
-      const rightRows = Array.from(sides.Right.values()).sort(
-        (a, b) => orderIndex(a.metric) - orderIndex(b.metric),
-      );
-      return {
-        axle,
-        left: { side: "Left", rows: leftRows },
-        right: { side: "Right", rows: rightRows },
-      };
+    // Sort rows within each corner
+    const build = (corner: CornerKey): CornerGroup => ({
+      corner,
+      rows: base[corner].sort((a, b) => orderIndex(a.metric) - orderIndex(b.metric)),
     });
+
+    return [build("LF"), build("RF"), build("LR"), build("RR")];
   }, [items, unitHint]);
 
-  const Card = ({ side, rows }: { side: Side; rows: MetricCell[] }) => (
+  /** ------------------------ Debounced input buffer ------------------------ */
+  const [localVals, setLocalVals] = useState<Record<number, string>>(() => {
+    const init: Record<number, string> = {};
+    items.forEach((it, i) => (init[i] = String(it.value ?? "")));
+    return init;
+  });
+
+  // keep buffer in sync if items list changes externally
+  useEffect(() => {
+    setLocalVals(prev => {
+      const next: Record<number, string> = { ...prev };
+      items.forEach((it, i) => {
+        const want = String(it.value ?? "");
+        if (next[i] !== want) next[i] = want;
+      });
+      return next;
+    });
+  }, [items]);
+
+  const timersRef = useRef<Record<number, number | NodeJS.Timeout>>({});
+
+  const setValueDebounced = (itemIdx: number, value: string) => {
+    setLocalVals(v => ({ ...v, [itemIdx]: value }));
+    const t = timersRef.current[itemIdx];
+    if (t) clearTimeout(t as number);
+
+    timersRef.current[itemIdx] = setTimeout(() => {
+      updateItem(sectionIndex, itemIdx, { value });
+    }, 250);
+  };
+
+  /** ------------------------------- UI ------------------------------------ */
+
+  const CornerTitle: Record<CornerKey, string> = {
+    LF: "Left Front",
+    RF: "Right Front",
+    LR: "Left Rear",
+    RR: "Right Rear",
+  };
+
+  const CornerCard = ({ group }: { group: CornerGroup }) => (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
-      <div className="mb-2 font-semibold text-orange-400" style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}>
-        {side}
+      <div
+        className="mb-2 font-semibold text-orange-400"
+        style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+      >
+        {CornerTitle[group.corner]}
       </div>
 
       <div className="space-y-3">
-        {rows.map((row) => (
-          <div key={row.metric} className="rounded bg-zinc-950/70 p-3">
+        {group.rows.map((row) => (
+          <div key={`${group.corner}-${row.idx}-${row.metric}`} className="rounded bg-zinc-950/70 p-3">
             <div
               className="mb-2 text-sm font-semibold text-orange-300"
               style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
@@ -127,17 +163,12 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint }: Props) 
               <input
                 className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white"
                 style={{ fontFamily: "Roboto, system-ui, sans-serif" }}
-                value={String(row.val ?? "")}
-                onChange={(e) => {
-                  if (row.idx != null) {
-                    updateItem(sectionIndex, row.idx, { value: e.target.value });
-                  }
-                }}
+                value={localVals[row.idx] ?? ""}
+                onChange={(e) => setValueDebounced(row.idx, e.target.value)}
                 placeholder="Value"
               />
               <div className="text-center text-xs text-zinc-400">
-                {row.unit ??
-                  (unitHint ? unitHint(row.labelForHint) : "")}
+                {row.unit ?? (unitHint ? unitHint(row.labelForHint) : "")}
               </div>
             </div>
           </div>
@@ -146,25 +177,17 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint }: Props) 
     </div>
   );
 
+  // Layout: two cards across for fronts, then rears
   return (
     <div className="grid gap-4">
-      {groups.map((group) => (
-        <div key={group.axle} className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
-          {/* Axle header */}
-          <div
-            className="mb-3 text-lg font-semibold text-orange-400"
-            style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-          >
-            {group.axle}
-          </div>
-
-          {/* Left / Right cards */}
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card side="Left" rows={group.left.rows} />
-            <Card side="Right" rows={group.right.rows} />
-          </div>
-        </div>
-      ))}
+      <div className="grid gap-4 md:grid-cols-2">
+        <CornerCard group={groups[0]} /> {/* LF */}
+        <CornerCard group={groups[1]} /> {/* RF */}
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <CornerCard group={groups[2]} /> {/* LR */}
+        <CornerCard group={groups[3]} /> {/* RR */}
+      </div>
     </div>
   );
 }
