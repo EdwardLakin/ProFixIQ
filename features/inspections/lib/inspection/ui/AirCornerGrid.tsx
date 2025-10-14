@@ -9,9 +9,17 @@ type Props = {
   items: InspectionItem[];
   unitHint?: (label: string) => string;
   onAddAxle?: (axleLabel: string) => void;
+  /** Show the “(kPa)” hint next to psi on tire-pressure rows */
+  showKpaHint?: boolean;
 };
 
-export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle }: Props) {
+export default function AirCornerGrid({
+  sectionIndex,
+  items,
+  unitHint,
+  onAddAxle,
+  showKpaHint = true,
+}: Props) {
   const { updateItem } = useInspectionForm();
 
   type Side = "Left" | "Right";
@@ -67,7 +75,7 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
     }));
   }, [items, unitHint]);
 
-  // Collapse + counters (updated only on commit)
+  // Collapse + counters (update only on commit)
   const [open, setOpen] = useState(true);
   const [filledMap, setFilledMap] = useState<Record<number, boolean>>(() => {
     const m: Record<number, boolean> = {};
@@ -90,7 +98,7 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
     if (isPressure) {
       return (
         <div className="text-right text-xs text-zinc-400">
-          psi <span className="ml-1 text-[10px] text-zinc-500">(kPa)</span>
+          psi{showKpaHint ? <span className="ml-1 text-[10px] text-zinc-500">(kPa)</span> : null}
         </div>
       );
     }

@@ -9,9 +9,11 @@ type Props = {
   items: InspectionItem[];
   /** Optional hint used when a row/unit is blank */
   unitHint?: (label: string) => string;
+  /** Show the “(kPa)” hint next to psi on tire-pressure rows */
+  showKpaHint?: boolean;
 };
 
-export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
+export default function CornerGrid({ sectionIndex, items, unitHint, showKpaHint = true }: Props) {
   const { updateItem } = useInspectionForm();
 
   type CornerKey = "LF" | "RF" | "LR" | "RR";
@@ -108,7 +110,7 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
     if (isPressure) {
       return (
         <div className="text-right text-xs text-zinc-400">
-          psi <span className="ml-1 text-[10px] text-zinc-500">(kPa)</span>
+          psi{showKpaHint ? <span className="ml-1 text-[10px] text-zinc-500">(kPa)</span> : null}
         </div>
       );
     }
