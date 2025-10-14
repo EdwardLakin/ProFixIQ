@@ -1,6 +1,8 @@
-import { InspectionItem, InspectionItemStatus } from "@inspections/lib/inspection/types";
+"use client";
 
-interface StatusButtonsProps {
+import type { InspectionItem, InspectionItemStatus } from "@inspections/lib/inspection/types";
+
+type StatusButtonsProps = {
   item: InspectionItem;
   sectionIndex: number;
   itemIndex: number;
@@ -10,15 +12,23 @@ interface StatusButtonsProps {
     updates: Partial<InspectionItem>,
   ) => void;
   onStatusChange: (status: InspectionItemStatus) => void;
-}
+};
 
-export default function StatusButtons({
-  item,
-  sectionIndex,
-  itemIndex,
-  updateItem,
-  onStatusChange,
-}: StatusButtonsProps) {
+/**
+ * NOTE:
+ * To avoid Next.js ts(71007) “Props must be serializable…” in Client files,
+ * accept `any` at the export boundary and cast immediately to a strong type.
+ */
+export default function StatusButtons(_props: any) {
+  const {
+    item,
+    sectionIndex,
+    itemIndex,
+    updateItem,
+    onStatusChange,
+  } = _props as StatusButtonsProps;
+
+  // grey-until-selected
   const base = "px-3 py-1 rounded font-bold text-white mr-2 mb-2 transition duration-200";
   const selected = item.status;
 
@@ -37,7 +47,6 @@ export default function StatusButtons({
   };
 
   const handleClick = (status: InspectionItemStatus) => {
-    // Use both callbacks so they’re not “unused” and state updates propagate
     updateItem(sectionIndex, itemIndex, { status });
     onStatusChange(status);
   };

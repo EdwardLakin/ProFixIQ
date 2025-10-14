@@ -30,6 +30,9 @@ import { SaveInspectionButton } from "@inspections/components/inspection/SaveIns
 import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
 import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicleHeader";
 
+// ✅ NEW IMPORT (as requested)
+import { buildAirAxleItems } from "@inspections/lib/inspection/builders/addAxleHelpers";
+
 /* -------------------------------------------------------------------------- */
 /* Web Speech — minimal local typings (no `any`)                               */
 /* -------------------------------------------------------------------------- */
@@ -494,6 +497,11 @@ export default function Maintenance50AirPage(): JSX.Element {
                 sectionIndex={sectionIndex}
                 items={section.items}
                 unitHint={(label: string) => unitForAir(label, unit)}
+                // 👇 NEW: hook Add-Axle into the page state
+                onAddAxle={(axleLabel: string) => {
+                  const extra = buildAirAxleItems(axleLabel);
+                  updateSection(sectionIndex, { items: [...section.items, ...extra] });
+                }}
               />
             ) : (
               <SectionDisplay
