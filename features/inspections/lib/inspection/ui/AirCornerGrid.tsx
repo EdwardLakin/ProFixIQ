@@ -9,17 +9,9 @@ type Props = {
   items: InspectionItem[];
   unitHint?: (label: string) => string;
   onAddAxle?: (axleLabel: string) => void;
-  /** Show the “(kPa)” hint next to psi on tire-pressure rows */
-  showKpaHint?: boolean;
 };
 
-export default function AirCornerGrid({
-  sectionIndex,
-  items,
-  unitHint,
-  onAddAxle,
-  showKpaHint = true,
-}: Props) {
+export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle }: Props) {
   const { updateItem } = useInspectionForm();
 
   type Side = "Left" | "Right";
@@ -75,11 +67,21 @@ export default function AirCornerGrid({
     }));
   }, [items, unitHint]);
 
-  // Collapse + counters (update only on commit)
+  // Collapse + counters (updated only on commit)
   const [open, setOpen] = useState(true);
   const [filledMap, setFilledMap] = useState<Record<number, boolean>>(() => {
     const m: Record<number, boolean> = {};
     items.forEach((it, i) => (m[i] = !!String(it.value ?? "").trim()));
+    return m;
+  });
+
+  // kPa hint toggle (per grid)
+  const [showKpaHint, setShowKpaHint] = useState<boolean>(true);
+
+  // live psi text while typing (for the hint only; does NOT control the input)
+  const [livePsi, setLivePsi] = useState<Record<number, string>>(() => {
+    const m: Record<number, string> = {};
+    items.forEach((it, i) => (m[i] = String(it.value ?? "")));
     return m;
   });
 
@@ -89,28 +91,33 @@ export default function AirCornerGrid({
     updateItem(sectionIndex, idx, { value });
     const has = value.trim().length > 0;
     setFilledMap((p) => (p[idx] === has ? p : { ...p, [idx]: has }));
+    setLivePsi((p) => (p[idx] === value ? p : { ...p, [idx]: value }));
   };
 
   const count = (cells: MetricCell[]) => cells.reduce((a, r) => a + (filledMap[r.idx] ? 1 : 0), 0);
 
-  const UnitCell = ({ metric, fallback }: { metric: string; fallback: string }) => {
-    const isPressure = /tire\s*pressure/i.test(metric);
-    if (isPressure) {
-      return (
-        <div className="text-right text-xs text-zinc-400">
-          psi{showKpaHint ? <span className="ml-1 text-[10px] text-zinc-500">(kPa)</span> : null}
-        </div>
-      );
+  const psiToKpa = (psiStr: string): number | null => {
+    const n = parseFloat(psiStr);
+    if (!isFinite(n)) return null;
+    return Math.round(n * 6.894757);
+  };
+
+  const UnitWithHint = ({ row }: { row: MetricCell }) => {
+    const isPressure = row.metric.toLowerCase().includes("tire pressure");
+    if (!isPressure) {
+      return <span className="text-right text-xs text-zinc-400">{row.unit ?? (unitHint ? unitHint(row.fullLabel) : "")}</span>;
     }
-    return <div className="text-right text-xs text-zinc-400">{fallback}</div>;
+    const kpa = showKpaHint ? psiToKpa(livePsi[row.idx] ?? "") : null;
+    return (
+      <span className="text-right text-xs text-zinc-400">
+        psi {showKpaHint && kpa != null && <span className="ml-1 text-zinc-500">({kpa} kPa)</span>}
+      </span>
+    );
   };
 
   const SideCardView = ({ title, cells }: { title: string; cells: MetricCell[] }) => (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
-      <div
-        className="mb-2 font-semibold text-orange-400"
-        style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-      >
+      <div className="mb-2 font-semibold text-orange-400" style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}>
         {title}
       </div>
 
@@ -136,16 +143,19 @@ export default function AirCornerGrid({
                   autoCapitalize="off"
                   spellCheck={false}
                   inputMode="decimal"
+                  onInput={(e) => {
+                    // update live psi preview for kPa hint without controlling the input
+                    const v = (e.currentTarget as HTMLInputElement).value;
+                    setLivePsi((p) => (p[row.idx] === v ? p : { ...p, [row.idx]: v }));
+                  }}
                   onBlur={(e) => commit(row.idx, e.currentTarget)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
                   }}
                 />
-
-                <UnitCell
-                  metric={row.metric}
-                  fallback={row.unit ?? (unitHint ? unitHint(row.fullLabel) : "")}
-                />
+                <div className="text-right text-xs text-zinc-400">
+                  <UnitWithHint row={row} />
+                </div>
               </div>
             </div>
           ))}
@@ -158,10 +168,7 @@ export default function AirCornerGrid({
     <div className="grid gap-3">
       {/* Toolbar */}
       <div className="flex items-center justify-end gap-3 px-1">
-        <div
-          className="hidden text-xs text-zinc-400 md:block"
-          style={{ fontFamily: "Roboto, system-ui, sans-serif" }}
-        >
+        <div className="hidden text-xs text-zinc-400 md:block" style={{ fontFamily: "Roboto, system-ui, sans-serif" }}>
           {groups.map((g, i) => {
             const leftFilled = count(g.left);
             const rightFilled = count(g.right);
@@ -175,6 +182,18 @@ export default function AirCornerGrid({
             );
           })}
         </div>
+
+        {/* kPa hint toggle */}
+        <label className="flex items-center gap-2 text-xs text-zinc-400">
+          <input
+            type="checkbox"
+            className="h-3 w-3 accent-orange-500"
+            checked={showKpaHint}
+            onChange={(e) => setShowKpaHint(e.target.checked)}
+          />
+          kPa hint
+        </label>
+
         <button
           onClick={() => setOpen((v) => !v)}
           className="rounded bg-zinc-700 px-2 py-1 text-xs text-white hover:bg-zinc-600"
@@ -189,10 +208,7 @@ export default function AirCornerGrid({
 
       {groups.map((g) => (
         <div key={g.axle} className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
-          <div
-            className="mb-3 text-lg font-semibold text-orange-400"
-            style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-          >
+          <div className="mb-3 text-lg font-semibold text-orange-400" style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}>
             {g.axle}
           </div>
           <div className="grid gap-4 md:grid-cols-2">
