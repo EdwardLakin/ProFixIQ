@@ -41,7 +41,7 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
   const orderIndex = (m: string) => {
     const i = metricOrder.findIndex((x) => m.toLowerCase().includes(x.toLowerCase()));
     return i === -1 ? Number.MAX_SAFE_INTEGER : i;
-    };
+  };
 
   const groups: Group[] = useMemo(() => {
     const base: Record<CornerKey, Row[]> = { LF: [], RF: [], LR: [], RR: [] };
@@ -80,7 +80,6 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
     return [build("LF"), build("RF"), build("LR"), build("RR")];
   }, [items, unitHint]);
 
-  /** Uncontrolled inputs + lightweight filled counters */
   const [open, setOpen] = useState(true);
   const [filledMap, setFilledMap] = useState<Record<number, boolean>>(() => {
     const m: Record<number, boolean> = {};
@@ -88,23 +87,12 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
     return m;
   });
 
-  const markFilled = (idx: number, el: HTMLInputElement | null) => {
-    if (!el) return;
-    const has = el.value.trim().length > 0;
-    setFilledMap((p) => (p[idx] === has ? p : { ...p, [idx]: has }));
-  };
-
   const commit = (idx: number, el: HTMLInputElement | null) => {
     if (!el) return;
     const value = el.value;
     updateItem(sectionIndex, idx, { value });
-    markFilled(idx, el);
-  };
-
-  const countsFor = (rows: Row[]) => {
-    const total = rows.length;
-    const filled = rows.reduce((a, r) => (filledMap[r.idx] ? a + 1 : a), 0);
-    return { filled, total };
+    const has = value.trim().length > 0;
+    setFilledMap((p) => (p[idx] === has ? p : { ...p, [idx]: has }));
   };
 
   const CornerTitle: Record<CornerKey, string> = {
@@ -130,8 +118,10 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
           className="w-40 rounded border border-gray-600 bg-black px-2 py-1 text-sm text-white outline-none placeholder:text-zinc-400"
           placeholder="Value"
           autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
           inputMode="decimal"
-          onInput={(e) => markFilled(row.idx, e.currentTarget)}
           onBlur={(e) => commit(row.idx, e.currentTarget)}
           onKeyDown={(e) => {
             if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
@@ -160,16 +150,19 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
     </div>
   );
 
+  const tally = (rows: Row[]) => rows.reduce((a, r) => a + (filledMap[r.idx] ? 1 : 0), 0);
+
   return (
     <div className="grid gap-3">
       <div className="flex items-center justify-end gap-3 px-1">
         <div className="hidden text-xs text-zinc-400 md:block" style={{ fontFamily: "Roboto, system-ui, sans-serif" }}>
           {(["LF", "RF", "LR", "RR"] as CornerKey[]).map((k, i) => {
             const g = groups.find((x) => x.corner === k)!;
-            const c = countsFor(g.rows);
+            const filled = tally(g.rows);
+            const total = g.rows.length;
             return (
               <span key={k}>
-                {k} {c.filled}/{c.total}
+                {k} {filled}/{total}
                 {i < 3 ? "  |  " : ""}
               </span>
             );

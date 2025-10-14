@@ -23,11 +23,7 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
     unit?: string | null;
     fullLabel: string;
   };
-  type AxleGroup = {
-    axle: string;
-    left: MetricCell[];
-    right: MetricCell[];
-  };
+  type AxleGroup = { axle: string; left: MetricCell[]; right: MetricCell[] };
 
   const metricOrder = [
     "Tire Pressure",
@@ -43,7 +39,6 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
     return i === -1 ? Number.MAX_SAFE_INTEGER : i;
   };
 
-  // Group items into axles/sides
   const groups: AxleGroup[] = useMemo(() => {
     const byAxle = new Map<string, { Left: MetricCell[]; Right: MetricCell[] }>();
 
@@ -72,10 +67,7 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
     }));
   }, [items, unitHint]);
 
-  /** ----------------------------------------------------------------------
-   * Uncontrolled inputs: we only read/commit on blur/Enter.
-   * Keep a light filled map so counters react while typing.
-   * --------------------------------------------------------------------- */
+  // Collapse + counters (updated only on commit)
   const [open, setOpen] = useState(true);
   const [filledMap, setFilledMap] = useState<Record<number, boolean>>(() => {
     const m: Record<number, boolean> = {};
@@ -83,25 +75,16 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
     return m;
   });
 
-  const markFilled = (idx: number, el: HTMLInputElement | null) => {
-    if (!el) return;
-    const has = el.value.trim().length > 0;
-    setFilledMap((p) => (p[idx] === has ? p : { ...p, [idx]: has }));
-  };
-
   const commit = (idx: number, el: HTMLInputElement | null) => {
     if (!el) return;
     const value = el.value;
     updateItem(sectionIndex, idx, { value });
-    // also sync filled state (important if user clears the field and blurs)
-    markFilled(idx, el);
+    const has = value.trim().length > 0;
+    setFilledMap((p) => (p[idx] === has ? p : { ...p, [idx]: has }));
   };
 
-  const countsFor = (cells: MetricCell[]) => {
-    const total = cells.length;
-    const filled = cells.reduce((a, r) => (filledMap[r.idx] ? a + 1 : a), 0);
-    return { filled, total };
-  };
+  const count = (cells: MetricCell[]) =>
+    cells.reduce((a, r) => a + (filledMap[r.idx] ? 1 : 0), 0);
 
   const SideCardView = ({ title, cells }: { title: string; cells: MetricCell[] }) => (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
@@ -127,8 +110,10 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
                   className="w-40 rounded border border-gray-600 bg-black px-2 py-1 text-sm text-white outline-none placeholder:text-zinc-400"
                   placeholder="Value"
                   autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
                   inputMode="decimal"
-                  onInput={(e) => markFilled(row.idx, e.currentTarget)}
                   onBlur={(e) => commit(row.idx, e.currentTarget)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
@@ -151,10 +136,10 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
       <div className="flex items-center justify-end gap-3 px-1">
         <div className="hidden text-xs text-zinc-400 md:block" style={{ fontFamily: "Roboto, system-ui, sans-serif" }}>
           {groups.map((g, i) => {
-            const left = countsFor(g.left);
-            const right = countsFor(g.right);
-            const filled = left.filled + right.filled;
-            const total = left.total + right.total;
+            const leftFilled = count(g.left);
+            const rightFilled = count(g.right);
+            const filled = leftFilled + rightFilled;
+            const total = g.left.length + g.right.length;
             return (
               <span key={g.axle}>
                 {g.axle} {filled}/{total}
@@ -173,10 +158,8 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
         </button>
       </div>
 
-      {/* Add axle (optional) */}
       {onAddAxle && <AddAxlePicker groups={groups} onAddAxle={onAddAxle} />}
 
-      {/* Axle cards */}
       {groups.map((g) => (
         <div key={g.axle} className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
           <div className="mb-3 text-lg font-semibold text-orange-400" style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}>
@@ -192,7 +175,7 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
   );
 }
 
-/** Inline axle picker (unchanged behavior) */
+/** Inline axle picker (unchanged) */
 function AddAxlePicker({
   groups,
   onAddAxle,
