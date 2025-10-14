@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useInspectionForm } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import type { InspectionItem } from "@inspections/lib/inspection/types";
 
@@ -19,13 +19,15 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
 
   type MetricCell = {
     metric: string;
-    idx?: number;
-    val?: string | number | null;
+    idx: number;
     unit?: string | null;
     fullLabel: string;
   };
-  type SideCard = { side: Side; rows: MetricCell[] };
-  type AxleGroup = { axle: string; left: SideCard; right: SideCard };
+  type AxleGroup = {
+    axle: string;
+    left: MetricCell[];
+    right: MetricCell[];
+  };
 
   const metricOrder = [
     "Tire Pressure",
@@ -41,8 +43,9 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
     return i === -1 ? Number.MAX_SAFE_INTEGER : i;
   };
 
+  // Group items into axles/sides
   const groups: AxleGroup[] = useMemo(() => {
-    const byAxle = new Map<string, { Left: Map<string, MetricCell>; Right: Map<string, MetricCell> }>();
+    const byAxle = new Map<string, { Left: MetricCell[]; Right: MetricCell[] }>();
 
     items.forEach((it, idx) => {
       const label = it.item ?? "";
@@ -50,92 +53,66 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
       if (!m?.groups) return;
 
       const axle = m.groups.axle.trim();
-      const side = m.groups.side as Side;
+      const side = (m.groups.side as Side) || "Left";
       const metric = m.groups.metric.trim();
 
-      const bucket =
-        byAxle.get(axle) ?? { Left: new Map<string, MetricCell>(), Right: new Map<string, MetricCell>() };
-
-      const map = bucket[side];
-      const existing =
-        map.get(metric) ??
-        ({
-          metric,
-          fullLabel: label,
-        } as MetricCell);
-
-      existing.idx = idx;
-      existing.val = it.value ?? "";
-      existing.unit = it.unit ?? (unitHint ? unitHint(label) : "");
-      map.set(metric, existing);
-      byAxle.set(axle, bucket);
+      if (!byAxle.has(axle)) byAxle.set(axle, { Left: [], Right: [] });
+      byAxle.get(axle)![side].push({
+        metric,
+        idx,
+        unit: it.unit ?? (unitHint ? unitHint(label) : ""),
+        fullLabel: label,
+      });
     });
 
-    return Array.from(byAxle.entries()).map(([axle, sides]) => {
-      const leftRows = Array.from(sides.Left.values()).sort((a, b) => orderIndex(a.metric) - orderIndex(b.metric));
-      const rightRows = Array.from(sides.Right.values()).sort((a, b) => orderIndex(a.metric) - orderIndex(b.metric));
-      return { axle, left: { side: "Left", rows: leftRows }, right: { side: "Right", rows: rightRows } };
-    });
+    return Array.from(byAxle.entries()).map(([axle, sides]) => ({
+      axle,
+      left: sides.Left.sort((a, b) => orderIndex(a.metric) - orderIndex(b.metric)),
+      right: sides.Right.sort((a, b) => orderIndex(a.metric) - orderIndex(b.metric)),
+    }));
   }, [items, unitHint]);
 
-  /** ---------------- local buffer + DOM-driven guard (works on iPad) --------------- */
-  const [localVals, setLocalVals] = useState<Record<number, string>>({});
-
-  // Find the index of the currently focused input by reading document.activeElement
-  const getActiveIdx = (): number | null => {
-    if (typeof document === "undefined") return null;
-    const el = document.activeElement as HTMLElement | null;
-    const name = el?.getAttribute?.("name") ?? "";
-    if (!name.startsWith("v-")) return null;
-    const maybe = Number(name.slice(2));
-    return Number.isFinite(maybe) ? maybe : null;
-  };
-
-  // Seed/sync from props, but never clobber the field that is currently focused
-  useEffect(() => {
-    const activeIdx = getActiveIdx();
-    setLocalVals((prev) => {
-      const next = { ...prev };
-      items.forEach((it, idx) => {
-        if (activeIdx === idx) return; // leave the one you're typing in alone
-        const want = String(it.value ?? "");
-        if (next[idx] !== want) next[idx] = want;
-      });
-      return next;
-    });
-  }, [items]);
-
-  const commitValue = (idx: number) => {
-    updateItem(sectionIndex, idx, { value: localVals[idx] ?? "" });
-  };
-
-  /** --------------------- grid header summary + collapse ------------------- */
+  /** ----------------------------------------------------------------------
+   * Uncontrolled inputs: we only read/commit on blur/Enter.
+   * Keep a light filled map so counters react while typing.
+   * --------------------------------------------------------------------- */
   const [open, setOpen] = useState(true);
+  const [filledMap, setFilledMap] = useState<Record<number, boolean>>(() => {
+    const m: Record<number, boolean> = {};
+    items.forEach((it, i) => (m[i] = !!String(it.value ?? "").trim()));
+    return m;
+  });
 
-  const filledCounts = useMemo(() => {
-    return groups.map((g) => {
-      const rows = [...g.left.rows, ...g.right.rows];
-      const filled = rows.reduce(
-        (a, r) => (String(localVals[r.idx ?? -1] ?? "").trim() ? a + 1 : a),
-        0,
-      );
-      return { axle: g.axle, filled, total: rows.length };
-    });
-  }, [groups, localVals]);
+  const markFilled = (idx: number, el: HTMLInputElement | null) => {
+    if (!el) return;
+    const has = el.value.trim().length > 0;
+    setFilledMap((p) => (p[idx] === has ? p : { ...p, [idx]: has }));
+  };
 
-  const SideCardView = ({ side, rows }: { side: Side; rows: MetricCell[] }) => (
+  const commit = (idx: number, el: HTMLInputElement | null) => {
+    if (!el) return;
+    const value = el.value;
+    updateItem(sectionIndex, idx, { value });
+    // also sync filled state (important if user clears the field and blurs)
+    markFilled(idx, el);
+  };
+
+  const countsFor = (cells: MetricCell[]) => {
+    const total = cells.length;
+    const filled = cells.reduce((a, r) => (filledMap[r.idx] ? a + 1 : a), 0);
+    return { filled, total };
+  };
+
+  const SideCardView = ({ title, cells }: { title: string; cells: MetricCell[] }) => (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
-      <div
-        className="mb-2 font-semibold text-orange-400"
-        style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-      >
-        {side}
+      <div className="mb-2 font-semibold text-orange-400" style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}>
+        {title}
       </div>
 
       {open && (
         <div className="space-y-3">
-          {rows.map((row) => (
-            <div key={`${row.idx}-${row.metric}`} className="rounded bg-zinc-950/70 p-3">
+          {cells.map((row) => (
+            <div key={row.idx} className="rounded bg-zinc-950/70 p-3">
               <div className="flex items-center gap-3">
                 <div
                   className="min-w-0 grow truncate text-sm font-semibold text-white"
@@ -145,27 +122,17 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
                 </div>
 
                 <input
-                  name={`v-${row.idx ?? "x"}`}
+                  name={`air-${row.idx}`}
+                  defaultValue={String(items[row.idx]?.value ?? "")}
                   className="w-40 rounded border border-gray-600 bg-black px-2 py-1 text-sm text-white outline-none placeholder:text-zinc-400"
-                  value={row.idx != null ? localVals[row.idx] ?? "" : ""}
-                  onChange={(e) => {
-                    if (row.idx == null) return;
-                    // ensure the “active field” guard is in place even if iPad didn't send focus
-                    const ae = document.activeElement as HTMLElement | null;
-                    if (ae?.getAttribute?.("name") !== `v-${row.idx}`) {
-                      ae?.setAttribute?.("name", `v-${row.idx}`); // harmless if already correct
-                    }
-                    setLocalVals((prev) => ({ ...prev, [row.idx!]: e.target.value }));
-                  }}
-                  onBlur={() => row.idx != null && commitValue(row.idx)}
-                  onKeyDown={(e) => {
-                    if ((e as any).key === "Enter" && row.idx != null) {
-                      (e.currentTarget as HTMLInputElement).blur(); // commit
-                    }
-                  }}
                   placeholder="Value"
                   autoComplete="off"
                   inputMode="decimal"
+                  onInput={(e) => markFilled(row.idx, e.currentTarget)}
+                  onBlur={(e) => commit(row.idx, e.currentTarget)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
+                  }}
                 />
                 <div className="text-right text-xs text-zinc-400">
                   {row.unit ?? (unitHint ? unitHint(row.fullLabel) : "")}
@@ -180,14 +147,21 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
 
   return (
     <div className="grid gap-3">
+      {/* Toolbar */}
       <div className="flex items-center justify-end gap-3 px-1">
         <div className="hidden text-xs text-zinc-400 md:block" style={{ fontFamily: "Roboto, system-ui, sans-serif" }}>
-          {filledCounts.map((c, i) => (
-            <span key={c.axle}>
-              {c.axle} {c.filled}/{c.total}
-              {i < filledCounts.length - 1 ? "  |  " : ""}
-            </span>
-          ))}
+          {groups.map((g, i) => {
+            const left = countsFor(g.left);
+            const right = countsFor(g.right);
+            const filled = left.filled + right.filled;
+            const total = left.total + right.total;
+            return (
+              <span key={g.axle}>
+                {g.axle} {filled}/{total}
+                {i < groups.length - 1 ? "  |  " : ""}
+              </span>
+            );
+          })}
         </div>
         <button
           onClick={() => setOpen((v) => !v)}
@@ -199,20 +173,18 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
         </button>
       </div>
 
+      {/* Add axle (optional) */}
       {onAddAxle && <AddAxlePicker groups={groups} onAddAxle={onAddAxle} />}
 
-      {groups.map((group) => (
-        <div key={group.axle} className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
-          <div
-            className="mb-3 text-lg font-semibold text-orange-400"
-            style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-          >
-            {group.axle}
+      {/* Axle cards */}
+      {groups.map((g) => (
+        <div key={g.axle} className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+          <div className="mb-3 text-lg font-semibold text-orange-400" style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}>
+            {g.axle}
           </div>
-
           <div className="grid gap-4 md:grid-cols-2">
-            <SideCardView side="Left" rows={group.left.rows} />
-            <SideCardView side="Right" rows={group.right.rows} />
+            <SideCardView title="Left" cells={g.left} />
+            <SideCardView title="Right" cells={g.right} />
           </div>
         </div>
       ))}
@@ -220,7 +192,7 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
   );
 }
 
-/** Inline axle picker (unchanged) */
+/** Inline axle picker (unchanged behavior) */
 function AddAxlePicker({
   groups,
   onAddAxle,
@@ -228,26 +200,26 @@ function AddAxlePicker({
   groups: { axle: string }[];
   onAddAxle: (axleLabel: string) => void;
 }) {
-  const existingAxles = useMemo(() => groups.map((g) => g.axle), [groups]);
-  const [pendingAxle, setPendingAxle] = useState<string>("");
+  const existing = useMemo(() => groups.map((g) => g.axle), [groups]);
+  const [pending, setPending] = useState<string>("");
 
-  const candidateAxles = useMemo(() => {
+  const candidates = useMemo(() => {
     const wants: string[] = [];
     for (let i = 1; i <= 2; i++) wants.push(`Steer ${i}`);
     for (let i = 1; i <= 4; i++) wants.push(`Drive ${i}`);
     wants.push("Tag", "Trailer 1", "Trailer 2", "Trailer 3");
-    return wants.filter((l) => !existingAxles.includes(l));
-  }, [existingAxles]);
+    return wants.filter((l) => !existing.includes(l));
+  }, [existing]);
 
   return (
     <div className="flex items-center gap-2">
       <select
         className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-sm text-white"
-        value={pendingAxle}
-        onChange={(e) => setPendingAxle(e.target.value)}
+        value={pending}
+        onChange={(e) => setPending(e.target.value)}
       >
         <option value="">Add axle…</option>
-        {candidateAxles.map((l) => (
+        {candidates.map((l) => (
           <option key={l} value={l}>
             {l}
           </option>
@@ -255,8 +227,8 @@ function AddAxlePicker({
       </select>
       <button
         className="rounded bg-orange-600 px-3 py-1 text-sm font-semibold text-black hover:bg-orange-500 disabled:opacity-40"
-        onClick={() => pendingAxle && onAddAxle(pendingAxle)}
-        disabled={!pendingAxle}
+        onClick={() => pending && onAddAxle(pending)}
+        disabled={!pending}
       >
         + Add
       </button>
