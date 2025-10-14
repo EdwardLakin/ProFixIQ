@@ -19,14 +19,19 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
   type Side = "Left" | "Right";
   const labelRe = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
 
-  type MetricCell = {
-    metric: string;
+  type Row = {
     idx: number;
+    metric: string;
+    labelForHint: string;
     unit?: string | null;
-    fullLabel: string;
     isPressure: boolean;
   };
-  type AxleGroup = { axle: string; left: MetricCell[]; right: MetricCell[] };
+
+  type AxleGroup = {
+    axle: string;
+    left: Row[];
+    right: Row[];
+  };
 
   const metricOrder = [
     "Tire Pressure",
@@ -37,13 +42,13 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
     "Wheel Torque Inner",
     "Wheel Torque Outer",
   ];
-  const orderIndex = (metric: string) => {
-    const i = metricOrder.findIndex((m) => metric.toLowerCase().includes(m.toLowerCase()));
+  const orderIndex = (m: string) => {
+    const i = metricOrder.findIndex((x) => m.toLowerCase().includes(x.toLowerCase()));
     return i === -1 ? Number.MAX_SAFE_INTEGER : i;
   };
 
   const groups: AxleGroup[] = useMemo(() => {
-    const byAxle = new Map<string, { Left: MetricCell[]; Right: MetricCell[] }>();
+    const byAxle = new Map<string, { Left: Row[]; Right: Row[] }>();
 
     items.forEach((it, idx) => {
       const label = it.item ?? "";
@@ -55,13 +60,16 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
       const metric = m.groups.metric.trim();
 
       if (!byAxle.has(axle)) byAxle.set(axle, { Left: [], Right: [] });
-      byAxle.get(axle)![side].push({
-        metric,
+
+      const row: Row = {
         idx,
+        metric,
+        labelForHint: label,
         unit: it.unit ?? (unitHint ? unitHint(label) : ""),
-        fullLabel: label,
-        isPressure: /pressure/i.test(metric),
-      });
+        isPressure: /tire\s*pressure/i.test(metric),
+      };
+
+      byAxle.get(axle)![side].push(row);
     });
 
     return Array.from(byAxle.entries()).map(([axle, sides]) => ({
@@ -71,39 +79,71 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
     }));
   }, [items, unitHint]);
 
-  // Collapse + per-row "is filled" (updates only on commit)
+  /* ------------------------- simple, stable behaviors ------------------------- */
   const [open, setOpen] = useState(true);
-  const [filledMap, setFilledMap] = useState<Record<number, boolean>>(() => {
-    const m: Record<number, boolean> = {};
-    items.forEach((it, i) => (m[i] = !!String(it.value ?? "").trim()));
-    return m;
-  });
-
-  // kPa hint toggle (top-right)
-  const [showKpa, setShowKpa] = useState<boolean>(true);
-
-  // Lightweight live mirror ONLY for kPa hint (inputs themselves are uncontrolled)
-  const [livePressure, setLivePressure] = useState<Record<number, string>>({});
+  const [showKpaHint, setShowKpaHint] = useState(true);
 
   const commit = (idx: number, el: HTMLInputElement | null) => {
     if (!el) return;
-    const value = el.value;
-    updateItem(sectionIndex, idx, { value });
-    const has = value.trim().length > 0;
-    setFilledMap((p) => (p[idx] === has ? p : { ...p, [idx]: has }));
-    // keep live mirror in sync after commit
-    setLivePressure((p) => ({ ...p, [idx]: value }));
+    updateItem(sectionIndex, idx, { value: el.value });
   };
 
-  const count = (cells: MetricCell[]) => cells.reduce((a, r) => a + (filledMap[r.idx] ? 1 : 0), 0);
+  /* ------------------------------- row view ---------------------------------- */
+  const RowView = ({ row }: { row: Row }) => {
+    const onInput = (e: React.FormEvent<HTMLInputElement>) => {
+      if (!row.isPressure) return;
+      const span =
+        (e.currentTarget.parentElement?.querySelector('[data-kpa="1"]') as HTMLSpanElement) ||
+        undefined;
+      if (!span) return;
+      const n = parseFloat(e.currentTarget.value);
+      span.textContent =
+        isFinite(n) && showKpaHint ? `(${Math.round(n * 6.894757)} kPa)` : "";
+    };
 
-  const kpaFromPsi = (psiStr: string | undefined) => {
-    const n = Number(psiStr);
-    if (!isFinite(n)) return null;
-    return Math.round(n * 6.894757); // simple rounded hint
+    return (
+      <div className="rounded bg-zinc-950/70 p-3">
+        <div className="flex items-center gap-3">
+          <div
+            className="min-w-0 grow truncate text-sm font-semibold text-white"
+            style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+          >
+            {row.metric}
+          </div>
+
+          <input
+            name={`air-${row.idx}`}
+            defaultValue={String(items[row.idx]?.value ?? "")}
+            className="w-40 rounded border border-gray-600 bg-black px-2 py-1 text-sm text-white outline-none placeholder:text-zinc-400"
+            placeholder="Value"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            inputMode="decimal"
+            onInput={onInput}
+            onBlur={(e) => commit(row.idx, e.currentTarget)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
+            }}
+          />
+
+          <div className="text-right text-xs text-zinc-400">
+            {row.isPressure ? (
+              <span>
+                psi{" "}
+                <span data-kpa="1" className={showKpaHint ? "text-zinc-500" : "hidden"} />
+              </span>
+            ) : (
+              <span>{row.unit ?? (unitHint ? unitHint(row.labelForHint) : "")}</span>
+            )}
+          </div>
+        </div>
+      </div>
+    );
   };
 
-  const SideCardView = ({ title, cells }: { title: string; cells: MetricCell[] }) => (
+  const SideCard = ({ title, rows }: { title: "Left" | "Right"; rows: Row[] }) => (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
       <div
         className="mb-2 font-semibold text-orange-400"
@@ -114,56 +154,9 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
 
       {open && (
         <div className="space-y-3">
-          {cells.map((row) => {
-            const defaultVal = String(items[row.idx]?.value ?? "");
-            const psiNow = livePressure[row.idx] ?? defaultVal;
-            const kpa = row.isPressure && showKpa ? kpaFromPsi(psiNow) : null;
-
-            return (
-              <div key={row.idx} className="rounded bg-zinc-950/70 p-3">
-                <div className="flex items-center gap-3">
-                  <div
-                    className="min-w-0 grow truncate text-sm font-semibold text-white"
-                    style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-                  >
-                    {row.metric}
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <input
-                      name={`air-${row.idx}`}
-                      defaultValue={defaultVal}
-                      className="w-40 rounded border border-gray-600 bg-black px-2 py-1 text-sm text-white outline-none placeholder:text-zinc-400"
-                      placeholder="Value"
-                      autoComplete="off"
-                      autoCorrect="off"
-                      autoCapitalize="off"
-                      spellCheck={false}
-                      inputMode="decimal"
-                      onInput={(e) => {
-                        if (row.isPressure) setLivePressure((p) => ({ ...p, [row.idx]: e.currentTarget.value }));
-                      }}
-                      onBlur={(e) => commit(row.idx, e.currentTarget)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
-                      }}
-                    />
-                    {/* Unit + optional kPa hint */}
-                    <div className="text-right text-xs text-zinc-400 whitespace-nowrap">
-                      {row.isPressure ? (
-                        <>
-                          <span className="text-zinc-300">psi</span>
-                          {showKpa && <span className="ml-1">({kpa ?? "—"} kPa)</span>}
-                        </>
-                      ) : (
-                        <>{row.unit ?? (unitHint ? unitHint(row.fullLabel) : "")}</>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+          {rows.map((r) => (
+            <RowView key={r.idx} row={r} />
+          ))}
         </div>
       )}
     </div>
@@ -171,33 +164,14 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
 
   return (
     <div className="grid gap-3">
-      {/* Toolbar */}
+      {/* Top-right controls (match CornerGrid) */}
       <div className="flex items-center justify-end gap-3 px-1">
-        <div
-          className="hidden text-xs text-zinc-400 md:block"
-          style={{ fontFamily: "Roboto, system-ui, sans-serif" }}
-        >
-          {groups.map((g, i) => {
-            const leftFilled = count(g.left);
-            const rightFilled = count(g.right);
-            const filled = leftFilled + rightFilled;
-            const total = g.left.length + g.right.length;
-            return (
-              <span key={g.axle}>
-                {g.axle} {filled}/{total}
-                {i < groups.length - 1 ? "  |  " : ""}
-              </span>
-            );
-          })}
-        </div>
-
-        {/* kPa hint toggle */}
-        <label className="flex select-none items-center gap-2 text-xs text-zinc-300">
+        <label className="flex items-center gap-2 text-xs text-zinc-400">
           <input
             type="checkbox"
             className="h-3 w-3 accent-orange-500"
-            checked={showKpa}
-            onChange={(e) => setShowKpa(e.target.checked)}
+            checked={showKpaHint}
+            onChange={(e) => setShowKpaHint(e.target.checked)}
           />
           kPa hint
         </label>
@@ -222,9 +196,10 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
           >
             {g.axle}
           </div>
+
           <div className="grid gap-4 md:grid-cols-2">
-            <SideCardView title="Left" cells={g.left} />
-            <SideCardView title="Right" cells={g.right} />
+            <SideCard title="Left" rows={g.left} />
+            <SideCard title="Right" rows={g.right} />
           </div>
         </div>
       ))}
