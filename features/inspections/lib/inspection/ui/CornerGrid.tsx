@@ -7,6 +7,7 @@ import type { InspectionItem } from "@inspections/lib/inspection/types";
 type Props = {
   sectionIndex: number;
   items: InspectionItem[];
+  /** Optional hint used when a row/unit is blank */
   unitHint?: (label: string) => string;
 };
 
@@ -102,6 +103,18 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
     RR: "Right Rear",
   };
 
+  const UnitCell = ({ metric, fallback }: { metric: string; fallback: string }) => {
+    const isPressure = /tire\s*pressure/i.test(metric);
+    if (isPressure) {
+      return (
+        <div className="text-right text-xs text-zinc-400">
+          psi <span className="ml-1 text-[10px] text-zinc-500">(kPa)</span>
+        </div>
+      );
+    }
+    return <div className="text-right text-xs text-zinc-400">{fallback}</div>;
+  };
+
   const RowView = ({ row }: { row: Row }) => (
     <div className="rounded bg-zinc-950/70 p-3">
       <div className="flex items-center gap-3">
@@ -127,9 +140,11 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
             if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
           }}
         />
-        <div className="text-right text-xs text-zinc-400">
-          {row.unit ?? (unitHint ? unitHint(row.labelForHint) : "")}
-        </div>
+
+        <UnitCell
+          metric={row.metric}
+          fallback={row.unit ?? (unitHint ? unitHint(row.labelForHint) : "")}
+        />
       </div>
     </div>
   );
@@ -155,7 +170,10 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
   return (
     <div className="grid gap-3">
       <div className="flex items-center justify-end gap-3 px-1">
-        <div className="hidden text-xs text-zinc-400 md:block" style={{ fontFamily: "Roboto, system-ui, sans-serif" }}>
+        <div
+          className="hidden text-xs text-zinc-400 md:block"
+          style={{ fontFamily: "Roboto, system-ui, sans-serif" }}
+        >
           {(["LF", "RF", "LR", "RR"] as CornerKey[]).map((k, i) => {
             const g = groups.find((x) => x.corner === k)!;
             const filled = tally(g.rows);

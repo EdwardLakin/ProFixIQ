@@ -83,12 +83,26 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
     setFilledMap((p) => (p[idx] === has ? p : { ...p, [idx]: has }));
   };
 
-  const count = (cells: MetricCell[]) =>
-    cells.reduce((a, r) => a + (filledMap[r.idx] ? 1 : 0), 0);
+  const count = (cells: MetricCell[]) => cells.reduce((a, r) => a + (filledMap[r.idx] ? 1 : 0), 0);
+
+  const UnitCell = ({ metric, fallback }: { metric: string; fallback: string }) => {
+    const isPressure = /tire\s*pressure/i.test(metric);
+    if (isPressure) {
+      return (
+        <div className="text-right text-xs text-zinc-400">
+          psi <span className="ml-1 text-[10px] text-zinc-500">(kPa)</span>
+        </div>
+      );
+    }
+    return <div className="text-right text-xs text-zinc-400">{fallback}</div>;
+  };
 
   const SideCardView = ({ title, cells }: { title: string; cells: MetricCell[] }) => (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
-      <div className="mb-2 font-semibold text-orange-400" style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}>
+      <div
+        className="mb-2 font-semibold text-orange-400"
+        style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+      >
         {title}
       </div>
 
@@ -119,9 +133,11 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
                     if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
                   }}
                 />
-                <div className="text-right text-xs text-zinc-400">
-                  {row.unit ?? (unitHint ? unitHint(row.fullLabel) : "")}
-                </div>
+
+                <UnitCell
+                  metric={row.metric}
+                  fallback={row.unit ?? (unitHint ? unitHint(row.fullLabel) : "")}
+                />
               </div>
             </div>
           ))}
@@ -134,7 +150,10 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
     <div className="grid gap-3">
       {/* Toolbar */}
       <div className="flex items-center justify-end gap-3 px-1">
-        <div className="hidden text-xs text-zinc-400 md:block" style={{ fontFamily: "Roboto, system-ui, sans-serif" }}>
+        <div
+          className="hidden text-xs text-zinc-400 md:block"
+          style={{ fontFamily: "Roboto, system-ui, sans-serif" }}
+        >
           {groups.map((g, i) => {
             const leftFilled = count(g.left);
             const rightFilled = count(g.right);
@@ -162,7 +181,10 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
 
       {groups.map((g) => (
         <div key={g.axle} className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
-          <div className="mb-3 text-lg font-semibold text-orange-400" style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}>
+          <div
+            className="mb-3 text-lg font-semibold text-orange-400"
+            style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+          >
             {g.axle}
           </div>
           <div className="grid gap-4 md:grid-cols-2">

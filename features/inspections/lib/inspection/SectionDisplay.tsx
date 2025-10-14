@@ -111,7 +111,7 @@ export default function SectionDisplay(_props: any) {
               All REC
             </button>
 
-            {/* NEW: explicit collapse/expand control on the right */}
+            {/* explicit collapse/expand control on the right */}
             <button
               className="ml-2 rounded bg-zinc-800 px-2 py-1 text-xs text-white hover:bg-zinc-700"
               onClick={() => setOpen((v) => !v)}
