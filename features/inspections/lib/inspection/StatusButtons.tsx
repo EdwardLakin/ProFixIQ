@@ -27,64 +27,81 @@ export default function StatusButtons(_props: any) {
     onStatusChange,
   } = _props as StatusButtonsProps;
 
-  // Neutral pill; selected state adds a colored ring (outline)
   const base =
     "px-3 py-1 rounded text-xs font-bold mr-2 mb-2 transition-colors duration-150 " +
-    "bg-zinc-700 text-zinc-200 hover:bg-zinc-600 focus:outline-none active:brightness-110 active:scale-[.98]";
+    "bg-zinc-700 text-zinc-200 hover:bg-zinc-600 focus:outline-none focus:ring-2 focus:ring-offset-1";
 
-  const ringFor = (key: InspectionItemStatus) => {
-    const isSel = item.status === key;
-    if (!isSel) return "";
+  const selected = item.status;
+
+  const cls = (key: InspectionItemStatus) => {
+    const isSel = selected === key;
     switch (key) {
       case "ok":
-        return " ring-2 ring-green-500 ring-offset-2 ring-offset-zinc-900";
+        return base + (isSel ? " bg-green-600 text-white ring-green-400" : " focus:ring-green-300");
       case "fail":
-        return " ring-2 ring-red-500 ring-offset-2 ring-offset-zinc-900";
+        return base + (isSel ? " bg-red-600 text-white ring-red-400" : " focus:ring-red-300");
       case "recommend":
-        return " ring-2 ring-yellow-400 ring-offset-2 ring-offset-zinc-900";
+        return base + (isSel ? " bg-yellow-400 text-black ring-yellow-300" : " focus:ring-yellow-300");
       case "na":
       default:
-        return " ring-2 ring-blue-500 ring-offset-2 ring-offset-zinc-900";
+        return base + (isSel ? " bg-blue-600 text-white ring-blue-400" : " focus:ring-blue-300");
     }
   };
 
-  const cls = (key: InspectionItemStatus) => base + ringFor(key);
-
-  const handleClick = (status: InspectionItemStatus) => {
+  const choose = (status: InspectionItemStatus) => {
     updateItem(sectionIndex, itemIndex, { status });
     onStatusChange(status);
+  };
+
+  const keyActivate = (status: InspectionItemStatus, e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      choose(status);
+    }
   };
 
   return (
     <div className="mt-2 flex flex-wrap">
       <button
+        type="button"
+        tabIndex={0}
         className={cls("ok")}
-        onClick={() => handleClick("ok")}
-        aria-pressed={item.status === "ok"}
+        onClick={() => choose("ok")}
+        onKeyDown={(e) => keyActivate("ok", e)}
+        aria-pressed={selected === "ok"}
         title="Mark OK"
       >
         OK
       </button>
       <button
+        type="button"
+        tabIndex={0}
         className={cls("fail")}
-        onClick={() => handleClick("fail")}
-        aria-pressed={item.status === "fail"}
+        onClick={() => choose("fail")}
+        onKeyDown={(e) => keyActivate("fail", e)}
+        aria-pressed={selected === "fail"}
         title="Mark FAIL"
       >
         FAIL
       </button>
       <button
+        type="button"
+        tabIndex={0}
         className={cls("recommend")}
-        onClick={() => handleClick("recommend")}
-        aria-pressed={item.status === "recommend"}
+        onClick={() => choose("recommend")}
+        onKeyDown={(e) => keyActivate("recommend", e)}
+        aria-pressed={selected === "recommend"}
         title="Mark Recommend"
       >
         Recommend
       </button>
       <button
+        type="button"
+        tabIndex={0}
         className={cls("na")}
-        onClick={() => handleClick("na")}
-        aria-pressed={item.status === "na"}
+        onClick={() => choose("na")}
+        onKeyDown={(e) => keyActivate("na", e)}
+        aria-pressed={selected === "na"}
         title="Mark N/A"
       >
         N/A

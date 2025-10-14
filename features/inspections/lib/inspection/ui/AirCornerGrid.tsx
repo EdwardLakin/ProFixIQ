@@ -79,16 +79,21 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
     });
   }, [items, unitHint]);
 
-  /** ---------------- local buffer (no timers) ------------------------------ */
+  /** ---------------- local buffer with focused guard (no timers) ----------- */
   const [localVals, setLocalVals] = useState<Record<number, string>>({});
+  const [focusedIdx, setFocusedIdx] = useState<number | null>(null);
 
   useEffect(() => {
-    const seed: Record<number, string> = {};
-    items.forEach((it, idx) => {
-      seed[idx] = String(it.value ?? "");
+    setLocalVals((prev) => {
+      const next = { ...prev };
+      items.forEach((it, idx) => {
+        if (focusedIdx === idx) return; // don't stomp active field
+        const want = String(it.value ?? "");
+        if (next[idx] !== want) next[idx] = want;
+      });
+      return next;
     });
-    setLocalVals(seed);
-  }, [items]);
+  }, [items, focusedIdx]);
 
   const commitValue = (idx: number) => {
     const value = localVals[idx] ?? "";
@@ -99,7 +104,6 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
   const [open, setOpen] = useState(true);
 
   const filledCounts = useMemo(() => {
-    // show e.g. "Steer 1 3/5 | Drive 1 2/5 ..."
     return groups.map((g) => {
       const rows = [...g.left.rows, ...g.right.rows];
       const filled = rows.reduce(
@@ -134,6 +138,7 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
                 <input
                   className="w-40 rounded border border-gray-600 bg-black px-2 py-1 text-sm text-white outline-none placeholder:text-zinc-400"
                   value={row.idx != null ? localVals[row.idx] ?? "" : ""}
+                  onFocus={() => row.idx != null && setFocusedIdx(row.idx)}
                   onChange={(e) => {
                     if (row.idx != null) {
                       const v = e.target.value;
@@ -142,10 +147,11 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
                   }}
                   onBlur={() => {
                     if (row.idx != null) commitValue(row.idx);
+                    setFocusedIdx((cur) => (cur === row.idx ? null : cur));
                   }}
                   onKeyDown={(e) => {
                     if ((e as any).key === "Enter" && row.idx != null) {
-                      (e.currentTarget as HTMLInputElement).blur(); // triggers onBlur commit
+                      (e.currentTarget as HTMLInputElement).blur(); // commit
                     }
                   }}
                   placeholder="Value"
@@ -163,12 +169,8 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
 
   return (
     <div className="grid gap-3">
-      {/* Toolbar (top-right) */}
       <div className="flex items-center justify-end gap-3 px-1">
-        <div
-          className="hidden text-xs text-zinc-400 md:block"
-          style={{ fontFamily: "Roboto, system-ui, sans-serif" }}
-        >
+        <div className="hidden text-xs text-zinc-400 md:block" style={{ fontFamily: "Roboto, system-ui, sans-serif" }}>
           {filledCounts.map((c, i) => (
             <span key={c.axle}>
               {c.axle} {c.filled}/{c.total}
@@ -186,10 +188,8 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
         </button>
       </div>
 
-      {/* Add Axle control (only if handler provided) */}
       {onAddAxle && <AddAxlePicker groups={groups} onAddAxle={onAddAxle} />}
 
-      {/* Axle cards */}
       {groups.map((group) => (
         <div key={group.axle} className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
           <div
@@ -209,7 +209,7 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
   );
 }
 
-/** Small inline picker to add an axle (kept as-is; shown only if onAddAxle is provided) */
+/** Inline axle picker (unchanged) */
 function AddAxlePicker({
   groups,
   onAddAxle,

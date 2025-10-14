@@ -13,15 +13,13 @@ type Props = {
 
 /**
  * CornerGrid (Hydraulic)
- * - Always renders 4 corners: LF, RF, LR, RR (also accepts "Left Front", etc.)
- * - Each corner card contains its metrics (Tire Pressure, Tread, Pad Thickness, Rotor, etc.)
- * - Inputs are locally buffered and commit to form state on blur/Enter (no timers).
- * - Master collapse toggle lives in the grid header (top-right), keeping the section title visible.
+ * - 4 corners: LF, RF, LR, RR (also accepts “Left Front”, etc.)
+ * - Local buffer; commit on blur/Enter (no timers).
+ * - Collapse toggle with per-corner filled counters.
  */
 export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
   const { updateItem } = useInspectionForm();
 
-  // Accept both abbreviations and full corner names
   type CornerKey = "LF" | "RF" | "LR" | "RR";
   const abbrevRE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
   const fullRE = /^(?<corner>(Left|Right)\s+(Front|Rear))\s+(?<metric>.+)$/i;
@@ -35,19 +33,9 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
     return null;
   };
 
-  type Row = {
-    idx: number;
-    metric: string;
-    labelForHint: string;
-    unit?: string | null;
-  };
+  type Row = { idx: number; metric: string; labelForHint: string; unit?: string | null };
+  type CornerGroup = { corner: CornerKey; rows: Row[] };
 
-  type CornerGroup = {
-    corner: CornerKey;
-    rows: Row[];
-  };
-
-  // Order metrics in a sensible way for hydraulic checks
   const metricOrder = [
     "Tire Pressure",
     "Tire Tread",
@@ -57,12 +45,9 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
     "Rotor Thickness",
     "Wheel Torque",
   ];
-  const orderIndex = (m: string) => {
-    const i = metricOrder.findIndex((x) => m.toLowerCase().includes(x.toLowerCase()));
-    return i === -1 ? Number.MAX_SAFE_INTEGER : i;
-  };
+  const orderIndex = (m: string) =>
+    Math.max(0, metricOrder.findIndex((x) => m.toLowerCase().includes(x.toLowerCase()))) || Number.MAX_SAFE_INTEGER;
 
-  // Group items into the 4 corners
   const groups: CornerGroup[] = useMemo(() => {
     const base: Record<CornerKey, Row[]> = { LF: [], RF: [], LR: [], RR: [] };
 
@@ -92,7 +77,6 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
       });
     });
 
-    // Sort rows within each corner
     const build = (corner: CornerKey): CornerGroup => ({
       corner,
       rows: base[corner].sort((a, b) => orderIndex(a.metric) - orderIndex(b.metric)),
@@ -101,23 +85,25 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
     return [build("LF"), build("RF"), build("LR"), build("RR")];
   }, [items, unitHint]);
 
-  /** ------------------------ Local buffer (no timers) ---------------------- */
+  /** -------- Local buffer with focused guard (prevents stomp while typing) -------- */
   const [localVals, setLocalVals] = useState<Record<number, string>>(() => {
     const init: Record<number, string> = {};
     items.forEach((it, i) => (init[i] = String(it.value ?? "")));
     return init;
   });
+  const [focusedIdx, setFocusedIdx] = useState<number | null>(null);
 
-  // keep buffer in sync if items list changes externally
   useEffect(() => {
-    setLocalVals(() => {
-      const next: Record<number, string> = {};
+    setLocalVals((prev) => {
+      const next = { ...prev };
       items.forEach((it, i) => {
-        next[i] = String(it.value ?? "");
+        if (focusedIdx === i) return; // don't overwrite the field you're typing in
+        const want = String(it.value ?? "");
+        if (next[i] !== want) next[i] = want;
       });
       return next;
     });
-  }, [items]);
+  }, [items, focusedIdx]);
 
   const commitValue = (itemIdx: number) => {
     updateItem(sectionIndex, itemIdx, { value: localVals[itemIdx] ?? "" });
@@ -145,7 +131,6 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
   };
 
   /** ------------------------------- UI ------------------------------------ */
-
   const RowView = ({ row }: { row: Row }) => (
     <div className="rounded bg-zinc-950/70 p-3">
       <div className="flex items-center gap-3">
@@ -156,16 +141,17 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
           {row.metric}
         </div>
 
-        {/* value input styled like section notes box */}
         <input
           className="w-40 rounded border border-gray-600 bg-black px-2 py-1 text-sm text-white outline-none placeholder:text-zinc-400"
           value={localVals[row.idx] ?? ""}
+          onFocus={() => setFocusedIdx(row.idx)}
           onChange={(e) => setLocalVals((p) => ({ ...p, [row.idx]: e.target.value }))}
-          onBlur={() => commitValue(row.idx)}
+          onBlur={() => {
+            commitValue(row.idx);
+            setFocusedIdx((cur) => (cur === row.idx ? null : cur));
+          }}
           onKeyDown={(e) => {
-            if ((e as any).key === "Enter") {
-              (e.currentTarget as HTMLInputElement).blur(); // triggers onBlur commit
-            }
+            if ((e as any).key === "Enter") (e.currentTarget as HTMLInputElement).blur(); // commits via onBlur
           }}
           placeholder="Value"
         />
@@ -195,15 +181,10 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
     </div>
   );
 
-  // Layout: header toolbar + cards grid
   return (
     <div className="grid gap-3">
-      {/* Toolbar (top-right) */}
       <div className="flex items-center justify-end gap-3 px-1">
-        <div
-          className="hidden text-xs text-zinc-400 md:block"
-          style={{ fontFamily: "Roboto, system-ui, sans-serif" }}
-        >
+        <div className="hidden text-xs text-zinc-400 md:block" style={{ fontFamily: "Roboto, system-ui, sans-serif" }}>
           LF {filledCounts.LF.filled}/{filledCounts.LF.total} &nbsp;|&nbsp; RF {filledCounts.RF.filled}/{filledCounts.RF.total} &nbsp;|&nbsp; LR {filledCounts.LR.filled}/{filledCounts.LR.total} &nbsp;|&nbsp; RR {filledCounts.RR.filled}/{filledCounts.RR.total}
         </div>
         <button
@@ -216,14 +197,13 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
         </button>
       </div>
 
-      {/* the four cards */}
       <div className="grid gap-4 md:grid-cols-2">
-        <CornerCard group={groups[0]} /> {/* LF */}
-        <CornerCard group={groups[1]} /> {/* RF */}
+        <CornerCard group={groups[0]} />
+        <CornerCard group={groups[1]} />
       </div>
       <div className="grid gap-4 md:grid-cols-2">
-        <CornerCard group={groups[2]} /> {/* LR */}
-        <CornerCard group={groups[3]} /> {/* RR */}
+        <CornerCard group={groups[2]} />
+        <CornerCard group={groups[3]} />
       </div>
     </div>
   );
