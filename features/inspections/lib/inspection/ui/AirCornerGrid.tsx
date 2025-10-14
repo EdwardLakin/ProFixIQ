@@ -8,7 +8,6 @@ type Props = {
   sectionIndex: number;
   items: InspectionItem[];
   unitHint?: (label: string) => string;
-  /** Provide to enable the Add-Axle control */
   onAddAxle?: (axleLabel: string) => void;
 };
 
@@ -96,6 +95,7 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
   /** ---------------- local buffer with focused guard (no timers) ----------- */
   const [localVals, setLocalVals] = useState<Record<number, string>>({});
   const [focusedIdx, setFocusedIdx] = useState<number | null>(null);
+  const [fieldDbg, setFieldDbg] = useState<Record<number, string>>({}); // per-field debug
 
   useEffect(() => {
     setLocalVals((prev) => {
@@ -112,7 +112,7 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
   const commitValue = (idx: number) => {
     const value = localVals[idx] ?? "";
     updateItem(sectionIndex, idx, { value });
-    setDebugMsg(`commit ${idx}: ${value}`);
+    setDebugMsg(`commit ${idx}: "${value}" (len ${value.length})`);
   };
 
   /** --------------------- grid header summary + collapse ------------------- */
@@ -151,6 +151,7 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
                 </div>
 
                 <input
+                  type="text"
                   name={`v-${row.idx ?? "x"}`}
                   className="w-40 rounded border border-gray-600 bg-black px-2 py-1 text-sm text-white outline-none placeholder:text-zinc-400"
                   value={row.idx != null ? localVals[row.idx] ?? "" : ""}
@@ -159,10 +160,16 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
                     setDebugMsg(`focus ${row.idx}`);
                   }}
                   onChange={(e) => {
-                    if (row.idx != null) {
-                      const v = e.target.value;
-                      setLocalVals((prev) => ({ ...prev, [row.idx!]: v }));
-                    }
+                    if (row.idx == null) return;
+                    const v = e.target.value;
+                    setLocalVals((prev) => ({ ...prev, [row.idx!]: v }));
+                    setFieldDbg((d) => ({ ...d, [row.idx!]: `change len=${v.length}` }));
+                  }}
+                  onInput={(e) => {
+                    if (row.idx == null) return;
+                    const v = (e.currentTarget as HTMLInputElement).value;
+                    setLocalVals((prev) => ({ ...prev, [row.idx!]: v }));
+                    setFieldDbg((d) => ({ ...d, [row.idx!]: `input len=${v.length}` }));
                   }}
                   onBlur={() => {
                     if (row.idx != null) commitValue(row.idx);
@@ -175,11 +182,19 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
                   }}
                   placeholder="Value"
                   autoComplete="off"
-                  inputMode="decimal"
+                  autoCorrect="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  enterKeyHint="next"
                 />
                 <div className="text-right text-xs text-zinc-400">
                   {row.unit ?? (unitHint ? unitHint(row.fullLabel) : "")}
                 </div>
+              </div>
+
+              {/* per-field mini debug */}
+              <div className="mt-1 text-[10px] text-zinc-500">
+                {row.idx != null ? fieldDbg[row.idx] ?? "" : ""}
               </div>
             </div>
           ))}

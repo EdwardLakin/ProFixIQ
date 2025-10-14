@@ -7,16 +7,9 @@ import type { InspectionItem } from "@inspections/lib/inspection/types";
 type Props = {
   sectionIndex: number;
   items: InspectionItem[];
-  /** Optional hint used when a row/unit is blank */
   unitHint?: (label: string) => string;
 };
 
-/**
- * CornerGrid (Hydraulic)
- * - 4 corners: LF, RF, LR, RR (also accepts “Left Front”, etc.)
- * - Local buffer; commit on blur/Enter (no timers).
- * - Collapse toggle with per-corner filled counters.
- */
 export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
   const { updateItem } = useInspectionForm();
 
@@ -108,6 +101,7 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
     return init;
   });
   const [focusedIdx, setFocusedIdx] = useState<number | null>(null);
+  const [fieldDbg, setFieldDbg] = useState<Record<number, string>>({});
 
   useEffect(() => {
     setLocalVals((prev) => {
@@ -124,7 +118,7 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
   const commitValue = (itemIdx: number) => {
     const value = localVals[itemIdx] ?? "";
     updateItem(sectionIndex, itemIdx, { value });
-    setDebugMsg(`commit ${itemIdx}: ${value}`);
+    setDebugMsg(`commit ${itemIdx}: "${value}" (len ${value.length})`);
   };
 
   /** ------------------------ Header summary + collapse --------------------- */
@@ -160,6 +154,7 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
         </div>
 
         <input
+          type="text"
           name={`v-${row.idx}`}
           className="w-40 rounded border border-gray-600 bg-black px-2 py-1 text-sm text-white outline-none placeholder:text-zinc-400"
           value={localVals[row.idx] ?? ""}
@@ -167,21 +162,38 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
             setFocusedIdx(row.idx);
             setDebugMsg(`focus ${row.idx}`);
           }}
-          onChange={(e) => setLocalVals((p) => ({ ...p, [row.idx]: e.target.value }))}
+          onChange={(e) => {
+            const v = e.target.value;
+            setLocalVals((p) => ({ ...p, [row.idx]: v }));
+            setFieldDbg((d) => ({ ...d, [row.idx]: `change len=${v.length}` }));
+          }}
+          onInput={(e) => {
+            const v = (e.currentTarget as HTMLInputElement).value;
+            setLocalVals((p) => ({ ...p, [row.idx]: v }));
+            setFieldDbg((d) => ({ ...d, [row.idx]: `input len=${v.length}` }));
+          }}
           onBlur={() => {
             commitValue(row.idx);
             setFocusedIdx((cur) => (cur === row.idx ? null : cur));
           }}
           onKeyDown={(e) => {
-            if ((e as any).key === "Enter") (e.currentTarget as HTMLInputElement).blur(); // commits via onBlur
+            if ((e as any).key === "Enter") (e.currentTarget as HTMLInputElement).blur();
           }}
           placeholder="Value"
           autoComplete="off"
-          inputMode="decimal"
+          autoCorrect="off"
+          autoCapitalize="none"
+          spellCheck={false}
+          enterKeyHint="next"
         />
         <div className="text-right text-xs text-zinc-400">
           {row.unit ?? (unitHint ? unitHint(row.labelForHint) : "")}
         </div>
+      </div>
+
+      {/* per-field mini debug */}
+      <div className="mt-1 text-[10px] text-zinc-500">
+        {fieldDbg[row.idx] ?? ""}
       </div>
     </div>
   );
