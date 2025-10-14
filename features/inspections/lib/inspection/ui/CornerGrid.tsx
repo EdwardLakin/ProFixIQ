@@ -142,6 +142,7 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
         </div>
 
         <input
+          name={`v-${row.idx}`}
           className="w-40 rounded border border-gray-600 bg-black px-2 py-1 text-sm text-white outline-none placeholder:text-zinc-400"
           value={localVals[row.idx] ?? ""}
           onFocus={() => setFocusedIdx(row.idx)}

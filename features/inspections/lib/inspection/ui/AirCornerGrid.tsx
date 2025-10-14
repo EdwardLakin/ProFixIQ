@@ -126,7 +126,7 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
       {open && (
         <div className="space-y-3">
           {rows.map((row) => (
-            <div key={row.metric} className="rounded bg-zinc-950/70 p-3">
+            <div key={`${row.idx}-${row.metric}`} className="rounded bg-zinc-950/70 p-3">
               <div className="flex items-center gap-3">
                 <div
                   className="min-w-0 grow truncate text-sm font-semibold text-white"
@@ -136,6 +136,7 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
                 </div>
 
                 <input
+                  name={`v-${row.idx ?? "x"}`}
                   className="w-40 rounded border border-gray-600 bg-black px-2 py-1 text-sm text-white outline-none placeholder:text-zinc-400"
                   value={row.idx != null ? localVals[row.idx] ?? "" : ""}
                   onFocus={() => row.idx != null && setFocusedIdx(row.idx)}

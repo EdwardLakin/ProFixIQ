@@ -14,10 +14,6 @@ type StatusButtonsProps = {
   onStatusChange: (status: InspectionItemStatus) => void;
 };
 
-/**
- * Accept `any` at export boundary to avoid Next.js ts(71007) in client files,
- * then cast immediately to strong types.
- */
 export default function StatusButtons(_props: any) {
   const {
     item,
@@ -27,14 +23,16 @@ export default function StatusButtons(_props: any) {
     onStatusChange,
   } = _props as StatusButtonsProps;
 
+  // Base: neutral until selected; strong focus ring for keyboard nav
   const base =
     "px-3 py-1 rounded text-xs font-bold mr-2 mb-2 transition-colors duration-150 " +
     "bg-zinc-700 text-zinc-200 hover:bg-zinc-600 focus:outline-none " +
-    "focus:ring-2 focus:ring-offset-1 focus:ring-zinc-400"; // focus style for non-selected
+    // focus ring that matches selected ring sizing/offset so it feels consistent
+    "focus:ring-2 focus:ring-offset-2 focus:ring-offset-zinc-900";
 
   const selected = item.status;
 
-  // Persistent ring when selected (not just focus)
+  // Persistent ring + offset color per status
   const cls = (key: InspectionItemStatus) => {
     const isSel = selected === key;
     switch (key) {
@@ -42,21 +40,21 @@ export default function StatusButtons(_props: any) {
         return (
           base +
           (isSel
-            ? " bg-green-600 text-white ring-2 ring-offset-1 ring-green-400"
+            ? " bg-green-600 text-white ring-2 ring-green-400 ring-offset-2 ring-offset-zinc-900"
             : " focus:ring-green-300")
         );
       case "fail":
         return (
           base +
           (isSel
-            ? " bg-red-600 text-white ring-2 ring-offset-1 ring-red-400"
+            ? " bg-red-600 text-white ring-2 ring-red-400 ring-offset-2 ring-offset-zinc-900"
             : " focus:ring-red-300")
         );
       case "recommend":
         return (
           base +
           (isSel
-            ? " bg-yellow-400 text-black ring-2 ring-offset-1 ring-yellow-300"
+            ? " bg-yellow-400 text-black ring-2 ring-yellow-300 ring-offset-2 ring-offset-zinc-900"
             : " focus:ring-yellow-300")
         );
       case "na":
@@ -64,7 +62,7 @@ export default function StatusButtons(_props: any) {
         return (
           base +
           (isSel
-            ? " bg-blue-600 text-white ring-2 ring-offset-1 ring-blue-400"
+            ? " bg-blue-600 text-white ring-2 ring-blue-400 ring-offset-2 ring-offset-zinc-900"
             : " focus:ring-blue-300")
         );
     }
@@ -75,7 +73,10 @@ export default function StatusButtons(_props: any) {
     onStatusChange(status);
   };
 
-  const keyActivate = (status: InspectionItemStatus, e: React.KeyboardEvent<HTMLButtonElement>) => {
+  const keyActivate = (
+    status: InspectionItemStatus,
+    e: React.KeyboardEvent<HTMLButtonElement>,
+  ) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       choose(status);
