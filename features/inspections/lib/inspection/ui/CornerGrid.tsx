@@ -45,7 +45,6 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
 
   const groups: Group[] = useMemo(() => {
     const base: Record<CornerKey, Row[]> = { LF: [], RF: [], LR: [], RR: [] };
-
     items.forEach((it, idx) => {
       const label = it.item ?? "";
       let c: CornerKey | null = null;
@@ -80,105 +79,71 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
     return [build("LF"), build("RF"), build("LR"), build("RR")];
   }, [items, unitHint]);
 
-  /* ---------------- UI state ---------------- */
   const [open, setOpen] = useState(true);
-  const [filledMap, setFilledMap] = useState<Record<number, boolean>>(() => {
-    const m: Record<number, boolean> = {};
-    items.forEach((it, i) => (m[i] = !!String(it.value ?? "").trim()));
-    return m;
-  });
-
-  // kPa hint toggle + live psi text for hint (uncontrolled inputs)
-  const [showKpaHint, setShowKpaHint] = useState<boolean>(true);
-  const [livePsi, setLivePsi] = useState<Record<number, string>>(() => {
-    const m: Record<number, string> = {};
-    items.forEach((it, i) => (m[i] = String(it.value ?? "")));
-    return m;
-  });
+  const [showKpaHint, setShowKpaHint] = useState(true);
 
   const commit = (idx: number, el: HTMLInputElement | null) => {
     if (!el) return;
-    const value = el.value;
-    updateItem(sectionIndex, idx, { value });
-    const has = value.trim().length > 0;
-    setFilledMap((p) => (p[idx] === has ? p : { ...p, [idx]: has }));
-    setLivePsi((p) => (p[idx] === value ? p : { ...p, [idx]: value }));
+    updateItem(sectionIndex, idx, { value: el.value });
   };
 
-  const psiToKpa = (psiStr: string): number | null => {
-    const n = parseFloat(psiStr);
-    if (!isFinite(n)) return null;
-    return Math.round(n * 6.894757);
-  };
-
-  /* ---------------- UI pieces ---------------- */
-  const CornerTitle: Record<CornerKey, string> = {
-    LF: "Left Front",
-    RF: "Right Front",
-    LR: "Left Rear",
-    RR: "Right Rear",
-  };
-
-  const UnitWithHint = ({ row }: { row: Row }) => {
+  const RowView = ({ row }: { row: Row }) => {
     const isPressure = row.metric.toLowerCase().includes("tire pressure");
-    if (!isPressure) {
-      return (
-        <span className="text-right text-xs text-zinc-400">
-          {row.unit ?? (unitHint ? unitHint(row.labelForHint) : "")}
-        </span>
-      );
-    }
-    const kpa = showKpaHint ? psiToKpa(livePsi[row.idx] ?? "") : null;
+    const onInput = (e: React.FormEvent<HTMLInputElement>) => {
+      if (!isPressure) return;
+      const span =
+        (e.currentTarget.parentElement?.querySelector('[data-kpa="1"]') as HTMLSpanElement) ||
+        undefined;
+      if (!span) return;
+      const n = parseFloat(e.currentTarget.value);
+      span.textContent = isFinite(n) && showKpaHint ? `(${Math.round(n * 6.894757)} kPa)` : "";
+    };
+
     return (
-      <span className="text-right text-xs text-zinc-400">
-        psi {showKpaHint && kpa != null && <span className="ml-1 text-zinc-500">({kpa} kPa)</span>}
-      </span>
+      <div className="rounded bg-zinc-950/70 p-3">
+        <div className="flex items-center gap-3">
+          <div
+            className="min-w-0 grow truncate text-sm font-semibold text-white"
+            style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+          >
+            {row.metric}
+          </div>
+
+          <input
+            name={`hyd-${row.idx}`}
+            defaultValue={String(items[row.idx]?.value ?? "")}
+            className="w-40 rounded border border-gray-600 bg-black px-2 py-1 text-sm text-white outline-none placeholder:text-zinc-400"
+            placeholder="Value"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            inputMode="decimal"
+            onInput={onInput}
+            onBlur={(e) => commit(row.idx, e.currentTarget)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
+            }}
+          />
+
+          <div className="text-right text-xs text-zinc-400">
+            {isPressure ? (
+              <span>
+                psi <span data-kpa="1" className={showKpaHint ? "text-zinc-500" : "hidden"} />
+              </span>
+            ) : (
+              <span>{row.unit ?? (unitHint ? unitHint(row.labelForHint) : "")}</span>
+            )}
+          </div>
+        </div>
+      </div>
     );
   };
 
-  const RowView = ({ row }: { row: Row }) => (
-    <div className="rounded bg-zinc-950/70 p-3">
-      <div className="flex items-center gap-3">
-        <div
-          className="min-w-0 grow truncate text-sm font-semibold text-white"
-          style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-        >
-          {row.metric}
-        </div>
-
-        <input
-          name={`hyd-${row.idx}`}
-          defaultValue={String(items[row.idx]?.value ?? "")}
-          className="w-40 rounded border border-gray-600 bg-black px-2 py-1 text-sm text-white outline-none placeholder:text-zinc-400"
-          placeholder="Value"
-          autoComplete="off"
-          autoCorrect="off"
-          autoCapitalize="off"
-          spellCheck={false}
-          inputMode="decimal"
-          onInput={(e) => {
-            const v = (e.currentTarget as HTMLInputElement).value;
-            setLivePsi((p) => (p[row.idx] === v ? p : { ...p, [row.idx]: v }));
-          }}
-          onBlur={(e) => commit(row.idx, e.currentTarget)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
-          }}
-        />
-        <div className="text-right text-xs text-zinc-400">
-          <UnitWithHint row={row} />
-        </div>
-      </div>
-    </div>
-  );
-
   const CornerCard = ({ group }: { group: Group }) => (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
-      <div
-        className="mb-2 font-semibold text-orange-400"
-        style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-      >
-        {CornerTitle[group.corner]}
+      <div className="mb-2 font-semibold text-orange-400" style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}>
+        {({ LF: "Left Front", RF: "Right Front", LR: "Left Rear", RR: "Right Rear" } as const)[group.corner]}
       </div>
 
       {open && (
@@ -191,29 +156,9 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
     </div>
   );
 
-  const tally = (rows: Row[]) => rows.reduce((a, r) => a + (filledMap[r.idx] ? 1 : 0), 0);
-
   return (
     <div className="grid gap-3">
       <div className="flex items-center justify-end gap-3 px-1">
-        <div
-          className="hidden text-xs text-zinc-400 md:block"
-          style={{ fontFamily: "Roboto, system-ui, sans-serif" }}
-        >
-          {(["LF", "RF", "LR", "RR"] as CornerKey[]).map((k, i) => {
-            const g = groups.find((x) => x.corner === k)!;
-            const filled = tally(g.rows);
-            const total = g.rows.length;
-            return (
-              <span key={k}>
-                {k} {filled}/{total}
-                {i < 3 ? "  |  " : ""}
-              </span>
-            );
-          })}
-        </div>
-
-        {/* kPa hint toggle (matches AirCornerGrid) */}
         <label className="flex items-center gap-2 text-xs text-zinc-400">
           <input
             type="checkbox"

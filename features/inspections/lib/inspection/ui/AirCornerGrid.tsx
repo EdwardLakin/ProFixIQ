@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useInspectionForm } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import type { InspectionItem } from "@inspections/lib/inspection/types";
 
@@ -41,7 +41,6 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
 
   const groups: AxleGroup[] = useMemo(() => {
     const byAxle = new Map<string, { Left: MetricCell[]; Right: MetricCell[] }>();
-
     items.forEach((it, idx) => {
       const label = it.item ?? "";
       const m = label.match(labelRe);
@@ -67,50 +66,61 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
     }));
   }, [items, unitHint]);
 
-  // Collapse + counters (updated only on commit)
+  // UI
   const [open, setOpen] = useState(true);
-  const [filledMap, setFilledMap] = useState<Record<number, boolean>>(() => {
-    const m: Record<number, boolean> = {};
-    items.forEach((it, i) => (m[i] = !!String(it.value ?? "").trim()));
-    return m;
-  });
+  const [showKpaHint, setShowKpaHint] = useState(true);
 
-  // kPa hint toggle (per grid)
-  const [showKpaHint, setShowKpaHint] = useState<boolean>(true);
-
-  // live psi text while typing (for the hint only; does NOT control the input)
-  const [livePsi, setLivePsi] = useState<Record<number, string>>(() => {
-    const m: Record<number, string> = {};
-    items.forEach((it, i) => (m[i] = String(it.value ?? "")));
-    return m;
-  });
+  const psiToKpa = (psiStr: string): string => {
+    const n = parseFloat(psiStr);
+    if (!isFinite(n)) return "";
+    return String(Math.round(n * 6.894757));
+  };
 
   const commit = (idx: number, el: HTMLInputElement | null) => {
     if (!el) return;
     const value = el.value;
     updateItem(sectionIndex, idx, { value });
-    const has = value.trim().length > 0;
-    setFilledMap((p) => (p[idx] === has ? p : { ...p, [idx]: has }));
-    setLivePsi((p) => (p[idx] === value ? p : { ...p, [idx]: value }));
   };
 
-  const count = (cells: MetricCell[]) => cells.reduce((a, r) => a + (filledMap[r.idx] ? 1 : 0), 0);
+  const PressureUnit = ({
+    row,
+    inputRef,
+  }: {
+    row: MetricCell;
+    inputRef: React.RefObject<HTMLInputElement>;
+  }) => {
+    // span updated imperatively; no setState on keypress
+    const kpaRef = useRef<HTMLSpanElement>(null);
 
-  const psiToKpa = (psiStr: string): number | null => {
-    const n = parseFloat(psiStr);
-    if (!isFinite(n)) return null;
-    return Math.round(n * 6.894757);
-  };
+    const updateKpa = () => {
+      if (!kpaRef.current || !inputRef.current) return;
+      const next = psiToKpa(inputRef.current.value || "");
+      kpaRef.current.textContent = next ? `(${next} kPa)` : "";
+    };
 
-  const UnitWithHint = ({ row }: { row: MetricCell }) => {
-    const isPressure = row.metric.toLowerCase().includes("tire pressure");
-    if (!isPressure) {
-      return <span className="text-right text-xs text-zinc-400">{row.unit ?? (unitHint ? unitHint(row.fullLabel) : "")}</span>;
-    }
-    const kpa = showKpaHint ? psiToKpa(livePsi[row.idx] ?? "") : null;
     return (
       <span className="text-right text-xs text-zinc-400">
-        psi {showKpaHint && kpa != null && <span className="ml-1 text-zinc-500">({kpa} kPa)</span>}
+        <span>psi</span>{" "}
+        <span ref={kpaRef} className={showKpaHint ? "text-zinc-500" : "hidden"} />
+        {/* initialize from defaultValue once the input mounts */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function(){
+                const inp = document.querySelector('input[name="air-${row.idx}"]');
+                const span = document.currentScript.previousElementSibling;
+                if (inp && span) {
+                  const toKpa = v => {
+                    var n = parseFloat(v);
+                    if (!isFinite(n)) return "";
+                    return "(" + Math.round(n * 6.894757) + " kPa)";
+                  };
+                  span.textContent = ${showKpaHint ? "toKpa(inp.value||'')" : "''"};
+                }
+              })();
+            `,
+          }}
+        />
       </span>
     );
   };
@@ -123,42 +133,62 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
 
       {open && (
         <div className="space-y-3">
-          {cells.map((row) => (
-            <div key={row.idx} className="rounded bg-zinc-950/70 p-3">
-              <div className="flex items-center gap-3">
-                <div
-                  className="min-w-0 grow truncate text-sm font-semibold text-white"
-                  style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-                >
-                  {row.metric}
-                </div>
+          {cells.map((row) => {
+            const isPressure = row.metric.toLowerCase().includes("tire pressure");
+            const inputRef = useRef<HTMLInputElement>(null);
 
-                <input
-                  name={`air-${row.idx}`}
-                  defaultValue={String(items[row.idx]?.value ?? "")}
-                  className="w-40 rounded border border-gray-600 bg-black px-2 py-1 text-sm text-white outline-none placeholder:text-zinc-400"
-                  placeholder="Value"
-                  autoComplete="off"
-                  autoCorrect="off"
-                  autoCapitalize="off"
-                  spellCheck={false}
-                  inputMode="decimal"
-                  onInput={(e) => {
-                    // update live psi preview for kPa hint without controlling the input
-                    const v = (e.currentTarget as HTMLInputElement).value;
-                    setLivePsi((p) => (p[row.idx] === v ? p : { ...p, [row.idx]: v }));
-                  }}
-                  onBlur={(e) => commit(row.idx, e.currentTarget)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
-                  }}
-                />
-                <div className="text-right text-xs text-zinc-400">
-                  <UnitWithHint row={row} />
+            const onInput = (e: React.FormEvent<HTMLInputElement>) => {
+              // update kPa hint imperatively; do not set React state
+              const span =
+                (e.currentTarget.parentElement?.querySelector('[data-kpa="1"]') as HTMLSpanElement) ||
+                undefined;
+              if (!span) return;
+              const n = parseFloat(e.currentTarget.value);
+              span.textContent = isFinite(n) && showKpaHint ? `(${Math.round(n * 6.894757)} kPa)` : "";
+            };
+
+            return (
+              <div key={row.idx} className="rounded bg-zinc-950/70 p-3">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="min-w-0 grow truncate text-sm font-semibold text-white"
+                    style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+                  >
+                    {row.metric}
+                  </div>
+
+                  <input
+                    ref={inputRef}
+                    name={`air-${row.idx}`}
+                    defaultValue={String(items[row.idx]?.value ?? "")}
+                    className="w-40 rounded border border-gray-600 bg-black px-2 py-1 text-sm text-white outline-none placeholder:text-zinc-400"
+                    placeholder="Value"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
+                    inputMode="decimal"
+                    onInput={isPressure ? onInput : undefined}
+                    onBlur={(e) => commit(row.idx, e.currentTarget)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
+                    }}
+                  />
+
+                  <div className="text-right text-xs text-zinc-400">
+                    {isPressure ? (
+                      <span>
+                        psi{" "}
+                        <span data-kpa="1" className={showKpaHint ? "text-zinc-500" : "hidden"} />
+                      </span>
+                    ) : (
+                      <span>{row.unit ?? (unitHint ? unitHint(row.fullLabel) : "")}</span>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -168,22 +198,6 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
     <div className="grid gap-3">
       {/* Toolbar */}
       <div className="flex items-center justify-end gap-3 px-1">
-        <div className="hidden text-xs text-zinc-400 md:block" style={{ fontFamily: "Roboto, system-ui, sans-serif" }}>
-          {groups.map((g, i) => {
-            const leftFilled = count(g.left);
-            const rightFilled = count(g.right);
-            const filled = leftFilled + rightFilled;
-            const total = g.left.length + g.right.length;
-            return (
-              <span key={g.axle}>
-                {g.axle} {filled}/{total}
-                {i < groups.length - 1 ? "  |  " : ""}
-              </span>
-            );
-          })}
-        </div>
-
-        {/* kPa hint toggle */}
         <label className="flex items-center gap-2 text-xs text-zinc-400">
           <input
             type="checkbox"
@@ -193,7 +207,6 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
           />
           kPa hint
         </label>
-
         <button
           onClick={() => setOpen((v) => !v)}
           className="rounded bg-zinc-700 px-2 py-1 text-xs text-white hover:bg-zinc-600"
