@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useInspectionForm } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import type { InspectionItem } from "@inspections/lib/inspection/types";
 
@@ -13,20 +13,6 @@ type Props = {
 
 export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle }: Props) {
   const { updateItem } = useInspectionForm();
-
-  /* ---------------------- Debug overlay state ---------------------- */
-  const [debugMsg, setDebugMsg] = useState<string>("mounted");
-  useEffect(() => {
-    setDebugMsg("mounted");
-    return () => setDebugMsg("unmounted");
-  }, []);
-  const lastItemsRef = useRef(items);
-  useEffect(() => {
-    if (lastItemsRef.current !== items) {
-      setDebugMsg("items reference changed");
-      lastItemsRef.current = items;
-    }
-  }, [items]);
 
   type Side = "Left" | "Right";
   const labelRe = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
@@ -92,27 +78,35 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
     });
   }, [items, unitHint]);
 
-  /** ---------------- local buffer with focused guard (no timers) ----------- */
+  /** ---------------- local buffer + DOM-driven guard (works on iPad) --------------- */
   const [localVals, setLocalVals] = useState<Record<number, string>>({});
-  const [focusedIdx, setFocusedIdx] = useState<number | null>(null);
-  const [fieldDbg, setFieldDbg] = useState<Record<number, string>>({}); // per-field debug
 
+  // Find the index of the currently focused input by reading document.activeElement
+  const getActiveIdx = (): number | null => {
+    if (typeof document === "undefined") return null;
+    const el = document.activeElement as HTMLElement | null;
+    const name = el?.getAttribute?.("name") ?? "";
+    if (!name.startsWith("v-")) return null;
+    const maybe = Number(name.slice(2));
+    return Number.isFinite(maybe) ? maybe : null;
+  };
+
+  // Seed/sync from props, but never clobber the field that is currently focused
   useEffect(() => {
+    const activeIdx = getActiveIdx();
     setLocalVals((prev) => {
       const next = { ...prev };
       items.forEach((it, idx) => {
-        if (focusedIdx === idx) return; // don't stomp active field
+        if (activeIdx === idx) return; // leave the one you're typing in alone
         const want = String(it.value ?? "");
         if (next[idx] !== want) next[idx] = want;
       });
       return next;
     });
-  }, [items, focusedIdx]);
+  }, [items]);
 
   const commitValue = (idx: number) => {
-    const value = localVals[idx] ?? "";
-    updateItem(sectionIndex, idx, { value });
-    setDebugMsg(`commit ${idx}: "${value}" (len ${value.length})`);
+    updateItem(sectionIndex, idx, { value: localVals[idx] ?? "" });
   };
 
   /** --------------------- grid header summary + collapse ------------------- */
@@ -151,30 +145,19 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
                 </div>
 
                 <input
-                  type="text"
                   name={`v-${row.idx ?? "x"}`}
                   className="w-40 rounded border border-gray-600 bg-black px-2 py-1 text-sm text-white outline-none placeholder:text-zinc-400"
                   value={row.idx != null ? localVals[row.idx] ?? "" : ""}
-                  onFocus={() => {
-                    if (row.idx != null) setFocusedIdx(row.idx);
-                    setDebugMsg(`focus ${row.idx}`);
-                  }}
                   onChange={(e) => {
                     if (row.idx == null) return;
-                    const v = e.target.value;
-                    setLocalVals((prev) => ({ ...prev, [row.idx!]: v }));
-                    setFieldDbg((d) => ({ ...d, [row.idx!]: `change len=${v.length}` }));
+                    // ensure the “active field” guard is in place even if iPad didn't send focus
+                    const ae = document.activeElement as HTMLElement | null;
+                    if (ae?.getAttribute?.("name") !== `v-${row.idx}`) {
+                      ae?.setAttribute?.("name", `v-${row.idx}`); // harmless if already correct
+                    }
+                    setLocalVals((prev) => ({ ...prev, [row.idx!]: e.target.value }));
                   }}
-                  onInput={(e) => {
-                    if (row.idx == null) return;
-                    const v = (e.currentTarget as HTMLInputElement).value;
-                    setLocalVals((prev) => ({ ...prev, [row.idx!]: v }));
-                    setFieldDbg((d) => ({ ...d, [row.idx!]: `input len=${v.length}` }));
-                  }}
-                  onBlur={() => {
-                    if (row.idx != null) commitValue(row.idx);
-                    setFocusedIdx((cur) => (cur === row.idx ? null : cur));
-                  }}
+                  onBlur={() => row.idx != null && commitValue(row.idx)}
                   onKeyDown={(e) => {
                     if ((e as any).key === "Enter" && row.idx != null) {
                       (e.currentTarget as HTMLInputElement).blur(); // commit
@@ -182,19 +165,11 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
                   }}
                   placeholder="Value"
                   autoComplete="off"
-                  autoCorrect="off"
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  enterKeyHint="next"
+                  inputMode="decimal"
                 />
                 <div className="text-right text-xs text-zinc-400">
                   {row.unit ?? (unitHint ? unitHint(row.fullLabel) : "")}
                 </div>
-              </div>
-
-              {/* per-field mini debug */}
-              <div className="mt-1 text-[10px] text-zinc-500">
-                {row.idx != null ? fieldDbg[row.idx] ?? "" : ""}
               </div>
             </div>
           ))}
@@ -204,13 +179,9 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
   );
 
   return (
-    <div className="relative grid gap-3">
-      {/* Toolbar (top-right) */}
+    <div className="grid gap-3">
       <div className="flex items-center justify-end gap-3 px-1">
-        <div
-          className="hidden text-xs text-zinc-400 md:block"
-          style={{ fontFamily: "Roboto, system-ui, sans-serif" }}
-        >
+        <div className="hidden text-xs text-zinc-400 md:block" style={{ fontFamily: "Roboto, system-ui, sans-serif" }}>
           {filledCounts.map((c, i) => (
             <span key={c.axle}>
               {c.axle} {c.filled}/{c.total}
@@ -228,10 +199,8 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
         </button>
       </div>
 
-      {/* Add Axle control (only if handler provided) */}
       {onAddAxle && <AddAxlePicker groups={groups} onAddAxle={onAddAxle} />}
 
-      {/* Axle cards */}
       {groups.map((group) => (
         <div key={group.axle} className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
           <div
@@ -247,24 +216,6 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
           </div>
         </div>
       ))}
-
-      {/* Debug Overlay */}
-      <div
-        style={{
-          position: "fixed",
-          bottom: 10,
-          right: 10,
-          background: "#111",
-          color: "#ff8800",
-          padding: "6px 10px",
-          fontSize: "12px",
-          borderRadius: "6px",
-          zIndex: 9999,
-          opacity: 0.9,
-        }}
-      >
-        {debugMsg}
-      </div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useInspectionForm } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import type { InspectionItem } from "@inspections/lib/inspection/types";
 
@@ -12,20 +12,6 @@ type Props = {
 
 export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
   const { updateItem } = useInspectionForm();
-
-  /* ---------------------- Debug overlay state ---------------------- */
-  const [debugMsg, setDebugMsg] = useState("mounted");
-  useEffect(() => {
-    setDebugMsg("mounted");
-    return () => setDebugMsg("unmounted");
-  }, []);
-  const lastItemsRef = useRef(items);
-  useEffect(() => {
-    if (lastItemsRef.current !== items) {
-      setDebugMsg("items reference changed");
-      lastItemsRef.current = items;
-    }
-  }, [items]);
 
   type CornerKey = "LF" | "RF" | "LR" | "RR";
   const abbrevRE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
@@ -94,31 +80,33 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
     return [build("LF"), build("RF"), build("LR"), build("RR")];
   }, [items, unitHint]);
 
-  /** -------- Local buffer with focused guard (prevents stomp while typing) -------- */
-  const [localVals, setLocalVals] = useState<Record<number, string>>(() => {
-    const init: Record<number, string> = {};
-    items.forEach((it, i) => (init[i] = String(it.value ?? "")));
-    return init;
-  });
-  const [focusedIdx, setFocusedIdx] = useState<number | null>(null);
-  const [fieldDbg, setFieldDbg] = useState<Record<number, string>>({});
+  /** -------- Local buffer + DOM-driven guard (iPad safe) -------- */
+  const [localVals, setLocalVals] = useState<Record<number, string>>({});
+
+  const getActiveIdx = (): number | null => {
+    if (typeof document === "undefined") return null;
+    const el = document.activeElement as HTMLElement | null;
+    const name = el?.getAttribute?.("name") ?? "";
+    if (!name.startsWith("v-")) return null;
+    const maybe = Number(name.slice(2));
+    return Number.isFinite(maybe) ? maybe : null;
+    };
 
   useEffect(() => {
+    const activeIdx = getActiveIdx();
     setLocalVals((prev) => {
       const next = { ...prev };
       items.forEach((it, i) => {
-        if (focusedIdx === i) return; // don't overwrite the field you're typing in
+        if (activeIdx === i) return;
         const want = String(it.value ?? "");
         if (next[i] !== want) next[i] = want;
       });
       return next;
     });
-  }, [items, focusedIdx]);
+  }, [items]);
 
   const commitValue = (itemIdx: number) => {
-    const value = localVals[itemIdx] ?? "";
-    updateItem(sectionIndex, itemIdx, { value });
-    setDebugMsg(`commit ${itemIdx}: "${value}" (len ${value.length})`);
+    updateItem(sectionIndex, itemIdx, { value: localVals[itemIdx] ?? "" });
   };
 
   /** ------------------------ Header summary + collapse --------------------- */
@@ -154,46 +142,27 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
         </div>
 
         <input
-          type="text"
           name={`v-${row.idx}`}
           className="w-40 rounded border border-gray-600 bg-black px-2 py-1 text-sm text-white outline-none placeholder:text-zinc-400"
           value={localVals[row.idx] ?? ""}
-          onFocus={() => {
-            setFocusedIdx(row.idx);
-            setDebugMsg(`focus ${row.idx}`);
-          }}
           onChange={(e) => {
-            const v = e.target.value;
-            setLocalVals((p) => ({ ...p, [row.idx]: v }));
-            setFieldDbg((d) => ({ ...d, [row.idx]: `change len=${v.length}` }));
+            const ae = document.activeElement as HTMLElement | null;
+            if (ae?.getAttribute?.("name") !== `v-${row.idx}`) {
+              ae?.setAttribute?.("name", `v-${row.idx}`);
+            }
+            setLocalVals((p) => ({ ...p, [row.idx]: e.target.value }));
           }}
-          onInput={(e) => {
-            const v = (e.currentTarget as HTMLInputElement).value;
-            setLocalVals((p) => ({ ...p, [row.idx]: v }));
-            setFieldDbg((d) => ({ ...d, [row.idx]: `input len=${v.length}` }));
-          }}
-          onBlur={() => {
-            commitValue(row.idx);
-            setFocusedIdx((cur) => (cur === row.idx ? null : cur));
-          }}
+          onBlur={() => commitValue(row.idx)}
           onKeyDown={(e) => {
             if ((e as any).key === "Enter") (e.currentTarget as HTMLInputElement).blur();
           }}
           placeholder="Value"
           autoComplete="off"
-          autoCorrect="off"
-          autoCapitalize="none"
-          spellCheck={false}
-          enterKeyHint="next"
+          inputMode="decimal"
         />
         <div className="text-right text-xs text-zinc-400">
           {row.unit ?? (unitHint ? unitHint(row.labelForHint) : "")}
         </div>
-      </div>
-
-      {/* per-field mini debug */}
-      <div className="mt-1 text-[10px] text-zinc-500">
-        {fieldDbg[row.idx] ?? ""}
       </div>
     </div>
   );
@@ -218,7 +187,7 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
   );
 
   return (
-    <div className="relative grid gap-3">
+    <div className="grid gap-3">
       <div className="flex items-center justify-end gap-3 px-1">
         <div className="hidden text-xs text-zinc-400 md:block" style={{ fontFamily: "Roboto, system-ui, sans-serif" }}>
           LF {filledCounts.LF.filled}/{filledCounts.LF.total} &nbsp;|&nbsp; RF {filledCounts.RF.filled}/{filledCounts.RF.total} &nbsp;|&nbsp; LR {filledCounts.LR.filled}/{filledCounts.LR.total} &nbsp;|&nbsp; RR {filledCounts.RR.filled}/{filledCounts.RR.total}
@@ -240,24 +209,6 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
       <div className="grid gap-4 md:grid-cols-2">
         <CornerCard group={groups[2]} />
         <CornerCard group={groups[3]} />
-      </div>
-
-      {/* Debug Overlay */}
-      <div
-        style={{
-          position: "fixed",
-          bottom: 10,
-          right: 10,
-          background: "#111",
-          color: "#00ffff",
-          padding: "6px 10px",
-          fontSize: "12px",
-          borderRadius: "6px",
-          zIndex: 9999,
-          opacity: 0.9,
-        }}
-      >
-        {debugMsg}
       </div>
     </div>
   );
