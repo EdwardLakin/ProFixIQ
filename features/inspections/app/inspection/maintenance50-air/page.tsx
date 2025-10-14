@@ -1,4 +1,3 @@
-// features/inspections/app/maintenance50-air/page.tsx
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -30,11 +29,11 @@ import { SaveInspectionButton } from "@inspections/components/inspection/SaveIns
 import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
 import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicleHeader";
 
-// ✅ NEW IMPORT (as requested)
+// NEW (kept): add-axle helper
 import { buildAirAxleItems } from "@inspections/lib/inspection/builders/addAxleHelpers";
 
 /* -------------------------------------------------------------------------- */
-/* Web Speech — minimal local typings (no `any`)                               */
+/* Web Speech (typed)                                                          */
 /* -------------------------------------------------------------------------- */
 
 type WebSpeechResultCell = { transcript: string };
@@ -63,7 +62,7 @@ function resolveSR(): SRConstructor | undefined {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Header adapters (strict types)                                              */
+/* Header adapters                                                             */
 /* -------------------------------------------------------------------------- */
 
 type HeaderCustomer = {
@@ -124,23 +123,18 @@ function buildAirCornerMeasurementsSection(): InspectionSection {
   return {
     title: "Measurements (Air – Corner Checks)",
     items: [
-      // Tire pressures (explicitly included)
       { item: "Steer 1 Left Tire Pressure", unit: "psi", value: "" },
       { item: "Steer 1 Right Tire Pressure", unit: "psi", value: "" },
 
-      // Tread depth
       { item: "Steer 1 Left Tread Depth", unit: "mm", value: "" },
       { item: "Steer 1 Right Tread Depth", unit: "mm", value: "" },
 
-      // Linings/Shoes
       { item: "Steer 1 Left Lining/Shoe Thickness", unit: "mm", value: "" },
       { item: "Steer 1 Right Lining/Shoe Thickness", unit: "mm", value: "" },
 
-      // Drum/Rotor condition
       { item: "Steer 1 Left Drum/Rotor Condition", unit: "", value: "" },
       { item: "Steer 1 Right Drum/Rotor Condition", unit: "", value: "" },
 
-      // Air-brake push-rod travels (explicitly included)
       { item: "Steer 1 Left Push Rod Travel", unit: "in", value: "" },
       { item: "Steer 1 Right Push Rod Travel", unit: "in", value: "" },
     ],
@@ -207,7 +201,7 @@ function buildDrivelineSection(): InspectionSection {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Units + unit toggle                                                         */
+/* Units + toggle                                                              */
 /* -------------------------------------------------------------------------- */
 
 function unitForAir(label: string, mode: "metric" | "imperial"): string {
@@ -259,10 +253,8 @@ function applyUnitsAir(sections: InspectionSection[], mode: "metric" | "imperial
 export default function Maintenance50AirPage(): JSX.Element {
   const searchParams = useSearchParams();
 
-  // Stable session id
   const inspectionId = useMemo<string>(() => searchParams.get("inspectionId") || uuidv4(), [searchParams]);
 
-  // UI state
   const [unit, setUnit] = useState<"metric" | "imperial">("metric");
   const [isListening, setIsListening] = useState<boolean>(false);
   const [isPaused, setIsPaused] = useState<boolean>(false);
@@ -271,7 +263,6 @@ export default function Maintenance50AirPage(): JSX.Element {
 
   const templateName: string = searchParams.get("template") || "Maintenance 50 (Air Brake CVIP)";
 
-  // Customer + vehicle from URL (string-only for header)
   const customer: SessionCustomer = {
     first_name: searchParams.get("first_name") || "",
     last_name: searchParams.get("last_name") || "",
@@ -295,7 +286,6 @@ export default function Maintenance50AirPage(): JSX.Element {
     engine_hours: searchParams.get("engine_hours") || "",
   };
 
-  // Initial session
   const initialSession = useMemo<Partial<InspectionSession>>(
     () => ({
       id: inspectionId,
@@ -324,8 +314,7 @@ export default function Maintenance50AirPage(): JSX.Element {
     addQuoteLine,
   } = useInspectionSession(initialSession);
 
-  /* -------------------------- LocalStorage hydrate/persist -------------------------- */
-
+  /* hydrate/persist */
   useEffect(() => {
     const key = `inspection-${inspectionId}`;
     const saved = typeof window !== "undefined" ? localStorage.getItem(key) : null;
@@ -349,16 +338,13 @@ export default function Maintenance50AirPage(): JSX.Element {
     }
   }, [session, inspectionId]);
 
-  // ✅ extra-safe persistence on tab switch/close
   useEffect(() => {
     const key = `inspection-${inspectionId}`;
     const persistNow = () => {
       try {
         const payload = session ?? initialSession;
         localStorage.setItem(key, JSON.stringify(payload));
-      } catch {
-        /* no-op */
-      }
+      } catch {}
     };
 
     const onVisibility = () => {
@@ -376,14 +362,13 @@ export default function Maintenance50AirPage(): JSX.Element {
     };
   }, [session, inspectionId, initialSession]);
 
-  /* -------------------------- Sections scaffold + unit toggle ----------------------- */
-
+  /* sections + unit toggle */
   useEffect(() => {
     if (!session) return;
     if ((session.sections?.length ?? 0) > 0) return;
 
     const next: InspectionSection[] = [
-      buildAirCornerMeasurementsSection(), // includes tire pressures + push-rod travel
+      buildAirCornerMeasurementsSection(),
       buildAirSystemMeasurementsSection(),
       buildLightsSection(),
       buildSuspensionSection(),
@@ -398,8 +383,7 @@ export default function Maintenance50AirPage(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unit]);
 
-  /* -------------------------- Voice -> commands ------------------------------------ */
-
+  /* speech -> commands */
   const handleTranscript = async (text: string): Promise<void> => {
     setTranscript(text);
     const commands: ParsedCommand[] = await interpretCommand(text);
@@ -443,27 +427,20 @@ export default function Maintenance50AirPage(): JSX.Element {
     setIsListening(true);
   };
 
-  /* -------------------------- Render ----------------------------------------------- */
-
   if (!session || !session.sections || session.sections.length === 0) {
     return <div className="p-4 text-white">Loading inspection…</div>;
   }
 
   const isCorner = (t?: string): boolean => (t || "").toLowerCase().includes("corner");
 
-  // ✅ memoize the context value to prevent input remounts while typing
-  const formCtxValue = useMemo(() => ({ updateItem }), [updateItem]);
-
   return (
     <div className="px-4 pb-14">
-      {/* Header */}
       <CustomerVehicleHeader
         templateName={templateName}
         customer={toHeaderCustomer(session.customer ?? null)}
         vehicle={toHeaderVehicle(session.vehicle ?? null)}
       />
 
-      {/* Controls */}
       <div className="mb-4 flex flex-wrap items-center justify-center gap-3">
         <StartListeningButton
           isListening={isListening}
@@ -486,7 +463,6 @@ export default function Maintenance50AirPage(): JSX.Element {
           }}
           recognitionInstance={recognitionRef.current as unknown as SpeechRecognition | null}
           setRecognitionRef={(instance: SpeechRecognition | null): void => {
-            // keep internal ref in sync; cast only at this boundary
             (recognitionRef as React.MutableRefObject<WebSpeechRecognition | null>).current =
               (instance as unknown as WebSpeechRecognition) ?? null;
           }}
@@ -506,8 +482,7 @@ export default function Maintenance50AirPage(): JSX.Element {
         totalItems={session.sections[session.currentSectionIndex]?.items.length || 0}
       />
 
-      {/* Sections */}
-      <InspectionFormCtx.Provider value={formCtxValue}>
+      <InspectionFormCtx.Provider value={{ updateItem }}>
         {session.sections.map((section: InspectionSection, sectionIndex: number) => (
           <div
             key={`${section.title}-${sectionIndex}`}
@@ -527,7 +502,6 @@ export default function Maintenance50AirPage(): JSX.Element {
                 sectionIndex={sectionIndex}
                 items={section.items}
                 unitHint={(label: string) => unitForAir(label, unit)}
-                // 👇 NEW: hook Add-Axle into the page state
                 onAddAxle={(axleLabel: string) => {
                   const extra = buildAirAxleItems(axleLabel);
                   updateSection(sectionIndex, { items: [...section.items, ...extra] });
@@ -547,7 +521,6 @@ export default function Maintenance50AirPage(): JSX.Element {
                 ): void => {
                   updateItem(secIdx, itemIdx, { status });
 
-                  // Add a quote line when a non-measurement item is FAIL/RECOMMEND
                   if (status === "fail" || status === "recommend") {
                     const it = session.sections[secIdx].items[itemIdx];
                     const desc = it.item ?? it.name ?? "Item";

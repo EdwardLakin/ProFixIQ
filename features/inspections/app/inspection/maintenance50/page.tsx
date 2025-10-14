@@ -1,4 +1,3 @@
-// features/inspections/app/maintenance50-hydraulic/page.tsx
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -30,10 +29,7 @@ import { SaveInspectionButton } from "@inspections/components/inspection/SaveIns
 import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
 import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicleHeader";
 
-/* -------------------------------------------------------------------------- */
-/* Web Speech — minimal local typings (parity with Air page)                   */
-/* -------------------------------------------------------------------------- */
-
+/* Web Speech types */
 type WebSpeechResultCell = { transcript: string };
 type WebSpeechResultRow = { [index: number]: WebSpeechResultCell };
 type WebSpeechResults = { [index: number]: WebSpeechResultRow };
@@ -59,10 +55,7 @@ function resolveSR(): SRConstructor | undefined {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? undefined;
 }
 
-/* -------------------------------------------------------------------------- */
-/* Header adapters (strict types, string-only for header)                      */
-/* -------------------------------------------------------------------------- */
-
+/* Header adapters */
 type HeaderCustomer = {
   first_name: string;
   last_name: string;
@@ -113,21 +106,16 @@ function toHeaderVehicle(v?: SessionVehicle | null): HeaderVehicle {
   };
 }
 
-/* -------------------------------------------------------------------------- */
-/* Hydraulic section builders                                                  */
-/* -------------------------------------------------------------------------- */
-
+/* Hydraulic sections */
 function buildHydraulicMeasurementsSection(): InspectionSection {
   return {
     title: "Measurements (Hydraulic)",
     items: [
-      // Tire pressures
       { item: "LF Tire Pressure", unit: "psi", value: "" },
       { item: "RF Tire Pressure", unit: "psi", value: "" },
       { item: "LR Tire Pressure", unit: "psi", value: "" },
       { item: "RR Tire Pressure", unit: "psi", value: "" },
 
-      // Tread
       { item: "LF Tire Tread", unit: "mm", value: "" },
       { item: "RF Tire Tread", unit: "mm", value: "" },
       { item: "LR Tire Tread (Outer)", unit: "mm", value: "" },
@@ -135,19 +123,16 @@ function buildHydraulicMeasurementsSection(): InspectionSection {
       { item: "RR Tire Tread (Outer)", unit: "mm", value: "" },
       { item: "RR Tire Tread (Inner)", unit: "mm", value: "" },
 
-      // Brakes
       { item: "LF Brake Pad Thickness", unit: "mm", value: "" },
       { item: "RF Brake Pad Thickness", unit: "mm", value: "" },
       { item: "LR Brake Pad Thickness", unit: "mm", value: "" },
       { item: "RR Brake Pad Thickness", unit: "mm", value: "" },
 
-      // Rotors
       { item: "LF Rotor Condition / Thickness", unit: "mm", value: "" },
       { item: "RF Rotor Condition / Thickness", unit: "mm", value: "" },
       { item: "LR Rotor Condition / Thickness", unit: "mm", value: "" },
       { item: "RR Rotor Condition / Thickness", unit: "mm", value: "" },
 
-      // After road test
       { item: "Wheel Torque (after road test)", unit: "ft·lb", value: "" },
     ],
   };
@@ -213,10 +198,7 @@ function buildDrivelineSection(): InspectionSection {
   };
 }
 
-/* -------------------------------------------------------------------------- */
-/* Units (hydraulic)                                                           */
-/* -------------------------------------------------------------------------- */
-
+/* Units */
 function unitForHydraulic(label: string, mode: "metric" | "imperial"): string {
   const l = label.toLowerCase();
   if (l.includes("pressure")) return mode === "imperial" ? "psi" : "kPa";
@@ -227,10 +209,7 @@ function unitForHydraulic(label: string, mode: "metric" | "imperial"): string {
   return "";
 }
 
-function applyUnitsHydraulic(
-  sections: InspectionSection[],
-  mode: "metric" | "imperial",
-): InspectionSection[] {
+function applyUnitsHydraulic(sections: InspectionSection[], mode: "metric" | "imperial"): InspectionSection[] {
   return sections.map((s) => {
     if ((s.title || "").toLowerCase().includes("measurements")) {
       const items = s.items.map((it) => ({
@@ -243,17 +222,12 @@ function applyUnitsHydraulic(
   });
 }
 
-/* -------------------------------------------------------------------------- */
-/* Page                                                                        */
-/* -------------------------------------------------------------------------- */
-
+/* Page */
 export default function Maintenance50HydraulicPage(): JSX.Element {
   const searchParams = useSearchParams();
 
-  // Stable id (parity with Air)
   const inspectionId = useMemo<string>(() => searchParams.get("inspectionId") || uuidv4(), [searchParams]);
 
-  // UI state
   const [unit, setUnit] = useState<"metric" | "imperial">("metric");
   const [isListening, setIsListening] = useState<boolean>(false);
   const [isPaused, setIsPaused] = useState<boolean>(false);
@@ -262,7 +236,6 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
 
   const templateName: string = searchParams.get("template") || "Maintenance 50 (Hydraulic)";
 
-  // Header data (string-only)
   const customer: SessionCustomer = {
     first_name: searchParams.get("first_name") || "",
     last_name: searchParams.get("last_name") || "",
@@ -286,7 +259,6 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
     engine_hours: searchParams.get("engine_hours") || "",
   };
 
-  // Initial session (parity with Air)
   const initialSession = useMemo<Partial<InspectionSession>>(
     () => ({
       id: inspectionId,
@@ -315,8 +287,6 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
     addQuoteLine,
   } = useInspectionSession(initialSession);
 
-  /* -------------------------- LocalStorage hydrate/persist -------------------------- */
-
   useEffect(() => {
     const key = `inspection-${inspectionId}`;
     const saved = typeof window !== "undefined" ? localStorage.getItem(key) : null;
@@ -340,16 +310,13 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
     }
   }, [session, inspectionId]);
 
-  // extra-safe persistence on tab switch/close (parity with Air)
   useEffect(() => {
     const key = `inspection-${inspectionId}`;
     const persistNow = () => {
       try {
         const payload = session ?? initialSession;
         localStorage.setItem(key, JSON.stringify(payload));
-      } catch {
-        /* no-op */
-      }
+      } catch {}
     };
 
     const onVisibility = () => {
@@ -366,8 +333,6 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [session, inspectionId, initialSession]);
-
-  /* -------------------------- Sections scaffold + unit toggle ----------------------- */
 
   useEffect(() => {
     if (!session) return;
@@ -388,8 +353,6 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
     updateInspection({ sections: applyUnitsHydraulic(session.sections, unit) as typeof session.sections });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unit]);
-
-  /* -------------------------- Voice -> commands ------------------------------------ */
 
   const handleTranscript = async (text: string): Promise<void> => {
     setTranscript(text);
@@ -434,28 +397,20 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
     setIsListening(true);
   };
 
-  /* -------------------------- Render ----------------------------------------------- */
-
   if (!session || !session.sections || session.sections.length === 0) {
     return <div className="p-4 text-white">Loading inspection…</div>;
   }
 
-  const isMeasurements = (t?: string): boolean =>
-    (t || "").toLowerCase().includes("measurements");
-
-  // ✅ memoize the context value to prevent input remounts while typing
-  const formCtxValue = useMemo(() => ({ updateItem }), [updateItem]);
+  const isMeasurements = (t?: string): boolean => (t || "").toLowerCase().includes("measurements");
 
   return (
     <div className="px-4 pb-14">
-      {/* Header */}
       <CustomerVehicleHeader
         templateName={templateName}
         customer={toHeaderCustomer(session.customer ?? null)}
         vehicle={toHeaderVehicle(session.vehicle ?? null)}
       />
 
-      {/* Controls */}
       <div className="mb-4 flex flex-wrap items-center justify-center gap-3">
         <StartListeningButton
           isListening={isListening}
@@ -497,8 +452,7 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
         totalItems={session.sections[session.currentSectionIndex]?.items.length || 0}
       />
 
-      {/* Sections */}
-      <InspectionFormCtx.Provider value={formCtxValue}>
+      <InspectionFormCtx.Provider value={{ updateItem }}>
         {session.sections.map((section: InspectionSection, sectionIndex: number) => (
           <div
             key={`${section.title}-${sectionIndex}`}
@@ -529,7 +483,6 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
                 ): void => {
                   updateItem(secIdx, itemIdx, { status });
 
-                  // Add a quote line when a non-measurement item is FAIL/RECOMMEND
                   if (status === "fail" || status === "recommend") {
                     const it = session.sections[secIdx].items[itemIdx];
                     const desc = it.item ?? it.name ?? "Item";
