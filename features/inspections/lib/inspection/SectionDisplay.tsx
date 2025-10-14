@@ -63,6 +63,7 @@ export default function SectionDisplay(_props: any) {
     <div className="mx-4 mb-6 rounded-lg border border-zinc-800 bg-zinc-900">
       {/* Header */}
       <div className="flex items-center justify-between p-3">
+        {/* Title still toggles open/closed */}
         <button
           onClick={() => setOpen((v) => !v)}
           className="text-left text-lg font-semibold text-orange-400"
@@ -79,34 +80,45 @@ export default function SectionDisplay(_props: any) {
           >
             {stats.ok} OK · {stats.fail} FAIL · {stats.na} NA · {stats.recommend} REC · {stats.unset} —
           </span>
-          <div className="flex gap-1">
+
+          <div className="flex items-center gap-1">
             <button
-              className="rounded bg-zinc-700 px-2 py-1 text-xs text-white hover:bg-green-600 active:brightness-110"
+              className="rounded bg-zinc-700 px-2 py-1 text-xs text-white hover:bg-green-600"
               onClick={() => markAll("ok")}
               title="Mark all OK"
             >
               All OK
             </button>
             <button
-              className="rounded bg-zinc-700 px-2 py-1 text-xs text-white hover:bg-red-600 active:brightness-110"
+              className="rounded bg-zinc-700 px-2 py-1 text-xs text-white hover:bg-red-600"
               onClick={() => markAll("fail")}
               title="Mark all FAIL"
             >
               All FAIL
             </button>
             <button
-              className="rounded bg-zinc-700 px-2 py-1 text-xs text-white hover:bg-yellow-600 active:brightness-110"
+              className="rounded bg-zinc-700 px-2 py-1 text-xs text-white hover:bg-yellow-600"
               onClick={() => markAll("na")}
               title="Mark all NA"
             >
               All NA
             </button>
             <button
-              className="rounded bg-zinc-700 px-2 py-1 text-xs text-white hover:bg-blue-600 active:brightness-110"
+              className="rounded bg-zinc-700 px-2 py-1 text-xs text-white hover:bg-blue-600"
               onClick={() => markAll("recommend")}
               title="Mark all Recommend"
             >
               All REC
+            </button>
+
+            {/* NEW: explicit collapse/expand control on the right */}
+            <button
+              className="ml-2 rounded bg-zinc-800 px-2 py-1 text-xs text-white hover:bg-zinc-700"
+              onClick={() => setOpen((v) => !v)}
+              aria-expanded={open}
+              title={open ? "Collapse section" : "Expand section"}
+            >
+              {open ? "Collapse" : "Expand"}
             </button>
           </div>
         </div>
@@ -114,7 +126,7 @@ export default function SectionDisplay(_props: any) {
 
       {/* Body */}
       {open && (
-        <div className="space-y-3 p-3">
+        <div className="space-y-4 p-3">
           {section.items.map((item, itemIndex) => {
             const key =
               (item.item ?? item.name ?? `item-${sectionIndex}-${itemIndex}`) +
