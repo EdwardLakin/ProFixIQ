@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useInspectionForm } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import type { InspectionItem } from "@inspections/lib/inspection/types";
 
@@ -15,7 +15,8 @@ type Props = {
  * CornerGrid (Hydraulic)
  * - Always renders 4 corners: LF, RF, LR, RR (also accepts "Left Front", etc.)
  * - Each corner card contains its metrics (Tire Pressure, Tread, Pad Thickness, Rotor, etc.)
- * - Debounced inputs buffer locally and sync to form state after a short delay.
+ * - Inputs are locally buffered and commit to form state on blur/Enter (no timers).
+ * - Master collapse toggle lives in the grid header (top-right), keeping the section title visible.
  */
 export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
   const { updateItem } = useInspectionForm();
@@ -100,52 +101,41 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
     return [build("LF"), build("RF"), build("LR"), build("RR")];
   }, [items, unitHint]);
 
-  /** ------------------------ Debounced input buffer ------------------------ */
-  const [localVals, setLocalVals] = useState<Record<number, string>>({});
-  const timersRef = useRef<Record<number, number>>({});
-  const editingRef = useRef<Set<number>>(new Set());
+  /** ------------------------ Local buffer (no timers) ---------------------- */
+  const [localVals, setLocalVals] = useState<Record<number, string>>(() => {
+    const init: Record<number, string> = {};
+    items.forEach((it, i) => (init[i] = String(it.value ?? "")));
+    return init;
+  });
 
-  // Seed/merge from items but don't clobber focused fields
+  // keep buffer in sync if items list changes externally
   useEffect(() => {
-    setLocalVals((prev) => {
-      const next = { ...prev };
+    setLocalVals(() => {
+      const next: Record<number, string> = {};
       items.forEach((it, i) => {
-        if (editingRef.current.has(i)) return; // skip while editing
-        const want = String(it.value ?? "");
-        if (next[i] !== want) next[i] = want;
+        next[i] = String(it.value ?? "");
       });
       return next;
     });
   }, [items]);
 
-  const setValueDebounced = (itemIdx: number, value: string) => {
-    setLocalVals((v) => ({ ...v, [itemIdx]: value }));
-    if (timersRef.current[itemIdx]) window.clearTimeout(timersRef.current[itemIdx]);
-    timersRef.current[itemIdx] = window.setTimeout(() => {
-      updateItem(sectionIndex, itemIdx, { value });
-      delete timersRef.current[itemIdx];
-    }, 250);
+  const commitValue = (itemIdx: number) => {
+    updateItem(sectionIndex, itemIdx, { value: localVals[itemIdx] ?? "" });
   };
 
-  /* -------------------------- Collapse state per corner --------------------------- */
-  const [openMap, setOpenMap] = useState<Record<CornerKey, boolean>>({
-    LF: true,
-    RF: true,
-    LR: true,
-    RR: true,
-  });
+  /** ------------------------ Header summary + collapse --------------------- */
+  const [open, setOpen] = useState(true);
 
-  const computeCounts = (g: CornerGroup) => {
-    const idxs = g.rows.map((r) => r.idx);
-    const counts: Record<string, number> = { ok: 0, fail: 0, na: 0, recommend: 0, unset: 0 };
-    idxs.forEach((i) => {
-      const s = (items[i]?.status ?? "unset") as keyof typeof counts;
-      counts[s] = (counts[s] ?? 0) + 1;
-    });
-    return counts;
-  };
-
-  /** ------------------------------- UI ------------------------------------ */
+  const filledCounts = useMemo(() => {
+    const countFilled = (rows: Row[]) =>
+      rows.reduce((acc, r) => (String(localVals[r.idx] ?? "").trim() ? acc + 1 : acc), 0);
+    return {
+      LF: { filled: countFilled(groups[0]?.rows ?? []), total: groups[0]?.rows.length ?? 0 },
+      RF: { filled: countFilled(groups[1]?.rows ?? []), total: groups[1]?.rows.length ?? 0 },
+      LR: { filled: countFilled(groups[2]?.rows ?? []), total: groups[2]?.rows.length ?? 0 },
+      RR: { filled: countFilled(groups[3]?.rows ?? []), total: groups[3]?.rows.length ?? 0 },
+    };
+  }, [groups, localVals]);
 
   const CornerTitle: Record<CornerKey, string> = {
     LF: "Left Front",
@@ -154,66 +144,79 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
     RR: "Right Rear",
   };
 
-  const CornerCard = ({ group }: { group: CornerGroup }) => {
-    const open = openMap[group.corner];
-    const counts = computeCounts(group);
+  /** ------------------------------- UI ------------------------------------ */
 
-    return (
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900">
-        {/* Collapsible header */}
-        <div className="flex items-center justify-between p-3">
-          <button
-            onClick={() => setOpenMap((m) => ({ ...m, [group.corner]: !open }))}
-            className="text-left font-semibold text-orange-400"
-            style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-            aria-expanded={open}
-          >
-            {CornerTitle[group.corner]}
-          </button>
-          <span
-            className="text-xs text-zinc-400"
-            style={{ fontFamily: "Roboto, system-ui, sans-serif" }}
-          >
-            {counts.ok} OK · {counts.fail} FAIL · {counts.na} NA · {counts.recommend} REC · {counts.unset} —
-          </span>
+  const RowView = ({ row }: { row: Row }) => (
+    <div className="rounded bg-zinc-950/70 p-3">
+      <div className="flex items-center gap-3">
+        <div
+          className="min-w-0 grow truncate text-sm font-semibold text-white"
+          style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+        >
+          {row.metric}
         </div>
 
-        {open && (
-          <div className="space-y-3 p-3">
-            {group.rows.map((row) => (
-              <div key={row.idx} className="rounded bg-zinc-950/70 p-3">
-                <div
-                  className="mb-2 text-sm font-semibold text-orange-300"
-                  style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-                >
-                  {row.metric}
-                </div>
-
-                <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-                  <input
-                    className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white"
-                    style={{ fontFamily: "Roboto, system-ui, sans-serif" }}
-                    value={localVals[row.idx] ?? ""}
-                    onChange={(e) => setValueDebounced(row.idx, e.target.value)}
-                    onFocus={() => editingRef.current.add(row.idx)}
-                    onBlur={() => editingRef.current.delete(row.idx)}
-                    placeholder="Value"
-                  />
-                  <div className="text-center text-xs text-zinc-400">
-                    {row.unit ?? (unitHint ? unitHint(row.labelForHint) : "")}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        {/* value input styled like section notes box */}
+        <input
+          className="w-40 rounded border border-gray-600 bg-black px-2 py-1 text-sm text-white outline-none placeholder:text-zinc-400"
+          value={localVals[row.idx] ?? ""}
+          onChange={(e) => setLocalVals((p) => ({ ...p, [row.idx]: e.target.value }))}
+          onBlur={() => commitValue(row.idx)}
+          onKeyDown={(e) => {
+            if ((e as any).key === "Enter") {
+              (e.currentTarget as HTMLInputElement).blur(); // triggers onBlur commit
+            }
+          }}
+          placeholder="Value"
+        />
+        <div className="text-right text-xs text-zinc-400">
+          {row.unit ?? (unitHint ? unitHint(row.labelForHint) : "")}
+        </div>
       </div>
-    );
-  };
+    </div>
+  );
 
-  // Layout: two cards across for fronts, then rears—each is now collapsible
+  const CornerCard = ({ group }: { group: CornerGroup }) => (
+    <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+      <div
+        className="mb-2 font-semibold text-orange-400"
+        style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+      >
+        {CornerTitle[group.corner]}
+      </div>
+
+      {open && (
+        <div className="space-y-3">
+          {group.rows.map((row) => (
+            <RowView key={`${group.corner}-${row.idx}-${row.metric}`} row={row} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  // Layout: header toolbar + cards grid
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-3">
+      {/* Toolbar (top-right) */}
+      <div className="flex items-center justify-end gap-3 px-1">
+        <div
+          className="hidden text-xs text-zinc-400 md:block"
+          style={{ fontFamily: "Roboto, system-ui, sans-serif" }}
+        >
+          LF {filledCounts.LF.filled}/{filledCounts.LF.total} &nbsp;|&nbsp; RF {filledCounts.RF.filled}/{filledCounts.RF.total} &nbsp;|&nbsp; LR {filledCounts.LR.filled}/{filledCounts.LR.total} &nbsp;|&nbsp; RR {filledCounts.RR.filled}/{filledCounts.RR.total}
+        </div>
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="rounded bg-zinc-700 px-2 py-1 text-xs text-white hover:bg-zinc-600"
+          aria-expanded={open}
+          title={open ? "Collapse" : "Expand"}
+        >
+          {open ? "Collapse" : "Expand"}
+        </button>
+      </div>
+
+      {/* the four cards */}
       <div className="grid gap-4 md:grid-cols-2">
         <CornerCard group={groups[0]} /> {/* LF */}
         <CornerCard group={groups[1]} /> {/* RF */}
