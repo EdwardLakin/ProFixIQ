@@ -11,23 +11,25 @@ type Props = {
   unitHint?: (label: string) => string;
 };
 
+/**
+ * CornerGrid (Hydraulic)
+ * - 4 corners: LF, RF, LR, RR (also accepts “Left Front”, etc.)
+ * - Local buffer; commit on blur/Enter (no timers).
+ * - Collapse toggle with per-corner filled counters.
+ */
 export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
   const { updateItem } = useInspectionForm();
 
-  // ------------------------ DEBUG: mount/unmount + items ref ------------------------
+  /* ---------------------- Debug overlay state ---------------------- */
+  const [debugMsg, setDebugMsg] = useState("mounted");
   useEffect(() => {
-    // eslint-disable-next-line no-console
-    console.log("[CornerGrid] mounted");
-    return () => {
-      // eslint-disable-next-line no-console
-      console.log("[CornerGrid] unmounted");
-    };
+    setDebugMsg("mounted");
+    return () => setDebugMsg("unmounted");
   }, []);
   const lastItemsRef = useRef(items);
   useEffect(() => {
     if (lastItemsRef.current !== items) {
-      // eslint-disable-next-line no-console
-      console.log("[CornerGrid] items reference changed");
+      setDebugMsg("items reference changed");
       lastItemsRef.current = items;
     }
   }, [items]);
@@ -99,7 +101,7 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
     return [build("LF"), build("RF"), build("LR"), build("RR")];
   }, [items, unitHint]);
 
-  /* -------- Local buffer (init once; resync only when not focused) -------- */
+  /** -------- Local buffer with focused guard (prevents stomp while typing) -------- */
   const [localVals, setLocalVals] = useState<Record<number, string>>(() => {
     const init: Record<number, string> = {};
     items.forEach((it, i) => (init[i] = String(it.value ?? "")));
@@ -107,25 +109,25 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
   });
   const [focusedIdx, setFocusedIdx] = useState<number | null>(null);
 
-  const prevItemsRef = useRef<InspectionItem[] | null>(null);
   useEffect(() => {
-    if (focusedIdx !== null) return;
-    if (prevItemsRef.current === items) return;
-    prevItemsRef.current = items;
-
-    const next: Record<number, string> = {};
-    items.forEach((it, i) => (next[i] = String(it.value ?? "")));
-    setLocalVals(next);
+    setLocalVals((prev) => {
+      const next = { ...prev };
+      items.forEach((it, i) => {
+        if (focusedIdx === i) return; // don't overwrite the field you're typing in
+        const want = String(it.value ?? "");
+        if (next[i] !== want) next[i] = want;
+      });
+      return next;
+    });
   }, [items, focusedIdx]);
 
   const commitValue = (itemIdx: number) => {
     const value = localVals[itemIdx] ?? "";
-    // eslint-disable-next-line no-console
-    console.log("[CornerGrid] commit", { itemIdx, value });
     updateItem(sectionIndex, itemIdx, { value });
+    setDebugMsg(`commit ${itemIdx}: ${value}`);
   };
 
-  /* ------------------------ Header summary + collapse --------------------- */
+  /** ------------------------ Header summary + collapse --------------------- */
   const [open, setOpen] = useState(true);
 
   const filledCounts = useMemo(() => {
@@ -146,7 +148,7 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
     RR: "Right Rear",
   };
 
-  /* -------------------------------- UI ----------------------------------- */
+  /** ------------------------------- UI ------------------------------------ */
   const RowView = ({ row }: { row: Row }) => (
     <div className="rounded bg-zinc-950/70 p-3">
       <div className="flex items-center gap-3">
@@ -162,9 +164,8 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
           className="w-40 rounded border border-gray-600 bg-black px-2 py-1 text-sm text-white outline-none placeholder:text-zinc-400"
           value={localVals[row.idx] ?? ""}
           onFocus={() => {
-            // eslint-disable-next-line no-console
-            console.log("[CornerGrid] focus", row.idx);
             setFocusedIdx(row.idx);
+            setDebugMsg(`focus ${row.idx}`);
           }}
           onChange={(e) => setLocalVals((p) => ({ ...p, [row.idx]: e.target.value }))}
           onBlur={() => {
@@ -172,7 +173,7 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
             setFocusedIdx((cur) => (cur === row.idx ? null : cur));
           }}
           onKeyDown={(e) => {
-            if ((e as any).key === "Enter") (e.currentTarget as HTMLInputElement).blur();
+            if ((e as any).key === "Enter") (e.currentTarget as HTMLInputElement).blur(); // commits via onBlur
           }}
           placeholder="Value"
           autoComplete="off"
@@ -205,7 +206,7 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
   );
 
   return (
-    <div className="grid gap-3">
+    <div className="relative grid gap-3">
       <div className="flex items-center justify-end gap-3 px-1">
         <div className="hidden text-xs text-zinc-400 md:block" style={{ fontFamily: "Roboto, system-ui, sans-serif" }}>
           LF {filledCounts.LF.filled}/{filledCounts.LF.total} &nbsp;|&nbsp; RF {filledCounts.RF.filled}/{filledCounts.RF.total} &nbsp;|&nbsp; LR {filledCounts.LR.filled}/{filledCounts.LR.total} &nbsp;|&nbsp; RR {filledCounts.RR.filled}/{filledCounts.RR.total}
@@ -227,6 +228,24 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
       <div className="grid gap-4 md:grid-cols-2">
         <CornerCard group={groups[2]} />
         <CornerCard group={groups[3]} />
+      </div>
+
+      {/* Debug Overlay */}
+      <div
+        style={{
+          position: "fixed",
+          bottom: 10,
+          right: 10,
+          background: "#111",
+          color: "#00ffff",
+          padding: "6px 10px",
+          fontSize: "12px",
+          borderRadius: "6px",
+          zIndex: 9999,
+          opacity: 0.9,
+        }}
+      >
+        {debugMsg}
       </div>
     </div>
   );
