@@ -11,16 +11,9 @@ type Props = {
   unitHint?: (label: string) => string;
 };
 
-/**
- * CornerGrid (Hydraulic)
- * - Always renders 4 corners: LF, RF, LR, RR (also accepts "Left Front", etc.)
- * - Each corner card contains its metrics (Tire Pressure, Tread, Pad Thickness, Rotor, etc.)
- * - Debounced inputs buffer locally and sync to form state after a short delay.
- */
 export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
   const { updateItem } = useInspectionForm();
 
-  // Accept both abbreviations and full corner names
   type CornerKey = "LF" | "RF" | "LR" | "RR";
   const abbrevRE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
   const fullRE = /^(?<corner>(Left|Right)\s+(Front|Rear))\s+(?<metric>.+)$/i;
@@ -34,19 +27,9 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
     return null;
   };
 
-  type Row = {
-    idx: number;
-    metric: string;
-    labelForHint: string;
-    unit?: string | null;
-  };
+  type Row = { idx: number; metric: string; labelForHint: string; unit?: string | null };
+  type CornerGroup = { corner: CornerKey; rows: Row[] };
 
-  type CornerGroup = {
-    corner: CornerKey;
-    rows: Row[];
-  };
-
-  // Order metrics in a sensible way for hydraulic checks
   const metricOrder = [
     "Tire Pressure",
     "Tire Tread",
@@ -57,11 +40,10 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
     "Wheel Torque",
   ];
   const orderIndex = (m: string) => {
-    const i = metricOrder.findIndex(x => m.toLowerCase().includes(x.toLowerCase()));
+    const i = metricOrder.findIndex((x) => m.toLowerCase().includes(x.toLowerCase()));
     return i === -1 ? Number.MAX_SAFE_INTEGER : i;
   };
 
-  // Group items into the 4 corners
   const groups: CornerGroup[] = useMemo(() => {
     const base: Record<CornerKey, Row[]> = { LF: [], RF: [], LR: [], RR: [] };
 
@@ -91,47 +73,40 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
       });
     });
 
-    // Sort rows within each corner
     const build = (corner: CornerKey): CornerGroup => ({
       corner,
       rows: base[corner].sort((a, b) => orderIndex(a.metric) - orderIndex(b.metric)),
     });
-
     return [build("LF"), build("RF"), build("LR"), build("RR")];
   }, [items, unitHint]);
 
-  /** ------------------------ Debounced input buffer ------------------------ */
+  /* ----------- Debounced local buffer (same behavior as AirCornerGrid) ----------- */
   const [localVals, setLocalVals] = useState<Record<number, string>>(() => {
     const init: Record<number, string> = {};
     items.forEach((it, i) => (init[i] = String(it.value ?? "")));
     return init;
   });
-
-  // keep buffer in sync if items list changes externally
   useEffect(() => {
-    setLocalVals(prev => {
-      const next: Record<number, string> = { ...prev };
-      items.forEach((it, i) => {
-        const want = String(it.value ?? "");
-        if (next[i] !== want) next[i] = want;
-      });
+    setLocalVals((prev) => {
+      const next = { ...prev };
+      items.forEach((it, i) => (next[i] = String(it.value ?? "")));
       return next;
     });
   }, [items]);
-
   const timersRef = useRef<Record<number, number | NodeJS.Timeout>>({});
-
   const setValueDebounced = (itemIdx: number, value: string) => {
-    setLocalVals(v => ({ ...v, [itemIdx]: value }));
+    setLocalVals((v) => ({ ...v, [itemIdx]: value }));
     const t = timersRef.current[itemIdx];
     if (t) clearTimeout(t as number);
-
     timersRef.current[itemIdx] = setTimeout(() => {
       updateItem(sectionIndex, itemIdx, { value });
     }, 250);
   };
 
-  /** ------------------------------- UI ------------------------------------ */
+  /* -------------------------- Pressure display controls --------------------------- */
+  const [showKpa, setShowKpa] = useState<boolean>(true); // PSI is primary; kPa is a hint
+  const psiToKpa = (psi: number) => psi * 6.894757;
+  const isPressure = (metric: string) => metric.toLowerCase().includes("pressure");
 
   const CornerTitle: Record<CornerKey, string> = {
     LF: "Left Front",
@@ -150,36 +125,56 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
       </div>
 
       <div className="space-y-3">
-        {group.rows.map((row) => (
-          <div key={`${group.corner}-${row.idx}-${row.metric}`} className="rounded bg-zinc-950/70 p-3">
-            <div
-              className="mb-2 text-sm font-semibold text-orange-300"
-              style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-            >
-              {row.metric}
-            </div>
+        {group.rows.map((row) => {
+          const valStr = localVals[row.idx] ?? "";
+          const valNum = Number(valStr);
+          const showTinyKpa = showKpa && isPressure(row.metric) && !Number.isNaN(valNum) && valStr.trim() !== "";
 
-            <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-              <input
-                className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white"
-                style={{ fontFamily: "Roboto, system-ui, sans-serif" }}
-                value={localVals[row.idx] ?? ""}
-                onChange={(e) => setValueDebounced(row.idx, e.target.value)}
-                placeholder="Value"
-              />
-              <div className="text-center text-xs text-zinc-400">
-                {row.unit ?? (unitHint ? unitHint(row.labelForHint) : "")}
+          return (
+            <div key={`${group.corner}-${row.idx}-${row.metric}`} className="rounded bg-zinc-950/70 p-3">
+              <div
+                className="mb-2 text-sm font-semibold text-orange-300"
+                style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+              >
+                {row.metric}
+              </div>
+
+              <div className="grid grid-cols-[1fr_auto] items-center gap-2">
+                <input
+                  className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white"
+                  style={{ fontFamily: "Roboto, system-ui, sans-serif" }}
+                  value={valStr}
+                  onChange={(e) => setValueDebounced(row.idx, e.target.value)}
+                  placeholder="Value"
+                  inputMode="decimal"
+                />
+                <div className="text-right text-xs text-zinc-400">
+                  {isPressure(row.metric)
+                    ? <>psi{showTinyKpa ? <> · {Math.round(psiToKpa(valNum))} kPa</> : null}</>
+                    : (row.unit ?? (unitHint ? unitHint(row.labelForHint) : ""))}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
 
-  // Layout: two cards across for fronts, then rears
   return (
     <div className="grid gap-4">
+      <div className="flex items-center justify-end">
+        <label className="flex cursor-pointer items-center gap-2 text-xs text-zinc-300">
+          <input
+            type="checkbox"
+            className="h-3 w-3 accent-orange-500"
+            checked={showKpa}
+            onChange={(e) => setShowKpa(e.target.checked)}
+          />
+          Show kPa hint for pressures
+        </label>
+      </div>
+
       <div className="grid gap-4 md:grid-cols-2">
         <CornerCard group={groups[0]} /> {/* LF */}
         <CornerCard group={groups[1]} /> {/* RF */}

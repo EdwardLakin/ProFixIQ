@@ -1,4 +1,3 @@
-// features/inspections/lib/inspection/ui/AirCornerGrid.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -68,6 +67,7 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
 
       existing.idx = idx;
       existing.val = it.value ?? "";
+      // NOTE: we'll override pressure units below; unitHint remains for mm/in items.
       existing.unit = it.unit ?? (unitHint ? unitHint(label) : "");
       map.set(metric, existing);
       byAxle.set(axle, bucket);
@@ -80,12 +80,10 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
     });
   }, [items, unitHint]);
 
-  // --- Local buffered values (fixes “typing stops after 1 char”) ---
-  // We maintain a local value map keyed by item index, and debounce writes to store.
+  /* ---------------- Local buffered values + debounce (typing fix) ---------------- */
   const [localVals, setLocalVals] = useState<Record<number, string>>({});
   const timersRef = useRef<Record<number, number>>({});
 
-  // Seed/refresh local values when items change externally
   useEffect(() => {
     const seed: Record<number, string> = {};
     items.forEach((it, idx) => {
@@ -96,27 +94,19 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
 
   const setBuffered = (idx: number, value: string) => {
     setLocalVals((prev) => ({ ...prev, [idx]: value }));
-    // clear old timer
-    const timers = timersRef.current;
-    if (timers[idx]) window.clearTimeout(timers[idx]);
-    // debounce write to store
-    timers[idx] = window.setTimeout(() => {
+    if (timersRef.current[idx]) window.clearTimeout(timersRef.current[idx]);
+    timersRef.current[idx] = window.setTimeout(() => {
       updateItem(sectionIndex, idx, { value });
       delete timersRef.current[idx];
     }, 250);
   };
 
-  // Suggest next axle labels (max 2 steer, 4 drive)
-  const existingAxles = useMemo(() => groups.map((g) => g.axle), [groups]);
-  const [pendingAxle, setPendingAxle] = useState<string>("");
+  /* -------------------------- Pressure display controls --------------------------- */
+  // PSI is the default. We keep input in PSI and (optionally) show tiny kPa.
+  const [showKpa, setShowKpa] = useState<boolean>(true);
+  const psiToKpa = (psi: number) => psi * 6.894757;
 
-  const candidateAxles = useMemo(() => {
-    const wants: string[] = [];
-    for (let i = 1; i <= 2; i++) wants.push(`Steer ${i}`);
-    for (let i = 1; i <= 4; i++) wants.push(`Drive ${i}`);
-    wants.push("Tag", "Trailer 1", "Trailer 2", "Trailer 3");
-    return wants.filter((l) => !existingAxles.includes(l));
-  }, [existingAxles]);
+  const isPressure = (metric: string) => metric.toLowerCase().includes("pressure");
 
   const SideCardView = ({ side, rows }: { side: Side; rows: MetricCell[] }) => (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
@@ -125,7 +115,12 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
       </div>
 
       <div className="space-y-3">
-        {rows.map((row) => (
+        {rows.map((row) => {
+          const valStr = row.idx != null ? (localVals[row.idx] ?? "") : "";
+          const valNum = Number(valStr);
+          const showTinyKpa = showKpa && isPressure(row.metric) && !Number.isNaN(valNum) && valStr.trim() !== "";
+
+        return (
           <div key={row.metric} className="rounded bg-zinc-950/70 p-3">
             <div
               className="mb-2 text-sm font-semibold text-orange-300"
@@ -138,48 +133,46 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
               <input
                 className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white"
                 style={{ fontFamily: "Roboto, system-ui, sans-serif" }}
-                value={row.idx != null ? localVals[row.idx] ?? "" : ""}
+                value={valStr}
                 onChange={(e) => {
                   if (row.idx != null) setBuffered(row.idx, e.target.value);
                 }}
                 placeholder="Value"
+                inputMode="decimal"
               />
-              <div className="text-center text-xs text-zinc-400">
-                {row.unit ?? (unitHint ? unitHint(row.fullLabel) : "")}
+              <div className="text-right text-xs text-zinc-400">
+                {/* For pressure, hard-code PSI as primary, with optional tiny kPa. */}
+                {isPressure(row.metric)
+                  ? <>psi{showTinyKpa ? <> · {Math.round(psiToKpa(valNum))} kPa</> : null}</>
+                  : (row.unit ?? (unitHint ? unitHint(row.fullLabel) : ""))}
               </div>
             </div>
           </div>
-        ))}
+        );})}
       </div>
     </div>
   );
 
   return (
     <div className="grid gap-4">
-      {/* Add Axle control (only if handler provided) */}
-      {onAddAxle && (
-        <div className="flex items-center gap-2">
-          <select
-            className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-sm text-white"
-            value={pendingAxle}
-            onChange={(e) => setPendingAxle(e.target.value)}
-          >
-            <option value="">Add axle…</option>
-            {candidateAxles.map((l) => (
-              <option key={l} value={l}>
-                {l}
-              </option>
-            ))}
-          </select>
-          <button
-            className="rounded bg-orange-600 px-3 py-1 text-sm font-semibold text-black hover:bg-orange-500 disabled:opacity-40"
-            onClick={() => pendingAxle && onAddAxle(pendingAxle)}
-            disabled={!pendingAxle}
-          >
-            + Add
-          </button>
-        </div>
-      )}
+      {/* Add Axle + Pressure display toggle */}
+      <div className="flex items-center gap-3">
+        {onAddAxle && (
+          <AddAxleInline
+            existingAxles={groups.map((g) => g.axle)}
+            onAdd={onAddAxle}
+          />
+        )}
+        <label className="ml-auto flex cursor-pointer items-center gap-2 text-xs text-zinc-300">
+          <input
+            type="checkbox"
+            className="h-3 w-3 accent-orange-500"
+            checked={showKpa}
+            onChange={(e) => setShowKpa(e.target.checked)}
+          />
+          Show kPa hint for pressures
+        </label>
+      </div>
 
       {groups.map((group) => (
         <div key={group.axle} className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
@@ -196,6 +189,46 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+/* unchanged helper for Add-Axle */
+function AddAxleInline({
+  existingAxles,
+  onAdd,
+}: {
+  existingAxles: string[];
+  onAdd: (axleLabel: string) => void;
+}) {
+  const [pending, setPending] = useState("");
+  const wants: string[] = [];
+  for (let i = 1; i <= 2; i++) wants.push(`Steer ${i}`);
+  for (let i = 1; i <= 4; i++) wants.push(`Drive ${i}`);
+  wants.push("Tag", "Trailer 1", "Trailer 2", "Trailer 3");
+  const options = wants.filter((w) => !existingAxles.includes(w));
+
+  return (
+    <div className="flex items-center gap-2">
+      <select
+        className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-sm text-white"
+        value={pending}
+        onChange={(e) => setPending(e.target.value)}
+      >
+        <option value="">Add axle…</option>
+        {options.map((l) => (
+          <option key={l} value={l}>
+            {l}
+          </option>
+        ))}
+      </select>
+      <button
+        className="rounded bg-orange-600 px-3 py-1 text-sm font-semibold text-black hover:bg-orange-500 disabled:opacity-40"
+        onClick={() => pending && onAdd(pending)}
+        disabled={!pending}
+      >
+        + Add
+      </button>
     </div>
   );
 }
