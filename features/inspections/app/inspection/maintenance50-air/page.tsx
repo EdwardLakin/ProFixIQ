@@ -32,34 +32,8 @@ import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicl
 // NEW (kept): add-axle helper
 import { buildAirAxleItems } from "@inspections/lib/inspection/builders/addAxleHelpers";
 
-/* -------------------------------------------------------------------------- */
-/* Web Speech (typed)                                                          */
-/* -------------------------------------------------------------------------- */
-
-type WebSpeechResultCell = { transcript: string };
-type WebSpeechResultRow = { [index: number]: WebSpeechResultCell };
-type WebSpeechResults = { [index: number]: WebSpeechResultRow };
-
-type WebSpeechRecognition = {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  start: () => void;
-  stop: () => void;
-  onresult: (event: { results: WebSpeechResults; length: number }) => void;
-  onerror: (event: { error?: string }) => void;
-};
-
-type SRConstructor = new () => WebSpeechRecognition;
-
-function resolveSR(): SRConstructor | undefined {
-  if (typeof window === "undefined") return undefined;
-  const w = window as unknown as {
-    SpeechRecognition?: SRConstructor;
-    webkitSpeechRecognition?: SRConstructor;
-  };
-  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? undefined;
-}
+// ✅ use shared voice helper (no local Web Speech block, no unused stop import)
+import { startVoiceRecognition } from "@inspections/lib/inspection/voiceControl";
 
 /* -------------------------------------------------------------------------- */
 /* Header adapters                                                             */
@@ -259,7 +233,7 @@ export default function Maintenance50AirPage(): JSX.Element {
   const [isListening, setIsListening] = useState<boolean>(false);
   const [isPaused, setIsPaused] = useState<boolean>(false);
   const [, setTranscript] = useState<string>("");
-  const recognitionRef = useRef<WebSpeechRecognition | null>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   const templateName: string = searchParams.get("template") || "Maintenance 50 (Air Brake CVIP)";
 
@@ -402,30 +376,21 @@ export default function Maintenance50AirPage(): JSX.Element {
     }
   };
 
+  // unified start using shared helper, single instance
   const startListening = (): void => {
-    const SR = resolveSR();
-    if (!SR) {
-      console.error("SpeechRecognition API not supported");
-      return;
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch {}
     }
-    const recognition = new SR();
-    recognition.continuous = true;
-    recognition.interimResults = false;
-    recognition.lang = "en-US";
-    recognition.onresult = (event) => {
-      const lastIndex = (event as unknown as { results: WebSpeechResults }).results
-        ? Object.keys(event.results).length - 1
-        : 0;
-      const transcript =
-        (event.results as WebSpeechResults)[lastIndex]?.[0]?.transcript ?? "";
-      if (transcript) void handleTranscript(transcript);
-    };
-    recognition.onerror = (event) =>
-      console.error("Speech recognition error:", event.error ?? "unknown");
-    recognitionRef.current = recognition;
-    recognition.start();
+    recognitionRef.current = startVoiceRecognition(handleTranscript);
     setIsListening(true);
   };
+
+  // stop on unmount
+  useEffect(() => {
+    return () => {
+      try { recognitionRef.current?.stop(); } catch {}
+    };
+  }, []);
 
   if (!session || !session.sections || session.sections.length === 0) {
     return <div className="p-4 text-white">Loading inspection…</div>;
@@ -454,17 +419,18 @@ export default function Maintenance50AirPage(): JSX.Element {
           onPause={(): void => {
             setIsPaused(true);
             pauseSession();
-            recognitionRef.current?.stop();
+            try { recognitionRef.current?.stop(); } catch {}
           }}
           onResume={(): void => {
             setIsPaused(false);
             resumeSession();
-            startListening();
+            recognitionRef.current = startVoiceRecognition(handleTranscript);
           }}
           recognitionInstance={recognitionRef.current as unknown as SpeechRecognition | null}
+          onTranscript={handleTranscript}
           setRecognitionRef={(instance: SpeechRecognition | null): void => {
-            (recognitionRef as React.MutableRefObject<WebSpeechRecognition | null>).current =
-              (instance as unknown as WebSpeechRecognition) ?? null;
+            (recognitionRef as React.MutableRefObject<SpeechRecognition | null>).current =
+              instance ?? null;
           }}
         />
         <button
