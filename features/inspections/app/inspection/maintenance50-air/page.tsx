@@ -20,6 +20,7 @@ import type {
   InspectionSession,
   SessionCustomer,
   SessionVehicle,
+  QuoteLineItem, // ⬅️ for placeholder + merge typing
 } from "@inspections/lib/inspection/types";
 
 import AirCornerGrid from "@inspections/lib/inspection/ui/AirCornerGrid";
@@ -34,6 +35,9 @@ import { buildAirAxleItems } from "@inspections/lib/inspection/builders/addAxleH
 
 // ✅ use shared voice helper (no local Web Speech block, no unused stop import)
 import { startVoiceRecognition } from "@inspections/lib/inspection/voiceControl";
+
+// ✅ AI quote helper
+import { requestQuoteSuggestion } from "@inspections/lib/inspection/aiQuote";
 
 /* -------------------------------------------------------------------------- */
 /* Header adapters                                                             */
@@ -286,6 +290,7 @@ export default function Maintenance50AirPage(): JSX.Element {
     resumeSession,
     pauseSession,
     addQuoteLine,
+    updateQuoteLines, // ⬅️ needed for AI merge
   } = useInspectionSession(initialSession);
 
   /* hydrate/persist */
@@ -490,8 +495,11 @@ export default function Maintenance50AirPage(): JSX.Element {
                   if (status === "fail" || status === "recommend") {
                     const it = session.sections[secIdx].items[itemIdx];
                     const desc = it.item ?? it.name ?? "Item";
-                    addQuoteLine({
-                      id: uuidv4(),
+
+                    // 1) Add the base line immediately
+                    const id = uuidv4();
+                    const baseLine: QuoteLineItem = {
+                      id,
                       description: desc,
                       item: desc,
                       name: desc,
@@ -504,7 +512,48 @@ export default function Maintenance50AirPage(): JSX.Element {
                       source: "inspection",
                       value: it.value ?? "",
                       photoUrls: it.photoUrls ?? [],
-                    });
+                    };
+                    addQuoteLine(baseLine);
+
+                    // 2) Ask AI for parts/labor suggestion and merge onto the same id
+                    (async () => {
+                      try {
+                        const suggestion = await requestQuoteSuggestion({
+                          item: desc,
+                          notes: it.notes ?? "",
+                          section: session.sections[secIdx].title,
+                          status,
+                        });
+                        if (!suggestion) return;
+
+                        const partsTotal =
+                          suggestion.parts?.reduce((sum, p) => sum + (p.cost || 0), 0) ?? 0;
+                        const laborRate = suggestion.laborRate ?? 0;
+                        const laborTime = suggestion.laborHours ?? 0.5;
+                        const price = Math.max(0, partsTotal + laborRate * laborTime);
+
+                        const current = session.quote ?? [];
+                        const next: QuoteLineItem[] = current.map((line) =>
+                          line.id === id
+                            ? {
+                                ...line,
+                                price,
+                                laborRate,
+                                laborTime,
+                                ai: {
+                                  summary: suggestion.summary,
+                                  confidence: suggestion.confidence,
+                                  parts: suggestion.parts ?? [],
+                                },
+                              }
+                            : line
+                        ) as QuoteLineItem[];
+
+                        updateQuoteLines(next);
+                      } catch (e) {
+                        console.error("AI quote suggestion failed:", e);
+                      }
+                    })();
                   }
                 }}
                 onUpdateNote={(secIdx: number, itemIdx: number, note: string): void => {
@@ -521,9 +570,8 @@ export default function Maintenance50AirPage(): JSX.Element {
       </InspectionFormCtx.Provider>
 
       <div className="mt-8 flex items-center justify-between gap-4">
-
-<SaveInspectionButton session={session} />
-<FinishInspectionButton session={session} />
+        <SaveInspectionButton session={session} />
+        <FinishInspectionButton session={session} />
         <div className="text-xs text-zinc-400">P = PASS, F = FAIL, NA = Not Applicable</div>
       </div>
     </div>

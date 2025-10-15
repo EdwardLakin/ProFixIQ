@@ -2,7 +2,6 @@
 export type InspectionItemStatus = "ok" | "fail" | "na" | "recommend";
 export type BrakeType = "air" | "hydraulic";
 
-
 export interface InspectionItem {
   /** Primary label. Some code uses `item`, some uses `name` — support both. */
   item?: string;
@@ -200,6 +199,13 @@ export interface QuoteLineItem {
 
   /** Optional back-reference to the inspection item */
   inspectionItem?: string;
+
+  /** Optional AI suggestion metadata */
+  ai?: {
+    summary: string;
+    confidence?: string;
+    parts?: { name: string; qty?: number; cost?: number; notes?: string }[];
+  };
 }
 
 /** ---------- Inspection Summary ---------- */
@@ -221,7 +227,6 @@ export interface InspectionSummary {
   summaryText: string;
 }
 
-/** ---------- Session (customer/vehicle) ---------- */
 /** ---------- Session (customer/vehicle) ---------- */
 export interface SessionCustomer {
   first_name: string | null;

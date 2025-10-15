@@ -11,6 +11,7 @@ import useInspectionSession from "@inspections/hooks/useInspectionSession";
 
 import { handleTranscriptFn } from "@inspections/lib/inspection/handleTranscript";
 import { interpretCommand } from "@inspections/components/inspection/interpretCommand";
+import { requestQuoteSuggestion } from "@inspections/lib/inspection/aiQuote";
 
 import type {
   ParsedCommand,
@@ -20,6 +21,7 @@ import type {
   InspectionSession,
   SessionCustomer,
   SessionVehicle,
+  QuoteLineItem,
 } from "@inspections/lib/inspection/types";
 
 import CornerGrid from "@inspections/lib/inspection/ui/CornerGrid";
@@ -186,7 +188,10 @@ function unitForHydraulic(label: string, mode: "metric" | "imperial"): string {
   return "";
 }
 
-function applyUnitsHydraulic(sections: InspectionSection[], mode: "metric" | "imperial"): InspectionSection[] {
+function applyUnitsHydraulic(
+  sections: InspectionSection[],
+  mode: "metric" | "imperial"
+): InspectionSection[] {
   return sections.map((s) => {
     if ((s.title || "").toLowerCase().includes("measurements")) {
       const items = s.items.map((it) => ({
@@ -203,7 +208,10 @@ function applyUnitsHydraulic(sections: InspectionSection[], mode: "metric" | "im
 export default function Maintenance50HydraulicPage(): JSX.Element {
   const searchParams = useSearchParams();
 
-  const inspectionId = useMemo<string>(() => searchParams.get("inspectionId") || uuidv4(), [searchParams]);
+  const inspectionId = useMemo<string>(
+    () => searchParams.get("inspectionId") || uuidv4(),
+    [searchParams]
+  );
 
   const [unit, setUnit] = useState<"metric" | "imperial">("metric");
   const [isListening, setIsListening] = useState<boolean>(false);
@@ -211,7 +219,8 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
   const [, setTranscript] = useState<string>("");
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
-  const templateName: string = searchParams.get("template") || "Maintenance 50 (Hydraulic)";
+  const templateName: string =
+    searchParams.get("template") || "Maintenance 50 (Hydraulic)";
 
   const customer: SessionCustomer = {
     first_name: searchParams.get("first_name") || "",
@@ -262,11 +271,13 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
     resumeSession,
     pauseSession,
     addQuoteLine,
+    updateQuoteLines, // ✅ use plural updater
   } = useInspectionSession(initialSession);
 
   useEffect(() => {
     const key = `inspection-${inspectionId}`;
-    const saved = typeof window !== "undefined" ? localStorage.getItem(key) : null;
+    const saved =
+      typeof window !== "undefined" ? localStorage.getItem(key) : null;
     if (saved) {
       try {
         const parsed = JSON.parse(saved) as InspectionSession;
@@ -322,12 +333,19 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
       buildSuspensionSection(),
       buildDrivelineSection(),
     ];
-    updateInspection({ sections: applyUnitsHydraulic(next, unit) as typeof session.sections });
+    updateInspection({
+      sections: applyUnitsHydraulic(next, unit) as typeof session.sections,
+    });
   }, [session, updateInspection, unit]);
 
   useEffect(() => {
     if (!session?.sections?.length) return;
-    updateInspection({ sections: applyUnitsHydraulic(session.sections, unit) as typeof session.sections });
+    updateInspection({
+      sections: applyUnitsHydraulic(
+        session.sections,
+        unit
+      ) as typeof session.sections,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unit]);
 
@@ -352,7 +370,9 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
   // unified start using shared helper, single instance
   const startListening = (): void => {
     if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch {}
+      try {
+        recognitionRef.current.stop();
+      } catch {}
     }
     recognitionRef.current = startVoiceRecognition(handleTranscript);
     setIsListening(true);
@@ -361,7 +381,9 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
   // stop on unmount
   useEffect(() => {
     return () => {
-      try { recognitionRef.current?.stop(); } catch {}
+      try {
+        recognitionRef.current?.stop();
+      } catch {}
     };
   }, []);
 
@@ -369,7 +391,8 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
     return <div className="p-4 text-white">Loading inspection…</div>;
   }
 
-  const isMeasurements = (t?: string): boolean => (t || "").toLowerCase().includes("measurements");
+  const isMeasurements = (t?: string): boolean =>
+    (t || "").toLowerCase().includes("measurements");
 
   return (
     <div className="px-4 pb-14">
@@ -392,22 +415,29 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
           onPause={(): void => {
             setIsPaused(true);
             pauseSession();
-            try { recognitionRef.current?.stop(); } catch {}
+            try {
+              recognitionRef.current?.stop();
+            } catch {}
           }}
           onResume={(): void => {
             setIsPaused(false);
             resumeSession();
             recognitionRef.current = startVoiceRecognition(handleTranscript);
           }}
-          recognitionInstance={recognitionRef.current as unknown as SpeechRecognition | null}
+          recognitionInstance={
+            recognitionRef.current as unknown as SpeechRecognition | null
+          }
           onTranscript={handleTranscript}
           setRecognitionRef={(instance: SpeechRecognition | null): void => {
-            (recognitionRef as React.MutableRefObject<SpeechRecognition | null>).current =
-              instance ?? null;
+            (
+              recognitionRef as React.MutableRefObject<SpeechRecognition | null>
+            ).current = instance ?? null;
           }}
         />
         <button
-          onClick={(): void => setUnit(unit === "metric" ? "imperial" : "metric")}
+          onClick={(): void =>
+            setUnit(unit === "metric" ? "imperial" : "metric")
+          }
           className="rounded bg-zinc-700 px-3 py-2 text-white hover:bg-zinc-600"
         >
           Unit: {unit === "metric" ? "Metric" : "Imperial"}
@@ -418,7 +448,9 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
         currentItem={session.currentItemIndex}
         currentSection={session.currentSectionIndex}
         totalSections={session.sections.length}
-        totalItems={session.sections[session.currentSectionIndex]?.items.length || 0}
+        totalItems={
+          session.sections[session.currentSectionIndex]?.items.length || 0
+        }
       />
 
       <InspectionFormCtx.Provider value={{ updateItem }}>
@@ -428,10 +460,14 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
             className="mb-8 rounded-lg border border-zinc-800 bg-zinc-900 p-4"
           >
             <div className="mb-2 flex items-end justify-between">
-              <h2 className="text-xl font-semibold text-orange-400">{section.title}</h2>
+              <h2 className="text-xl font-semibold text-orange-400">
+                {section.title}
+              </h2>
               {isMeasurements(section.title) && (
                 <span className="text-xs text-zinc-400">
-                  {unit === "metric" ? "Enter mm / kPa / N·m" : "Enter in / psi / ft·lb"}
+                  {unit === "metric"
+                    ? "Enter mm / kPa / N·m"
+                    : "Enter in / psi / ft·lb"}
                 </span>
               )}
             </div>
@@ -445,18 +481,21 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
                 sectionIndex={sectionIndex}
                 showNotes={true}
                 showPhotos={true}
-                onUpdateStatus={(
+                onUpdateStatus={async (
                   secIdx: number,
                   itemIdx: number,
                   status: InspectionItemStatus
-                ): void => {
+                ): Promise<void> => {
                   updateItem(secIdx, itemIdx, { status });
 
                   if (status === "fail" || status === "recommend") {
                     const it = session.sections[secIdx].items[itemIdx];
                     const desc = it.item ?? it.name ?? "Item";
-                    addQuoteLine({
-                      id: uuidv4(),
+
+                    // 1) Add placeholder line immediately
+                    const id = uuidv4();
+                    const placeholder: QuoteLineItem = {
+                      id,
                       description: desc,
                       item: desc,
                       name: desc,
@@ -469,15 +508,73 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
                       source: "inspection",
                       value: it.value ?? "",
                       photoUrls: it.photoUrls ?? [],
-                    });
+                    };
+                    addQuoteLine(placeholder);
+
+                    // 2) Ask AI for parts/labor suggestion and patch same line
+                    try {
+                      const suggestion = await requestQuoteSuggestion({
+                        item: desc,
+                        notes: it.notes ?? "",
+                        section: session.sections[secIdx].title,
+                        status,
+                      });
+
+                      if (suggestion) {
+                        const partsTotal =
+                          suggestion.parts?.reduce(
+                            (sum, p) => sum + (p.cost || 0),
+                            0
+                          ) ?? 0;
+                        const laborRate = suggestion.laborRate ?? 0;
+                        const laborTime = suggestion.laborHours ?? 0.5;
+                        const price = Math.max(
+                          0,
+                          partsTotal + laborRate * laborTime
+                        );
+
+                        // ✅ merge onto the same line by id
+                        const current = (session.quote ?? []) as QuoteLineItem[];
+                        const next = current.map((line) =>
+                          line.id === id
+                            ? {
+                                ...line,
+                                price,
+                                laborTime,
+                                laborRate,
+                                ai: {
+                                  summary: suggestion.summary,
+                                  confidence: suggestion.confidence,
+                                  parts: suggestion.parts ?? [],
+                                },
+                              }
+                            : line
+                        );
+                        updateQuoteLines(next);
+                      }
+                    } catch (e) {
+                      console.error("AI quote suggestion failed:", e);
+                      // keep placeholder; user can edit later
+                    }
                   }
                 }}
-                onUpdateNote={(secIdx: number, itemIdx: number, note: string): void => {
+                onUpdateNote={(
+                  secIdx: number,
+                  itemIdx: number,
+                  note: string
+                ): void => {
                   updateItem(secIdx, itemIdx, { notes: note });
                 }}
-                onUpload={(photoUrl: string, secIdx: number, itemIdx: number): void => {
-                  const prev = session.sections[secIdx].items[itemIdx].photoUrls ?? [];
-                  updateItem(secIdx, itemIdx, { photoUrls: [...prev, photoUrl] });
+                onUpload={(
+                  photoUrl: string,
+                  secIdx: number,
+                  itemIdx: number
+                ): void => {
+                  const prev =
+                    session.sections[secIdx].items[itemIdx].photoUrls ?? [];
+                  updateItem(secIdx, itemIdx, {
+                    photoUrls: [...prev, photoUrl],
+                  });
                 }}
               />
             )}
@@ -486,10 +583,11 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
       </InspectionFormCtx.Provider>
 
       <div className="mt-8 flex items-center justify-between gap-4">
-        
-<SaveInspectionButton session={session} />
-<FinishInspectionButton session={session} />
-        <div className="text-xs text-zinc-400">P = PASS, F = FAIL, NA = Not Applicable</div>
+        <SaveInspectionButton session={session} />
+        <FinishInspectionButton session={session} />
+        <div className="text-xs text-zinc-400">
+          P = PASS, F = FAIL, NA = Not Applicable
+        </div>
       </div>
     </div>
   );

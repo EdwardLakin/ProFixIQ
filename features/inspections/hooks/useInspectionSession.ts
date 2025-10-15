@@ -110,6 +110,14 @@ export default function useInspectionSession(initialSession?: Partial<Inspection
   const updateQuoteLines = (lines: QuoteLineItem[]) =>
     setSession(prev => ({ ...prev, quote: lines, ...stamp() }));
 
+  // ✅ targeted updater for enriching a single line (AI merge, edits, etc.)
+  const updateQuoteLine = (id: string, patch: Partial<QuoteLineItem>) =>
+    setSession(prev => ({
+      ...prev,
+      quote: (prev.quote ?? []).map((l) => (l.id === id ? { ...l, ...patch } : l)),
+      ...stamp(),
+    }));
+
   const startSession = (sessionData: Partial<InspectionSession> & { axleConfig?: AxleLayoutConfig }) => {
     const { axleConfig, ...rest } = sessionData;
     const newSections =
@@ -144,6 +152,7 @@ export default function useInspectionSession(initialSession?: Partial<Inspection
     updateItem,
     addQuoteLine,
     updateQuoteLines,
+    updateQuoteLine,   // ⬅️ expose the targeted updater
     startSession,
     pauseSession,
     resumeSession,
