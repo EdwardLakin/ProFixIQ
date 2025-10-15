@@ -606,8 +606,8 @@ export default function CustomRunPage() {
       })}
 
       <div className="mt-8 flex items-center justify-between gap-4">
-        <SaveInspectionButton />
-        <FinishInspectionButton />
+        <SaveInspectionButton session={session} />
+        <FinishInspectionButton session={session} />
       </div>
     </div>
   );
