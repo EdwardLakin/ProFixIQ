@@ -2,24 +2,38 @@
 
 import { useRouter } from "next/navigation";
 import { Button } from "@shared/components/ui/Button";
-import useInspectionSession from "@inspections/hooks/useInspectionSession";
 import { saveInspectionSession } from "@inspections/lib/inspection/save";
 import { generateInspectionSummary } from "@inspections/lib/inspection/generateInspectionSummary";
+import type { InspectionSession } from "@inspections/lib/inspection/types";
 
-export default function FinishInspectionButton() {
+type Props = {
+  session: InspectionSession; // ✅ serializable
+};
+
+export default function FinishInspectionButton({ session }: Props) {
   const router = useRouter();
-  const { session, finishSession } = useInspectionSession();
 
   const handleFinish = async () => {
     try {
-      finishSession(); // Mark session complete
+      // Mark complete locally (no function prop needed)
+      const finished: InspectionSession = {
+        ...session,
+        completed: true,
+        isPaused: false,
+        status: "completed",
+        lastUpdated: new Date().toISOString(),
+      };
 
-      const summary = generateInspectionSummary(session);
-      console.log(summary); // Optional: debug
+      // Optional: still handy for preview/logs
+      void generateInspectionSummary(finished);
 
-      await saveInspectionSession(session); // Save to Supabase
+      await saveInspectionSession(finished);
 
-      // ✅ Navigate after successful save
+      // Persist local copy too (keeps summary page in sync if it reads local)
+      try {
+        localStorage.setItem(`inspection-${finished.id}`, JSON.stringify(finished));
+      } catch {}
+
       router.push("/app/inspection/summary");
     } catch (error) {
       console.error("Failed to finish inspection:", error);

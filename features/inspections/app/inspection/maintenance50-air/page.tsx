@@ -521,8 +521,9 @@ export default function Maintenance50AirPage(): JSX.Element {
       </InspectionFormCtx.Provider>
 
       <div className="mt-8 flex items-center justify-between gap-4">
-        <SaveInspectionButton />
-        <FinishInspectionButton />
+
+<SaveInspectionButton session={session} />
+<FinishInspectionButton session={session} />
         <div className="text-xs text-zinc-400">P = PASS, F = FAIL, NA = Not Applicable</div>
       </div>
     </div>

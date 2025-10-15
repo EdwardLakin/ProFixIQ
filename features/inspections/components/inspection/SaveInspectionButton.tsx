@@ -1,11 +1,13 @@
 "use client";
 
-import useInspectionSession from "@inspections/hooks/useInspectionSession";
 import { saveInspectionSession } from "@inspections/lib/inspection/save";
+import type { InspectionSession } from "@inspections/lib/inspection/types";
 
-export function SaveInspectionButton() {
-  const { session } = useInspectionSession();
+type Props = {
+  session: InspectionSession; // ✅ serializable
+};
 
+export function SaveInspectionButton({ session }: Props) {
   const handleSave = async () => {
     try {
       await saveInspectionSession(session);
