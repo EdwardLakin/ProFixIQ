@@ -34,14 +34,23 @@ export default function ModalShell(props: any) {
     size === "sm" ? "max-w-md" : size === "lg" ? "max-w-3xl" : "max-w-xl";
 
   return (
-    <Dialog open={isOpen} onClose={onClose} className="fixed inset-0 z-[80]">
-      {/* darker scrim (also sits above focused modal’s 40/41 layers) */}
-      <div className="fixed inset-0 bg-black/70" />
-      <div className="fixed inset-0 flex items-center justify-center p-4">
+    <Dialog
+      open={isOpen}
+      onClose={onClose}
+      className="fixed inset-0 z-[200] flex items-center justify-center"
+    >
+      {/* Backdrop above FocusedJobModal (which uses z-[100]/[110]) */}
+      <div
+        className="fixed inset-0 z-[200] bg-black/70 backdrop-blur-sm"
+        aria-hidden="true"
+      />
+
+      {/* Centered modal panel */}
+      <div className="relative z-[210] mx-4 my-6 w-full">
         <Dialog.Panel
-          /* scoped class for consistent modal input styling */
-          className={`profix-modal w-full ${maxW} rounded border border-orange-400 bg-white p-6 text-black dark:bg-neutral-950 dark:text-white`}
+          className={`profix-modal w-full ${maxW} rounded-lg border border-orange-400 bg-white p-6 text-black shadow-xl dark:bg-neutral-950 dark:text-white`}
         >
+          {/* Header */}
           {(title || subtitle) && (
             <header className="mb-4">
               {title ? (
@@ -57,21 +66,23 @@ export default function ModalShell(props: any) {
             </header>
           )}
 
+          {/* Body */}
           <div>{children}</div>
 
+          {/* Footer */}
           <footer className="mt-6 flex items-center justify-between gap-2">
             <div>{footerLeft}</div>
             <div className="flex items-center gap-2">
               <button
                 onClick={onClose}
-                className="font-header rounded border border-neutral-300 bg-neutral-100 px-4 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+                className="font-header rounded border border-neutral-300 bg-neutral-100 px-4 py-2 text-sm hover:bg-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:bg-neutral-800"
               >
                 Cancel
               </button>
               {onSubmit ? (
                 <button
                   onClick={onSubmit}
-                  className="font-header rounded border border-orange-500 px-4 py-2 text-sm hover:bg-orange-500/10"
+                  className="font-header rounded border border-orange-500 px-4 py-2 text-sm font-semibold text-orange-400 hover:bg-orange-500/10"
                 >
                   {submitText ?? "Submit"}
                 </button>
