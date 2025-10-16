@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
-import { toast } from "react-hot-toast"; // ✅ toast
+import { toast } from "react-hot-toast"; // 🟧 added
 
 import PauseResumeButton from "@inspections/lib/inspection/PauseResume";
 import StartListeningButton from "@inspections/lib/inspection/StartListeningButton";
@@ -21,7 +21,7 @@ import type {
   InspectionSession,
   SessionCustomer,
   SessionVehicle,
-  QuoteLineItem, // ⬅️ for placeholder + merge typing
+  QuoteLineItem,
 } from "@inspections/lib/inspection/types";
 
 import AirCornerGrid from "@inspections/lib/inspection/ui/AirCornerGrid";
@@ -31,18 +31,11 @@ import { SaveInspectionButton } from "@inspections/components/inspection/SaveIns
 import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
 import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicleHeader";
 
-// NEW (kept): add-axle helper
 import { buildAirAxleItems } from "@inspections/lib/inspection/builders/addAxleHelpers";
-
-// ✅ use shared voice helper (no local Web Speech block, no unused stop import)
 import { startVoiceRecognition } from "@inspections/lib/inspection/voiceControl";
-
-// ✅ AI quote helper
 import { requestQuoteSuggestion } from "@inspections/lib/inspection/aiQuote";
 
-/* -------------------------------------------------------------------------- */
-/* Header adapters                                                             */
-/* -------------------------------------------------------------------------- */
+/* ------------------------------ Header types ------------------------------ */
 
 type HeaderCustomer = {
   first_name: string;
@@ -94,9 +87,7 @@ function toHeaderVehicle(v?: SessionVehicle | null): HeaderVehicle {
   };
 }
 
-/* -------------------------------------------------------------------------- */
-/* Section builders                                                            */
-/* -------------------------------------------------------------------------- */
+/* ------------------------------ Section builders ------------------------------ */
 
 function buildAirCornerMeasurementsSection(): InspectionSection {
   return {
@@ -179,9 +170,7 @@ function buildDrivelineSection(): InspectionSection {
   };
 }
 
-/* -------------------------------------------------------------------------- */
-/* Units + toggle                                                              */
-/* -------------------------------------------------------------------------- */
+/* ------------------------------ Units + toggle ------------------------------ */
 
 function unitForAir(label: string, mode: "metric" | "imperial"): string {
   const l = label.toLowerCase();
@@ -225,9 +214,7 @@ function applyUnitsAir(sections: InspectionSection[], mode: "metric" | "imperial
   });
 }
 
-/* -------------------------------------------------------------------------- */
-/* Page                                                                        */
-/* -------------------------------------------------------------------------- */
+/* ------------------------------ Page ------------------------------ */
 
 export default function Maintenance50AirPage(): JSX.Element {
   const searchParams = useSearchParams();
@@ -291,7 +278,7 @@ export default function Maintenance50AirPage(): JSX.Element {
     resumeSession,
     pauseSession,
     addQuoteLine,
-    updateQuoteLines, // ⬅️ needed for AI merge
+    updateQuoteLines,
   } = useInspectionSession(initialSession);
 
   /* hydrate/persist */
@@ -382,7 +369,6 @@ export default function Maintenance50AirPage(): JSX.Element {
     }
   };
 
-  // unified start using shared helper, single instance
   const startListening = (): void => {
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch {}
@@ -391,7 +377,6 @@ export default function Maintenance50AirPage(): JSX.Element {
     setIsListening(true);
   };
 
-  // stop on unmount
   useEffect(() => {
     return () => {
       try { recognitionRef.current?.stop(); } catch {}
@@ -516,12 +501,10 @@ export default function Maintenance50AirPage(): JSX.Element {
                     };
                     addQuoteLine(baseLine);
 
-                    // ➜ Notify: started
-                    const toastId = toast.loading("Getting AI estimate…", {
-                      id: `ai-${id}`,
-                    });
+                    // 🟧 Toast immediately so the tech gets feedback
+                    toast.loading("Getting AI estimate…", { id: `ai-${id}`, duration: 4000 });
 
-                    // 2) Ask AI and merge onto the same id
+                    // 2) Ask AI for parts/labor suggestion and merge onto the same id
                     (async () => {
                       try {
                         const suggestion = await requestQuoteSuggestion({
@@ -530,10 +513,7 @@ export default function Maintenance50AirPage(): JSX.Element {
                           section: session.sections[secIdx].title,
                           status,
                         });
-                        if (!suggestion) {
-                          toast.error("No AI suggestion returned.", { id: toastId });
-                          return;
-                        }
+                        if (!suggestion) return;
 
                         const partsTotal =
                           suggestion.parts?.reduce((sum, p) => sum + (p.cost || 0), 0) ?? 0;
@@ -559,10 +539,12 @@ export default function Maintenance50AirPage(): JSX.Element {
                         ) as QuoteLineItem[];
 
                         updateQuoteLines(next);
-                        toast.success("AI suggestion ready", { id: toastId });
+
+                        // 🟧 Swap toast to success
+                        toast.success("AI estimate ready", { id: `ai-${id}` });
                       } catch (e) {
                         console.error("AI quote suggestion failed:", e);
-                        toast.error("AI suggestion failed", { id: toastId });
+                        toast.error("AI estimate failed", { id: `ai-${id}` });
                       }
                     })();
                   }
