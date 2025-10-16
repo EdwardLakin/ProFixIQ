@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
+import { toast } from "react-hot-toast"; // ✅ toast
 
 import PauseResumeButton from "@inspections/lib/inspection/PauseResume";
 import StartListeningButton from "@inspections/lib/inspection/StartListeningButton";
@@ -515,7 +516,12 @@ export default function Maintenance50AirPage(): JSX.Element {
                     };
                     addQuoteLine(baseLine);
 
-                    // 2) Ask AI for parts/labor suggestion and merge onto the same id
+                    // ➜ Notify: started
+                    const toastId = toast.loading("Getting AI estimate…", {
+                      id: `ai-${id}`,
+                    });
+
+                    // 2) Ask AI and merge onto the same id
                     (async () => {
                       try {
                         const suggestion = await requestQuoteSuggestion({
@@ -524,7 +530,10 @@ export default function Maintenance50AirPage(): JSX.Element {
                           section: session.sections[secIdx].title,
                           status,
                         });
-                        if (!suggestion) return;
+                        if (!suggestion) {
+                          toast.error("No AI suggestion returned.", { id: toastId });
+                          return;
+                        }
 
                         const partsTotal =
                           suggestion.parts?.reduce((sum, p) => sum + (p.cost || 0), 0) ?? 0;
@@ -550,8 +559,10 @@ export default function Maintenance50AirPage(): JSX.Element {
                         ) as QuoteLineItem[];
 
                         updateQuoteLines(next);
+                        toast.success("AI suggestion ready", { id: toastId });
                       } catch (e) {
                         console.error("AI quote suggestion failed:", e);
+                        toast.error("AI suggestion failed", { id: toastId });
                       }
                     })();
                   }
