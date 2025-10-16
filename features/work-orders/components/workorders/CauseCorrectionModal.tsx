@@ -7,13 +7,12 @@ interface CauseCorrectionModalProps {
   isOpen: boolean;
   onClose: () => void;
   jobId: string;
-  // Align with FocusedJobModal usage: (cause, correction)
   onSubmit: (cause: string, correction: string) => Promise<void>;
 }
 
-// NOTE: accept `any` to bypass Next's serializable-props check, then cast.
 export default function CauseCorrectionModal(props: any) {
-  const { isOpen, onClose, jobId, onSubmit } = props as CauseCorrectionModalProps;
+  const { isOpen, onClose, jobId, onSubmit } =
+    props as CauseCorrectionModalProps;
 
   const [cause, setCause] = useState("");
   const [correction, setCorrection] = useState("");
@@ -43,16 +42,24 @@ export default function CauseCorrectionModal(props: any) {
     <Dialog
       open={isOpen}
       onClose={onClose}
-      className="fixed inset-0 z-50 flex items-center justify-center"
+      className="fixed inset-0 z-[320] flex items-center justify-center"
     >
-      <div className="fixed inset-0 bg-black/70" aria-hidden="true" />
-      <div className="relative z-50 mx-4 w-full max-w-md rounded-lg border border-orange-400 bg-neutral-950 p-5 text-white shadow-xl">
+      {/* Backdrop (above FocusedJobModal, below panel) */}
+      <div
+        className="fixed inset-0 z-[320] bg-black/70 backdrop-blur-sm"
+        aria-hidden="true"
+      />
+
+      {/* Panel */}
+      <div className="relative z-[330] mx-4 w-full max-w-md rounded-lg border border-orange-400 bg-neutral-950 p-5 text-white shadow-xl">
         <Dialog.Title className="mb-4 text-lg font-header font-semibold tracking-wide">
           Complete Job
         </Dialog.Title>
 
         <div className="mb-3">
-          <label className="mb-1 block text-sm font-sans text-neutral-300">Cause</label>
+          <label className="mb-1 block text-sm font-sans text-neutral-300">
+            Cause
+          </label>
           <textarea
             ref={causeRef}
             rows={3}
@@ -64,7 +71,9 @@ export default function CauseCorrectionModal(props: any) {
         </div>
 
         <div className="mb-4">
-          <label className="mb-1 block text-sm font-sans text-neutral-300">Correction</label>
+          <label className="mb-1 block text-sm font-sans text-neutral-300">
+            Correction
+          </label>
           <textarea
             rows={3}
             className="font-sans w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-sm text-white placeholder-neutral-400"

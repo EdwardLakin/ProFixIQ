@@ -40,7 +40,7 @@ export default function HoldModal(props: any) {
       footerLeft={
         canRelease ? (
           <button
-            className="font-blackops rounded border border-red-500 px-3 py-2 text-sm hover:border-orange-400"
+            className="font-header rounded border border-red-500 px-3 py-2 text-sm hover:border-orange-400"
             onClick={() => Promise.resolve(onRelease?.()).then(onClose)}
           >
             Release Hold
@@ -53,11 +53,13 @@ export default function HoldModal(props: any) {
       }}
       submitText="Apply Hold"
     >
-      <p className="mb-3 text-sm text-neutral-400">Choose a reason and add optional notes</p>
+      <p className="mb-3 text-sm text-neutral-400">
+        Choose a reason and add optional notes
+      </p>
 
       <label className="mb-1 block text-xs text-neutral-400">Reason</label>
       <select
-        className="mb-3 w-full rounded border border-neutral-700 bg-neutral-800 p-2 text-sm"
+        className="mb-3 w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-sm text-white"
         value={reason}
         onChange={(e) => setReason(e.target.value)}
       >
@@ -71,7 +73,7 @@ export default function HoldModal(props: any) {
       <label className="mb-1 block text-xs text-neutral-400">Notes</label>
       <textarea
         rows={3}
-        className="w-full rounded border border-neutral-700 bg-neutral-800 p-2 text-sm"
+        className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-sm text-white placeholder-neutral-400"
         value={notes}
         onChange={(e) => setNotes(e.target.value)}
         placeholder="Optional notes for the hold…"
