@@ -97,6 +97,9 @@ export default function FocusedJobModal(props: any) {
   const [openChat, setOpenChat] = useState(false);
   const [openAddJob, setOpenAddJob] = useState(false);
 
+  // NEW: tiny visual confirm badge after successful Start
+  const [showStartedBadge, setShowStartedBadge] = useState(false);
+
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
     (async () => {
@@ -202,6 +205,9 @@ export default function FocusedJobModal(props: any) {
         .eq("id", workOrderLineId);
       if (error) return showErr("Start failed", error);
       toast.success("Started");
+      // show quick visual badge inside the modal
+      setShowStartedBadge(true);
+      window.setTimeout(() => setShowStartedBadge(false), 1200);
       await refresh();
     } finally {
       setBusy(false);
@@ -413,6 +419,15 @@ export default function FocusedJobModal(props: any) {
           className="relative z-[110] mx-4 my-6 w-full max-w-5xl"
           onClick={(e) => e.stopPropagation()} // prevent bubbling to overlay
         >
+          {/* ✅ Visual confirm badge for Start */}
+          {showStartedBadge && (
+            <div className="pointer-events-none absolute right-6 top-4 z-[120]">
+              <div className="rounded-md border border-green-500 bg-green-900/30 px-3 py-1.5 text-sm font-medium text-green-300 shadow-lg backdrop-blur">
+                ✓ Started
+              </div>
+            </div>
+          )}
+
           <div className="max-h-[85vh] overflow-y-auto rounded-lg border border-orange-400 bg-neutral-950 p-5 text-white shadow-xl">
             {/* Title row */}
             <div className="mb-2 flex items-start justify-between gap-3">
