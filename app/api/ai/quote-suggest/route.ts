@@ -1,13 +1,7 @@
-// app/api/ai/quote-suggest/route.ts
+// /app/api/ai/quote-suggest/route.ts
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY! // service key so we can log ai runs
-);
 
 // Keep the response structured and easy to consume
 type AISuggestion = {
@@ -21,6 +15,17 @@ type AISuggestion = {
 export async function POST(req: Request) {
   try {
     const { item, notes, section, status } = await req.json();
+
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+    if (!openaiApiKey) {
+      console.error("Missing OPENAI_API_KEY");
+      return NextResponse.json(
+        { error: "Server not configured (OpenAI)" },
+        { status: 500 }
+      );
+    }
+
+    const openai = new OpenAI({ apiKey: openaiApiKey });
 
     const system = `You are a repair estimator for commercial vehicles.
 Return ONLY a compact JSON object with keys:
@@ -58,13 +63,28 @@ Prefer concise, realistic parts and labor.`;
       suggestion = { parts: [], laborHours: 0.5, summary: "No suggestion." };
     }
 
-    // Optional: persist the AI call (handy for QA/audit)
-    await supabase.from("ai_requests").insert({
-      kind: "quote_suggestion",
-      input_text: user,
-      output_text: raw,
-      created_at: new Date().toISOString(),
-    });
+    // --- Optional: persist the AI call (skip if envs are missing) ---
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey =
+      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
+
+    if (supabaseUrl && supabaseKey) {
+      try {
+        const supabase = createClient(supabaseUrl, supabaseKey);
+        await supabase.from("ai_requests").insert({
+          kind: "quote_suggestion",
+          input_text: user,
+          output_text: raw,
+          created_at: new Date().toISOString(),
+        });
+      } catch (e) {
+        // Log but don't fail the route
+        console.warn("Supabase logging failed:", e);
+      }
+    } else {
+      // Don’t crash the build or request if Supabase is not configured
+      console.warn("Skipping Supabase logging; credentials not provided.");
+    }
 
     return NextResponse.json({ suggestion });
   } catch (err) {
