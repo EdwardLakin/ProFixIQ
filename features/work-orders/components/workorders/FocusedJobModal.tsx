@@ -5,6 +5,7 @@ import { Dialog } from "@headlessui/react";
 import { format, formatDistanceStrict } from "date-fns";
 import { toast } from "sonner";
 import { v4 as uuidv4 } from "uuid";
+import { useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 // existing modals
@@ -71,8 +72,9 @@ export default function FocusedJobModal(props: any) {
     mode?: Mode;
   };
 
+  const router = useRouter();
   const supabase = useMemo(() => createBrowserSupabase(), []);
-  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [line, setLine] = useState<any>(null);
   const [workOrder, setWorkOrder] = useState<any>(null);
   const [vehicle, setVehicle] = useState<any>(null);
@@ -92,50 +94,56 @@ export default function FocusedJobModal(props: any) {
   const [openPhoto, setOpenPhoto] = useState(false);
   const [openCost, setOpenCost] = useState(false);
   const [openContact, setOpenContact] = useState(false);
-  const [openChat, setOpenChat] = useState(false); // NEW
+  const [openChat, setOpenChat] = useState(false);
   const [openAddJob, setOpenAddJob] = useState(false);
 
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
     (async () => {
-      setLoading(true);
+      setBusy(true);
       try {
-        const { data: l } = await supabase
+        const { data: l, error: le } = await supabase
           .from("work_order_lines")
           .select("*")
           .eq("id", workOrderLineId)
           .maybeSingle();
+        if (le) throw le;
         setLine(l ?? null);
         setTechNotes(l?.notes ?? "");
 
         if (l?.work_order_id) {
-          const { data: wo } = await supabase
+          const { data: wo, error: we } = await supabase
             .from("work_orders")
             .select("*")
             .eq("id", l.work_order_id)
             .maybeSingle();
+          if (we) throw we;
           setWorkOrder(wo ?? null);
 
           if (wo?.vehicle_id) {
-            const { data: v } = await supabase
+            const { data: v, error: ve } = await supabase
               .from("vehicles")
               .select("*")
               .eq("id", wo.vehicle_id)
               .maybeSingle();
+            if (ve) throw ve;
             setVehicle(v ?? null);
           } else setVehicle(null);
 
           if (wo?.customer_id) {
-            const { data: c } = await supabase
+            const { data: c, error: ce } = await supabase
               .from("customers")
               .select("*")
               .eq("id", wo.customer_id)
               .maybeSingle();
+            if (ce) throw ce;
             setCustomer(c ?? null);
           } else setCustomer(null);
         }
+      } catch (e: any) {
+        toast.error(e?.message ?? "Failed to load job");
       } finally {
-        setLoading(false);
+        setBusy(false);
       }
     })();
   }, [isOpen, workOrderLineId, supabase]);
@@ -185,60 +193,89 @@ export default function FocusedJobModal(props: any) {
 
   // Actions
   const startJob = async () => {
-    if (!workOrderLineId) return;
-    const { error } = await supabase
-      .from("work_order_lines")
-      .update({ punched_in_at: new Date().toISOString(), status: "in_progress" })
-      .eq("id", workOrderLineId);
-    if (error) return showErr("Start failed", error);
-    toast.success("Started");
-    await refresh();
+    if (!workOrderLineId || busy) return;
+    setBusy(true);
+    try {
+      const { error } = await supabase
+        .from("work_order_lines")
+        .update({ punched_in_at: new Date().toISOString(), status: "in_progress" })
+        .eq("id", workOrderLineId);
+      if (error) return showErr("Start failed", error);
+      toast.success("Started");
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
   };
 
   // Finish → open Cause/Correction modal to capture details before completing
   const finishJob = async () => setOpenComplete(true);
 
   const applyHold = async (reason: string, notes?: string) => {
-    const { error } = await supabase
-      .from("work_order_lines")
-      .update({
-        hold_reason: reason || "On hold",
-        status: "on_hold",
-        notes: notes ?? line?.notes ?? null,
-      })
-      .eq("id", workOrderLineId);
-    if (error) return showErr("Apply hold failed", error);
-    toast.success("Hold applied");
-    await refresh();
+    if (busy) return;
+    setBusy(true);
+    try {
+      const { error } = await supabase
+        .from("work_order_lines")
+        .update({
+          hold_reason: reason || "On hold",
+          status: "on_hold",
+          notes: notes ?? line?.notes ?? null,
+        })
+        .eq("id", workOrderLineId);
+      if (error) return showErr("Apply hold failed", error);
+      toast.success("Hold applied");
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
   };
   const releaseHold = async () => {
-    const { error } = await supabase
-      .from("work_order_lines")
-      .update({ hold_reason: null, status: "awaiting" })
-      .eq("id", workOrderLineId);
-    if (error) return showErr("Remove hold failed", error);
-    toast.success("Hold removed");
-    await refresh();
+    if (busy) return;
+    setBusy(true);
+    try {
+      const { error } = await supabase
+        .from("work_order_lines")
+        .update({ hold_reason: null, status: "awaiting" })
+        .eq("id", workOrderLineId);
+      if (error) return showErr("Remove hold failed", error);
+      toast.success("Hold removed");
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
   };
 
   const changeStatus = async (next: string) => {
-    const { error } = await supabase
-      .from("work_order_lines")
-      .update({ status: next })
-      .eq("id", workOrderLineId);
-    if (error) return showErr("Update status failed", error);
-    toast.success("Status updated");
-    await refresh();
+    if (busy) return;
+    setBusy(true);
+    try {
+      const { error } = await supabase
+        .from("work_order_lines")
+        .update({ status: next })
+        .eq("id", workOrderLineId);
+      if (error) return showErr("Update status failed", error);
+      toast.success("Status updated");
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
   };
 
   const updateTime = async (inAt: string | null, outAt: string | null) => {
-    const { error } = await supabase
-      .from("work_order_lines")
-      .update({ punched_in_at: inAt, punched_out_at: outAt })
-      .eq("id", workOrderLineId);
-    if (error) return showErr("Update time failed", error);
-    toast.success("Time updated");
-    await refresh();
+    if (busy) return;
+    setBusy(true);
+    try {
+      const { error } = await supabase
+        .from("work_order_lines")
+        .update({ punched_in_at: inAt, punched_out_at: outAt })
+        .eq("id", workOrderLineId);
+      if (error) return showErr("Update time failed", error);
+      toast.success("Time updated");
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
   };
 
   const uploadPhoto = async (file: File) => {
@@ -255,13 +292,19 @@ export default function FocusedJobModal(props: any) {
   };
 
   const applyCost = async (laborHours: number | null, price: number | null) => {
-    const { error } = await supabase
-      .from("work_order_lines")
-      .update({ labor_time: laborHours, price_estimate: price })
-      .eq("id", workOrderLineId);
-    if (error) return showErr("Save cost failed", error);
-    toast.success("Estimate updated");
-    await refresh();
+    if (busy) return;
+    setBusy(true);
+    try {
+      const { error } = await supabase
+        .from("work_order_lines")
+        .update({ labor_time: laborHours, price_estimate: price })
+        .eq("id", workOrderLineId);
+      if (error) return showErr("Save cost failed", error);
+      toast.success("Estimate updated");
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
   };
 
   const sendEmail = async (subject: string, body: string) => {
@@ -307,7 +350,7 @@ export default function FocusedJobModal(props: any) {
   const startedText = startAt ? format(new Date(startAt), "PPpp") : "—";
   const finishedText = finishAt ? format(new Date(finishAt), "PPpp") : "—";
 
-  // REPLACED: async version that ensures/links a session then opens the modal
+  // Rewritten to use router.push (reliable navigation)
   const openInspection = async () => {
     if (!line) return;
 
@@ -335,16 +378,10 @@ export default function FocusedJobModal(props: any) {
       const sp = new URLSearchParams();
       if (workOrder?.id) sp.set("workOrderId", workOrder.id);
       sp.set("workOrderLineId", line.id);
-      sp.set("sessionId", sessionId);
+      sp.set("inspectionId", sessionId); // match pages that expect inspectionId
       sp.set("template", template);
 
-      const path = `/inspections/${template}`;
-      window.dispatchEvent(
-        new CustomEvent("inspection:open", {
-          detail: { path, params: sp.toString() },
-        })
-      );
-
+      router.push(`/inspections/${template}?${sp.toString()}`);
       toast.success("Inspection opened");
     } catch (e: any) {
       toast.error(e?.message ?? "Unable to open inspection");
@@ -366,13 +403,16 @@ export default function FocusedJobModal(props: any) {
       <Dialog
         open={isOpen}
         onClose={onClose}
-        className="fixed inset-0 z-[40] flex items-center justify-center"
+        className="fixed inset-0 z-[100] flex items-center justify-center"
       >
-        {/* Dark overlay */}
-        <div className="fixed inset-0 z-[40] bg-black/70" aria-hidden="true" />
+        {/* Dark overlay (captures clicks) */}
+        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm" aria-hidden="true" />
 
         {/* Panel */}
-        <div className="relative z-[41] mx-4 my-6 w-full max-w-5xl">
+        <div
+          className="relative z-[110] mx-4 my-6 w-full max-w-5xl"
+          onClick={(e) => e.stopPropagation()} // prevent bubbling to overlay
+        >
           <div className="max-h-[85vh] overflow-y-auto rounded-lg border border-orange-400 bg-neutral-950 p-5 text-white shadow-xl">
             {/* Title row */}
             <div className="mb-2 flex items-start justify-between gap-3">
@@ -389,13 +429,17 @@ export default function FocusedJobModal(props: any) {
               <div className="flex items-center gap-2">
                 {workOrder?.id && (
                   <button
+                    type="button"
                     className="rounded bg-orange-500 px-3 py-1.5 text-sm font-semibold text-black hover:bg-orange-400"
                     onClick={() => setOpenAddJob(true)}
                     title="Add a job to this work order"
+                    disabled={busy}
                   >
+                    Add Job
                   </button>
                 )}
                 <button
+                  type="button"
                   onClick={onClose}
                   className="rounded border border-neutral-700 px-2 py-1 text-sm text-neutral-200 hover:bg-neutral-800"
                   title="Close"
@@ -406,14 +450,16 @@ export default function FocusedJobModal(props: any) {
             </div>
 
             {/* Body */}
-            {loading || !line ? (
+            {busy && !line ? (
               <div className="grid gap-3">
                 <div className="h-6 w-40 animate-pulse rounded bg-neutral-800/60" />
                 <div className="h-24 animate-pulse rounded bg-neutral-800/60" />
               </div>
+            ) : !line ? (
+              <div className="text-neutral-400">No job found.</div>
             ) : (
               <div className="space-y-4">
-                {/* Meta (dark blocks) */}
+                {/* Meta */}
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
                     <div className="text-xs text-neutral-400">Status</div>
@@ -435,7 +481,7 @@ export default function FocusedJobModal(props: any) {
                   </div>
                 </div>
 
-                {/* Vehicle & Customer (dark) */}
+                {/* Vehicle & Customer */}
                 <div className="rounded border border-neutral-800 bg-neutral-950 p-3 text-sm">
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div>
@@ -453,9 +499,7 @@ export default function FocusedJobModal(props: any) {
                       <div className="text-neutral-400">Customer</div>
                       <div className="truncate">
                         {customer
-                          ? [customer.first_name ?? "", customer.last_name ?? ""]
-                              .filter(Boolean)
-                              .join(" ") || "—"
+                          ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") || "—"
                           : "—"}
                       </div>
                       <div className="text-xs text-neutral-500">
@@ -470,77 +514,125 @@ export default function FocusedJobModal(props: any) {
                   {mode === "tech" ? (
                     <>
                       {!startAt || finishAt ? (
-                        <button className={outlineSuccess} onClick={startJob}>Start</button>
+                        <button type="button" className={outlineSuccess} onClick={startJob} disabled={busy}>
+                          Start
+                        </button>
                       ) : (
-                        <button className={outlineFinish} onClick={finishJob}>Finish</button>
+                        <button type="button" className={outlineFinish} onClick={finishJob} disabled={busy}>
+                          Finish
+                        </button>
                       )}
 
-                      <button className={outlinePurple} onClick={() => setOpenComplete(true)}>
+                      <button
+                        type="button"
+                        className={outlinePurple}
+                        onClick={() => setOpenComplete(true)}
+                        disabled={busy}
+                      >
                         Complete (Cause/Correction)
                       </button>
 
-                      <button className={outlineDanger} onClick={() => setOpenParts(true)}>
+                      <button
+                        type="button"
+                        className={outlineDanger}
+                        onClick={() => setOpenParts(true)}
+                        disabled={busy}
+                      >
                         Request Parts
                       </button>
 
-                      <button className={outlineWarn} onClick={() => setOpenHold(true)}>
+                      <button
+                        type="button"
+                        className={outlineWarn}
+                        onClick={() => setOpenHold(true)}
+                        disabled={busy}
+                      >
                         {line.status === "on_hold" ? "On Hold" : "Hold"}
                       </button>
 
-                      <button className={outlineInfo} onClick={() => setOpenStatus(true)}>
+                      <button
+                        type="button"
+                        className={outlineInfo}
+                        onClick={() => setOpenStatus(true)}
+                        disabled={busy}
+                      >
                         Change Status
                       </button>
 
-                      <button className={outlineNeutral} onClick={() => setOpenTime(true)}>
+                      <button
+                        type="button"
+                        className={outlineNeutral}
+                        onClick={() => setOpenTime(true)}
+                        disabled={busy}
+                      >
                         Adjust Time
                       </button>
 
-                      <button className={outlineNeutral} onClick={() => setOpenAssign(true)}>
+                      <button
+                        type="button"
+                        className={outlineNeutral}
+                        onClick={() => setOpenAssign(true)}
+                        disabled={busy}
+                      >
                         Assign Tech
                       </button>
 
-                      <button className={outlineNeutral} onClick={() => setOpenPhoto(true)}>
+                      <button
+                        type="button"
+                        className={outlineNeutral}
+                        onClick={() => setOpenPhoto(true)}
+                        disabled={busy}
+                      >
                         Add Photo
                       </button>
 
-                      <button className={outlineNeutral} onClick={() => setOpenCost(true)}>
+                      <button
+                        type="button"
+                        className={outlineNeutral}
+                        onClick={() => setOpenCost(true)}
+                        disabled={busy}
+                      >
                         Cost / Estimate
                       </button>
 
-                      <button className={outlineNeutral} onClick={() => setOpenContact(true)}>
-                        Contact Customer
-                      </button>
-
                       <button
+                        type="button"
                         className={`${outlineInfo} ${line?.job_type === "inspection" ? "" : "opacity-50 cursor-not-allowed"}`}
                         onClick={line?.job_type === "inspection" ? openInspection : undefined}
                         title={line?.job_type === "inspection" ? "Open inspection" : "Not an inspection line"}
+                        disabled={busy || line?.job_type !== "inspection"}
                       >
                         Open Inspection
                       </button>
 
-                      <button className={outlineInfo} onClick={() => setOpenChat(true)}>
+                      <button
+                        type="button"
+                        className={outlineInfo}
+                        onClick={() => setOpenChat(true)}
+                      >
                         Chat
                       </button>
                     </>
                   ) : (
                     <>
-                      <button className={outlineNeutral} onClick={() => setOpenCost(true)}>
+                      <button type="button" className={outlineNeutral} onClick={() => setOpenCost(true)}>
                         Cost / Estimate
                       </button>
-                      <button className={outlineNeutral} onClick={() => setOpenContact(true)}>
+                      <button type="button" className={outlineNeutral} onClick={() => setOpenContact(true)}>
                         Contact Customer
                       </button>
-                      <button className={outlineInfo} onClick={() => setOpenStatus(true)}>
+                      <button type="button" className={outlineInfo} onClick={() => setOpenStatus(true)}>
                         Change Status
                       </button>
                       <button
+                        type="button"
                         className={`${outlineInfo} ${line?.job_type === "inspection" ? "" : "opacity-50 cursor-not-allowed"}`}
                         onClick={line?.job_type === "inspection" ? openInspection : undefined}
+                        disabled={line?.job_type !== "inspection"}
                       >
                         Open Inspection
                       </button>
-                      <button className={outlineInfo} onClick={() => setOpenChat(true)}>
+                      <button type="button" className={outlineInfo} onClick={() => setOpenChat(true)}>
                         Chat
                       </button>
                     </>
@@ -599,7 +691,7 @@ export default function FocusedJobModal(props: any) {
       {/* Float the voice mic ABOVE the modal overlay */}
       {isOpen && <VoiceButton />}
 
-      {/* Sub-modals (unchanged) */}
+      {/* Sub-modals (unchanged logic) */}
       {openComplete && line && (
         <CauseCorrectionModal
           isOpen={openComplete}
@@ -715,7 +807,7 @@ export default function FocusedJobModal(props: any) {
         />
       )}
 
-      {/* NEW: Add Job modal */}
+      {/* Add Job modal */}
       {openAddJob && workOrder?.id && (
         <AddJobModal
           isOpen={openAddJob}
