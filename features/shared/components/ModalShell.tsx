@@ -1,4 +1,3 @@
-// features/shared/components/modals/ModalShell.tsx
 "use client";
 
 import { Dialog } from "@headlessui/react";
@@ -35,12 +34,12 @@ export default function ModalShell(props: any) {
     size === "sm" ? "max-w-md" : size === "lg" ? "max-w-3xl" : "max-w-xl";
 
   return (
-    <Dialog open={isOpen} onClose={onClose} className="fixed inset-0 z-50">
-      {/* darker scrim */}
+    <Dialog open={isOpen} onClose={onClose} className="fixed inset-0 z-[80]">
+      {/* darker scrim (also sits above focused modal’s 40/41 layers) */}
       <div className="fixed inset-0 bg-black/70" />
       <div className="fixed inset-0 flex items-center justify-center p-4">
         <Dialog.Panel
-          /* 👇 scope class so we can style inputs inside every modal consistently */
+          /* scoped class for consistent modal input styling */
           className={`profix-modal w-full ${maxW} rounded border border-orange-400 bg-white p-6 text-black dark:bg-neutral-950 dark:text-white`}
         >
           {(title || subtitle) && (
