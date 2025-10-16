@@ -37,11 +37,9 @@ export default function PhotoCaptureModal(props: any) {
         accept="image/*"
         capture="environment"
         onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-        className="w-full rounded border border-neutral-300 bg-neutral-50 p-2 dark:border-neutral-700 dark:bg-neutral-800"
+        className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white"
       />
-      <p className="mt-2 text-xs text-neutral-500">
-        Tip: on mobile, this opens the camera.
-      </p>
+      <p className="mt-2 text-xs text-neutral-500">Tip: on mobile, this opens the camera.</p>
     </ModalShell>
   );
 }

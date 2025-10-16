@@ -59,7 +59,7 @@ export default function PartsRequestModal(props: any) {
   };
 
   const handleSubmit = async () => {
-    if (!partsNeeded) {
+    if (!partsNeeded.trim()) {
       toast.error("Parts needed is required.");
       return;
     }
@@ -68,10 +68,10 @@ export default function PartsRequestModal(props: any) {
       id: existingRequest?.id || uuidv4(),
       job_id: jobId,
       work_order_id: workOrderId,
-      part_name: partsNeeded,
+      part_name: partsNeeded.trim(),
       urgency,
       quantity,
-      notes,
+      notes: notes.trim() || null,
       requested_by,
       photo_urls: photoUrls,
       viewed_at: null,
@@ -93,15 +93,12 @@ export default function PartsRequestModal(props: any) {
         existingRequest ? "Request updated successfully." : "Parts request submitted."
       );
       resetForm();
-      setTimeout(onClose, 1000);
+      setTimeout(onClose, 600);
     }
   };
 
-  const handlePhotoUpload = async (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const input = e.target as HTMLInputElement | null;
-    const files = input?.files;
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
     if (!files || files.length === 0) return;
 
     const maxFiles = 5 - photoUrls.length;
@@ -134,44 +131,52 @@ export default function PartsRequestModal(props: any) {
   };
 
   return (
-    <Dialog open={isOpen} onClose={onClose} className="fixed inset-0 z-200">
-      <div className="fixed inset-0 bg-black/70" aria-hidden="true" />
-      <div className="fixed inset-0 flex items-center justify-center p-4">
-        <Dialog.Panel className="w-full max-w-md rounded border border-orange-400 bg-neutral-950 p-6 text-white shadow-lg">
-          <Dialog.Title className="mb-4 text-lg font-header font-semibold tracking-wide">
+    <Dialog
+      open={isOpen}
+      onClose={onClose}
+      /* Above FocusedJobModal (z-[100]/[110]) and ModalShell (z-[300]/[310]) */
+      className="fixed inset-0 z-[320] flex items-center justify-center"
+    >
+      {/* Backdrop */}
+      <div className="fixed inset-0 z-[320] bg-black/70 backdrop-blur-sm" aria-hidden="true" />
+
+      {/* Centered panel */}
+      <div className="relative z-[330] mx-4 my-6 w-full">
+        <Dialog.Panel className="w-full max-w-md rounded border border-orange-400 bg-neutral-950 p-6 text-white shadow-xl">
+          <Dialog.Title className="mb-4 font-header text-lg font-semibold tracking-wide">
             {existingRequest ? "Edit Parts Request" : "Request Parts"}
           </Dialog.Title>
 
           <div className="mb-3">
-            <label className="mb-1 block text-sm font-sans text-neutral-300">Parts Needed*</label>
+            <label className="mb-1 block text-sm text-neutral-300">Parts Needed*</label>
             <textarea
               rows={2}
-              className="w-full font-sans rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder-neutral-400"
+              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
               value={partsNeeded}
               onChange={(e) => setPartsNeeded(e.target.value)}
+              placeholder="List the part(s) needed…"
               required
             />
           </div>
 
           <div className="mb-3">
-            <label className="mb-1 block text-sm font-sans text-neutral-300">Quantity</label>
+            <label className="mb-1 block text-sm text-neutral-300">Quantity</label>
             <input
               type="number"
-              className="w-full font-sans rounded border border-neutral-700 bg-neutral-900 p-2 text-white"
-              value={quantity}
               min={1}
+              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
+              value={quantity}
               onChange={(e) => setQuantity(Number(e.target.value))}
+              placeholder="1"
             />
           </div>
 
           <div className="mb-3">
-            <label className="mb-1 block text-sm font-sans text-neutral-300">Urgency</label>
+            <label className="mb-1 block text-sm text-neutral-300">Urgency</label>
             <select
-              className="w-full font-sans rounded border border-neutral-700 bg-neutral-900 p-2 text-white"
+              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white"
               value={urgency}
-              onChange={(e) =>
-                setUrgency(e.target.value as "low" | "medium" | "high")
-              }
+              onChange={(e) => setUrgency(e.target.value as "low" | "medium" | "high")}
             >
               <option value="low">Low</option>
               <option value="medium">Medium</option>
@@ -180,17 +185,18 @@ export default function PartsRequestModal(props: any) {
           </div>
 
           <div className="mb-3">
-            <label className="mb-1 block text-sm font-sans text-neutral-300">Notes</label>
+            <label className="mb-1 block text-sm text-neutral-300">Notes</label>
             <textarea
               rows={2}
-              className="w-full font-sans rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder-neutral-400"
+              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
+              placeholder="Optional details, vendor, etc."
             />
           </div>
 
           <div className="mb-3">
-            <label className="mb-1 block text-sm font-sans text-neutral-300">
+            <label className="mb-1 block text-sm text-neutral-300">
               Photos ({photoUrls.length}/5)
             </label>
             <input
@@ -200,19 +206,16 @@ export default function PartsRequestModal(props: any) {
               capture="environment"
               disabled={photoUrls.length >= 5 || uploading}
               onChange={handlePhotoUpload}
-              className="mb-2 font-sans"
+              className="mb-2"
             />
             <div className="flex flex-wrap gap-2">
               {photoUrls.map((url) => (
                 <div key={url} className="relative">
-                  <img
-                    src={url}
-                    alt="part"
-                    className="h-16 w-16 rounded object-cover"
-                  />
+                  <img src={url} alt="part" className="h-16 w-16 rounded object-cover" />
                   <button
                     onClick={() => handleDeletePhoto(url)}
                     className="absolute right-0 top-0 font-header rounded border border-red-600 px-1 text-xs text-red-300 hover:bg-red-900/20"
+                    title="Remove"
                   >
                     ✕
                   </button>

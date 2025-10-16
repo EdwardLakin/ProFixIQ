@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
-interface Props {
+type Props = {
   isOpen: boolean;
   onClose: () => void;
   workOrderId: string;
@@ -13,18 +13,22 @@ interface Props {
   techId: string;
   onJobAdded?: () => void;
   shopId?: string | null;
-}
+};
 
-export default function AddJobModal({
-  isOpen,
-  onClose,
-  workOrderId,
-  vehicleId,
-  techId,
-  onJobAdded,
-  shopId,
-}: Props) {
+export default function AddJobModal(props: any) {
+  // cast locally to keep IDE help, but avoid Next’s serializable-props rule
+  const {
+    isOpen,
+    onClose,
+    workOrderId,
+    vehicleId,
+    techId,
+    onJobAdded,
+    shopId,
+  } = props as Props;
+
   const supabase = useMemo(() => createBrowserSupabase(), []);
+
   const [jobName, setJobName] = useState("");
   const [notes, setNotes] = useState("");
   const [labor, setLabor] = useState("");
@@ -69,7 +73,7 @@ export default function AddJobModal({
         job_type: "repair" as const,
         shop_id: useShopId,
         ...(techId && techId !== "system" ? { assigned_to: techId } : {}),
-        ...(urgency ? { urgency } : {}), // only if column exists
+        ...(urgency ? { urgency } : {}),
       };
 
       const { error } = await supabase.from("work_order_lines").insert(payload);
@@ -91,18 +95,26 @@ export default function AddJobModal({
   };
 
   return (
-    <Dialog open={isOpen} onClose={onClose} className="fixed inset-0 z-50">
-      <div className="fixed inset-0 bg-black/50" />
-      <div className="fixed inset-0 flex items-center justify-center p-4">
-        <Dialog.Panel className="w-full max-w-md rounded border border-neutral-800 bg-neutral-900 p-6 text-white shadow-xl">
-          <Dialog.Title className="mb-2 text-lg font-bold font-header tracking-wide">
+    <Dialog
+      open={isOpen}
+      onClose={onClose}
+      /* above FocusedJobModal (100/110) and ModalShell (300/310) */
+      className="fixed inset-0 z-[330] flex items-center justify-center"
+    >
+      {/* backdrop */}
+      <div className="fixed inset-0 z-[330] bg-black/70 backdrop-blur-sm" aria-hidden="true" />
+
+      {/* centered panel */}
+      <div className="relative z-[340] mx-4 my-6 w-full max-w-md">
+        <Dialog.Panel className="w-full rounded-lg border border-orange-400 bg-neutral-950 p-6 text-white shadow-xl">
+          <Dialog.Title className="mb-3 text-lg font-header font-semibold tracking-wide">
             Add New Job Line
           </Dialog.Title>
 
           <div className="space-y-3">
             <input
               type="text"
-              className="w-full p-2 rounded bg-neutral-800 border border-neutral-700"
+              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
               placeholder="Job name (e.g. Replace serpentine belt)"
               value={jobName}
               onChange={(e) => setJobName(e.target.value)}
@@ -110,7 +122,7 @@ export default function AddJobModal({
 
             <textarea
               rows={3}
-              className="w-full p-2 rounded bg-neutral-800 border border-neutral-700"
+              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
               placeholder="Notes or correction"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
@@ -119,7 +131,7 @@ export default function AddJobModal({
             <input
               type="number"
               step="0.1"
-              className="w-full p-2 rounded bg-neutral-800 border border-neutral-700"
+              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
               placeholder="Labor hours"
               value={labor}
               onChange={(e) => setLabor(e.target.value)}
@@ -127,14 +139,14 @@ export default function AddJobModal({
 
             <textarea
               rows={2}
-              className="w-full p-2 rounded bg-neutral-800 border border-neutral-700"
+              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
               placeholder="Parts required (comma-separated or list)"
               value={parts}
               onChange={(e) => setParts(e.target.value)}
             />
 
             <select
-              className="w-full p-2 rounded bg-neutral-800 border border-neutral-700"
+              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white"
               value={urgency}
               onChange={(e) => setUrgency(e.target.value as "low" | "medium" | "high")}
             >
@@ -145,16 +157,16 @@ export default function AddJobModal({
 
             {err && <div className="text-sm text-red-400">{err}</div>}
 
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-2 pt-3">
               <button
-                className="rounded border border-neutral-700 px-4 py-2 text-sm hover:border-orange-500"
+                className="font-header rounded border border-neutral-700 px-4 py-2 text-sm hover:bg-neutral-800"
                 onClick={onClose}
                 disabled={submitting}
               >
                 Cancel
               </button>
               <button
-                className="rounded bg-orange-600 px-4 py-2 text-sm font-semibold text-black hover:bg-orange-500 disabled:opacity-60"
+                className="font-header rounded border border-orange-500 px-4 py-2 text-sm font-semibold text-orange-400 hover:bg-orange-500/10 disabled:opacity-60"
                 onClick={handleSubmit}
                 disabled={submitting}
               >

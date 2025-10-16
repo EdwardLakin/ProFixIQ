@@ -7,7 +7,6 @@
  *   the iPad/Safari "signed out / not found" race when opening new tabs).
  * - Falls back to custom_id (case-insensitive, leading-zero tolerant).
  * - Realtime updates for WO & WO lines (UUID-safe: subscribe with wo.id).
- * - Includes a tiny AuthDebug panel at the top.
  * - Voice context + floating VoiceButton.
  */
 
@@ -19,7 +18,6 @@ import { toast } from "sonner";
 
 import { supabaseBrowser as supabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
-import type { SupabaseClient } from "@supabase/supabase-js";
 
 import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
 import VehiclePhotoUploader from "@parts/components/VehiclePhotoUploader";
@@ -31,48 +29,6 @@ import { useTabState } from "@/features/shared/hooks/useTabState";
 // Voice
 import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
 import VoiceButton from "@/features/shared/voice/VoiceButton";
-
-/* --------------------------- Small auth debugger -------------------------- */
-function AuthDebug<DB extends object>({ sb }: { sb: SupabaseClient<DB> }) {
-  const [info, setInfo] = React.useState<{
-    hasSession: boolean;
-    userId: string | null;
-    expiresInSec: number | null;
-  } | null>(null);
-
-  React.useEffect(() => {
-    (async () => {
-      const { data: s } = await sb.auth.getSession();
-      const { data: u } = await sb.auth.getUser();
-      const sess = s?.session;
-      setInfo({
-        hasSession: !!sess,
-        userId: u?.user?.id ?? null,
-        expiresInSec: sess?.expires_at ? sess.expires_at - Math.floor(Date.now() / 1000) : null,
-      });
-    })();
-
-    const { data: authSub } = sb.auth.onAuthStateChange((_e, session) => {
-      setInfo({
-        hasSession: !!session,
-        userId: session?.user?.id ?? null,
-        expiresInSec: session?.expires_at ? session.expires_at - Math.floor(Date.now() / 1000) : null,
-      });
-    });
-
-    return () => authSub?.subscription?.unsubscribe();
-  }, [sb]);
-
-  if (!info) return null;
-  return (
-    <div className="mb-2 rounded border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-200">
-      <div className="font-semibold">Auth debug</div>
-      <div>hasSession: {String(info.hasSession)}</div>
-      <div>userId: {info.userId ?? "null"}</div>
-      <div>expiresIn: {info.expiresInSec ?? "?"}s</div>
-    </div>
-  );
-}
 
 /* --------------------------------- Types --------------------------------- */
 type DB = Database;
@@ -126,11 +82,6 @@ const statusRowTint: Record<string, string> = {
 export default function WorkOrderIdClient(): JSX.Element {
   const params = useParams();
   const routeId = (params?.id as string) || "";
-
-  // Use the cookie-backed auth-helpers browser client singleton
-  // (plays nice with middleware & /confirm)
-  // NOTE: do NOT re-create a client here; use the singleton directly.
-  // const supabase (already imported as singleton)
 
   // Core entities (persist per tab where it helps UX)
   const [wo, setWo] = useTabState<WorkOrder | null>("wo:id:wo", null);
@@ -386,9 +337,6 @@ export default function WorkOrderIdClient(): JSX.Element {
         lineId={null}
       />
 
-      {/* Small auth debug at the very top */}
-      <AuthDebug sb={supabase as unknown as SupabaseClient<Database>} />
-
       <PreviousPageButton to="/work-orders" />
 
       {/* Auth hint (iPad/Safari cookies) */}
@@ -426,8 +374,6 @@ export default function WorkOrderIdClient(): JSX.Element {
                 <h1 className="text-2xl font-semibold">
                   Work Order {wo.custom_id || `#${wo.id.slice(0, 8)}`}
                 </h1>
-                
-                  + Add Job
               </div>
               <div className="mt-2 grid gap-2 text-sm text-neutral-300 sm:grid-cols-3">
                 <div>

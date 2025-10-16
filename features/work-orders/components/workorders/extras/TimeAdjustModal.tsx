@@ -44,7 +44,7 @@ export default function TimeAdjustModal(props: any) {
             type="datetime-local"
             value={inAt}
             onChange={(e) => setInAt(e.target.value)}
-            className="w-full rounded border border-neutral-300 bg-neutral-50 p-2 dark:border-neutral-700 dark:bg-neutral-800"
+            className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white"
           />
         </label>
 
@@ -54,7 +54,7 @@ export default function TimeAdjustModal(props: any) {
             type="datetime-local"
             value={outAt}
             onChange={(e) => setOutAt(e.target.value)}
-            className="w-full rounded border border-neutral-300 bg-neutral-50 p-2 dark:border-neutral-700 dark:bg-neutral-800"
+            className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white"
           />
         </label>
       </div>

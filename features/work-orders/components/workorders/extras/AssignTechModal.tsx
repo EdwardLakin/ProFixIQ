@@ -55,7 +55,7 @@ export default function AssignTechModal(props: any) {
       size="sm"
     >
       <select
-        className="w-full rounded border border-neutral-300 bg-neutral-50 p-2 dark:border-neutral-700 dark:bg-neutral-800"
+        className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-sm text-white"
         value={techId}
         onChange={(e) => setTechId(e.target.value)}
       >

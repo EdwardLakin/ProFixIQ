@@ -74,7 +74,7 @@ export default function CustomerContactModal(props: any) {
           type="text"
           value={subject}
           onChange={(e) => setSubject(e.target.value)}
-          className="w-full rounded border border-neutral-300 bg-neutral-50 p-2 dark:border-neutral-700 dark:bg-neutral-800"
+          className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
         />
       </label>
 
@@ -84,7 +84,7 @@ export default function CustomerContactModal(props: any) {
           rows={6}
           value={body}
           onChange={(e) => setBody(e.target.value)}
-          className="w-full rounded border border-neutral-300 bg-neutral-50 p-2 dark:border-neutral-700 dark:bg-neutral-800"
+          className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
         />
       </label>
 
@@ -94,7 +94,7 @@ export default function CustomerContactModal(props: any) {
           rows={3}
           value={sms}
           onChange={(e) => setSms(e.target.value)}
-          className="w-full rounded border border-neutral-300 bg-neutral-50 p-2 dark:border-neutral-700 dark:bg-neutral-800"
+          className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
           placeholder="Quick text message…"
         />
       </label>

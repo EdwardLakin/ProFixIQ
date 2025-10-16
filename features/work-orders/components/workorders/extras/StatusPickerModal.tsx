@@ -36,7 +36,7 @@ export default function StatusPickerModal(props: any) {
       submitText="Apply"
     >
       <select
-        className="w-full rounded border border-neutral-700 bg-neutral-800 p-2 text-sm"
+        className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-sm text-white"
         value={value}
         onChange={(e) => setValue(e.target.value)}
       >

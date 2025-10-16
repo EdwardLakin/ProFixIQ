@@ -52,7 +52,7 @@ export default function CostEstimateModal(props: any) {
             min="0"
             value={labor}
             onChange={(e) => setLabor(e.target.value)}
-            className="w-full rounded border border-neutral-300 bg-neutral-50 p-2 dark:border-neutral-700 dark:bg-neutral-800"
+            className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
           />
         </label>
         <label className="block text-sm">
@@ -63,7 +63,7 @@ export default function CostEstimateModal(props: any) {
             min="0"
             value={price}
             onChange={(e) => setPrice(e.target.value)}
-            className="w-full rounded border border-neutral-300 bg-neutral-50 p-2 dark:border-neutral-700 dark:bg-neutral-800"
+            className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
           />
         </label>
       </div>
