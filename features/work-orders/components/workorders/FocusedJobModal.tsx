@@ -32,6 +32,9 @@ import NewChatModal from "@/features/ai/components/chat/NewChatModal";
 // NEW: AI suggestions (moved into Focused modal)
 import SuggestedQuickAdd from "@work-orders/components/SuggestedQuickAdd";
 
+// NEW: Punch button with visual confirm + finish→modal
+import JobPunchButton from "@/features/work-orders/components/JobPunchButton";
+
 type Mode = "tech" | "view";
 
 const statusTextColor: Record<string, string> = {
@@ -43,6 +46,7 @@ const statusTextColor: Record<string, string> = {
   awaiting_approval: "text-blue-300",
   planned: "text-purple-300",
   new: "text-neutral-200",
+  paused: "text-amber-300",
 };
 const chip = (s: string | null) =>
   statusTextColor[(s ?? "awaiting").toLowerCase().replaceAll(" ", "_")] ??
@@ -50,8 +54,6 @@ const chip = (s: string | null) =>
 
 const outlineBtn = "font-header rounded border px-3 py-2 text-sm transition-colors";
 const outlineNeutral = `${outlineBtn} border-neutral-700 text-neutral-200 hover:bg-neutral-800`;
-const outlineSuccess = `${outlineBtn} border-green-600 text-green-300 hover:bg-green-900/20`;
-const outlineFinish = `${outlineBtn} border-neutral-600 text-neutral-200 hover:bg-neutral-800`;
 const outlineWarn = `${outlineBtn} border-amber-600 text-amber-300 hover:bg-amber-900/20`;
 const outlineDanger = `${outlineBtn} border-red-600 text-red-300 hover:bg-red-900/20`;
 const outlineInfo = `${outlineBtn} border-blue-600 text-blue-300 hover:bg-blue-900/20`;
@@ -96,9 +98,6 @@ export default function FocusedJobModal(props: any) {
   const [openContact, setOpenContact] = useState(false);
   const [openChat, setOpenChat] = useState(false);
   const [openAddJob, setOpenAddJob] = useState(false);
-
-  // NEW: tiny visual confirm badge after successful Start
-  const [showStartedBadge, setShowStartedBadge] = useState(false);
 
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
@@ -194,28 +193,7 @@ export default function FocusedJobModal(props: any) {
     console.error(prefix, err);
   };
 
-  // Actions
-  const startJob = async () => {
-    if (!workOrderLineId || busy) return;
-    setBusy(true);
-    try {
-      const { error } = await supabase
-        .from("work_order_lines")
-        .update({ punched_in_at: new Date().toISOString(), status: "in_progress" })
-        .eq("id", workOrderLineId);
-      if (error) return showErr("Start failed", error);
-      toast.success("Started");
-      // show quick visual badge inside the modal
-      setShowStartedBadge(true);
-      window.setTimeout(() => setShowStartedBadge(false), 1200);
-      await refresh();
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  // Finish → open Cause/Correction modal to capture details before completing
-  const finishJob = async () => setOpenComplete(true);
+  // Actions (kept; Start/Finish are now handled by JobPunchButton)
 
   const applyHold = async (reason: string, notes?: string) => {
     if (busy) return;
@@ -356,7 +334,6 @@ export default function FocusedJobModal(props: any) {
   const startedText = startAt ? format(new Date(startAt), "PPpp") : "—";
   const finishedText = finishAt ? format(new Date(finishAt), "PPpp") : "—";
 
-  // Rewritten to use router.push (reliable navigation)
   const openInspection = async () => {
     if (!line) return;
 
@@ -384,7 +361,7 @@ export default function FocusedJobModal(props: any) {
       const sp = new URLSearchParams();
       if (workOrder?.id) sp.set("workOrderId", workOrder.id);
       sp.set("workOrderLineId", line.id);
-      sp.set("inspectionId", sessionId); // match pages that expect inspectionId
+      sp.set("inspectionId", sessionId);
       sp.set("template", template);
 
       router.push(`/inspections/${template}?${sp.toString()}`);
@@ -417,17 +394,8 @@ export default function FocusedJobModal(props: any) {
         {/* Panel */}
         <div
           className="relative z-[110] mx-4 my-6 w-full max-w-5xl"
-          onClick={(e) => e.stopPropagation()} // prevent bubbling to overlay
+          onClick={(e) => e.stopPropagation()}
         >
-          {/* ✅ Visual confirm badge for Start */}
-          {showStartedBadge && (
-            <div className="pointer-events-none absolute right-6 top-4 z-[120]">
-              <div className="rounded-md border border-green-500 bg-green-900/30 px-3 py-1.5 text-sm font-medium text-green-300 shadow-lg backdrop-blur">
-                ✓ Started
-              </div>
-            </div>
-          )}
-
           <div className="max-h-[85vh] overflow-y-auto rounded-lg border border-orange-400 bg-neutral-950 p-5 text-white shadow-xl">
             {/* Title row */}
             <div className="mb-2 flex items-start justify-between gap-3">
@@ -528,15 +496,16 @@ export default function FocusedJobModal(props: any) {
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {mode === "tech" ? (
                     <>
-                      {!startAt || finishAt ? (
-                        <button type="button" className={outlineSuccess} onClick={startJob} disabled={busy}>
-                          Start
-                        </button>
-                      ) : (
-                        <button type="button" className={outlineFinish} onClick={finishJob} disabled={busy}>
-                          Finish
-                        </button>
-                      )}
+                      {/* NEW: Start/Finish with visual confirm, Finish opens modal */}
+                      <JobPunchButton
+  lineId={line.id}
+  punchedInAt={line.punched_in_at}
+  punchedOutAt={line.punched_out_at}
+  status={line.status}                 // 👈 added
+  onFinishRequested={() => setOpenComplete(true)}
+  onUpdated={refresh}
+  disabled={busy}
+/>
 
                       <button
                         type="button"

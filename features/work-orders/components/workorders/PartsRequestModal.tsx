@@ -134,7 +134,7 @@ export default function PartsRequestModal(props: any) {
   };
 
   return (
-    <Dialog open={isOpen} onClose={onClose} className="fixed inset-0 z-50">
+    <Dialog open={isOpen} onClose={onClose} className="fixed inset-0 z-200">
       <div className="fixed inset-0 bg-black/70" aria-hidden="true" />
       <div className="fixed inset-0 flex items-center justify-center p-4">
         <Dialog.Panel className="w-full max-w-md rounded border border-orange-400 bg-neutral-950 p-6 text-white shadow-lg">
