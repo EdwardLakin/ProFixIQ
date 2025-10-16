@@ -12,6 +12,9 @@ import type { Database } from "@shared/types/types/supabase";
 import { VoiceProvider } from "@/features/shared/voice/VoiceProvider";
 import VoiceButton from "@/features/shared/voice/VoiceButton";
 
+// 🆕 Toasts
+import { Toaster } from "react-hot-toast";
+
 const roboto = Roboto({
   subsets: ["latin"],
   weight: ["400", "500", "700"],
@@ -59,6 +62,9 @@ export default async function RootLayout({
             {/* 🆕 Floating push-to-talk button visible on all pages */}
             <VoiceButton />
           </VoiceProvider>
+
+          {/* 🆕 Global toast container for AI suggestion notifications */}
+          <Toaster position="bottom-center" />
         </Providers>
       </body>
     </html>

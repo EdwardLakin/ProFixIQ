@@ -206,6 +206,9 @@ export interface QuoteLineItem {
     confidence?: string;
     parts?: { name: string; qty?: number; cost?: number; notes?: string }[];
   };
+
+  /** UI-only: track AI enrichment progress for this line */
+  aiState?: "idle" | "loading" | "done" | "error";
 }
 
 /** ---------- Inspection Summary ---------- */

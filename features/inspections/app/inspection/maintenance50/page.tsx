@@ -34,6 +34,9 @@ import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicl
 // ✅ shared voice helper
 import { startVoiceRecognition } from "@inspections/lib/inspection/voiceControl";
 
+// 🛎️ toasts
+import toast from "react-hot-toast";
+
 /* Header adapters */
 type HeaderCustomer = {
   first_name: string;
@@ -271,7 +274,7 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
     resumeSession,
     pauseSession,
     addQuoteLine,
-    updateQuoteLines, // ✅ use plural updater
+    updateQuoteLine, // ✅ patch specific line by id
   } = useInspectionSession(initialSession);
 
   useEffect(() => {
@@ -508,10 +511,14 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
                       source: "inspection",
                       value: it.value ?? "",
                       photoUrls: it.photoUrls ?? [],
+                      aiState: "loading",
                     };
                     addQuoteLine(placeholder);
 
-                    // 2) Ask AI for parts/labor suggestion and patch same line
+                    // toast: loading
+                    const tId = toast.loading("Getting AI estimate…");
+
+                    // 2) Ask AI for parts/labor suggestion and patch the same line
                     try {
                       const suggestion = await requestQuoteSuggestion({
                         item: desc,
@@ -533,28 +540,27 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
                           partsTotal + laborRate * laborTime
                         );
 
-                        // ✅ merge onto the same line by id
-                        const current = (session.quote ?? []) as QuoteLineItem[];
-                        const next = current.map((line) =>
-                          line.id === id
-                            ? {
-                                ...line,
-                                price,
-                                laborTime,
-                                laborRate,
-                                ai: {
-                                  summary: suggestion.summary,
-                                  confidence: suggestion.confidence,
-                                  parts: suggestion.parts ?? [],
-                                },
-                              }
-                            : line
-                        );
-                        updateQuoteLines(next);
+                        updateQuoteLine(id, {
+                          price,
+                          laborTime,
+                          laborRate,
+                          ai: {
+                            summary: suggestion.summary,
+                            confidence: suggestion.confidence,
+                            parts: suggestion.parts ?? [],
+                          },
+                          aiState: "done",
+                        });
+
+                        toast.success("AI estimate added to quote", { id: tId });
+                      } else {
+                        updateQuoteLine(id, { aiState: "error" });
+                        toast.error("No AI suggestion available", { id: tId });
                       }
                     } catch (e) {
                       console.error("AI quote suggestion failed:", e);
-                      // keep placeholder; user can edit later
+                      updateQuoteLine(id, { aiState: "error" });
+                      toast.error("AI estimate failed", { id: tId });
                     }
                   }
                 }}
