@@ -492,21 +492,25 @@ export default function FocusedJobModal(props: any) {
                   </div>
                 </div>
 
+                {/* Start / Finish row (moved ABOVE the other buttons) */}
+                {mode === "tech" && line && (
+                  <div className="grid">
+                    <JobPunchButton
+                      lineId={line.id}
+                      punchedInAt={line.punched_in_at}
+                      punchedOutAt={line.punched_out_at}
+                      status={line.status}
+                      onFinishRequested={() => setOpenComplete(true)}
+                      onUpdated={refresh}
+                      disabled={busy}
+                    />
+                  </div>
+                )}
+
                 {/* Controls */}
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {mode === "tech" ? (
                     <>
-                      {/* NEW: Start/Finish with visual confirm, Finish opens modal */}
-                      <JobPunchButton
-  lineId={line.id}
-  punchedInAt={line.punched_in_at}
-  punchedOutAt={line.punched_out_at}
-  status={line.status}                 // 👈 added
-  onFinishRequested={() => setOpenComplete(true)}
-  onUpdated={refresh}
-  disabled={busy}
-/>
-
                       <button
                         type="button"
                         className={outlinePurple}
@@ -546,37 +550,10 @@ export default function FocusedJobModal(props: any) {
                       <button
                         type="button"
                         className={outlineNeutral}
-                        onClick={() => setOpenTime(true)}
-                        disabled={busy}
-                      >
-                        Adjust Time
-                      </button>
-
-                      <button
-                        type="button"
-                        className={outlineNeutral}
-                        onClick={() => setOpenAssign(true)}
-                        disabled={busy}
-                      >
-                        Assign Tech
-                      </button>
-
-                      <button
-                        type="button"
-                        className={outlineNeutral}
                         onClick={() => setOpenPhoto(true)}
                         disabled={busy}
                       >
                         Add Photo
-                      </button>
-
-                      <button
-                        type="button"
-                        className={outlineNeutral}
-                        onClick={() => setOpenCost(true)}
-                        disabled={busy}
-                      >
-                        Cost / Estimate
                       </button>
 
                       <button
