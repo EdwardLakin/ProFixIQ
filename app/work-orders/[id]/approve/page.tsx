@@ -1,10 +1,11 @@
+// features/work-orders/app/work-orders/[id]/approve/page.tsx (or your path)
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import SignaturePad from "@/features/shared/components/SignaturePad";
+import SignaturePad, { openSignaturePad } from "@/features/shared/signaturePad/controller";
 import LegalTerms from "@/features/shared/components/LegalTerms";
 import { uploadSignatureImage } from "@/features/shared/lib/utils/uploadSignature";
 
@@ -13,9 +14,11 @@ type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
 
 export default function ApproveWorkOrderPage() {
-  const { id } = useParams<{ id: string }>();
+  const params = useParams<{ id: string }>();
+  const id = Array.isArray(params?.id) ? params.id[0] : params?.id;
   const router = useRouter();
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+
   const [wo, setWo] = useState<WorkOrder | null>(null);
   const [lines, setLines] = useState<Line[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,7 +26,6 @@ export default function ApproveWorkOrderPage() {
 
   // customer choices
   const [approved, setApproved] = useState<Set<string>>(new Set());
-  const [openSign, setOpenSign] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [savedSigUrl, setSavedSigUrl] = useState<string | null>(null);
   const [agreed, setAgreed] = useState(false);
@@ -114,8 +116,8 @@ export default function ApproveWorkOrderPage() {
   if (loading) {
     return (
       <div className="mx-auto max-w-2xl p-6 text-white">
-        <div className="animate-pulse h-8 w-48 bg-neutral-800 rounded mb-4" />
-        <div className="animate-pulse h-24 bg-neutral-800 rounded" />
+        <div className="mb-4 h-8 w-48 animate-pulse rounded bg-neutral-800" />
+        <div className="h-24 animate-pulse rounded bg-neutral-800" />
       </div>
     );
   }
@@ -125,18 +127,23 @@ export default function ApproveWorkOrderPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl p-4 sm:p-6 text-white">
+    <div className="mx-auto max-w-3xl p-4 text-white sm:p-6">
       <h1 className="text-2xl font-semibold">Approve Work Order</h1>
-      <p className="text-neutral-300 mt-1">{wo.custom_id ? `#${wo.custom_id}` : `#${wo.id.slice(0, 8)}`}</p>
+      <p className="mt-1 text-neutral-300">
+        {wo.custom_id ? `#${wo.custom_id}` : `#${wo.id.slice(0, 8)}`}
+      </p>
 
       {err && <div className="mt-3 rounded border border-red-500/40 bg-red-500/10 p-3">{err}</div>}
 
       {/* Lines */}
       <div className="mt-4 rounded border border-neutral-800 bg-neutral-900">
-        <div className="p-3 border-b border-neutral-800 font-semibold">Items</div>
+        <div className="border-b border-neutral-800 p-3 font-semibold">Items</div>
         <div className="divide-y divide-neutral-800">
           {lines.map((l) => (
-            <label key={l.id} className="flex items-start gap-3 p-3 hover:bg-neutral-900/60 cursor-pointer">
+            <label
+              key={l.id}
+              className="flex cursor-pointer items-start gap-3 p-3 hover:bg-neutral-900/60"
+            >
               <input
                 type="checkbox"
                 className="mt-1 h-4 w-4"
@@ -144,13 +151,13 @@ export default function ApproveWorkOrderPage() {
                 onChange={() => toggle(l.id)}
               />
               <div className="min-w-0">
-                <div className="font-medium truncate">{l.description || l.complaint || "Untitled item"}</div>
+                <div className="truncate font-medium">{l.description || l.complaint || "Untitled item"}</div>
                 <div className="text-xs text-neutral-400">
                   {(l.job_type ?? "job").replaceAll("_", " ")} •{" "}
                   {typeof l.labor_time === "number" ? `${l.labor_time.toFixed(1)}h` : "—"}
                 </div>
                 {(l.cause || l.correction) && (
-                  <div className="text-xs text-neutral-500 mt-1">
+                  <div className="mt-1 text-xs text-neutral-500">
                     {l.cause ? `Cause: ${l.cause}  ` : ""}
                     {l.correction ? `| Corr: ${l.correction}` : ""}
                   </div>
@@ -158,9 +165,9 @@ export default function ApproveWorkOrderPage() {
               </div>
             </label>
           ))}
-          {lines.length === 0 && <div className="p-3 text-neutral-400 text-sm">No items to approve.</div>}
+          {lines.length === 0 && <div className="p-3 text-sm text-neutral-400">No items to approve.</div>}
         </div>
-        <div className="p-3 border-t border-neutral-800 text-sm text-neutral-300">
+        <div className="border-t border-neutral-800 p-3 text-sm text-neutral-300">
           Total labor (approved): <span className="font-semibold text-white">{totals.hours}h</span>
         </div>
       </div>
@@ -172,7 +179,12 @@ export default function ApproveWorkOrderPage() {
       <div className="mt-4 flex flex-wrap gap-2">
         <button
           className="rounded bg-green-600 px-4 py-2 font-semibold text-white hover:bg-green-700 disabled:opacity-60"
-          onClick={() => setOpenSign(true)}
+          onClick={async () => {
+            const base64 = await openSignaturePad({ shopName: "" });
+            if (base64) {
+              await handleSubmit(base64);
+            }
+          }}
           disabled={submitting || !agreed}
           title={!agreed ? "Please agree to the Terms & Conditions" : "Sign & Submit"}
         >
@@ -188,16 +200,8 @@ export default function ApproveWorkOrderPage() {
         </button>
       </div>
 
-      {/* Signature modal */}
-      {openSign && (
-        <SignaturePad
-          onSave={async (b64: string) => {
-            setOpenSign(false);
-            await handleSubmit(b64);
-          }}
-          onCancel={() => setOpenSign(false)}
-        />
-      )}
+      {/* Mount SignaturePad host once; no props, no serialization warnings */}
+      <SignaturePad />
     </div>
   );
 }
