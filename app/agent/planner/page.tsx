@@ -45,11 +45,20 @@ function extractWorkOrderId(evt: AgentEvent): string | null {
   );
 }
 function toMsg(e: unknown): string {
-  if (e && typeof e === "object" && "message" in e && typeof (e as any).message === "string") {
-    return (e as Error).message;
+  if (typeof e === "string") return e;
+
+  // type guard for objects that have a string "message" property
+  if (
+    e !== null &&
+    typeof e === "object" &&
+    "message" in e &&
+    typeof (e as { message: unknown }).message === "string"
+  ) {
+    return (e as { message: string }).message;
   }
+
   try {
-    return String(e);
+    return JSON.stringify(e);
   } catch {
     return "Unknown error";
   }
