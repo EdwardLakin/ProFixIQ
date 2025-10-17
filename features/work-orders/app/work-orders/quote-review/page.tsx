@@ -1,10 +1,11 @@
+// features/work-orders/app/quote-review/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import SignaturePad from "@shared/components/SignaturePad";
+import SignaturePad, { openSignaturePad } from "@shared/signaturePad/controller";
 import { formatCurrency } from "@/features/shared/lib/formatCurrency";
 
 type DB = Database;
@@ -14,7 +15,6 @@ type Shop = DB["public"]["Tables"]["shops"]["Row"];
 
 const SIGNATURE_BUCKET = "signatures";
 
-// Convert data:URL to Blob (avoids fetch() issues on some browsers)
 function dataUrlToBlob(dataUrl: string): Blob {
   const [header, b64] = dataUrl.split(",");
   const mime = /data:(.*?);base64/.exec(header)?.[1] ?? "image/png";
@@ -27,140 +27,91 @@ function dataUrlToBlob(dataUrl: string): Blob {
 export default function QuoteReviewPage() {
   const router = useRouter();
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
-  const woId = useSearchParams().get("woId") ?? null;
+  const woId = useSearchParams().get("woId");
 
   const [wo, setWo] = useState<WorkOrder | null>(null);
   const [shop, setShop] = useState<Shop | null>(null);
   const [lines, setLines] = useState<Line[]>([]);
   const [loading, setLoading] = useState(true);
-  const [sigOpen, setSigOpen] = useState(false);
 
   useEffect(() => {
+    if (!woId) return;
     (async () => {
-      if (!woId) return;
       setLoading(true);
-
-      // work order
-      const { data: woRow, error: woErr } = await supabase
+      const { data: woRow } = await supabase
         .from("work_orders")
         .select("*")
         .eq("id", woId)
         .maybeSingle();
-      if (woErr) console.warn("WO fetch error:", woErr.message);
       setWo(woRow ?? null);
 
-      // shop (for branding)
       if (woRow?.shop_id) {
-        const { data: shopRow, error: shErr } = await supabase
+        const { data: shopRow } = await supabase
           .from("shops")
           .select("*")
           .eq("id", woRow.shop_id)
           .maybeSingle();
-        if (shErr) console.warn("Shop fetch error:", shErr.message);
         setShop(shopRow ?? null);
-      } else {
-        setShop(null);
       }
 
-      // lines
-      const { data: lineRows, error: lnErr } = await supabase
+      const { data: lineRows } = await supabase
         .from("work_order_lines")
         .select("*")
         .eq("work_order_id", woId)
         .order("created_at", { ascending: true });
-      if (lnErr) console.warn("Lines fetch error:", lnErr.message);
       setLines(lineRows ?? []);
-
       setLoading(false);
     })();
   }, [woId, supabase]);
 
-  // Pricing
   const laborRate = 120;
-  const totalLaborHours = (lines ?? [])
-    .map((l) => (typeof l.labor_time === "number" ? l.labor_time : 0))
-    .reduce((a, b) => a + b, 0);
+  const totalLaborHours = lines.reduce(
+    (sum, l) => sum + (typeof l.labor_time === "number" ? l.labor_time : 0),
+    0
+  );
   const laborTotal = totalLaborHours * laborRate;
   const partsTotal = 0;
   const grandTotal = laborTotal + partsTotal;
 
-  // Currency fallback
   const fmt = (n: number) => {
-    try { return formatCurrency(n); } catch { return `$${n.toFixed(2)}`; }
+    try {
+      return formatCurrency(n);
+    } catch {
+      return `$${n.toFixed(2)}`;
+    }
   };
 
   async function handleSignatureSave(base64: string) {
     if (!woId) return;
-
     try {
       const blob = dataUrlToBlob(base64);
-
-      // Path: keep it unique; avoid upsert to skip UPDATE policy
       const filename = `wo/${wo?.shop_id ?? "unknown"}/${woId}/${Date.now()}.png`;
+
       const { error: upErr } = await supabase.storage
         .from(SIGNATURE_BUCKET)
-        .upload(filename, blob, {
-          contentType: "image/png",
-          upsert: false,
-        });
+        .upload(filename, blob, { contentType: "image/png", upsert: false });
       if (upErr) throw upErr;
 
-      // Prefer storing the storage path for a private bucket
-      // If you don't have this column yet, the fallback below tries the *_url column.
-      let updated = false;
-
-      const { error: updPathErr } = await supabase
+      const { error: updErr } = await supabase
         .from("work_orders")
         .update({
-          // @ts-ignore – may not exist yet in your schema
+          // @ts-ignore optional schema columns
           customer_approval_signature_path: filename,
-          // safe columns that exist:
-          // @ts-ignore – your schema may have this casted
+          // @ts-ignore
           customer_approval_at: new Date().toISOString() as any,
           status: "queued" as any,
         })
         .eq("id", woId);
-      if (!updPathErr) updated = true;
+      if (updErr) throw updErr;
 
-      // Fallback to URL column if the path column doesn't exist
-      if (!updated) {
-        const { data: pub } = await supabase.storage
-          .from(SIGNATURE_BUCKET)
-          .getPublicUrl(filename);
-        const url = pub?.publicUrl ?? null;
-
-        const { error: updUrlErr } = await supabase
-          .from("work_orders")
-          .update({
-            // @ts-ignore – if your schema has a url column instead
-            customer_approval_signature_url: url as any,
-            // @ts-ignore
-            customer_approval_at: new Date().toISOString() as any,
-            status: "queued" as any,
-          })
-          .eq("id", woId);
-
-        if (updUrlErr) {
-          console.warn("WO update failed:", updUrlErr.message);
-          // still continue; the signature is uploaded either way
-        }
-      }
-
-      setSigOpen(false);
-
-      if (typeof window !== "undefined") {
-        alert("Work order approved and signed!");
-      }
-
+      alert("Work order approved and signed!");
       router.push("/work-orders/create?from=review&new=1");
-    } catch (e: any) {
-      alert(e?.message || "Failed to save signature");
+    } catch (err: any) {
+      alert(err?.message || "Failed to save signature");
     }
   }
 
-  if (!woId) {
-    return <div className="p-6 text-red-500">Missing woId in URL.</div>;
-  }
+  if (!woId) return <div className="p-6 text-red-500">Missing woId in URL.</div>;
 
   return (
     <div className="p-6 text-white">
@@ -209,7 +160,9 @@ export default function QuoteReviewPage() {
                         </div>
                       </div>
                       <div className="text-right text-sm">
-                        {typeof l.labor_time === "number" ? fmt(l.labor_time * laborRate) : "—"}
+                        {typeof l.labor_time === "number"
+                          ? fmt(l.labor_time * laborRate)
+                          : "—"}
                       </div>
                     </div>
                   </div>
@@ -219,7 +172,9 @@ export default function QuoteReviewPage() {
 
             <div className="px-4 py-3 text-sm">
               <div className="flex items-center justify-between">
-                <span>Labor ({totalLaborHours.toFixed(1)}h @ {fmt(laborRate)}/hr)</span>
+                <span>
+                  Labor ({totalLaborHours.toFixed(1)}h @ {fmt(laborRate)}/hr)
+                </span>
                 <span className="font-medium">{fmt(laborTotal)}</span>
               </div>
               <div className="mt-1 flex items-center justify-between">
@@ -235,7 +190,11 @@ export default function QuoteReviewPage() {
 
           <div className="mt-6 flex flex-wrap gap-2">
             <button
-              onClick={() => setSigOpen(true)}
+              onClick={async () => {
+                const base64 = await openSignaturePad({ shopName: shop?.name || "" });
+                if (!base64) return;
+                await handleSignatureSave(base64);
+              }}
               className="rounded bg-green-600 px-4 py-2 font-semibold text-white hover:bg-green-700"
             >
               Approve & Sign
@@ -251,13 +210,7 @@ export default function QuoteReviewPage() {
         </>
       )}
 
-      {sigOpen && (
-        <SignaturePad
-          shopName={shop?.name ?? undefined}
-          onSave={handleSignatureSave}
-          onCancel={() => setSigOpen(false)}
-        />
-      )}
+      <SignaturePad />
     </div>
   );
 }
