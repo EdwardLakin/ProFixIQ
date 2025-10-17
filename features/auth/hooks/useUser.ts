@@ -84,11 +84,13 @@ export function useUser() {
     // Only call when it changed and only if we have a shop_id.
     if (profile.shop_id && lastShopIdRef.current !== profile.shop_id) {
       try {
-        await supabase.rpc("set_current_shop_id", { new_shop_id: profile.shop_id });
+        // NOTE: RPC param name is p_shop_id (matches SQL function signature)
+        await supabase.rpc("set_current_shop_id", { p_shop_id: profile.shop_id });
         lastShopIdRef.current = profile.shop_id;
       } catch (e) {
         // non-fatal; UI still works for tables that don't use current_shop_id()
         console.warn("set_current_shop_id RPC failed:", e);
+        lastShopIdRef.current = null;
       }
     }
 
