@@ -1,23 +1,19 @@
+// app/agent/planner/page.tsx (or your current path)
+// "use client" page component
+
 "use client";
 
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@shared/components/ui/Button";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-/* ➕ router for redirect after VIN decode */
 import { useRouter } from "next/navigation";
 
-/* Draft linkage */
 import { useWorkOrderDraft } from "app/work-orders/state/useWorkOrderDraft";
-
-/* Modal trigger + preview (both client) */
 import { WorkOrderPreviewTrigger } from "app/work-orders/components/WorkOrderPreviewTrigger";
 import { WorkOrderPreview } from "app/work-orders/components/WorkOrderPreview";
-
-/* ✅ VIN capture modal (client shell you already use on Create) — singular path */
 import VinCaptureModal from "app/vehicle/VinCaptureModal";
 
-/** OCR response shape (server may return a subset) */
 type OcrFields = {
   vin?: string | null;
   plate?: string | null;
@@ -35,24 +31,6 @@ type OcrFields = {
 type PlannerKind = "simple" | "openai";
 type AgentStartOut = { runId: string; alreadyExists: boolean };
 
-/** Safe error → string */
-function toMsg(e: unknown): string {
-  if (
-    e &&
-    typeof e === "object" &&
-    "message" in e &&
-    typeof (e as { message?: unknown }).message === "string"
-  ) {
-    return (e as Error).message;
-  }
-  try {
-    return String(e);
-  } catch {
-    return "Unknown error";
-  }
-}
-
-/** Types for agent SSE events (no any) */
 type AgentEvent = Record<string, unknown> & { kind?: string };
 
 function asString(v: unknown): string | null {
@@ -66,16 +44,53 @@ function extractWorkOrderId(evt: AgentEvent): string | null {
     asString(evt.id)
   );
 }
+function toMsg(e: unknown): string {
+  if (e && typeof e === "object" && "message" in e && typeof (e as any).message === "string") {
+    return (e as Error).message;
+  }
+  try {
+    return String(e);
+  } catch {
+    return "Unknown error";
+  }
+}
 
-/** From VIN modal callback */
-type VinDecodedDetail = {
-  vin: string;
-  year: string | null;
-  make: string | null;
-  model: string | null;
-  trim: string | null;
-  engine?: string | null;
-};
+/** Friendly labels for common event kinds */
+function labelFor(evt: AgentEvent): string | null {
+  const k = (evt.kind ?? "").toString();
+  const woId = extractWorkOrderId(evt);
+  switch (k) {
+    case "run.started":
+      return "Started plan";
+    case "run.resumed":
+      return "Resumed previous run";
+    case "vin.decoded":
+      return `Decoded VIN${evt.vin ? ` ${evt.vin}` : ""}`;
+    case "customer.matched":
+      return `Matched customer${evt.customer_name ? ` ${evt.customer_name}` : ""}`;
+    case "vehicle.attached":
+      return "Attached vehicle to work order";
+    case "wo.created":
+    case "work_order.created":
+      return `Created work order${woId ? ` (${woId.slice(0, 8)})` : ""}`;
+    case "wo.line.created":
+    case "work_order_line.created":
+      return `Added job line${evt.description ? ` — ${String(evt.description).slice(0, 80)}` : ""}`;
+    case "email.sent":
+    case "invoice.emailed":
+      return "Emailed invoice";
+    case "invoice.created":
+      return "Generated invoice";
+    case "run.completed":
+      return "Completed";
+    case "run.error":
+      return `Error: ${evt.message ?? "unknown"}`;
+    default:
+      // ignore heartbeat/chatter if no kind
+      if (!k) return null;
+      return k.replaceAll("_", " ");
+  }
+}
 
 export default function PlannerPage() {
   const [goal, setGoal] = useState("");
@@ -85,8 +100,12 @@ export default function PlannerPage() {
   const [emailInvoiceTo, setEmailInvoiceTo] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-  const [status, setStatus] = useState<string>("");
+
+  const [steps, setSteps] = useState<string[]>([]);
+  const [, setLog] = useState<string[]>([]);
   const [runId, setRunId] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
+
   const esRef = useRef<EventSource | null>(null);
 
   // Preview modal state
@@ -104,19 +123,12 @@ export default function PlannerPage() {
   const draft = useWorkOrderDraft();
   const setVehicleDraft = useWorkOrderDraft((s) => s.setVehicle);
   const setCustomerDraft = useWorkOrderDraft((s) => s.setCustomer);
-  /* ➕ router */
   const router = useRouter();
 
-  // Load user id for VIN modal
   useEffect(() => {
     let mounted = true;
-    supabase.auth.getUser().then(({ data }) => {
-      if (!mounted) return;
-      setUserId(data.user?.id ?? null);
-    });
-    return () => {
-      mounted = false;
-    };
+    supabase.auth.getUser().then(({ data }) => mounted && setUserId(data.user?.id ?? null));
+    return () => void (mounted = false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -148,41 +160,34 @@ export default function PlannerPage() {
     const path = `agent-uploads/${crypto
       .randomUUID()
       .replace(/-/g, "")}-${photo.name.replace(/[^a-zA-Z0-9.\-_]/g, "_")}`;
-    const up = await supabase.storage
-      .from("agent-uploads")
-      .upload(path, photo, {
-        cacheControl: "3600",
-        upsert: false,
-      });
+    const up = await supabase.storage.from("agent-uploads").upload(path, photo, {
+      cacheControl: "3600",
+      upsert: false,
+    });
     if (up.error) throw new Error(`Upload failed: ${up.error.message}`);
     const pub = supabase.storage.from("agent-uploads").getPublicUrl(path);
     if (!pub.data?.publicUrl) throw new Error("Could not resolve public URL");
     return pub.data.publicUrl;
   }
 
-  // 🔧 Presets (4)
-  function presetOilGas() {
+  // Presets
+  const presetOilGas = () =>
     setGoal(
-      "Create a work order for oil change (gas engine). Add line items for engine oil and filter, reset maintenance light, quick multi-point inspection, then generate and email the invoice."
+      "Create a work order for oil change (gas engine). Add line items for engine oil and filter, reset maintenance light, quick multi-point inspection, then generate and email the invoice.",
     );
-  }
-  function presetOilDiesel() {
+  const presetOilDiesel = () =>
     setGoal(
-      "Create a work order for oil change (diesel). Add engine oil and filter, include fuel filter check, DEF level check, reset maintenance message, then generate and email the invoice."
+      "Create a work order for oil change (diesel). Add engine oil and filter, include fuel filter check, DEF level check, reset maintenance message, then generate and email the invoice.",
     );
-  }
-  function presetMaint50() {
+  const presetMaint50 = () =>
     setGoal(
-      "Create a work order for 50-point maintenance inspection. Add inspection checklist line, top off fluids, rotate tires if needed, report any issues, and produce a summarized estimate/invoice."
+      "Create a work order for 50-point maintenance inspection. Add inspection checklist line, top off fluids, rotate tires if needed, report any issues, and produce a summarized estimate/invoice.",
     );
-  }
-  function presetMaint50Air() {
+  const presetMaint50Air = () =>
     setGoal(
-      "Create a work order for 50-point maintenance inspection plus air filters. Include engine air filter and cabin air filter lines if due, top off fluids, rotate tires if needed, and produce estimate/invoice."
+      "Create a work order for 50-point maintenance inspection plus air filters. Include engine air filter and cabin air filter lines if due, top off fluids, rotate tires if needed, and produce estimate/invoice.",
     );
-  }
 
-  // 🔄 Clear button
   function clearAll() {
     setGoal("");
     setCustomerQuery("");
@@ -191,33 +196,38 @@ export default function PlannerPage() {
     if (photoPreview) URL.revokeObjectURL(photoPreview);
     setPhoto(null);
     setPhotoPreview(null);
-    setStatus("");
+    setSteps([]);
+    setLog([]);
     setRunId(null);
     setPreviewWoId(null);
     setPreviewOpen(false);
     esRef.current?.close();
     esRef.current = null;
+    setRunning(false);
   }
 
+  const appendStep = (s: string) => setSteps((arr) => (arr.includes(s) ? arr : [...arr, s]));
+  const appendLog = (l: string) => setLog((arr) => [...arr, l]);
+
   async function start() {
-    setStatus("Starting…");
+    setRunning(true);
+    setSteps([]);
+    setLog([]);
     esRef.current?.close();
     esRef.current = null;
 
     try {
       const imageUrl = await uploadPhotoIfAny();
-
-      // clear file + preview for next run
       if (imageUrl && photoPreview) URL.revokeObjectURL(photoPreview);
       if (imageUrl) {
         setPhoto(null);
         setPhotoPreview(null);
       }
 
-      // OCR call if image present
+      // OCR (short, bullet-y)
       let ocrFields: OcrFields | null = null;
       if (imageUrl) {
-        setStatus((s) => `${s}${s ? "\n" : ""}[ocr] uploading & parsing…`);
+        appendStep("Uploading photo…");
         try {
           const res = await fetch("/api/ocr/registration", {
             method: "POST",
@@ -242,28 +252,25 @@ export default function PlannerPage() {
               phone: f.phone ?? undefined,
               email: f.email ?? undefined,
             });
-
-            if (!plateOrVin && (f.vin || f.plate))
-              setPlateOrVin(f.vin || f.plate || "");
-            if (!emailInvoiceTo && f.email)
-              setEmailInvoiceTo(f.email || "");
-
-            const compact = Object.fromEntries(
-              Object.entries(f).filter(([, v]) => v && String(v).trim())
-            );
-            setStatus(
-              (s) => `${s}${s ? "\n" : ""}[ocr] parsed: ${JSON.stringify(compact)}`
-            );
+            if (!plateOrVin && (f.vin || f.plate)) setPlateOrVin(f.vin || f.plate || "");
+            if (!emailInvoiceTo && f.email) setEmailInvoiceTo(f.email || "");
+            const quickBits = [
+              f.vin ? `VIN ${String(f.vin).slice(0, 8)}…` : null,
+              f.plate ? `Plate ${f.plate}` : null,
+              f.email ? `Email ${f.email}` : null,
+            ]
+              .filter(Boolean)
+              .join(" • ");
+            appendStep(`OCR parsed: ${quickBits || "basic details"}`);
             ocrFields = f;
           } else {
-            setStatus((s) => `${s}${s ? "\n" : ""}[ocr] HTTP ${res.status}`);
+            appendStep(`OCR failed (HTTP ${res.status})`);
           }
         } catch (err) {
-          setStatus((s) => `${s}${s ? "\n" : ""}[ocr] error: ${toMsg(err)}`);
+          appendStep(`OCR error: ${toMsg(err)}`);
         }
       }
 
-      // include VIN/vehicle hints
       const vinFromDraft = (draft?.vehicle?.vin ?? "").trim() || undefined;
       const decodedVehicle =
         draft?.vehicle &&
@@ -281,7 +288,6 @@ export default function PlannerPage() {
             }
           : undefined;
 
-      // ✅ pass info the planner expects to create a line
       const ctx = {
         customerQuery: customerQuery || undefined,
         plateOrVin: plateOrVin || vinFromDraft || undefined,
@@ -291,7 +297,7 @@ export default function PlannerPage() {
         decodedVehicle,
         ocr: ocrFields || undefined,
 
-        // 👇 Added so a line gets created (PlannerSimple/OpenAI both support these)
+        // ensure a line gets created
         lineDescription: goal?.trim() || undefined,
         jobType: "repair" as const,
         laborHours: 1,
@@ -310,53 +316,61 @@ export default function PlannerPage() {
 
       if (!res.ok) {
         const j = (await res.json().catch(() => ({}))) as { error?: unknown };
-        throw new Error(
-          typeof j?.error === "string" ? j.error : `HTTP ${res.status}`
-        );
+        throw new Error(typeof j?.error === "string" ? j.error : `HTTP ${res.status}`);
       }
 
       const out = (await res.json()) as AgentStartOut;
       setRunId(out.runId);
-      setStatus(
-        (s) =>
-          `${s}${s ? "\n" : ""}Run ${out.runId} ${
-            out.alreadyExists ? "(resumed)" : "started"
-          } — streaming…`
-      );
+      appendStep(out.alreadyExists ? "Resumed previous run…" : "Started plan…");
 
       // SSE
       const url = `/api/agent/events?runId=${encodeURIComponent(out.runId)}`;
-      const es = new EventSource(url, { withCredentials: false });
+      const es = new EventSource(url);
       esRef.current = es;
 
       es.onmessage = (ev) => {
+        // Some servers send keepalives; ignore empties/heartbeats
+        if (!ev.data || ev.data === ":ok" || ev.data === "[DONE]") return;
+
         try {
           const data = JSON.parse(ev.data) as AgentEvent;
-          const maybeId = extractWorkOrderId(data);
+          const label = labelFor(data);
+          if (label) appendStep(label);
 
+          const maybeId = extractWorkOrderId(data);
           if (
-            (data.kind === "wo.created" ||
-              data.kind === "work_order.created") &&
+            (data.kind === "wo.created" || data.kind === "work_order.created") &&
             typeof maybeId === "string"
           ) {
             setPreviewWoId(maybeId);
             setPreviewOpen(true);
           }
 
-          const line = data?.kind
-            ? `[${data.kind}] ${JSON.stringify(data)}`
-            : JSON.stringify(data);
-          setStatus((s) => (s ? s + "\n" + line : line));
+          appendLog(ev.data);
+          if (data.kind === "run.completed" || data.kind === "run.error") {
+            es.close();
+            esRef.current = null;
+            setRunning(false);
+          }
         } catch {
-          setStatus((s) => (s ? s + "\n" + ev.data : ev.data));
+          // Non-JSON line; keep in raw log but don't pollute steps
+          appendLog(ev.data);
         }
       };
+
       es.onerror = () => {
-        setStatus((s) => (s ? "\n" : "") + "(stream closed)");
-        es.close();
+        // If the run ended properly, onmessage already closed it.
+        // Otherwise, mark as finished gracefully.
+        if (esRef.current) {
+          appendStep("Stream ended");
+          es.close();
+          esRef.current = null;
+          setRunning(false);
+        }
       };
-    } catch (e: unknown) {
-      setStatus(`Error: ${toMsg(e)}`);
+    } catch (e) {
+      appendStep(`Error: ${toMsg(e)}`);
+      setRunning(false);
     }
   }
 
@@ -400,9 +414,7 @@ export default function PlannerPage() {
               <div className="text-sm text-neutral-400 mb-1">Planner</div>
               <select
                 value={planner}
-                onChange={(e) =>
-                  setPlanner((e.target.value as PlannerKind) ?? "openai")
-                }
+                onChange={(e) => setPlanner((e.target.value as PlannerKind) ?? "openai")}
                 className="w-full p-2 rounded border border-neutral-800 bg-neutral-900 text-neutral-100"
               >
                 <option value="openai">OpenAI (rich)</option>
@@ -411,9 +423,7 @@ export default function PlannerPage() {
             </label>
 
             <label className="block">
-              <div className="text-sm text-neutral-400 mb-1">
-                Customer query (name)
-              </div>
+              <div className="text-sm text-neutral-400 mb-1">Customer query (name)</div>
               <input
                 value={customerQuery}
                 onChange={(e) => setCustomerQuery(e.target.value)}
@@ -431,7 +441,6 @@ export default function PlannerPage() {
                   className="w-full p-2 rounded border border-neutral-800 bg-neutral-900 text-neutral-100"
                   placeholder="e.g. 8ABC123 or 1FT…"
                 />
-                {/* VIN capture trigger */}
                 <Button
                   type="button"
                   variant="outline"
@@ -446,9 +455,7 @@ export default function PlannerPage() {
             </label>
 
             <label className="block">
-              <div className="text-sm text-neutral-400 mb-1">
-                Email invoice to (optional)
-              </div>
+              <div className="text-sm text-neutral-400 mb-1">Email invoice to (optional)</div>
               <input
                 value={emailInvoiceTo}
                 onChange={(e) => setEmailInvoiceTo(e.target.value)}
@@ -460,9 +467,7 @@ export default function PlannerPage() {
             </label>
 
             <label className="block">
-              <div className="text-sm text-neutral-400 mb-1">
-                Photo (DL / Registration)
-              </div>
+              <div className="text-sm text-neutral-400 mb-1">Photo (DL / Registration)</div>
               <input
                 type="file"
                 accept="image/*"
@@ -486,49 +491,57 @@ export default function PlannerPage() {
             onClick={start}
             variant="orange"
             size="md"
-            isLoading={status?.startsWith("Starting…") === true}
-            disabled={!goal.trim()}
+            isLoading={running}
+            disabled={!goal.trim() || running}
             className="font-black"
           >
             Run Plan
           </Button>
 
-          <Button onClick={clearAll} variant="outline" size="md">
+          <Button onClick={clearAll} variant="outline" size="md" disabled={running}>
             Clear
           </Button>
         </div>
 
-        <div className="text-xs text-neutral-500">
-          {runId ? (
-            <>
-              Run ID: <code>{runId}</code>
-            </>
-          ) : null}
-        </div>
+        {runId && (
+          <div className="text-xs text-neutral-500">
+            Run ID: <code>{runId}</code>
+          </div>
+        )}
 
-        <pre className="whitespace-pre-wrap bg-neutral-900 p-4 rounded text-sm text-neutral-200 border border-neutral-800 min-h-[160px]">
-          {status}
-        </pre>
+        {/* ✔️ Clean step list instead of raw text */}
+        <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
+          <div className="text-sm text-neutral-300 mb-2">Stream</div>
+          {steps.length === 0 ? (
+            <div className="text-sm text-neutral-500">Waiting for updates…</div>
+          ) : (
+            <ul className="space-y-2">
+              {steps.map((s, i) => (
+                <li key={`${i}-${s}`} className="flex items-start gap-2">
+                  <span className="mt-1 inline-block h-2.5 w-2.5 rounded-full bg-orange-500/80" />
+                  <span className="text-sm text-neutral-100">{s}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
 
       {previewWoId && (
         <div className="mt-6">
-          <WorkOrderPreviewTrigger
-            open={previewOpen}
-            onOpenChange={setPreviewOpen}
-          >
+          <WorkOrderPreviewTrigger open={previewOpen} onOpenChange={setPreviewOpen}>
             <WorkOrderPreview woId={previewWoId} />
           </WorkOrderPreviewTrigger>
         </div>
       )}
 
-      {/* 🔶 VIN Capture Modal (client shell) */}
+      {/* VIN Capture Modal */}
       {userId ? (
         <VinCaptureModal
           userId={userId}
           open={vinOpen}
           onOpenChange={(open: boolean) => setVinOpen(open)}
-          onDecoded={(d: VinDecodedDetail) => {
+          onDecoded={(d) => {
             setVehicleDraft({
               vin: d.vin,
               year: d.year ?? null,
@@ -538,11 +551,9 @@ export default function PlannerPage() {
               engine: d.engine ?? null,
             });
             setPlateOrVin(d.vin);
-            // Toast confirm
             setToast("VIN decoded and recalls queued ✅");
             window.setTimeout(() => setToast(null), 4000);
 
-            // After decoding VIN in Planner
             setVehicleDraft({
               vin: d.vin,
               year: d.year,
@@ -562,7 +573,7 @@ export default function PlannerPage() {
         />
       ) : null}
 
-      {/* ✅ Toast / banner */}
+      {/* Toast */}
       {toast && (
         <div
           className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 rounded border px-4 py-2 shadow-xl"
