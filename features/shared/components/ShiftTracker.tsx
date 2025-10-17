@@ -13,16 +13,19 @@ type DB = Database;
  *  - tech_shifts(id, user_id, start_time, end_time, type, status, created_at)
  *  - punch_events(id, shift_id, user_id, event_type, timestamp, note, created_at, profile_id)
  *
- * tech_shifts check constraints (from your DB):
+ * tech_shifts CHECK constraints (from your DB):
  *   type    IN ('shift','break','lunch')
  *   status  IN ('active','completed')
+ *
+ * punch_events CHECK constraint:
+ *   event_type IN ('start_shift','end_shift','break_start','break_end','lunch_start','lunch_end')
  */
 export default function ShiftTracker({
   userId,
-  defaultShiftType = "shift", // must match your tech_shifts.type check
+  defaultShiftType = "shift",
 }: {
   userId: string;
-  defaultShiftType?: "shift" | "break" | "lunch" | (string & {}); // allow literal but keep typed
+  defaultShiftType?: "shift" | "break" | "lunch" | (string & {});
 }) {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
@@ -32,7 +35,7 @@ export default function ShiftTracker({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  /** Load currently open shift (end_time IS NULL) and derive live status from the latest punch. */
+  /** Load the open shift and derive live UI status from the last punch. */
   const loadOpenShift = useCallback(async () => {
     setErr(null);
 
@@ -63,7 +66,7 @@ export default function ShiftTracker({
     setShiftId(shift.id);
     setStartTime(shift.start_time ?? null);
 
-    // NOTE: your table uses event_type (not "type")
+    // derive from last punch (column is event_type)
     const { data: lastPunch } = await supabase
       .from("punch_events")
       .select("event_type")
@@ -87,22 +90,23 @@ export default function ShiftTracker({
     void loadOpenShift();
   }, [userId, loadOpenShift]);
 
-  /** Insert a punch event (matches punch_events schema). */
+  /** Allowed event types from the DB check constraint. */
+  type PunchEvent =
+    | "start_shift"
+    | "end_shift"
+    | "break_start"
+    | "break_end"
+    | "lunch_start"
+    | "lunch_end";
+
+  /** Insert a punch event (uses event_type). */
   const insertPunch = useCallback(
-    async (
-      event:
-        | "start"
-        | "break_start"
-        | "break_end"
-        | "lunch_start"
-        | "lunch_end"
-        | "end",
-    ) => {
+    async (event: PunchEvent) => {
       if (!shiftId) return;
       const { error } = await supabase.from("punch_events").insert({
         shift_id: shiftId,
-        user_id: userId,         // table also has profile_id (nullable) — user_id is fine
-        event_type: event,       // 👈 correct column name
+        user_id: userId,
+        event_type: event, // 👈 correct column & allowed values
         timestamp: new Date().toISOString(),
       });
       if (error) setErr(`${error.code ?? "punch_error"}: ${error.message}`);
@@ -116,7 +120,7 @@ export default function ShiftTracker({
     setErr(null);
 
     try {
-      // If an open shift already exists, hydrate and stop.
+      // already open?
       const { data: existing, error: exErr } = await supabase
         .from("tech_shifts")
         .select("id, start_time")
@@ -135,14 +139,13 @@ export default function ShiftTracker({
 
       const now = new Date().toISOString();
 
-      // include NOT NULLs + values that pass your CHECK constraints
       const { data, error } = await supabase
         .from("tech_shifts")
         .insert({
           user_id: userId,
           start_time: now,
-          type: defaultShiftType, // must be 'shift' | 'break' | 'lunch'
-          status: "active",       // must be 'active' | 'completed'
+          type: defaultShiftType, // 'shift' | 'break' | 'lunch'
+          status: "active", // 'active' | 'completed'
           end_time: null,
         })
         .select()
@@ -153,7 +156,7 @@ export default function ShiftTracker({
       setShiftId(data.id);
       setStartTime(data.start_time ?? now);
       setStatus("active");
-      await insertPunch("start");
+      await insertPunch("start_shift");
     } catch (e: any) {
       if ((e?.message ?? "").toLowerCase().includes("violates check constraint")) {
         setErr(
@@ -175,12 +178,12 @@ export default function ShiftTracker({
       const now = new Date().toISOString();
       const { error } = await supabase
         .from("tech_shifts")
-        .update({ end_time: now, status: "completed" }) // close out with a valid status
+        .update({ end_time: now, status: "completed" })
         .eq("id", shiftId);
 
       if (error) throw error;
 
-      await insertPunch("end");
+      await insertPunch("end_shift");
       setShiftId(null);
       setStartTime(null);
       setStatus("ended");
@@ -233,6 +236,16 @@ export default function ShiftTracker({
     }
   }, [busy, supabase, shiftId, status, insertPunch]);
 
+  // --- outlined button styles (keep each button's color via border) ---
+  const btnBase =
+    "px-4 py-2 rounded text-sm font-semibold disabled:opacity-60 transition-colors border";
+  const btnOutline = {
+    green: `${btnBase} border-green-600 text-white hover:bg-green-900/10`,
+    yellow: `${btnBase} border-yellow-500 text-white hover:bg-yellow-900/10`,
+    orange: `${btnBase} border-orange-500 text-white hover:bg-orange-900/10`,
+    red: `${btnBase} border-red-600 text-white hover:bg-red-900/10`,
+  };
+
   return (
     <div className="text-sm mt-4 space-y-2">
       {err && (
@@ -254,38 +267,22 @@ export default function ShiftTracker({
       )}
 
       {status === "none" && (
-        <button
-          className="bg-green-600 text-white px-4 py-2 rounded disabled:opacity-60"
-          onClick={startShift}
-          disabled={busy}
-        >
+        <button className={btnOutline.green} onClick={startShift} disabled={busy}>
           {busy ? "Starting…" : "Start Shift"}
         </button>
       )}
 
       {status !== "none" && status !== "ended" && (
         <div className="flex flex-wrap gap-2">
-          <button
-            className="bg-yellow-500 text-white px-4 py-2 rounded disabled:opacity-60"
-            onClick={handleBreak}
-            disabled={busy}
-          >
+          <button className={btnOutline.yellow} onClick={handleBreak} disabled={busy}>
             {status === "break" ? "End Break" : "Break"}
           </button>
 
-          <button
-            className="bg-orange-500 text-white px-4 py-2 rounded disabled:opacity-60"
-            onClick={handleLunch}
-            disabled={busy}
-          >
+          <button className={btnOutline.orange} onClick={handleLunch} disabled={busy}>
             {status === "lunch" ? "End Lunch" : "Lunch"}
           </button>
 
-          <button
-            className="bg-red-600 text-white px-4 py-2 rounded ml-auto disabled:opacity-60"
-            onClick={endShift}
-            disabled={busy}
-          >
+          <button className={`${btnOutline.red} ml-auto`} onClick={endShift} disabled={busy}>
             End Shift
           </button>
         </div>
