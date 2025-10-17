@@ -1,4 +1,3 @@
-// features/work-orders/app/quote-review/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -95,7 +94,8 @@ export default function QuoteReviewPage() {
       const { error: updErr } = await supabase
         .from("work_orders")
         .update({
-          // @ts-ignore optional schema columns
+          // optional columns (ts-ignore ok while you migrate)
+          // @ts-ignore
           customer_approval_signature_path: filename,
           // @ts-ignore
           customer_approval_at: new Date().toISOString() as any,
@@ -109,6 +109,40 @@ export default function QuoteReviewPage() {
     } catch (err: any) {
       alert(err?.message || "Failed to save signature");
     }
+  }
+
+  async function markAwaitingApproval() {
+    if (!woId) return;
+    try {
+      const { error } = await supabase
+        .from("work_orders")
+        .update({
+          status: "awaiting_approval" as any,
+          // clear any prior signature artifacts
+          // @ts-ignore
+          customer_approval_signature_path: null,
+          // @ts-ignore
+          customer_approval_at: null,
+        })
+        .eq("id", woId);
+      if (error) throw error;
+      alert("Saved. This work order is now awaiting customer approval.");
+    } catch (e: any) {
+      alert(e?.message || "Failed to update status.");
+    }
+  }
+
+  function copyApprovalLink() {
+    if (!woId) return;
+    const origin =
+      typeof window !== "undefined"
+        ? window.location.origin
+        : (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
+    const url = `${origin || ""}/work-orders/${woId}/approve`;
+    navigator.clipboard
+      .writeText(url)
+      .then(() => alert("Approval link copied to clipboard."))
+      .catch(() => alert(url)); // fallback: show it
   }
 
   if (!woId) return <div className="p-6 text-red-500">Missing woId in URL.</div>;
@@ -200,6 +234,22 @@ export default function QuoteReviewPage() {
               Approve & Sign
             </button>
 
+            <button
+              onClick={markAwaitingApproval}
+              className="rounded border border-neutral-700 px-4 py-2 hover:border-orange-500"
+              title="Save this work order as awaiting customer approval"
+            >
+              Save for Customer Approval
+            </button>
+
+            <button
+              onClick={copyApprovalLink}
+              className="rounded border border-neutral-700 px-4 py-2 hover:border-orange-500"
+              title="Copy link to the customer-facing approval page"
+            >
+              Copy Approval Link
+            </button>
+
             <a
               href={`/work-orders/${woId}`}
               className="rounded border border-neutral-700 px-4 py-2 hover:border-orange-500"
@@ -210,6 +260,7 @@ export default function QuoteReviewPage() {
         </>
       )}
 
+      {/* Mount host once */}
       <SignaturePad />
     </div>
   );

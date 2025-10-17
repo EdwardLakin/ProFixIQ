@@ -51,7 +51,12 @@ export default function WorkOrdersView(): JSX.Element {
       .order("created_at", { ascending: false })
       .limit(100);
 
-    if (status) query = query.eq("status", status);
+    // Default view hides awaiting_approval unless explicitly filtered to it
+    if (status) {
+      query = query.eq("status", status);
+    } else {
+      query = query.neq("status", "awaiting_approval");
+    }
 
     const { data, error } = await query;
     if (error) {
@@ -122,11 +127,11 @@ export default function WorkOrdersView(): JSX.Element {
 
   return (
     <div className="mx-auto max-w-6xl p-6 text-white">
-      <div className="flex flex-wrap items-center gap-3 mb-4">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-bold text-orange-400">Work Orders</h1>
         <Link
           href="/work-orders/create"
-          className="rounded bg-orange-500 px-3 py-1.5 text-black font-semibold hover:bg-orange-600"
+          className="rounded bg-orange-500 px-3 py-1.5 font-semibold text-black hover:bg-orange-600"
         >
           + New
         </Link>
@@ -144,7 +149,7 @@ export default function WorkOrdersView(): JSX.Element {
             className="rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-sm"
             aria-label="Filter by status"
           >
-            <option value="">All statuses</option>
+            <option value="">All statuses (except awaiting approval)</option>
             <option value="awaiting_approval">Awaiting approval</option>
             <option value="awaiting">Awaiting</option>
             <option value="queued">Queued</option>
@@ -163,18 +168,18 @@ export default function WorkOrdersView(): JSX.Element {
         </div>
       </div>
 
-      {err && <div className="mb-3 rounded bg-red-500/10 p-2 text-red-300 text-sm">{err}</div>}
+      {err && <div className="mb-3 rounded bg-red-500/10 p-2 text-sm text-red-300">{err}</div>}
 
       {loading ? (
         <div className="text-neutral-300">Loading…</div>
       ) : rows.length === 0 ? (
         <div className="text-neutral-400">No work orders found.</div>
       ) : (
-        <div className="divide-y divide-neutral-800 border border-neutral-800 rounded bg-neutral-900">
+        <div className="divide-y divide-neutral-800 rounded border border-neutral-800 bg-neutral-900">
           {rows.map((r) => {
             const href = `/work-orders/${r.custom_id ?? r.id}?mode=view`;
             return (
-              <div key={r.id} className="p-3 flex items-center gap-3">
+              <div key={r.id} className="flex items-center gap-3 p-3">
                 <div className="w-28 text-xs text-neutral-400">
                   {r.created_at ? format(new Date(r.created_at), "PP") : "—"}
                 </div>
@@ -182,7 +187,7 @@ export default function WorkOrdersView(): JSX.Element {
                   <div className="flex items-center gap-2">
                     <Link
                       href={href}
-                      className="font-medium underline underline-offset-2 decoration-neutral-600 hover:decoration-orange-500"
+                      className="font-medium underline decoration-neutral-600 underline-offset-2 hover:decoration-orange-500"
                     >
                       {r.custom_id ? r.custom_id : `#${r.id.slice(0, 8)}`}
                     </Link>
@@ -195,7 +200,7 @@ export default function WorkOrdersView(): JSX.Element {
                       {(r.status ?? "awaiting").replaceAll("_", " ")}
                     </span>
                   </div>
-                  <div className="text-sm text-neutral-300 truncate">
+                  <div className="truncate text-sm text-neutral-300">
                     {r.customers
                       ? `${[r.customers.first_name ?? "", r.customers.last_name ?? ""]
                           .filter(Boolean)
@@ -215,7 +220,7 @@ export default function WorkOrdersView(): JSX.Element {
                   </Link>
                   <button
                     onClick={() => void handleDelete(r.id)}
-                    className="rounded border border-red-600/60 text-red-300 px-2 py-1 text-sm hover:bg-red-900/20"
+                    className="rounded border border-red-600/60 px-2 py-1 text-sm text-red-300 hover:bg-red-900/20"
                   >
                     Delete
                   </button>

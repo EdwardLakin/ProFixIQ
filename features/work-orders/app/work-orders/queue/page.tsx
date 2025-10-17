@@ -48,6 +48,7 @@ export default async function QueuePage() {
     .from("work_orders")
     .select("*")
     .eq("shop_id", profile.shop_id)
+    .neq("status", "awaiting_approval") // ⬅️ hide drafts awaiting signature
     .gte("created_at", since.toISOString())
     .order("created_at", { ascending: false });
 
@@ -80,11 +81,11 @@ export default async function QueuePage() {
 
   return (
     <div className="p-6 text-white">
-      <h1 className="text-2xl font-blackops text-orange-400 mb-4">Job Queue</h1>
+      <h1 className="mb-4 text-2xl font-blackops text-orange-400">Job Queue</h1>
 
       {/* DEBUG BLOCKS */}
       <div className="mb-4 rounded border border-neutral-800 bg-neutral-900 p-3 text-sm">
-        <div className="font-semibold text-orange-400 mb-1">Debug</div>
+        <div className="mb-1 font-semibold text-orange-400">Debug</div>
         <div className="grid gap-2 sm:grid-cols-2">
           <div className="space-y-1">
             <div>
@@ -104,8 +105,8 @@ export default async function QueuePage() {
             <div>
               <span className="text-neutral-400">Fetched Lines:</span> {lines?.length ?? 0}
             </div>
-            <div>
-              <span className="text-neutral-400">Visible WOs:</span> {visibleWos.length}
+            <div className="text-neutral-400">
+              <span>Visible WOs:</span> {visibleWos.length}
               {isTech ? ` (tech filter on)` : ""}
             </div>
             {isTech && <div><span className="text-neutral-400">Filtered Out:</span> {filteredOut.length}</div>}
@@ -114,12 +115,12 @@ export default async function QueuePage() {
 
         {isTech && filteredOut.length > 0 && (
           <div className="mt-2">
-            <div className="text-neutral-400 mb-1">
+            <div className="mb-1 text-neutral-400">
               Filtered-out WO ids (no lines assigned to this user):
             </div>
             <div className="flex flex-wrap gap-1">
               {filteredOut.slice(0, 12).map((wo) => (
-                <span key={wo.id} className="text-xs rounded border border-neutral-700 px-2 py-0.5">
+                <span key={wo.id} className="rounded border border-neutral-700 px-2 py-0.5 text-xs">
                   {wo.id.slice(0, 8)}
                   {wo.created_at ? ` • ${new Date(wo.created_at).toLocaleDateString()}` : ""}
                 </span>
@@ -132,13 +133,13 @@ export default async function QueuePage() {
         )}
       </div>
 
-      <div className="grid gap-3 md:grid-cols-4 mb-6">
+      <div className="mb-6 grid gap-3 md:grid-cols-4">
         {statuses.map((s) => (
           <div key={s} className="rounded border border-neutral-800 bg-neutral-900 p-3">
-            <div className="text-neutral-400 text-xs uppercase tracking-wide">
+            <div className="text-xs uppercase tracking-wide text-neutral-400">
               {s.replace("_", " ")}
             </div>
-            <div className="text-2xl font-semibold mt-1">{counts[s]}</div>
+            <div className="mt-1 text-2xl font-semibold">{counts[s]}</div>
           </div>
         ))}
       </div>
@@ -152,18 +153,17 @@ export default async function QueuePage() {
           const onHold   = lns.filter((l) => (l.status ?? "") === "on_hold").length;
           const done     = lns.filter((l) => (l.status ?? "") === "completed").length;
 
-          // Prefer custom_id when present
           const slug = wo.custom_id ?? wo.id;
 
           return (
             <Link
               key={wo.id}
               href={`/work-orders/${slug}?mode=tech`}
-              className="block rounded border border-neutral-800 bg-neutral-900 p-3 hover:border-orange-500 transition"
+              className="block rounded border border-neutral-800 bg-neutral-900 p-3 transition hover:border-orange-500"
             >
               <div className="flex items-center justify-between">
                 <div className="min-w-0">
-                  <div className="font-medium truncate">
+                  <div className="truncate font-medium">
                     {wo.custom_id ? wo.custom_id : `#${wo.id.slice(0, 8)}`}
                   </div>
                   {wo.custom_id && (
@@ -173,7 +173,7 @@ export default async function QueuePage() {
                     {awaiting} awaiting · {inProg} in progress · {onHold} on hold · {done} completed
                   </div>
                 </div>
-                <span className="text-xs rounded border border-neutral-700 px-2 py-1 capitalize">
+                <span className="rounded border border-neutral-700 px-2 py-1 text-xs capitalize">
                   {status.replace("_", " ")}
                 </span>
               </div>
