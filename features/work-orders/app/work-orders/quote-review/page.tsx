@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import SignaturePad, { openSignaturePad } from "@shared/signaturePad/controller";
+import SignaturePad, { openSignaturePad } from "@/features/shared/signaturePad/controller";
 import { formatCurrency } from "@/features/shared/lib/formatCurrency";
 
 type DB = Database;
