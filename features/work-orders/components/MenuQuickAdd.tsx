@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database, TablesInsert } from "@shared/types/types/supabase";
@@ -144,6 +144,16 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   // Capture shopId so inserts satisfy RLS
   const [shopId, setShopId] = useState<string | null>(null);
 
+  // Avoid redundant RPC calls in this component
+  const lastSetShopId = useRef<string | null>(null);
+  async function ensureShopContext(id: string | null) {
+    if (!id) return;
+    if (lastSetShopId.current === id) return;
+    const { error } = await supabase.rpc("set_current_shop_id", { p_shop_id: id });
+    if (!error) lastSetShopId.current = id;
+    else throw error;
+  }
+
   useEffect(() => {
     (async () => {
       const { data: wo } = await supabase
@@ -193,105 +203,116 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     if (!shopReady) return;
     setAddingId(kind);
 
-    const description =
-      kind === "air"
-        ? "Maintenance 50 – Air (CVIP) – Inspection"
-        : "Maintenance 50 – Hydraulic – Inspection";
+    try {
+      await ensureShopContext(shopId);
 
-    const newLine: WorkOrderLineInsert = {
-      work_order_id: workOrderId,
-      vehicle_id: vehicleId,
-      description,
-      job_type: "inspection",
-      status: "awaiting",
-      priority: 3,
-      labor_time: null,
-      notes: null,
-      shop_id: shopId!, // known due to shopReady
-    };
+      const description =
+        kind === "air"
+          ? "Maintenance 50 – Air (CVIP) – Inspection"
+          : "Maintenance 50 – Hydraulic – Inspection";
 
-    const { error } = await supabase.from("work_order_lines").insert(newLine);
-    setAddingId(null);
+      const newLine: WorkOrderLineInsert = {
+        work_order_id: workOrderId,
+        vehicle_id: vehicleId,
+        description,
+        job_type: "inspection",
+        status: "awaiting",
+        priority: 3,
+        labor_time: null,
+        notes: null,
+        shop_id: shopId!, // known due to shopReady
+      };
 
-    if (error) {
-      console.error("Failed to create inspection line:", error);
-      alert(error.message);
-      return;
+      const { error } = await supabase.from("work_order_lines").insert(newLine);
+      if (error) throw error;
+
+      window.dispatchEvent(new CustomEvent("wo:line-added"));
+    } catch (e: any) {
+      console.error("Failed to create inspection line:", e);
+      alert(e?.message ?? "Failed to create inspection line.");
+      lastSetShopId.current = null;
+    } finally {
+      setAddingId(null);
     }
-
-    window.dispatchEvent(new CustomEvent("wo:line-added"));
   }
 
   async function addSingle(item: SimpleService) {
     if (!shopReady) return;
     setAddingId(item.name);
 
-    const line: WorkOrderLineInsert = {
-      work_order_id: workOrderId,
-      vehicle_id: vehicleId,
-      description: item.name,
-      labor_time: item.laborHours ?? null,
-      status: "awaiting",
-      priority: 3,
-      job_type: item.jobType,
-      notes: item.notes ?? null,
-      shop_id: shopId!,
-    };
+    try {
+      await ensureShopContext(shopId);
 
-    const { error } = await supabase.from("work_order_lines").insert([line]);
-    setAddingId(null);
+      const line: WorkOrderLineInsert = {
+        work_order_id: workOrderId,
+        vehicle_id: vehicleId,
+        description: item.name,
+        labor_time: item.laborHours ?? null,
+        status: "awaiting",
+        priority: 3,
+        job_type: item.jobType,
+        notes: item.notes ?? null,
+        shop_id: shopId!,
+      };
 
-    if (error) {
-      console.error("Failed to add single service:", error);
-      alert(error.message);
-      return;
+      const { error } = await supabase.from("work_order_lines").insert([line]);
+      if (error) throw error;
+
+      window.dispatchEvent(new CustomEvent("wo:line-added"));
+    } catch (e: any) {
+      console.error("Failed to add single service:", e);
+      alert(e?.message ?? "Failed to add service.");
+      lastSetShopId.current = null;
+    } finally {
+      setAddingId(null);
     }
-
-    window.dispatchEvent(new CustomEvent("wo:line-added"));
   }
 
   async function addPackage(pkg: PackageDef) {
     if (!shopReady) return;
     setAddingId(pkg.id);
 
-    // Inspections → single line
-    if (pkg.jobType === "inspection") {
-      if (pkg.id === "insp-diesel") {
-        await addInspectionLine("air");
-      } else {
-        await addInspectionLine("hydraulic");
+    try {
+      await ensureShopContext(shopId);
+
+      // Inspections → single line
+      if (pkg.jobType === "inspection") {
+        if (pkg.id === "insp-diesel") {
+          await addInspectionLine("air");
+        } else {
+          await addInspectionLine("hydraulic");
+        }
+        return;
       }
+
+      // Maintenance packages → one summary line
+      const line: WorkOrderLineInsert = {
+        work_order_id: workOrderId,
+        vehicle_id: vehicleId,
+        description: pkg.name,
+        labor_time: pkg.estLaborHours,
+        status: "awaiting",
+        priority: 3,
+        job_type: "maintenance",
+        notes: pkg.summary,
+        shop_id: shopId!,
+      };
+
+      const { error } = await supabase.from("work_order_lines").insert(line);
+      if (error) throw error;
+
+      window.dispatchEvent(new CustomEvent("wo:line-added"));
+    } catch (e: any) {
+      console.error("Failed to add package:", e);
+      alert(e?.message ?? "Failed to add package.");
+      lastSetShopId.current = null;
+    } finally {
       setAddingId(null);
-      return;
     }
-
-    // Maintenance packages → one summary line
-    const line: WorkOrderLineInsert = {
-      work_order_id: workOrderId,
-      vehicle_id: vehicleId,
-      description: pkg.name,
-      labor_time: pkg.estLaborHours,
-      status: "awaiting",
-      priority: 3,
-      job_type: "maintenance",
-      notes: pkg.summary,
-      shop_id: shopId!,
-    };
-
-    const { error } = await supabase.from("work_order_lines").insert(line);
-    setAddingId(null);
-
-    if (error) {
-      console.error("Failed to add package:", error);
-      alert(error.message);
-      return;
-    }
-
-    window.dispatchEvent(new CustomEvent("wo:line-added"));
   }
 
   const visiblePackages = showAllPackages ? packages : packages.slice(0, 2);
-  const visibleSingles  = showAllSingles  ? singles  : singles.slice(0, 6);
+  const visibleSingles = showAllSingles ? singles : singles.slice(0, 6);
 
   const vehicleName =
     vehicle

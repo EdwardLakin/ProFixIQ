@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -14,7 +14,7 @@ export function NewWorkOrderLineForm(props: {
   workOrderId: string;
   vehicleId: string | null;
   defaultJobType: WOJobType | null;
-  shopId?: string | null;                // ← optional (used to satisfy RLS)
+  shopId?: string | null; // ← used to satisfy RLS
   onCreated?: () => void;
 }) {
   const { workOrderId, vehicleId, defaultJobType, shopId, onCreated } = props;
@@ -29,6 +29,9 @@ export function NewWorkOrderLineForm(props: {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // Avoid redundant RPCs if user adds multiple lines in a row
+  const lastSetShopId = useRef<string | null>(null);
+
   const canSave = complaint.trim().length > 0 && !!workOrderId;
 
   function normalizeJobType(t: WOJobType | null): InsertLine["job_type"] {
@@ -36,39 +39,56 @@ export function NewWorkOrderLineForm(props: {
     return (t && (allowed as string[]).includes(t)) ? (t as InsertLine["job_type"]) : null;
   }
 
+  async function ensureShopContext() {
+    if (!shopId) return;
+    if (lastSetShopId.current === shopId) return;
+    // Sets app.current_shop_id for RLS (current_shop_id())
+    const { error } = await supabase.rpc("set_current_shop_id", { p_shop_id: shopId });
+    if (!error) lastSetShopId.current = shopId;
+    else throw error;
+  }
+
   async function addLine() {
     if (!canSave) return;
     setBusy(true);
     setErr(null);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    try {
+      await ensureShopContext();
 
-    const payload: InsertLine = {
-      work_order_id: workOrderId,
-      vehicle_id: vehicleId,
-      user_id: user?.id ?? null,
-      complaint: complaint || null,
-      cause: cause || null,
-      correction: correction || null,
-      labor_time: labor ? Number(labor) : null,
-      status: status ?? "awaiting",
-      job_type: normalizeJobType(jobType),
-      // RLS: wol_shop_insert → check (shop_id = current_shop_id())
-      shop_id: shopId ?? null,
-    };
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-    const { error } = await supabase.from("work_order_lines").insert(payload);
-    if (error) {
-      if (/(job_type).*check/i.test(error.message)) {
-        setErr("This job type isn’t allowed by the database. Pick another type.");
-      } else if (/shop_id.*current_shop_id/i.test(error.message)) {
-        setErr("Shop mismatch: shop_id is missing or you’re not in this shop.");
-      } else {
-        setErr(error.message);
+      const payload: InsertLine = {
+        work_order_id: workOrderId,
+        vehicle_id: vehicleId,
+        user_id: user?.id ?? null,
+        complaint: complaint || null,
+        cause: cause || null,
+        correction: correction || null,
+        labor_time: labor ? Number(labor) : null,
+        status: status ?? "awaiting",
+        job_type: normalizeJobType(jobType),
+        // RLS: wol_shop_insert → (shop_id = current_shop_id())
+        shop_id: shopId ?? null,
+      };
+
+      const { error } = await supabase.from("work_order_lines").insert(payload);
+      if (error) {
+        if (/(job_type).*check/i.test(error.message)) {
+          setErr("This job type isn’t allowed by the database. Pick another type.");
+        } else if (/row-level security/i.test(error.message) || /current_shop_id/i.test(error.message)) {
+          setErr("Shop mismatch: your session isn’t scoped to this shop. Try again.");
+          // Clear memo so next attempt re-sets the GUC
+          lastSetShopId.current = null;
+        } else {
+          setErr(error.message);
+        }
+        return;
       }
-    } else {
+
+      // Success → reset form
       setComplaint("");
       setCause("");
       setCorrection("");
@@ -76,8 +96,12 @@ export function NewWorkOrderLineForm(props: {
       setStatus("awaiting");
       setJobType(defaultJobType ?? null);
       onCreated?.();
+    } catch (e: any) {
+      setErr(e?.message ?? "Failed to add line.");
+      lastSetShopId.current = null;
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   }
 
   return (

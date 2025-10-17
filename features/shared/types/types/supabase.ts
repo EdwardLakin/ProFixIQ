@@ -2854,8 +2854,8 @@ export type Database = {
           end_time?: string | null
           id?: string
           start_time?: string
-          status: string
-          type: string
+          status?: string
+          type?: string
           user_id?: string | null
         }
         Update: {
@@ -3472,6 +3472,7 @@ export type Database = {
           line_status: string | null
           notes: string | null
           on_hold_since: string | null
+          parts: string | null
           parts_needed: Json | null
           parts_received: Json | null
           parts_required: Json | null
@@ -3483,6 +3484,7 @@ export type Database = {
           template_id: string | null
           tools: string | null
           updated_at: string | null
+          urgency: string | null
           user_id: string | null
           vehicle_id: string | null
           work_order_id: string | null
@@ -3507,6 +3509,7 @@ export type Database = {
           line_status?: string | null
           notes?: string | null
           on_hold_since?: string | null
+          parts?: string | null
           parts_needed?: Json | null
           parts_received?: Json | null
           parts_required?: Json | null
@@ -3518,6 +3521,7 @@ export type Database = {
           template_id?: string | null
           tools?: string | null
           updated_at?: string | null
+          urgency?: string | null
           user_id?: string | null
           vehicle_id?: string | null
           work_order_id?: string | null
@@ -3542,6 +3546,7 @@ export type Database = {
           line_status?: string | null
           notes?: string | null
           on_hold_since?: string | null
+          parts?: string | null
           parts_needed?: Json | null
           parts_received?: Json | null
           parts_required?: Json | null
@@ -3553,6 +3558,7 @@ export type Database = {
           template_id?: string | null
           tools?: string | null
           updated_at?: string | null
+          urgency?: string | null
           user_id?: string | null
           vehicle_id?: string | null
           work_order_id?: string | null
@@ -4057,7 +4063,7 @@ export type Database = {
         Returns: undefined
       }
       set_current_shop_id: {
-        Args: { new_shop_id: string }
+        Args: { p_shop_id: string }
         Returns: undefined
       }
       set_last_active_now: {
