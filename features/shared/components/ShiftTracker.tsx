@@ -8,7 +8,14 @@ import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 
-export default function ShiftTracker({ userId }: { userId: string }) {
+export default function ShiftTracker({
+  userId,
+  // Set to a valid value for your schema (e.g. "regular", "shop", "field", etc.)
+  defaultShiftType = "regular",
+}: {
+  userId: string;
+  defaultShiftType?: string;
+}) {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   const [shiftId, setShiftId] = useState<string | null>(null);
@@ -17,6 +24,7 @@ export default function ShiftTracker({ userId }: { userId: string }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // Load any open shift (end_time IS NULL)
   const loadOpenShift = useCallback(async () => {
     setErr(null);
 
@@ -47,6 +55,7 @@ export default function ShiftTracker({ userId }: { userId: string }) {
     setShiftId(shift.id);
     setStartTime(shift.start_time ?? null);
 
+    // Derive status from the latest punch
     const { data: lastPunch } = await supabase
       .from("punch_events")
       .select("type")
@@ -70,16 +79,9 @@ export default function ShiftTracker({ userId }: { userId: string }) {
     void loadOpenShift();
   }, [userId, loadOpenShift]);
 
+  // Helper to write a punch event
   const insertPunch = useCallback(
-    async (
-      type:
-        | "start"
-        | "break_start"
-        | "break_end"
-        | "lunch_start"
-        | "lunch_end"
-        | "end",
-    ) => {
+    async (type: "start" | "break_start" | "break_end" | "lunch_start" | "lunch_end" | "end") => {
       if (!shiftId) return;
       const { error } = await supabase.from("punch_events").insert({
         shift_id: shiftId,
@@ -87,21 +89,19 @@ export default function ShiftTracker({ userId }: { userId: string }) {
         type,
         timestamp: new Date().toISOString(),
       });
-      if (error) {
-        // Show the real reason in UI
-        setErr(`${error.code ?? "punch_error"}: ${error.message}`);
-      }
+      if (error) setErr(`${error.code ?? "punch_error"}: ${error.message}`);
     },
     [supabase, shiftId, userId],
   );
 
+  // Start a shift (writes required NOT NULL columns)
   const startShift = useCallback(async () => {
     if (busy) return;
     setBusy(true);
     setErr(null);
 
     try {
-      // If an open shift exists, just revive state and bail.
+      // If an open shift already exists, hydrate and stop
       const { data: existing, error: exErr } = await supabase
         .from("tech_shifts")
         .select("id, start_time")
@@ -110,9 +110,7 @@ export default function ShiftTracker({ userId }: { userId: string }) {
         .limit(1)
         .maybeSingle();
 
-      if (exErr) {
-        throw exErr;
-      }
+      if (exErr) throw exErr;
       if (existing) {
         setShiftId(existing.id);
         setStartTime(existing.start_time ?? null);
@@ -122,13 +120,14 @@ export default function ShiftTracker({ userId }: { userId: string }) {
 
       const now = new Date().toISOString();
 
-      // ✅ Insert with the minimum safe set of columns to avoid schema mismatch
       const { data, error } = await supabase
         .from("tech_shifts")
         .insert({
           user_id: userId,
           start_time: now,
-          // Leave status / end_time out unless you KNOW the schema requires them
+          type: defaultShiftType, // satisfies NOT NULL "type"
+          status: "active",       // satisfies NOT NULL "status"
+          end_time: null,         // explicit open shift
         })
         .select()
         .single();
@@ -140,116 +139,104 @@ export default function ShiftTracker({ userId }: { userId: string }) {
       setStatus("active");
       await insertPunch("start");
     } catch (e: any) {
-      // Surface the actual Supabase error to help debugging (RLS, NOT NULL, etc.)
-      const message =
-        e?.message ??
-        (typeof e === "string" ? e : "Failed to start shift");
-      const code = e?.code ? `${e.code}: ` : "";
-      setErr(`${code}${message}`);
+      if ((e?.message ?? "").toLowerCase().includes("invalid input value for enum")) {
+        setErr(
+          `Invalid shift type "${defaultShiftType}". Update ShiftTracker's defaultShiftType to a valid enum value.`,
+        );
+      } else {
+        setErr(`${e?.code ? e.code + ": " : ""}${e?.message ?? "Failed to start shift"}`);
+      }
     } finally {
       setBusy(false);
     }
-  }, [busy, supabase, userId, insertPunch]);
+  }, [busy, supabase, userId, defaultShiftType, insertPunch]);
 
+  // End the current shift
   const endShift = useCallback(async () => {
     if (busy || !shiftId) return;
     setBusy(true);
     setErr(null);
-
     try {
       const now = new Date().toISOString();
       const { error } = await supabase
         .from("tech_shifts")
-        .update({ end_time: now }) // keep minimal; status can be derived
+        .update({ end_time: now, status: "ended" })
         .eq("id", shiftId);
-
       if (error) throw error;
-
       await insertPunch("end");
       setShiftId(null);
       setStartTime(null);
       setStatus("ended");
     } catch (e: any) {
-      const message =
-        e?.message ?? (typeof e === "string" ? e : "Failed to end shift");
-      const code = e?.code ? `${e.code}: ` : "";
-      setErr(`${code}${message}`);
+      setErr(`${e?.code ? e.code + ": " : ""}${e?.message ?? "Failed to end shift"}`);
     } finally {
       setBusy(false);
     }
   }, [busy, supabase, shiftId, insertPunch]);
 
+  // Break toggle
   const handleBreak = useCallback(async () => {
     if (busy || !shiftId) return;
     setBusy(true);
     setErr(null);
     try {
       if (status === "break") {
-        const { error: pe } = await supabase
-          .from("punch_events")
-          .insert({
-            shift_id: shiftId,
-            user_id: userId,
-            type: "break_end",
-            timestamp: new Date().toISOString(),
-          });
-        if (pe) throw pe;
+        const { error } = await supabase.from("punch_events").insert({
+          shift_id: shiftId,
+          user_id: userId,
+          type: "break_end",
+          timestamp: new Date().toISOString(),
+        });
+        if (error) throw error;
+        await supabase.from("tech_shifts").update({ status: "active" }).eq("id", shiftId);
         setStatus("active");
       } else {
-        const { error: pe } = await supabase
-          .from("punch_events")
-          .insert({
-            shift_id: shiftId,
-            user_id: userId,
-            type: "break_start",
-            timestamp: new Date().toISOString(),
-          });
-        if (pe) throw pe;
+        const { error } = await supabase.from("punch_events").insert({
+          shift_id: shiftId,
+          user_id: userId,
+          type: "break_start",
+          timestamp: new Date().toISOString(),
+        });
+        if (error) throw error;
+        await supabase.from("tech_shifts").update({ status: "break" }).eq("id", shiftId);
         setStatus("break");
       }
     } catch (e: any) {
-      const message =
-        e?.message ?? (typeof e === "string" ? e : "Failed to toggle break");
-      const code = e?.code ? `${e.code}: ` : "";
-      setErr(`${code}${message}`);
+      setErr(`${e?.code ? e.code + ": " : ""}${e?.message ?? "Failed to toggle break"}`);
     } finally {
       setBusy(false);
     }
   }, [busy, supabase, shiftId, status, userId]);
 
+  // Lunch toggle
   const handleLunch = useCallback(async () => {
     if (busy || !shiftId) return;
     setBusy(true);
     setErr(null);
     try {
       if (status === "lunch") {
-        const { error: pe } = await supabase
-          .from("punch_events")
-          .insert({
-            shift_id: shiftId,
-            user_id: userId,
-            type: "lunch_end",
-            timestamp: new Date().toISOString(),
-          });
-        if (pe) throw pe;
+        const { error } = await supabase.from("punch_events").insert({
+          shift_id: shiftId,
+          user_id: userId,
+          type: "lunch_end",
+          timestamp: new Date().toISOString(),
+        });
+        if (error) throw error;
+        await supabase.from("tech_shifts").update({ status: "active" }).eq("id", shiftId);
         setStatus("active");
       } else {
-        const { error: pe } = await supabase
-          .from("punch_events")
-          .insert({
-            shift_id: shiftId,
-            user_id: userId,
-            type: "lunch_start",
-            timestamp: new Date().toISOString(),
-          });
-        if (pe) throw pe;
+        const { error } = await supabase.from("punch_events").insert({
+          shift_id: shiftId,
+          user_id: userId,
+          type: "lunch_start",
+          timestamp: new Date().toISOString(),
+        });
+        if (error) throw error;
+        await supabase.from("tech_shifts").update({ status: "lunch" }).eq("id", shiftId);
         setStatus("lunch");
       }
     } catch (e: any) {
-      const message =
-        e?.message ?? (typeof e === "string" ? e : "Failed to toggle lunch");
-      const code = e?.code ? `${e.code}: ` : "";
-      setErr(`${code}${message}`);
+      setErr(`${e?.code ? e.code + ": " : ""}${e?.message ?? "Failed to toggle lunch"}`);
     } finally {
       setBusy(false);
     }
@@ -264,8 +251,7 @@ export default function ShiftTracker({ userId }: { userId: string }) {
       )}
 
       <p>
-        <strong>Status:</strong>{" "}
-        <span className="capitalize">{status.replace("_", " ")}</span>
+        <strong>Status:</strong> <span className="capitalize">{status.replace("_", " ")}</span>
       </p>
 
       {status !== "none" && startTime && status !== "ended" && (
