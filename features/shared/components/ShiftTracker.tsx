@@ -13,16 +13,16 @@ type DB = Database;
  *  - tech_shifts(id, user_id, start_time, end_time, type, status, created_at)
  *  - punch_events(id, shift_id, user_id, event_type, timestamp, note, created_at, profile_id)
  *
- * tech_shifts CHECK constraints (from your DB):
+ * tech_shifts CHECK constraints (your DB):
  *   type    IN ('shift','break','lunch')
  *   status  IN ('active','completed')
  *
- * punch_events CHECK constraint:
+ * punch_events CHECK constraint (your DB):
  *   event_type IN ('start_shift','end_shift','break_start','break_end','lunch_start','lunch_end')
  */
 export default function ShiftTracker({
   userId,
-  defaultShiftType = "shift",
+  defaultShiftType = "shift", // must be 'shift' | 'break' | 'lunch'
 }: {
   userId: string;
   defaultShiftType?: "shift" | "break" | "lunch" | (string & {});
@@ -35,13 +35,13 @@ export default function ShiftTracker({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  /** Load the open shift and derive live UI status from the last punch. */
+  /** Load currently open shift (end_time IS NULL) and derive live status from latest punch. */
   const loadOpenShift = useCallback(async () => {
     setErr(null);
 
     const { data: shift, error: sErr } = await supabase
       .from("tech_shifts")
-      .select("*")
+      .select("id, start_time")
       .eq("user_id", userId)
       .is("end_time", null)
       .order("start_time", { ascending: false })
@@ -66,7 +66,7 @@ export default function ShiftTracker({
     setShiftId(shift.id);
     setStartTime(shift.start_time ?? null);
 
-    // derive from last punch (column is event_type)
+    // NOTE: your table uses "event_type"
     const { data: lastPunch } = await supabase
       .from("punch_events")
       .select("event_type")
@@ -90,23 +90,22 @@ export default function ShiftTracker({
     void loadOpenShift();
   }, [userId, loadOpenShift]);
 
-  /** Allowed event types from the DB check constraint. */
-  type PunchEvent =
-    | "start_shift"
-    | "end_shift"
-    | "break_start"
-    | "break_end"
-    | "lunch_start"
-    | "lunch_end";
-
-  /** Insert a punch event (uses event_type). */
+  /** Insert a punch event (matches punch_events schema). */
   const insertPunch = useCallback(
-    async (event: PunchEvent) => {
+    async (
+      event:
+        | "start_shift"
+        | "end_shift"
+        | "break_start"
+        | "break_end"
+        | "lunch_start"
+        | "lunch_end",
+    ) => {
       if (!shiftId) return;
       const { error } = await supabase.from("punch_events").insert({
         shift_id: shiftId,
-        user_id: userId,
-        event_type: event, // 👈 correct column & allowed values
+        user_id: userId, // profile_id exists but is nullable; user_id is fine
+        event_type: event, // 👈 must match your CHECK constraint values
         timestamp: new Date().toISOString(),
       });
       if (error) setErr(`${error.code ?? "punch_error"}: ${error.message}`);
@@ -120,7 +119,7 @@ export default function ShiftTracker({
     setErr(null);
 
     try {
-      // already open?
+      // If an open shift already exists, hydrate and stop.
       const { data: existing, error: exErr } = await supabase
         .from("tech_shifts")
         .select("id, start_time")
@@ -139,13 +138,14 @@ export default function ShiftTracker({
 
       const now = new Date().toISOString();
 
+      // include NOT NULLs + values that pass your CHECK constraints
       const { data, error } = await supabase
         .from("tech_shifts")
         .insert({
           user_id: userId,
           start_time: now,
           type: defaultShiftType, // 'shift' | 'break' | 'lunch'
-          status: "active", // 'active' | 'completed'
+          status: "active",       // 'active' | 'completed'
           end_time: null,
         })
         .select()
@@ -178,7 +178,7 @@ export default function ShiftTracker({
       const now = new Date().toISOString();
       const { error } = await supabase
         .from("tech_shifts")
-        .update({ end_time: now, status: "completed" })
+        .update({ end_time: now, status: "completed" }) // close with a valid status
         .eq("id", shiftId);
 
       if (error) throw error;
@@ -236,14 +236,13 @@ export default function ShiftTracker({
     }
   }, [busy, supabase, shiftId, status, insertPunch]);
 
-  // --- outlined button styles (keep each button's color via border) ---
+  // --- Outline button styles (hollow, white text, colored borders)
   const btnBase =
-    "px-4 py-2 rounded text-sm font-semibold disabled:opacity-60 transition-colors border";
+    "rounded border px-4 py-2 text-white transition-colors bg-transparent hover:bg-white/5 focus:outline-none";
   const btnOutline = {
-    green: `${btnBase} border-green-600 text-white hover:bg-green-900/10`,
-    yellow: `${btnBase} border-yellow-500 text-white hover:bg-yellow-900/10`,
-    orange: `${btnBase} border-orange-500 text-white hover:bg-orange-900/10`,
-    red: `${btnBase} border-red-600 text-white hover:bg-red-900/10`,
+    yellow: `${btnBase} border-yellow-500`,
+    orange: `${btnBase} border-orange-500`,
+    red: `${btnBase} border-red-500`,
   };
 
   return (
@@ -267,22 +266,42 @@ export default function ShiftTracker({
       )}
 
       {status === "none" && (
-        <button className={btnOutline.green} onClick={startShift} disabled={busy}>
+        <button
+          className={`${btnOutline.yellow} w-full py-3 text-base`}
+          onClick={startShift}
+          disabled={busy}
+        >
           {busy ? "Starting…" : "Start Shift"}
         </button>
       )}
 
       {status !== "none" && status !== "ended" && (
-        <div className="flex flex-wrap gap-2">
-          <button className={btnOutline.yellow} onClick={handleBreak} disabled={busy}>
-            {status === "break" ? "End Break" : "Break"}
-          </button>
+        <div className="space-y-3">
+          {/* Break + Lunch row (wide, equal) */}
+          <div className="flex gap-3">
+            <button
+              className={`${btnOutline.yellow} flex-1 py-3 text-base`}
+              onClick={handleBreak}
+              disabled={busy}
+            >
+              {status === "break" ? "End Break" : "Break"}
+            </button>
 
-          <button className={btnOutline.orange} onClick={handleLunch} disabled={busy}>
-            {status === "lunch" ? "End Lunch" : "Lunch"}
-          </button>
+            <button
+              className={`${btnOutline.orange} flex-1 py-3 text-base`}
+              onClick={handleLunch}
+              disabled={busy}
+            >
+              {status === "lunch" ? "End Lunch" : "Lunch"}
+            </button>
+          </div>
 
-          <button className={`${btnOutline.red} ml-auto`} onClick={endShift} disabled={busy}>
+          {/* End Shift below (full width) */}
+          <button
+            className={`${btnOutline.red} w-full py-3 text-base`}
+            onClick={endShift}
+            disabled={busy}
+          >
             End Shift
           </button>
         </div>
