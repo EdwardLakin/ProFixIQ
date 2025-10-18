@@ -1,1 +1,0 @@
-export { default, dynamic, revalidate } from "../../bookings/page";

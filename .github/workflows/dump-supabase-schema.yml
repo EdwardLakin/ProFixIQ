@@ -2,10 +2,10 @@ name: Dump Supabase Schema
 on:
   workflow_dispatch: {}
   schedule:
-    - cron: "0 7 * * *"   # 07:00 UTC daily
+    - cron: "0 7 * * *"
 
 permissions:
-  contents: write          # allow committing schema files back
+  contents: write
 
 jobs:
   dump:
@@ -13,20 +13,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 1) Supabase CLI
-      - uses: supabase/setup-cli@v1
-      - run: supabase --version
-
-      # 2) Dump schema (no data)
-      - name: Dump schema.sql
-        run: supabase db dump --schema-only --db-url "${{ secrets.SUPABASE_DB_URL }}" --file supabase/schema.sql
-
-      # 3) Dump RLS/policies (handy for quick reading)
-      - name: Install psql client
+      - name: Install PostgreSQL client (psql, pg_dump)
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
-      - name: Dump policy_report.txt
+
+      - name: Dump schema.sql (pg_dump)
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
-          psql "${{ secrets.SUPABASE_DB_URL }}" -XAt -c "
+          set -euo pipefail
+          if [ -z "$DB_URL" ]; then echo 'Missing SUPABASE_DB_URL secret' && exit 1; fi
+          pg_dump --schema-only --no-owner --no-privileges "$DB_URL" > supabase/schema.sql
+
+      - name: Dump policy_report.txt (psql)
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          mkdir -p supabase
+          psql "$DB_URL" -XAt -c "
             select pol.polname as policy_name,
                    rel.relname as table_name,
                    pol.cmd as command,
@@ -40,12 +44,10 @@ jobs:
             order by rel.relname, pol.polname;
           " > supabase/policy_report.txt
 
-      # 4) Commit changes
-      - name: Commit changes (if any)
+      - name: Commit changes
         run: |
           git config user.name "schema-bot"
           git config user.email "schema-bot@example.com"
           git add supabase/schema.sql supabase/policy_report.txt || true
-          git commit -m "chore(schema): update dump" || echo "No changes to commit"
+          git commit -m "chore(schema): update dump via pg_dump+psql" || echo "No changes to commit"
           git push || true
-          

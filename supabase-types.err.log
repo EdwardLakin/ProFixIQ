@@ -1,5 +1,0 @@
-Using project host: supabase.co
-Supabase CLI 2.40.6
-Loading project ref from flag: ogwibaxeczgqfjkckyit
-Using access token from env var...
-2025/09/09 03:06:17 HTTP GET: https://api.supabase.com/v1/projects/ogwibaxeczgqfjkckyit/types/typescript?included_schemas=public%2Cstorage%2Cauth

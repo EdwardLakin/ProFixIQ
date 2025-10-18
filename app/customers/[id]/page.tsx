@@ -1,1 +1,0 @@
-export { default } from "@/features/customers/app/customers/[id]/page";
