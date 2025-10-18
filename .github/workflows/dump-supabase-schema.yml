@@ -5,41 +5,55 @@ on:
   schedule:
     - cron: "0 6 * * *"  # daily at 06:00 UTC
 
+permissions:
+  contents: write
+
 jobs:
   dump:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
+      # Not required for pg_dump, keep only if you use it elsewhere.
       - uses: supabase/setup-cli@v1
 
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
       - name: Dump schema.sql
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y postgresql-client
-          export DB_URL="${{ secrets.SUPABASE_DB_URL }}"
-          pg_dump --schema public --no-owner --no-privileges "$DB_URL" > supabase/schema.sql
+          set -euo pipefail
+          mkdir -p supabase
+          # Schema-only dump of public (add more --schema lines if needed)
+          pg_dump --schema-only --schema=public --no-owner --no-privileges "$DB_URL" > supabase/schema.sql
+          # Example to include more:
+          # pg_dump --schema-only --schema=public --schema=storage --schema=auth --no-owner --no-privileges "$DB_URL" > supabase/schema.sql
 
       - name: Policy report
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
-          export DB_URL="${{ secrets.SUPABASE_DB_URL }}"
-          psql "$DB_URL" -c "
+          set -euo pipefail
+          psql "$DB_URL" -XAt -c "
             with pol as (
               select polname policy_name, relname table_name,
                      relnamespace::regnamespace schema_name,
                      polcmd command, polpermissive permissive,
                      pg_get_expr(polqual, polrelid) using_expression,
                      pg_get_expr(polwithcheck, polrelid) with_check
-            from pg_policy join pg_class c on polrelid = c.oid )
+              from pg_policy join pg_class c on polrelid = c.oid
+            )
             select schema_name, table_name, policy_name, command, permissive, using_expression, with_check
             from pol
-            order by schema_name, table_name, policy_name;" \
-          | tee supabase/policy_report.txt
+            order by schema_name, table_name, policy_name;
+          " > supabase/policy_report.txt
 
       - name: Commit changes
         run: |
           git config user.name "schema-bot"
           git config user.email "schema-bot@example.com"
-          git add supabase/schema.sql supabase/policy_report.txt
+          git add supabase/schema.sql supabase/policy_report.txt || true
           git commit -m "chore(schema): update dump via pg_dump" || echo "No changes to commit"
           git push || true
