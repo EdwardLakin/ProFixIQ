@@ -13,20 +13,43 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 1) Supabase CLI
+      # Ensure target folder exists (prevents 'No such file or directory')
+      - name: Prepare folder
+        run: mkdir -p supabase
+
+      # Check that the secret is available
+      - name: Check SUPABASE_DB_URL secret
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "${DB_URL:-}" ]; then
+            echo "❌ Missing SUPABASE_DB_URL secret"
+            exit 1
+          fi
+          echo "✅ SUPABASE_DB_URL secret found"
+
+      # Install latest Supabase CLI (fixes schema-only flag)
       - uses: supabase/setup-cli@v1
+        with:
+          version: latest
       - run: supabase --version
 
-      # 2) Dump schema (no data)
+      # Dump schema (no data)
       - name: Dump schema.sql
-        run: supabase db dump --schema-only --db-url "${{ secrets.SUPABASE_DB_URL }}" --file supabase/schema.sql
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: supabase db dump --schema-only --db-url "$DB_URL" --file supabase/schema.sql
 
-      # 3) Dump RLS/policies (handy for quick reading)
+      # Install psql to dump policies
       - name: Install psql client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      # Dump RLS/policies for quick reading
       - name: Dump policy_report.txt
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
-          psql "${{ secrets.SUPABASE_DB_URL }}" -XAt -c "
+          psql "$DB_URL" -XAt -c "
             select pol.polname as policy_name,
                    rel.relname as table_name,
                    pol.cmd as command,
@@ -40,12 +63,11 @@ jobs:
             order by rel.relname, pol.polname;
           " > supabase/policy_report.txt
 
-      # 4) Commit changes
-      - name: Commit changes (if any)
+      # Commit any changes (idempotent, safe to re-run)
+      - name: Commit schema dump (if changed)
         run: |
           git config user.name "schema-bot"
           git config user.email "schema-bot@example.com"
           git add supabase/schema.sql supabase/policy_report.txt || true
           git commit -m "chore(schema): update dump" || echo "No changes to commit"
           git push || true
-          
