@@ -1,4 +1,4 @@
-name: dump
+name: Dump Supabase Schema
 
 on:
   workflow_dispatch:
@@ -14,46 +14,44 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Not required for pg_dump, keep only if you use it elsewhere.
+      # Install Supabase CLI
       - uses: supabase/setup-cli@v1
 
-      - name: Install PostgreSQL client
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Verify Supabase CLI
+        run: supabase --version
 
-      - name: Dump schema.sql
+      - name: Dump schema.sql using Supabase CLI
         env:
           DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           set -euo pipefail
           mkdir -p supabase
-          # Schema-only dump of public (add more --schema lines if needed)
-          pg_dump --schema-only --schema=public --no-owner --no-privileges "$DB_URL" > supabase/schema.sql
-          # Example to include more:
-          # pg_dump --schema-only --schema=public --schema=storage --schema=auth --no-owner --no-privileges "$DB_URL" > supabase/schema.sql
+          # Correct Supabase CLI usage — no invalid flags
+          supabase db dump --db-url "$DB_URL" --schema public --file supabase/schema.sql
 
-      - name: Policy report
+      - name: Dump RLS policy report
         env:
           DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           set -euo pipefail
           psql "$DB_URL" -XAt -c "
-            with pol as (
-              select polname policy_name, relname table_name,
-                     relnamespace::regnamespace schema_name,
-                     polcmd command, polpermissive permissive,
-                     pg_get_expr(polqual, polrelid) using_expression,
-                     pg_get_expr(polwithcheck, polrelid) with_check
-              from pg_policy join pg_class c on polrelid = c.oid
-            )
-            select schema_name, table_name, policy_name, command, permissive, using_expression, with_check
-            from pol
-            order by schema_name, table_name, policy_name;
+            select pol.polname as policy_name,
+                   rel.relname as table_name,
+                   pol.cmd as command,
+                   pol.permissive,
+                   pg_get_expr(pol.qual, pol.relid) as using_expression,
+                   pg_get_expr(pol.with_check, pol.relid) as with_check
+            from pg_policy pol
+            join pg_class rel on rel.oid = pol.relid
+            join pg_namespace nsp on nsp.oid = rel.relnamespace
+            where nsp.nspname = 'public'
+            order by rel.relname, pol.polname;
           " > supabase/policy_report.txt
 
-      - name: Commit changes
+      - name: Commit and push schema updates
         run: |
           git config user.name "schema-bot"
           git config user.email "schema-bot@example.com"
           git add supabase/schema.sql supabase/policy_report.txt || true
-          git commit -m "chore(schema): update dump via pg_dump" || echo "No changes to commit"
+          git commit -m "chore(schema): update schema and RLS policy dump" || echo "No changes to commit"
           git push || true
