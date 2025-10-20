@@ -1,9 +1,0 @@
-node_modules\n.env\n.env.local\n.DS_Store\nout\n.next
-node_modules\
-.env
-.env.local
-.env.*.local
-supabase/secrets.ts
-node_modules/
-node_modules/
-sendgrid.env
