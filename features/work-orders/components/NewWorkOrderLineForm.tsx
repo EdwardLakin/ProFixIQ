@@ -40,9 +40,9 @@ export function NewWorkOrderLineForm(props: {
   }
 
   async function ensureShopContext() {
+    // Optional: only if you have RPC set_current_shop_id(p_shop_id uuid)
     if (!shopId) return;
     if (lastSetShopId.current === shopId) return;
-    // Sets app.current_shop_id for RLS (current_shop_id())
     const { error } = await supabase.rpc("set_current_shop_id", { p_shop_id: shopId });
     if (!error) lastSetShopId.current = shopId;
     else throw error;
@@ -70,7 +70,7 @@ export function NewWorkOrderLineForm(props: {
         labor_time: labor ? Number(labor) : null,
         status: status ?? "awaiting",
         job_type: normalizeJobType(jobType),
-        // RLS: wol_shop_insert → (shop_id = current_shop_id())
+        // RLS: if your policy checks shop_id directly, this satisfies it
         shop_id: shopId ?? null,
       };
 
@@ -80,8 +80,7 @@ export function NewWorkOrderLineForm(props: {
           setErr("This job type isn’t allowed by the database. Pick another type.");
         } else if (/row-level security/i.test(error.message) || /current_shop_id/i.test(error.message)) {
           setErr("Shop mismatch: your session isn’t scoped to this shop. Try again.");
-          // Clear memo so next attempt re-sets the GUC
-          lastSetShopId.current = null;
+          lastSetShopId.current = null; // reattempt will reset GUC
         } else {
           setErr(error.message);
         }
@@ -96,6 +95,9 @@ export function NewWorkOrderLineForm(props: {
       setStatus("awaiting");
       setJobType(defaultJobType ?? null);
       onCreated?.();
+
+      // let other components refresh
+      window.dispatchEvent(new CustomEvent("wo:line-added"));
     } catch (e: any) {
       setErr(e?.message ?? "Failed to add line.");
       lastSetShopId.current = null;
@@ -105,55 +107,55 @@ export function NewWorkOrderLineForm(props: {
   }
 
   return (
-    <div className="rounded border border-neutral-800 bg-neutral-950 p-3 text-sm text-white">
+    <div className="rounded border border-neutral-200 p-3 text-sm">
       <div className="grid gap-2 sm:grid-cols-2">
         <div className="sm:col-span-2">
-          <label className="block text-xs text-neutral-400 mb-1">Complaint</label>
+          <label className="block text-xs text-neutral-600 mb-1">Complaint</label>
           <input
             value={complaint}
             onChange={(e) => setComplaint(e.target.value)}
-            className="w-full rounded border border-neutral-700 bg-neutral-900 p-2"
+            className="w-full rounded border border-neutral-300 p-2"
             placeholder="Describe the issue"
           />
         </div>
 
         <div>
-          <label className="block text-xs text-neutral-400 mb-1">Cause</label>
+          <label className="block text-xs text-neutral-600 mb-1">Cause</label>
           <input
             value={cause}
             onChange={(e) => setCause(e.target.value)}
-            className="w-full rounded border border-neutral-700 bg-neutral-900 p-2"
+            className="w-full rounded border border-neutral-300 p-2"
             placeholder="Root cause (optional)"
           />
         </div>
 
         <div>
-          <label className="block text-xs text-neutral-400 mb-1">Correction</label>
+          <label className="block text-xs text-neutral-600 mb-1">Correction</label>
           <input
             value={correction}
             onChange={(e) => setCorrection(e.target.value)}
-            className="w-full rounded border border-neutral-700 bg-neutral-900 p-2"
+            className="w-full rounded border border-neutral-300 p-2"
             placeholder="What to do (optional)"
           />
         </div>
 
         <div>
-          <label className="block text-xs text-neutral-400 mb-1">Labor (hrs)</label>
+          <label className="block text-xs text-neutral-600 mb-1">Labor (hrs)</label>
           <input
             inputMode="decimal"
             value={labor}
             onChange={(e) => setLabor(e.target.value)}
-            className="w-full rounded border border-neutral-700 bg-neutral-900 p-2"
+            className="w-full rounded border border-neutral-300 p-2"
             placeholder="0.0"
           />
         </div>
 
         <div>
-          <label className="block text-xs text-neutral-400 mb-1">Status</label>
+          <label className="block text-xs text-neutral-600 mb-1">Status</label>
           <select
             value={status ?? "awaiting"}
             onChange={(e) => setStatus(e.target.value as InsertLine["status"])}
-            className="w-full rounded border border-neutral-700 bg-neutral-900 p-2"
+            className="w-full rounded border border-neutral-300 p-2"
           >
             <option value="awaiting">Awaiting</option>
             <option value="in_progress">In Progress</option>
@@ -165,11 +167,11 @@ export function NewWorkOrderLineForm(props: {
         </div>
 
         <div>
-          <label className="block text-xs text-neutral-400 mb-1">Job type</label>
+          <label className="block text-xs text-neutral-600 mb-1">Job type</label>
           <select
             value={jobType ?? ""}
             onChange={(e) => setJobType((e.target.value || null) as WOJobType | null)}
-            className="w-full rounded border border-neutral-700 bg-neutral-900 p-2"
+            className="w-full rounded border border-neutral-300 p-2"
           >
             <option value="">—</option>
             <option value="diagnosis">Diagnosis</option>
@@ -180,13 +182,13 @@ export function NewWorkOrderLineForm(props: {
         </div>
       </div>
 
-      {err && <div className="mt-2 text-red-400">{err}</div>}
+      {err && <div className="mt-2 text-red-600">{err}</div>}
 
       <div className="mt-3 flex justify-end">
         <button
           disabled={!canSave || busy}
           onClick={addLine}
-          className="rounded bg-orange-500 px-3 py-1 font-semibold text-black disabled:opacity-60"
+          className="rounded bg-neutral-900 text-white px-3 py-1 font-semibold disabled:opacity-60"
         >
           {busy ? "Adding…" : "Add Line"}
         </button>
