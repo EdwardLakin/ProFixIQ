@@ -32,19 +32,26 @@ export async function adjustStock(input: {
   location_id: string;
   qty_change: number;
   reason: "receive" | "adjust" | "return";
-  reference_kind?: string;
-  reference_id?: string;
+  reference_kind?: string | null; // caller may give null, we’ll convert to undefined
+  reference_id?: string | null;
 }) {
   const supabase = createServerActionClient<DB>({ cookies });
+
   const { data, error } = await supabase.rpc("apply_stock_move", {
     p_part: input.part_id,
     p_loc: input.location_id,
     p_qty: input.qty_change,
     p_reason: input.reason,
-    p_ref_kind: input.reference_kind ?? null,
-    p_ref_id: input.reference_id ?? null,
+    // IMPORTANT: pass undefined (not null) for optional RPC params
+    p_ref_kind: input.reference_kind ?? undefined,
+    p_ref_id: input.reference_id ?? undefined,
   });
+
   if (error) throw error;
+
+  // apply_stock_move RETURNS TABLE(id uuid) → TS sees `{ id: string }[]`
+  const id =
+    Array.isArray(data) ? (data[0]?.id as string | undefined) : (data as unknown as { id?: string })?.id;
   revalidatePath(`/parts/${input.part_id}`);
-  return data as string;
+  return id ?? "";
 }

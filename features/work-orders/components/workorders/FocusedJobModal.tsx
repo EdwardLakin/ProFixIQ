@@ -35,6 +35,10 @@ import SuggestedQuickAdd from "@work-orders/components/SuggestedQuickAdd";
 // NEW: Punch button with visual confirm + finish→modal
 import JobPunchButton from "@/features/work-orders/components/JobPunchButton";
 
+// NEW: Use Part button (opens picker, consumes stock) + nicety list support
+import { UsePartButton } from "@work-orders/components/UsePartButton";
+import type { Database } from "@shared/types/types/supabase";
+
 type Mode = "tech" | "view";
 
 const statusTextColor: Record<string, string> = {
@@ -58,6 +62,11 @@ const outlineWarn = `${outlineBtn} border-amber-600 text-amber-300 hover:bg-ambe
 const outlineDanger = `${outlineBtn} border-red-600 text-red-300 hover:bg-red-900/20`;
 const outlineInfo = `${outlineBtn} border-blue-600 text-blue-300 hover:bg-blue-900/20`;
 const outlinePurple = `${outlineBtn} border-purple-600 text-purple-300 hover:bg-purple-900/20`;
+
+type DB = Database;
+type AllocationRow = DB["public"]["Tables"]["work_order_part_allocations"]["Row"] & {
+  parts?: { name: string | null } | null;
+};
 
 export default function FocusedJobModal(props: any) {
   const {
@@ -98,6 +107,10 @@ export default function FocusedJobModal(props: any) {
   const [openContact, setOpenContact] = useState(false);
   const [openChat, setOpenChat] = useState(false);
   const [openAddJob, setOpenAddJob] = useState(false);
+
+  // NEW: parts used nicety
+  const [allocs, setAllocs] = useState<AllocationRow[]>([]);
+  const [allocsLoading, setAllocsLoading] = useState(false);
 
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
@@ -150,6 +163,38 @@ export default function FocusedJobModal(props: any) {
     })();
   }, [isOpen, workOrderLineId, supabase]);
 
+  // NEW: load allocations for this line
+  const loadAllocations = async () => {
+    if (!workOrderLineId) return;
+    setAllocsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("work_order_part_allocations")
+        .select("*, parts(name)")
+        .eq("work_order_line_id", workOrderLineId)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      setAllocs((data as AllocationRow[]) ?? []);
+    } catch (e: any) {
+      // be quiet in UI; log for debugging
+      // eslint-disable-next-line no-console
+      console.warn("[FocusedJob] load allocations failed", e?.message);
+    } finally {
+      setAllocsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isOpen || !workOrderLineId) return;
+    void loadAllocations();
+
+    // refresh when parts are used anywhere (our UsePartButton emits this)
+    const h = () => loadAllocations();
+    window.addEventListener("wo:parts-used", h);
+    return () => window.removeEventListener("wo:parts-used", h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, workOrderLineId]);
+
   useEffect(() => {
     if (!isOpen) return;
     const t = setInterval(() => {
@@ -186,6 +231,7 @@ export default function FocusedJobModal(props: any) {
     setLine(l ?? null);
     setTechNotes(l?.notes ?? "");
     await onChanged?.();
+    await loadAllocations(); // keep nicety list fresh
   };
 
   const showErr = (prefix: string, err?: { message?: string } | null) => {
@@ -597,6 +643,42 @@ export default function FocusedJobModal(props: any) {
                         Chat
                       </button>
                     </>
+                  )}
+                </div>
+
+                {/* NEW: Parts used + Use Part inline */}
+                <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <div className="text-sm font-header">Parts used</div>
+                    {line?.id && (
+                      <UsePartButton
+                        workOrderLineId={line.id}
+                        onApplied={() => {
+                          window.dispatchEvent(new CustomEvent("wo:parts-used"));
+                          void refresh();
+                        }}
+                      />
+                    )}
+                  </div>
+
+                  {allocsLoading ? (
+                    <div className="text-sm text-neutral-400">Loading…</div>
+                  ) : allocs.length === 0 ? (
+                    <div className="text-sm text-neutral-400">No parts used yet.</div>
+                  ) : (
+                    <ul className="divide-y divide-neutral-800 rounded border border-neutral-800 text-sm">
+                      {allocs.map((a) => (
+                        <li key={a.id} className="flex items-center justify-between p-2">
+                          <div className="min-w-0">
+                            <div className="truncate">{a.parts?.name ?? "Part"}</div>
+                            <div className="text-xs text-neutral-500">
+                              loc {String(a.location_id).slice(0, 6)}…
+                            </div>
+                          </div>
+                          <div className="pl-3 font-semibold">× {a.qty}</div>
+                        </li>
+                      ))}
+                    </ul>
                   )}
                 </div>
 

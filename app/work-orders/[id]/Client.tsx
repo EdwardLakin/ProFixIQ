@@ -30,12 +30,17 @@ import { useTabState } from "@/features/shared/hooks/useTabState";
 import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
 import VoiceButton from "@/features/shared/voice/VoiceButton";
 
-/* --------------------------------- Types --------------------------------- */
+// NEW: Use Part button on list + allocations nicety
+import { UsePartButton } from "@work-orders/components/UsePartButton";
+
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
+type AllocationRow = DB["public"]["Tables"]["work_order_part_allocations"]["Row"] & {
+  parts?: { name: string | null } | null;
+};
 
 const looksLikeUuid = (s: string) => s.includes("-") && s.length >= 36;
 
@@ -88,6 +93,9 @@ export default function WorkOrderIdClient(): JSX.Element {
   const [lines, setLines] = useTabState<WorkOrderLine[]>("wo:id:lines", []);
   const [vehicle, setVehicle] = useTabState<Vehicle | null>("wo:id:veh", null);
   const [customer, setCustomer] = useTabState<Customer | null>("wo:id:cust", null);
+
+  // NEW: parts allocations by line (map)
+  const [allocsByLine, setAllocsByLine] = useState<Record<string, AllocationRow[]>>({});
 
   // UI state
   const [loading, setLoading] = useState<boolean>(false); // start false; fetch toggles it
@@ -220,6 +228,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           setLines([]);
           setVehicle(null);
           setCustomer(null);
+          setAllocsByLine({});
           setLoading(false);
           return;
         }
@@ -246,13 +255,31 @@ export default function WorkOrderIdClient(): JSX.Element {
         ]);
 
         if (linesRes.error) throw linesRes.error;
-        setLines((linesRes.data ?? []) as WorkOrderLine[]);
+        const lineRows = (linesRes.data ?? []) as WorkOrderLine[];
+        setLines(lineRows);
 
         if (vehRes?.error) throw vehRes.error;
         setVehicle((vehRes?.data as Vehicle | null) ?? null);
 
         if (custRes?.error) throw custRes.error;
         setCustomer((custRes?.data as Customer | null) ?? null);
+
+        // NEW: allocations by line (nicety)
+        if (lineRows.length) {
+          const { data: allocs } = await supabase
+            .from("work_order_part_allocations")
+            .select("*, parts(name)")
+            .in("work_order_line_id", lineRows.map((l) => l.id));
+          const byLine: Record<string, AllocationRow[]> = {};
+          (allocs ?? []).forEach((a) => {
+            const key = (a as AllocationRow).work_order_line_id;
+            if (!byLine[key]) byLine[key] = [];
+            byLine[key].push(a as AllocationRow);
+          });
+          setAllocsByLine(byLine);
+        } else {
+          setAllocsByLine({});
+        }
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "Failed to load work order.";
         setViewError(msg);
@@ -287,7 +314,17 @@ export default function WorkOrderIdClient(): JSX.Element {
         { event: "*", schema: "public", table: "work_order_lines", filter: `work_order_id=eq.${wo.id}` },
         () => fetchAll(),
       )
+      // keep allocations in sync too
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "work_order_part_allocations" },
+        () => fetchAll(),
+      )
       .subscribe();
+
+    // Also refresh on local events fired by UsePartButton
+    const local = () => fetchAll();
+    window.addEventListener("wo:parts-used", local);
 
     return () => {
       try {
@@ -295,6 +332,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       } catch {
         /* ignore */
       }
+      window.removeEventListener("wo:parts-used", local);
     };
   }, [supabase, wo?.id, fetchAll]);
 
@@ -469,17 +507,19 @@ export default function WorkOrderIdClient(): JSX.Element {
                     const tintCls = statusRowTint[statusKey] || "bg-neutral-950";
                     const punchedIn = !!ln.punched_in_at && !ln.punched_out_at;
 
+                    const partsForLine = allocsByLine[ln.id] ?? [];
+
                     return (
                       <div
                         key={ln.id}
                         className={`rounded border border-neutral-800 ${tintCls} p-3 ${borderCls} ${
                           punchedIn ? "ring-2 ring-orange-500" : ""
-                        } cursor-pointer`}
+                        }`}
+                        title="Open focused job"
                         onClick={() => {
                           setFocusedJobId(ln.id);
                           setFocusedOpen(true);
                         }}
-                        title="Open focused job"
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
@@ -498,7 +538,38 @@ export default function WorkOrderIdClient(): JSX.Element {
                                 {ln.correction ? <span>| Corr: {ln.correction}</span> : null}
                               </div>
                             )}
+
+                            {/* NEW: parts used nicety */}
+                            <div className="mt-2 rounded border border-neutral-800 bg-neutral-950 p-2">
+                              <div className="mb-1 flex items-center justify-between">
+                                <div className="text-xs font-semibold text-neutral-300">Parts used</div>
+                                <div className="shrink-0">
+                                  <UsePartButton
+                                    workOrderLineId={ln.id}
+                                    onApplied={() => window.dispatchEvent(new CustomEvent("wo:parts-used"))}
+                                  />
+                                </div>
+                              </div>
+                              {partsForLine.length ? (
+                                <ul className="divide-y divide-neutral-800 rounded border border-neutral-800 text-sm">
+                                  {partsForLine.map((a) => (
+                                    <li key={a.id} className="flex items-center justify-between p-2">
+                                      <div className="min-w-0">
+                                        <div className="truncate">{a.parts?.name ?? "Part"}</div>
+                                        <div className="text-xs text-neutral-500">
+                                          loc {String(a.location_id).slice(0, 6)}…
+                                        </div>
+                                      </div>
+                                      <div className="pl-3 font-semibold">× {a.qty}</div>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <div className="text-xs text-neutral-500">No parts used yet.</div>
+                              )}
+                            </div>
                           </div>
+
                           <span className={chipClass(ln.status)}>
                             {(ln.status ?? "awaiting").replaceAll("_", " ")}
                           </span>

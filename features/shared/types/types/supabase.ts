@@ -1763,6 +1763,51 @@ export type Database = {
           },
         ]
       }
+      part_stock: {
+        Row: {
+          id: string
+          location_id: string
+          part_id: string
+          qty_on_hand: number
+          qty_reserved: number
+          reorder_point: number | null
+          reorder_qty: number | null
+        }
+        Insert: {
+          id?: string
+          location_id: string
+          part_id: string
+          qty_on_hand?: number
+          qty_reserved?: number
+          reorder_point?: number | null
+          reorder_qty?: number | null
+        }
+        Update: {
+          id?: string
+          location_id?: string
+          part_id?: string
+          qty_on_hand?: number
+          qty_reserved?: number
+          reorder_point?: number | null
+          reorder_qty?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "part_stock_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_stock_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       part_suppliers: {
         Row: {
           contact_info: string | null
@@ -2172,6 +2217,117 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purchase_order_items: {
+        Row: {
+          description: string | null
+          id: string
+          location_id: string | null
+          part_id: string
+          po_id: string
+          qty_ordered: number
+          qty_received: number
+          unit_cost: number
+        }
+        Insert: {
+          description?: string | null
+          id?: string
+          location_id?: string | null
+          part_id: string
+          po_id: string
+          qty_ordered: number
+          qty_received?: number
+          unit_cost?: number
+        }
+        Update: {
+          description?: string | null
+          id?: string
+          location_id?: string | null
+          part_id?: string
+          po_id?: string
+          qty_ordered?: number
+          qty_received?: number
+          unit_cost?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_order_items_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_order_items_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_order_items_po_id_fkey"
+            columns: ["po_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purchase_orders: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          expected_at: string | null
+          id: string
+          ordered_at: string | null
+          received_at: string | null
+          shipping_total: number | null
+          shop_id: string
+          status: string
+          subtotal: number | null
+          supplier_id: string
+          tax_total: number | null
+          total: number | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          expected_at?: string | null
+          id?: string
+          ordered_at?: string | null
+          received_at?: string | null
+          shipping_total?: number | null
+          shop_id: string
+          status?: string
+          subtotal?: number | null
+          supplier_id: string
+          tax_total?: number | null
+          total?: number | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          expected_at?: string | null
+          id?: string
+          ordered_at?: string | null
+          received_at?: string | null
+          shipping_total?: number | null
+          shop_id?: string
+          status?: string
+          subtotal?: number | null
+          supplier_id?: string
+          tax_total?: number | null
+          total?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_orders_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
         ]
@@ -2803,6 +2959,117 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      stock_locations: {
+        Row: {
+          code: string
+          id: string
+          name: string
+          shop_id: string
+        }
+        Insert: {
+          code: string
+          id?: string
+          name: string
+          shop_id: string
+        }
+        Update: {
+          code?: string
+          id?: string
+          name?: string
+          shop_id?: string
+        }
+        Relationships: []
+      }
+      stock_moves: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          location_id: string
+          part_id: string
+          qty_change: number
+          reason: Database["public"]["Enums"]["stock_move_reason"]
+          reference_id: string | null
+          reference_kind: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          location_id: string
+          part_id: string
+          qty_change: number
+          reason: Database["public"]["Enums"]["stock_move_reason"]
+          reference_id?: string | null
+          reference_kind?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          location_id?: string
+          part_id?: string
+          qty_change?: number
+          reason?: Database["public"]["Enums"]["stock_move_reason"]
+          reference_id?: string | null
+          reference_kind?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_moves_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_moves_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      suppliers: {
+        Row: {
+          account_no: string | null
+          created_at: string
+          created_by: string | null
+          email: string | null
+          id: string
+          is_active: boolean
+          name: string
+          notes: string | null
+          phone: string | null
+          shop_id: string
+        }
+        Insert: {
+          account_no?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          notes?: string | null
+          phone?: string | null
+          shop_id: string
+        }
+        Update: {
+          account_no?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          shop_id?: string
+        }
+        Relationships: []
       }
       tech_sessions: {
         Row: {
@@ -3674,6 +3941,65 @@ export type Database = {
           },
         ]
       }
+      work_order_part_allocations: {
+        Row: {
+          id: string
+          location_id: string
+          part_id: string
+          qty: number
+          stock_move_id: string | null
+          unit_cost: number
+          work_order_line_id: string
+        }
+        Insert: {
+          id?: string
+          location_id: string
+          part_id: string
+          qty: number
+          stock_move_id?: string | null
+          unit_cost?: number
+          work_order_line_id: string
+        }
+        Update: {
+          id?: string
+          location_id?: string
+          part_id?: string
+          qty?: number
+          stock_move_id?: string | null
+          unit_cost?: number
+          work_order_line_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_order_part_allocations_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_part_allocations_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_part_allocations_stock_move_id_fkey"
+            columns: ["stock_move_id"]
+            isOneToOne: false
+            referencedRelation: "stock_moves"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_part_allocations_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_lines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       work_order_parts: {
         Row: {
           created_at: string | null
@@ -3939,6 +4265,45 @@ export type Database = {
           },
         ]
       }
+      v_part_stock: {
+        Row: {
+          location_id: string | null
+          part_id: string | null
+          qty_available: number | null
+          qty_on_hand: number | null
+          qty_reserved: number | null
+        }
+        Insert: {
+          location_id?: string | null
+          part_id?: string | null
+          qty_available?: never
+          qty_on_hand?: number | null
+          qty_reserved?: number | null
+        }
+        Update: {
+          location_id?: string | null
+          part_id?: string | null
+          qty_available?: never
+          qty_on_hand?: number | null
+          qty_reserved?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "part_stock_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_stock_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       v_shift_rollups: {
         Row: {
           shift_id: string | null
@@ -3971,6 +4336,26 @@ export type Database = {
       agent_can_start: {
         Args: Record<PropertyKey, never>
         Returns: boolean
+      }
+      apply_stock_move: {
+        Args:
+          | {
+              p_loc: string
+              p_part: string
+              p_qty: number
+              p_reason: Database["public"]["Enums"]["stock_move_reason"]
+              p_ref_id?: string
+              p_ref_kind?: string
+            }
+          | {
+              p_loc: string
+              p_part: string
+              p_qty: number
+              p_reason: string
+              p_ref_id?: string
+              p_ref_kind?: string
+            }
+        Returns: string
       }
       approve_lines: {
         Args: {
@@ -4042,6 +4427,10 @@ export type Database = {
         Args: { _customer: string }
         Returns: boolean
       }
+      is_shop_member: {
+        Args: { p_shop: string }
+        Returns: boolean
+      }
       is_staff_for_shop: {
         Args: { _shop: string }
         Returns: boolean
@@ -4098,6 +4487,15 @@ export type Database = {
         | "lunch_end"
         | "end"
       shift_status: "active" | "ended"
+      stock_move_reason:
+        | "receive"
+        | "adjust"
+        | "consume"
+        | "return"
+        | "transfer_out"
+        | "transfer_in"
+        | "wo_allocate"
+        | "wo_release"
       user_role_enum:
         | "owner"
         | "admin"
@@ -4244,6 +4642,16 @@ export const Constants = {
         "end",
       ],
       shift_status: ["active", "ended"],
+      stock_move_reason: [
+        "receive",
+        "adjust",
+        "consume",
+        "return",
+        "transfer_out",
+        "transfer_in",
+        "wo_allocate",
+        "wo_release",
+      ],
       user_role_enum: [
         "owner",
         "admin",
