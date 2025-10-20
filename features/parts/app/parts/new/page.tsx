@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import { PartForm } from "@/features/parts/components/PartForm";
+import { PartForm } from "@parts/components/PartForm";
 
 type DB = Database;
 
