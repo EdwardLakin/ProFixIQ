@@ -14,24 +14,40 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install PostgreSQL client (pg_dump)
+      - name: Install PostgreSQL client (psql, pg_dump)
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      # --- Use discrete secrets (no URL encoding needed) ---
+      - name: Test DB connection (pooler)
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}     # e.g. aws-0-ca-central-1.pooler.supabase.com
+          DB_PORT: ${{ secrets.DB_PORT }}     # 6543
+          DB_USER: ${{ secrets.DB_USER }}     # postgres
+          DB_NAME: ${{ secrets.DB_NAME }}     # postgres
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          echo "Testing connection to $DB_HOST:$DB_PORT as $DB_USER..."
+          PGPASSWORD="$DB_PASSWORD" psql \
+            -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" \
+            -c '\conninfo' -X -q >/dev/null
+          echo "✅ Connection OK"
 
       - name: Dump schema.sql from Supabase
         env:
-          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
           set -euo pipefail
-          if [ -z "${DB_URL:-}" ]; then
-            echo "❌ Missing SUPABASE_DB_URL secret" && exit 1
-          fi
           mkdir -p supabase
-          pg_dump "$DB_URL" \
-            --schema-only \
-            --no-owner \
-            --no-privileges \
-            --quote-all-identifiers \
+          PGPASSWORD="$DB_PASSWORD" pg_dump \
+            -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" \
+            --schema-only --no-owner --no-privileges --quote-all-identifiers \
             > supabase/schema.sql
+          echo "✅ Dump wrote supabase/schema.sql"
 
       - name: Commit and push if changed
         run: |
