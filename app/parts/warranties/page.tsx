@@ -46,6 +46,15 @@ type Lookups = {
   work_orders: Record<string, { custom_id: string | null }>;
 };
 
+/* Minimal Part type for the picker (matches your parts table) */
+type PartLite = {
+  id: UUID;
+  shop_id: UUID | null;
+  name: string | null;
+  sku: string | null;
+  category: string | null;
+};
+
 /* ----------------------------- UI Helpers ----------------------------- */
 const outlineBtn =
   "font-header rounded border px-3 py-2 text-sm transition-colors";
@@ -53,6 +62,130 @@ const outlineNeutral = `${outlineBtn} border-neutral-700 text-neutral-200 hover:
 const outlineInfo = `${outlineBtn} border-blue-600 text-blue-300 hover:bg-blue-900/20`;
 
 type Tab = "active" | "expiring" | "expired" | "all";
+
+/* ===================================================================== */
+/*                        Part Picker (inline dialog)                     */
+/* ===================================================================== */
+function PartPickerDialog({
+  open,
+  onClose,
+  shopId,
+  onPick,
+}: {
+  open: boolean;
+  onClose: () => void;
+  shopId: string;
+  onPick: (p: PartLite) => void;
+}): JSX.Element | null {
+  const supabase = useMemo(() => createClientComponentClient(), []);
+  const [q, setQ] = useState<string>("");
+  const [rows, setRows] = useState<PartLite[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!open || !shopId) return;
+    let cancelled = false;
+    const run = async () => {
+      setLoading(true);
+      try {
+        // Base query
+        let query = supabase
+          .from("parts")
+          .select("id, shop_id, name, sku, category")
+          .eq("shop_id", shopId)
+          .order("name", { ascending: true })
+          .limit(50);
+
+        const term = q.trim();
+        if (term) {
+          query = query.or(
+            `name.ilike.%${term}%,sku.ilike.%${term}%,category.ilike.%${term}%`
+          );
+        }
+
+        const { data, error } = await query;
+        if (!cancelled) {
+          if (error) {
+            toast.error(error.message);
+            setRows([]);
+          } else {
+            setRows((data ?? []) as PartLite[]);
+          }
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, q, shopId, supabase]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[340] flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      <div
+        className="relative z-[350] w-full max-w-2xl rounded border border-orange-400 bg-neutral-950 p-4 text-white"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <div className="text-lg font-semibold">Pick a Part</div>
+          <button
+            className="rounded border border-neutral-700 px-2 py-1 text-sm hover:bg-neutral-800"
+            onClick={onClose}
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="mb-3">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search name / SKU / category…"
+            className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
+          />
+        </div>
+
+        <div className="rounded border border-neutral-800 max-h-80 overflow-auto">
+          {loading ? (
+            <div className="p-3 text-neutral-300 text-sm">Searching…</div>
+          ) : rows.length === 0 ? (
+            <div className="p-3 text-neutral-400 text-sm">No parts found.</div>
+          ) : (
+            <ul className="divide-y divide-neutral-800">
+              {rows.map((p) => (
+                <li key={p.id}>
+                  <button
+                    className="block w-full px-3 py-2 text-left hover:bg-neutral-900/60"
+                    onClick={() => {
+                      onPick(p);
+                      onClose();
+                    }}
+                  >
+                    <div className="font-medium truncate">{p.name ?? "Part"}</div>
+                    <div className="text-xs text-neutral-400">
+                      {p.sku ?? "—"} • {p.category ?? "Uncategorized"}
+                    </div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="mt-3 flex justify-end">
+          <button className={outlineNeutral} onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /* ===================================================================== */
 /*                               PAGE                                    */
@@ -79,6 +212,7 @@ export default function WarrantiesPage(): JSX.Element {
   // Modal state
   const [openReg, setOpenReg] = useState(false);
   const [openClaim, setOpenClaim] = useState<null | { warranty: Warranty }>(null);
+  const [openPartPicker, setOpenPartPicker] = useState(false);
 
   // Register form
   const [partId, setPartId] = useState("");
@@ -96,7 +230,7 @@ export default function WarrantiesPage(): JSX.Element {
   const [claimRma, setClaimRma] = useState("");
   const [claimNotes, setClaimNotes] = useState("");
 
-  // Feature-detection (tables may not exist yet)
+  // Feature-detection
   const [hasTables, setHasTables] = useState<{ warranties: boolean; claims: boolean }>({
     warranties: true,
     claims: true,
@@ -120,10 +254,7 @@ export default function WarrantiesPage(): JSX.Element {
 
         const w = await supabase.from("warranties").select("id").limit(1);
         const c = await supabase.from("warranty_claims").select("id").limit(1);
-        setHasTables({
-          warranties: !w.error,
-          claims: !c.error,
-        });
+        setHasTables({ warranties: !w.error, claims: !c.error });
 
         if (!sid || w.error) {
           setReady(true);
@@ -329,35 +460,6 @@ export default function WarrantiesPage(): JSX.Element {
             The <code>warranties</code> (and optionally <code>warranty_claims</code>) tables don’t exist yet.
             Create them to enable this page.
           </p>
-          <details className="mt-2 text-sm">
-            <summary className="cursor-pointer underline">Show SQL</summary>
-            <pre className="mt-2 overflow-auto whitespace-pre-wrap text-xs">
-{`create table if not exists public.warranties (
-  id uuid primary key,
-  shop_id uuid not null references public.shops(id) on delete cascade,
-  part_id uuid not null references public.parts(id) on delete restrict,
-  supplier_id uuid references public.suppliers(id) on delete set null,
-  work_order_id uuid references public.work_orders(id) on delete set null,
-  work_order_line_id uuid references public.work_order_lines(id) on delete set null,
-  customer_id uuid references public.customers(id) on delete set null,
-  vehicle_id uuid references public.vehicles(id) on delete set null,
-  installed_at timestamptz not null,
-  warranty_months integer not null default 12 check (warranty_months > 0),
-  expires_at timestamptz not null,
-  notes text,
-  created_at timestamptz not null default now()
-);
-create table if not exists public.warranty_claims (
-  id uuid primary key,
-  warranty_id uuid not null references public.warranties(id) on delete cascade,
-  opened_at timestamptz not null default now(),
-  status text not null check (status in ('open','approved','denied','replaced','closed')),
-  supplier_rma text,
-  notes text,
-  created_at timestamptz not null default now()
-);`}
-            </pre>
-          </details>
         </div>
       </div>
     );
@@ -533,14 +635,26 @@ create table if not exists public.warranty_claims (
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
+              {/* Part field with picker */}
               <div className="sm:col-span-2">
-                <label className="mb-1 block text-sm text-neutral-300">Part ID</label>
-                <input
-                  value={partId}
-                  onChange={(e) => setPartId(e.target.value)}
-                  placeholder="Paste part UUID (search UI can be added later)"
-                  className="w-full rounded border border-neutral-700 bg-neutral-900 p-2"
-                />
+                <label className="mb-1 block text-sm text-neutral-300">Part</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    value={partId}
+                    onChange={(e) => setPartId(e.target.value)}
+                    placeholder="Part UUID (or use picker)"
+                    className="w-full rounded border border-neutral-700 bg-neutral-900 p-2"
+                  />
+                  <button
+                    type="button"
+                    className={outlineInfo}
+                    onClick={() => setOpenPartPicker(true)}
+                    disabled={!shopId}
+                    title={shopId ? "Search parts" : "No shop selected"}
+                  >
+                    Pick
+                  </button>
+                </div>
                 {partId && lookups.parts[partId] ? (
                   <div className="mt-1 text-xs text-neutral-400">
                     {lookups.parts[partId]?.name} ({lookups.parts[partId]?.sku})
@@ -719,6 +833,24 @@ create table if not exists public.warranty_claims (
           </div>
         </div>
       )}
+
+      {/* Part search picker */}
+      <PartPickerDialog
+        open={openPartPicker}
+        onClose={() => setOpenPartPicker(false)}
+        shopId={shopId}
+        onPick={(p) => {
+          setPartId(p.id);
+          // light lookup hydrate so the “selected” caption shows instantly
+          setLookups((prev) => ({
+            ...prev,
+            parts: {
+              ...prev.parts,
+              [p.id]: { name: p.name, sku: p.sku },
+            },
+          }));
+        }}
+      />
     </div>
   );
 }

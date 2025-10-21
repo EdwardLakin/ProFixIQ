@@ -17,30 +17,21 @@ type VStock = {
 
 export type PickedPart = { part_id: string; location_id?: string; qty: number };
 
-type PartPickerProps = {
-  open: boolean;
-  /** Optional direct callback (in addition to event emission). */
-  onClose?: () => void;
-  /** Optional direct callback (in addition to event emission). */
-  onPick?: (sel: PickedPart) => void;
-  /** Window event channel: emits `${channel}:close` & `${channel}:pick`. */
-  channel?: string;
-  /** Initial search term when opened. */
-  initialSearch?: string;
-};
-
 /**
- * PartPicker
- * - Event-based modal picker that can ALSO call optional props callbacks.
- * - Emits: `${channel}:close` and `${channel}:pick` (detail: PickedPart)
+ * PartPicker (event-based)
+ * Fires:
+ *  - `${channel}:close`
+ *  - `${channel}:pick`  (detail: PickedPart)
  */
 export function PartPicker({
   open,
-  onClose,
-  onPick,
   channel = "partpicker",
   initialSearch = "",
-}: PartPickerProps) {
+}: {
+  open: boolean;
+  channel?: string;
+  initialSearch?: string;
+}) {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const [shopId, setShopId] = useState<string>("");
   const [search, setSearch] = useState(initialSearch);
@@ -88,8 +79,8 @@ export function PartPicker({
           .order("code");
         if (locErr) throw locErr;
         setLocs(locsData ?? []);
-      } catch (e: any) {
-        setErr(e?.message ?? "Failed to init picker");
+      } catch (e: unknown) {
+        setErr(e instanceof Error ? e.message : "Failed to init picker");
       }
     })();
   }, [open, supabase]);
@@ -128,8 +119,8 @@ export function PartPicker({
         } else {
           setStock({});
         }
-      } catch (e: any) {
-        if (!cancelled) setErr(e?.message ?? "Search failed");
+      } catch (e: unknown) {
+        if (!cancelled) setErr(e instanceof Error ? e.message : "Search failed");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -154,53 +145,55 @@ export function PartPicker({
   const locMap = new Map(locs.map((l) => [l.id, l]));
   const defaultLocId = selectedLocId ?? mainLocId ?? selectedStocks[0]?.location_id ?? null;
 
-  // helpers to emit window events and also call optional callbacks
   const emit = (name: "close" | "pick", detail?: unknown) => {
     const ev = new CustomEvent(`${channel}:${name}`, { detail });
     window.dispatchEvent(ev);
   };
-  const handleClose = () => {
-    emit("close");
-    onClose?.();
-  };
-  const handlePick = (payload: PickedPart) => {
-    emit("pick", payload);
-    onPick?.(payload);
-  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-3xl rounded-2xl bg-white p-4 shadow-xl">
+    // High z-index so it sits above FocusedJobModal & other dialogs
+    <div
+      className="fixed inset-0 z-[400] bg-black/70 backdrop-blur-sm"
+      onClick={() => emit("close")}
+    >
+      {/* panel */}
+      <div
+        className="relative z-[410] mx-auto my-6 w-full max-w-3xl rounded-lg border border-orange-400 bg-neutral-950 p-4 text-white shadow-xl"
+        onClick={(e) => e.stopPropagation()} // prevent backdrop click from closing Focused modal underneath
+        role="dialog"
+        aria-modal="true"
+      >
         <div className="mb-3 flex items-center justify-between">
           <div>
-            <div className="text-xs text-neutral-500">Select a part</div>
-            <h3 className="text-lg font-semibold">Part Picker</h3>
+            <div className="text-xs text-neutral-400">Select a part</div>
+            <h3 className="text-lg font-header font-semibold tracking-wide">Part Picker</h3>
           </div>
           <button
-            onClick={handleClose}
-            className="rounded border px-2 py-1 text-sm text-neutral-600 hover:bg-neutral-50"
+            onClick={() => emit("close")}
+            className="rounded border border-neutral-700 px-2 py-1 text-sm text-neutral-200 hover:bg-neutral-800"
           >
-            Close
+            ✕
           </button>
         </div>
 
         <div className="mb-3">
           <input
-            className="w-full rounded border px-3 py-2"
+            className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-white placeholder:text-neutral-400"
             placeholder="Search name, SKU, category…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
 
-        {err && <div className="mb-2 text-sm text-red-600">{err}</div>}
+        {err && <div className="mb-2 text-sm text-red-400">{err}</div>}
+
         {loading ? (
-          <div className="text-sm text-neutral-500">Searching…</div>
+          <div className="text-sm text-neutral-400">Searching…</div>
         ) : (
           <div className="grid gap-3 md:grid-cols-2">
             {/* left: results */}
-            <div className="rounded-xl border">
-              <div className="border-b p-2 text-sm font-semibold">Results</div>
+            <div className="rounded border border-neutral-800">
+              <div className="border-b border-neutral-800 p-2 text-sm font-semibold">Results</div>
               <div className="max-h-72 overflow-auto">
                 {(parts ?? []).length === 0 ? (
                   <div className="p-3 text-sm text-neutral-500">No parts found.</div>
@@ -209,11 +202,11 @@ export function PartPicker({
                     <button
                       key={p.id}
                       onClick={() => setSelectedPartId(p.id)}
-                      className={`block w-full text-left px-3 py-2 border-b last:border-b-0 hover:bg-neutral-50 ${
-                        selectedPartId === p.id ? "bg-neutral-100" : ""
+                      className={`block w-full border-b border-neutral-800 px-3 py-2 text-left last:border-b-0 hover:bg-neutral-900 ${
+                        selectedPartId === p.id ? "bg-neutral-900" : ""
                       }`}
                     >
-                      <div className="font-medium truncate">{p.name}</div>
+                      <div className="truncate font-medium">{p.name}</div>
                       <div className="text-xs text-neutral-500">
                         {p.sku ?? "—"} • {p.category ?? "Uncategorized"}
                       </div>
@@ -224,12 +217,15 @@ export function PartPicker({
             </div>
 
             {/* right: stock + confirm */}
-            <div className="rounded-xl border p-3">
+            <div className="rounded border border-neutral-800 p-3">
               <div className="mb-2 text-sm font-semibold">Stock by location</div>
+
               {!selectedPartId ? (
                 <div className="text-sm text-neutral-500">Select a part to view stock.</div>
               ) : selectedStocks.length === 0 ? (
-                <div className="text-sm text-neutral-500">No stock entries yet (you can still use/consume).</div>
+                <div className="text-sm text-neutral-500">
+                  No stock entries yet (you can still receive/consume).
+                </div>
               ) : (
                 <div className="grid gap-2">
                   {selectedStocks
@@ -237,19 +233,24 @@ export function PartPicker({
                     .map((s) => {
                       const l = locMap.get(s.location_id);
                       return (
-                        <label key={s.location_id} className="flex items-center justify-between rounded border p-2">
+                        <label
+                          key={s.location_id}
+                          className="flex items-center justify-between rounded border border-neutral-800 bg-neutral-900 p-2"
+                        >
                           <div className="min-w-0">
                             <div className="font-medium">{l?.code ?? "LOC"}</div>
-                            <div className="text-xs text-neutral-500 truncate">
+                            <div className="truncate text-xs text-neutral-500">
                               {l?.name ?? String(s.location_id).slice(0, 6) + "…"}
                             </div>
                           </div>
-                          <div className="text-sm font-semibold tabular-nums">{Number(s.qty_available)} avail</div>
+                          <div className="tabular-nums text-sm font-semibold">
+                            {Number(s.qty_available)} avail
+                          </div>
                           <input
                             type="radio"
                             name="loc"
                             className="ml-2"
-                            checked={(selectedLocId ?? defaultLocId) === s.location_id}
+                            checked={(selectedLocId ?? (mainLocId ?? selectedStocks[0]?.location_id ?? "")) === s.location_id}
                             onChange={() => setSelectedLocId(s.location_id)}
                           />
                         </label>
@@ -260,22 +261,22 @@ export function PartPicker({
 
               <div className="mt-3 grid grid-cols-2 gap-3">
                 <div>
-                  <div className="text-xs text-neutral-500 mb-1">Quantity</div>
+                  <div className="mb-1 text-xs text-neutral-400">Quantity</div>
                   <input
                     type="number"
                     min={0}
                     step="0.01"
                     value={qty}
                     onChange={(e) => setQty(Math.max(0, Number(e.target.value || 0)))}
-                    className="w-full rounded border px-3 py-2"
+                    className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-white"
                   />
                 </div>
                 <div>
-                  <div className="text-xs text-neutral-500 mb-1">Location</div>
+                  <div className="mb-1 text-xs text-neutral-400">Location</div>
                   <select
                     value={defaultLocId ?? ""}
                     onChange={(e) => setSelectedLocId(e.target.value || null)}
-                    className="w-full rounded border px-3 py-2"
+                    className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-white"
                   >
                     <option value="">Auto</option>
                     {locs.map((l) => (
@@ -297,10 +298,10 @@ export function PartPicker({
                       location_id: selectedLocId ?? undefined,
                       qty,
                     };
-                    handlePick(payload);
-                    handleClose();
+                    emit("pick", payload);
+                    emit("close");
                   }}
-                  className="rounded bg-neutral-900 px-3 py-2 text-white disabled:opacity-60"
+                  className="rounded border border-orange-500 px-3 py-2 text-sm font-header text-orange-300 hover:bg-orange-500/10 disabled:opacity-60"
                 >
                   Use Part
                 </button>
@@ -308,7 +309,7 @@ export function PartPicker({
             </div>
           </div>
         )}
-      </div>
-    </div>
-  );
+        </div>
+      </div> 
+);
 }
