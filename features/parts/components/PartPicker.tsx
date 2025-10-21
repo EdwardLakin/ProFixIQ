@@ -5,87 +5,96 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
+type UUID = string;
+
 type PartRow = DB["public"]["Tables"]["parts"]["Row"];
 type StockLoc = DB["public"]["Tables"]["stock_locations"]["Row"];
+
 type VStock = {
-  part_id: string;
-  location_id: string;
+  part_id: UUID;
+  location_id: UUID;
   qty_available: number;
   qty_on_hand: number;
   qty_reserved: number;
 };
 
-export type PickedPart = { part_id: string; location_id?: string; qty: number };
+export type PickedPart = { part_id: UUID; location_id?: UUID; qty: number };
 
-/**
- * PartPicker (event-based)
- * Fires:
- *  - `${channel}:close`
- *  - `${channel}:pick`  (detail: PickedPart)
- */
+type Props = {
+  open: boolean;
+  /** Optional channel for window events (kept for compatibility) */
+  channel?: string;
+  /** Prefill search text */
+  initialSearch?: string;
+  /** Called when user closes the picker */
+  onClose?: () => void;
+  /** Called when user confirms a selection */
+  onPick?: (sel: PickedPart) => void;
+};
+
 export function PartPicker({
   open,
   channel = "partpicker",
   initialSearch = "",
-}: {
-  open: boolean;
-  channel?: string;
-  initialSearch?: string;
-}) {
+  onClose,
+  onPick,
+}: Props) {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
-  const [shopId, setShopId] = useState<string>("");
+  const [shopId, setShopId] = useState<UUID>("");
   const [search, setSearch] = useState(initialSearch);
   const [parts, setParts] = useState<PartRow[]>([]);
-  const [stock, setStock] = useState<Record<string, VStock[]>>({});
+  const [stock, setStock] = useState<Record<UUID, VStock[]>>({});
   const [locs, setLocs] = useState<StockLoc[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   // selection state
-  const [selectedPartId, setSelectedPartId] = useState<string | null>(null);
-  const [selectedLocId, setSelectedLocId] = useState<string | null>(null);
+  const [selectedPartId, setSelectedPartId] = useState<UUID | null>(null);
+  const [selectedLocId, setSelectedLocId] = useState<UUID | null>(null);
   const [qty, setQty] = useState<number>(1);
 
   // derive MAIN location if present
   const mainLocId = useMemo(() => {
-    const m = locs.find((l) => l.code?.toUpperCase() === "MAIN");
-    return m?.id ?? null;
+    const m = locs.find((l) => (l.code ?? "").toUpperCase() === "MAIN");
+    return (m?.id as UUID | undefined) ?? null;
   }, [locs]);
 
-  // get user shop + locations
+  // fetch shop + locations
   useEffect(() => {
     if (!open) return;
     (async () => {
       setErr(null);
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (!user) return;
+      const { data: auth } = await supabase.auth.getUser();
+      const userId = auth.user?.id;
+      if (!userId) return;
 
-        const { data: prof } = await supabase
-          .from("profiles")
-          .select("shop_id")
-          .eq("user_id", user.id)
-          .single();
-        const sid = prof?.shop_id ?? "";
-        setShopId(sid);
-        if (!sid) return;
-
-        const { data: locsData, error: locErr } = await supabase
-          .from("stock_locations")
-          .select("id, code, name, shop_id")
-          .eq("shop_id", sid)
-          .order("code");
-        if (locErr) throw locErr;
-        setLocs(locsData ?? []);
-      } catch (e: unknown) {
-        setErr(e instanceof Error ? e.message : "Failed to init picker");
+      const { data: prof, error: pe } = await supabase
+        .from("profiles")
+        .select("shop_id")
+        .eq("user_id", userId)
+        .single();
+      if (pe) {
+        setErr(pe.message);
+        return;
       }
+      const sid = (prof?.shop_id as UUID | null) ?? "";
+      setShopId(sid);
+      if (!sid) return;
+
+      const { data: locsData, error: le } = await supabase
+        .from("stock_locations")
+        .select("id, code, name, shop_id")
+        .eq("shop_id", sid)
+        .order("code");
+      if (le) {
+        setErr(le.message);
+        return;
+      }
+      setLocs(locsData ?? []);
     })();
   }, [open, supabase]);
 
-  // search parts
+  // search parts + fetch stock for visible parts
   useEffect(() => {
     if (!open || !shopId) return;
     let cancelled = false;
@@ -93,29 +102,49 @@ export function PartPicker({
       setLoading(true);
       setErr(null);
       try {
-        let q = supabase.from("parts").select("*").eq("shop_id", shopId).order("name").limit(50);
+        let q = supabase
+          .from("parts")
+          .select("*")
+          .eq("shop_id", shopId)
+          .order("name")
+          .limit(50);
+
         const term = search.trim();
-        if (term) q = q.or(`name.ilike.%${term}%,sku.ilike.%${term}%,category.ilike.%${term}%`);
+        if (term) {
+          q = q.or(
+            `name.ilike.%${term}%,sku.ilike.%${term}%,category.ilike.%${term}%`
+          );
+        }
 
         const { data: rows, error } = await q;
         if (error) throw error;
         if (cancelled) return;
 
-        setParts(rows ?? []);
+        const rowsSafe = (rows ?? []) as PartRow[];
+        setParts(rowsSafe);
 
-        // fetch stock for these parts
-        const ids = (rows ?? []).map((r) => r.id);
+        // fetch v_part_stock for these parts
+        const ids = rowsSafe.map((r) => r.id as UUID);
         if (ids.length) {
-          const { data: vs } = await supabase
+          const { data: vs, error: ve } = await supabase
             .from("v_part_stock")
             .select("part_id, location_id, qty_available, qty_on_hand, qty_reserved")
             .in("part_id", ids);
-          const grouped: Record<string, VStock[]> = {};
+          if (ve) throw ve;
+
+          const grouped: Record<UUID, VStock[]> = {};
           (vs ?? []).forEach((s) => {
-            if (!grouped[s.part_id]) grouped[s.part_id] = [];
-            grouped[s.part_id].push(s as VStock);
+            const key = s.part_id as UUID;
+            if (!grouped[key]) grouped[key] = [];
+            grouped[key].push({
+              part_id: s.part_id as UUID,
+              location_id: s.location_id as UUID,
+              qty_available: Number(s.qty_available),
+              qty_on_hand: Number(s.qty_on_hand),
+              qty_reserved: Number(s.qty_reserved),
+            });
           });
-          setStock(grouped);
+          if (!cancelled) setStock(grouped);
         } else {
           setStock({});
         }
@@ -142,37 +171,52 @@ export function PartPicker({
   if (!open) return null;
 
   const selectedStocks = selectedPartId ? stock[selectedPartId] ?? [] : [];
-  const locMap = new Map(locs.map((l) => [l.id, l]));
-  const defaultLocId = selectedLocId ?? mainLocId ?? selectedStocks[0]?.location_id ?? null;
+  const locMap = new Map<UUID, StockLoc>(locs.map((l) => [l.id as UUID, l]));
+  const defaultLocId: UUID | null =
+    selectedLocId ?? mainLocId ?? (selectedStocks[0]?.location_id ?? null);
 
   const emit = (name: "close" | "pick", detail?: unknown) => {
     const ev = new CustomEvent(`${channel}:${name}`, { detail });
     window.dispatchEvent(ev);
   };
 
+  const close = () => {
+    onClose?.();
+    emit("close");
+  };
+
+  const confirmPick = () => {
+    if (!selectedPartId || qty <= 0) return;
+    const payload: PickedPart = {
+      part_id: selectedPartId,
+      location_id: selectedLocId ?? undefined,
+      qty,
+    };
+    onPick?.(payload);
+    emit("pick", payload);
+    close();
+  };
+
   return (
-    // High z-index so it sits above FocusedJobModal & other dialogs
-    <div
-      className="fixed inset-0 z-[400] bg-black/70 backdrop-blur-sm"
-      onClick={() => emit("close")}
-    >
-      {/* panel */}
+    <div className="fixed inset-0 z-[340] flex items-center justify-center">
+      {/* Backdrop */}
       <div
-        className="relative z-[410] mx-auto my-6 w-full max-w-3xl rounded-lg border border-orange-400 bg-neutral-950 p-4 text-white shadow-xl"
-        onClick={(e) => e.stopPropagation()} // prevent backdrop click from closing Focused modal underneath
-        role="dialog"
-        aria-modal="true"
-      >
+        className="fixed inset-0 bg-black/70 backdrop-blur-sm"
+        aria-hidden="true"
+        onClick={close}
+      />
+      {/* Panel */}
+      <div className="relative z-[350] w-full max-w-3xl rounded-lg border border-orange-400 bg-neutral-950 p-4 text-white shadow-xl">
         <div className="mb-3 flex items-center justify-between">
           <div>
             <div className="text-xs text-neutral-400">Select a part</div>
-            <h3 className="text-lg font-header font-semibold tracking-wide">Part Picker</h3>
+            <h3 className="text-lg font-semibold font-header">Part Picker</h3>
           </div>
           <button
-            onClick={() => emit("close")}
+            onClick={close}
             className="rounded border border-neutral-700 px-2 py-1 text-sm text-neutral-200 hover:bg-neutral-800"
           >
-            ✕
+            Close
           </button>
         </div>
 
@@ -191,23 +235,25 @@ export function PartPicker({
           <div className="text-sm text-neutral-400">Searching…</div>
         ) : (
           <div className="grid gap-3 md:grid-cols-2">
-            {/* left: results */}
-            <div className="rounded border border-neutral-800">
-              <div className="border-b border-neutral-800 p-2 text-sm font-semibold">Results</div>
+            {/* Left: results */}
+            <div className="rounded-xl border border-neutral-800">
+              <div className="border-b border-neutral-800 p-2 text-sm font-semibold">
+                Results
+              </div>
               <div className="max-h-72 overflow-auto">
-                {(parts ?? []).length === 0 ? (
-                  <div className="p-3 text-sm text-neutral-500">No parts found.</div>
+                {parts.length === 0 ? (
+                  <div className="p-3 text-sm text-neutral-400">No parts found.</div>
                 ) : (
                   parts.map((p) => (
                     <button
-                      key={p.id}
-                      onClick={() => setSelectedPartId(p.id)}
-                      className={`block w-full border-b border-neutral-800 px-3 py-2 text-left last:border-b-0 hover:bg-neutral-900 ${
-                        selectedPartId === p.id ? "bg-neutral-900" : ""
+                      key={p.id as UUID}
+                      onClick={() => setSelectedPartId(p.id as UUID)}
+                      className={`block w-full border-b border-neutral-800 px-3 py-2 text-left hover:bg-neutral-900 ${
+                        selectedPartId === (p.id as UUID) ? "bg-neutral-900" : ""
                       }`}
                     >
                       <div className="truncate font-medium">{p.name}</div>
-                      <div className="text-xs text-neutral-500">
+                      <div className="truncate text-xs text-neutral-500">
                         {p.sku ?? "—"} • {p.category ?? "Uncategorized"}
                       </div>
                     </button>
@@ -216,31 +262,40 @@ export function PartPicker({
               </div>
             </div>
 
-            {/* right: stock + confirm */}
-            <div className="rounded border border-neutral-800 p-3">
+            {/* Right: stock + confirm */}
+            <div className="rounded-xl border border-neutral-800 p-3">
               <div className="mb-2 text-sm font-semibold">Stock by location</div>
-
               {!selectedPartId ? (
-                <div className="text-sm text-neutral-500">Select a part to view stock.</div>
+                <div className="text-sm text-neutral-400">
+                  Select a part to view stock.
+                </div>
               ) : selectedStocks.length === 0 ? (
-                <div className="text-sm text-neutral-500">
-                  No stock entries yet (you can still receive/consume).
+                <div className="text-sm text-neutral-400">
+                  No stock entries yet (you can still use/consume).
                 </div>
               ) : (
                 <div className="grid gap-2">
                   {selectedStocks
-                    .sort((a, b) => Number(b.qty_available) - Number(a.qty_available))
+                    .slice()
+                    .sort(
+                      (a, b) => Number(b.qty_available) - Number(a.qty_available)
+                    )
                     .map((s) => {
-                      const l = locMap.get(s.location_id);
+                      const l = locMap.get(s.location_id as UUID);
+                      const checked =
+                        (selectedLocId ?? defaultLocId) === s.location_id;
                       return (
                         <label
                           key={s.location_id}
-                          className="flex items-center justify-between rounded border border-neutral-800 bg-neutral-900 p-2"
+                          className="flex items-center justify-between rounded border border-neutral-800 p-2"
                         >
                           <div className="min-w-0">
-                            <div className="font-medium">{l?.code ?? "LOC"}</div>
+                            <div className="font-medium">
+                              {l?.code ?? "LOC"}
+                            </div>
                             <div className="truncate text-xs text-neutral-500">
-                              {l?.name ?? String(s.location_id).slice(0, 6) + "…"}
+                              {l?.name ??
+                                String(s.location_id).slice(0, 6) + "…"}
                             </div>
                           </div>
                           <div className="tabular-nums text-sm font-semibold">
@@ -250,8 +305,10 @@ export function PartPicker({
                             type="radio"
                             name="loc"
                             className="ml-2"
-                            checked={(selectedLocId ?? (mainLocId ?? selectedStocks[0]?.location_id ?? "")) === s.location_id}
-                            onChange={() => setSelectedLocId(s.location_id)}
+                            checked={!!checked}
+                            onChange={() =>
+                              setSelectedLocId(s.location_id as UUID)
+                            }
                           />
                         </label>
                       );
@@ -261,26 +318,32 @@ export function PartPicker({
 
               <div className="mt-3 grid grid-cols-2 gap-3">
                 <div>
-                  <div className="mb-1 text-xs text-neutral-400">Quantity</div>
+                  <div className="mb-1 text-xs text-neutral-500">Quantity</div>
                   <input
                     type="number"
                     min={0}
                     step="0.01"
                     value={qty}
-                    onChange={(e) => setQty(Math.max(0, Number(e.target.value || 0)))}
-                    className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-white"
+                    onChange={(e) =>
+                      setQty(Math.max(0, Number(e.target.value || 0)))
+                    }
+                    className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
                   />
                 </div>
                 <div>
-                  <div className="mb-1 text-xs text-neutral-400">Location</div>
+                  <div className="mb-1 text-xs text-neutral-500">Location</div>
                   <select
                     value={defaultLocId ?? ""}
-                    onChange={(e) => setSelectedLocId(e.target.value || null)}
-                    className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-white"
+                    onChange={(e) =>
+                      setSelectedLocId(
+                        (e.target.value || null) as UUID | null
+                      )
+                    }
+                    className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
                   >
                     <option value="">Auto</option>
                     {locs.map((l) => (
-                      <option key={l.id} value={l.id}>
+                      <option key={l.id as UUID} value={l.id as UUID}>
                         {l.code} — {l.name}
                       </option>
                     ))}
@@ -291,17 +354,8 @@ export function PartPicker({
               <div className="mt-4 flex justify-end">
                 <button
                   disabled={!selectedPartId || qty <= 0}
-                  onClick={() => {
-                    if (!selectedPartId || qty <= 0) return;
-                    const payload: PickedPart = {
-                      part_id: selectedPartId,
-                      location_id: selectedLocId ?? undefined,
-                      qty,
-                    };
-                    emit("pick", payload);
-                    emit("close");
-                  }}
-                  className="rounded border border-orange-500 px-3 py-2 text-sm font-header text-orange-300 hover:bg-orange-500/10 disabled:opacity-60"
+                  onClick={confirmPick}
+                  className="rounded border border-orange-500 px-3 py-2 font-header text-sm text-white hover:bg-orange-500/10 disabled:opacity-60"
                 >
                   Use Part
                 </button>
@@ -309,7 +363,9 @@ export function PartPicker({
             </div>
           </div>
         )}
-        </div>
-      </div> 
-);
+      </div>
+    </div>
+  );
 }
+
+export default PartPicker;
