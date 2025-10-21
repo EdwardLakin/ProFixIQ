@@ -12,7 +12,7 @@
     "db:dump:schema": "npx supabase db dump --schema public --data-only=false --file db/sql/schema.sql --use-copy",
     "db:dump:policies": "npx supabase db dump --schema public --data-only=false --include-roles --file db/sql/policies.sql --use-copy",
     "db:types": "npx supabase gen types typescript --schema public --project-id scjjkmuwadwkaaqjoigx > shared/types/types/supabase.ts",
-    "db:dump:all": "npx supabase db dump --file db/sql/schema.sql --include schema,policies,functions,triggers",
+    "db:dump:all": "npx supabase db dump --file db/sql/schema.sql --schema public --use-copy",
     "db:check:size": "node shared/types/types/scripts/check-dump-size.cjs"
   },
   "lint-staged": {

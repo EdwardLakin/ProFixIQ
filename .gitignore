@@ -15,3 +15,9 @@ sendgrid.env
 .env.local.bak
 .env.local
 .env.local.bak
+
+# --- Schema & types (keep these tracked) ---
+!db/sql/
+!shared/types/types/
+db/sql/*.tmp.sql
+shared/types/types/*.tmp.ts

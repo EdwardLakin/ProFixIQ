@@ -3,7 +3,7 @@ name: Dump Supabase Schema + Types
 on:
   workflow_dispatch: {}
   schedule:
-    - cron: "17 4 * * *" # nightly 04:17 UTC
+    - cron: "17 4 * * *"   # nightly 04:17 UTC
 
 permissions:
   contents: write
@@ -11,7 +11,6 @@ permissions:
 jobs:
   dump:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,6 +27,7 @@ jobs:
         with:
           version: latest
 
+      # Login + Link (preferred)
       - name: Supabase Login
         run: supabase login --token "${SUPABASE_ACCESS_TOKEN}"
         env:
@@ -39,26 +39,25 @@ jobs:
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
 
-      - name: Install repo deps
+      - name: Install repo deps (for size check script)
         run: npm ci
 
-      - name: Dump schema
-        run: npm run db:dump:schema
+      - name: Dump schema (no data)
+        run: npx supabase db dump --file db/sql/schema.sql --schema public --use-copy
 
-      - name: Dump policies
-        run: npm run db:dump:policies
-
-      - name: Generate types
-        run: npm run db:types
+      - name: Generate TS types
+        run: npx supabase gen types typescript --schema public --project-id "${SUPABASE_PROJECT_REF}" > shared/types/types/supabase.ts
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
 
       - name: Enforce size budget
-        run: npm run db:check:size
+        run: node shared/types/types/scripts/check-dump-size.cjs
 
       - name: Commit if changed
         run: |
           git config user.name  "schema-bot"
           git config user.email "schema-bot@users.noreply.github.com"
-          git add db/sql/*.sql shared/types/types/supabase.ts
+          git add db/sql/schema.sql shared/types/types/supabase.ts
           if ! git diff --cached --quiet; then
             git commit -m "chore(schema): nightly dump + types ($(date -u +%F))"
             git push
