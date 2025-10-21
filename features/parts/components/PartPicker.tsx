@@ -17,21 +17,30 @@ type VStock = {
 
 export type PickedPart = { part_id: string; location_id?: string; qty: number };
 
+type PartPickerProps = {
+  open: boolean;
+  /** Optional direct callback (in addition to event emission). */
+  onClose?: () => void;
+  /** Optional direct callback (in addition to event emission). */
+  onPick?: (sel: PickedPart) => void;
+  /** Window event channel: emits `${channel}:close` & `${channel}:pick`. */
+  channel?: string;
+  /** Initial search term when opened. */
+  initialSearch?: string;
+};
+
 /**
- * PartPicker (event-based)
- * Fires:
- *   - `${channel}:close`
- *   - `${channel}:pick`  (detail: PickedPart)
+ * PartPicker
+ * - Event-based modal picker that can ALSO call optional props callbacks.
+ * - Emits: `${channel}:close` and `${channel}:pick` (detail: PickedPart)
  */
 export function PartPicker({
   open,
+  onClose,
+  onPick,
   channel = "partpicker",
   initialSearch = "",
-}: {
-  open: boolean;
-  channel?: string;
-  initialSearch?: string;
-}) {
+}: PartPickerProps) {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const [shopId, setShopId] = useState<string>("");
   const [search, setSearch] = useState(initialSearch);
@@ -74,7 +83,7 @@ export function PartPicker({
 
         const { data: locsData, error: locErr } = await supabase
           .from("stock_locations")
-          .select("id, code, name, shop_id") // keep type parity with StockLoc
+          .select("id, code, name, shop_id")
           .eq("shop_id", sid)
           .order("code");
         if (locErr) throw locErr;
@@ -145,9 +154,18 @@ export function PartPicker({
   const locMap = new Map(locs.map((l) => [l.id, l]));
   const defaultLocId = selectedLocId ?? mainLocId ?? selectedStocks[0]?.location_id ?? null;
 
+  // helpers to emit window events and also call optional callbacks
   const emit = (name: "close" | "pick", detail?: unknown) => {
     const ev = new CustomEvent(`${channel}:${name}`, { detail });
     window.dispatchEvent(ev);
+  };
+  const handleClose = () => {
+    emit("close");
+    onClose?.();
+  };
+  const handlePick = (payload: PickedPart) => {
+    emit("pick", payload);
+    onPick?.(payload);
   };
 
   return (
@@ -159,7 +177,7 @@ export function PartPicker({
             <h3 className="text-lg font-semibold">Part Picker</h3>
           </div>
           <button
-            onClick={() => emit("close")}
+            onClick={handleClose}
             className="rounded border px-2 py-1 text-sm text-neutral-600 hover:bg-neutral-50"
           >
             Close
@@ -196,7 +214,9 @@ export function PartPicker({
                       }`}
                     >
                       <div className="font-medium truncate">{p.name}</div>
-                      <div className="text-xs text-neutral-500">{p.sku ?? "—"} • {p.category ?? "Uncategorized"}</div>
+                      <div className="text-xs text-neutral-500">
+                        {p.sku ?? "—"} • {p.category ?? "Uncategorized"}
+                      </div>
                     </button>
                   ))
                 )}
@@ -277,8 +297,8 @@ export function PartPicker({
                       location_id: selectedLocId ?? undefined,
                       qty,
                     };
-                    emit("pick", payload);
-                    emit("close");
+                    handlePick(payload);
+                    handleClose();
                   }}
                   className="rounded bg-neutral-900 px-3 py-2 text-white disabled:opacity-60"
                 >
