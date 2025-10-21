@@ -1,0 +1,39 @@
+name: Dump Supabase Schema
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 7 * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client (psql, pg_dump)
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Dump schema.sql (pg_dump)
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DB_URL:-}" ]; then echo 'Missing SUPABASE_DB_URL secret' && exit 1; fi
+          mkdir -p supabase
+          pg_dump --schema-only --no-owner --no-privileges "$DB_URL" > supabase/schema.sql
+
+      - name: Commit changes (schema only)
+        run: |
+          if ! git diff --quiet; then
+            git config user.name "schema-bot"
+            git config user.email "schema-bot@example.com"
+            git add supabase/schema.sql
+            git commit -m "chore(schema): update schema.sql via pg_dump"
+            git push
+          else
+            echo "No changes to commit."
+          fi
