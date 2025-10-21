@@ -4,21 +4,27 @@ import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
+type PurchaseOrderLine = DB["public"]["Tables"]["purchase_order_lines"]["Row"];
 
 export async function POST(req: Request) {
   try {
     const supabase = createRouteHandlerClient<DB>({ cookies });
 
-    const body = await req.json().catch(() => ({}));
-    const { part_id, location_id, qty, po_id } = body as {
+    // Parse and validate body
+    const body = (await req.json().catch(() => ({}))) as Partial<{
       part_id: string;
       location_id: string;
       qty: number;
       po_id?: string | null;
-    };
+    }>;
+
+    const { part_id, location_id, qty, po_id } = body;
 
     if (!part_id || !location_id || !qty || qty <= 0) {
-      return NextResponse.json({ error: "Missing or invalid input" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing or invalid input" },
+        { status: 400 }
+      );
     }
 
     // Apply stock move
@@ -28,51 +34,70 @@ export async function POST(req: Request) {
       p_qty: qty,
       p_reason: "receive",
       p_ref_kind: po_id ? "purchase_order" : "manual_receive",
-      p_ref_id: po_id || undefined,
+      p_ref_id: po_id ?? undefined,
     });
     if (smErr) throw smErr;
 
-    // If PO provided: bump the received_qty on the first line with remaining qty for this part
+    // --- Update PO lines ---
     if (po_id) {
-      const { data: lines, error: lerr } = await supabase
+      const { data: lines, error: lineErr } = await supabase
         .from("purchase_order_lines")
         .select("id, qty, received_qty, part_id")
         .eq("po_id", po_id)
         .eq("part_id", part_id)
         .order("created_at", { ascending: true });
 
-      if (lerr) throw lerr;
+      if (lineErr) throw lineErr;
 
       let remain = qty;
-      for (const ln of lines ?? []) {
+      for (const ln of (lines ?? []) as PurchaseOrderLine[]) {
         if (remain <= 0) break;
-        const ordered = Number(ln.qty);
-        const rec = Number(ln.received_qty || 0);
-        const delta = Math.min(remain, Math.max(0, ordered - rec));
+        const ordered = Number(ln.qty ?? 0);
+        const received = Number(ln.received_qty ?? 0);
+        const delta = Math.min(remain, Math.max(0, ordered - received));
+
         if (delta > 0) {
-          const { error: uerr } = await supabase
+          const { error: updateErr } = await supabase
             .from("purchase_order_lines")
-            .update({ received_qty: rec + delta })
+            .update({ received_qty: received + delta })
             .eq("id", ln.id);
-          if (uerr) throw uerr;
+
+          if (updateErr) throw updateErr;
           remain -= delta;
         }
       }
-      // Optionally: mark PO received if all lines complete
-      const { data: check } = await supabase
+
+      // --- Check if PO fully received ---
+      const { data: checkRows, error: checkErr } = await supabase
         .from("purchase_order_lines")
         .select("qty, received_qty")
         .eq("po_id", po_id);
-      const allReceived = (check ?? []).every((r) => Number(r.received_qty || 0) >= Number(r.qty || 0));
+
+      if (checkErr) throw checkErr;
+
+      const allReceived = (checkRows ?? []).every(
+        (r) => Number(r.received_qty ?? 0) >= Number(r.qty ?? 0)
+      );
+
       if (allReceived) {
-        await supabase.from("purchase_orders").update({ status: "received" }).eq("id", po_id);
+        const { error: statusErr } = await supabase
+          .from("purchase_orders")
+          .update({ status: "received" })
+          .eq("id", po_id);
+        if (statusErr) throw statusErr;
       }
     }
 
     return NextResponse.json({ ok: true });
-  } catch (e: any) {
-    // eslint-disable-next-line no-console
-    console.error("[receive-scan] error:", e?.message || e);
-    return NextResponse.json({ error: e?.message ?? "Server error" }, { status: 500 });
+  } catch (e: unknown) {
+    // Narrow the unknown error safely
+    const message =
+      e instanceof Error
+        ? e.message
+        : typeof e === "string"
+        ? e
+        : "Server error";
+    console.error("[receive-scan] error:", message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
