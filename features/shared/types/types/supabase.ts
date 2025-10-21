@@ -1642,6 +1642,35 @@ export type Database = {
         }
         Relationships: []
       }
+      part_barcodes: {
+        Row: {
+          barcode: string
+          id: string
+          kind: string | null
+          part_id: string
+        }
+        Insert: {
+          barcode: string
+          id?: string
+          kind?: string | null
+          part_id: string
+        }
+        Update: {
+          barcode?: string
+          id?: string
+          kind?: string | null
+          part_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "part_barcodes_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       part_compatibility: {
         Row: {
           created_at: string | null
@@ -2269,6 +2298,67 @@ export type Database = {
           },
           {
             foreignKeyName: "purchase_order_items_po_id_fkey"
+            columns: ["po_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purchase_order_lines: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          location_id: string | null
+          part_id: string | null
+          po_id: string
+          qty: number
+          received_qty: number
+          sku: string | null
+          unit_cost: number | null
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          location_id?: string | null
+          part_id?: string | null
+          po_id: string
+          qty: number
+          received_qty?: number
+          sku?: string | null
+          unit_cost?: number | null
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          location_id?: string | null
+          part_id?: string | null
+          po_id?: string
+          qty?: number
+          received_qty?: number
+          sku?: string | null
+          unit_cost?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_order_lines_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_order_lines_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_order_lines_po_id_fkey"
             columns: ["po_id"]
             isOneToOne: false
             referencedRelation: "purchase_orders"
@@ -3539,6 +3629,45 @@ export type Database = {
             columns: ["shop_id"]
             isOneToOne: false
             referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vendor_part_numbers: {
+        Row: {
+          id: string
+          part_id: string
+          shop_id: string
+          supplier_id: string | null
+          vendor_sku: string
+        }
+        Insert: {
+          id?: string
+          part_id: string
+          shop_id: string
+          supplier_id?: string | null
+          vendor_sku: string
+        }
+        Update: {
+          id?: string
+          part_id?: string
+          shop_id?: string
+          supplier_id?: string | null
+          vendor_sku?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendor_part_numbers_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_part_numbers_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
         ]

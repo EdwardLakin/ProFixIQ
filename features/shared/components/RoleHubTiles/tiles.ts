@@ -1,5 +1,19 @@
-export type Role = "owner" | "admin" | "manager" | "advisor" | "mechanic" | "parts";
-export type Scope = "work_orders" | "inspections" | "parts" | "tech" | "management" | "settings" | "all";
+export type Role =
+  | "owner"
+  | "admin"
+  | "manager"
+  | "advisor"
+  | "mechanic"
+  | "parts";
+
+export type Scope =
+  | "work_orders"
+  | "inspections"
+  | "parts"
+  | "tech"
+  | "management"
+  | "settings"
+  | "all";
 
 export type Tile = {
   href: string;
@@ -11,23 +25,22 @@ export type Tile = {
 };
 
 export const TILES: Tile[] = [
-  
   // --- Debug (owner only) ---
-{
-  href: "/debug/client",
-  title: "Client Auth Debug",
-  subtitle: "Session & cookies (client)",
-  roles: ["owner"],
-  scopes: ["settings", "all"],
-},
-{
-  href: "/debug/session",
-  title: "Server Auth Debug",
-  subtitle: "Cookies & session (server)",
-  roles: ["owner"],
-  scopes: ["settings", "all"],
-},
-  
+  {
+    href: "/debug/client",
+    title: "Client Auth Debug",
+    subtitle: "Session & cookies (client)",
+    roles: ["owner"],
+    scopes: ["settings", "all"],
+  },
+  {
+    href: "/debug/session",
+    title: "Server Auth Debug",
+    subtitle: "Cookies & session (server)",
+    roles: ["owner"],
+    scopes: ["settings", "all"],
+  },
+
   // --- Work Orders ---
   {
     href: "/work-orders/create?autostart=1", // ✅ auto-start work order draft
@@ -145,6 +158,31 @@ export const TILES: Tile[] = [
     subtitle: "On-hand stock",
     roles: ["parts", "manager", "owner", "admin"],
     scopes: ["parts", "all"],
+  },
+  // NEW: Purchase Orders list
+  {
+    href: "/parts/po",
+    title: "Purchase Orders",
+    subtitle: "Create & manage POs",
+    cta: "+",
+    roles: ["parts", "manager", "owner", "admin"],
+    scopes: ["parts", "all"],
+  },
+  // NEW: Scan-to-Receive entry
+  {
+    href: "/parts/receive",
+    title: "Scan to Receive",
+    subtitle: "Camera or manual entry",
+    roles: ["parts", "manager", "owner", "admin"],
+    scopes: ["parts", "all"],
+  },
+  // Optional: vendor API keys / integrations page
+  {
+    href: "/parts/vendors",
+    title: "Vendor Integrations",
+    subtitle: "API keys for suppliers",
+    roles: ["owner", "admin", "manager", "parts"],
+    scopes: ["parts", "settings", "all"],
   },
   {
     href: "/parts/returns",
