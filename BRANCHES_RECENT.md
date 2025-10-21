@@ -1,0 +1,6 @@
+- 2025-10-21 13:32:43 +0000  origin  |  EdwardLakin  |  updated part picker
+- 2025-10-21 13:32:43 +0000  origin/main  |  EdwardLakin  |  updated part picker
+- 2025-10-20 09:32:25 -0600  origin/feature/parts-v1  |  EdwardLakin  |  feat(parts): add migration placeholder for parts system (to be updated after schema confirm)
+- 2025-10-18 15:42:58 -0600  origin/ci/pg-dump-switch  |  EdwardLakin  |  ci: recommend pg_dump+psql workflow; add .github/workflows/dump-supabase-schema.yml
+- 2025-10-18 13:57:31 -0600  origin/ci/workflow-fix  |  EdwardLakin  |  Add workflow to dump Supabase schema and policies
+- 2025-09-29 19:53:03 +0000  origin/feature/phone-shell  |  EdwardLakin  |  updated phone shell
