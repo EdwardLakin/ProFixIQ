@@ -6,6 +6,9 @@ import type { Database } from "@shared/types/types/supabase";
 import { useUser } from "@auth/hooks/useUser";
 import { toast } from "sonner";
 
+// Reuse your PartPicker component
+import { PartPicker, type PickedPart } from "@parts/components/PartPicker";
+
 type DB = Database;
 
 // Rows / inserts we use
@@ -13,50 +16,62 @@ type MenuItemRow = DB["public"]["Tables"]["menu_items"]["Row"];
 type InsertMenuItem = DB["public"]["Tables"]["menu_items"]["Insert"];
 type InsertMenuItemPart = DB["public"]["Tables"]["menu_item_parts"]["Insert"];
 
-// Local form types (only fields we actually edit)
+// Local form types (edit as strings to avoid “01.5” visual issue)
 type PartFormRow = {
-  name: string;
-  quantity: number;
-  unit_cost: number;
+  name: string;         // label shown to user (from parts.name or manual)
+  quantityStr: string;  // edited as string
+  unitCostStr: string;  // edited as string
+  part_id?: string | null; // optional link to an actual part (not required by DB)
 };
 
 type FormState = {
   name: string;
   description: string;
-  labor_time: number; // hours
-  labor_rate: number; // $/hr (defaults to shop.labor_rate if available)
+  laborTimeStr: string; // edited as string
+  laborRateStr: string; // edited as string
 };
 
 export default function MenuItemsPage() {
   const supabase = createClientComponentClient<DB>();
-  const { user, isLoading } = useUser(); // your hook exposes `user` (profile), optionally with shop
+  const { user, isLoading } = useUser();
 
   const [menuItems, setMenuItems] = useState<MenuItemRow[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  // PartPicker UI state
+  const [pickerOpenForRow, setPickerOpenForRow] = useState<number | null>(null);
+
   const [parts, setParts] = useState<PartFormRow[]>([
-    { name: "", quantity: 1, unit_cost: 0 },
+    { name: "", quantityStr: "", unitCostStr: "", part_id: null },
   ]);
 
   const [form, setForm] = useState<FormState>({
     name: "",
     description: "",
-    labor_time: 0,
-    labor_rate: 0,
+    laborTimeStr: "", // visually empty, not "0"
+    laborRateStr: "",
   });
+
+  // parse helpers (robust)
+  const toNum = (s: string) => {
+    const n = parseFloat(s);
+    return Number.isFinite(n) ? n : 0;
+  };
 
   // derive totals
   const partsTotal = useMemo(
     () =>
       parts.reduce((sum, p) => {
-        const q = Number.isFinite(p.quantity) ? p.quantity : 0;
-        const u = Number.isFinite(p.unit_cost) ? p.unit_cost : 0;
+        const q = toNum(p.quantityStr);
+        const u = toNum(p.unitCostStr);
         return sum + q * u;
       }, 0),
     [parts],
   );
 
   const laborTotal = useMemo(
-    () => (Number.isFinite(form.labor_time) ? form.labor_time : 0) * (Number.isFinite(form.labor_rate) ? form.labor_rate : 0),
-    [form.labor_time, form.labor_rate],
+    () => toNum(form.laborTimeStr) * toNum(form.laborRateStr),
+    [form.laborTimeStr, form.laborRateStr],
   );
 
   const grandTotal = useMemo(() => partsTotal + laborTotal, [partsTotal, laborTotal]);
@@ -73,36 +88,23 @@ export default function MenuItemsPage() {
 
     if (error) {
       console.error("Failed to fetch menu items:", error);
+      toast.error("Could not load menu items");
       return;
     }
     setMenuItems(data ?? []);
   }, [supabase, user?.id]);
 
-  // bootstrap defaults (labor_rate from shop if present) + realtime sync
+  // bootstrap + realtime
   useEffect(() => {
     if (!user?.id) return;
 
-
-    // If you want to default from profile.shop/labor_rate and your hook exposes it,
-    // uncomment & adjust:
-    // if (userShop?.labor_rate != null) {
-    //   setForm((f) => ({ ...f, labor_rate: userShop.labor_rate ?? 0 }));
-    // }
-
-    // initial load
     void fetchItems();
 
-    // realtime for this user’s rows
     const channel = supabase
       .channel("menu-items-sync")
       .on(
         "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "menu_items",
-          filter: `user_id=eq.${user.id}`,
-        },
+        { event: "*", schema: "public", table: "menu_items", filter: `user_id=eq.${user.id}` },
         () => void fetchItems(),
       )
       .subscribe();
@@ -113,7 +115,13 @@ export default function MenuItemsPage() {
   }, [supabase, user?.id, fetchItems]);
 
   // parts row helpers
-  const setPartField = (idx: number, field: keyof PartFormRow, value: string) => {
+  const setPartField = (idx: number, field: "name" | "quantityStr" | "unitCostStr", value: string) => {
+    const cleanNumeric = (v: string) => {
+      if (v === "") return "";
+      if (/^\d/.test(v)) v = v.replace(/^0+(?=\d)/, ""); // 00012 -> 12, 01.5 -> 1.5
+      return v;
+    };
+
     setParts((rows) =>
       rows.map((r, i) =>
         i === idx
@@ -122,9 +130,7 @@ export default function MenuItemsPage() {
               [field]:
                 field === "name"
                   ? value
-                  : Number.isNaN(parseFloat(value))
-                    ? 0
-                    : parseFloat(value),
+                  : cleanNumeric(value.replace(/[^\d.]/g, "")), // only digits + dot
             }
           : r,
       ),
@@ -132,10 +138,47 @@ export default function MenuItemsPage() {
   };
 
   const addPartRow = () => {
-    setParts((rows) => [...rows, { name: "", quantity: 1, unit_cost: 0 }]);
+    setParts((rows) => [...rows, { name: "", quantityStr: "", unitCostStr: "", part_id: null }]);
   };
   const removePartRow = (idx: number) => {
     setParts((rows) => rows.filter((_, i) => i !== idx));
+  };
+
+  // When a part is picked via PartPicker: fill name (and optionally unit cost if you want to default)
+  const handlePickPart = (rowIdx: number) => (sel: PickedPart) => {
+    // We only get: part_id, qty, location_id (optional)
+    // Hydrate name from parts table
+    (async () => {
+      const { data, } = await supabase
+        .from("parts")
+        .select("name, sku")
+        .eq("id", sel.part_id)
+        .maybeSingle();
+
+      const label = data?.name ?? "Part";
+      setParts((rows) =>
+        rows.map((r, i) =>
+          i === rowIdx
+            ? {
+                ...r,
+                part_id: sel.part_id,
+                name: label,
+                quantityStr: r.quantityStr || (sel.qty ? String(sel.qty) : ""),
+                // unitCostStr: r.unitCostStr || "0", // leave to user; uncomment to default 0
+              }
+            : r,
+        ),
+      );
+
+      toast.success(`Added ${label} to row`);
+    })().catch(() => {
+      // fallback: still set part_id
+      setParts((rows) =>
+        rows.map((r, i) =>
+          i === rowIdx ? { ...r, part_id: sel.part_id } : r,
+        ),
+      );
+    });
   };
 
   // submit
@@ -147,69 +190,70 @@ export default function MenuItemsPage() {
       return;
     }
 
-    // Build the menu_items insert
-    const itemInsert: InsertMenuItem = {
-      name: form.name,
-      description: form.description || null,
-      labor_time: Number.isFinite(form.labor_time) ? form.labor_time : 0,
-      labor_hours: null, // unused in this form, but exists in schema
-      part_cost: partsTotal,
-      total_price: grandTotal,
-      user_id: user.id,
-      shop_id: (user as unknown as { shop_id?: string | null })?.shop_id ?? null,
-      // keep other nullable columns absent so defaults/NULL apply
-    };
-
-    // Create the menu item, returning the new id
-    const { data: created, error: createErr } = await supabase
-      .from("menu_items")
-      .insert(itemInsert)
-      .select("id")
-      .single();
-
-    if (createErr || !created) {
-      console.error("Create menu item failed:", createErr);
-      toast.error("Failed to create menu item");
-      return;
-    }
-
-    // Insert parts if provided (skip empty rows)
-    const cleanedParts: InsertMenuItemPart[] = parts
-      .filter((p) => p.name.trim().length > 0 && p.quantity > 0)
-      .map<InsertMenuItemPart>((p) => ({
-        menu_item_id: created.id,
-        name: p.name.trim(),
-        quantity: p.quantity,
-        unit_cost: p.unit_cost,
+    setSaving(true);
+    try {
+      // Build the menu_items insert
+      const itemInsert: InsertMenuItem = {
+        name: form.name.trim(),
+        description: form.description.trim() || null,
+        labor_time: toNum(form.laborTimeStr), // number
+        labor_hours: null,                    // not used here
+        part_cost: partsTotal,
+        total_price: grandTotal,
         user_id: user.id,
-      }));
+        shop_id: (user as unknown as { shop_id?: string | null })?.shop_id ?? null,
+      };
 
-    if (cleanedParts.length > 0) {
-      try {
-        const { error: partsErr } = await supabase
-          .from("menu_item_parts")
-          .insert(cleanedParts);
-        if (partsErr) throw partsErr;
-      } catch (e: unknown) {
-        const err = e as { message?: string };
-        console.warn("Parts not saved:", err?.message ?? e);
-        toast.warning(
-          "Menu item saved, but parts weren't stored (table/columns missing or RLS denied).",
-        );
+      const { data: created, error: createErr } = await supabase
+        .from("menu_items")
+        .insert(itemInsert)
+        .select("id")
+        .single();
+
+      if (createErr || !created) {
+        console.error("Create menu item failed:", createErr);
+        toast.error(createErr?.message ?? "Failed to create menu item");
+        return;
       }
+
+      // Insert parts if provided (skip empty rows)
+      const cleanedParts: InsertMenuItemPart[] = parts
+        .filter((p) => p.name.trim().length > 0 && toNum(p.quantityStr) > 0)
+        .map<InsertMenuItemPart>((p) => ({
+          menu_item_id: created.id,
+          name: p.name.trim(),
+          quantity: toNum(p.quantityStr),
+          unit_cost: toNum(p.unitCostStr),
+          user_id: user.id,
+          // NOTE: if you later add part_id column to menu_item_parts, include it here:
+          // part_id: p.part_id ?? null,
+        }));
+
+      if (cleanedParts.length > 0) {
+        const { error: partsErr } = await supabase.from("menu_item_parts").insert(cleanedParts);
+        if (partsErr) {
+          console.warn("Parts not saved:", partsErr);
+          toast.warning("Menu item saved, but parts weren’t stored.");
+        }
+      }
+
+      toast.success("Menu item created");
+
+      // Clear form + rows
+      setForm({
+        name: "",
+        description: "",
+        laborTimeStr: "",
+        laborRateStr: form.laborRateStr, // keep rate sticky; or set "" if you prefer
+      });
+      setParts([{ name: "", quantityStr: "", unitCostStr: "", part_id: null }]);
+
+      // Refresh list (MenuQuickAdd listens realtime and will update, too)
+      await fetchItems();
+    } finally {
+      setSaving(false);
     }
-
-    toast.success("Menu item created");
-
-    // reset form
-    setForm({
-      name: "",
-      description: "",
-      labor_time: 0,
-      labor_rate: form.labor_rate, // keep rate sticky
-    });
-    setParts([{ name: "", quantity: 1, unit_cost: 0 }]);
-  }, [form, parts, supabase, user?.id, partsTotal, grandTotal]);
+  }, [form, parts, supabase, user?.id, partsTotal, grandTotal, fetchItems]);
 
   if (isLoading) return <div className="p-4">Loading...</div>;
 
@@ -246,34 +290,30 @@ export default function MenuItemsPage() {
           <div className="grid gap-2">
             <label className="text-sm text-neutral-300">Labor time (hrs)</label>
             <input
-              type="number"
+              type="text"
               inputMode="decimal"
-              value={form.labor_time}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  labor_time: Number.isNaN(parseFloat(e.target.value))
-                    ? 0
-                    : parseFloat(e.target.value),
-                }))
-              }
+              placeholder="e.g. 1.5"
+              value={form.laborTimeStr}
+              onChange={(e) => {
+                const v = e.target.value.replace(/[^\d.]/g, "");
+                const cleaned = v === "" ? "" : v.replace(/^0+(?=\d)/, "");
+                setForm((f) => ({ ...f, laborTimeStr: cleaned }));
+              }}
               className="border border-neutral-700 bg-neutral-900 px-3 py-2 rounded"
             />
           </div>
           <div className="grid gap-2">
             <label className="text-sm text-neutral-300">Labor rate ($/hr)</label>
             <input
-              type="number"
+              type="text"
               inputMode="decimal"
-              value={form.labor_rate}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  labor_rate: Number.isNaN(parseFloat(e.target.value))
-                    ? 0
-                    : parseFloat(e.target.value),
-                }))
-              }
+              placeholder="e.g. 120"
+              value={form.laborRateStr}
+              onChange={(e) => {
+                const v = e.target.value.replace(/[^\d.]/g, "");
+                const cleaned = v === "" ? "" : v.replace(/^0+(?=\d)/, "");
+                setForm((f) => ({ ...f, laborRateStr: cleaned }));
+              }}
               className="border border-neutral-700 bg-neutral-900 px-3 py-2 rounded"
             />
           </div>
@@ -288,30 +328,42 @@ export default function MenuItemsPage() {
             {parts.map((p, idx) => (
               <div
                 key={idx}
-                className="grid grid-cols-[2fr_1fr_1fr_auto] gap-2 items-center"
+                className="grid grid-cols-[2fr_1fr_1fr_auto_auto] gap-2 items-center"
               >
                 <input
-                  placeholder="Part name"
+                  placeholder="Part name (or pick)"
                   value={p.name}
                   onChange={(e) => setPartField(idx, "name", e.target.value)}
                   className="border border-neutral-700 bg-neutral-900 px-3 py-2 rounded"
                 />
+
                 <input
                   placeholder="Qty"
-                  type="number"
+                  type="text"
                   inputMode="numeric"
-                  value={p.quantity}
-                  onChange={(e) => setPartField(idx, "quantity", e.target.value)}
+                  value={p.quantityStr}
+                  onChange={(e) => setPartField(idx, "quantityStr", e.target.value)}
                   className="border border-neutral-700 bg-neutral-900 px-3 py-2 rounded"
                 />
+
                 <input
                   placeholder="Unit cost"
-                  type="number"
+                  type="text"
                   inputMode="decimal"
-                  value={p.unit_cost}
-                  onChange={(e) => setPartField(idx, "unit_cost", e.target.value)}
+                  value={p.unitCostStr}
+                  onChange={(e) => setPartField(idx, "unitCostStr", e.target.value)}
                   className="border border-neutral-700 bg-neutral-900 px-3 py-2 rounded"
                 />
+
+                <button
+                  type="button"
+                  onClick={() => setPickerOpenForRow(idx)}
+                  className="rounded border border-neutral-700 px-2 py-2 text-sm text-neutral-200 hover:bg-neutral-800"
+                  title="Pick from Parts"
+                >
+                  Pick
+                </button>
+
                 <button
                   onClick={() => removePartRow(idx)}
                   className="text-red-400 hover:text-red-300 px-2 py-2"
@@ -321,6 +373,7 @@ export default function MenuItemsPage() {
                 </button>
               </div>
             ))}
+
             <button
               onClick={addPartRow}
               className="text-sm text-orange-400 hover:text-orange-300"
@@ -347,9 +400,10 @@ export default function MenuItemsPage() {
         <div className="flex justify-end">
           <button
             onClick={handleSubmit}
-            className="bg-orange-600 hover:bg-orange-700 text-black font-semibold px-4 py-2 rounded"
+            disabled={saving}
+            className="bg-orange-600 hover:bg-orange-700 disabled:opacity-60 text-black font-semibold px-4 py-2 rounded"
           >
-            Save Menu Item
+            {saving ? "Saving…" : "Save Menu Item"}
           </button>
         </div>
       </div>
@@ -382,6 +436,19 @@ export default function MenuItemsPage() {
           <li className="text-sm text-neutral-400">No items yet.</li>
         )}
       </ul>
+
+      {/* Inline PartPicker – only one open at a time */}
+      {pickerOpenForRow !== null && (
+        <PartPicker
+          open={true}
+          onClose={() => setPickerOpenForRow(null)}
+          onPick={(sel) => {
+            const idx = pickerOpenForRow;
+            setPickerOpenForRow(null);
+            handlePickPart(idx)(sel);
+          }}
+        />
+      )}
     </div>
   );
 }

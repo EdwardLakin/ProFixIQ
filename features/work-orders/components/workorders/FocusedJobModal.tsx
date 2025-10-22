@@ -10,7 +10,7 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 // existing modals
 import CauseCorrectionModal from "@work-orders/components/workorders/CauseCorrectionModal";
-import PartsRequestModal from "@work-orders/components/workorders/PartsRequestModal";
+import PartsDrawer from "@/features/parts/components/PartsDrawer";
 
 // extras
 import HoldModal from "@/features/work-orders/components/workorders/HoldModal";
@@ -37,6 +37,8 @@ import JobPunchButton from "@/features/work-orders/components/JobPunchButton";
 
 // NEW: Use Part button (opens picker, consumes stock) + nicety list support
 import { UsePartButton } from "@work-orders/components/UsePartButton";
+
+import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 
 type Mode = "tech" | "view";
@@ -64,32 +66,39 @@ const outlineInfo = `${outlineBtn} border-blue-600 text-blue-300 hover:bg-blue-9
 const outlinePurple = `${outlineBtn} border-purple-600 text-purple-300 hover:bg-purple-900/20`;
 
 type DB = Database;
-type AllocationRow = DB["public"]["Tables"]["work_order_part_allocations"]["Row"] & {
-  parts?: { name: string | null } | null;
-};
+type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
+type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
+type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
+type Customer = DB["public"]["Tables"]["customers"]["Row"];
 
-export default function FocusedJobModal(props: any) {
+type AllocationRow =
+  DB["public"]["Tables"]["work_order_part_allocations"]["Row"] & {
+    parts?: { name: string | null } | null;
+  };
+
+export default function FocusedJobModal(props: {
+  isOpen: boolean;
+  onClose: () => void;
+  workOrderLineId: string;
+  onChanged?: () => void | Promise<void>;
+  mode?: Mode;
+}) {
   const {
     isOpen,
     onClose,
     workOrderLineId,
     onChanged,
     mode = "tech",
-  } = props as {
-    isOpen: boolean;
-    onClose: () => void;
-    workOrderLineId: string;
-    onChanged?: () => void | Promise<void>;
-    mode?: Mode;
-  };
+  } = props;
 
   const router = useRouter();
   const supabase = useMemo(() => createBrowserSupabase(), []);
+
   const [busy, setBusy] = useState(false);
-  const [line, setLine] = useState<any>(null);
-  const [workOrder, setWorkOrder] = useState<any>(null);
-  const [vehicle, setVehicle] = useState<any>(null);
-  const [customer, setCustomer] = useState<any>(null);
+  const [line, setLine] = useState<WorkOrderLine | null>(null);
+  const [workOrder, setWorkOrder] = useState<WorkOrder | null>(null);
+  const [vehicle, setVehicle] = useState<Vehicle | null>(null);
+  const [customer, setCustomer] = useState<Customer | null>(null);
   const [duration, setDuration] = useState("");
 
   const [techNotes, setTechNotes] = useState("");
@@ -141,7 +150,7 @@ export default function FocusedJobModal(props: any) {
           .from("work_order_lines")
           .select("*")
           .eq("id", workOrderLineId)
-          .maybeSingle();
+          .maybeSingle<WorkOrderLine>();
         if (le) throw le;
         setLine(l ?? null);
         setTechNotes(l?.notes ?? "");
@@ -151,7 +160,7 @@ export default function FocusedJobModal(props: any) {
             .from("work_orders")
             .select("*")
             .eq("id", l.work_order_id)
-            .maybeSingle();
+            .maybeSingle<WorkOrder>();
           if (we) throw we;
           setWorkOrder(wo ?? null);
 
@@ -160,7 +169,7 @@ export default function FocusedJobModal(props: any) {
               .from("vehicles")
               .select("*")
               .eq("id", wo.vehicle_id)
-              .maybeSingle();
+              .maybeSingle<Vehicle>();
             if (ve) throw ve;
             setVehicle(v ?? null);
           } else setVehicle(null);
@@ -170,7 +179,7 @@ export default function FocusedJobModal(props: any) {
               .from("customers")
               .select("*")
               .eq("id", wo.customer_id)
-              .maybeSingle();
+              .maybeSingle<Customer>();
             if (ce) throw ce;
             setCustomer(c ?? null);
           } else setCustomer(null);
@@ -187,16 +196,20 @@ export default function FocusedJobModal(props: any) {
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
     const ch = supabase
-      .channel(`wol-${workOrderLineId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "work_order_lines", filter: `id=eq.${workOrderLineId}` },
-        (payload) => {
-          const next = (payload as any).new;
-          if (next) setLine((prev: any) => ({ ...(prev ?? {}), ...next }));
-        }
-      )
-      .subscribe();
+  .channel(`wol-${workOrderLineId}`)
+  .on(
+    "postgres_changes",
+    {
+      event: "*",
+      schema: "public",
+      table: "work_order_lines",
+      filter: `id=eq.${workOrderLineId}`,
+    },
+    (payload: RealtimePostgresChangesPayload<WorkOrderLine>) => {
+      if (payload.new) setLine(payload.new as WorkOrderLine);
+    },
+  )
+  .subscribe();
     return () => {
       void supabase.removeChannel(ch);
     };
@@ -229,13 +242,6 @@ export default function FocusedJobModal(props: any) {
       setAllocsLoading(false);
     }
   };
-  useEffect(() => {
-    if (!isOpen || !workOrderLineId) return;
-    void loadAllocations();
-    const h = () => loadAllocations();
-    window.addEventListener("wo:parts-used", h);
-    return () => window.removeEventListener("wo:parts-used", h);
-  }, [isOpen, workOrderLineId]);
 
   // ---------- live timer text ----------
   useEffect(() => {
@@ -256,7 +262,7 @@ export default function FocusedJobModal(props: any) {
       .from("work_order_lines")
       .select("*")
       .eq("id", workOrderLineId)
-      .maybeSingle();
+      .maybeSingle<WorkOrderLine>();
     setLine(l ?? null);
     setTechNotes(l?.notes ?? "");
     await onChanged?.();
@@ -274,7 +280,7 @@ export default function FocusedJobModal(props: any) {
           hold_reason: reason || "On hold",
           status: "on_hold",
           notes: notes ?? line?.notes ?? null,
-        })
+        } as DB["public"]["Tables"]["work_order_lines"]["Update"])
         .eq("id", workOrderLineId);
       if (error) return showErr("Apply hold failed", error);
       toast.success("Hold applied");
@@ -290,7 +296,7 @@ export default function FocusedJobModal(props: any) {
     try {
       const { error } = await supabase
         .from("work_order_lines")
-        .update({ hold_reason: null, status: "awaiting" })
+        .update({ hold_reason: null, status: "awaiting" } as DB["public"]["Tables"]["work_order_lines"]["Update"])
         .eq("id", workOrderLineId);
       if (error) return showErr("Remove hold failed", error);
       toast.success("Hold removed");
@@ -306,7 +312,7 @@ export default function FocusedJobModal(props: any) {
     try {
       const { error } = await supabase
         .from("work_order_lines")
-        .update({ status: next })
+        .update({ status: next } as DB["public"]["Tables"]["work_order_lines"]["Update"])
         .eq("id", workOrderLineId);
       if (error) return showErr("Update status failed", error);
       toast.success("Status updated");
@@ -322,7 +328,7 @@ export default function FocusedJobModal(props: any) {
     try {
       const { error } = await supabase
         .from("work_order_lines")
-        .update({ punched_in_at: inAt, punched_out_at: outAt })
+        .update({ punched_in_at: inAt, punched_out_at: outAt } as DB["public"]["Tables"]["work_order_lines"]["Update"])
         .eq("id", workOrderLineId)
         .select("id, punched_in_at, punched_out_at")
         .single();
@@ -347,13 +353,18 @@ export default function FocusedJobModal(props: any) {
     toast.success("Photo attached");
   };
 
-  const applyCost = async (laborHours: number | null, price: number | null) => {
+  // NOTE: omit price_estimate unless your generated types include it
+  const applyCost = async (laborHours: number | null, _price: number | null) => {
     if (busy) return;
     setBusy(true);
     try {
+      const payload: DB["public"]["Tables"]["work_order_lines"]["Update"] = {
+        labor_time: laborHours,
+        // price_estimate: _price as any, // <- re-enable when your types include it
+      };
       const { error } = await supabase
         .from("work_order_lines")
-        .update({ labor_time: laborHours, price_estimate: price })
+        .update(payload)
         .eq("id", workOrderLineId);
       if (error) return showErr("Save cost failed", error);
       toast.success("Estimate updated");
@@ -391,7 +402,7 @@ export default function FocusedJobModal(props: any) {
     setSavingNotes(true);
     const { error } = await supabase
       .from("work_order_lines")
-      .update({ notes: techNotes })
+      .update({ notes: techNotes } as DB["public"]["Tables"]["work_order_lines"]["Update"])
       .eq("id", workOrderLineId);
     setSavingNotes(false);
     if (error) return showErr("Update notes failed", error);
@@ -420,9 +431,9 @@ export default function FocusedJobModal(props: any) {
       });
 
       const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j?.error || "Failed to create inspection session");
+      if (!res.ok) throw new Error((j as any)?.error || "Failed to create inspection session");
 
-      const sessionId: string = j.sessionId;
+      const sessionId: string = (j as any).sessionId;
 
       const sp = new URLSearchParams();
       if (workOrder?.id) sp.set("workOrderId", workOrder.id);
@@ -448,16 +459,25 @@ export default function FocusedJobModal(props: any) {
   const startedText = startAt ? format(new Date(startAt), "PPpp") : "—";
   const finishedText = finishAt ? format(new Date(finishAt), "PPpp") : "—";
 
+  // When PartsDrawer closes itself, it dispatches a window event — listen and close here.
+  useEffect(() => {
+    if (!openParts) return;
+    const name = `parts-drawer:closed:${line?.id ?? workOrderLineId}`;
+    const handler = () => setOpenParts(false);
+    window.addEventListener(name, handler as EventListener);
+    return () => window.removeEventListener(name, handler as EventListener);
+  }, [openParts, line?.id, workOrderLineId]);
+
   // ---------- render ----------
   return (
     <>
       {isOpen && (
         <VoiceContextSetter
           currentView="focused_job"
-          workOrderId={workOrder?.id}
-          vehicleId={vehicle?.id}
-          customerId={customer?.id}
-          lineId={line?.id}
+          workOrderId={workOrder?.id ?? undefined}
+          vehicleId={vehicle?.id ?? undefined}
+          customerId={customer?.id ?? undefined}
+          lineId={line?.id ?? undefined}
         />
       )}
 
@@ -478,7 +498,7 @@ export default function FocusedJobModal(props: any) {
             {/* Title row */}
             <div className="mb-2 flex items-start justify-between gap-3">
               <div className="text-lg font-header font-semibold tracking-wide">
-                <span className={chip(line?.status)}>{titleText}</span>
+                <span className={chip(line?.status ?? null)}>{titleText}</span>
                 {workOrder ? (
                   <span className="ml-2 text-sm font-normal text-neutral-400">
                     WO #{workOrder.custom_id || workOrder.id?.slice(0, 8)}
@@ -524,7 +544,7 @@ export default function FocusedJobModal(props: any) {
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
                     <div className="text-xs text-neutral-400">Status</div>
-                    <div className={`font-medium ${chip(line.status)}`}>
+                    <div className={`font-medium ${chip(line.status ?? null)}`}>
                       {String(line.status || "awaiting").replaceAll("_", " ")}
                     </div>
                   </div>
@@ -782,7 +802,7 @@ export default function FocusedJobModal(props: any) {
                 correction,
                 punched_out_at: new Date().toISOString(),
                 status: "completed",
-              })
+              } as DB["public"]["Tables"]["work_order_lines"]["Update"])
               .eq("id", line.id);
             if (error) return showErr("Complete job failed", error);
             toast.success("Job completed");
@@ -793,14 +813,30 @@ export default function FocusedJobModal(props: any) {
       )}
 
       {openParts && workOrder?.id && line && (
-        <PartsRequestModal
-          isOpen={openParts}
+        <PartsDrawer
+          open={openParts}
           onClose={() => setOpenParts(false)}
-          jobId={line.id}
           workOrderId={workOrder.id}
-          requested_by={line.assigned_to || "system"}
+          workOrderLineId={line.id}
+          vehicleSummary={
+            vehicle
+              ? {
+                  year: (vehicle.year as string | number | null)?.toString() ?? null,
+                  make: vehicle.make ?? null,
+                  model: vehicle.model ?? null,
+                }
+              : null
+          }
+          jobDescription={line.description ?? null}
+          jobNotes={line.notes ?? null}
+          // the drawer will dispatch this event on close; we listen above to setOpenParts(false)
+          closeEventName={`parts-drawer:closed:${line.id}`}
         />
+          
+
       )}
+
+  
 
       {openHold && line && (
         <HoldModal
@@ -826,7 +862,7 @@ export default function FocusedJobModal(props: any) {
         <StatusPickerModal
           isOpen={openStatus}
           onClose={() => setOpenStatus(false)}
-          current={(line.status || "awaiting") as any}
+          current={(line.status || "awaiting") as Parameters<typeof StatusPickerModal>[0]["current"]}
           onChange={changeStatus}
         />
       )}
@@ -854,7 +890,8 @@ export default function FocusedJobModal(props: any) {
           isOpen={openCost}
           onClose={() => setOpenCost(false)}
           defaultLaborHours={typeof line.labor_time === "number" ? line.labor_time : null}
-          defaultPrice={typeof line.price_estimate === "number" ? line.price_estimate : null}
+          // re-enable when types include price_estimate
+          defaultPrice={null}
           onApply={applyCost}
         />
       )}
@@ -874,15 +911,15 @@ export default function FocusedJobModal(props: any) {
       )}
 
       {openChat && (
-        <NewChatModal
-          isOpen={openChat}
-          onClose={() => setOpenChat(false)}
-          created_by={workOrder?.created_by ?? "system"}
-          onCreated={() => setOpenChat(false)}
-          context_type="work_order_line"
-          context_id={line?.id ?? null}
-        />
-      )}
+  <NewChatModal
+    isOpen={openChat}
+    onClose={() => setOpenChat(false)}
+    created_by="system"
+    onCreated={() => setOpenChat(false)}
+    context_type="work_order_line"
+    context_id={line?.id ?? null}
+  />
+)}
 
       {openAddJob && workOrder?.id && (
         <AddJobModal

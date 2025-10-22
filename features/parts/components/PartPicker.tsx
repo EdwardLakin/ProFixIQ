@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-  
+import { useAiPartSuggestions, AiPartSuggestion } from "@/features/parts/hooks/useAiPartSuggestions";
+
 type DB = Database;
 type UUID = string;
 
@@ -22,13 +23,18 @@ export type PickedPart = { part_id: UUID; location_id?: UUID; qty: number };
 
 type Props = {
   open: boolean;
-  /** Optional channel for window events (kept for compatibility) */
+  /** Optional window event channel (legacy nicety) */
   channel?: string;
   /** Prefill search text */
   initialSearch?: string;
-  /** Called when user closes the picker */
+  /** Work-order context (for AI + RLS) */
+  workOrderId?: string;
+  workOrderLineId?: string | null;
+  vehicleSummary?: { year?: number | string | null; make?: string | null; model?: string | null } | null;
+  jobDescription?: string | null;
+  jobNotes?: string | null;
+  /** Callbacks */
   onClose?: () => void;
-  /** Called when user confirms a selection */
   onPick?: (sel: PickedPart) => void;
 };
 
@@ -36,6 +42,11 @@ export function PartPicker({
   open,
   channel = "partpicker",
   initialSearch = "",
+  workOrderId,
+  workOrderLineId,
+  vehicleSummary,
+  jobDescription,
+  jobNotes,
   onClose,
   onPick,
 }: Props) {
@@ -53,7 +64,10 @@ export function PartPicker({
   const [selectedLocId, setSelectedLocId] = useState<UUID | null>(null);
   const [qty, setQty] = useState<number>(1);
 
-  // derive MAIN location if present
+  // AI suggestions
+  const { loading: aiLoading, items: aiItems, error: aiErr, suggest } = useAiPartSuggestions();
+
+  // MAIN location if present
   const mainLocId = useMemo(() => {
     const m = locs.find((l) => (l.code ?? "").toUpperCase() === "MAIN");
     return (m?.id as UUID | undefined) ?? null;
@@ -94,6 +108,19 @@ export function PartPicker({
     })();
   }, [open, supabase]);
 
+  // AI: fetch suggestions on first open (if context provided)
+  useEffect(() => {
+    if (!open || !workOrderId) return;
+    void suggest({
+      workOrderId,
+      workOrderLineId: workOrderLineId ?? null,
+      vehicle: vehicleSummary ?? null,
+      description: jobDescription ?? null,
+      notes: jobNotes ?? null,
+      topK: 5,
+    });
+  }, [open, workOrderId, workOrderLineId, vehicleSummary, jobDescription, jobNotes, suggest]);
+
   // search parts + fetch stock for visible parts
   useEffect(() => {
     if (!open || !shopId) return;
@@ -111,9 +138,7 @@ export function PartPicker({
 
         const term = search.trim();
         if (term) {
-          q = q.or(
-            `name.ilike.%${term}%,sku.ilike.%${term}%,category.ilike.%${term}%`
-          );
+          q = q.or(`name.ilike.%${term}%,sku.ilike.%${term}%,category.ilike.%${term}%`);
         }
 
         const { data: rows, error } = await q;
@@ -168,8 +193,6 @@ export function PartPicker({
     setSearch(initialSearch);
   }, [open, initialSearch]);
 
-  if (!open) return null;
-
   const selectedStocks = selectedPartId ? stock[selectedPartId] ?? [] : [];
   const locMap = new Map<UUID, StockLoc>(locs.map((l) => [l.id as UUID, l]));
   const defaultLocId: UUID | null =
@@ -197,14 +220,35 @@ export function PartPicker({
     close();
   };
 
-  return (
+  // Try to resolve an AI suggestion to a concrete part (SKU first, then name)
+  async function resolveSuggestionToPartId(s: AiPartSuggestion): Promise<string | null> {
+    if (!shopId) return null;
+    if (s.sku) {
+      const { data } = await supabase
+        .from("parts")
+        .select("id")
+        .eq("shop_id", shopId)
+        .eq("sku", s.sku)
+        .maybeSingle();
+      if (data?.id) return data.id as string;
+    }
+    if (s.name) {
+      const { data } = await supabase
+        .from("parts")
+        .select("id")
+        .eq("shop_id", shopId)
+        .ilike("name", s.name)
+        .maybeSingle();
+      if (data?.id) return data.id as string;
+    }
+    return null;
+  }
+
+  return !open ? null : (
     <div className="fixed inset-0 z-[340] flex items-center justify-center">
       {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black/70 backdrop-blur-sm"
-        aria-hidden="true"
-        onClick={close}
-      />
+      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" aria-hidden="true" onClick={close} />
+
       {/* Panel */}
       <div className="relative z-[350] w-full max-w-3xl rounded-lg border border-orange-400 bg-neutral-950 p-4 text-white shadow-xl">
         <div className="mb-3 flex items-center justify-between">
@@ -220,6 +264,44 @@ export function PartPicker({
           </button>
         </div>
 
+        {/* AI suggestions */}
+        <div className="mb-3 rounded border border-neutral-800">
+          <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-2">
+            <div className="text-sm font-semibold">AI suggestions</div>
+            {aiLoading && <div className="text-xs text-neutral-400">Thinking…</div>}
+          </div>
+          <div className="p-2">
+            {aiErr ? (
+              <div className="text-xs text-red-400">{aiErr}</div>
+            ) : aiItems.length === 0 ? (
+              <div className="text-xs text-neutral-500">No suggestions.</div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {aiItems.map((s, i) => (
+                  <button
+                    key={i}
+                    className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-900"
+                    title={s.rationale || ""}
+                    onClick={async () => {
+                      const pid = await resolveSuggestionToPartId(s);
+                      if (pid) {
+                        setSelectedPartId(pid as UUID);
+                        setQty(Math.max(1, Number(s.qty ?? 1)));
+                      } else {
+                        // fallback: prime the search so the tech can pick manually
+                        setSearch(s.sku || s.name || "");
+                      }
+                    }}
+                  >
+                    {(s.sku ? `${s.sku} • ` : "") + s.name} {s.qty ? `×${s.qty}` : ""}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Search */}
         <div className="mb-3">
           <input
             className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-white placeholder:text-neutral-400"
@@ -237,9 +319,7 @@ export function PartPicker({
           <div className="grid gap-3 md:grid-cols-2">
             {/* Left: results */}
             <div className="rounded-xl border border-neutral-800">
-              <div className="border-b border-neutral-800 p-2 text-sm font-semibold">
-                Results
-              </div>
+              <div className="border-b border-neutral-800 p-2 text-sm font-semibold">Results</div>
               <div className="max-h-72 overflow-auto">
                 {parts.length === 0 ? (
                   <div className="p-3 text-sm text-neutral-400">No parts found.</div>
@@ -266,49 +346,32 @@ export function PartPicker({
             <div className="rounded-xl border border-neutral-800 p-3">
               <div className="mb-2 text-sm font-semibold">Stock by location</div>
               {!selectedPartId ? (
-                <div className="text-sm text-neutral-400">
-                  Select a part to view stock.
-                </div>
+                <div className="text-sm text-neutral-400">Select a part to view stock.</div>
               ) : selectedStocks.length === 0 ? (
-                <div className="text-sm text-neutral-400">
-                  No stock entries yet (you can still use/consume).
-                </div>
+                <div className="text-sm text-neutral-400">No stock entries yet (you can still use/consume).</div>
               ) : (
                 <div className="grid gap-2">
                   {selectedStocks
                     .slice()
-                    .sort(
-                      (a, b) => Number(b.qty_available) - Number(a.qty_available)
-                    )
+                    .sort((a, b) => Number(b.qty_available) - Number(a.qty_available))
                     .map((s) => {
                       const l = locMap.get(s.location_id as UUID);
-                      const checked =
-                        (selectedLocId ?? defaultLocId) === s.location_id;
+                      const checked = (selectedLocId ?? defaultLocId) === s.location_id;
                       return (
-                        <label
-                          key={s.location_id}
-                          className="flex items-center justify-between rounded border border-neutral-800 p-2"
-                        >
+                        <label key={s.location_id} className="flex items-center justify-between rounded border border-neutral-800 p-2">
                           <div className="min-w-0">
-                            <div className="font-medium">
-                              {l?.code ?? "LOC"}
-                            </div>
+                            <div className="font-medium">{l?.code ?? "LOC"}</div>
                             <div className="truncate text-xs text-neutral-500">
-                              {l?.name ??
-                                String(s.location_id).slice(0, 6) + "…"}
+                              {l?.name ?? String(s.location_id).slice(0, 6) + "…"}
                             </div>
                           </div>
-                          <div className="tabular-nums text-sm font-semibold">
-                            {Number(s.qty_available)} avail
-                          </div>
+                          <div className="tabular-nums text-sm font-semibold">{Number(s.qty_available)} avail</div>
                           <input
                             type="radio"
                             name="loc"
                             className="ml-2"
                             checked={!!checked}
-                            onChange={() =>
-                              setSelectedLocId(s.location_id as UUID)
-                            }
+                            onChange={() => setSelectedLocId(s.location_id as UUID)}
                           />
                         </label>
                       );
@@ -324,9 +387,7 @@ export function PartPicker({
                     min={0}
                     step="0.01"
                     value={qty}
-                    onChange={(e) =>
-                      setQty(Math.max(0, Number(e.target.value || 0)))
-                    }
+                    onChange={(e) => setQty(Math.max(0, Number(e.target.value || 0)))}
                     className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
                   />
                 </div>
@@ -334,11 +395,7 @@ export function PartPicker({
                   <div className="mb-1 text-xs text-neutral-500">Location</div>
                   <select
                     value={defaultLocId ?? ""}
-                    onChange={(e) =>
-                      setSelectedLocId(
-                        (e.target.value || null) as UUID | null
-                      )
-                    }
+                    onChange={(e) => setSelectedLocId((e.target.value || null) as UUID | null)}
                     className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
                   >
                     <option value="">Auto</option>

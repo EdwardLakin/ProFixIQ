@@ -1,26 +1,29 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { toast } from "sonner";
 import type { Database, TablesInsert } from "@shared/types/types/supabase";
 
 type DB = Database;
 type WorkOrderLineInsert = TablesInsert<"work_order_lines">;
 
+type JobType = "maintenance" | "repair" | "diagnosis" | "inspection";
+
 type SimpleService = {
   name: string;
-  laborHours: number;
-  partCost?: number;
-  jobType: "maintenance" | "repair" | "diagnosis" | "inspection";
-  notes?: string;
+  laborHours: number | null;
+  partCost?: number | null;
+  jobType: JobType;
+  notes?: string | null;
 };
 
 type PackageItem = {
   description: string;
-  jobType?: SimpleService["jobType"];
-  laborHours?: number;
-  notes?: string;
+  jobType?: JobType;
+  laborHours?: number | null;
+  notes?: string | null;
 };
 
 type PackageDef = {
@@ -28,25 +31,65 @@ type PackageDef = {
   name: string;
   summary: string;
   jobType: "inspection" | "maintenance";
-  estLaborHours: number;
+  estLaborHours: number | null;
   items: PackageItem[];
 };
 
-function useMenuData() {
+/** Menu items saved by the user (from /app/menu/page). */
+type MenuItemRow = DB["public"]["Tables"]["menu_items"]["Row"];
+
+type VehicleLite = {
+  id?: string | null;
+  year?: string | number | null;
+  make?: string | null;
+  model?: string | null;
+  vin?: string | null;
+  license_plate?: string | null;
+};
+
+type CustomerLite = {
+  id?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+};
+
+/** Minimal structure for allocating parts alongside a new line (future-proof for AI). */
+type PartToAllocate = {
+  sku?: string | null;
+  name?: string | null;
+  qty: number;
+};
+
+type AddMenuParams = {
+  /** What will appear as the job’s description on the work order. */
+  name: string;
+  /** Work order line job type. */
+  jobType: JobType;
+  /** Planned labor hours for that single line (nullable). */
+  laborHours?: number | null;
+  /** Optional notes (e.g., package summary). */
+  notes?: string | null;
+  /** Optional “source tag” for toasts/analytics. */
+  source?: "single" | "package" | "menu_item" | "ai" | "inspection";
+  /** If true, return the new line id. */
+  returnLineId?: boolean;
+  /** Optional explicit parts to allocate (SKU/Name + qty). */
+  partsToAllocate?: PartToAllocate[];
+};
+
+export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
+  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const router = useRouter();
+
+  // -------------------- curated menus (examples) --------------------
   const singles: SimpleService[] = [
     { name: "Front Brakes", laborHours: 1.5, partCost: 120, jobType: "repair" },
     { name: "Rear Brakes", laborHours: 1.5, partCost: 110, jobType: "repair" },
-    { name: "Brake Pads", laborHours: 1.2, partCost: 90, jobType: "repair" },
-    { name: "Rotors", laborHours: 1.3, partCost: 140, jobType: "repair" },
     { name: "Oil Change (Gas)", laborHours: 0.8, partCost: 40, jobType: "maintenance" },
-    { name: "Oil Change (Diesel)", laborHours: 1.2, partCost: 65, jobType: "maintenance", notes: "Higher capacity oil & filter" },
-    { name: "Air Filter", laborHours: 0.3, partCost: 25, jobType: "maintenance" },
-    { name: "Coolant Flush", laborHours: 1.2, partCost: 80, jobType: "maintenance" },
-    { name: "Battery Replacement", laborHours: 0.5, partCost: 120, jobType: "maintenance" },
     { name: "Tire Rotation", laborHours: 0.6, jobType: "maintenance" },
     { name: "Alignment", laborHours: 1.2, jobType: "maintenance" },
-    { name: "Quick Inspection – Gas", laborHours: 1.0, jobType: "inspection", notes: "Fluids, tires, lights, horn, wipers" },
-    { name: "Quick Inspection – Diesel", laborHours: 1.2, jobType: "inspection", notes: "Fluids, tires, lights, horn, wipers, DEF check" },
   ];
 
   const packages: PackageDef[] = [
@@ -55,94 +98,40 @@ function useMenuData() {
       name: "Oil Change – Gasoline",
       jobType: "maintenance",
       estLaborHours: 0.8,
-      summary: "Engine oil & filter, top off fluids, tire pressures, quick visual leak check.",
-      items: [
-        { description: "Drain engine oil & replace oil filter", jobType: "maintenance", laborHours: 0.6 },
-        { description: "Top off all fluids (coolant, washer, PS/ATF if applicable)", jobType: "maintenance", laborHours: 0.1 },
-        { description: "Set tire pressures & reset maintenance light (if needed)", jobType: "maintenance", laborHours: 0.1 },
-        { description: "Quick visual leak inspection (engine bay & undercarriage)", jobType: "inspection" },
-      ],
-    },
-    {
-      id: "oil-diesel",
-      name: "Oil Change – Diesel",
-      jobType: "maintenance",
-      estLaborHours: 1.2,
-      summary: "Diesel engine oil & filter, drain fuel/water separator, DEF level, quick diesel-system checks.",
-      items: [
-        { description: "Drain engine oil & replace oil filter", jobType: "maintenance", laborHours: 0.6 },
-        { description: "Drain fuel water separator", jobType: "maintenance", laborHours: 0.2 },
-        { description: "Check/Top DEF fluid level", jobType: "maintenance", laborHours: 0.1 },
-        { description: "Inspect fuel filter condition (replace if due)", jobType: "maintenance", laborHours: 0.2, notes: "If replacement required, create additional line." },
-        { description: "Quick diesel visual: charge pipes/turbo hoses/intercooler connections", jobType: "inspection" },
-      ],
+      summary: "Oil & filter, fluids, tire pressures, quick leak check.",
+      items: [],
     },
     {
       id: "insp-gas",
       name: "Multi-Point Inspection – Gas",
       jobType: "inspection",
       estLaborHours: 1.0,
-      summary: "Brakes, tires, suspension, fluids, leaks, battery test, lights, codes scan.",
-      items: [],
-    },
-    {
-      id: "insp-diesel",
-      name: "Multi-Point Inspection – Diesel",
-      jobType: "inspection",
-      estLaborHours: 1.2,
-      summary: "All gas checks + diesel specifics: glow system, fuel system, turbo/charge air, DPF/regen, DEF.",
+      summary: "Brakes, tires, suspension, battery, lights, codes scan.",
       items: [],
     },
   ];
 
-  return { singles, packages };
-}
-
-type VehicleLite = {
-  year?: string | number | null;
-  make?: string | null;
-  model?: string | null;
-  vin?: string | null;
-  license_plate?: string | null;
-  mileage?: string | number | null;
-  color?: string | null;
-  unit_number?: string | null;
-  engine_hours?: number | null;
-  id?: string | null;
-};
-
-type CustomerLite = {
-  first_name?: string | null;
-  last_name?: string | null;
-  phone?: string | null;
-  email?: string | null;
-  address?: string | null;
-  city?: string | null;
-  province?: string | null;
-  postal_code?: string | null;
-  id?: string | null;
-};
-
-export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
-  const router = useRouter();
-  const { singles, packages } = useMenuData();
-
+  // -------------------- UI / data state --------------------
   const [addingId, setAddingId] = useState<string | null>(null);
-
-  // Vehicle + customer prefill hints for UI
   const [vehicle, setVehicle] = useState<VehicleLite | null>(null);
   const [customer, setCustomer] = useState<CustomerLite | null>(null);
-
-  // For the Review Quote chip
   const [woLineCount, setWoLineCount] = useState<number | null>(null);
-
-  // Collapsing UI
   const [showAllPackages, setShowAllPackages] = useState(false);
   const [showAllSingles, setShowAllSingles] = useState(false);
 
-  // Capture shopId so inserts satisfy RLS
+  // Saved Menu Items integration
+  const [menuItems, setMenuItems] = useState<MenuItemRow[]>([]);
+  const [menuLoading, setMenuLoading] = useState(false);
+
+  // Shop context (RLS)
   const [shopId, setShopId] = useState<string | null>(null);
+  const shopReady = !!shopId;
+  const vehicleId = vehicle?.id ?? null;
+
+  // AI modal
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
 
   // Avoid redundant RPC calls in this component
   const lastSetShopId = useRef<string | null>(null);
@@ -154,6 +143,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     else throw error;
   }
 
+  // -------------------- bootstrap --------------------
   useEffect(() => {
     (async () => {
       const { data: wo } = await supabase
@@ -167,7 +157,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       if (wo?.vehicle_id) {
         const { data: v } = await supabase
           .from("vehicles")
-          .select("id, year, make, model, vin, license_plate, mileage, color, unit_number, engine_hours")
+          .select("id, year, make, model, vin, license_plate")
           .eq("id", wo.vehicle_id)
           .maybeSingle();
         if (v) setVehicle(v as VehicleLite);
@@ -178,7 +168,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       if (wo?.customer_id) {
         const { data: c } = await supabase
           .from("customers")
-          .select("id, first_name, last_name, phone, email, address, city, province, postal_code")
+          .select("id, first_name, last_name, phone, email")
           .eq("id", wo.customer_id)
           .maybeSingle();
         if (c) setCustomer(c as CustomerLite);
@@ -190,223 +180,371 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         .from("work_order_lines")
         .select("*", { count: "exact", head: true })
         .eq("work_order_id", workOrderId);
-
       setWoLineCount(typeof count === "number" ? count : null);
     })();
   }, [supabase, workOrderId]);
 
-  const shopReady = !!shopId;
-  const vehicleId = vehicle?.id ?? null;
-
-  /** Adds a single inspection line (no navigation). */
-  async function addInspectionLine(kind: "hydraulic" | "air") {
-    if (!shopReady) return;
-    setAddingId(kind);
-
+  const loadMenuItems = useCallback(async () => {
+    setMenuLoading(true);
     try {
-      await ensureShopContext(shopId);
-
-      const description =
-        kind === "air"
-          ? "Maintenance 50 – Air (CVIP) – Inspection"
-          : "Maintenance 50 – Hydraulic – Inspection";
-
-      const newLine: WorkOrderLineInsert = {
-        work_order_id: workOrderId,
-        vehicle_id: vehicleId,
-        description,
-        job_type: "inspection",
-        status: "awaiting",
-        priority: 3,
-        labor_time: null,
-        notes: null,
-        shop_id: shopId!, // known due to shopReady
-      };
-
-      const { error } = await supabase.from("work_order_lines").insert(newLine);
+      const { data, error } = await supabase
+        .from("menu_items")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(20);
       if (error) throw error;
-
-      window.dispatchEvent(new CustomEvent("wo:line-added"));
-    } catch (e: any) {
-      console.error("Failed to create inspection line:", e);
-      alert(e?.message ?? "Failed to create inspection line.");
-      lastSetShopId.current = null;
+      setMenuItems(data ?? []);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn("Failed to load menu items", e);
     } finally {
-      setAddingId(null);
+      setMenuLoading(false);
     }
-  }
+  }, [supabase]);
 
-  async function addSingle(item: SimpleService) {
-    if (!shopReady) return;
-    setAddingId(item.name);
+  useEffect(() => {
+    void loadMenuItems();
+  }, [loadMenuItems]);
 
+  // ============================================================
+  //                    SHARED ADD + AUTO-ALLOC
+  // ============================================================
+
+  /** Create a line; optionally return its id and/or auto-allocate explicit parts. */
+  async function addMenuItem(params: AddMenuParams): Promise<string | null> {
+    if (!shopReady) return null;
+
+    setAddingId(params.name);
     try {
       await ensureShopContext(shopId);
 
       const line: WorkOrderLineInsert = {
         work_order_id: workOrderId,
         vehicle_id: vehicleId,
-        description: item.name,
-        labor_time: item.laborHours ?? null,
+        description: params.name,
+        job_type: params.jobType,
+        labor_time: params.laborHours ?? null,
         status: "awaiting",
         priority: 3,
-        job_type: item.jobType,
-        notes: item.notes ?? null,
+        notes: params.notes ?? null,
         shop_id: shopId!,
       };
 
-      const { error } = await supabase.from("work_order_lines").insert([line]);
+      // Ask for id back so we can allocate parts if requested
+      const { data, error } = await supabase
+        .from("work_order_lines")
+        .insert(line)
+        .select("id")
+        .single();
+
       if (error) throw error;
 
+      // Optional explicit allocation list (AI / custom flows)
+      if (params.partsToAllocate && params.partsToAllocate.length && data?.id) {
+        await autoAllocateExplicitParts(params.partsToAllocate, data.id);
+      }
+
       window.dispatchEvent(new CustomEvent("wo:line-added"));
-    } catch (e: any) {
-      console.error("Failed to add single service:", e);
-      alert(e?.message ?? "Failed to add service.");
+      toast.success(
+        params.source === "ai"
+          ? "AI suggestion added"
+          : params.source === "menu_item"
+          ? "Menu item added"
+          : "Job added",
+      );
+
+      return params.returnLineId ? (data?.id ?? null) : null;
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to add job.";
       lastSetShopId.current = null;
+      toast.error(msg);
+      return null;
     } finally {
       setAddingId(null);
     }
+  }
+
+  // --------- allocation helpers (menu items + explicit parts) ----------
+  type MenuItemPartRow = {
+    id: string;
+    name: string | null;
+    sku: string | null;
+    quantity: number | null;
+    unit_cost: number | null;
+  };
+
+  async function findPartIdForShop({
+    sku,
+    name,
+    shop,
+  }: {
+    sku?: string | null;
+    name?: string | null;
+    shop: string;
+  }): Promise<string | null> {
+    // Prefer exact SKU
+    if (sku) {
+      const bySku = await supabase
+        .from("parts")
+        .select("id")
+        .eq("shop_id", shop)
+        .eq("sku", sku)
+        .limit(1)
+        .maybeSingle();
+      if (!bySku.error && bySku.data?.id) return bySku.data.id;
+    }
+    // Fallback: case-insensitive name
+    if (name) {
+      const byName = await supabase
+        .from("parts")
+        .select("id")
+        .eq("shop_id", shop)
+        .ilike("name", name)
+        .limit(1)
+        .maybeSingle();
+      if (byName.data?.id) return byName.data.id;
+    }
+    return null;
+  }
+
+  async function pickDefaultLocationId(partId: string, shop: string): Promise<string | null> {
+    // Try a location with stock first
+    const withStock = await supabase
+      .from("part_stock")
+      .select("location_id, qty")
+      .eq("part_id", partId)
+      .order("qty", { ascending: false })
+      .limit(1);
+
+    if (!withStock.error && withStock.data?.length) {
+      return withStock.data[0].location_id as unknown as string;
+    }
+
+    // Fallback: any shop location
+    const anyLoc = await supabase
+      .from("stock_locations")
+      .select("id")
+      .eq("shop_id", shop)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    return anyLoc.data?.id ?? null;
+  }
+
+  /** Convert menu_item_parts → work_order_part_allocations for a saved menu item. */
+  async function autoAllocateMenuParts(menuItemId: string, workOrderLineId: string) {
+    if (!shopId) return;
+
+    const { data: rows, error } = await supabase
+      .from("menu_item_parts")
+      .select("id, name, sku, quantity, unit_cost")
+      .eq("menu_item_id", menuItemId);
+
+    if (error) {
+      toast.message("Added job, but couldn't read menu parts.");
+      return;
+    }
+
+    const mParts = (rows ?? []) as MenuItemPartRow[];
+    const allocations: {
+      work_order_line_id: string;
+      part_id: string;
+      location_id: string;
+      qty: number;
+    }[] = [];
+
+    for (const p of mParts) {
+      const qty = typeof p.quantity === "number" && p.quantity > 0 ? p.quantity : 0;
+      if (!qty) continue;
+
+      const partId = await findPartIdForShop({ sku: p.sku ?? undefined, name: p.name ?? undefined, shop: shopId });
+      if (!partId) {
+        toast.message(`Skipped "${p.name ?? p.sku ?? "part"}" (not in Parts).`);
+        continue;
+      }
+      const locId = await pickDefaultLocationId(partId, shopId);
+      if (!locId) {
+        toast.message(`Skipped "${p.name ?? p.sku ?? "part"}" (no stock location).`);
+        continue;
+      }
+      allocations.push({ work_order_line_id: workOrderLineId, part_id: partId, location_id: locId, qty });
+    }
+
+    if (!allocations.length) return;
+
+    const { error: allocErr } = await supabase.from("work_order_part_allocations").insert(allocations);
+    if (allocErr) {
+      toast.warning("Job added, but parts couldn't be allocated.");
+      // eslint-disable-next-line no-console
+      console.warn("allocations error", allocErr);
+    } else {
+      window.dispatchEvent(new CustomEvent("wo:parts-used"));
+      toast.success(`Allocated ${allocations.length} part${allocations.length > 1 ? "s" : ""}`);
+    }
+  }
+
+  /** Allocate from an explicit lightweight list (used for AI or ad-hoc flows). */
+  async function autoAllocateExplicitParts(list: PartToAllocate[], workOrderLineId: string) {
+    if (!shopId || !list.length) return;
+
+    const allocations: {
+      work_order_line_id: string;
+      part_id: string;
+      location_id: string;
+      qty: number;
+    }[] = [];
+
+    for (const raw of list) {
+      const qty = typeof raw.qty === "number" && raw.qty > 0 ? raw.qty : 0;
+      if (!qty) continue;
+
+      const partId = await findPartIdForShop({ sku: raw.sku ?? undefined, name: raw.name ?? undefined, shop: shopId });
+      if (!partId) continue;
+
+      const locId = await pickDefaultLocationId(partId, shopId);
+      if (!locId) continue;
+
+      allocations.push({ work_order_line_id: workOrderLineId, part_id: partId, location_id: locId, qty });
+    }
+
+    if (!allocations.length) return;
+    const { error } = await supabase.from("work_order_part_allocations").insert(allocations);
+    if (!error) window.dispatchEvent(new CustomEvent("wo:parts-used"));
+  }
+
+  // -------------------- tiny wrappers (all call addMenuItem) --------------------
+  async function addSingle(s: SimpleService) {
+    await addMenuItem({
+      name: s.name,
+      jobType: s.jobType,
+      laborHours: s.laborHours ?? null,
+      notes: s.notes ?? null,
+      source: "single",
+    });
   }
 
   async function addPackage(pkg: PackageDef) {
-    if (!shopReady) return;
-    setAddingId(pkg.id);
-
-    try {
-      await ensureShopContext(shopId);
-
-      // Inspections → single line
-      if (pkg.jobType === "inspection") {
-        if (pkg.id === "insp-diesel") {
-          await addInspectionLine("air");
-        } else {
-          await addInspectionLine("hydraulic");
-        }
-        return;
-      }
-
-      // Maintenance packages → one summary line
-      const line: WorkOrderLineInsert = {
-        work_order_id: workOrderId,
-        vehicle_id: vehicleId,
-        description: pkg.name,
-        labor_time: pkg.estLaborHours,
-        status: "awaiting",
-        priority: 3,
-        job_type: "maintenance",
+    // Inspections become a single inspection line
+    if (pkg.jobType === "inspection") {
+      await addMenuItem({
+        name: pkg.name,
+        jobType: "inspection",
+        laborHours: pkg.estLaborHours ?? null,
         notes: pkg.summary,
-        shop_id: shopId!,
-      };
+        source: "package",
+      });
+      return;
+    }
 
-      const { error } = await supabase.from("work_order_lines").insert(line);
-      if (error) throw error;
+    // Maintenance packages: add one summary line
+    await addMenuItem({
+      name: pkg.name,
+      jobType: "maintenance",
+      laborHours: pkg.estLaborHours ?? null,
+      notes: pkg.summary,
+      source: "package",
+    });
+  }
 
-      window.dispatchEvent(new CustomEvent("wo:line-added"));
-    } catch (e: any) {
-      console.error("Failed to add package:", e);
-      alert(e?.message ?? "Failed to add package.");
-      lastSetShopId.current = null;
-    } finally {
-      setAddingId(null);
+  async function addSavedMenuItem(mi: MenuItemRow) {
+    // 1) Add the line and get its id back
+    const lineId = await addMenuItem({
+      name: mi.name ?? "Service",
+      jobType: "maintenance", // (optional) add a job_type column to menu_items later and use it here
+      laborHours: typeof mi.labor_time === "number" ? mi.labor_time : null,
+      notes: mi.description ?? null,
+      source: "menu_item",
+      returnLineId: true,
+    });
+
+    // 2) Auto-allocate menu parts → work_order_part_allocations
+    if (lineId && mi.id) {
+      await autoAllocateMenuParts(mi.id, lineId);
     }
   }
 
+  // -------------------- AI: quick prompt → suggestions → add --------------------
+  async function runAiSuggest() {
+    if (!aiPrompt.trim()) return;
+    setAiBusy(true);
+    try {
+      const res = await fetch("/api/ai/menu/suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: aiPrompt,
+          vehicle: vehicle ? { year: vehicle.year, make: vehicle.make, model: vehicle.model } : null,
+        }),
+      });
+      const j = (await res.json()) as {
+        items?: { name: string; jobType: JobType; laborHours?: number | null; notes?: string | null; parts?: PartToAllocate[] }[];
+        error?: string;
+      };
+      if (!res.ok || j.error) throw new Error(j.error || "AI suggestion failed");
+
+      const items = (j.items ?? []).slice(0, 5);
+      if (!items.length) {
+        toast.message("No suggestions returned.");
+        return;
+      }
+
+      // Add suggestions; if AI returns parts, we allocate them via the shared path
+      for (const it of items) {
+        await addMenuItem({
+          name: it.name,
+          jobType: it.jobType,
+          laborHours: it.laborHours ?? null,
+          notes: it.notes ?? null,
+          partsToAllocate: Array.isArray(it.parts) ? it.parts : undefined,
+          source: "ai",
+        });
+      }
+      setAiOpen(false);
+      setAiPrompt("");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Could not get suggestions.";
+      toast.error(msg);
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  // -------------------- render --------------------
   const visiblePackages = showAllPackages ? packages : packages.slice(0, 2);
   const visibleSingles = showAllSingles ? singles : singles.slice(0, 6);
 
   const vehicleName =
-    vehicle
-      ? `${vehicle.unit_number ? `#${vehicle.unit_number} • ` : ""}${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim()
-      : "";
+    vehicle ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim() : "";
   const customerName =
     customer ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") : "";
 
-  const inspectionBtnTitle = (kind: "hydraulic" | "air") => {
-    const tpl = kind === "air" ? "Air (CVIP)" : "Hydraulic";
-    const who = customerName ? ` for ${customerName}` : "";
-    const what = vehicleName ? ` on ${vehicleName}` : "";
-    const missing =
-      !vehicle || !customer
-        ? " — note: link vehicle & customer on the work order to prefill the inspection"
-        : "";
-    return `Add "Maintenance 50 – ${tpl} – Inspection"${who}${what}${missing}`;
-  };
-
   return (
     <div className="space-y-6">
-      {/* QUOTES */}
-      <div>
-        <h3 className="mb-2 font-semibold text-orange-400">Quotes</h3>
-        <div className="grid gap-2 sm:grid-cols-2">
+      {/* Quick actions / Quote */}
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold text-orange-400">Quick Add</h3>
+        <div className="flex items-center gap-2">
           <button
             onClick={() => router.push(`/work-orders/quote-review?woId=${workOrderId}`)}
-            className="flex items-center justify-between rounded border border-neutral-800 bg-neutral-950 p-3 text-left hover:bg-neutral-900"
-            title="Open quote review for this work order"
+            className="rounded border border-neutral-800 bg-neutral-950 px-3 py-1.5 text-sm hover:bg-neutral-900"
           >
-            <div>
-              <div className="font-medium">Review Quote</div>
-              <div className="text-xs text-neutral-400">Approve/decline, edit, and send</div>
-            </div>
-            {typeof woLineCount === "number" && woLineCount > 0 && (
-              <span className="ml-3 rounded-full bg-orange-500 px-2 py-0.5 text-xs font-semibold text-black">
-                {woLineCount}
-              </span>
-            )}
+            Review Quote{typeof woLineCount === "number" && woLineCount > 0 ? ` (${woLineCount})` : ""}
+          </button>
+          <button
+            onClick={() => setAiOpen(true)}
+            className="rounded border border-blue-600 px-3 py-1.5 text-sm text-blue-300 hover:bg-blue-900/20"
+            title="Describe work and let AI suggest service lines"
+          >
+            AI Suggest
           </button>
         </div>
       </div>
 
-      {/* INSPECTIONS */}
-      <div>
-        <h3 className="mb-2 font-semibold text-orange-400">Inspections</h3>
-
-        <div className="grid gap-2 sm:grid-cols-2">
-          <button
-            onClick={() => addInspectionLine("hydraulic")}
-            className="rounded border border-neutral-800 bg-neutral-950 p-3 text-left hover:bg-neutral-900"
-            title={inspectionBtnTitle("hydraulic")}
-            disabled={addingId === "hydraulic" || !shopReady}
-          >
-            <div className="font-medium">Maintenance 50 – Hydraulic</div>
-            <div className="text-xs text-neutral-400">Measurements + oil change section</div>
-            {(vehicleName || customerName) && (
-              <div className="mt-1 text-[11px] text-neutral-500">
-                {customerName ? `Customer: ${customerName}` : ""}
-                {customerName && vehicleName ? " • " : ""}
-                {vehicleName ? `Vehicle: ${vehicleName}` : ""}
-              </div>
-            )}
-          </button>
-
-          <button
-            onClick={() => addInspectionLine("air")}
-            className="rounded border border-neutral-800 bg-neutral-950 p-3 text-left hover:bg-neutral-900"
-            title={inspectionBtnTitle("air")}
-            disabled={addingId === "air" || !shopReady}
-          >
-            <div className="font-medium">Maintenance 50 – Air</div>
-            <div className="text-xs text-neutral-400">Air-governor, leakage, push-rod stroke + oil change</div>
-            {(vehicleName || customerName) && (
-              <div className="mt-1 text-[11px] text-neutral-500">
-                {customerName ? `Customer: ${customerName}` : ""}
-                {customerName && vehicleName ? " • " : ""}
-                {vehicleName ? `Vehicle: ${vehicleName}` : ""}
-              </div>
-            )}
-          </button>
-        </div>
-
-        {!vehicle || !customer ? (
-          <p className="mt-2 text-xs text-neutral-500">
-            To prefill the inspection, make sure <strong>both</strong> vehicle and customer are linked on the work order.
-          </p>
-        ) : null}
-      </div>
-
-      {/* PACKAGES */}
+      {/* Packages */}
       <div>
         <div className="mb-2 flex items-center justify-between">
-          <h3 className="font-semibold text-orange-400">Packages</h3>
+          <h4 className="font-semibold text-neutral-200">Packages</h4>
           <button
             className="text-xs text-neutral-300 hover:text-white underline"
             onClick={() => setShowAllPackages((v) => !v)}
@@ -425,7 +563,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
             >
               <div className="font-medium">{p.name}</div>
               <div className="text-xs text-neutral-400">
-                {p.jobType} • ~{p.estLaborHours.toFixed(1)}h
+                {p.jobType} • {p.estLaborHours != null ? `~${p.estLaborHours.toFixed(1)}h` : "—"}
               </div>
               <div className="mt-1 line-clamp-2 text-xs text-neutral-500">{p.summary}</div>
             </button>
@@ -433,10 +571,10 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         </div>
       </div>
 
-      {/* SINGLE SERVICES */}
+      {/* Singles */}
       <div>
         <div className="mb-2 flex items-center justify-between">
-          <h3 className="font-semibold text-orange-400">Quick add from menu</h3>
+          <h4 className="font-semibold text-neutral-200">Single Services</h4>
           <button
             className="text-xs text-neutral-300 hover:text-white underline"
             onClick={() => setShowAllSingles((v) => !v)}
@@ -444,7 +582,6 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
             {showAllSingles ? "Show less" : "Show more"}
           </button>
         </div>
-
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {visibleSingles.map((m) => (
             <button
@@ -460,14 +597,95 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
             >
               <div className="font-medium">{m.name}</div>
               <div className="text-xs text-neutral-400">
-                {m.jobType} • {m.laborHours.toFixed(1)}h
-                {m.partCost ? ` • ~$${m.partCost.toFixed(0)} parts` : ""}
+                {m.jobType} • {m.laborHours != null ? `${m.laborHours.toFixed(1)}h` : "—"}
               </div>
               {m.notes ? <div className="mt-1 text-xs text-neutral-500">{m.notes}</div> : null}
             </button>
           ))}
         </div>
       </div>
+
+      {/* Your saved Menu Items */}
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <h4 className="font-semibold text-neutral-200">From My Menu</h4>
+          <button
+            onClick={() => loadMenuItems()}
+            className="text-xs text-neutral-300 hover:text-white underline"
+          >
+            Refresh
+          </button>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {menuLoading && <div className="text-sm text-neutral-400">Loading…</div>}
+          {!menuLoading &&
+            (menuItems.length ? (
+              menuItems.slice(0, 9).map((mi) => (
+                <button
+                  key={mi.id}
+                  onClick={() => addSavedMenuItem(mi)}
+                  disabled={addingId === (mi.name ?? "") || !shopReady}
+                  className="rounded border border-neutral-800 bg-neutral-950 p-3 text-left hover:bg-neutral-900 disabled:opacity-60"
+                  title={mi.description ?? undefined}
+                >
+                  <div className="font-medium">{mi.name}</div>
+                  <div className="text-xs text-neutral-400">
+                    {typeof mi.labor_time === "number" ? `${mi.labor_time.toFixed(1)}h` : "—"} •{" "}
+                    {typeof mi.total_price === "number" ? `$${mi.total_price.toFixed(0)}` : "—"}
+                  </div>
+                </button>
+              ))
+            ) : (
+              <div className="text-sm text-neutral-400">No saved menu items yet.</div>
+            ))}
+        </div>
+      </div>
+
+      {/* AI modal */}
+      {aiOpen && (
+        <div className="fixed inset-0 z-[300] grid place-items-center">
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setAiOpen(false)}
+          />
+          <div
+            className="relative z-[310] w-full max-w-xl rounded border border-orange-400 bg-neutral-950 p-4 text-white"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <div className="text-lg font-semibold">AI: Suggest Services</div>
+              <button
+                className="rounded border border-neutral-700 px-2 py-1 text-sm hover:bg-neutral-800"
+                onClick={() => setAiOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <textarea
+              rows={4}
+              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2"
+              placeholder="Describe the issue or request… e.g., 'Customer reports vibration at 60 mph and squeal when braking'"
+              value={aiPrompt}
+              onChange={(e) => setAiPrompt(e.target.value)}
+            />
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                className="rounded border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800"
+                onClick={() => setAiOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                disabled={aiBusy}
+                className="rounded border border-blue-600 px-3 py-1.5 text-sm text-blue-300 hover:bg-blue-900/20 disabled:opacity-60"
+                onClick={runAiSuggest}
+              >
+                {aiBusy ? "Thinking…" : "Suggest & Add"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
