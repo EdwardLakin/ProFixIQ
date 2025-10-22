@@ -3,10 +3,18 @@ export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase"; // <-- adjust if needed
+import type { Database } from "@shared/types/types/supabase";
 
-export async function POST(_req: NextRequest, context: { params: { id: string } }) {
-  const { id } = context.params;
+function extractLineId(req: NextRequest) {
+  // matches /api/work-orders/lines/<id>/start
+  const m = req.nextUrl.pathname.match(/\/api\/work-orders\/lines\/([^/]+)\/start$/);
+  return m?.[1];
+}
+
+export async function POST(req: NextRequest) {
+  const id = extractLineId(req);
+  if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+
   const supabase = createRouteHandlerClient<Database>({ cookies });
 
   const { data: auth, error: authErr } = await supabase.auth.getUser();
@@ -16,7 +24,7 @@ export async function POST(_req: NextRequest, context: { params: { id: string } 
   const { error: updErr } = await supabase
     .from("work_order_lines")
     .update({
-      status: "in_progress", // enum must include this value
+      status: "in_progress", // make sure your enum includes this
       started_at: new Date().toISOString(),
       paused_at: null,
       resumed_at: null,
@@ -36,3 +44,4 @@ export async function POST(_req: NextRequest, context: { params: { id: string } 
 
   return NextResponse.json({ ok: true });
 }
+

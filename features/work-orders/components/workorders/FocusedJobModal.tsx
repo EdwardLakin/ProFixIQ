@@ -815,7 +815,6 @@ export default function FocusedJobModal(props: {
       {openParts && workOrder?.id && line && (
         <PartsDrawer
           open={openParts}
-          onClose={() => setOpenParts(false)}
           workOrderId={workOrder.id}
           workOrderLineId={line.id}
           vehicleSummary={

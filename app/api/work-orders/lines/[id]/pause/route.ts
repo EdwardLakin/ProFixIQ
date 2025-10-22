@@ -1,12 +1,18 @@
 export const runtime = "nodejs";
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
-export async function POST(_req: Request, context: any) {
-  const id = context?.params?.id as string;
+function extractLineId(req: NextRequest) {
+  // matches /api/work-orders/lines/<id>/start
+  const m = req.nextUrl.pathname.match(/\/api\/work-orders\/lines\/([^/]+)\/start$/);
+  return m?.[1];
+}
+
+export async function POST(req: NextRequest) {
+  const id = extractLineId(req);
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
   const supabase = createRouteHandlerClient<Database>({ cookies });
@@ -15,18 +21,14 @@ export async function POST(_req: Request, context: any) {
   if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
   if (!auth?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // optional reason
-  let reason: string | undefined;
-  try {
-    if (_req.headers.get("content-type")?.includes("application/json")) {
-      const body = await _req.json();
-      if (typeof body?.reason === "string") reason = body.reason.slice(0, 500);
-    }
-  } catch {}
-
   const { error: updErr } = await supabase
     .from("work_order_lines")
-    .update({ status: "paused", paused_at: new Date().toISOString() })
+    .update({
+      status: "in_progress", // make sure your enum includes this
+      started_at: new Date().toISOString(),
+      paused_at: null,
+      resumed_at: null,
+    })
     .eq("id", id)
     .single();
 
@@ -35,8 +37,7 @@ export async function POST(_req: Request, context: any) {
   await supabase.from("activity_logs").insert({
     entity_type: "work_order_line",
     entity_id: id,
-    action: "pause",
-    note: reason,
+    action: "start",
     actor_id: auth.user.id,
     created_at: new Date().toISOString(),
   });
