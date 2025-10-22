@@ -1,34 +1,27 @@
 name: Dump Supabase Schema + Types
-
 on:
   workflow_dispatch: {}
   schedule:
     - cron: "17 4 * * *"   # nightly 04:17 UTC
-
 permissions:
   contents: write
-
 jobs:
   dump:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+        with: { fetch-depth: 0 }
 
       - name: Setup Node
         uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+        with: { node-version: '20' }
 
-      - name: Install Supabase CLI
+      - name: Supabase CLI
         uses: supabase/setup-cli@v1
-        with:
-          version: latest
+        with: { version: latest }
 
-      # Login + Link (preferred)
-      - name: Supabase Login
+      - name: Login (token)
         run: supabase login --token "${SUPABASE_ACCESS_TOKEN}"
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
@@ -39,25 +32,23 @@ jobs:
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
 
-      - name: Install repo deps (for size check script)
+      - name: Install deps (for size script)
         run: npm ci
 
       - name: Dump schema (no data)
-        run: npx supabase db dump --file db/sql/schema.sql --schema public --use-copy
+        run: npm run db:dump:all
 
       - name: Generate TS types
-        run: npx supabase gen types typescript --schema public --project-id "${SUPABASE_PROJECT_REF}" > shared/types/types/supabase.ts
-        env:
-          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: npm run db:types
 
       - name: Enforce size budget
-        run: node shared/types/types/scripts/check-dump-size.cjs
+        run: npm run db:check:size
 
       - name: Commit if changed
         run: |
           git config user.name  "schema-bot"
           git config user.email "schema-bot@users.noreply.github.com"
-          git add db/sql/schema.sql shared/types/types/supabase.ts
+          git add db/sql/*.sql shared/types/types/supabase.ts
           if ! git diff --cached --quiet; then
             git commit -m "chore(schema): nightly dump + types ($(date -u +%F))"
             git push

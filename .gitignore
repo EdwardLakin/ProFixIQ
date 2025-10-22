@@ -21,3 +21,9 @@ sendgrid.env
 !shared/types/types/
 db/sql/*.tmp.sql
 shared/types/types/*.tmp.ts
+
+# --- Compiled types / dumps (keep committed, ignore temp outputs) ---
+db/sql/*.tmp.sql
+shared/types/types/*.tmp.ts
+!db/sql/
+!shared/types/types/
