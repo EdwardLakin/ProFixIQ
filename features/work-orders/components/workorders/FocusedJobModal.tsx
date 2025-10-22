@@ -202,6 +202,13 @@ export default function FocusedJobModal(props: any) {
     };
   }, [isOpen, workOrderLineId, supabase]);
 
+  // also listen for local UI refresh events from child buttons
+  useEffect(() => {
+    const handler = () => void refresh();
+    window.addEventListener("wol:refresh", handler);
+    return () => window.removeEventListener("wol:refresh", handler);
+  }, []);
+
   // ---------- allocations ----------
   const loadAllocations = async () => {
     if (!workOrderLineId) return;
@@ -256,7 +263,7 @@ export default function FocusedJobModal(props: any) {
     await loadAllocations();
   };
 
-  // ---------- actions (start/finish handled by JobPunchButton) ----------
+  // ---------- actions (start/finish now via JobPunchButton -> API) ----------
   const applyHold = async (reason: string, notes?: string) => {
     if (busy) return;
     setBusy(true);

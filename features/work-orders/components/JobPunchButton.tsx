@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 type Props = {
   lineId: string;
@@ -14,6 +13,17 @@ type Props = {
   disabled?: boolean;
 };
 
+async function callPunchEndpoint(lineId: string, action: "start" | "pause" | "resume") {
+  const res = await fetch(`/api/work-orders/lines/${lineId}/${action}`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+  });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j?.error || `Failed to ${action}`);
+  return j as { success: boolean };
+}
+
 export default function JobPunchButton({
   lineId,
   punchedInAt,
@@ -23,7 +33,6 @@ export default function JobPunchButton({
   onFinishRequested,
   disabled = false,
 }: Props) {
-  const supabase = createBrowserSupabase();
   const [busy, setBusy] = useState(false);
   const [flash, setFlash] = useState<"started" | "paused" | "resumed" | null>(null);
 
@@ -38,16 +47,10 @@ export default function JobPunchButton({
   const start = async () => {
     setBusy(true);
     try {
-      const now = new Date().toISOString();
-      const { error } = await supabase
-        .from("work_order_lines")
-        .update({ punched_in_at: now, status: "in_progress" })
-        .eq("id", lineId)
-        .select("id, punched_in_at, punched_out_at, status")
-        .single(); // return updated row so parent refresh shows instantly
-      if (error) throw error;
+      await callPunchEndpoint(lineId, "start");
       toast.success("Started");
       showFlash("started");
+      window.dispatchEvent(new CustomEvent("wol:refresh")); // nudge parent
       await onUpdated?.();
     } catch (e: any) {
       toast.error(e?.message ?? "Start failed");
@@ -59,15 +62,10 @@ export default function JobPunchButton({
   const pause = async () => {
     setBusy(true);
     try {
-      const { error } = await supabase
-        .from("work_order_lines")
-        .update({ status: "paused" })
-        .eq("id", lineId)
-        .select("id, status")
-        .single();
-      if (error) throw error;
+      await callPunchEndpoint(lineId, "pause");
       toast.message("Paused");
       showFlash("paused");
+      window.dispatchEvent(new CustomEvent("wol:refresh"));
       await onUpdated?.();
     } catch (e: any) {
       toast.error(e?.message ?? "Pause failed");
@@ -79,15 +77,10 @@ export default function JobPunchButton({
   const resume = async () => {
     setBusy(true);
     try {
-      const { error } = await supabase
-        .from("work_order_lines")
-        .update({ status: "in_progress" })
-        .eq("id", lineId)
-        .select("id, status")
-        .single();
-      if (error) throw error;
+      await callPunchEndpoint(lineId, "resume");
       toast.message("Resumed");
       showFlash("resumed");
+      window.dispatchEvent(new CustomEvent("wol:refresh"));
       await onUpdated?.();
     } catch (e: any) {
       toast.error(e?.message ?? "Resume failed");
@@ -99,7 +92,7 @@ export default function JobPunchButton({
   const handlePrimary = () => {
     if (busy || disabled) return;
     if (isStarted) {
-      onFinishRequested?.();
+      onFinishRequested?.(); // open cause/correction modal
       return;
     }
     void start();
@@ -108,6 +101,7 @@ export default function JobPunchButton({
   return (
     <div className="relative w-full">
       <div className="flex w-full items-center justify-between gap-2">
+        {/* Primary: Start / Finish */}
         <button
           type="button"
           onClick={handlePrimary}
@@ -124,6 +118,7 @@ export default function JobPunchButton({
           {busy ? "Saving..." : isStarted ? "Finish" : "Start"}
         </button>
 
+        {/* Secondary: Pause / Resume */}
         {isStarted && (
           <button
             type="button"
@@ -143,6 +138,7 @@ export default function JobPunchButton({
         )}
       </div>
 
+      {/* Flash overlay (✓ Started / ⏸ Paused / ⏯ Resumed) */}
       {flash && (
         <div
           className={`absolute inset-x-0 -top-3 mx-auto w-fit rounded px-2 py-1 text-xs font-semibold shadow-md
