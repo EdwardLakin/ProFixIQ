@@ -1,4 +1,4 @@
-"use client";
+ "use client";
 
 import { useState } from "react";
 import { toast } from "sonner";
@@ -42,7 +42,9 @@ export default function JobPunchButton({
       const { error } = await supabase
         .from("work_order_lines")
         .update({ punched_in_at: now, status: "in_progress" })
-        .eq("id", lineId);
+        .eq("id", lineId)
+        .select("id, punched_in_at, punched_out_at, status")
+        .single(); // return updated row so parent refresh shows instantly
       if (error) throw error;
       toast.success("Started");
       showFlash("started");
@@ -60,7 +62,9 @@ export default function JobPunchButton({
       const { error } = await supabase
         .from("work_order_lines")
         .update({ status: "paused" })
-        .eq("id", lineId);
+        .eq("id", lineId)
+        .select("id, status")
+        .single();
       if (error) throw error;
       toast.message("Paused");
       showFlash("paused");
@@ -78,7 +82,9 @@ export default function JobPunchButton({
       const { error } = await supabase
         .from("work_order_lines")
         .update({ status: "in_progress" })
-        .eq("id", lineId);
+        .eq("id", lineId)
+        .select("id, status")
+        .single();
       if (error) throw error;
       toast.message("Resumed");
       showFlash("resumed");
@@ -93,16 +99,15 @@ export default function JobPunchButton({
   const handlePrimary = () => {
     if (busy || disabled) return;
     if (isStarted) {
-      onFinishRequested?.(); // open cause/correction modal
+      onFinishRequested?.();
       return;
     }
-    start();
+    void start();
   };
 
   return (
     <div className="relative w-full">
       <div className="flex w-full items-center justify-between gap-2">
-        {/* Primary: Start / Finish */}
         <button
           type="button"
           onClick={handlePrimary}
@@ -119,7 +124,6 @@ export default function JobPunchButton({
           {busy ? "Saving..." : isStarted ? "Finish" : "Start"}
         </button>
 
-        {/* Secondary: Pause / Resume */}
         {isStarted && (
           <button
             type="button"
@@ -139,7 +143,6 @@ export default function JobPunchButton({
         )}
       </div>
 
-      {/* Flash overlay (✓ Started / ⏸ Paused / ⏯ Resumed) */}
       {flash && (
         <div
           className={`absolute inset-x-0 -top-3 mx-auto w-fit rounded px-2 py-1 text-xs font-semibold shadow-md

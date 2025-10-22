@@ -112,6 +112,26 @@ export default function FocusedJobModal(props: any) {
   const [allocs, setAllocs] = useState<AllocationRow[]>([]);
   const [allocsLoading, setAllocsLoading] = useState(false);
 
+  // ---------- helpers ----------
+  const showErr = (prefix: string, err?: { message?: string } | null) => {
+    toast.error(`${prefix}: ${err?.message ?? "Something went wrong."}`);
+    // eslint-disable-next-line no-console
+    console.error(prefix, err);
+  };
+
+  const msToTenthHours = (ms: number) =>
+    (Math.max(0, Math.round(ms / 360000)) / 10).toFixed(1) + " hr";
+  const renderLiveTenthHours = (startAt: string | null, finishAt: string | null) => {
+    if (startAt && !finishAt)
+      return msToTenthHours(Date.now() - new Date(startAt).getTime());
+    if (startAt && finishAt)
+      return msToTenthHours(
+        new Date(finishAt).getTime() - new Date(startAt).getTime()
+      );
+    return "0.0 hr";
+  };
+
+  // ---------- load initial ----------
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
     (async () => {
@@ -163,7 +183,26 @@ export default function FocusedJobModal(props: any) {
     })();
   }, [isOpen, workOrderLineId, supabase]);
 
-  // NEW: load allocations for this line
+  // ---------- realtime sync for this line ----------
+  useEffect(() => {
+    if (!isOpen || !workOrderLineId) return;
+    const ch = supabase
+      .channel(`wol-${workOrderLineId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "work_order_lines", filter: `id=eq.${workOrderLineId}` },
+        (payload) => {
+          const next = (payload as any).new;
+          if (next) setLine((prev: any) => ({ ...(prev ?? {}), ...next }));
+        }
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(ch);
+    };
+  }, [isOpen, workOrderLineId, supabase]);
+
+  // ---------- allocations ----------
   const loadAllocations = async () => {
     if (!workOrderLineId) return;
     setAllocsLoading(true);
@@ -176,25 +215,22 @@ export default function FocusedJobModal(props: any) {
       if (error) throw error;
       setAllocs((data as AllocationRow[]) ?? []);
     } catch (e: any) {
-      // be quiet in UI; log for debugging
+      // quiet; diagnostic only
       // eslint-disable-next-line no-console
       console.warn("[FocusedJob] load allocations failed", e?.message);
     } finally {
       setAllocsLoading(false);
     }
   };
-
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
     void loadAllocations();
-
-    // refresh when parts are used anywhere (our UsePartButton emits this)
     const h = () => loadAllocations();
     window.addEventListener("wo:parts-used", h);
     return () => window.removeEventListener("wo:parts-used", h);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, workOrderLineId]);
 
+  // ---------- live timer text ----------
   useEffect(() => {
     if (!isOpen) return;
     const t = setInterval(() => {
@@ -207,21 +243,7 @@ export default function FocusedJobModal(props: any) {
     return () => clearInterval(t);
   }, [isOpen, line?.punched_in_at, line?.punched_out_at]);
 
-  const startAt = line?.punched_in_at ?? null;
-  const finishAt = line?.punched_out_at ?? null;
-
-  const msToTenthHours = (ms: number) =>
-    (Math.max(0, Math.round(ms / 360000)) / 10).toFixed(1) + " hr";
-  const renderLiveTenthHours = () => {
-    if (startAt && !finishAt)
-      return msToTenthHours(Date.now() - new Date(startAt).getTime());
-    if (startAt && finishAt)
-      return msToTenthHours(
-        new Date(finishAt).getTime() - new Date(startAt).getTime()
-      );
-    return "0.0 hr";
-  };
-
+  // ---------- refresh ----------
   const refresh = async () => {
     const { data: l } = await supabase
       .from("work_order_lines")
@@ -231,16 +253,10 @@ export default function FocusedJobModal(props: any) {
     setLine(l ?? null);
     setTechNotes(l?.notes ?? "");
     await onChanged?.();
-    await loadAllocations(); // keep nicety list fresh
+    await loadAllocations();
   };
 
-  const showErr = (prefix: string, err?: { message?: string } | null) => {
-    toast.error(`${prefix}: ${err?.message ?? "Something went wrong."}`);
-    console.error(prefix, err);
-  };
-
-  // Actions (kept; Start/Finish are now handled by JobPunchButton)
-
+  // ---------- actions (start/finish handled by JobPunchButton) ----------
   const applyHold = async (reason: string, notes?: string) => {
     if (busy) return;
     setBusy(true);
@@ -260,6 +276,7 @@ export default function FocusedJobModal(props: any) {
       setBusy(false);
     }
   };
+
   const releaseHold = async () => {
     if (busy) return;
     setBusy(true);
@@ -299,7 +316,9 @@ export default function FocusedJobModal(props: any) {
       const { error } = await supabase
         .from("work_order_lines")
         .update({ punched_in_at: inAt, punched_out_at: outAt })
-        .eq("id", workOrderLineId);
+        .eq("id", workOrderLineId)
+        .select("id, punched_in_at, punched_out_at")
+        .single();
       if (error) return showErr("Update time failed", error);
       toast.success("Time updated");
       await refresh();
@@ -373,18 +392,12 @@ export default function FocusedJobModal(props: any) {
     await refresh();
   };
 
-  const titleText =
-    (line?.description || line?.complaint || "Focused Job") +
-    (line?.job_type ? ` — ${String(line.job_type).replaceAll("_", " ")}` : "");
-
-  const startedText = startAt ? format(new Date(startAt), "PPpp") : "—";
-  const finishedText = finishAt ? format(new Date(finishAt), "PPpp") : "—";
-
   const openInspection = async () => {
     if (!line) return;
 
     const isAir = String(line.description ?? "").toLowerCase().includes("air");
-    const template: "maintenance50" | "maintenance50-air" = isAir ? "maintenance50-air" : "maintenance50";
+    const template: "maintenance50" | "maintenance50-air" =
+      isAir ? "maintenance50-air" : "maintenance50";
 
     try {
       const res = await fetch("/api/inspections/session/create", {
@@ -417,6 +430,18 @@ export default function FocusedJobModal(props: any) {
     }
   };
 
+  // ---------- derived UI ----------
+  const startAt = line?.punched_in_at ?? null;
+  const finishAt = line?.punched_out_at ?? null;
+
+  const titleText =
+    (line?.description || line?.complaint || "Focused Job") +
+    (line?.job_type ? ` — ${String(line.job_type).replaceAll("_", " ")}` : "");
+
+  const startedText = startAt ? format(new Date(startAt), "PPpp") : "—";
+  const finishedText = finishAt ? format(new Date(finishAt), "PPpp") : "—";
+
+  // ---------- render ----------
   return (
     <>
       {isOpen && (
@@ -434,7 +459,7 @@ export default function FocusedJobModal(props: any) {
         onClose={onClose}
         className="fixed inset-0 z-[100] flex items-center justify-center"
       >
-        {/* Dark overlay (captures clicks) */}
+        {/* Dark overlay */}
         <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm" aria-hidden="true" />
 
         {/* Panel */}
@@ -538,7 +563,7 @@ export default function FocusedJobModal(props: any) {
                   </div>
                 </div>
 
-                {/* Start / Finish row (moved ABOVE the other buttons) */}
+                {/* Start / Finish row */}
                 {mode === "tech" && line && (
                   <div className="grid">
                     <JobPunchButton
@@ -685,7 +710,9 @@ export default function FocusedJobModal(props: any) {
                 {/* Live timer (dark) */}
                 <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
                   <div className="text-xs text-neutral-400">Live Timer</div>
-                  <div className="font-medium">{duration || renderLiveTenthHours()}</div>
+                  <div className="font-medium">
+                    {duration || renderLiveTenthHours(startAt, finishAt)}
+                  </div>
                 </div>
 
                 {/* Tech notes */}
@@ -734,7 +761,7 @@ export default function FocusedJobModal(props: any) {
       {/* Float the voice mic ABOVE the modal overlay */}
       {isOpen && <VoiceButton />}
 
-      {/* Sub-modals (unchanged logic) */}
+      {/* Sub-modals */}
       {openComplete && line && (
         <CauseCorrectionModal
           isOpen={openComplete}
@@ -850,7 +877,6 @@ export default function FocusedJobModal(props: any) {
         />
       )}
 
-      {/* Add Job modal */}
       {openAddJob && workOrder?.id && (
         <AddJobModal
           isOpen={openAddJob}
