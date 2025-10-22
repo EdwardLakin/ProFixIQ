@@ -24,9 +24,11 @@ export async function POST(_: Request, { params }: { params: { id: string } }) {
   if (selErr) return NextResponse.json({ error: selErr.message }, { status: 400 });
   if (!row) return NextResponse.json({ error: "Line not found" }, { status: 404 });
 
-  const payload: Record<string, any> = { status: "in_progress" };
-  if (!row.punched_in_at) payload.punched_in_at = now;
-  if (row.punched_out_at) payload.punched_out_at = null; // safety: clear out if previously finished
+  const payload = {
+  status: "in_progress" as const,
+  punched_in_at: row?.punched_in_at ?? now,
+  punched_out_at: row?.punched_out_at ? null : undefined,
+};
 
   const { error: updErr } = await supabase
     .from("work_order_lines")
