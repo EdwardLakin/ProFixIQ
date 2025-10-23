@@ -1,7 +1,6 @@
-// app/quote-review/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
@@ -46,52 +45,84 @@ function ApprovalsList() {
     labor_hours?: number | null;
   };
 
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
+  const load = useCallback(async () => {
+    setLoading(true);
 
-      const { data: wo } = await supabase
-        .from("work_orders")
-        .select(`*, shops!inner(name)`)
-        .in("status", ["awaiting_approval", "queued"] as any)
-        .order("created_at", { ascending: false });
+    // Only show WOs waiting for approval now
+    const { data: wo, error } = await supabase
+      .from("work_orders")
+      .select(`*, shops!inner(name)`)
+      .eq("approval_state", "awaiting")
+      .order("created_at", { ascending: false });
 
-      let withMeta: WorkOrderWithMeta[] = (wo ?? []) as any;
-      if (withMeta.length) {
-        const woIds = withMeta.map((w) => w.id);
-        const { data: lines } = await supabase
-          .from("work_order_lines")
-          .select("work_order_id, labor_time")
-          .in("work_order_id", woIds);
-
-        const hoursByWO = new Map<string, number>();
-        (lines ?? []).forEach((l) => {
-          const cur = hoursByWO.get(l.work_order_id) ?? 0;
-          hoursByWO.set(l.work_order_id, cur + (typeof l.labor_time === "number" ? l.labor_time : 0));
-        });
-
-        withMeta = withMeta.map((w) => ({
-          ...w,
-          labor_hours: hoursByWO.get(w.id) ?? 0,
-        }));
-      }
-
-      setRows(withMeta);
+    if (error) {
+      setRows([]);
       setLoading(false);
-    })();
+      return;
+    }
+
+    let withMeta: WorkOrderWithMeta[] = (wo ?? []) as unknown as WorkOrderWithMeta[];
+
+    if (withMeta.length) {
+      const woIds = withMeta.map((w) => w.id);
+      const { data: lines } = await supabase
+        .from("work_order_lines")
+        .select("work_order_id, labor_time")
+        .in("work_order_id", woIds);
+
+      const hoursByWO = new Map<string, number>();
+      (lines ?? []).forEach((l) => {
+        const cur = hoursByWO.get(l.work_order_id) ?? 0;
+        hoursByWO.set(
+          l.work_order_id,
+          cur + (typeof l.labor_time === "number" ? l.labor_time : 0)
+        );
+      });
+
+      withMeta = withMeta.map((w) => ({
+        ...w,
+        labor_hours: hoursByWO.get(w.id) ?? 0,
+      }));
+    }
+
+    setRows(withMeta);
+    setLoading(false);
   }, [supabase]);
+
+  useEffect(() => {
+    void load();
+
+    // Light auto-refresh so the list clears after approvals
+    const onFocus = () => void load();
+    document.addEventListener("visibilitychange", onFocus);
+    const t = setInterval(onFocus, 20000);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onFocus);
+      clearInterval(t);
+    };
+  }, [load]);
 
   if (loading) return <div className="mt-6 text-neutral-400">Loading…</div>;
   if (rows.length === 0)
-    return <div className="mt-6 text-neutral-400">No work orders waiting for approval.</div>;
+    return (
+      <div className="mt-6 text-neutral-400">
+        No work orders waiting for approval.
+      </div>
+    );
 
   return (
     <div className="mt-4 rounded border border-neutral-800 bg-neutral-900">
-      <div className="border-b border-neutral-800 px-4 py-2 font-semibold">Awaiting Approval</div>
+      <div className="border-b border-neutral-800 px-4 py-2 font-semibold">
+        Awaiting Approval
+      </div>
 
       <div className="divide-y divide-neutral-800">
         {rows.map((w) => (
-          <div key={w.id} className="flex items-center justify-between gap-3 px-4 py-3">
+          <div
+            key={w.id}
+            className="flex items-center justify-between gap-3 px-4 py-3"
+          >
             <div className="min-w-0">
               <div className="truncate font-medium">
                 {w.custom_id ? `#${w.custom_id}` : `#${w.id.slice(0, 8)}`}
@@ -99,7 +130,9 @@ function ApprovalsList() {
               <div className="text-xs text-neutral-400">
                 {w.shops?.name ? `${w.shops.name} • ` : ""}
                 {(w.status ?? "").replaceAll("_", " ")}
-                {typeof w.labor_hours === "number" ? ` • ${w.labor_hours.toFixed(1)}h` : ""}
+                {typeof w.labor_hours === "number"
+                  ? ` • ${w.labor_hours.toFixed(1)}h`
+                  : ""}
               </div>
             </div>
             <div className="flex shrink-0 gap-2">
@@ -180,6 +213,7 @@ function SingleQuoteReview({ woId }: { woId: string }) {
   async function handleSignatureSave(base64: string) {
     if (!woId) return;
     try {
+      // Store the raw image
       const blob = dataUrlToBlob(base64);
       const filename = `wo/${wo?.shop_id ?? "unknown"}/${woId}/${Date.now()}.png`;
 
@@ -188,22 +222,27 @@ function SingleQuoteReview({ woId }: { woId: string }) {
         .upload(filename, blob, { contentType: "image/png", upsert: false });
       if (upErr) throw upErr;
 
+      // Mark this WO as approved + queued (so it disappears from this page)
       const { error: updErr } = await supabase
         .from("work_orders")
         .update({
-          // @ts-ignore pending schema fields in types
+          // keep your stored path; and set approval_state + status
+          // @ts-ignore: column may be pending in generated types
           customer_approval_signature_path: filename,
-          // @ts-ignore pending schema fields in types
-          customer_approval_at: new Date().toISOString() as any,
-          status: "queued" as any,
+          // @ts-ignore
+          customer_approval_at: new Date().toISOString() as unknown as string,
+          // @ts-ignore
+          approval_state: "approved",
+          status: "queued",
         })
         .eq("id", woId);
       if (updErr) throw updErr;
 
       alert("Work order approved and signed!");
       router.push("/work-orders/create?from=review&new=1");
-    } catch (err: any) {
-      alert(err?.message || "Failed to save signature");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to save signature";
+      alert(msg);
     }
   }
 
@@ -213,17 +252,20 @@ function SingleQuoteReview({ woId }: { woId: string }) {
       const { error } = await supabase
         .from("work_orders")
         .update({
-          status: "awaiting_approval" as any,
-          // @ts-ignore pending schema fields in types
+          status: "awaiting_approval",
+          // @ts-ignore
+          approval_state: "awaiting",
+          // @ts-ignore
           customer_approval_signature_path: null,
-          // @ts-ignore pending schema fields in types
+          // @ts-ignore
           customer_approval_at: null,
         })
         .eq("id", woId);
       if (error) throw error;
       alert("Saved. This work order is now awaiting customer approval.");
-    } catch (e: any) {
-      alert(e?.message || "Failed to update status.");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to update status.";
+      alert(msg);
     }
   }
 
@@ -252,7 +294,9 @@ function SingleQuoteReview({ woId }: { woId: string }) {
       </div>
 
       <div className="mt-6 rounded border border-neutral-800 bg-neutral-900">
-        <div className="border-b border-neutral-800 px-4 py-2 font-semibold">Line Items</div>
+        <div className="border-b border-neutral-800 px-4 py-2 font-semibold">
+          Line Items
+        </div>
         <div className="divide-y divide-neutral-800">
           {lines.length === 0 ? (
             <div className="px-4 py-3 text-neutral-400">No items yet.</div>
@@ -271,7 +315,9 @@ function SingleQuoteReview({ woId }: { woId: string }) {
                     </div>
                   </div>
                   <div className="text-right text-sm">
-                    {typeof l.labor_time === "number" ? fmt(l.labor_time * 120) : "—"}
+                    {typeof l.labor_time === "number"
+                      ? fmt(l.labor_time * 120)
+                      : "—"}
                   </div>
                 </div>
               </div>

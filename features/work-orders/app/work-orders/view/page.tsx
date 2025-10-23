@@ -51,14 +51,21 @@ export default function WorkOrdersView(): JSX.Element {
       .order("created_at", { ascending: false })
       .limit(100);
 
-    // Default view hides awaiting_approval unless explicitly filtered to it
-    if (status) {
-      query = query.eq("status", status);
+    // Tabs / filters: exclude awaiting approvals by default
+    if (status === "awaiting_approval") {
+      query = query.eq("approval_state", "awaiting");
+    } else if (status) {
+      // All other statuses should represent normal workflow and exclude awaiting approvals
+      query = query
+        .eq("status", status)
+        .or("approval_state.eq.approved,approval_state.is.null");
     } else {
-      query = query.neq("status", "awaiting_approval");
+      // Default: all statuses EXCEPT items still waiting for approval
+      query = query.or("approval_state.eq.approved,approval_state.is.null");
     }
 
     const { data, error } = await query;
+
     if (error) {
       setErr(error.message);
       setRows([]);
@@ -149,7 +156,7 @@ export default function WorkOrdersView(): JSX.Element {
             className="rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-sm"
             aria-label="Filter by status"
           >
-            <option value="">All statuses (except awaiting approval)</option>
+            <option value="">All (approved / normal flow)</option>
             <option value="awaiting_approval">Awaiting approval</option>
             <option value="awaiting">Awaiting</option>
             <option value="queued">Queued</option>
