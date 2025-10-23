@@ -1,3 +1,4 @@
+// app/work-orders/[id]/approve/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -22,13 +23,13 @@ export default function ApproveWorkOrderPage() {
   const [wo, setWo] = useState<WorkOrder | null>(null);
   const [shop, setShop] = useState<Shop | null>(null);
   const [lines, setLines] = useState<Line[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(true);
   const [err, setErr] = useState<string | null>(null);
 
   const [approved, setApproved] = useState<Set<string>>(new Set());
-  const [submitting, setSubmitting] = useState(false);
+  const [submitting, setSubmitting] = useState<boolean>(false);
   const [savedSigUrl, setSavedSigUrl] = useState<string | null>(null);
-  const [agreed, setAgreed] = useState(false);
+  const [agreed, setAgreed] = useState<boolean>(false);
 
   useEffect(() => {
     (async () => {
@@ -45,6 +46,7 @@ export default function ApproveWorkOrderPage() {
             .neq("status", "completed")
             .order("created_at", { ascending: true }),
         ]);
+
         if (woErr) throw woErr;
         if (liErr) throw liErr;
 
@@ -63,7 +65,7 @@ export default function ApproveWorkOrderPage() {
         } else {
           setShop(null);
         }
-      } catch (e) {
+      } catch (e: unknown) {
         setErr(e instanceof Error ? e.message : "Failed to load work order.");
       } finally {
         setLoading(false);
@@ -74,16 +76,17 @@ export default function ApproveWorkOrderPage() {
   const toggle = (lineId: string) =>
     setApproved((prev) => {
       const next = new Set(prev);
-      next.has(lineId) ? next.delete(lineId) : next.add(lineId);
+      if (next.has(lineId)) next.delete(lineId);
+      else next.add(lineId);
       return next;
     });
 
-  const totals = useMemo(() => {
+  const totals = (() => {
     const hrs = lines
       .filter((l) => approved.has(l.id))
-      .reduce((a, b) => a + (typeof b.labor_time === "number" ? b.labor_time : 0), 0);
+      .reduce<number>((sum, l) => sum + (typeof l.labor_time === "number" ? l.labor_time : 0), 0);
     return { hours: hrs.toFixed(1) };
-  }, [lines, approved]);
+  })();
 
   async function handleSubmit(signatureDataUrl?: string) {
     if (!id) return;
@@ -91,8 +94,9 @@ export default function ApproveWorkOrderPage() {
     try {
       let signatureUrl: string | null = savedSigUrl;
       if (signatureDataUrl) {
-        signatureUrl = await uploadSignatureImage(signatureDataUrl, id);
-        setSavedSigUrl(signatureUrl);
+        const uploaded = await uploadSignatureImage(signatureDataUrl, id);
+        signatureUrl = uploaded;
+        setSavedSigUrl(uploaded);
       }
 
       const approvedLineIds = Array.from(approved);
@@ -111,11 +115,16 @@ export default function ApproveWorkOrderPage() {
         }),
       });
 
-      const j = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(j?.error || "Failed to submit approval");
+      const j: unknown = await res.json().catch(() => null);
+      if (!res.ok) {
+        const msg = typeof j === "object" && j && "error" in (j as Record<string, unknown>)
+          ? String((j as { error?: unknown }).error ?? "Failed to submit approval")
+          : "Failed to submit approval";
+        throw new Error(msg);
+      }
 
       router.replace(`/work-orders/confirm?woId=${id}`);
-    } catch (e) {
+    } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "Approval failed");
     } finally {
       setSubmitting(false);
@@ -151,7 +160,10 @@ export default function ApproveWorkOrderPage() {
         <div className="border-b border-neutral-800 p-3 font-semibold">Items</div>
         <div className="divide-y divide-neutral-800">
           {lines.map((l) => (
-            <label key={l.id} className="flex cursor-pointer items-start gap-3 p-3 hover:bg-neutral-900/60">
+            <label
+              key={l.id}
+              className="flex cursor-pointer items-start gap-3 p-3 hover:bg-neutral-900/60"
+            >
               <input
                 type="checkbox"
                 className="mt-1 h-4 w-4"
@@ -159,7 +171,9 @@ export default function ApproveWorkOrderPage() {
                 onChange={() => toggle(l.id)}
               />
               <div className="min-w-0">
-                <div className="truncate font-medium">{l.description || l.complaint || "Untitled item"}</div>
+                <div className="truncate font-medium">
+                  {l.description || l.complaint || "Untitled item"}
+                </div>
                 <div className="text-xs text-neutral-400">
                   {(l.job_type ?? "job").replaceAll("_", " ")} •{" "}
                   {typeof l.labor_time === "number" ? `${l.labor_time.toFixed(1)}h` : "—"}
@@ -173,10 +187,13 @@ export default function ApproveWorkOrderPage() {
               </div>
             </label>
           ))}
-          {lines.length === 0 && <div className="p-3 text-sm text-neutral-400">No items to approve.</div>}
+          {lines.length === 0 && (
+            <div className="p-3 text-sm text-neutral-400">No items to approve.</div>
+          )}
         </div>
         <div className="border-t border-neutral-800 p-3 text-sm text-neutral-300">
-          Total labor (approved): <span className="font-semibold text-white">{totals.hours}h</span>
+          Total labor (approved):{" "}
+          <span className="font-semibold text-white">{totals.hours}h</span>
         </div>
       </div>
 
@@ -199,14 +216,14 @@ export default function ApproveWorkOrderPage() {
 
         <button
           className="rounded border border-neutral-700 px-4 py-2 hover:border-orange-500 disabled:opacity-60"
-          onClick={() => handleSubmit(undefined)}
+          onClick={() => void handleSubmit(undefined)}
           disabled={submitting || !agreed}
         >
           Submit without Signature
         </button>
       </div>
 
-      {/* Mount once */}
+      {/* Mount the modal host once */}
       <SignaturePad />
     </div>
   );
