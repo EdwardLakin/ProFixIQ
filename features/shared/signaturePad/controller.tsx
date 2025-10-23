@@ -3,9 +3,24 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import type SignatureCanvas from "react-signature-canvas";
 
-// Dynamic import to avoid SSR issues
-const SigCanvas: any = dynamic(() => import("react-signature-canvas"), { ssr: false });
+// Minimal props we actually use for the component.
+// (The library doesn't export an official props type.)
+type SigProps = {
+  penColor?: string;
+  onBegin?: () => void;
+  onEnd?: () => void;
+  canvasProps?: React.CanvasHTMLAttributes<HTMLCanvasElement>;
+};
+
+// Correctly typed dynamic import so the ref works
+const SigCanvas = dynamic(
+  () => import("react-signature-canvas").then((m) => m.default),
+  { ssr: false }
+) as unknown as React.ForwardRefExoticComponent<
+  SigProps & React.RefAttributes<SignatureCanvas>
+>;
 
 export type OpenOptions = { shopName?: string };
 
@@ -25,7 +40,7 @@ function SignaturePadHost() {
   const [shopName, setShopName] = useState<string>("");
   const resolverRef = useRef<((v: string | null) => void) | null>(null);
 
-  const sigRef = useRef<any>(null);
+  const sigRef = useRef<SignatureCanvas | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const [saving, setSaving] = useState(false);
@@ -48,7 +63,7 @@ function SignaturePadHost() {
       setSaving(false);
 
       // Clear previous drawing on next paint
-      requestAnimationFrame(() => sigRef.current?.clear?.());
+      requestAnimationFrame(() => sigRef.current?.clear());
 
       // If container is mounted, recompute size immediately with a fallback minimum
       requestAnimationFrame(() => {
@@ -76,7 +91,7 @@ function SignaturePadHost() {
   }, []);
 
   useEffect(() => {
-    const canvas: HTMLCanvasElement | undefined = sigRef.current?.getCanvas?.();
+    const canvas: HTMLCanvasElement | undefined = sigRef.current?.getCanvas();
     if (!canvas) return;
     const ratio = Math.max(window.devicePixelRatio || 1, 1);
     const ctx = canvas.getContext("2d");
@@ -89,10 +104,11 @@ function SignaturePadHost() {
       canvas.style.width = `${size.w}px`;
       canvas.style.height = `${size.h}px`;
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      setReady(false);
     }
   }, [size]);
 
-  // Prevent page scroll while signing
+  // Prevent page scroll while signing (iPad Safari)
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -110,9 +126,12 @@ function SignaturePadHost() {
     setOpen(false);
   };
 
-  const handleClear = () => sigRef.current?.clear?.();
+  const handleClear = () => {
+    sigRef.current?.clear();
+    setReady(false);
+  };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (saving) return;
     const pad = sigRef.current;
     if (!pad || pad.isEmpty()) {
@@ -133,17 +152,12 @@ function SignaturePadHost() {
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4">
       <div
-        className="
-          w-full max-w-md rounded-lg border-2 border-orange-400
-          bg-neutral-900 p-6 shadow-xl
-        "
-        // Roboto everywhere inside; header & buttons override font below
+        className="w-full max-w-md rounded-lg border-2 border-orange-400 bg-neutral-900 p-6 shadow-xl"
         style={{ fontFamily: "Roboto, ui-sans-serif, system-ui" }}
+        onClick={(e) => e.stopPropagation()}
       >
         <h2
-          className="
-            mb-1 text-center text-lg font-semibold text-white
-          "
+          className="mb-1 text-center text-lg font-semibold text-white"
           style={{ fontFamily: "'Black Ops One', Roboto, ui-sans-serif, system-ui" }}
         >
           {shopName ? `${shopName} — Customer Approval` : "Customer Approval"}
@@ -154,18 +168,18 @@ function SignaturePadHost() {
         </p>
 
         <div ref={containerRef} className="w-full">
-          {/* Always render; size is safe default + responsive */}
           <SigCanvas
             ref={sigRef}
             onBegin={() => setReady(true)}
+            onEnd={() => setReady(true)}
             penColor="white"
             canvasProps={{
               width: size.w,
               height: size.h,
-              className:
-                "w-full rounded-md border border-neutral-700 bg-neutral-950",
+              className: "w-full rounded-md border border-neutral-700 bg-neutral-950",
               role: "img",
               "aria-label": "Signature input area",
+              style: { touchAction: "none" }, // critical on iPad
             }}
           />
         </div>
@@ -176,7 +190,7 @@ function SignaturePadHost() {
             onClick={handleClear}
             disabled={saving}
             className="rounded px-4 py-2 text-neutral-900 hover:opacity-90 disabled:opacity-50"
-            style={{ backgroundColor: "#e5e7eb", fontFamily: "'Black Ops One', Roboto, ui-sans-serif, system-ui" }} // gray-200
+            style={{ backgroundColor: "#e5e7eb", fontFamily: "'Black Ops One', Roboto, ui-sans-serif, system-ui" }}
           >
             Clear
           </button>
@@ -186,7 +200,7 @@ function SignaturePadHost() {
               onClick={() => closeWith(null)}
               disabled={saving}
               className="rounded px-4 py-2 text-white disabled:opacity-50"
-              style={{ backgroundColor: "#ef4444", fontFamily: "'Black Ops One', Roboto, ui-sans-serif, system-ui" }} // red-500
+              style={{ backgroundColor: "#ef4444", fontFamily: "'Black Ops One', Roboto, ui-sans-serif, system-ui" }}
             >
               Cancel
             </button>
@@ -195,7 +209,7 @@ function SignaturePadHost() {
               onClick={handleSave}
               disabled={saving || !ready}
               className="rounded px-4 py-2 text-white disabled:opacity-50"
-              style={{ backgroundColor: "#16a34a", fontFamily: "'Black Ops One', Roboto, ui-sans-serif, system-ui" }} // green-600
+              style={{ backgroundColor: "#16a34a", fontFamily: "'Black Ops One', Roboto, ui-sans-serif, system-ui" }}
             >
               {saving ? "Saving…" : "Save"}
             </button>
