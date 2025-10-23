@@ -91,9 +91,9 @@ export default function PartsDrawer({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[338]">
+    <div className="fixed inset-0 z-[510]">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={emitClose} />
-      <div className="absolute inset-x-0 bottom-0 z-[339] w-full rounded-t-xl border border-orange-400 bg-neutral-950 p-0 text-white shadow-xl md:inset-auto md:top-1/2 md:left-1/2 md:h-[85vh] md:w-[960px] md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-xl">
+      <div className="absolute inset-x-0 bottom-0 z-[520] w-full rounded-t-xl border border-orange-400 bg-neutral-950 p-0 text-white shadow-xl md:inset-auto md:top-1/2 md:left-1/2 md:h-[85vh] md:w-[960px] md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-xl">
         <div className="flex items-center justify-between border-b border-neutral-800 p-3">
           <div className="flex items-center gap-2">
             <button

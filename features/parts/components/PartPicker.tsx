@@ -245,12 +245,12 @@ export function PartPicker({
   }
 
   return !open ? null : (
-    <div className="fixed inset-0 z-[340] flex items-center justify-center">
+    <div className="fixed inset-0 z-[500] flex items-center justify-center">
       {/* Backdrop */}
       <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" aria-hidden="true" onClick={close} />
 
       {/* Panel */}
-      <div className="relative z-[350] w-full max-w-3xl rounded-lg border border-orange-400 bg-neutral-950 p-4 text-white shadow-xl">
+      <div className="relative z-[510] w-full max-w-3xl rounded-lg border border-orange-400 bg-neutral-950 p-4 text-white shadow-xl">
         <div className="mb-3 flex items-center justify-between">
           <div>
             <div className="text-xs text-neutral-400">Select a part</div>
