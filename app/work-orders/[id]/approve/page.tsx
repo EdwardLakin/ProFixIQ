@@ -1,4 +1,4 @@
-// features/work-orders/app/work-orders/[id]/approve/page.tsx (or your path)
+// features/work-orders/app/work-orders/[id]/approve/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -12,6 +12,7 @@ import { uploadSignatureImage } from "@/features/shared/lib/utils/uploadSignatur
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
+type Shop = DB["public"]["Tables"]["shops"]["Row"];
 
 export default function ApproveWorkOrderPage() {
   const params = useParams<{ id: string }>();
@@ -20,6 +21,7 @@ export default function ApproveWorkOrderPage() {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   const [wo, setWo] = useState<WorkOrder | null>(null);
+  const [shop, setShop] = useState<Shop | null>(null);
   const [lines, setLines] = useState<Line[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -51,6 +53,16 @@ export default function ApproveWorkOrderPage() {
         setWo(woRow ?? null);
         setLines(lineRows ?? []);
         setApproved(new Set((lineRows ?? []).map((l) => l.id))); // preselect all
+
+        if (woRow?.shop_id) {
+  const { data: shopRow, error: sErr } = await supabase
+    .from("shops")
+    .select("*")           // ← get full row to match the state type
+    .eq("id", woRow.shop_id)
+    .maybeSingle();
+  if (sErr) throw sErr;
+  setShop(shopRow);        // ← OK: Shop | null
+}
       } catch (e) {
         setErr(e instanceof Error ? e.message : "Failed to load work order.");
       } finally {
@@ -128,7 +140,9 @@ export default function ApproveWorkOrderPage() {
 
   return (
     <div className="mx-auto max-w-3xl p-4 text-white sm:p-6">
-      <h1 className="text-2xl font-semibold">Approve Work Order</h1>
+      <h1 className="text-2xl font-semibold">
+        {shop?.name ?? "Shop"} — Customer Approval
+      </h1>
       <p className="mt-1 text-neutral-300">
         {wo.custom_id ? `#${wo.custom_id}` : `#${wo.id.slice(0, 8)}`}
       </p>
@@ -172,15 +186,15 @@ export default function ApproveWorkOrderPage() {
         </div>
       </div>
 
-      {/* Terms */}
-      <LegalTerms onAgreeChange={setAgreed} defaultOpen />
+      {/* Terms – now uses the live shop name */}
+      <LegalTerms onAgreeChange={setAgreed} defaultOpen shopName={shop?.name ?? "the Shop"} />
 
       {/* Actions */}
       <div className="mt-4 flex flex-wrap gap-2">
         <button
           className="rounded bg-green-600 px-4 py-2 font-semibold text-white hover:bg-green-700 disabled:opacity-60"
           onClick={async () => {
-            const base64 = await openSignaturePad({ shopName: "" });
+            const base64 = await openSignaturePad({ shopName: shop?.name ?? "Shop" });
             if (base64) {
               await handleSubmit(base64);
             }
