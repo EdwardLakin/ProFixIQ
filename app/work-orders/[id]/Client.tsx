@@ -409,11 +409,18 @@ export default function WorkOrderIdClient(): JSX.Element {
             {/* Header */}
             <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h1 className="text-2xl font-semibold">
-                  Work Order {wo.custom_id || `#${wo.id.slice(0, 8)}`}
-                </h1>
+                {/* Title + WO status badge */}
+                <div className="flex items-center gap-2">
+                  <h1 className="text-2xl font-semibold">
+                    Work Order {wo.custom_id || `#${wo.id.slice(0, 8)}`}
+                  </h1>
+                  <span className={chipClass(wo.status)}>
+                    {(wo.status ?? "awaiting").replaceAll("_", " ")}
+                  </span>
+                </div>
               </div>
-              <div className="mt-2 grid gap-2 text-sm text-neutral-300 sm:grid-cols-3">
+              {/* Details grid with a Status cell */}
+              <div className="mt-2 grid gap-2 text-sm text-neutral-300 sm:grid-cols-4">
                 <div>
                   <div className="text-neutral-400">Created</div>
                   <div>{createdAtText}</div>
@@ -427,6 +434,14 @@ export default function WorkOrderIdClient(): JSX.Element {
                 <div>
                   <div className="text-neutral-400">WO ID</div>
                   <div className="truncate">{wo.id}</div>
+                </div>
+                <div>
+                  <div className="text-neutral-400">Status</div>
+                  <div>
+                    <span className={chipClass(wo.status)}>
+                      {(wo.status ?? "awaiting").replaceAll("_", " ")}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
