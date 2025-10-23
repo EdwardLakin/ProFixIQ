@@ -1,8 +1,7 @@
-// app/work-orders/approval-webhook/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
 import { cookies } from "next/headers";
+import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 type Json = Record<string, unknown>;
@@ -10,6 +9,7 @@ type Json = Record<string, unknown>;
 export async function POST(req: NextRequest) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
+  // --- read & validate body ---
   let body: {
     workOrderId?: string;
     approvedLineIds?: string[];
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     approvedLineIds = [],
     declinedLineIds = [],
     declineUnchecked = true,
-    signatureUrl,
+    signatureUrl = null,
   } = body;
 
   if (!workOrderId) {
@@ -44,49 +44,36 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    console.log("Approval webhook received:", body);
-
-    //
-    // ✅ 1️⃣ Update approved lines
-    //
+    // 1) Mark approved items
     if (approvedLineIds.length > 0) {
-      const { error: apprErr } = await supabase
+      const { error } = await supabase
         .from("work_order_lines")
-        .update({ status: "approved" })
+        .update({ approval_state: "approved" })
         .in("id", approvedLineIds)
         .eq("work_order_id", workOrderId);
-
-      if (apprErr) throw new Error(apprErr.message);
+      if (error) throw new Error(error.message);
     }
 
-    //
-    // ✅ 2️⃣ Decline non-checked items
-    //
+    // 2) Mark declined items (only if asked to decline unchecked)
     if (declineUnchecked && declinedLineIds.length > 0) {
-      const { error: decErr } = await supabase
+      const { error } = await supabase
         .from("work_order_lines")
-        .update({ status: "declined" })
+        .update({ approval_state: "declined" })
         .in("id", declinedLineIds)
         .eq("work_order_id", workOrderId);
-
-      if (decErr) throw new Error(decErr.message);
+      if (error) throw new Error(error.message);
     }
 
-    //
-    // ✅ 3️⃣ Set work order as approved + attach signature
-    //
+    // 3) Store signature + approval timestamp on the WO
     const { error: woErr } = await supabase
       .from("work_orders")
       .update({
-        status: "approved",
         customer_approval_at: new Date().toISOString(),
-        customer_approval_signature_path: signatureUrl ?? null,
+        customer_approval_signature_path: signatureUrl,
+        // NOTE: do NOT change work_orders.status here unless your enum includes the target value
       })
       .eq("id", workOrderId);
-
     if (woErr) throw new Error(woErr.message);
-
-    console.log("✅ Approval complete:", workOrderId);
 
     return NextResponse.json(
       {
@@ -97,9 +84,8 @@ export async function POST(req: NextRequest) {
       } satisfies Json,
       { status: 200 }
     );
-  } catch (e: unknown) {
+  } catch (e) {
     const msg = e instanceof Error ? e.message : "Internal error";
-    console.error("❌ Approval webhook failed:", msg);
     return NextResponse.json({ error: msg } satisfies Json, { status: 500 });
   }
 }
