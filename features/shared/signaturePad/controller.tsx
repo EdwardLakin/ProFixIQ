@@ -1,23 +1,18 @@
 // features/shared/signaturePad/controller.tsx
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import dynamic from "next/dynamic";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-// Dynamic import for react-signature-canvas
-const SigCanvas = dynamic(
-  () => import("react-signature-canvas").then((m) => m.default),
-  { ssr: false }
-) as unknown as React.ComponentType<{
-  ref: React.MutableRefObject<any>;
-  penColor?: string;
-  onBegin?: () => void;
-  onEnd?: () => void;
-  canvasProps?: React.CanvasHTMLAttributes<HTMLCanvasElement>;
-}>;
+type SigCanvasInstance = {
+  clear: () => void;
+  isEmpty: () => boolean;
+  getCanvas: () => HTMLCanvasElement;
+  getTrimmedCanvas: () => HTMLCanvasElement;
+};
 
 export type OpenOptions = { shopName?: string };
 
+/** Fire-and-forget opener */
 export function openSignaturePad(opts: OpenOptions = {}): Promise<string | null> {
   return new Promise((resolve) => {
     const detail = { shopName: opts.shopName ?? "", resolve };
@@ -33,32 +28,44 @@ function SignaturePadHost() {
   const [open, setOpen] = useState(false);
   const [shopName, setShopName] = useState<string>("");
 
+  // We lazy-load the real component so the ref is guaranteed to work client-side.
+  const [SigCanvasComp, setSigCanvasComp] = useState<React.ComponentType<any> | null>(null);
+
   const resolverRef = useRef<((v: string | null) => void) | null>(null);
-  const sigRef = useRef<any>(null);
+  const sigRef = useRef<SigCanvasInstance | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const [saving, setSaving] = useState(false);
-  const [dirty, setDirty] = useState(false); // ← has the user drawn at least once?
   const [size, setSize] = useState({ w: 480, h: 220 });
 
-  // open modal
+  // Load react-signature-canvas only on client and keep its default export
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const mod = await import("react-signature-canvas");
+      if (mounted) setSigCanvasComp(() => mod.default);
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // Open listener
   useEffect(() => {
     const handler = (e: Event) => {
       const { shopName, resolve } = (e as CustomEvent).detail as {
         shopName: string;
         resolve: (v: string | null) => void;
       };
-
       resolverRef.current = resolve;
       setShopName(shopName || "");
       setOpen(true);
       setSaving(false);
-      setDirty(false);
 
-      // clear any previous drawing
+      // Clear prior strokes next frame
       requestAnimationFrame(() => sigRef.current?.clear?.());
 
-      // compute an initial size
+      // Compute an initial size next frame
       requestAnimationFrame(() => {
         const el = containerRef.current;
         const w = Math.max(320, Math.floor(el?.clientWidth || 0)) || 480;
@@ -66,13 +73,11 @@ function SignaturePadHost() {
         setSize({ w, h });
       });
     };
-
     window.addEventListener("signaturepad:open", handler as EventListener);
-    return () =>
-      window.removeEventListener("signaturepad:open", handler as EventListener);
+    return () => window.removeEventListener("signaturepad:open", handler as EventListener);
   }, []);
 
-  // responsive
+  // Responsive width / height
   useLayoutEffect(() => {
     if (!containerRef.current) return;
     const el = containerRef.current;
@@ -85,18 +90,16 @@ function SignaturePadHost() {
     return () => ro.disconnect();
   }, []);
 
-  // retina crisp canvas
+  // Retina crispness
   useEffect(() => {
-    const canvas = sigRef.current?.getCanvas?.() as HTMLCanvasElement | undefined;
+    const canvas = sigRef.current?.getCanvas?.();
     if (!canvas) return;
-
     const ratio = Math.max(window.devicePixelRatio || 1, 1);
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
     const W = Math.floor(size.w * ratio);
     const H = Math.floor(size.h * ratio);
-
     if (canvas.width !== W || canvas.height !== H) {
       canvas.width = W;
       canvas.height = H;
@@ -106,17 +109,7 @@ function SignaturePadHost() {
     }
   }, [size]);
 
-  // iPad/Safari: poll for ink (sometimes onEnd doesn’t fire)
-  useEffect(() => {
-    if (!open) return;
-    const id = setInterval(() => {
-      const pad = sigRef.current;
-      if (pad?.isEmpty && !pad.isEmpty()) setDirty(true);
-    }, 250);
-    return () => clearInterval(id);
-  }, [open]);
-
-  // prevent page scroll while signing
+  // Prevent page scroll while signing (iOS)
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -128,21 +121,22 @@ function SignaturePadHost() {
     return () => el.removeEventListener("touchmove", preventScroll);
   }, []);
 
-  // helpers
   const closeWith = (v: string | null) => {
     resolverRef.current?.(v);
     resolverRef.current = null;
     setOpen(false);
   };
 
-  const hasInk = () => {
-    const pad = sigRef.current;
-    return pad && typeof pad.isEmpty === "function" && !pad.isEmpty();
+  const hasInk = (): boolean => {
+    try {
+      return !!sigRef.current && typeof sigRef.current.isEmpty === "function" && !sigRef.current.isEmpty();
+    } catch {
+      return false;
+    }
   };
 
   const handleClear = () => {
     sigRef.current?.clear?.();
-    setDirty(false);
   };
 
   const handleSave = () => {
@@ -152,12 +146,15 @@ function SignaturePadHost() {
       return;
     }
     setSaving(true);
-    const base64 = sigRef.current.getTrimmedCanvas().toDataURL("image/png");
-    closeWith(base64);
+    try {
+      const base64 = sigRef.current!.getTrimmedCanvas().toDataURL("image/png");
+      closeWith(base64);
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (!open) return null;
-  const saveDisabled = saving || !hasInk() || !dirty;
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4">
@@ -166,6 +163,7 @@ function SignaturePadHost() {
         style={{ fontFamily: "Roboto, ui-sans-serif, system-ui" }}
         role="dialog"
         aria-modal="true"
+        onClick={(e) => e.stopPropagation()} // guard against clicks leaking to page
       >
         <h2
           className="mb-1 text-center text-lg font-semibold text-white"
@@ -179,19 +177,26 @@ function SignaturePadHost() {
         </p>
 
         <div ref={containerRef} className="w-full">
-          <SigCanvas
-            ref={sigRef}
-            penColor="white"
-            onBegin={() => setDirty(true)}
-            onEnd={() => setDirty(true)}
-            canvasProps={{
-              width: size.w,
-              height: size.h,
-              className: "w-full rounded-md border border-neutral-700 bg-neutral-950",
-              role: "img",
-              "aria-label": "Signature input area",
-            }}
-          />
+          {SigCanvasComp ? (
+            <SigCanvasComp
+              // Use a callback ref to guarantee assignment even through lazy mount
+              ref={(inst: SigCanvasInstance | null) => {
+                sigRef.current = inst;
+              }}
+              penColor="white"
+              onBegin={() => { /* optional visual cue hook */ }}
+              onEnd={() => { /* optional visual cue hook */ }}
+              canvasProps={{
+                width: size.w,
+                height: size.h,
+                className: "w-full rounded-md border border-neutral-700 bg-neutral-950",
+                role: "img",
+                "aria-label": "Signature input area",
+              }}
+            />
+          ) : (
+            <div className="h-[220px] w-full animate-pulse rounded-md border border-neutral-800 bg-neutral-950" />
+          )}
         </div>
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
@@ -216,6 +221,7 @@ function SignaturePadHost() {
               Cancel
             </button>
 
+            {/* Keep enabled; validate inside handler to avoid iOS event edge cases */}
             <button
               type="button"
               onClick={(e) => {
@@ -223,8 +229,7 @@ function SignaturePadHost() {
                 e.stopPropagation();
                 handleSave();
               }}
-              disabled={saveDisabled}
-              className="rounded px-4 py-2 text-white disabled:opacity-40"
+              className="rounded px-4 py-2 text-white"
               style={{ backgroundColor: "#16a34a", fontFamily: "'Black Ops One', Roboto, ui-sans-serif, system-ui" }}
             >
               {saving ? "Saving…" : "Save"}
