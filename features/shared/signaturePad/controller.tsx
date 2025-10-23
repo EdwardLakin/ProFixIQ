@@ -1,13 +1,13 @@
-
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 
-// Correctly typed dynamic import
-const SigCanvas = dynamic(() => import("react-signature-canvas").then(m => m.default), {
-  ssr: false,
-}) as unknown as React.ComponentType<{
+// Dynamic import, typed
+const SigCanvas = dynamic(
+  () => import("react-signature-canvas").then((m) => m.default),
+  { ssr: false }
+) as unknown as React.ComponentType<{
   ref: React.MutableRefObject<any>;
   penColor?: string;
   onBegin?: () => void;
@@ -37,29 +37,27 @@ function SignaturePadHost() {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const [saving, setSaving] = useState(false);
-  const [ready, setReady] = useState(false); // has the user drawn?
 
-  // Safe defaults so it always shows
+  // Always visible size defaults so the pad renders on first paint
   const [size, setSize] = useState({ w: 480, h: 220 });
 
-  // Listen for open requests
+  // Open/close wiring
   useEffect(() => {
     const handler = (e: Event) => {
       const { shopName, resolve } = (e as CustomEvent).detail as {
-        shopName: string;
-        resolve: (v: string | null) => void;
+        shopName: string; resolve: (v: string | null) => void;
       };
       resolverRef.current = resolve;
       setShopName(shopName || "");
       setOpen(true);
-      setReady(false);
       setSaving(false);
 
-      // reset drawing next paint
-      requestAnimationFrame(() => sigRef.current?.clear?.());
+      // flag to let other floaters disable pointer events if they want
+      document.documentElement.setAttribute("data-overlay", "sigpad");
 
-      // compute size immediately
+      // clear previous signature & compute size next frame
       requestAnimationFrame(() => {
+        sigRef.current?.clear?.();
         const el = containerRef.current;
         const w = Math.max(320, Math.floor(el?.clientWidth || 0)) || 480;
         const h = Math.floor(w * 0.44);
@@ -69,6 +67,12 @@ function SignaturePadHost() {
     window.addEventListener("signaturepad:open", handler as EventListener);
     return () => window.removeEventListener("signaturepad:open", handler as EventListener);
   }, []);
+
+  useEffect(() => {
+    if (!open) {
+      document.documentElement.removeAttribute("data-overlay");
+    }
+  }, [open]);
 
   // Responsive sizing + retina crispness
   useLayoutEffect(() => {
@@ -116,32 +120,21 @@ function SignaturePadHost() {
     resolverRef.current?.(value);
     resolverRef.current = null;
     setOpen(false);
+    document.documentElement.removeAttribute("data-overlay");
   };
 
-  const handleClear = () => {
-    sigRef.current?.clear?.();
-    setReady(false);
-  };
-
-  // Harden the Save: enable whenever the pad has ink
-  const hasInk = () => {
-    try {
-      return !!sigRef.current && typeof sigRef.current.isEmpty === "function" && !sigRef.current.isEmpty();
-    } catch {
-      return false;
-    }
-  };
+  const handleClear = () => sigRef.current?.clear?.();
 
   const handleSave = async () => {
     if (saving) return;
     const pad = sigRef.current;
-    if (!pad || !hasInk()) {
+    if (!pad || typeof pad.isEmpty !== "function" || pad.isEmpty()) {
       alert("Please draw a signature before saving.");
       return;
     }
     try {
       setSaving(true);
-      const base64 = pad.getTrimmedCanvas().toDataURL("image/png");
+      const base64 = pad.getTrimmedCanvas?.().toDataURL("image/png") ?? pad.toDataURL();
       closeWith(base64);
     } finally {
       setSaving(false);
@@ -150,15 +143,17 @@ function SignaturePadHost() {
 
   if (!open) return null;
 
-  const saveDisabled = saving || !(ready || hasInk());
-
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4">
+    <div
+      className="fixed inset-0 flex items-center justify-center bg-black/60 p-4"
+      style={{ zIndex: 2147483647, pointerEvents: "auto" }}  // guaranteed above any FAB
+      role="dialog"
+      aria-modal="true"
+    >
       <div
         className="w-full max-w-md rounded-lg border-2 border-orange-400 bg-neutral-900 p-6 shadow-xl"
         style={{ fontFamily: "Roboto, ui-sans-serif, system-ui" }}
-        role="dialog"
-        aria-modal="true"
+        onPointerDown={(e) => e.stopPropagation()}
       >
         <h2
           className="mb-1 text-center text-lg font-semibold text-white"
@@ -174,8 +169,8 @@ function SignaturePadHost() {
         <div ref={containerRef} className="w-full">
           <SigCanvas
             ref={sigRef}
-            onBegin={() => setReady(true)}
-            onEnd={() => setReady(true)}
+            onBegin={() => { /* keep for devices that need it */ }}
+            onEnd={() => { /* iOS sometimes only fires end; we accept either */ }}
             penColor="white"
             canvasProps={{
               width: size.w,
@@ -213,12 +208,9 @@ function SignaturePadHost() {
             </button>
             <button
               type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                void handleSave();
-              }}
-              disabled={saveDisabled}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); void (async () => handleSave())(); }}
+              // always enabled; we gate inside handleSave()
+              disabled={saving}
               className="rounded px-4 py-2 text-white disabled:opacity-50"
               style={{ backgroundColor: "#16a34a", fontFamily: "'Black Ops One', Roboto, ui-sans-serif, system-ui" }}
             >
