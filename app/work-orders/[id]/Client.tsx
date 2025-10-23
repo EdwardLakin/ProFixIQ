@@ -2,12 +2,10 @@
 
 /**
  * Work Order — ID Page (Tech/View)
- * - Reads route id with useParams() (no props from wrapper).
- * - Waits for a real Supabase session before the first fetch (prevents
- *   the iPad/Safari "signed out / not found" race when opening new tabs).
- * - Falls back to custom_id (case-insensitive, leading-zero tolerant).
- * - Realtime updates for WO & WO lines (UUID-safe: subscribe with wo.id).
- * - Voice context + floating VoiceButton.
+ * - Robust session wait (iPad/Safari).
+ * - UUID or custom_id resolution.
+ * - Realtime updates for WO & lines.
+ * - Voice context + FocusedJob modal.
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -23,15 +21,10 @@ import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
 import VehiclePhotoUploader from "@parts/components/VehiclePhotoUploader";
 import VehiclePhotoGallery from "@parts/components/VehiclePhotoGallery";
 import FocusedJobModal from "@/features/work-orders/components/workorders/FocusedJobModal";
-
-import { useTabState } from "@/features/shared/hooks/useTabState";
-
-// Voice
+import { UsePartButton } from "@work-orders/components/UsePartButton";
 import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
 import VoiceButton from "@/features/shared/voice/VoiceButton";
-
-// NEW: Use Part button on list + allocations nicety
-import { UsePartButton } from "@work-orders/components/UsePartButton";
+import { useTabState } from "@/features/shared/hooks/useTabState";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -52,17 +45,37 @@ function splitCustomId(raw: string): { prefix: string; n: number | null } {
   return { prefix: m[1], n: Number.isFinite(n!) ? n : null };
 }
 
-/* ---------------------------- Status -> Styles ---------------------------- */
-const statusBadge: Record<string, string> = {
-  awaiting_approval: "bg-blue-100 text-blue-800",
-  awaiting: "bg-slate-200 text-slate-800",
-  queued: "bg-indigo-100 text-indigo-800",
-  in_progress: "bg-orange-100 text-orange-800",
-  on_hold: "bg-amber-100 text-amber-800",
-  planned: "bg-purple-100 text-purple-800",
-  new: "bg-gray-200 text-gray-800",
-  completed: "bg-green-100 text-green-800",
+/* ---------------------------- Badges & Row Tints ---------------------------- */
+
+type DerivedStatus =
+  | "awaiting_approval"
+  | "awaiting"
+  | "queued"
+  | "in_progress"
+  | "on_hold"
+  | "planned"
+  | "new"
+  | "completed";
+
+const BASE_BADGE =
+  "inline-flex items-center whitespace-nowrap rounded border px-2 py-0.5 text-xs font-medium";
+
+const BADGE: Record<DerivedStatus, string> = {
+  awaiting_approval: "bg-blue-900/20 border-blue-500/40 text-blue-300",
+  awaiting:          "bg-sky-900/20  border-sky-500/40  text-sky-300",
+  queued:            "bg-indigo-900/20 border-indigo-500/40 text-indigo-300",
+  in_progress:       "bg-orange-900/20 border-orange-500/40 text-orange-300",
+  on_hold:           "bg-amber-900/20  border-amber-500/40  text-amber-300",
+  planned:           "bg-purple-900/20 border-purple-500/40 text-purple-300",
+  new:               "bg-neutral-800   border-neutral-600   text-neutral-200",
+  completed:         "bg-green-900/20  border-green-500/40  text-green-300",
 };
+
+const chip = (s: string | null | undefined): string => {
+  const key = (s ?? "awaiting").toLowerCase().replaceAll(" ", "_") as DerivedStatus;
+  return `${BASE_BADGE} ${BADGE[key] ?? BADGE.awaiting}`;
+};
+
 const statusBorder: Record<string, string> = {
   awaiting: "border-l-4 border-slate-400",
   queued: "border-l-4 border-indigo-400",
@@ -73,6 +86,7 @@ const statusBorder: Record<string, string> = {
   planned: "border-l-4 border-purple-500",
   new: "border-l-4 border-gray-400",
 };
+
 const statusRowTint: Record<string, string> = {
   awaiting: "bg-neutral-950",
   queued: "bg-neutral-950",
@@ -84,51 +98,73 @@ const statusRowTint: Record<string, string> = {
   new: "bg-neutral-950",
 };
 
+/** Derive a WO header status from the parent status + line statuses. */
+function deriveWorkOrderStatus(woStatus: string | null, lines: WorkOrderLine[]): DerivedStatus {
+  const norm = (woStatus ?? "awaiting").toLowerCase().replaceAll(" ", "_") as DerivedStatus;
+
+  // If any job is actively in progress, surface that for the header.
+  if (lines.some((l) => (l.status ?? "").toLowerCase().replaceAll(" ", "_") === "in_progress")) {
+    return "in_progress";
+  }
+
+  // Otherwise prefer the stored WO status.
+  const allowed: DerivedStatus[] = [
+    "awaiting_approval",
+    "awaiting",
+    "queued",
+    "in_progress",
+    "on_hold",
+    "planned",
+    "new",
+    "completed",
+  ];
+  return (allowed.includes(norm) ? norm : "awaiting") as DerivedStatus;
+}
+
+/* ------------------------------------------------------------------------- */
+
 export default function WorkOrderIdClient(): JSX.Element {
   const params = useParams();
   const routeId = (params?.id as string) || "";
 
-  // Core entities (persist per tab where it helps UX)
+  // Core entities (persist per tab)
   const [wo, setWo] = useTabState<WorkOrder | null>("wo:id:wo", null);
   const [lines, setLines] = useTabState<WorkOrderLine[]>("wo:id:lines", []);
   const [vehicle, setVehicle] = useTabState<Vehicle | null>("wo:id:veh", null);
   const [customer, setCustomer] = useTabState<Customer | null>("wo:id:cust", null);
 
-  // NEW: parts allocations by line (map)
+  // Parts allocations per line
   const [allocsByLine, setAllocsByLine] = useState<Record<string, AllocationRow[]>>({});
 
-  // UI state
-  const [loading, setLoading] = useState<boolean>(false); // start false; fetch toggles it
+  // UI
+  const [loading, setLoading] = useState<boolean>(false);
   const [viewError, setViewError] = useState<string | null>(null);
 
-  // user (local; used for banner + photo uploader)
+  // auth/user (used for banner + uploads)
   const [currentUserId, setCurrentUserId] = useTabState<string | null>("wo:id:uid", null);
   const [, setUserId] = useTabState<string | null>("wo:id:effectiveUid", null);
 
-  // persisted UI toggle
+  // details toggle
   const [showDetails, setShowDetails] = useTabState<boolean>("wo:showDetails", true);
 
-  // Focused job modal
+  // focused job modal
   const [focusedJobId, setFocusedJobId] = useState<string | null>(null);
   const [focusedOpen, setFocusedOpen] = useState(false);
 
-  // one-time missing notice
   const [warnedMissing, setWarnedMissing] = useState(false);
 
-  /* ---------------------- AUTH (robust & self-healing) ---------------------- */
+  /* ---------------------- AUTH wait ---------------------- */
   useEffect(() => {
     let mounted = true;
 
     const waitForSession = async () => {
-      // Ask for current session (don’t refresh blindly on iOS)
       let {
         data: { session },
       } = await supabase.auth.getSession();
 
-      // If the cookie hasn't hydrated yet (new tab / Safari), poll briefly
       if (!session) {
         for (let i = 0; i < 8; i++) {
-          await new Promise((r) => setTimeout(r, 150 * (i + 1))); // ~1.8s total
+          await new Promise((r) => setTimeout(r, 150 * (i + 1)));
           const res = await supabase.auth.getSession();
           session = res.data.session;
           if (session) break;
@@ -144,7 +180,6 @@ export default function WorkOrderIdClient(): JSX.Element {
       setCurrentUserId(uid);
       setUserId(uid);
 
-      // Do not call fetchAll here; the gated effect below will run once uid exists.
       if (!uid) setLoading(false);
     };
 
@@ -176,7 +211,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       try {
         let woRow: WorkOrder | null = null;
 
-        // Fast path: UUID id
+        // 1) UUID
         if (looksLikeUuid(routeId)) {
           const { data, error } = await supabase
             .from("work_orders")
@@ -186,7 +221,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           if (!error) woRow = (data as WorkOrder | null) ?? null;
         }
 
-        // Fall back: custom_id with case/zero tolerance
+        // 2) custom_id
         if (!woRow) {
           const eqRes = await supabase.from("work_orders").select("*").eq("custom_id", routeId).maybeSingle();
           woRow = (eqRes.data as WorkOrder | null) ?? null;
@@ -217,7 +252,6 @@ export default function WorkOrderIdClient(): JSX.Element {
           }
         }
 
-        // None found → retry briefly, then show message
         if (!woRow) {
           if (retry < 2) {
             await new Promise((r) => setTimeout(r, 200 * Math.pow(2, retry)));
@@ -264,7 +298,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         if (custRes?.error) throw custRes.error;
         setCustomer((custRes?.data as Customer | null) ?? null);
 
-        // NEW: allocations by line (nicety)
+        // allocations (nicety)
         if (lineRows.length) {
           const { data: allocs } = await supabase
             .from("work_order_part_allocations")
@@ -298,7 +332,7 @@ export default function WorkOrderIdClient(): JSX.Element {
     void fetchAll();
   }, [fetchAll, routeId, currentUserId]);
 
-  /* ---------------------- REALTIME (UUID-safe) ---------------------- */
+  /* ---------------------- REALTIME ---------------------- */
   useEffect(() => {
     if (!wo?.id) return;
 
@@ -314,7 +348,6 @@ export default function WorkOrderIdClient(): JSX.Element {
         { event: "*", schema: "public", table: "work_order_lines", filter: `work_order_id=eq.${wo.id}` },
         () => fetchAll(),
       )
-      // keep allocations in sync too
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "work_order_part_allocations" },
@@ -322,7 +355,6 @@ export default function WorkOrderIdClient(): JSX.Element {
       )
       .subscribe();
 
-    // Also refresh on local events fired by UsePartButton
     const local = () => fetchAll();
     window.addEventListener("wo:parts-used", local);
 
@@ -349,13 +381,11 @@ export default function WorkOrderIdClient(): JSX.Element {
     });
   }, [lines]);
 
-  const chipClass = (s: string | null): string => {
-    const key = (s ?? "awaiting").toLowerCase().replaceAll(" ", "_");
-    return `text-xs px-2 py-1 rounded ${statusBadge[key] ?? "bg-gray-200 text-gray-800"}`;
-  };
-
   const createdAt = wo?.created_at ? new Date(wo.created_at) : null;
   const createdAtText = createdAt && !isNaN(createdAt.getTime()) ? format(createdAt, "PPpp") : "—";
+
+  // Derived header status (reflect lines immediately)
+  const headerStatus: DerivedStatus = deriveWorkOrderStatus(wo?.status ?? null, lines);
 
   /* -------------------------- UI -------------------------- */
   if (!routeId) return <div className="p-6 text-red-500">Missing work order id.</div>;
@@ -366,7 +396,6 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   return (
     <div className="p-4 sm:p-6 text-white">
-      {/* voice context for this page */}
       <VoiceContextSetter
         currentView="work_order_page"
         workOrderId={wo?.id}
@@ -377,7 +406,6 @@ export default function WorkOrderIdClient(): JSX.Element {
 
       <PreviousPageButton to="/work-orders" />
 
-      {/* Auth hint (iPad/Safari cookies) */}
       {!currentUserId && (
         <div className="mt-3 rounded border border-amber-500/30 bg-amber-500/10 p-3 text-amber-200 text-sm">
           You appear signed out on this tab. If actions fail, open{" "}
@@ -409,36 +437,33 @@ export default function WorkOrderIdClient(): JSX.Element {
             {/* Header */}
             <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                {/* Title + WO status badge */}
                 <div className="flex items-center gap-2">
                   <h1 className="text-2xl font-semibold">
                     Work Order {wo.custom_id || `#${wo.id.slice(0, 8)}`}
                   </h1>
-                  <span className={chipClass(wo.status)}>
-                    {(wo.status ?? "awaiting").replaceAll("_", " ")}
+                  <span className={chip(headerStatus)}>
+                    {headerStatus.replaceAll("_", " ")}
                   </span>
                 </div>
               </div>
-              {/* Details grid with a Status cell */}
+
               <div className="mt-2 grid gap-2 text-sm text-neutral-300 sm:grid-cols-4">
                 <div>
                   <div className="text-neutral-400">Created</div>
                   <div>{createdAtText}</div>
                 </div>
                 <div>
-                  <div className="text-neutral-400">Notes</div>
-                  <div className="truncate">
-                    {(wo as unknown as { notes?: string | null })?.notes ?? "—"}
-                  </div>
-                </div>
-                <div>
                   <div className="text-neutral-400">WO ID</div>
                   <div className="truncate">{wo.id}</div>
                 </div>
                 <div>
+                  <div className="text-neutral-400">Custom ID</div>
+                  <div className="truncate">{wo.custom_id ?? "—"}</div>
+                </div>
+                <div>
                   <div className="text-neutral-400">Status</div>
                   <div>
-                    <span className={chipClass(wo.status)}>
+                    <span className={chip(wo.status)}>
                       {(wo.status ?? "awaiting").replaceAll("_", " ")}
                     </span>
                   </div>
@@ -506,7 +531,7 @@ export default function WorkOrderIdClient(): JSX.Element {
               )}
             </div>
 
-            {/* Jobs list (click -> FocusedJobModal) */}
+            {/* Jobs list */}
             <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold">Jobs in this Work Order</h2>
@@ -554,7 +579,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                               </div>
                             )}
 
-                            {/* NEW: parts used nicety */}
+                            {/* Parts used */}
                             <div className="mt-2 rounded border border-neutral-800 bg-neutral-950 p-2">
                               <div className="mb-1 flex items-center justify-between">
                                 <div className="text-xs font-semibold text-neutral-300">Parts used</div>
@@ -585,7 +610,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                             </div>
                           </div>
 
-                          <span className={chipClass(ln.status)}>
+                          <span className={chip(ln.status)}>
                             {(ln.status ?? "awaiting").replaceAll("_", " ")}
                           </span>
                         </div>
@@ -626,7 +651,6 @@ export default function WorkOrderIdClient(): JSX.Element {
         />
       )}
 
-      {/* Floating voice mic for this page */}
       <VoiceButton />
     </div>
   );

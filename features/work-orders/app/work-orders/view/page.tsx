@@ -16,18 +16,39 @@ type Row = WorkOrder & {
   vehicles: Pick<Vehicle, "year" | "make" | "model" | "license_plate"> | null;
 };
 
-const statusBadge: Record<string, string> = {
-  awaiting_approval: "bg-blue-100 text-blue-800",
-  awaiting: "bg-blue-100 text-blue-800",
-  queued: "bg-blue-100 text-blue-800",
-  in_progress: "bg-orange-100 text-orange-800",
-  on_hold: "bg-yellow-100 text-yellow-800",
-  planned: "bg-purple-100 text-purple-800",
-  new: "bg-gray-200 text-gray-800",
-  completed: "bg-green-100 text-green-800",
+/* --------------------------- Status badges (dark) --------------------------- */
+type StatusKey =
+  | "awaiting_approval"
+  | "awaiting"
+  | "queued"
+  | "in_progress"
+  | "on_hold"
+  | "planned"
+  | "new"
+  | "completed";
+
+const BADGE_BASE =
+  "inline-flex items-center whitespace-nowrap rounded border px-2 py-0.5 text-xs font-medium";
+
+const STATUS_BADGE: Record<StatusKey, string> = {
+  awaiting_approval: "bg-blue-900/20 border-blue-500/40 text-blue-300",
+  awaiting:          "bg-sky-900/20  border-sky-500/40  text-sky-300",
+  queued:            "bg-indigo-900/20 border-indigo-500/40 text-indigo-300",
+  in_progress:       "bg-orange-900/20 border-orange-500/40 text-orange-300",
+  on_hold:           "bg-amber-900/20  border-amber-500/40  text-amber-300",
+  planned:           "bg-purple-900/20 border-purple-500/40 text-purple-300",
+  new:               "bg-neutral-800   border-neutral-600   text-neutral-200",
+  completed:         "bg-green-900/20  border-green-500/40  text-green-300",
 };
 
-const NORMAL_FLOW_STATUSES = [
+const chip = (s: string | null | undefined) => {
+  const key = (s ?? "awaiting").toLowerCase().replaceAll(" ", "_") as StatusKey;
+  const cls = STATUS_BADGE[key] ?? STATUS_BADGE.awaiting;
+  return `${BADGE_BASE} ${cls}`;
+};
+
+/* “Normal flow” excludes awaiting_approval */
+const NORMAL_FLOW_STATUSES: StatusKey[] = [
   "queued",
   "awaiting",
   "in_progress",
@@ -35,14 +56,14 @@ const NORMAL_FLOW_STATUSES = [
   "planned",
   "new",
   "completed",
-] as const;
+];
 
 export default function WorkOrdersView(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
-  const [status, setStatus] = useState<string>(""); // "" = normal flow only
+  const [status, setStatus] = useState<string>(""); // "" = normal flow
   const [err, setErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -61,12 +82,13 @@ export default function WorkOrdersView(): JSX.Element {
       .order("created_at", { ascending: false })
       .limit(100);
 
-    if (status) {
-      // Specific status selected
-      query = query.eq("status", status);
-    } else {
-      // Normal flow (exclude awaiting_approval explicitly)
+    // Dropdown behavior:
+    // - ""  -> only "normal flow" statuses
+    // - any -> exactly that status
+    if (status === "") {
       query = query.in("status", NORMAL_FLOW_STATUSES as unknown as string[]);
+    } else {
+      query = query.eq("status", status);
     }
 
     const { data, error } = await query;
@@ -108,10 +130,24 @@ export default function WorkOrdersView(): JSX.Element {
     void load();
   }, [load]);
 
-  const chip = (s: string | null | undefined) =>
-    `text-xs px-2 py-1 rounded ${
-      statusBadge[(s ?? "awaiting") as keyof typeof statusBadge] ?? "bg-gray-200 text-gray-800"
-    }`;
+  /* Realtime: refresh when any WO row changes (status, etc.) */
+  useEffect(() => {
+    const ch = supabase
+      .channel("work_orders:list")
+      .on("postgres_changes", { event: "*", schema: "public", table: "work_orders" }, () => {
+        // debounce tiny bit to coalesce bursts
+        setTimeout(() => void load(), 60);
+      })
+      .subscribe();
+
+    return () => {
+      try {
+        supabase.removeChannel(ch);
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [supabase, load]);
 
   const handleDelete = useCallback(
     async (id: string) => {
@@ -133,7 +169,7 @@ export default function WorkOrdersView(): JSX.Element {
         setRows(prev);
       }
     },
-    [rows, supabase]
+    [rows, supabase],
   );
 
   return (
