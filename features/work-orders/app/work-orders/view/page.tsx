@@ -27,12 +27,22 @@ const statusBadge: Record<string, string> = {
   completed: "bg-green-100 text-green-800",
 };
 
+const NORMAL_FLOW_STATUSES = [
+  "queued",
+  "awaiting",
+  "in_progress",
+  "on_hold",
+  "planned",
+  "new",
+  "completed",
+] as const;
+
 export default function WorkOrdersView(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
-  const [status, setStatus] = useState<string>("");
+  const [status, setStatus] = useState<string>(""); // "" = normal flow only
   const [err, setErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -51,21 +61,15 @@ export default function WorkOrdersView(): JSX.Element {
       .order("created_at", { ascending: false })
       .limit(100);
 
-    // Tabs / filters: exclude awaiting approvals by default
-    if (status === "awaiting_approval") {
-      query = query.eq("approval_state", "awaiting");
-    } else if (status) {
-      // All other statuses should represent normal workflow and exclude awaiting approvals
-      query = query
-        .eq("status", status)
-        .or("approval_state.eq.approved,approval_state.is.null");
+    if (status) {
+      // Specific status selected
+      query = query.eq("status", status);
     } else {
-      // Default: all statuses EXCEPT items still waiting for approval
-      query = query.or("approval_state.eq.approved,approval_state.is.null");
+      // Normal flow (exclude awaiting_approval explicitly)
+      query = query.in("status", NORMAL_FLOW_STATUSES as unknown as string[]);
     }
 
     const { data, error } = await query;
-
     if (error) {
       setErr(error.message);
       setRows([]);

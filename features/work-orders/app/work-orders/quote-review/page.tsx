@@ -1,4 +1,3 @@
-// app/quote-review/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -40,32 +39,24 @@ function ApprovalsList() {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const [rows, setRows] = useState<WorkOrderWithMeta[]>([]);
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
 
   type WorkOrderWithMeta = WorkOrder & {
     shops?: Pick<Shop, "name"> | null;
     labor_hours?: number | null;
   };
 
-  async function load() {
+  const load = async () => {
     setLoading(true);
-    setErr(null);
 
-    // LEFT JOIN to avoid RLS filtering everything out
-    const { data: wo, error } = await supabase
+    // Only show awaiting_approval here
+    const { data: wo } = await supabase
       .from("work_orders")
-      .select(`*, shops(name)`)
+      .select(`*, shops!inner(name)`)
       .eq("status", "awaiting_approval")
       .order("created_at", { ascending: false });
 
-    if (error) {
-      setErr(error.message);
-      setRows([]);
-      setLoading(false);
-      return;
-    }
+    let withMeta: WorkOrderWithMeta[] = (wo ?? []) as any;
 
-    let withMeta: WorkOrderWithMeta[] = (wo ?? []) as unknown as WorkOrderWithMeta[];
     if (withMeta.length) {
       const woIds = withMeta.map((w) => w.id);
       const { data: lines } = await supabase
@@ -76,10 +67,7 @@ function ApprovalsList() {
       const hoursByWO = new Map<string, number>();
       (lines ?? []).forEach((l) => {
         const cur = hoursByWO.get(l.work_order_id) ?? 0;
-        hoursByWO.set(
-          l.work_order_id,
-          cur + (typeof l.labor_time === "number" ? l.labor_time : 0),
-        );
+        hoursByWO.set(l.work_order_id, cur + (typeof l.labor_time === "number" ? l.labor_time : 0));
       });
 
       withMeta = withMeta.map((w) => ({
@@ -90,19 +78,31 @@ function ApprovalsList() {
 
     setRows(withMeta);
     setLoading(false);
-  }
+  };
 
   useEffect(() => {
     void load();
 
-    // simple realtime-ish refresh after approvals
-    const onApproved = () => void load();
-    window.addEventListener("wo:approved", onApproved);
-    return () => window.removeEventListener("wo:approved", onApproved);
+    // Realtime: if any WO flips status, refresh the list
+    const ch = supabase
+      .channel("qr:work_orders")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "work_orders" },
+        () => void load()
+      )
+      .subscribe();
+
+    return () => {
+      try {
+        supabase.removeChannel(ch);
+      } catch {
+        /* ignore */
+      }
+    };
   }, [supabase]);
 
   if (loading) return <div className="mt-6 text-neutral-400">Loading…</div>;
-  if (err) return <div className="mt-6 text-red-400">{err}</div>;
   if (rows.length === 0)
     return <div className="mt-6 text-neutral-400">No work orders waiting for approval.</div>;
 
@@ -192,7 +192,7 @@ function SingleQuoteReview({ woId }: { woId: string }) {
   const laborRate = 120;
   const totalLaborHours = lines.reduce(
     (sum, l) => sum + (typeof l.labor_time === "number" ? l.labor_time : 0),
-    0,
+    0
   );
   const laborTotal = totalLaborHours * laborRate;
   const partsTotal = 0;
@@ -216,13 +216,10 @@ function SingleQuoteReview({ woId }: { woId: string }) {
           customer_approval_signature_path: filename,
           // @ts-ignore pending schema fields in types
           customer_approval_at: new Date().toISOString() as any,
-          status: "queued" as any,
+          status: "queued" as any, // moves it out of Quote Review
         })
         .eq("id", woId);
       if (updErr) throw updErr;
-
-      // nudge list to refresh if user navigates back
-      window.dispatchEvent(new CustomEvent("wo:approved", { detail: { id: woId } }));
 
       alert("Work order approved and signed!");
       router.push("/work-orders/create?from=review&new=1");
@@ -386,7 +383,7 @@ export default function QuoteReviewPage() {
         </>
       ) : (
         <>
-          <SingleQuoteReview woId={woId} />
+          <SingleQuoteReview woId={woId!} />
           <SignaturePad />
         </>
       )}
