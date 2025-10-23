@@ -10,6 +10,16 @@ type InsertLine = DB["public"]["Tables"]["work_order_lines"]["Insert"];
 // Keep in sync with your DB check constraint
 type WOJobType = "diagnosis" | "inspection" | "maintenance" | "repair";
 
+// Allowed statuses — ONLY those your DB accepts
+const ALLOWED_STATUS = [
+  "awaiting",
+  "in_progress",
+  "on_hold",
+  "paused",
+  "completed",
+] as const;
+type AllowedStatus = (typeof ALLOWED_STATUS)[number];
+
 export function NewWorkOrderLineForm(props: {
   workOrderId: string;
   vehicleId: string | null;
@@ -37,6 +47,11 @@ export function NewWorkOrderLineForm(props: {
   function normalizeJobType(t: WOJobType | null): InsertLine["job_type"] {
     const allowed: WOJobType[] = ["diagnosis", "inspection", "maintenance", "repair"];
     return (t && (allowed as string[]).includes(t)) ? (t as InsertLine["job_type"]) : null;
+  }
+
+  function normalizeStatus(s: InsertLine["status"] | null | undefined): AllowedStatus {
+    const v = (s ?? "awaiting") as string;
+    return (ALLOWED_STATUS as readonly string[]).includes(v) ? (v as AllowedStatus) : "awaiting";
   }
 
   async function ensureShopContext() {
@@ -68,7 +83,7 @@ export function NewWorkOrderLineForm(props: {
         cause: cause || null,
         correction: correction || null,
         labor_time: labor ? Number(labor) : null,
-        status: status ?? "awaiting",
+        status: normalizeStatus(status),
         job_type: normalizeJobType(jobType),
         // RLS: if your policy checks shop_id directly, this satisfies it
         shop_id: shopId ?? null,
@@ -78,6 +93,8 @@ export function NewWorkOrderLineForm(props: {
       if (error) {
         if (/(job_type).*check/i.test(error.message)) {
           setErr("This job type isn’t allowed by the database. Pick another type.");
+        } else if (/status.*check/i.test(error.message)) {
+          setErr("This status isn’t allowed by the database. Try a different status.");
         } else if (/row-level security/i.test(error.message) || /current_shop_id/i.test(error.message)) {
           setErr("Shop mismatch: your session isn’t scoped to this shop. Try again.");
           lastSetShopId.current = null; // reattempt will reset GUC
@@ -107,71 +124,70 @@ export function NewWorkOrderLineForm(props: {
   }
 
   return (
-    <div className="rounded border border-neutral-200 p-3 text-sm">
+    <div className="rounded border border-neutral-800 bg-neutral-900 p-3 text-sm text-white">
       <div className="grid gap-2 sm:grid-cols-2">
         <div className="sm:col-span-2">
-          <label className="block text-xs text-neutral-600 mb-1">Complaint</label>
+          <label className="mb-1 block text-xs text-neutral-400">Complaint</label>
           <input
             value={complaint}
             onChange={(e) => setComplaint(e.target.value)}
-            className="w-full rounded border border-neutral-300 p-2"
+            className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
             placeholder="Describe the issue"
           />
         </div>
 
         <div>
-          <label className="block text-xs text-neutral-600 mb-1">Cause</label>
+          <label className="mb-1 block text-xs text-neutral-400">Cause</label>
           <input
             value={cause}
             onChange={(e) => setCause(e.target.value)}
-            className="w-full rounded border border-neutral-300 p-2"
+            className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
             placeholder="Root cause (optional)"
           />
         </div>
 
         <div>
-          <label className="block text-xs text-neutral-600 mb-1">Correction</label>
+          <label className="mb-1 block text-xs text-neutral-400">Correction</label>
           <input
             value={correction}
             onChange={(e) => setCorrection(e.target.value)}
-            className="w-full rounded border border-neutral-300 p-2"
+            className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
             placeholder="What to do (optional)"
           />
         </div>
 
         <div>
-          <label className="block text-xs text-neutral-600 mb-1">Labor (hrs)</label>
+          <label className="mb-1 block text-xs text-neutral-400">Labor (hrs)</label>
           <input
             inputMode="decimal"
             value={labor}
             onChange={(e) => setLabor(e.target.value)}
-            className="w-full rounded border border-neutral-300 p-2"
+            className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
             placeholder="0.0"
           />
         </div>
 
         <div>
-          <label className="block text-xs text-neutral-600 mb-1">Status</label>
+          <label className="mb-1 block text-xs text-neutral-400">Status</label>
           <select
-            value={status ?? "awaiting"}
+            value={normalizeStatus(status)}
             onChange={(e) => setStatus(e.target.value as InsertLine["status"])}
-            className="w-full rounded border border-neutral-300 p-2"
+            className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white"
           >
             <option value="awaiting">Awaiting</option>
             <option value="in_progress">In Progress</option>
             <option value="on_hold">On Hold</option>
+            <option value="paused">Paused</option>
             <option value="completed">Completed</option>
-            <option value="assigned">Assigned</option>
-            <option value="unassigned">Unassigned</option>
           </select>
         </div>
 
         <div>
-          <label className="block text-xs text-neutral-600 mb-1">Job type</label>
+          <label className="mb-1 block text-xs text-neutral-400">Job type</label>
           <select
             value={jobType ?? ""}
             onChange={(e) => setJobType((e.target.value || null) as WOJobType | null)}
-            className="w-full rounded border border-neutral-300 p-2"
+            className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white"
           >
             <option value="">—</option>
             <option value="diagnosis">Diagnosis</option>
@@ -182,13 +198,13 @@ export function NewWorkOrderLineForm(props: {
         </div>
       </div>
 
-      {err && <div className="mt-2 text-red-600">{err}</div>}
+      {err && <div className="mt-2 text-red-400">{err}</div>}
 
       <div className="mt-3 flex justify-end">
         <button
           disabled={!canSave || busy}
           onClick={addLine}
-          className="rounded bg-neutral-900 text-white px-3 py-1 font-semibold disabled:opacity-60"
+          className="rounded bg-neutral-900 px-3 py-1 font-semibold text-white ring-1 ring-neutral-700 hover:bg-neutral-800 disabled:opacity-60"
         >
           {busy ? "Adding…" : "Add Line"}
         </button>

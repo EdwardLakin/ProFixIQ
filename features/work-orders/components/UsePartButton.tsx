@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { consumePart } from "@work-orders/lib/parts/consumePart";
 import { PartPicker, type PickedPart } from "@parts/components/PartPicker";
 
 export function UsePartButton({
@@ -19,13 +18,21 @@ export function UsePartButton({
     setErr(null);
     start(async () => {
       try {
-        await consumePart({
-          work_order_line_id: workOrderLineId,
-          part_id: sel.part_id,
-          qty: sel.qty,
-          location_id: sel.location_id,
+        const res = await fetch("/api/parts/consume", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            work_order_line_id: workOrderLineId,
+            part_id: sel.part_id,
+            qty: sel.qty,
+            location_id: sel.location_id,
+          }),
         });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(j?.error || "Failed to use part");
+
         onApplied?.();
+        setOpen(false);
       } catch (e: any) {
         setErr(e?.message ?? "Failed to use part");
       }
@@ -43,11 +50,9 @@ export function UsePartButton({
         {pending ? "Applying…" : "Use Part"}
       </button>
       {err && <span className="ml-2 text-xs text-red-600">{err}</span>}
-      <PartPicker
-        open={open}
-        onClose={() => setOpen(false)}
-        onPick={handlePick}
-      />
+
+      <PartPicker open={open} onClose={() => setOpen(false)} onPick={handlePick} />
     </>
   );
 }
+

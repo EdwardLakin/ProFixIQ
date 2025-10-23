@@ -39,7 +39,7 @@ export default function AddJobModal(props: any) {
 
   const handleSubmit = async () => {
     if (!jobName.trim()) {
-      alert("Job name is required.");
+      setErr("Job name is required.");
       return;
     }
 
@@ -55,11 +55,11 @@ export default function AddJobModal(props: any) {
           .select("shop_id")
           .eq("id", workOrderId)
           .maybeSingle();
-        useShopId = wo?.shop_id ?? null;
+        useShopId = (wo?.shop_id as string | null) ?? null;
       }
       if (!useShopId) throw new Error("Couldn’t resolve shop for this work order");
 
-      // build payload
+      // build payload (use a status allowed by the DB constraint)
       const payload = {
         id: uuidv4(),
         work_order_id: workOrderId,
@@ -69,7 +69,7 @@ export default function AddJobModal(props: any) {
         correction: notes.trim() || null,
         labor_time: labor ? Number(labor) : null,
         parts: parts.trim() || null,
-        status: "queued" as const,
+        status: "awaiting" as const, // ✅ safe vs. constraint (was "queued")
         job_type: "repair" as const,
         shop_id: useShopId,
         ...(techId && techId !== "system" ? { assigned_to: techId } : {}),
@@ -88,7 +88,6 @@ export default function AddJobModal(props: any) {
       setUrgency("medium");
     } catch (e: any) {
       setErr(e.message);
-      alert("Failed to add job: " + e.message);
     } finally {
       setSubmitting(false);
     }

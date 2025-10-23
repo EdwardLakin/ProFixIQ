@@ -625,6 +625,7 @@ export type Database = {
           shop_id: string | null
           street: string | null
           user_id: string | null
+          vehicle: string | null
         }
         Insert: {
           address?: string | null
@@ -643,6 +644,7 @@ export type Database = {
           shop_id?: string | null
           street?: string | null
           user_id?: string | null
+          vehicle?: string | null
         }
         Update: {
           address?: string | null
@@ -661,6 +663,7 @@ export type Database = {
           shop_id?: string | null
           street?: string | null
           user_id?: string | null
+          vehicle?: string | null
         }
         Relationships: [
           {
@@ -1679,7 +1682,7 @@ export type Database = {
           model: string
           part_id: string | null
           shop_id: string | null
-          year_range: unknown | null
+          year_range: unknown
         }
         Insert: {
           created_at?: string | null
@@ -1688,7 +1691,7 @@ export type Database = {
           model: string
           part_id?: string | null
           shop_id?: string | null
-          year_range?: unknown | null
+          year_range?: unknown
         }
         Update: {
           created_at?: string | null
@@ -1697,7 +1700,7 @@ export type Database = {
           model?: string
           part_id?: string | null
           shop_id?: string | null
-          year_range?: unknown | null
+          year_range?: unknown
         }
         Relationships: [
           {
@@ -1837,6 +1840,62 @@ export type Database = {
           },
         ]
       }
+      part_stock_summary: {
+        Row: {
+          location_id: string
+          part_id: string
+          qty_available: number | null
+          qty_on_hand: number
+          qty_reserved: number
+          shop_id: string
+        }
+        Insert: {
+          location_id: string
+          part_id: string
+          qty_available?: number | null
+          qty_on_hand?: number
+          qty_reserved?: number
+          shop_id: string
+        }
+        Update: {
+          location_id?: string
+          part_id?: string
+          qty_available?: number | null
+          qty_on_hand?: number
+          qty_reserved?: number
+          shop_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "part_stock_summary_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_stock_summary_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_stock_summary_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_stock_summary_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       part_suppliers: {
         Row: {
           contact_info: string | null
@@ -1912,6 +1971,7 @@ export type Database = {
           shop_id: string | null
           sku: string | null
           supplier: string | null
+          warranty_months: number | null
         }
         Insert: {
           category?: string | null
@@ -1925,6 +1985,7 @@ export type Database = {
           shop_id?: string | null
           sku?: string | null
           supplier?: string | null
+          warranty_months?: number | null
         }
         Update: {
           category?: string | null
@@ -1938,8 +1999,41 @@ export type Database = {
           shop_id?: string | null
           sku?: string | null
           supplier?: string | null
+          warranty_months?: number | null
         }
         Relationships: []
+      }
+      parts_barcodes: {
+        Row: {
+          barcode: string
+          created_at: string
+          id: string
+          part_id: string
+          shop_id: string
+        }
+        Insert: {
+          barcode: string
+          created_at?: string
+          id?: string
+          part_id: string
+          shop_id: string
+        }
+        Update: {
+          barcode?: string
+          created_at?: string
+          id?: string
+          part_id?: string
+          shop_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "parts_barcodes_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       parts_messages: {
         Row: {
@@ -3082,6 +3176,7 @@ export type Database = {
           reason: Database["public"]["Enums"]["stock_move_reason"]
           reference_id: string | null
           reference_kind: string | null
+          shop_id: string
         }
         Insert: {
           created_at?: string
@@ -3093,6 +3188,7 @@ export type Database = {
           reason: Database["public"]["Enums"]["stock_move_reason"]
           reference_id?: string | null
           reference_kind?: string | null
+          shop_id: string
         }
         Update: {
           created_at?: string
@@ -3104,6 +3200,7 @@ export type Database = {
           reason?: Database["public"]["Enums"]["stock_move_reason"]
           reference_id?: string | null
           reference_kind?: string | null
+          shop_id?: string
         }
         Relationships: [
           {
@@ -3118,6 +3215,20 @@ export type Database = {
             columns: ["part_id"]
             isOneToOne: false
             referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_moves_shop_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_moves_shop_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
             referencedColumns: ["id"]
           },
         ]
@@ -4015,6 +4126,7 @@ export type Database = {
           parts_needed: Json | null
           parts_received: Json | null
           parts_required: Json | null
+          price_estimate: number | null
           priority: number | null
           punched_in_at: string | null
           punched_out_at: string | null
@@ -4052,6 +4164,7 @@ export type Database = {
           parts_needed?: Json | null
           parts_received?: Json | null
           parts_required?: Json | null
+          price_estimate?: number | null
           priority?: number | null
           punched_in_at?: string | null
           punched_out_at?: string | null
@@ -4089,6 +4202,7 @@ export type Database = {
           parts_needed?: Json | null
           parts_received?: Json | null
           parts_required?: Json | null
+          price_estimate?: number | null
           priority?: number | null
           punched_in_at?: string | null
           punched_out_at?: string | null
@@ -4143,13 +4257,6 @@ export type Database = {
             columns: ["vehicle_id"]
             isOneToOne: false
             referencedRelation: "vehicles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "work_order_lines_work_order_fk"
-            columns: ["work_order_id"]
-            isOneToOne: false
-            referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
           {
@@ -4215,6 +4322,7 @@ export type Database = {
       }
       work_order_part_allocations: {
         Row: {
+          created_at: string
           id: string
           location_id: string
           part_id: string
@@ -4224,6 +4332,7 @@ export type Database = {
           work_order_line_id: string
         }
         Insert: {
+          created_at?: string
           id?: string
           location_id: string
           part_id: string
@@ -4233,6 +4342,7 @@ export type Database = {
           work_order_line_id: string
         }
         Update: {
+          created_at?: string
           id?: string
           location_id?: string
           part_id?: string
@@ -4325,6 +4435,7 @@ export type Database = {
           approval_state: string | null
           assigned_tech: string | null
           created_at: string | null
+          created_by: string | null
           custom_id: string | null
           customer_approval_at: string | null
           customer_approval_signature_path: string | null
@@ -4359,6 +4470,7 @@ export type Database = {
           approval_state?: string | null
           assigned_tech?: string | null
           created_at?: string | null
+          created_by?: string | null
           custom_id?: string | null
           customer_approval_at?: string | null
           customer_approval_signature_path?: string | null
@@ -4393,6 +4505,7 @@ export type Database = {
           approval_state?: string | null
           assigned_tech?: string | null
           created_at?: string | null
+          created_by?: string | null
           custom_id?: string | null
           customer_approval_at?: string | null
           customer_approval_signature_path?: string | null
@@ -4601,17 +4714,22 @@ export type Database = {
       }
     }
     Functions: {
-      _ensure_same_shop: {
-        Args: { _wo: string }
-        Returns: boolean
-      }
-      agent_can_start: {
-        Args: Record<PropertyKey, never>
-        Returns: boolean
-      }
-      apply_stock_move: {
-        Args:
-          | {
+      _ensure_same_shop: { Args: { _wo: string }; Returns: boolean }
+      agent_can_start: { Args: never; Returns: boolean }
+      apply_stock_move:
+        | {
+            Args: {
+              p_loc: string
+              p_part: string
+              p_qty: number
+              p_reason: string
+              p_ref_id: string
+              p_ref_kind: string
+            }
+            Returns: string
+          }
+        | {
+            Args: {
               p_loc: string
               p_part: string
               p_qty: number
@@ -4619,16 +4737,8 @@ export type Database = {
               p_ref_id?: string
               p_ref_kind?: string
             }
-          | {
-              p_loc: string
-              p_part: string
-              p_qty: number
-              p_reason: string
-              p_ref_id?: string
-              p_ref_kind?: string
-            }
-        Returns: string
-      }
+            Returns: string
+          }
       approve_lines: {
         Args: {
           _approved_ids: string[]
@@ -4651,102 +4761,30 @@ export type Database = {
         Args: { _chat_id?: string; _content: string; _recipients: string[] }
         Returns: string
       }
-      check_plan_limit: {
-        Args: { _feature: string }
-        Returns: boolean
-      }
-      clear_auth: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
-      current_shop_id: {
-        Args: Record<PropertyKey, never>
-        Returns: string
-      }
-      first_segment_uuid: {
-        Args: { p: string }
-        Returns: string
-      }
-      gtrgm_compress: {
-        Args: { "": unknown }
-        Returns: unknown
-      }
-      gtrgm_decompress: {
-        Args: { "": unknown }
-        Returns: unknown
-      }
-      gtrgm_in: {
-        Args: { "": unknown }
-        Returns: unknown
-      }
-      gtrgm_options: {
-        Args: { "": unknown }
-        Returns: undefined
-      }
-      gtrgm_out: {
-        Args: { "": unknown }
-        Returns: unknown
-      }
-      has_column: {
-        Args: { _col: string; _table: unknown }
-        Returns: boolean
-      }
+      check_plan_limit: { Args: { _feature: string }; Returns: boolean }
+      clear_auth: { Args: never; Returns: undefined }
+      current_shop_id: { Args: never; Returns: string }
+      first_segment_uuid: { Args: { p: string }; Returns: string }
+      has_column: { Args: { _col: string; _table: unknown }; Returns: boolean }
       increment_user_limit: {
         Args: { increment_by?: number; input_shop_id: string }
         Returns: undefined
       }
-      is_customer: {
-        Args: { _customer: string }
-        Returns: boolean
-      }
-      is_shop_member: {
-        Args: { p_shop: string }
-        Returns: boolean
-      }
-      is_staff_for_shop: {
-        Args: { _shop: string }
-        Returns: boolean
-      }
-      mark_active: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
-      seed_default_hours: {
-        Args: { shop_id: string }
-        Returns: undefined
-      }
+      is_customer: { Args: { _customer: string }; Returns: boolean }
+      is_shop_member: { Args: { p_shop: string }; Returns: boolean }
+      is_staff_for_shop: { Args: { _shop: string }; Returns: boolean }
+      mark_active: { Args: never; Returns: undefined }
+      seed_default_hours: { Args: { shop_id: string }; Returns: undefined }
       send_for_approval: {
         Args: { _line_ids: string[]; _set_wo_status?: boolean; _wo: string }
         Returns: undefined
       }
-      set_authenticated: {
-        Args: { uid: string }
-        Returns: undefined
-      }
-      set_current_shop_id: {
-        Args: { p_shop_id: string }
-        Returns: undefined
-      }
-      set_last_active_now: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
-      set_limit: {
-        Args: { "": number }
-        Returns: number
-      }
-      shop_id_for: {
-        Args: { uid: string }
-        Returns: string
-      }
-      show_limit: {
-        Args: Record<PropertyKey, never>
-        Returns: number
-      }
-      show_trgm: {
-        Args: { "": string }
-        Returns: string[]
-      }
+      set_authenticated: { Args: { uid: string }; Returns: undefined }
+      set_current_shop_id: { Args: { p_shop_id: string }; Returns: undefined }
+      set_last_active_now: { Args: never; Returns: undefined }
+      shop_id_for: { Args: { uid: string }; Returns: string }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
     }
     Enums: {
       job_type_enum: "diagnosis" | "inspection" | "maintenance" | "repair"
@@ -4768,6 +4806,7 @@ export type Database = {
         | "transfer_in"
         | "wo_allocate"
         | "wo_release"
+        | "seed"
       user_role_enum:
         | "owner"
         | "admin"
@@ -4923,6 +4962,7 @@ export const Constants = {
         "transfer_in",
         "wo_allocate",
         "wo_release",
+        "seed",
       ],
       user_role_enum: [
         "owner",
