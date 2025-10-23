@@ -1,4 +1,3 @@
-// features/work-orders/app/work-orders/[id]/approve/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -26,7 +25,6 @@ export default function ApproveWorkOrderPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
-  // customer choices
   const [approved, setApproved] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [savedSigUrl, setSavedSigUrl] = useState<string | null>(null);
@@ -52,17 +50,19 @@ export default function ApproveWorkOrderPage() {
 
         setWo(woRow ?? null);
         setLines(lineRows ?? []);
-        setApproved(new Set((lineRows ?? []).map((l) => l.id))); // preselect all
+        setApproved(new Set((lineRows ?? []).map((l) => l.id)));
 
         if (woRow?.shop_id) {
-  const { data: shopRow, error: sErr } = await supabase
-    .from("shops")
-    .select("*")           // ← get full row to match the state type
-    .eq("id", woRow.shop_id)
-    .maybeSingle();
-  if (sErr) throw sErr;
-  setShop(shopRow);        // ← OK: Shop | null
-}
+          const { data: shopRow, error: sErr } = await supabase
+            .from("shops")
+            .select("*")
+            .eq("id", woRow.shop_id)
+            .maybeSingle();
+          if (sErr) throw sErr;
+          setShop(shopRow ?? null);
+        } else {
+          setShop(null);
+        }
       } catch (e) {
         setErr(e instanceof Error ? e.message : "Failed to load work order.");
       } finally {
@@ -74,8 +74,7 @@ export default function ApproveWorkOrderPage() {
   const toggle = (lineId: string) =>
     setApproved((prev) => {
       const next = new Set(prev);
-      if (next.has(lineId)) next.delete(lineId);
-      else next.add(lineId);
+      next.has(lineId) ? next.delete(lineId) : next.add(lineId);
       return next;
     });
 
@@ -88,10 +87,8 @@ export default function ApproveWorkOrderPage() {
 
   async function handleSubmit(signatureDataUrl?: string) {
     if (!id) return;
-
     setSubmitting(true);
     try {
-      // upload signature (if captured)
       let signatureUrl: string | null = savedSigUrl;
       if (signatureDataUrl) {
         signatureUrl = await uploadSignatureImage(signatureDataUrl, id);
@@ -141,7 +138,7 @@ export default function ApproveWorkOrderPage() {
   return (
     <div className="mx-auto max-w-3xl p-4 text-white sm:p-6">
       <h1 className="text-2xl font-semibold">
-        {shop?.name ?? "Shop"} — Customer Approval
+        {shop?.name ? `${shop.name} — Customer Approval` : "Approve Work Order"}
       </h1>
       <p className="mt-1 text-neutral-300">
         {wo.custom_id ? `#${wo.custom_id}` : `#${wo.id.slice(0, 8)}`}
@@ -149,15 +146,12 @@ export default function ApproveWorkOrderPage() {
 
       {err && <div className="mt-3 rounded border border-red-500/40 bg-red-500/10 p-3">{err}</div>}
 
-      {/* Lines */}
+      {/* Items */}
       <div className="mt-4 rounded border border-neutral-800 bg-neutral-900">
         <div className="border-b border-neutral-800 p-3 font-semibold">Items</div>
         <div className="divide-y divide-neutral-800">
           {lines.map((l) => (
-            <label
-              key={l.id}
-              className="flex cursor-pointer items-start gap-3 p-3 hover:bg-neutral-900/60"
-            >
+            <label key={l.id} className="flex cursor-pointer items-start gap-3 p-3 hover:bg-neutral-900/60">
               <input
                 type="checkbox"
                 className="mt-1 h-4 w-4"
@@ -186,18 +180,16 @@ export default function ApproveWorkOrderPage() {
         </div>
       </div>
 
-      {/* Terms – now uses the live shop name */}
-      <LegalTerms onAgreeChange={setAgreed} defaultOpen shopName={shop?.name ?? "the Shop"} />
+      {/* Terms */}
+      <LegalTerms onAgreeChange={setAgreed} defaultOpen />
 
       {/* Actions */}
       <div className="mt-4 flex flex-wrap gap-2">
         <button
           className="rounded bg-green-600 px-4 py-2 font-semibold text-white hover:bg-green-700 disabled:opacity-60"
           onClick={async () => {
-            const base64 = await openSignaturePad({ shopName: shop?.name ?? "Shop" });
-            if (base64) {
-              await handleSubmit(base64);
-            }
+            const base64 = await openSignaturePad({ shopName: shop?.name || "" });
+            if (base64) await handleSubmit(base64);
           }}
           disabled={submitting || !agreed}
           title={!agreed ? "Please agree to the Terms & Conditions" : "Sign & Submit"}
@@ -207,14 +199,14 @@ export default function ApproveWorkOrderPage() {
 
         <button
           className="rounded border border-neutral-700 px-4 py-2 hover:border-orange-500 disabled:opacity-60"
-          onClick={() => handleSubmit(undefined)} // submit w/o signature
+          onClick={() => handleSubmit(undefined)}
           disabled={submitting || !agreed}
         >
           Submit without Signature
         </button>
       </div>
 
-      {/* Mount SignaturePad host once; no props, no serialization warnings */}
+      {/* Mount once */}
       <SignaturePad />
     </div>
   );

@@ -1,26 +1,19 @@
-// features/shared/signaturePad/controller.tsx
+
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import type SignatureCanvas from "react-signature-canvas";
 
-// Minimal props we actually use for the component.
-// (The library doesn't export an official props type.)
-type SigProps = {
+// Correctly typed dynamic import
+const SigCanvas = dynamic(() => import("react-signature-canvas").then(m => m.default), {
+  ssr: false,
+}) as unknown as React.ComponentType<{
+  ref: React.MutableRefObject<any>;
   penColor?: string;
   onBegin?: () => void;
   onEnd?: () => void;
   canvasProps?: React.CanvasHTMLAttributes<HTMLCanvasElement>;
-};
-
-// Correctly typed dynamic import so the ref works
-const SigCanvas = dynamic(
-  () => import("react-signature-canvas").then((m) => m.default),
-  { ssr: false }
-) as unknown as React.ForwardRefExoticComponent<
-  SigProps & React.RefAttributes<SignatureCanvas>
->;
+}>;
 
 export type OpenOptions = { shopName?: string };
 
@@ -40,13 +33,13 @@ function SignaturePadHost() {
   const [shopName, setShopName] = useState<string>("");
   const resolverRef = useRef<((v: string | null) => void) | null>(null);
 
-  const sigRef = useRef<SignatureCanvas | null>(null);
+  const sigRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const [saving, setSaving] = useState(false);
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(false); // has the user drawn?
 
-  // Safe defaults so the pad always shows even if ResizeObserver reports 0 initially
+  // Safe defaults so it always shows
   const [size, setSize] = useState({ w: 480, h: 220 });
 
   // Listen for open requests
@@ -62,10 +55,10 @@ function SignaturePadHost() {
       setReady(false);
       setSaving(false);
 
-      // Clear previous drawing on next paint
-      requestAnimationFrame(() => sigRef.current?.clear());
+      // reset drawing next paint
+      requestAnimationFrame(() => sigRef.current?.clear?.());
 
-      // If container is mounted, recompute size immediately with a fallback minimum
+      // compute size immediately
       requestAnimationFrame(() => {
         const el = containerRef.current;
         const w = Math.max(320, Math.floor(el?.clientWidth || 0)) || 480;
@@ -91,7 +84,7 @@ function SignaturePadHost() {
   }, []);
 
   useEffect(() => {
-    const canvas: HTMLCanvasElement | undefined = sigRef.current?.getCanvas();
+    const canvas: HTMLCanvasElement | undefined = sigRef.current?.getCanvas?.();
     if (!canvas) return;
     const ratio = Math.max(window.devicePixelRatio || 1, 1);
     const ctx = canvas.getContext("2d");
@@ -104,11 +97,10 @@ function SignaturePadHost() {
       canvas.style.width = `${size.w}px`;
       canvas.style.height = `${size.h}px`;
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-      setReady(false);
     }
   }, [size]);
 
-  // Prevent page scroll while signing (iPad Safari)
+  // Prevent page scroll while signing (iOS)
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -127,14 +119,23 @@ function SignaturePadHost() {
   };
 
   const handleClear = () => {
-    sigRef.current?.clear();
+    sigRef.current?.clear?.();
     setReady(false);
   };
 
-  const handleSave = () => {
+  // Harden the Save: enable whenever the pad has ink
+  const hasInk = () => {
+    try {
+      return !!sigRef.current && typeof sigRef.current.isEmpty === "function" && !sigRef.current.isEmpty();
+    } catch {
+      return false;
+    }
+  };
+
+  const handleSave = async () => {
     if (saving) return;
     const pad = sigRef.current;
-    if (!pad || pad.isEmpty()) {
+    if (!pad || !hasInk()) {
       alert("Please draw a signature before saving.");
       return;
     }
@@ -149,12 +150,15 @@ function SignaturePadHost() {
 
   if (!open) return null;
 
+  const saveDisabled = saving || !(ready || hasInk());
+
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4">
       <div
         className="w-full max-w-md rounded-lg border-2 border-orange-400 bg-neutral-900 p-6 shadow-xl"
         style={{ fontFamily: "Roboto, ui-sans-serif, system-ui" }}
-        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
       >
         <h2
           className="mb-1 text-center text-lg font-semibold text-white"
@@ -179,12 +183,15 @@ function SignaturePadHost() {
               className: "w-full rounded-md border border-neutral-700 bg-neutral-950",
               role: "img",
               "aria-label": "Signature input area",
-              style: { touchAction: "none" }, // critical on iPad
             }}
           />
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+        <div
+          className="mt-4 flex flex-wrap items-center justify-between gap-2"
+          style={{ pointerEvents: "auto" }}
+          onClick={(e) => e.stopPropagation()}
+        >
           <button
             type="button"
             onClick={handleClear}
@@ -206,8 +213,12 @@ function SignaturePadHost() {
             </button>
             <button
               type="button"
-              onClick={handleSave}
-              disabled={saving || !ready}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                void handleSave();
+              }}
+              disabled={saveDisabled}
               className="rounded px-4 py-2 text-white disabled:opacity-50"
               style={{ backgroundColor: "#16a34a", fontFamily: "'Black Ops One', Roboto, ui-sans-serif, system-ui" }}
             >
