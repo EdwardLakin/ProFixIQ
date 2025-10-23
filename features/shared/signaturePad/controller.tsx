@@ -1,12 +1,14 @@
+// features/shared/signaturePad/controller.tsx
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 
-// Correctly typed dynamic import
-const SigCanvas = dynamic(() => import("react-signature-canvas").then(m => m.default), {
-  ssr: false,
-}) as unknown as React.ComponentType<{
+// Dynamic import for react-signature-canvas
+const SigCanvas = dynamic(
+  () => import("react-signature-canvas").then((m) => m.default),
+  { ssr: false }
+) as unknown as React.ComponentType<{
   ref: React.MutableRefObject<any>;
   penColor?: string;
   onBegin?: () => void;
@@ -30,29 +32,33 @@ export default function SignaturePad() {
 function SignaturePadHost() {
   const [open, setOpen] = useState(false);
   const [shopName, setShopName] = useState<string>("");
-  const resolverRef = useRef<((v: string | null) => void) | null>(null);
 
+  const resolverRef = useRef<((v: string | null) => void) | null>(null);
   const sigRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const [saving, setSaving] = useState(false);
-
+  const [dirty, setDirty] = useState(false); // ← has the user drawn at least once?
   const [size, setSize] = useState({ w: 480, h: 220 });
 
-  // Open modal event
+  // open modal
   useEffect(() => {
     const handler = (e: Event) => {
       const { shopName, resolve } = (e as CustomEvent).detail as {
         shopName: string;
         resolve: (v: string | null) => void;
       };
+
       resolverRef.current = resolve;
       setShopName(shopName || "");
       setOpen(true);
       setSaving(false);
+      setDirty(false);
 
+      // clear any previous drawing
       requestAnimationFrame(() => sigRef.current?.clear?.());
 
+      // compute an initial size
       requestAnimationFrame(() => {
         const el = containerRef.current;
         const w = Math.max(320, Math.floor(el?.clientWidth || 0)) || 480;
@@ -60,10 +66,13 @@ function SignaturePadHost() {
         setSize({ w, h });
       });
     };
+
     window.addEventListener("signaturepad:open", handler as EventListener);
-    return () => window.removeEventListener("signaturepad:open", handler as EventListener);
+    return () =>
+      window.removeEventListener("signaturepad:open", handler as EventListener);
   }, []);
 
+  // responsive
   useLayoutEffect(() => {
     if (!containerRef.current) return;
     const el = containerRef.current;
@@ -76,14 +85,18 @@ function SignaturePadHost() {
     return () => ro.disconnect();
   }, []);
 
+  // retina crisp canvas
   useEffect(() => {
-    const canvas: HTMLCanvasElement | undefined = sigRef.current?.getCanvas?.();
+    const canvas = sigRef.current?.getCanvas?.() as HTMLCanvasElement | undefined;
     if (!canvas) return;
+
     const ratio = Math.max(window.devicePixelRatio || 1, 1);
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+
     const W = Math.floor(size.w * ratio);
     const H = Math.floor(size.h * ratio);
+
     if (canvas.width !== W || canvas.height !== H) {
       canvas.width = W;
       canvas.height = H;
@@ -93,22 +106,43 @@ function SignaturePadHost() {
     }
   }, [size]);
 
-  const closeWith = (value: string | null) => {
-    resolverRef.current?.(value);
+  // iPad/Safari: poll for ink (sometimes onEnd doesn’t fire)
+  useEffect(() => {
+    if (!open) return;
+    const id = setInterval(() => {
+      const pad = sigRef.current;
+      if (pad?.isEmpty && !pad.isEmpty()) setDirty(true);
+    }, 250);
+    return () => clearInterval(id);
+  }, [open]);
+
+  // prevent page scroll while signing
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const preventScroll = (e: TouchEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t?.tagName?.toLowerCase() === "canvas") e.preventDefault();
+    };
+    el.addEventListener("touchmove", preventScroll, { passive: false });
+    return () => el.removeEventListener("touchmove", preventScroll);
+  }, []);
+
+  // helpers
+  const closeWith = (v: string | null) => {
+    resolverRef.current?.(v);
     resolverRef.current = null;
     setOpen(false);
   };
 
-  const handleClear = () => {
-    sigRef.current?.clear?.();
+  const hasInk = () => {
+    const pad = sigRef.current;
+    return pad && typeof pad.isEmpty === "function" && !pad.isEmpty();
   };
 
-  const hasInk = () => {
-    try {
-      return !!sigRef.current && typeof sigRef.current.isEmpty === "function" && !sigRef.current.isEmpty();
-    } catch {
-      return false;
-    }
+  const handleClear = () => {
+    sigRef.current?.clear?.();
+    setDirty(false);
   };
 
   const handleSave = () => {
@@ -117,30 +151,21 @@ function SignaturePadHost() {
       alert("Please draw a signature before saving.");
       return;
     }
-    try {
-      setSaving(true);
-      const base64 = sigRef.current.getTrimmedCanvas().toDataURL("image/png");
-      closeWith(base64);
-    } finally {
-      setSaving(false);
-    }
+    setSaving(true);
+    const base64 = sigRef.current.getTrimmedCanvas().toDataURL("image/png");
+    closeWith(base64);
   };
 
   if (!open) return null;
-
-  const saveDisabled = saving || !hasInk();
+  const saveDisabled = saving || !hasInk() || !dirty;
 
   return (
-    <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4 pointer-events-auto"
-      role="dialog"
-      aria-modal="true"
-      onClick={() => closeWith(null)}
-    >
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4">
       <div
         className="w-full max-w-md rounded-lg border-2 border-orange-400 bg-neutral-900 p-6 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
         style={{ fontFamily: "Roboto, ui-sans-serif, system-ui" }}
+        role="dialog"
+        aria-modal="true"
       >
         <h2
           className="mb-1 text-center text-lg font-semibold text-white"
@@ -157,10 +182,14 @@ function SignaturePadHost() {
           <SigCanvas
             ref={sigRef}
             penColor="white"
+            onBegin={() => setDirty(true)}
+            onEnd={() => setDirty(true)}
             canvasProps={{
               width: size.w,
               height: size.h,
               className: "w-full rounded-md border border-neutral-700 bg-neutral-950",
+              role: "img",
+              "aria-label": "Signature input area",
             }}
           />
         </div>
@@ -168,10 +197,7 @@ function SignaturePadHost() {
         <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
           <button
             type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleClear();
-            }}
+            onClick={handleClear}
             disabled={saving}
             className="rounded px-4 py-2 text-neutral-900 hover:opacity-90 disabled:opacity-50"
             style={{ backgroundColor: "#e5e7eb", fontFamily: "'Black Ops One', Roboto, ui-sans-serif, system-ui" }}
@@ -182,10 +208,7 @@ function SignaturePadHost() {
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                closeWith(null);
-              }}
+              onClick={() => closeWith(null)}
               disabled={saving}
               className="rounded px-4 py-2 text-white disabled:opacity-50"
               style={{ backgroundColor: "#ef4444", fontFamily: "'Black Ops One', Roboto, ui-sans-serif, system-ui" }}
@@ -201,11 +224,8 @@ function SignaturePadHost() {
                 handleSave();
               }}
               disabled={saveDisabled}
-              className="rounded px-4 py-2 text-white disabled:opacity-50"
-              style={{
-                backgroundColor: saveDisabled ? "#14532d" : "#16a34a",
-                fontFamily: "'Black Ops One', Roboto, ui-sans-serif, system-ui",
-              }}
+              className="rounded px-4 py-2 text-white disabled:opacity-40"
+              style={{ backgroundColor: "#16a34a", fontFamily: "'Black Ops One', Roboto, ui-sans-serif, system-ui" }}
             >
               {saving ? "Saving…" : "Save"}
             </button>
