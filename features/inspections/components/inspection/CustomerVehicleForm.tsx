@@ -3,16 +3,18 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+
 import {
   SessionCustomer as CustomerInfo,
   SessionVehicle as VehicleInfo,
 } from "@inspections/lib/inspection/types";
 
-/** Local, narrow shapes (avoid exporting DB row types in props) */
+// Only safe, serializable shapes passed via props
 type CustomerRow = {
   id: string;
   first_name?: string | null;
   last_name?: string | null;
+  name?: string | null;
   phone?: string | null;
   email?: string | null;
   address?: string | null;
@@ -35,34 +37,27 @@ type VehicleRow = {
   customer_id?: string | null;
 };
 
-/** ✅ Public props are now fully serializable */
 interface Props {
   customer: CustomerInfo;
   vehicle: VehicleInfo;
 
-  /** Optional UI bits */
+  onCustomerChange: (field: keyof CustomerInfo, value: string | null) => void;
+  onVehicleChange: (field: keyof VehicleInfo, value: string | null) => void;
+
+  onSave?: () => void;
   saving?: boolean;
   workOrderExists?: boolean;
-  shopId?: string | null;
 
-  /** One object for callbacks; typed as unknown to keep props serializable */
-  handlers?: unknown;
-}
-
-/** Internal view of handlers (kept private to this file) */
-type Handlers = {
-  onCustomerChange?: (field: keyof CustomerInfo, value: string | null) => void;
-  onVehicleChange?: (field: keyof VehicleInfo, value: string | null) => void;
-  onSave?: () => void;
   onClear?: () => void;
+
+  shopId?: string | null;
   onCustomerSelected?: (customerId: string) => void;
   onVehicleSelected?: (vehicleId: string) => void;
-};
+}
 
-/* -------------------------------------------------------------------------- */
-/* Autocomplete: First Name                                                   */
-/* -------------------------------------------------------------------------- */
-
+/* ==========================================================================
+   Autocomplete Component
+========================================================================== */
 function FirstNameAutocomplete({
   q,
   shopId,
@@ -78,13 +73,13 @@ function FirstNameAutocomplete({
   const [busy, setBusy] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
-  // helper: prefer first+last; fall back to name
-  const displayName = (c: Partial<CustomerRow> & { name?: string | null }) =>
-    [c.first_name, c.last_name].filter(Boolean).join(" ") || (c as any).name || "Unnamed";
+  const displayName = (c: CustomerRow) =>
+    [c.first_name, c.last_name].filter(Boolean).join(" ") ||
+    c.name ||
+    "Unnamed";
 
   useEffect(() => {
     const term = (q ?? "").trim();
-
     if (!term) {
       setRows([]);
       setOpen(false);
@@ -97,37 +92,34 @@ function FirstNameAutocomplete({
       setBusy(true);
       const like = `${term}%`;
 
-      // build a base selector that asks for both name styles
       const base = supabase
         .from("customers")
         .select("id, first_name, last_name, name, phone, email, shop_id")
-        // search against first_name OR last_name OR name
         .or(
           [
             `first_name.ilike.${like}`,
             `last_name.ilike.${like}`,
-            `name.ilike.${like}`, // if your table has a single "name" column
-          ].join(","),
+            `name.ilike.${like}`,
+          ].join(",")
         )
-        .order("updated_at", { ascending: false })
-        .limit(12);
+        .limit(12)
+        .order("updated_at", { ascending: false });
 
       try {
-        // 1) try shop-scoped (if we have a shop)
         let data: any[] | null = null;
+        // Try shop scoped first
         if (shopId) {
           const scoped = await base.eq("shop_id", shopId);
-          if (!scoped.error) data = scoped.data ?? null;
+          if (!scoped.error && scoped.data?.length) {
+            data = scoped.data;
+          }
         }
-
-        // 2) fallback global if nothing found
-        if (!data || data.length === 0) {
+        // Fallback global
+        if (!data) {
           const global = await base;
-          if (global.error) throw global.error;
-          data = global.data ?? [];
+          if (!global.error) data = global.data;
         }
-
-        setRows((data as CustomerRow[]) ?? []);
+        setRows((data ?? []) as CustomerRow[]);
       } catch {
         setRows([]);
       } finally {
@@ -155,26 +147,26 @@ function FirstNameAutocomplete({
       {(open || busy) && (
         <div className="absolute z-20 mt-1 w-full overflow-hidden rounded border border-neutral-700 bg-neutral-900 shadow">
           {busy && <div className="px-3 py-2 text-xs text-neutral-400">Searching…</div>}
-          {rows.map((c) => {
-            const name = displayName(c as any);
-            const sub = [c.phone, c.email].filter(Boolean).join(" · ");
-            return (
-              <button
-                key={c.id}
-                type="button"
-                className="block w-full cursor-pointer px-3 py-2 text-left hover:bg-neutral-800"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onPick(c);
-                  setOpen(false);
-                }}
-              >
-                <div className="truncate">{name}</div>
-                <div className="truncate text-xs text-neutral-400">{sub || "—"}</div>
-              </button>
-            );
-          })}
+
+          {rows.map((c) => (
+            <button
+              type="button"
+              key={c.id}
+              className="block w-full cursor-pointer px-3 py-2 text-left hover:bg-neutral-800"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onPick(c);
+                setOpen(false);
+              }}
+            >
+              <div className="truncate">{displayName(c)}</div>
+              <div className="truncate text-xs text-neutral-400">
+                {[c.phone, c.email].filter(Boolean).join(" · ") || "—"}
+              </div>
+            </button>
+          ))}
+
           {!busy && rows.length === 0 && (
             <div className="px-3 py-2 text-xs text-neutral-400">No matches</div>
           )}
@@ -183,40 +175,42 @@ function FirstNameAutocomplete({
     </div>
   );
 }
-/* ========================================================================== */
-/*                                Form Component                              */
-/* ========================================================================== */
 
+/* ==========================================================================
+   Form
+========================================================================== */
 export default function CustomerVehicleForm({
   customer,
   vehicle,
+  onCustomerChange,
+  onVehicleChange,
+  onSave,
   saving = false,
   workOrderExists = false,
+  onClear,
   shopId,
-  handlers,
+  onCustomerSelected,
+  onVehicleSelected,
 }: Props) {
   const supabase = useMemo(() => createClientComponentClient<Database>(), []);
 
-  // Safely unwrap handlers (no-ops by default)
-  const {
-    onCustomerChange = () => {},
-    onVehicleChange = () => {},
-    onSave,
-    onClear,
-    onCustomerSelected,
-    onVehicleSelected,
-  } = (handlers as Handlers) ?? {};
-
   async function handlePickedCustomer(c: CustomerRow) {
-    onCustomerChange("first_name", c.first_name ?? null);
-    onCustomerChange("last_name", c.last_name ?? null);
+    // Smart name split fallback
+    const full = c.name ?? "";
+    const parts = full.trim().split(/\s+/);
+
+    onCustomerChange("first_name", c.first_name ?? parts[0] ?? null);
+    onCustomerChange("last_name", c.last_name ?? parts.slice(1).join(" ") || null);
     onCustomerChange("phone", c.phone ?? null);
     onCustomerChange("email", c.email ?? null);
 
+    onCustomerSelected?.(c.id);
+
+    // fetch rest of fields
     try {
       const { data } = await supabase.from("customers").select("*").eq("id", c.id).maybeSingle();
       if (data) {
-        const d = data as CustomerRow;
+        const d = data as any;
         onCustomerChange("address", d.address ?? null);
         onCustomerChange("city", d.city ?? null);
         onCustomerChange("province", d.province ?? null);
@@ -224,25 +218,23 @@ export default function CustomerVehicleForm({
       }
     } catch {}
 
-    onCustomerSelected?.(c.id);
-
+    // If exactly 1 vehicle, populate it
     try {
-      const { data: vehs } = await supabase
+      const { data } = await supabase
         .from("vehicles")
         .select("id, vin, year, make, model, license_plate, mileage, unit_number, color, engine_hours")
         .eq("customer_id", c.id)
-        .order("updated_at", { ascending: false })
         .limit(2);
 
-      const arr = (vehs ?? []) as VehicleRow[];
+      const arr = (data ?? []) as VehicleRow[];
       if (arr.length === 1) {
         const v = arr[0];
-        onVehicleChange("vin", (v.vin ?? "") || null);
+        onVehicleChange("vin", v.vin ?? null);
         onVehicleChange("year", v.year != null ? String(v.year) : null);
         onVehicleChange("make", v.make ?? null);
         onVehicleChange("model", v.model ?? null);
         onVehicleChange("license_plate", v.license_plate ?? null);
-        onVehicleChange("mileage", (v.mileage ?? "") || null);
+        onVehicleChange("mileage", v.mileage ?? null);
         onVehicleChange("unit_number", v.unit_number ?? null);
         onVehicleChange("color", v.color ?? null);
         onVehicleChange("engine_hours", v.engine_hours != null ? String(v.engine_hours) : null);
@@ -259,8 +251,7 @@ export default function CustomerVehicleForm({
       </h2>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {/* First name + autocomplete */}
-        <div className="sm:col-span-1">
+        <div>
           <input
             className="input"
             placeholder="First Name"
@@ -280,12 +271,14 @@ export default function CustomerVehicleForm({
           value={customer.last_name ?? ""}
           onChange={(e) => onCustomerChange("last_name", e.target.value || null)}
         />
+
         <input
           className="input"
           placeholder="Phone"
           value={customer.phone ?? ""}
           onChange={(e) => onCustomerChange("phone", e.target.value || null)}
         />
+
         <input
           type="email"
           className="input"
@@ -293,24 +286,28 @@ export default function CustomerVehicleForm({
           value={customer.email ?? ""}
           onChange={(e) => onCustomerChange("email", e.target.value || null)}
         />
+
         <input
           className="input sm:col-span-2"
           placeholder="Address"
           value={customer.address ?? ""}
           onChange={(e) => onCustomerChange("address", e.target.value || null)}
         />
+
         <input
           className="input"
           placeholder="City"
           value={customer.city ?? ""}
           onChange={(e) => onCustomerChange("city", e.target.value || null)}
         />
+
         <input
           className="input"
           placeholder="Province"
           value={customer.province ?? ""}
           onChange={(e) => onCustomerChange("province", e.target.value || null)}
         />
+
         <input
           className="input"
           placeholder="Postal Code"
@@ -384,7 +381,6 @@ export default function CustomerVehicleForm({
         />
       </div>
 
-      {/* Actions */}
       {(onSave || onClear) && (
         <div className="pt-2 flex flex-wrap items-center gap-3">
           {onSave && (
@@ -393,7 +389,6 @@ export default function CustomerVehicleForm({
               onClick={onSave}
               disabled={saving}
               className="btn btn-orange disabled:opacity-60"
-              title={workOrderExists ? "Update Work Order with these details" : "Create Work Order with these details"}
             >
               {saving ? "Saving…" : workOrderExists ? "Update & Continue" : "Save & Continue"}
             </button>
@@ -404,17 +399,16 @@ export default function CustomerVehicleForm({
               type="button"
               onClick={onClear}
               className="rounded border border-neutral-700 px-3 py-1 text-sm hover:border-red-500"
-              title="Clear Customer & Vehicle fields (does not delete an existing Work Order)"
             >
               Clear
             </button>
           )}
 
-          {workOrderExists ? (
+          {workOrderExists && (
             <span className="text-xs text-neutral-400">
               Work order already exists — you can add lines now.
             </span>
-          ) : null}
+          )}
         </div>
       )}
     </div>
