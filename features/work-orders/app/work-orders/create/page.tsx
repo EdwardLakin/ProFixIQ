@@ -200,7 +200,12 @@ export default function CreateWorkOrderPage() {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user?.id) return;
-      const { data } = await supabase.from("profiles").select("shop_id").eq("id", user.id).maybeSingle();
+      // ✅ profiles.user_id equals auth.uid()
+      const { data } = await supabase
+        .from("profiles")
+        .select("shop_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
       setCurrentShopId(data?.shop_id ?? null);
     })();
   }, [supabase]);
@@ -209,7 +214,7 @@ export default function CreateWorkOrderPage() {
   const isMounted = useRef(false);
 
   /* -------------------------------------------------------------------------
-     🧩 Draft store hydration (VIN / OCR prefill) — keep if using scanners
+     🧩 Draft store hydration (VIN / OCR prefill)
   ------------------------------------------------------------------------- */
   const draft = useWorkOrderDraft();
   useEffect(() => {
@@ -262,7 +267,7 @@ export default function CreateWorkOrderPage() {
   function getInitials(first?: string | null, last?: string | null, fallback?: string | null) {
     const f = (first ?? "").trim();
     const l = (last ?? "").trim();
-    if (f || l) return `${f[0] ?? ""}${l[0] ?? ""}`.toUpperCase() || "WO"; // <- fixed typo
+    if (f || l) return `${f[0] ?? ""}${l[0] ?? ""}`.toUpperCase() || "WO"; // fixed
     const fb = (fallback ?? "").trim();
     if (fb.includes("@")) return fb.split("@")[0].slice(0, 2).toUpperCase() || "WO";
     return fb.slice(0, 2).toUpperCase() || "WO";
@@ -290,12 +295,12 @@ export default function CreateWorkOrderPage() {
     return `${p}${next}`;
   }
 
-  // NOTE: profiles.id == auth.uid() in this schema
+  // NOTE: profiles.user_id == auth.uid() in this schema
   async function getOrLinkShopId(userId: string): Promise<string | null> {
     const { data: profile, error: profErr } = await supabase
       .from("profiles")
-      .select("id, shop_id")
-      .eq("id", userId)
+      .select("user_id, shop_id")
+      .eq("user_id", userId)
       .maybeSingle();
     if (profErr) throw profErr;
     if (profile?.shop_id) return profile.shop_id;
@@ -308,7 +313,10 @@ export default function CreateWorkOrderPage() {
     if (shopErr) throw shopErr;
     if (!ownedShop?.id) return null;
 
-    const { error: updErr } = await supabase.from("profiles").update({ shop_id: ownedShop.id }).eq("id", userId);
+    const { error: updErr } = await supabase
+      .from("profiles")
+      .update({ shop_id: ownedShop.id })
+      .eq("user_id", userId);
     if (updErr) throw updErr;
 
     return ownedShop.id;
@@ -553,7 +561,7 @@ export default function CreateWorkOrderPage() {
             .select("*")
             .single();
           if (updErr) throw updErr;
-          setWo(updated);
+        setWo(updated);
         }
         await fetchLines();
         return;
@@ -950,8 +958,7 @@ export default function CreateWorkOrderPage() {
                 Clear form
               </button>
 
-              {/* 🔶 Optional VIN Modal (Scanner + Manual Entry) */
-              }
+              {/* 🔶 Optional VIN Modal (Scanner + Manual Entry) */}
               <VinCaptureModal
                 userId={currentUserId ?? "anon"}
                 action="/api/vin"

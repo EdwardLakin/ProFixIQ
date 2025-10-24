@@ -13,7 +13,7 @@ type CustomerRow = {
   id: string;
   first_name?: string | null;
   last_name?: string | null;
-  name?: string | null; // <- some rows only have "name"
+  name?: string | null;             // some imported rows may only have "name"
   phone?: string | null;
   email?: string | null;
   address?: string | null;
@@ -89,13 +89,14 @@ function FirstNameAutocomplete({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  const reqCounter = useRef(0);
 
   // Keep the panel OPEN while typing; only close on clear or outside click.
   useEffect(() => {
     const term = (q ?? "").trim();
 
-    // Close when empty OR when we don't have a shopId
-    if (!term || !shopId) {
+    // Close when empty OR when we don't have a shopId OR too short
+    if (!term || !shopId || term.length < 2) {
       setRows([]);
       setOpen(false);
       return;
@@ -104,10 +105,12 @@ function FirstNameAutocomplete({
     // Open immediately (avoid flicker), then fetch debounced
     setOpen(true);
 
+    const thisReq = ++reqCounter.current;
     const t = window.setTimeout(async () => {
       setBusy(true);
       try {
-        const like = `${term}%`;
+        const like = `%${term}%`; // contains match for friendlier finds
+        // If your table DOES NOT have "name", this still works (the or-part will simply ignore it)
         const { data, error } = await supabase
           .from("customers")
           .select("id, first_name, last_name, name, phone, email")
@@ -117,11 +120,14 @@ function FirstNameAutocomplete({
           .limit(12);
 
         if (error) throw error;
-        setRows((data ?? []) as CustomerRow[]);
+        // Guard against out-of-order responses
+        if (thisReq === reqCounter.current) {
+          setRows((data ?? []) as CustomerRow[]);
+        }
       } catch {
-        setRows([]);
+        if (thisReq === reqCounter.current) setRows([]);
       } finally {
-        setBusy(false);
+        if (thisReq === reqCounter.current) setBusy(false);
       }
     }, 150);
 
@@ -212,7 +218,7 @@ export default function CustomerVehicleForm({
     onCustomerChange("phone", c.phone ?? null);
     onCustomerChange("email", c.email ?? null);
 
-    // Fill remaining fields (also fetch "name" just in case)
+    // Fill remaining fields
     try {
       const { data } = await supabase
         .from("customers")
