@@ -18,9 +18,12 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { useTabState } from "@/features/shared/hooks/useTabState";
 
-// 🧩 NEW: VIN modal (client wrapper) + tiny draft store for prefill
+// 🧩 VIN modal + existing draft for VIN
 import VinCaptureModal from "app/vehicle/VinCaptureModal";
 import { useWorkOrderDraft } from "app/work-orders/state/useWorkOrderDraft";
+
+// 🧩 NEW: lightweight CV draft (sessionStorage) so values survive page changes
+import { useCustomerVehicleDraft } from "app/work-orders/state/useCustomerVehicleDraft";
 
 // UI
 import CustomerVehicleForm from "@/features/inspections/components/inspection/CustomerVehicleForm";
@@ -124,11 +127,45 @@ export default function CreateWorkOrderPage() {
   const [customer, setCustomer] = useTabState<SessionCustomer>("__cv_customer", defaultCustomer);
   const [vehicle, setVehicle] = useTabState<SessionVehicle>("__cv_vehicle", defaultVehicle);
 
-  // Change handlers
-  const onCustomerChange = (field: keyof SessionCustomer, value: string | null) =>
+  // 🧩 NEW: CV draft (session persisted)
+  const cvDraft = useCustomerVehicleDraft();
+
+  // Hydrate from CV draft on first load (only fill empty fields)
+  useEffect(() => {
+    const d = cvDraft;
+    if (!d) return;
+
+    const hasDraftCust = Object.values(d.customer || {}).some(Boolean);
+    const hasDraftVeh = Object.values(d.vehicle || {}).some(Boolean);
+
+    if (hasDraftCust) {
+      setCustomer((prev) => ({
+        ...prev,
+        ...Object.fromEntries(
+          Object.entries(d.customer).map(([k, v]) => [k as keyof SessionCustomer, (prev as any)[k] ?? v ?? null]),
+        ),
+      }));
+    }
+    if (hasDraftVeh) {
+      setVehicle((prev) => ({
+        ...prev,
+        ...Object.fromEntries(
+          Object.entries(d.vehicle).map(([k, v]) => [k as keyof SessionVehicle, (prev as any)[k] ?? v ?? null]),
+        ),
+      }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // once
+
+  // Change handlers — also mirror into CV draft so values persist across pages
+  const onCustomerChange = (field: keyof SessionCustomer, value: string | null) => {
     setCustomer((c) => ({ ...c, [field]: value }));
-  const onVehicleChange = (field: keyof SessionVehicle, value: string | null) =>
+    cvDraft.setCustomerField(field as any, value);
+  };
+  const onVehicleChange = (field: keyof SessionVehicle, value: string | null) => {
     setVehicle((v) => ({ ...v, [field]: value }));
+    cvDraft.setVehicleField(field as any, value);
+  };
 
   // Captured ids
   const [customerId, setCustomerId] = useTabState<string | null>("customerId", null);
@@ -470,6 +507,31 @@ export default function CreateWorkOrderPage() {
       const cust = await ensureCustomer(shopId);
       const veh = await ensureVehicleRow(cust, shopId);
 
+      // Mirror confirmed values back into the CV draft (in case we navigated)
+      cvDraft.bulkSet({
+        customer: {
+          first_name: cust.first_name ?? null,
+          last_name: cust.last_name ?? null,
+          phone: customer.phone ?? null,
+          email: cust.email ?? null,
+          address: customer.address ?? null,
+          city: customer.city ?? null,
+          province: customer.province ?? null,
+          postal_code: customer.postal_code ?? null,
+        },
+        vehicle: {
+          vin: veh.vin ?? null,
+          year: veh.year != null ? String(veh.year) : null,
+          make: veh.make ?? null,
+          model: veh.model ?? null,
+          license_plate: veh.license_plate ?? null,
+          mileage: (veh.mileage as string | null) ?? vehicle.mileage ?? null,
+          unit_number: vehicle.unit_number ?? null,
+          color: veh.color ?? null,
+          engine_hours: vehicle.engine_hours ?? null,
+        },
+      });
+
       // If WO exists, link it to this C/V pair (no new custom_id)
       if (wo?.id) {
         if (wo.customer_id !== cust.id || wo.vehicle_id !== veh.id) {
@@ -479,7 +541,7 @@ export default function CreateWorkOrderPage() {
             .eq("id", wo.id)
             .select("*")
             .single();
-          if (updErr) throw updErr;
+        if (updErr) throw updErr;
           setWo(updated);
         }
         await fetchLines();
@@ -521,7 +583,7 @@ export default function CreateWorkOrderPage() {
     } finally {
       setSavingCv(false);
     }
-  }, [savingCv, supabase, wo?.id, notes, customer, currentUserEmail, fetchLines]);
+  }, [savingCv, supabase, wo?.id, notes, customer, currentUserEmail, fetchLines, cvDraft, vehicle]);
 
   /* Clear form (Customer & Vehicle + related local UI state) */
   const handleClearForm = useCallback(() => {
@@ -536,6 +598,7 @@ export default function CreateWorkOrderPage() {
     setUploadSummary(null);
     setInviteNotice("");
     setSendInvite(false);
+    cvDraft.reset(); // 🔄 also clear persisted draft
   }, [
     setCustomer,
     setVehicle,
@@ -548,6 +611,7 @@ export default function CreateWorkOrderPage() {
     setUploadSummary,
     setInviteNotice,
     setSendInvite,
+    cvDraft,
   ]);
 
   /* Upload helpers */
@@ -874,14 +938,14 @@ export default function CreateWorkOrderPage() {
                 userId={currentUserId ?? "anon"}
                 action="/api/vin"
                 onDecoded={(d) => {
-                  // Save to draft (for any other pages that might read it)
+                  // Save to VIN draft (for any other pages that might read it)
                   draft.setVehicle({
                     vin: d.vin,
                     year: d.year ?? null,
                     make: d.make ?? null,
                     model: d.model ?? null,
                   });
-                  // Apply immediately to this form
+                  // Apply immediately to this form (and persist in CV draft)
                   setVehicle((prev) => ({
                     ...prev,
                     vin: d.vin || prev.vin,
@@ -889,6 +953,14 @@ export default function CreateWorkOrderPage() {
                     make: d.make ?? prev.make,
                     model: d.model ?? prev.model,
                   }));
+                  cvDraft.bulkSet({
+                    vehicle: {
+                      vin: d.vin ?? null,
+                      year: d.year ?? null,
+                      make: d.make ?? null,
+                      model: d.model ?? null,
+                    },
+                  });
                 }}
               >
                 <span className="rounded border border-orange-500 px-3 py-1 text-sm text-orange-400 hover:bg-orange-500/10 cursor-pointer">
