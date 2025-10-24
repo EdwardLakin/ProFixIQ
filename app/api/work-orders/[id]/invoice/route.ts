@@ -21,7 +21,11 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     });
 
     // ---- Load WO ----
-    const { data: wo, error: woErr } = await supabase.from("work_orders").select("*").eq("id", woId).maybeSingle();
+    const { data: wo, error: woErr } = await supabase
+      .from("work_orders")
+      .select("*")
+      .eq("id", woId)
+      .maybeSingle();
     if (woErr) throw woErr;
     if (!wo) return NextResponse.json({ ok: false, error: "Work order not found" }, { status: 404 });
 
@@ -35,7 +39,9 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
       .eq("id", wo.customer_id)
       .maybeSingle();
     if (custErr) throw custErr;
-    if (!cust?.email) return NextResponse.json({ ok: false, error: "Customer email required" }, { status: 400 });
+    if (!cust?.email) {
+      return NextResponse.json({ ok: false, error: "Customer email required" }, { status: 400 });
+    }
 
     // ---- Load lines ----
     const { data: lines, error: linesErr } = await supabase
@@ -46,13 +52,14 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
 
     // ---- Build invoice items (labor only for now) ----
     const laborRate = 120; // TODO: pull from shop settings when available
-    const laborItems: { description: string; unit_amount: number; quantity: number }[] = [];
+    const laborItems: Array<{ description: string; unit_amount: number; quantity: number }> = [];
 
     for (const ln of lines ?? []) {
       const hours = typeof ln.labor_time === "number" ? ln.labor_time : 0;
       if (hours > 0) {
-        const title =
-          `${String(ln.job_type ?? "job").toString().replaceAll("_", " ")} — ${ln.description ?? ln.complaint ?? "labor"}`;
+        const title = `${String(ln.job_type ?? "job").replaceAll("_", " ")} — ${
+          ln.description ?? ln.complaint ?? "labor"
+        }`;
         laborItems.push({
           description: title,
           unit_amount: Math.round(laborRate * 100), // cents / hour
@@ -108,8 +115,8 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     if (updErr) throw updErr;
 
     return NextResponse.json({ ok: true, stripeInvoiceId: finalized.id });
-  } catch (e: any) {
-    const msg = e?.message ?? "Failed to create/send invoice";
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : typeof e === "string" ? e : "Failed to create/send invoice";
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
 }
