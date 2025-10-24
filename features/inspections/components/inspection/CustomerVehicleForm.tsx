@@ -78,37 +78,56 @@ function FirstNameAutocomplete({
   const [busy, setBusy] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
-  // Keep the panel OPEN while typing; only close on clear or outside click.
+  // helper: prefer first+last; fall back to name
+  const displayName = (c: Partial<CustomerRow> & { name?: string | null }) =>
+    [c.first_name, c.last_name].filter(Boolean).join(" ") || (c as any).name || "Unnamed";
+
   useEffect(() => {
     const term = (q ?? "").trim();
 
-    // Close when empty
     if (!term) {
       setRows([]);
       setOpen(false);
       return;
     }
 
-    // Open immediately (avoid flicker), then fetch debounced
     setOpen(true);
 
     const t = window.setTimeout(async () => {
       setBusy(true);
+      const like = `${term}%`;
+
+      // build a base selector that asks for both name styles
+      const base = supabase
+        .from("customers")
+        .select("id, first_name, last_name, name, phone, email, shop_id")
+        // search against first_name OR last_name OR name
+        .or(
+          [
+            `first_name.ilike.${like}`,
+            `last_name.ilike.${like}`,
+            `name.ilike.${like}`, // if your table has a single "name" column
+          ].join(","),
+        )
+        .order("updated_at", { ascending: false })
+        .limit(12);
+
       try {
-        const like = `${term}%`;
-        let qb = supabase
-          .from("customers")
-          .select("id, first_name, last_name, phone, email")
-          .ilike("first_name", like)
-          .order("updated_at", { ascending: false })
-          .limit(12);
+        // 1) try shop-scoped (if we have a shop)
+        let data: any[] | null = null;
+        if (shopId) {
+          const scoped = await base.eq("shop_id", shopId);
+          if (!scoped.error) data = scoped.data ?? null;
+        }
 
-        // Scope to shop if we have one; otherwise search globally (works pre-WO)
-        if (shopId) qb = qb.eq("shop_id", shopId);
+        // 2) fallback global if nothing found
+        if (!data || data.length === 0) {
+          const global = await base;
+          if (global.error) throw global.error;
+          data = global.data ?? [];
+        }
 
-        const { data, error } = await qb;
-        if (error) throw error;
-        setRows((data ?? []) as CustomerRow[]);
+        setRows((data as CustomerRow[]) ?? []);
       } catch {
         setRows([]);
       } finally {
@@ -129,26 +148,21 @@ function FirstNameAutocomplete({
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
 
-  // Hide entirely if closed and not searching
   if (!open && !busy) return null;
 
   return (
     <div ref={wrapRef} className="relative">
-      {/* Panel stays open while busy, with a top "Searching…" row */}
       {(open || busy) && (
         <div className="absolute z-20 mt-1 w-full overflow-hidden rounded border border-neutral-700 bg-neutral-900 shadow">
-          {busy && (
-            <div className="px-3 py-2 text-xs text-neutral-400">Searching…</div>
-          )}
+          {busy && <div className="px-3 py-2 text-xs text-neutral-400">Searching…</div>}
           {rows.map((c) => {
-            const name = [c.first_name, c.last_name].filter(Boolean).join(" ") || "Unnamed";
+            const name = displayName(c as any);
             const sub = [c.phone, c.email].filter(Boolean).join(" · ");
             return (
               <button
                 key={c.id}
                 type="button"
                 className="block w-full cursor-pointer px-3 py-2 text-left hover:bg-neutral-800"
-                // Use onMouseDown so the pick wins the blur race
                 onMouseDown={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -169,7 +183,6 @@ function FirstNameAutocomplete({
     </div>
   );
 }
-
 /* ========================================================================== */
 /*                                Form Component                              */
 /* ========================================================================== */
