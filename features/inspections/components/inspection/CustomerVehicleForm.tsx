@@ -13,6 +13,7 @@ type CustomerRow = {
   id: string;
   first_name?: string | null;
   last_name?: string | null;
+  name?: string | null; // <- some rows only have "name"
   phone?: string | null;
   email?: string | null;
   address?: string | null;
@@ -61,6 +62,15 @@ type Handlers = {
   onVehicleSelected?: (vehicleId: string) => void;
 };
 
+/* Small helper to split a single "name" into first/last */
+function splitNamefallback(n?: string | null): { first: string | null; last: string | null } {
+  const s = (n ?? "").trim();
+  if (!s) return { first: null, last: null };
+  const parts = s.split(/\s+/);
+  if (parts.length === 1) return { first: parts[0], last: null };
+  return { first: parts[0], last: parts.slice(1).join(" ") || null };
+}
+
 /* -------------------------------------------------------------------------- */
 /* Autocomplete: First Name (STRICT same-shop search)                         */
 /* -------------------------------------------------------------------------- */
@@ -100,9 +110,9 @@ function FirstNameAutocomplete({
         const like = `${term}%`;
         const { data, error } = await supabase
           .from("customers")
-          .select("id, first_name, last_name, phone, email")
-          .eq("shop_id", shopId)                 // 🔒 strict same-shop scope
-          .ilike("first_name", like)             // live-first-name search
+          .select("id, first_name, last_name, name, phone, email")
+          .eq("shop_id", shopId) // 🔒 strict same-shop scope
+          .or(`first_name.ilike.${like},last_name.ilike.${like},name.ilike.${like}`)
           .order("updated_at", { ascending: false })
           .limit(12);
 
@@ -137,7 +147,10 @@ function FirstNameAutocomplete({
         <div className="absolute z-20 mt-1 w-full overflow-hidden rounded border border-neutral-700 bg-neutral-900 shadow">
           {busy && <div className="px-3 py-2 text-xs text-neutral-400">Searching…</div>}
           {rows.map((c) => {
-            const name = [c.first_name, c.last_name].filter(Boolean).join(" ") || "Unnamed";
+            const fallback = splitNamefallback(c.name);
+            const fn = c.first_name ?? fallback.first;
+            const ln = c.last_name ?? fallback.last;
+            const display = [fn, ln].filter(Boolean).join(" ") || c.name || "Unnamed";
             const sub = [c.phone, c.email].filter(Boolean).join(" · ");
             return (
               <button
@@ -152,7 +165,7 @@ function FirstNameAutocomplete({
                   setOpen(false);
                 }}
               >
-                <div className="truncate">{name}</div>
+                <div className="truncate">{display}</div>
                 <div className="truncate text-xs text-neutral-400">{sub || "—"}</div>
               </button>
             );
@@ -191,17 +204,26 @@ export default function CustomerVehicleForm({
   } = (handlers as Handlers) ?? {};
 
   async function handlePickedCustomer(c: CustomerRow) {
-    // Fill immediate customer fields
-    onCustomerChange("first_name", c.first_name ?? null);
-    onCustomerChange("last_name", c.last_name ?? null);
+    const fallback = splitNamefallback(c.name);
+
+    // Fill immediate customer fields (fallback to "name" when needed)
+    onCustomerChange("first_name", (c.first_name ?? fallback.first) ?? null);
+    onCustomerChange("last_name", (c.last_name ?? fallback.last) ?? null);
     onCustomerChange("phone", c.phone ?? null);
     onCustomerChange("email", c.email ?? null);
 
-    // Fill remaining fields
+    // Fill remaining fields (also fetch "name" just in case)
     try {
-      const { data } = await supabase.from("customers").select("*").eq("id", c.id).maybeSingle();
+      const { data } = await supabase
+        .from("customers")
+        .select("*")
+        .eq("id", c.id)
+        .maybeSingle();
       if (data) {
         const d = data as CustomerRow;
+        const fb = splitNamefallback(d.name);
+        onCustomerChange("first_name", (d.first_name ?? fb.first) ?? null);
+        onCustomerChange("last_name", (d.last_name ?? fb.last) ?? null);
         onCustomerChange("address", d.address ?? null);
         onCustomerChange("city", d.city ?? null);
         onCustomerChange("province", d.province ?? null);

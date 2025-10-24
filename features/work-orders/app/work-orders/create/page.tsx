@@ -195,7 +195,7 @@ export default function CreateWorkOrderPage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // 🔸 NEW: read profile.shop_id early so autocomplete is scoped before WO exists
-  const [currentShopId, setCurrentShopId] = useState<string | null>(null); // <-- keep the value
+  const [currentShopId, setCurrentShopId] = useState<string | null>(null);
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -262,7 +262,7 @@ export default function CreateWorkOrderPage() {
   function getInitials(first?: string | null, last?: string | null, fallback?: string | null) {
     const f = (first ?? "").trim();
     const l = (last ?? "").trim();
-    if (f || l ) return `${f[0] ?? ""}${[0] ?? ""}`.toUpperCase() || "WO";
+    if (f || l) return `${f[0] ?? ""}${l[0] ?? ""}`.toUpperCase() || "WO"; // <- fixed typo
     const fb = (fallback ?? "").trim();
     if (fb.includes("@")) return fb.split("@")[0].slice(0, 2).toUpperCase() || "WO";
     return fb.slice(0, 2).toUpperCase() || "WO";
@@ -918,7 +918,7 @@ export default function CreateWorkOrderPage() {
               vehicle={vehicle}
               saving={savingCv}
               workOrderExists={!!wo?.id}
-              shopId={wo?.shop_id ?? currentShopId}   
+              shopId={wo?.shop_id ?? currentShopId}
               handlers={{
                 onCustomerChange,
                 onVehicleChange,
@@ -950,7 +950,8 @@ export default function CreateWorkOrderPage() {
                 Clear form
               </button>
 
-              {/* 🔶 Optional VIN Modal (Scanner + Manual Entry) */}
+              {/* 🔶 Optional VIN Modal (Scanner + Manual Entry) */
+              }
               <VinCaptureModal
                 userId={currentUserId ?? "anon"}
                 action="/api/vin"
