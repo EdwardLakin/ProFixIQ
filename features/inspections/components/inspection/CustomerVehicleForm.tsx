@@ -13,7 +13,6 @@ type CustomerRow = {
   id: string;
   first_name?: string | null;
   last_name?: string | null;
-  name?: string | null;
   phone?: string | null;
   email?: string | null;
   address?: string | null;
@@ -36,7 +35,7 @@ type VehicleRow = {
   customer_id?: string | null;
 };
 
-/** ✅ Public props are fully serializable */
+/** ✅ Public props are serializable */
 interface Props {
   customer: CustomerInfo;
   vehicle: VehicleInfo;
@@ -44,9 +43,11 @@ interface Props {
   /** Optional UI bits */
   saving?: boolean;
   workOrderExists?: boolean;
-  shopId?: string | null;
 
-  /** One object for callbacks (keeps props serializable) */
+  /** 🔒 REQUIRED: scope search to this shop only */
+  shopId: string | null;
+
+  /** One object for callbacks; typed as unknown to keep props serializable */
   handlers?: unknown;
 }
 
@@ -61,7 +62,7 @@ type Handlers = {
 };
 
 /* -------------------------------------------------------------------------- */
-/* Autocomplete: First Name                                                   */
+/* Autocomplete: First Name (STRICT same-shop search)                         */
 /* -------------------------------------------------------------------------- */
 
 function FirstNameAutocomplete({
@@ -70,7 +71,7 @@ function FirstNameAutocomplete({
   onPick,
 }: {
   q: string;
-  shopId?: string | null;
+  shopId: string | null; // required for search
   onPick: (c: CustomerRow) => void;
 }) {
   const supabase = useMemo(() => createClientComponentClient<Database>(), []);
@@ -79,53 +80,33 @@ function FirstNameAutocomplete({
   const [busy, setBusy] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
-  const displayName = (c: CustomerRow) =>
-    [c.first_name, c.last_name].filter(Boolean).join(" ") || c.name || "Unnamed";
-
   // Keep the panel OPEN while typing; only close on clear or outside click.
   useEffect(() => {
     const term = (q ?? "").trim();
 
-    if (!term) {
+    // Close when empty OR when we don't have a shopId
+    if (!term || !shopId) {
       setRows([]);
       setOpen(false);
       return;
     }
 
-    setOpen(true); // avoid flicker
+    // Open immediately (avoid flicker), then fetch debounced
+    setOpen(true);
 
     const t = window.setTimeout(async () => {
       setBusy(true);
-
-      const like = `${term}%`;
-      const base = supabase
-        .from("customers")
-        .select("id, first_name, last_name, name, phone, email, shop_id")
-        .or(
-          [
-            `first_name.ilike.${like}`,
-            `last_name.ilike.${like}`,
-            `name.ilike.${like}`,
-          ].join(",")
-        )
-        .limit(12)
-        .order("updated_at", { ascending: false });
-
       try {
-        let data: any[] | null = null;
+        const like = `${term}%`;
+        const { data, error } = await supabase
+          .from("customers")
+          .select("id, first_name, last_name, phone, email")
+          .eq("shop_id", shopId)                 // 🔒 strict same-shop scope
+          .ilike("first_name", like)             // live-first-name search
+          .order("updated_at", { ascending: false })
+          .limit(12);
 
-        // Try shop-scoped first
-        if (shopId) {
-          const scoped = await base.eq("shop_id", shopId);
-          if (!scoped.error && scoped.data?.length) data = scoped.data;
-        }
-
-        // Fallback to global (works before WO exists)
-        if (!data) {
-          const global = await base;
-          if (!global.error) data = global.data;
-        }
-
+        if (error) throw error;
         setRows((data ?? []) as CustomerRow[]);
       } catch {
         setRows([]);
@@ -147,34 +128,35 @@ function FirstNameAutocomplete({
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
 
+  // Hide entirely if closed and not searching
   if (!open && !busy) return null;
 
   return (
     <div ref={wrapRef} className="relative">
       {(open || busy) && (
         <div className="absolute z-20 mt-1 w-full overflow-hidden rounded border border-neutral-700 bg-neutral-900 shadow">
-          {busy && (
-            <div className="px-3 py-2 text-xs text-neutral-400">Searching…</div>
-          )}
-          {rows.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              className="block w-full cursor-pointer px-3 py-2 text-left hover:bg-neutral-800"
-              // onMouseDown so click is handled before input blur
-              onMouseDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onPick(c);
-                setOpen(false);
-              }}
-            >
-              <div className="truncate">{displayName(c)}</div>
-              <div className="truncate text-xs text-neutral-400">
-                {[c.phone, c.email].filter(Boolean).join(" · ") || "—"}
-              </div>
-            </button>
-          ))}
+          {busy && <div className="px-3 py-2 text-xs text-neutral-400">Searching…</div>}
+          {rows.map((c) => {
+            const name = [c.first_name, c.last_name].filter(Boolean).join(" ") || "Unnamed";
+            const sub = [c.phone, c.email].filter(Boolean).join(" · ");
+            return (
+              <button
+                key={c.id}
+                type="button"
+                className="block w-full cursor-pointer px-3 py-2 text-left hover:bg-neutral-800"
+                // onMouseDown so the pick wins the blur race
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onPick(c);
+                  setOpen(false);
+                }}
+              >
+                <div className="truncate">{name}</div>
+                <div className="truncate text-xs text-neutral-400">{sub || "—"}</div>
+              </button>
+            );
+          })}
           {!busy && rows.length === 0 && (
             <div className="px-3 py-2 text-xs text-neutral-400">No matches</div>
           )}
@@ -193,7 +175,7 @@ export default function CustomerVehicleForm({
   vehicle,
   saving = false,
   workOrderExists = false,
-  shopId,
+  shopId, // 🔒 REQUIRED
   handlers,
 }: Props) {
   const supabase = useMemo(() => createClientComponentClient<Database>(), []);
@@ -209,15 +191,13 @@ export default function CustomerVehicleForm({
   } = (handlers as Handlers) ?? {};
 
   async function handlePickedCustomer(c: CustomerRow) {
-    // Fill name/contacts (support single 'name' columns too)
-    const full = c.name ?? "";
-    const parts = full.trim().split(/\s+/);
-    onCustomerChange("first_name", c.first_name ?? parts[0] ?? null);
-    onCustomerChange("last_name", c.last_name ?? (parts.slice(1).join(" ") || null));
+    // Fill immediate customer fields
+    onCustomerChange("first_name", c.first_name ?? null);
+    onCustomerChange("last_name", c.last_name ?? null);
     onCustomerChange("phone", c.phone ?? null);
     onCustomerChange("email", c.email ?? null);
 
-    // Fill remaining customer fields
+    // Fill remaining fields
     try {
       const { data } = await supabase.from("customers").select("*").eq("id", c.id).maybeSingle();
       if (data) {
@@ -227,34 +207,39 @@ export default function CustomerVehicleForm({
         onCustomerChange("province", d.province ?? null);
         onCustomerChange("postal_code", d.postal_code ?? null);
       }
-    } catch {}
+    } catch {
+      /* ignore */
+    }
 
+    // let parent capture id
     onCustomerSelected?.(c.id);
 
-    // If exactly one vehicle, auto-populate it
+    // If exactly one vehicle for this customer, fill it
     try {
-      const { data } = await supabase
+      const { data: vehs } = await supabase
         .from("vehicles")
         .select("id, vin, year, make, model, license_plate, mileage, unit_number, color, engine_hours")
         .eq("customer_id", c.id)
         .order("updated_at", { ascending: false })
         .limit(2);
 
-      const arr = (data ?? []) as VehicleRow[];
+      const arr = (vehs ?? []) as VehicleRow[];
       if (arr.length === 1) {
         const v = arr[0];
-        onVehicleChange("vin", v.vin ?? null);
+        onVehicleChange("vin", (v.vin ?? "") || null);
         onVehicleChange("year", v.year != null ? String(v.year) : null);
         onVehicleChange("make", v.make ?? null);
         onVehicleChange("model", v.model ?? null);
         onVehicleChange("license_plate", v.license_plate ?? null);
-        onVehicleChange("mileage", v.mileage ?? null);
+        onVehicleChange("mileage", (v.mileage ?? "") || null);
         onVehicleChange("unit_number", v.unit_number ?? null);
         onVehicleChange("color", v.color ?? null);
         onVehicleChange("engine_hours", v.engine_hours != null ? String(v.engine_hours) : null);
         onVehicleSelected?.(v.id);
       }
-    } catch {}
+    } catch {
+      /* ignore */
+    }
   }
 
   return (
@@ -265,6 +250,7 @@ export default function CustomerVehicleForm({
       </h2>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* First name + autocomplete */}
         <div className="sm:col-span-1">
           <input
             className="input"
@@ -272,9 +258,10 @@ export default function CustomerVehicleForm({
             value={customer.first_name ?? ""}
             onChange={(e) => onCustomerChange("first_name", e.target.value || null)}
           />
+          {/* 🔒 Strict same-shop search (requires shopId) */}
           <FirstNameAutocomplete
             q={customer.first_name ?? ""}
-            shopId={shopId ?? null}
+            shopId={shopId}
             onPick={handlePickedCustomer}
           />
         </div>
