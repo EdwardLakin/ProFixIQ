@@ -109,6 +109,23 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       summary: "Brakes, tires, suspension, battery, lights, codes scan.",
       items: [],
     },
+    // 🔽 Added the two Maintenance 50 inspections
+    {
+      id: "maintenance-50",
+      name: "Maintenance 50",
+      jobType: "inspection",
+      estLaborHours: 1.0,
+      summary: "50-point inspection checklist.",
+      items: [],
+    },
+    {
+      id: "maintenance-50-air",
+      name: "Maintenance 50 – Air",
+      jobType: "inspection",
+      estLaborHours: 1.0,
+      summary: "50-point inspection checklist (air systems focus).",
+      items: [],
+    },
   ];
 
   // -------------------- UI / data state --------------------
@@ -526,12 +543,14 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         <h3 className="font-semibold text-orange-400">Quick Add</h3>
         <div className="flex items-center gap-2">
           <button
+            type="button" // ✅ prevent parent form submit
             onClick={() => router.push(`/work-orders/quote-review?woId=${workOrderId}`)}
             className="rounded border border-neutral-800 bg-neutral-950 px-3 py-1.5 text-sm hover:bg-neutral-900"
           >
             Review Quote{typeof woLineCount === "number" && woLineCount > 0 ? ` (${woLineCount})` : ""}
           </button>
           <button
+            type="button" // ✅ prevent parent form submit
             onClick={() => setAiOpen(true)}
             className="rounded border border-blue-600 px-3 py-1.5 text-sm text-blue-300 hover:bg-blue-900/20"
             title="Describe work and let AI suggest service lines"
@@ -546,6 +565,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         <div className="mb-2 flex items-center justify-between">
           <h4 className="font-semibold text-neutral-200">Packages</h4>
           <button
+            type="button" // ✅ prevent parent form submit
             className="text-xs text-neutral-300 hover:text-white underline"
             onClick={() => setShowAllPackages((v) => !v)}
           >
@@ -555,6 +575,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         <div className="grid gap-2 sm:grid-cols-2">
           {visiblePackages.map((p) => (
             <button
+              type="button" // ✅ prevent parent form submit
               key={p.id}
               onClick={() => addPackage(p)}
               disabled={addingId === p.id || !shopReady}
@@ -576,6 +597,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         <div className="mb-2 flex items-center justify-between">
           <h4 className="font-semibold text-neutral-200">Single Services</h4>
           <button
+            type="button" // ✅ prevent parent form submit
             className="text-xs text-neutral-300 hover:text-white underline"
             onClick={() => setShowAllSingles((v) => !v)}
           >
@@ -585,6 +607,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {visibleSingles.map((m) => (
             <button
+              type="button" // ✅ prevent parent form submit
               key={m.name}
               onClick={() => addSingle(m)}
               disabled={addingId === m.name || !shopReady}
@@ -610,6 +633,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         <div className="mb-2 flex items-center justify-between">
           <h4 className="font-semibold text-neutral-200">From My Menu</h4>
           <button
+            type="button" // ✅ prevent parent form submit
             onClick={() => loadMenuItems()}
             className="text-xs text-neutral-300 hover:text-white underline"
           >
@@ -622,6 +646,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
             (menuItems.length ? (
               menuItems.slice(0, 9).map((mi) => (
                 <button
+                  type="button" // ✅ prevent parent form submit
                   key={mi.id}
                   onClick={() => addSavedMenuItem(mi)}
                   disabled={addingId === (mi.name ?? "") || !shopReady}
@@ -655,6 +680,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
             <div className="mb-3 flex items-center justify-between">
               <div className="text-lg font-semibold">AI: Suggest Services</div>
               <button
+                type="button" // ✅ prevent parent form submit
                 className="rounded border border-neutral-700 px-2 py-1 text-sm hover:bg-neutral-800"
                 onClick={() => setAiOpen(false)}
               >
@@ -670,12 +696,14 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
             />
             <div className="mt-3 flex justify-end gap-2">
               <button
+                type="button" // ✅ prevent parent form submit
                 className="rounded border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800"
                 onClick={() => setAiOpen(false)}
               >
                 Cancel
               </button>
               <button
+                type="button" // ✅ prevent parent form submit
                 disabled={aiBusy}
                 className="rounded border border-blue-600 px-3 py-1.5 text-sm text-blue-300 hover:bg-blue-900/20 disabled:opacity-60"
                 onClick={runAiSuggest}

@@ -1,4 +1,3 @@
-// app/work-orders/[id]/approve/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -107,6 +106,9 @@ export default function ApproveWorkOrderPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           workOrderId: id,
+          // 🔽 include tenant keys to satisfy RLS on the server insert
+          shopId: wo?.shop_id ?? null,
+          customerId: wo?.customer_id ?? null,
           approvedLineIds,
           declinedLineIds,
           declineUnchecked: true,
@@ -117,9 +119,10 @@ export default function ApproveWorkOrderPage() {
 
       const j: unknown = await res.json().catch(() => null);
       if (!res.ok) {
-        const msg = typeof j === "object" && j && "error" in (j as Record<string, unknown>)
-          ? String((j as { error?: unknown }).error ?? "Failed to submit approval")
-          : "Failed to submit approval";
+        const msg =
+          typeof j === "object" && j && "error" in (j as Record<string, unknown>)
+            ? String((j as { error?: unknown }).error ?? "Failed to submit approval")
+            : "Failed to submit approval";
         throw new Error(msg);
       }
 
