@@ -78,39 +78,48 @@ function FirstNameAutocomplete({
   const [busy, setBusy] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
+  // Keep the panel OPEN while typing; only close on clear or outside click.
   useEffect(() => {
+    const term = (q ?? "").trim();
+
+    // Close when empty
+    if (!term) {
+      setRows([]);
+      setOpen(false);
+      return;
+    }
+
+    // Open immediately (avoid flicker), then fetch debounced
+    setOpen(true);
+
     const t = window.setTimeout(async () => {
-      if (!q?.trim() || !shopId) {
-        setRows([]);
-        setOpen(false);
-        return;
-      }
       setBusy(true);
       try {
-        const like = `${q.trim()}%`;
-        const { data, error } = await supabase
+        const like = `${term}%`;
+        let qb = supabase
           .from("customers")
           .select("id, first_name, last_name, phone, email")
-          .eq("shop_id", shopId)
           .ilike("first_name", like)
           .order("updated_at", { ascending: false })
           .limit(12);
 
+        // Scope to shop if we have one; otherwise search globally (works pre-WO)
+        if (shopId) qb = qb.eq("shop_id", shopId);
+
+        const { data, error } = await qb;
         if (error) throw error;
-        const arr = (data ?? []) as CustomerRow[];
-        setRows(arr);
-        setOpen(arr.length > 0);
+        setRows((data ?? []) as CustomerRow[]);
       } catch {
         setRows([]);
-        setOpen(false);
       } finally {
         setBusy(false);
       }
-    }, 180);
+    }, 150);
 
     return () => window.clearTimeout(t);
   }, [q, shopId, supabase]);
 
+  // Close on outside click
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
       if (!wrapRef.current) return;
@@ -120,12 +129,17 @@ function FirstNameAutocomplete({
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
 
+  // Hide entirely if closed and not searching
   if (!open && !busy) return null;
 
   return (
     <div ref={wrapRef} className="relative">
-      {open && (
+      {/* Panel stays open while busy, with a top "Searching…" row */}
+      {(open || busy) && (
         <div className="absolute z-20 mt-1 w-full overflow-hidden rounded border border-neutral-700 bg-neutral-900 shadow">
+          {busy && (
+            <div className="px-3 py-2 text-xs text-neutral-400">Searching…</div>
+          )}
           {rows.map((c) => {
             const name = [c.first_name, c.last_name].filter(Boolean).join(" ") || "Unnamed";
             const sub = [c.phone, c.email].filter(Boolean).join(" · ");
@@ -134,7 +148,10 @@ function FirstNameAutocomplete({
                 key={c.id}
                 type="button"
                 className="block w-full cursor-pointer px-3 py-2 text-left hover:bg-neutral-800"
-                onClick={() => {
+                // Use onMouseDown so the pick wins the blur race
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
                   onPick(c);
                   setOpen(false);
                 }}
@@ -144,9 +161,11 @@ function FirstNameAutocomplete({
               </button>
             );
           })}
+          {!busy && rows.length === 0 && (
+            <div className="px-3 py-2 text-xs text-neutral-400">No matches</div>
+          )}
         </div>
       )}
-      {busy && <div className="p-2 text-xs text-neutral-400">Searching…</div>}
     </div>
   );
 }
