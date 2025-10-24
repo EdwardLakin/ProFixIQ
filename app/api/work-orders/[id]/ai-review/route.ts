@@ -6,9 +6,24 @@ import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 
-export async function POST(_req: Request, { params }: { params: { id: string } }) {
+// Extracts ".../work-orders/<id>/ai-review" -> "<id>"
+function getIdFromUrl(url: string): string | null {
+  const p = new URL(url).pathname;
+  // works for /api/work-orders/<id>/ai-review (any base path)
+  const parts = p.split("/"); // ["", "api", "work-orders", "<id>", "ai-review"]
+  return parts.length >= 5 ? parts[3] ?? null : null;
+}
+
+export async function POST(req: Request) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
-  const woId = params.id;
+
+  const woId = getIdFromUrl(req.url);
+  if (!woId) {
+    return NextResponse.json(
+      { ok: false, issues: [{ kind: "bad_request", message: "Missing work order id in URL" }] },
+      { status: 400 }
+    );
+  }
 
   // Load WO
   const { data: wo, error: woErr } = await supabase
@@ -53,11 +68,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     const corrNA = (ln as unknown as { correction_marked_na?: boolean }).correction_marked_na === true;
 
     if (!ln.cause && !causeNA) {
-      issues.push({
-        kind: "missing_cause",
-        lineId: ln.id,
-        message: `Missing cause: ${ln.description ?? "job"}`,
-      });
+      issues.push({ kind: "missing_cause", lineId: ln.id, message: `Missing cause: ${ln.description ?? "job"}` });
     }
     if (!ln.correction && !corrNA) {
       issues.push({
@@ -68,11 +79,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     }
     const hours = typeof ln.labor_time === "number" ? ln.labor_time : 0;
     if (hours <= 0) {
-      issues.push({
-        kind: "no_labor_time",
-        lineId: ln.id,
-        message: `No labor time set: ${ln.description ?? "job"}`,
-      });
+      issues.push({ kind: "no_labor_time", lineId: ln.id, message: `No labor time set: ${ln.description ?? "job"}` });
     }
   }
 
@@ -84,9 +91,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
       .select("email")
       .eq("id", wo.customer_id)
       .maybeSingle();
-    if (!cust?.email) {
-      issues.push({ kind: "missing_email", message: "Customer has no email" });
-    }
+    if (!cust?.email) issues.push({ kind: "missing_email", message: "Customer has no email" });
   }
 
   return NextResponse.json({ ok: issues.length === 0, issues });
