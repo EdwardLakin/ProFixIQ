@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
@@ -12,62 +12,33 @@ type Customer = DB["public"]["Tables"]["customers"]["Row"];
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 
 type Row = WorkOrder & {
-  customers: Pick<Customer, "first_name" | "last_name" | "phone" | "email"> | null;
+  customers: Pick<Customer, "first_name" | "last_name" | "email"> | null;
   vehicles: Pick<Vehicle, "year" | "make" | "model" | "license_plate"> | null;
 };
 
-/* --------------------------- Status badges (dark) --------------------------- */
-type StatusKey =
-  | "awaiting_approval"
-  | "awaiting"
-  | "queued"
-  | "in_progress"
-  | "on_hold"
-  | "planned"
-  | "new"
-  | "completed"
-  | "ready_to_invoice"
-  | "invoiced";
+// ✅ Exclude null so <select> value is always a string (or "")
+type Status = Exclude<WorkOrder["status"], null> | "ready_to_invoice" | "invoiced";
 
-const BADGE_BASE =
-  "inline-flex items-center whitespace-nowrap rounded border px-2 py-0.5 text-xs font-medium";
-
-const STATUS_BADGE: Record<StatusKey, string> = {
-  awaiting_approval: "bg-blue-900/20 border-blue-500/40 text-blue-300",
-  awaiting:          "bg-sky-900/20  border-sky-500/40  text-sky-300",
-  queued:            "bg-indigo-900/20 border-indigo-500/40 text-indigo-300",
-  in_progress:       "bg-orange-900/20 border-orange-500/40 text-orange-300",
-  on_hold:           "bg-amber-900/20  border-amber-500/40  text-amber-300",
-  planned:           "bg-purple-900/20 border-purple-500/40 text-purple-300",
-  new:               "bg-neutral-800   border-neutral-600   text-neutral-200",
-  completed:         "bg-green-900/20  border-green-500/40  text-green-300",
-  ready_to_invoice:  "bg-emerald-900/20 border-emerald-500/40 text-emerald-300",
-  invoiced:          "bg-teal-900/20    border-teal-500/40    text-teal-300",
+const BADGE: Record<string, string> = {
+  completed: "bg-blue-900/20 border-blue-500/40 text-blue-300",
+  ready_to_invoice: "bg-amber-900/20 border-amber-500/40 text-amber-300",
+  invoiced: "bg-green-900/20 border-green-500/40 text-green-300",
 };
 
-const chip = (s: string | null | undefined) => {
-  const key = (s ?? "awaiting").toLowerCase().replaceAll(" ", "_") as StatusKey;
-  const cls = STATUS_BADGE[key] ?? STATUS_BADGE.awaiting;
-  return `${BADGE_BASE} ${cls}`;
-};
+const BILLING_STATUSES: Status[] = ["completed", "ready_to_invoice", "invoiced"];
 
-/** “Normal flow” = tech/active; hides AA, completed, billing states */
-const NORMAL_FLOW_STATUSES: StatusKey[] = [
-  "awaiting",
-  "queued",
-  "in_progress",
-  "on_hold",
-  "planned",
-  "new",
-];
-
-export default function WorkOrdersView(): JSX.Element {
+export default function BillingPage(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
-  const [status, setStatus] = useState<string>(""); // "" = normal flow
+  const [status, setStatus] = useState<Status | "">("");
   const [err, setErr] = useState<string | null>(null);
+
+  const chip = (s: string | null | undefined) =>
+    `inline-flex items-center rounded border px-2 py-0.5 text-xs font-medium ${
+      BADGE[s ?? "completed"] ?? BADGE.completed
+    }`;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -78,20 +49,17 @@ export default function WorkOrdersView(): JSX.Element {
       .select(
         `
         *,
-        customers:customers(first_name,last_name,phone,email),
+        customers:customers(first_name,last_name,email),
         vehicles:vehicles(year,make,model,license_plate)
       `
       )
-      .order("created_at", { ascending: false })
+      .order("updated_at", { ascending: false })
       .limit(100);
 
-    // Dropdown behavior:
-    // - ""  -> only "normal flow" statuses
-    // - any -> exactly that status
-    if (status === "") {
-      query = query.in("status", NORMAL_FLOW_STATUSES as unknown as string[]);
-    } else {
+    if (status) {
       query = query.eq("status", status);
+    } else {
+      query = query.in("status", BILLING_STATUSES as unknown as string[]);
     }
 
     const { data, error } = await query;
@@ -108,7 +76,6 @@ export default function WorkOrdersView(): JSX.Element {
         ? (data as Row[])
         : (data as Row[]).filter((r) => {
             const name = [r.customers?.first_name ?? "", r.customers?.last_name ?? ""]
-              .filter(Boolean)
               .join(" ")
               .toLowerCase();
             const plate = r.vehicles?.license_plate?.toLowerCase() ?? "";
@@ -133,57 +100,56 @@ export default function WorkOrdersView(): JSX.Element {
     void load();
   }, [load]);
 
-  /* Realtime: refresh when any WO changes (status, etc.) */
-  useEffect(() => {
-    const ch = supabase
-      .channel("work_orders:list")
-      .on("postgres_changes", { event: "*", schema: "public", table: "work_orders" }, () => {
-        setTimeout(() => void load(), 60);
-      })
-      .subscribe();
-
-    return () => {
-      try {
-        supabase.removeChannel(ch);
-      } catch {
-        /* ignore */
-      }
+  const handleAiReview = useCallback(async (id: string) => {
+    const res = await fetch(`/api/work-orders/${id}/ai-review`, { method: "POST" });
+    const j = (await res.json()) as {
+      ok: boolean;
+      issues: { kind: string; lineId?: string; message: string }[];
+      suggested?: unknown;
     };
-  }, [supabase, load]);
+    if (!res.ok || !j.ok) {
+      alert(
+        j.issues?.length
+          ? `Found issues:\n- ${j.issues.map((i) => i.message).join("\n- ")}`
+          : "AI review failed.",
+      );
+      return;
+    }
+    alert("AI review passed. You can mark Ready to Invoice.");
+  }, []);
 
-  const handleDelete = useCallback(
+  const handleMarkReady = useCallback(
     async (id: string) => {
-      if (!confirm("Delete this work order? This cannot be undone.")) return;
-
-      const prev = rows;
-      setRows((r) => r.filter((x) => x.id !== id));
-
-      const { error: lineErr } = await supabase.from("work_order_lines").delete().eq("work_order_id", id);
-      if (lineErr) {
-        alert("Failed to delete job lines: " + lineErr.message);
-        setRows(prev);
+      const res = await fetch(`/api/work-orders/${id}/mark-ready`, { method: "POST" });
+      const j = (await res.json()) as { ok: boolean; error?: string };
+      if (!res.ok || !j.ok) {
+        alert(j.error ?? "Failed to mark ready.");
         return;
       }
-
-      const { error } = await supabase.from("work_orders").delete().eq("id", id);
-      if (error) {
-        alert("Failed to delete: " + error.message);
-        setRows(prev);
-      }
+      void load();
     },
-    [rows, supabase],
+    [load],
+  );
+
+  const handleInvoice = useCallback(
+    async (id: string) => {
+      if (!confirm("Create and email a Stripe invoice to the customer?")) return;
+      const res = await fetch(`/api/work-orders/${id}/invoice`, { method: "POST" });
+      const j = (await res.json()) as { ok: boolean; stripeInvoiceId?: string; error?: string };
+      if (!res.ok || !j.ok) {
+        alert(j.error ?? "Failed to create invoice.");
+        return;
+      }
+      alert("Invoice created and emailed.");
+      void load();
+    },
+    [load],
   );
 
   return (
     <div className="mx-auto max-w-6xl p-6 text-white">
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-bold text-orange-400">Work Orders</h1>
-        <Link
-          href="/work-orders/create"
-          className="rounded bg-orange-500 px-3 py-1.5 font-semibold text-black hover:bg-orange-600"
-        >
-          + New
-        </Link>
+        <h1 className="text-2xl font-bold text-orange-400">Billing</h1>
         <div className="ml-auto flex gap-2">
           <input
             value={q}
@@ -194,20 +160,12 @@ export default function WorkOrdersView(): JSX.Element {
           />
           <select
             value={status}
-            onChange={(e) => setStatus(e.target.value)}
+            onChange={(e) => setStatus(e.target.value as Status | "")}
             className="rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-sm"
             aria-label="Filter by status"
           >
-            <option value="">All (approved / normal flow)</option>
-            <option value="awaiting_approval">Awaiting approval</option>
-            <option value="awaiting">Awaiting</option>
-            <option value="queued">Queued</option>
-            <option value="in_progress">In progress</option>
-            <option value="on_hold">On hold</option>
-            <option value="planned">Planned</option>
-            <option value="new">New</option>
+            <option value="">All (completed → invoiced)</option>
             <option value="completed">Completed</option>
-            {/* Billing lifecycle */}
             <option value="ready_to_invoice">Ready to invoice</option>
             <option value="invoiced">Invoiced</option>
           </select>
@@ -225,7 +183,7 @@ export default function WorkOrdersView(): JSX.Element {
       {loading ? (
         <div className="text-neutral-300">Loading…</div>
       ) : rows.length === 0 ? (
-        <div className="text-neutral-400">No work orders found.</div>
+        <div className="text-neutral-400">Nothing here yet.</div>
       ) : (
         <div className="divide-y divide-neutral-800 rounded border border-neutral-800 bg-neutral-900">
           {rows.map((r) => {
@@ -233,7 +191,7 @@ export default function WorkOrdersView(): JSX.Element {
             return (
               <div key={r.id} className="flex items-center gap-3 p-3">
                 <div className="w-28 text-xs text-neutral-400">
-                  {r.created_at ? format(new Date(r.created_at), "PP") : "—"}
+                  {r.updated_at ? format(new Date(r.updated_at), "PP") : "—"}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
@@ -243,14 +201,10 @@ export default function WorkOrdersView(): JSX.Element {
                     >
                       {r.custom_id ? r.custom_id : `#${r.id.slice(0, 8)}`}
                     </Link>
-                    {r.custom_id && (
-                      <span className="text-[10px] rounded border border-neutral-700 px-1 py-0.5 text-neutral-300">
-                        #{r.id.slice(0, 6)}
-                      </span>
-                    )}
-                    <span className={chip(r.status)}>
-                      {(r.status ?? "awaiting").replaceAll("_", " ")}
+                    <span className="text-[10px] rounded border border-neutral-700 px-1 py-0.5 text-neutral-300">
+                      #{r.id.slice(0, 6)}
                     </span>
+                    <span className={chip(r.status)}>{String(r.status ?? "completed").replaceAll("_", " ")}</span>
                   </div>
                   <div className="truncate text-sm text-neutral-300">
                     {r.customers
@@ -267,14 +221,28 @@ export default function WorkOrdersView(): JSX.Element {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Link href={href} className="rounded border border-neutral-700 px-2 py-1 text-sm hover:bg-neutral-800">
-                    Open
-                  </Link>
                   <button
-                    onClick={() => void handleDelete(r.id)}
-                    className="rounded border border-red-600/60 px-2 py-1 text-sm text-red-300 hover:bg-red-900/20"
+                    onClick={() => void handleAiReview(r.id)}
+                    className="rounded border border-neutral-700 px-2 py-1 text-sm hover:bg-neutral-800"
+                    title="Run AI checklist"
                   >
-                    Delete
+                    AI Review
+                  </button>
+                  <button
+                    onClick={() => void handleMarkReady(r.id)}
+                    className="rounded border border-amber-600/60 px-2 py-1 text-sm text-amber-300 hover:bg-amber-900/20 disabled:opacity-50"
+                    disabled={r.status === "invoiced" || r.status === "ready_to_invoice"}
+                    title="Mark as Ready to invoice"
+                  >
+                    Mark Ready
+                  </button>
+                  <button
+                    onClick={() => void handleInvoice(r.id)}
+                    className="rounded border border-green-600/60 px-2 py-1 text-sm text-green-300 hover:bg-green-900/20 disabled:opacity-50"
+                    disabled={r.status === "invoiced"}
+                    title="Create & email Stripe invoice"
+                  >
+                    Invoice
                   </button>
                 </div>
               </div>

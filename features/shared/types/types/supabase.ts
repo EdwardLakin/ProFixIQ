@@ -4774,6 +4774,10 @@ export type Database = {
       is_shop_member: { Args: { p_shop: string }; Returns: boolean }
       is_staff_for_shop: { Args: { _shop: string }; Returns: boolean }
       mark_active: { Args: never; Returns: undefined }
+      recompute_work_order_status: {
+        Args: { p_wo: string }
+        Returns: undefined
+      }
       seed_default_hours: { Args: { shop_id: string }; Returns: undefined }
       send_for_approval: {
         Args: { _line_ids: string[]; _set_wo_status?: boolean; _wo: string }

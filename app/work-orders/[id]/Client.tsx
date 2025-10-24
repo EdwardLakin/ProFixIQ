@@ -6,6 +6,7 @@
  * - UUID or custom_id resolution.
  * - Realtime updates for WO & lines.
  * - Voice context + FocusedJob modal.
+ * - WORK ORDER STATUS: header badge & details cell reflect wo.status exactly.
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -37,7 +38,6 @@ type AllocationRow = DB["public"]["Tables"]["work_order_part_allocations"]["Row"
 
 const looksLikeUuid = (s: string) => s.includes("-") && s.length >= 36;
 
-/** Normalize a custom id like WC00003 → {prefix:"WC", n:3}. */
 function splitCustomId(raw: string): { prefix: string; n: number | null } {
   const m = raw.toUpperCase().match(/^([A-Z]+)\s*0*?(\d+)?$/);
   if (!m) return { prefix: raw.toUpperCase(), n: null };
@@ -47,7 +47,7 @@ function splitCustomId(raw: string): { prefix: string; n: number | null } {
 
 /* ---------------------------- Badges & Row Tints ---------------------------- */
 
-type DerivedStatus =
+type KnownStatus =
   | "awaiting_approval"
   | "awaiting"
   | "queued"
@@ -55,12 +55,14 @@ type DerivedStatus =
   | "on_hold"
   | "planned"
   | "new"
-  | "completed";
+  | "completed"
+  | "ready_to_invoice"
+  | "invoiced";
 
 const BASE_BADGE =
   "inline-flex items-center whitespace-nowrap rounded border px-2 py-0.5 text-xs font-medium";
 
-const BADGE: Record<DerivedStatus, string> = {
+const BADGE: Record<KnownStatus, string> = {
   awaiting_approval: "bg-blue-900/20 border-blue-500/40 text-blue-300",
   awaiting:          "bg-sky-900/20  border-sky-500/40  text-sky-300",
   queued:            "bg-indigo-900/20 border-indigo-500/40 text-indigo-300",
@@ -69,10 +71,12 @@ const BADGE: Record<DerivedStatus, string> = {
   planned:           "bg-purple-900/20 border-purple-500/40 text-purple-300",
   new:               "bg-neutral-800   border-neutral-600   text-neutral-200",
   completed:         "bg-green-900/20  border-green-500/40  text-green-300",
+  ready_to_invoice:  "bg-emerald-900/20 border-emerald-500/40 text-emerald-300",
+  invoiced:          "bg-teal-900/20    border-teal-500/40    text-teal-300",
 };
 
 const chip = (s: string | null | undefined): string => {
-  const key = (s ?? "awaiting").toLowerCase().replaceAll(" ", "_") as DerivedStatus;
+  const key = (s ?? "awaiting").toLowerCase().replaceAll(" ", "_") as KnownStatus;
   return `${BASE_BADGE} ${BADGE[key] ?? BADGE.awaiting}`;
 };
 
@@ -98,59 +102,27 @@ const statusRowTint: Record<string, string> = {
   new: "bg-neutral-950",
 };
 
-/** Derive a WO header status from the parent status + line statuses. */
-function deriveWorkOrderStatus(woStatus: string | null, lines: WorkOrderLine[]): DerivedStatus {
-  const norm = (woStatus ?? "awaiting").toLowerCase().replaceAll(" ", "_") as DerivedStatus;
-
-  // If any job is actively in progress, surface that for the header.
-  if (lines.some((l) => (l.status ?? "").toLowerCase().replaceAll(" ", "_") === "in_progress")) {
-    return "in_progress";
-  }
-
-  // Otherwise prefer the stored WO status.
-  const allowed: DerivedStatus[] = [
-    "awaiting_approval",
-    "awaiting",
-    "queued",
-    "in_progress",
-    "on_hold",
-    "planned",
-    "new",
-    "completed",
-  ];
-  return (allowed.includes(norm) ? norm : "awaiting") as DerivedStatus;
-}
-
 /* ------------------------------------------------------------------------- */
 
 export default function WorkOrderIdClient(): JSX.Element {
   const params = useParams();
   const routeId = (params?.id as string) || "";
 
-  // Core entities (persist per tab)
   const [wo, setWo] = useTabState<WorkOrder | null>("wo:id:wo", null);
   const [lines, setLines] = useTabState<WorkOrderLine[]>("wo:id:lines", []);
   const [vehicle, setVehicle] = useTabState<Vehicle | null>("wo:id:veh", null);
   const [customer, setCustomer] = useTabState<Customer | null>("wo:id:cust", null);
 
-  // Parts allocations per line
   const [allocsByLine, setAllocsByLine] = useState<Record<string, AllocationRow[]>>({});
-
-  // UI
   const [loading, setLoading] = useState<boolean>(false);
   const [viewError, setViewError] = useState<string | null>(null);
 
-  // auth/user (used for banner + uploads)
   const [currentUserId, setCurrentUserId] = useTabState<string | null>("wo:id:uid", null);
   const [, setUserId] = useTabState<string | null>("wo:id:effectiveUid", null);
 
-  // details toggle
   const [showDetails, setShowDetails] = useTabState<boolean>("wo:showDetails", true);
-
-  // focused job modal
   const [focusedJobId, setFocusedJobId] = useState<string | null>(null);
   const [focusedOpen, setFocusedOpen] = useState(false);
-
   const [warnedMissing, setWarnedMissing] = useState(false);
 
   /* ---------------------- AUTH wait ---------------------- */
@@ -317,7 +289,6 @@ export default function WorkOrderIdClient(): JSX.Element {
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "Failed to load work order.";
         setViewError(msg);
-        // eslint-disable-next-line no-console
         console.error("[WO id page] load error:", e);
       } finally {
         setLoading(false);
@@ -326,7 +297,6 @@ export default function WorkOrderIdClient(): JSX.Element {
     [supabase, routeId, warnedMissing, setWo, setLines, setVehicle, setCustomer],
   );
 
-  // Only fetch when we know we have a user
   useEffect(() => {
     if (!routeId || !currentUserId) return;
     void fetchAll();
@@ -361,9 +331,7 @@ export default function WorkOrderIdClient(): JSX.Element {
     return () => {
       try {
         supabase.removeChannel(ch);
-      } catch {
-        /* ignore */
-      }
+      } catch {}
       window.removeEventListener("wo:parts-used", local);
     };
   }, [supabase, wo?.id, fetchAll]);
@@ -383,9 +351,6 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   const createdAt = wo?.created_at ? new Date(wo.created_at) : null;
   const createdAtText = createdAt && !isNaN(createdAt.getTime()) ? format(createdAt, "PPpp") : "—";
-
-  // Derived header status (reflect lines immediately)
-  const headerStatus: DerivedStatus = deriveWorkOrderStatus(wo?.status ?? null, lines);
 
   /* -------------------------- UI -------------------------- */
   if (!routeId) return <div className="p-6 text-red-500">Missing work order id.</div>;
@@ -441,8 +406,9 @@ export default function WorkOrderIdClient(): JSX.Element {
                   <h1 className="text-2xl font-semibold">
                     Work Order {wo.custom_id || `#${wo.id.slice(0, 8)}`}
                   </h1>
-                  <span className={chip(headerStatus)}>
-                    {headerStatus.replaceAll("_", " ")}
+                  {/* Authoritative work order status */}
+                  <span className={chip(wo.status)}>
+                    {(wo.status ?? "awaiting").replaceAll("_", " ")}
                   </span>
                 </div>
               </div>

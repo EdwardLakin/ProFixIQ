@@ -70,13 +70,15 @@ export const TILES: Tile[] = [
     roles: ["owner", "admin", "manager", "advisor", "mechanic"],
     scopes: ["work_orders", "all"],
   },
-  {
-    href: "/work-orders",
-    title: "Tech View",
-    subtitle: "Browse & manage",
-    roles: ["advisor", "manager", "owner", "admin"],
-    scopes: ["work_orders", "all"],
-  },
+  // NEW: Billing (Ready to invoice)
+{
+  href: "/billing",
+  title: "Billing",
+  subtitle: "Ready to invoice",
+  roles: ["advisor", "manager", "owner", "admin"],
+  scopes: ["work_orders", "all"],
+},
+  
 
   // --- Inspections ---
   {
