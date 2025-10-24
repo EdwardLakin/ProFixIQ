@@ -1,4 +1,3 @@
-// app/api/work-orders/[id]/invoice/route.ts
 import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
@@ -8,92 +7,108 @@ import type { Database } from "@shared/types/types/supabase";
 type DB = Database;
 
 function getIdFromUrl(url: string): string | null {
-  const parts = new URL(url).pathname.split("/");
-  return parts.length >= 5 ? parts[3] : null; // ["", "api", "work-orders", "<id>", "invoice"]
+  const parts = new URL(url).pathname.split("/"); // ["", "api", "work-orders", "<id>", "invoice"]
+  return parts.length >= 5 ? parts[3] : null;
+}
+
+function isError(x: unknown): x is Error {
+  return typeof x === "object" && x !== null && "message" in x;
 }
 
 export async function POST(req: Request) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
   const woId = getIdFromUrl(req.url);
-  if (!woId) {
-    return NextResponse.json({ ok: false, error: "Missing work order id" }, { status: 400 });
-  }
+  if (!woId) return NextResponse.json({ ok: false, error: "Missing work order id" }, { status: 400 });
 
   try {
-    const stripeSecret = process.env.STRIPE_SECRET_KEY;
-    if (!stripeSecret) throw new Error("Missing STRIPE_SECRET_KEY");
+    const key = process.env.STRIPE_SECRET_KEY;
+    if (!key) throw new Error("Missing STRIPE_SECRET_KEY");
+    const stripe = new Stripe(key, { apiVersion: "2024-04-10" as Stripe.LatestApiVersion });
 
-    const stripe = new Stripe(stripeSecret, {
-      apiVersion: "2024-04-10" as Stripe.LatestApiVersion,
-    });
-
-    const { data: wo } = await supabase
-      .from("work_orders")
-      .select("*")
-      .eq("id", woId)
-      .maybeSingle();
+    // Work order
+    const { data: wo, error: woErr } = await supabase.from("work_orders").select("*").eq("id", woId).maybeSingle();
+    if (woErr) throw woErr;
     if (!wo) return NextResponse.json({ ok: false, error: "Work order not found" }, { status: 404 });
 
-    const { data: cust } = await supabase
+    // Customer
+    if (!wo.customer_id) {
+      return NextResponse.json({ ok: false, error: "Work order has no customer" }, { status: 400 });
+    }
+    const { data: cust, error: custErr } = await supabase
       .from("customers")
       .select("first_name,last_name,email")
-      .eq("id", wo.customer_id!)
+      .eq("id", wo.customer_id)
       .maybeSingle();
-    if (!cust?.email) return NextResponse.json({ ok: false, error: "Customer email required" }, { status: 400 });
+    if (custErr) throw custErr;
+    if (!cust?.email) {
+      return NextResponse.json({ ok: false, error: "Customer email required" }, { status: 400 });
+    }
 
-    const { data: lines } = await supabase
+    // Lines
+    const { data: lines, error: lnErr } = await supabase
       .from("work_order_lines")
       .select("*")
       .eq("work_order_id", wo.id);
+    if (lnErr) throw lnErr;
 
+    // Build labor items
     const laborRate = 120;
-    const invoiceItems = [];
-
+    const laborItems: { description: string; unit_amount: number; quantity: number }[] = [];
     for (const ln of lines ?? []) {
       const hours = typeof ln.labor_time === "number" ? ln.labor_time : 0;
       if (hours > 0) {
-        invoiceItems.push({
-          currency: "usd",
-          description: `${ln.job_type ?? "job"} — ${ln.description ?? ln.complaint ?? "labor"}`.replaceAll("_", " "),
+        laborItems.push({
+          description: `${String(ln.job_type ?? "job").replaceAll("_", " ")} — ${ln.description ?? ln.complaint ?? "labor"}`,
           unit_amount: Math.round(laborRate * 100),
           quantity: hours,
         });
       }
     }
-
-    if (!invoiceItems.length) {
-      return NextResponse.json({ ok: false, error: "No billable labor found" }, { status: 400 });
+    if (laborItems.length === 0) {
+      return NextResponse.json({ ok: false, error: "No billable labor found. Add hours to at least one line." }, { status: 400 });
     }
 
+    // Stripe customer
     const customer = await stripe.customers.create({
       email: cust.email,
-      name: [cust.first_name, cust.last_name].filter(Boolean).join(" "),
+      name: [cust.first_name ?? "", cust.last_name ?? ""].filter(Boolean).join(" ") || undefined,
+      metadata: { profix_work_order_id: wo.id },
     });
 
+    // Draft invoice
     const invoice = await stripe.invoices.create({
       customer: customer.id,
       auto_advance: true,
       collection_method: "send_invoice",
       days_until_due: 7,
+      metadata: { profix_work_order_id: wo.id },
     });
 
-    for (const ii of invoiceItems) {
-      await stripe.invoiceItems.create({ ...ii, customer: customer.id });
+    // Attach items
+    for (const item of laborItems) {
+      await stripe.invoiceItems.create({
+        currency: "usd",
+        customer: customer.id,
+        description: item.description,
+        unit_amount: item.unit_amount,
+        quantity: item.quantity,
+      });
     }
 
+    // Finalize + email
     const finalized = await stripe.invoices.finalizeInvoice(invoice.id);
     await stripe.invoices.sendInvoice(finalized.id);
 
-    await supabase
+    // Persist state
+    const { error: updErr } = await supabase
       .from("work_orders")
-      .update({
-        status: "invoiced",
-        stripe_invoice_id: finalized.id,
-      })
+      .update({ status: "invoiced", stripe_invoice_id: finalized.id })
       .eq("id", wo.id);
+    if (updErr) throw updErr;
 
     return NextResponse.json({ ok: true, stripeInvoiceId: finalized.id });
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e.message ?? "Invoice failed" }, { status: 500 });
+  } catch (e: unknown) {
+    const msg = isError(e) ? e.message : "Failed to create/send invoice";
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
 }
