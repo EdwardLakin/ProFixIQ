@@ -1,3 +1,4 @@
+// app/api/work-orders/[id]/ai-review/route.ts
 import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
@@ -5,14 +6,9 @@ import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 
-// Next expects the second arg to be the *context* object.
-interface RouteContext {
-  params: { id: string };
-}
-
-export async function POST(_req: Request, context: RouteContext) {
+export async function POST(_req: Request, { params }: { params: { id: string } }) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
-  const woId = context.params.id;
+  const woId = params.id;
 
   // Load WO
   const { data: wo, error: woErr } = await supabase
@@ -53,7 +49,6 @@ export async function POST(_req: Request, context: RouteContext) {
         message: `Line not completed: ${ln.description ?? ln.complaint ?? "job"}`,
       });
     }
-    // optional NA flags if present in your schema
     const causeNA = (ln as unknown as { cause_marked_na?: boolean }).cause_marked_na === true;
     const corrNA = (ln as unknown as { correction_marked_na?: boolean }).correction_marked_na === true;
 
@@ -81,7 +76,6 @@ export async function POST(_req: Request, context: RouteContext) {
     }
   }
 
-  // Customer email present?
   if (!wo.customer_id) {
     issues.push({ kind: "missing_customer", message: "Missing customer on WO" });
   } else {
