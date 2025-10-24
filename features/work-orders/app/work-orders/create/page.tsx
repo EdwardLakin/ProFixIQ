@@ -195,7 +195,7 @@ export default function CreateWorkOrderPage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // 🔸 NEW: read profile.shop_id early so autocomplete is scoped before WO exists
-  const [, setCurrentShopId] = useState<string | null>(null);
+  const [currentShopId, setCurrentShopId] = useState<string | null>(null); // <-- keep the value
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -262,7 +262,7 @@ export default function CreateWorkOrderPage() {
   function getInitials(first?: string | null, last?: string | null, fallback?: string | null) {
     const f = (first ?? "").trim();
     const l = (last ?? "").trim();
-    if (f || l) return `${f[0] ?? ""}${l[0] ?? ""}`.toUpperCase() || "WO";
+    if (f || l ) return `${f[0] ?? ""}${[0] ?? ""}`.toUpperCase() || "WO";
     const fb = (fallback ?? "").trim();
     if (fb.includes("@")) return fb.split("@")[0].slice(0, 2).toUpperCase() || "WO";
     return fb.slice(0, 2).toUpperCase() || "WO";
@@ -914,20 +914,20 @@ export default function CreateWorkOrderPage() {
           <section className="card">
             <h2 className="font-header text-lg mb-3">Customer &amp; Vehicle</h2>
             <CustomerVehicleForm
-  customer={customer}
-  vehicle={vehicle}
-  saving={savingCv}
-  workOrderExists={!!wo?.id}
-  shopId={wo?.shop_id ?? null}
-  handlers={{
-    onCustomerChange,
-    onVehicleChange,
-    onSave: handleSaveCustomerVehicle,
-    onClear: handleClearForm,
-    onCustomerSelected: (id: string) => setCustomerId(id),
-    onVehicleSelected: (id: string) => setVehicleId(id),
-  }}
-/>
+              customer={customer}
+              vehicle={vehicle}
+              saving={savingCv}
+              workOrderExists={!!wo?.id}
+              shopId={wo?.shop_id ?? currentShopId}   
+              handlers={{
+                onCustomerChange,
+                onVehicleChange,
+                onSave: handleSaveCustomerVehicle,
+                onClear: handleClearForm,
+                onCustomerSelected: (id: string) => setCustomerId(id),
+                onVehicleSelected: (id: string) => setVehicleId(id),
+              }}
+            />
 
             {/* Local buttons row */}
             <div className="mt-3 flex flex-wrap items-center gap-2">
