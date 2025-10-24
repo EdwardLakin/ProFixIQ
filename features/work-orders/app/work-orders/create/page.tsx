@@ -194,6 +194,17 @@ export default function CreateWorkOrderPage() {
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
+  // 🔸 NEW: read profile.shop_id early so autocomplete is scoped before WO exists
+  const [, setCurrentShopId] = useState<string | null>(null);
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user?.id) return;
+      const { data } = await supabase.from("profiles").select("shop_id").eq("id", user.id).maybeSingle();
+      setCurrentShopId(data?.shop_id ?? null);
+    })();
+  }, [supabase]);
+
   // Mount guard
   const isMounted = useRef(false);
 
@@ -541,7 +552,7 @@ export default function CreateWorkOrderPage() {
             .eq("id", wo.id)
             .select("*")
             .single();
-        if (updErr) throw updErr;
+          if (updErr) throw updErr;
           setWo(updated);
         }
         await fetchLines();
@@ -622,7 +633,7 @@ export default function CreateWorkOrderPage() {
       data: { user },
     } = await supabase.auth.getUser();
     const uploader = user?.id ?? null;
-    const currentShopId = wo?.shop_id ?? null;
+    const currentShopIdForMedia = wo?.shop_id ?? null;
 
     const upOne = async (bucket: "vehicle-photos" | "vehicle-docs", f: File, mediaType: "photo" | "document") => {
       const key = `veh_${vId}/${Date.now()}_${f.name}`;
@@ -636,7 +647,7 @@ export default function CreateWorkOrderPage() {
         type: mediaType,
         storage_path: key,
         uploaded_by: uploader,
-        shop_id: currentShopId, // satisfy vehicle_media shop policy
+        shop_id: currentShopIdForMedia, // satisfy vehicle_media shop policy
       });
       if (rowErr) failed += 1;
       else uploaded += 1;
@@ -903,14 +914,20 @@ export default function CreateWorkOrderPage() {
           <section className="card">
             <h2 className="font-header text-lg mb-3">Customer &amp; Vehicle</h2>
             <CustomerVehicleForm
-              customer={customer}
-              vehicle={vehicle}
-              onCustomerChange={onCustomerChange}
-              onVehicleChange={onVehicleChange}
-              onSave={handleSaveCustomerVehicle}
-              saving={savingCv}
-              workOrderExists={!!wo?.id}
-            />
+  customer={customer}
+  vehicle={vehicle}
+  saving={savingCv}
+  workOrderExists={!!wo?.id}
+  shopId={wo?.shop_id ?? null}
+  handlers={{
+    onCustomerChange,
+    onVehicleChange,
+    onSave: handleSaveCustomerVehicle,
+    onClear: handleClearForm,
+    onCustomerSelected: (id: string) => setCustomerId(id),
+    onVehicleSelected: (id: string) => setVehicleId(id),
+  }}
+/>
 
             {/* Local buttons row */}
             <div className="mt-3 flex flex-wrap items-center gap-2">

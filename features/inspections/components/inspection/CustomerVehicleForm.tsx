@@ -1,34 +1,224 @@
-import React from "react";
+"use client";
+
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
 import {
   SessionCustomer as CustomerInfo,
   SessionVehicle as VehicleInfo,
 } from "@inspections/lib/inspection/types";
 
+/** Local, narrow shapes (avoid exporting DB row types in props) */
+type CustomerRow = {
+  id: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  city?: string | null;
+  province?: string | null;
+  postal_code?: string | null;
+};
+
+type VehicleRow = {
+  id: string;
+  vin?: string | null;
+  year?: number | null;
+  make?: string | null;
+  model?: string | null;
+  license_plate?: string | null;
+  mileage?: string | null;
+  unit_number?: string | null;
+  color?: string | null;
+  engine_hours?: number | null;
+  customer_id?: string | null;
+};
+
+/** ✅ Public props are now fully serializable */
 interface Props {
   customer: CustomerInfo;
   vehicle: VehicleInfo;
-  onCustomerChange: (field: keyof CustomerInfo, value: string | null) => void;
-  onVehicleChange: (field: keyof VehicleInfo, value: string | null) => void;
 
-  /** Optional: “Save & Continue” to create/link the WO early */
-  onSave?: () => void;
+  /** Optional UI bits */
   saving?: boolean;
   workOrderExists?: boolean;
+  shopId?: string | null;
 
-  /** NEW: optional Clear action (parent resets fields/ids/state) */
-  onClear?: () => void;
+  /** One object for callbacks; typed as unknown to keep props serializable */
+  handlers?: unknown;
 }
+
+/** Internal view of handlers (kept private to this file) */
+type Handlers = {
+  onCustomerChange?: (field: keyof CustomerInfo, value: string | null) => void;
+  onVehicleChange?: (field: keyof VehicleInfo, value: string | null) => void;
+  onSave?: () => void;
+  onClear?: () => void;
+  onCustomerSelected?: (customerId: string) => void;
+  onVehicleSelected?: (vehicleId: string) => void;
+};
+
+/* -------------------------------------------------------------------------- */
+/* Autocomplete: First Name                                                   */
+/* -------------------------------------------------------------------------- */
+
+function FirstNameAutocomplete({
+  q,
+  shopId,
+  onPick,
+}: {
+  q: string;
+  shopId?: string | null;
+  onPick: (c: CustomerRow) => void;
+}) {
+  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+  const [rows, setRows] = useState<CustomerRow[]>([]);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const t = window.setTimeout(async () => {
+      if (!q?.trim() || !shopId) {
+        setRows([]);
+        setOpen(false);
+        return;
+      }
+      setBusy(true);
+      try {
+        const like = `${q.trim()}%`;
+        const { data, error } = await supabase
+          .from("customers")
+          .select("id, first_name, last_name, phone, email")
+          .eq("shop_id", shopId)
+          .ilike("first_name", like)
+          .order("updated_at", { ascending: false })
+          .limit(12);
+
+        if (error) throw error;
+        const arr = (data ?? []) as CustomerRow[];
+        setRows(arr);
+        setOpen(arr.length > 0);
+      } catch {
+        setRows([]);
+        setOpen(false);
+      } finally {
+        setBusy(false);
+      }
+    }, 180);
+
+    return () => window.clearTimeout(t);
+  }, [q, shopId, supabase]);
+
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      if (!wrapRef.current) return;
+      if (!wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  if (!open && !busy) return null;
+
+  return (
+    <div ref={wrapRef} className="relative">
+      {open && (
+        <div className="absolute z-20 mt-1 w-full overflow-hidden rounded border border-neutral-700 bg-neutral-900 shadow">
+          {rows.map((c) => {
+            const name = [c.first_name, c.last_name].filter(Boolean).join(" ") || "Unnamed";
+            const sub = [c.phone, c.email].filter(Boolean).join(" · ");
+            return (
+              <button
+                key={c.id}
+                type="button"
+                className="block w-full cursor-pointer px-3 py-2 text-left hover:bg-neutral-800"
+                onClick={() => {
+                  onPick(c);
+                  setOpen(false);
+                }}
+              >
+                <div className="truncate">{name}</div>
+                <div className="truncate text-xs text-neutral-400">{sub || "—"}</div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {busy && <div className="p-2 text-xs text-neutral-400">Searching…</div>}
+    </div>
+  );
+}
+
+/* ========================================================================== */
+/*                                Form Component                              */
+/* ========================================================================== */
 
 export default function CustomerVehicleForm({
   customer,
   vehicle,
-  onCustomerChange,
-  onVehicleChange,
-  onSave,
   saving = false,
   workOrderExists = false,
-  onClear,
+  shopId,
+  handlers,
 }: Props) {
+  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+
+  // Safely unwrap handlers (no-ops by default)
+  const {
+    onCustomerChange = () => {},
+    onVehicleChange = () => {},
+    onSave,
+    onClear,
+    onCustomerSelected,
+    onVehicleSelected,
+  } = (handlers as Handlers) ?? {};
+
+  async function handlePickedCustomer(c: CustomerRow) {
+    onCustomerChange("first_name", c.first_name ?? null);
+    onCustomerChange("last_name", c.last_name ?? null);
+    onCustomerChange("phone", c.phone ?? null);
+    onCustomerChange("email", c.email ?? null);
+
+    try {
+      const { data } = await supabase.from("customers").select("*").eq("id", c.id).maybeSingle();
+      if (data) {
+        const d = data as CustomerRow;
+        onCustomerChange("address", d.address ?? null);
+        onCustomerChange("city", d.city ?? null);
+        onCustomerChange("province", d.province ?? null);
+        onCustomerChange("postal_code", d.postal_code ?? null);
+      }
+    } catch {}
+
+    onCustomerSelected?.(c.id);
+
+    try {
+      const { data: vehs } = await supabase
+        .from("vehicles")
+        .select("id, vin, year, make, model, license_plate, mileage, unit_number, color, engine_hours")
+        .eq("customer_id", c.id)
+        .order("updated_at", { ascending: false })
+        .limit(2);
+
+      const arr = (vehs ?? []) as VehicleRow[];
+      if (arr.length === 1) {
+        const v = arr[0];
+        onVehicleChange("vin", (v.vin ?? "") || null);
+        onVehicleChange("year", v.year != null ? String(v.year) : null);
+        onVehicleChange("make", v.make ?? null);
+        onVehicleChange("model", v.model ?? null);
+        onVehicleChange("license_plate", v.license_plate ?? null);
+        onVehicleChange("mileage", (v.mileage ?? "") || null);
+        onVehicleChange("unit_number", v.unit_number ?? null);
+        onVehicleChange("color", v.color ?? null);
+        onVehicleChange("engine_hours", v.engine_hours != null ? String(v.engine_hours) : null);
+        onVehicleSelected?.(v.id);
+      }
+    } catch {}
+  }
+
   return (
     <div className="w-full max-w-3xl mx-auto text-white space-y-8">
       {/* Customer */}
@@ -37,12 +227,21 @@ export default function CustomerVehicleForm({
       </h2>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <input
-          className="input"
-          placeholder="First Name"
-          value={customer.first_name ?? ""}
-          onChange={(e) => onCustomerChange("first_name", e.target.value || null)}
-        />
+        {/* First name + autocomplete */}
+        <div className="sm:col-span-1">
+          <input
+            className="input"
+            placeholder="First Name"
+            value={customer.first_name ?? ""}
+            onChange={(e) => onCustomerChange("first_name", e.target.value || null)}
+          />
+          <FirstNameAutocomplete
+            q={customer.first_name ?? ""}
+            shopId={shopId ?? null}
+            onPick={handlePickedCustomer}
+          />
+        </div>
+
         <input
           className="input"
           placeholder="Last Name"
