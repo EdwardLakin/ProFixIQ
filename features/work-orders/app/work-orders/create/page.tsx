@@ -614,10 +614,23 @@ export default function CreateWorkOrderPage() {
     setUploadSummary(null);
 
     try {
-      if (!wo?.id) {
-        await handleSaveCustomerVehicle();
+      // 🔧 Always persist the current Customer & Vehicle to the WO
+      await handleSaveCustomerVehicle();
+
+      // Re-fetch authoritative WO ids (defensive)
+      const woId = wo?.id;
+      if (!woId) throw new Error("Could not create work order.");
+
+      const { data: latest, error: latestErr } = await supabase
+        .from("work_orders")
+        .select("id, custom_id, customer_id, vehicle_id")
+        .eq("id", woId)
+        .maybeSingle();
+
+      if (latestErr) throw latestErr;
+      if (!latest?.customer_id || !latest?.vehicle_id) {
+        throw new Error("Please link a customer and vehicle first.");
       }
-      if (!wo?.id) throw new Error("Could not create work order.");
 
       if (vehicleId && (photoFiles.length || docFiles.length)) {
         const summary = await uploadVehicleFiles(vehicleId);
@@ -634,7 +647,7 @@ export default function CreateWorkOrderPage() {
             origin || "https://profixiq.com"
           }/portal/signup?email=${encodeURIComponent(customer.email)}`;
           const { error: fnErr } = await supabase.functions.invoke("send-portal-invite", {
-            body: { email: customer.email, customer_id: customerId, portal_url: portalUrl },
+            body: { email: customer.email, customer_id: latest.customer_id, portal_url: portalUrl },
           });
           if (fnErr) setInviteNotice("Work order created. Failed to send invite email (logged).");
           else setInviteNotice("Work order created. Invite email queued to the customer.");
@@ -643,7 +656,7 @@ export default function CreateWorkOrderPage() {
         }
       }
 
-      router.push(`/work-orders/quote-review?woId=${wo.id}`);
+      router.push(`/work-orders/quote-review?woId=${latest.id}`);
     } catch (ex) {
       const message = ex instanceof Error ? ex.message : "Failed to create work order.";
       setError(message);
