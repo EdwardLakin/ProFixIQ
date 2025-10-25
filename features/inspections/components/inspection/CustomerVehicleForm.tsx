@@ -112,7 +112,6 @@ function FirstNameAutocomplete({
           .from("customers")
           .select("id, first_name, last_name, phone, email, created_at")
           .eq("shop_id", shopId)
-          // 🔎 search ONLY first_name / last_name
           .or(`first_name.ilike.${like},last_name.ilike.${like}`)
           .order("created_at", { ascending: false })
           .limit(12);
@@ -146,8 +145,7 @@ function FirstNameAutocomplete({
         <div className="absolute z-20 mt-1 w-full overflow-hidden rounded border border-neutral-700 bg-neutral-900 shadow">
           {busy && <div className="px-3 py-2 text-xs text-neutral-400">Searching…</div>}
           {rows.map((c) => {
-            const display =
-              [c.first_name, c.last_name].filter(Boolean).join(" ") || "Unnamed";
+            const display = [c.first_name, c.last_name].filter(Boolean).join(" ") || "Unnamed";
             const sub = [c.phone, c.email].filter(Boolean).join(" · ");
             return (
               <button
@@ -232,17 +230,22 @@ export default function CustomerVehicleForm({
     // let parent capture id
     onCustomerSelected?.(c.id);
 
-    // If exactly one vehicle for this customer, fill it
+    // Fetch vehicles for this customer (scoped to the same shop)
     try {
       const { data: vehs } = await supabase
         .from("vehicles")
-        .select("id, vin, year, make, model, license_plate, mileage, unit_number, color, engine_hours")
+        .select(
+          "id, vin, year, make, model, license_plate, mileage, unit_number, color, engine_hours, created_at"
+        )
         .eq("customer_id", c.id)
-        .order("updated_at", { ascending: false })
-        .limit(2);
+        .eq("shop_id", shopId)                    // ✅ ensure shop matches (RLS + correctness)
+        .order("created_at", { ascending: false }) // most recent first
+        .limit(5);
 
       const arr = (vehs ?? []) as VehicleRow[];
-      if (arr.length === 1) {
+
+      // ✅ Auto-fill with the most recent vehicle if any exist
+      if (arr.length >= 1) {
         const v = arr[0];
         onVehicleChange("vin", (v.vin ?? "") || null);
         onVehicleChange("year", v.year != null ? String(v.year) : null);
@@ -255,6 +258,7 @@ export default function CustomerVehicleForm({
         onVehicleChange("engine_hours", v.engine_hours != null ? String(v.engine_hours) : null);
         onVehicleSelected?.(v.id);
       }
+      // else: leave vehicle fields as-is; user can type or add by VIN
     } catch {
       /* ignore */
     }
@@ -420,7 +424,7 @@ export default function CustomerVehicleForm({
             </button>
           )}
 
-          {/* 🔵 DEBUG SHOP (Option B): tap to see auth uid, profile shop, and form shop */}
+          {/* 🔵 DEBUG SHOP */}
           <button
             type="button"
             className="rounded border border-blue-600 px-3 py-1 text-xs text-blue-300 hover:bg-blue-900/20"
@@ -429,7 +433,6 @@ export default function CustomerVehicleForm({
                 const { data: { user } } = await supabase.auth.getUser();
                 const uid = user?.id ?? null;
 
-                // If we have a uid, try to read profile.shop_id by user_id
                 let profileShop: string | null = null;
                 if (uid) {
                   const prof = await supabase
