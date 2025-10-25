@@ -430,6 +430,46 @@ export default function CustomerVehicleForm({
             </button>
           )}
 
+          {/* 🔵 DEBUG SHOP (Option B): tap to see auth uid, profile shop, and form shop */}
+          <button
+            type="button"
+            className="rounded border border-blue-600 px-3 py-1 text-xs text-blue-300 hover:bg-blue-900/20"
+            onClick={async () => {
+              try {
+                const { data: { user } } = await supabase.auth.getUser();
+                const uid = user?.id ?? null;
+
+                // If we have a uid, try to read profile.shop_id by user_id
+                let profileShop: string | null = null;
+                if (uid) {
+                  const prof = await supabase
+                    .from("profiles")
+                    .select("user_id, shop_id")
+                    .eq("user_id", uid)
+                    .maybeSingle();
+
+                  profileShop = prof.data?.shop_id ?? null;
+                }
+
+                alert(
+                  JSON.stringify(
+                    {
+                      auth_uid: uid,
+                      profile_shop_id: profileShop,
+                      form_shop_id: shopId ?? null,
+                    },
+                    null,
+                    2
+                  )
+                );
+              } catch (err) {
+                alert(`Debug failed: ${(err as Error)?.message || "unknown error"}`);
+              }
+            }}
+          >
+            Debug Shop
+          </button>
+
           {workOrderExists ? (
             <span className="text-xs text-neutral-400">
               Work order already exists — you can add lines now.
