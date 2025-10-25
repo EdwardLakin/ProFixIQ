@@ -197,18 +197,33 @@ export default function CreateWorkOrderPage() {
   // 🔸 NEW: read profile.shop_id early so autocomplete is scoped before WO exists
   const [currentShopId, setCurrentShopId] = useState<string | null>(null);
   useEffect(() => {
-    (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user?.id) return;
-      // ✅ profiles.user_id equals auth.uid()
-      const { data } = await supabase
+  (async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user?.id) return;
+
+    // Try user_id first (common), fall back to id just in case
+    let shop: string | null = null;
+
+    const byUserId = await supabase
+      .from("profiles")
+      .select("shop_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (byUserId.data?.shop_id) {
+      shop = byUserId.data.shop_id;
+    } else {
+      const byId = await supabase
         .from("profiles")
         .select("shop_id")
-        .eq("user_id", user.id)
+        .eq("id", user.id)
         .maybeSingle();
-      setCurrentShopId(data?.shop_id ?? null);
-    })();
-  }, [supabase]);
+      shop = byId.data?.shop_id ?? null;
+    }
+
+    setCurrentShopId(shop);
+  })();
+}, [supabase]);
 
   // Mount guard
   const isMounted = useRef(false);
