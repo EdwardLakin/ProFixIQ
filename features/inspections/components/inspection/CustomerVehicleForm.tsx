@@ -11,6 +11,7 @@ import {
 /** Local, narrow shapes (avoid exporting DB row types in props) */
 type CustomerRow = {
   id: string;
+  business_name?: string | null;    // ✅ NEW
   first_name?: string | null;
   last_name?: string | null;
   name?: string | null;             // some imported rows may only have "name"
@@ -34,6 +35,7 @@ type VehicleRow = {
   color?: string | null;
   engine_hours?: number | null;
   customer_id?: string | null;
+  created_at?: string | null;
 };
 
 /** ✅ Public props are serializable */
@@ -54,7 +56,7 @@ interface Props {
 
 /** Internal view of handlers (kept private to this file) */
 type Handlers = {
-  onCustomerChange?: (field: keyof CustomerInfo, value: string | null) => void;
+  onCustomerChange?: (field: keyof CustomerInfo | "business_name", value: string | null) => void; // 👈 allow business_name
   onVehicleChange?: (field: keyof VehicleInfo, value: string | null) => void;
   onSave?: () => void;
   onClear?: () => void;
@@ -72,10 +74,10 @@ function splitNamefallback(n?: string | null): { first: string | null; last: str
 }
 
 /* -------------------------------------------------------------------------- */
-/* Autocomplete: First Name (STRICT same-shop search)                         */
+/* Autocomplete: Customer (business + first/last, STRICT same-shop)           */
 /* -------------------------------------------------------------------------- */
 
-function FirstNameAutocomplete({
+function CustomerAutocomplete({
   q,
   shopId,
   onPick,
@@ -110,9 +112,9 @@ function FirstNameAutocomplete({
         const like = `%${term}%`;
         const { data, error } = await supabase
           .from("customers")
-          .select("id, first_name, last_name, phone, email, created_at")
+          .select("id, business_name, first_name, last_name, phone, email, created_at")
           .eq("shop_id", shopId)
-          .or(`first_name.ilike.${like},last_name.ilike.${like}`)
+          .or(`business_name.ilike.${like},first_name.ilike.${like},last_name.ilike.${like}`)
           .order("created_at", { ascending: false })
           .limit(12);
 
@@ -145,8 +147,9 @@ function FirstNameAutocomplete({
         <div className="absolute z-20 mt-1 w-full overflow-hidden rounded border border-neutral-700 bg-neutral-900 shadow">
           {busy && <div className="px-3 py-2 text-xs text-neutral-400">Searching…</div>}
           {rows.map((c) => {
-            const display = [c.first_name, c.last_name].filter(Boolean).join(" ") || "Unnamed";
-            const sub = [c.phone, c.email].filter(Boolean).join(" · ");
+            const contact = [c.first_name, c.last_name].filter(Boolean).join(" ");
+            const top = c.business_name || contact || "Unnamed";
+            const sub = c.business_name && contact ? contact : [c.phone, c.email].filter(Boolean).join(" · ");
             return (
               <button
                 key={c.id}
@@ -159,7 +162,116 @@ function FirstNameAutocomplete({
                   setOpen(false);
                 }}
               >
-                <div className="truncate">{display}</div>
+                <div className="truncate">{top}</div>
+                <div className="truncate text-xs text-neutral-400">{sub || "—"}</div>
+              </button>
+            );
+          })}
+          {!busy && rows.length === 0 && (
+            <div className="px-3 py-2 text-xs text-neutral-400">No matches</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Autocomplete: Unit # (vehicles of selected customer within same shop)      */
+/* -------------------------------------------------------------------------- */
+
+function UnitNumberAutocomplete({
+  q,
+  shopId,
+  customerId,
+  onPick,
+}: {
+  q: string;
+  shopId: string | null;
+  customerId: string | null;
+  onPick: (v: VehicleRow) => void;
+}) {
+  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+  const [rows, setRows] = useState<VehicleRow[]>([]);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const reqCounter = useRef(0);
+
+  useEffect(() => {
+    const term = (q ?? "").trim();
+
+    if (!term || !shopId || !customerId) {
+      setRows([]);
+      setOpen(false);
+      return;
+    }
+
+    setOpen(true);
+
+    const thisReq = ++reqCounter.current;
+    const t = window.setTimeout(async () => {
+      setBusy(true);
+      try {
+        const like = `%${term}%`;
+        const { data, error } = await supabase
+          .from("vehicles")
+          .select("id, unit_number, license_plate, vin, year, make, model, mileage, color, engine_hours, created_at")
+          .eq("shop_id", shopId)
+          .eq("customer_id", customerId)
+          .or(`unit_number.ilike.${like},license_plate.ilike.${like},vin.ilike.${like},model.ilike.${like}`)
+          .order("created_at", { ascending: false })
+          .limit(12);
+
+        if (error) throw error;
+        if (thisReq === reqCounter.current) setRows((data ?? []) as VehicleRow[]);
+      } catch {
+        if (thisReq === reqCounter.current) setRows([]);
+      } finally {
+        if (thisReq === reqCounter.current) setBusy(false);
+      }
+    }, 150);
+
+    return () => window.clearTimeout(t);
+  }, [q, shopId, customerId, supabase]);
+
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      if (!wrapRef.current) return;
+      if (!wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  if (!open && !busy) return null;
+
+  return (
+    <div ref={wrapRef} className="relative">
+      {(open || busy) && (
+        <div className="absolute z-20 mt-1 w-full overflow-hidden rounded border border-neutral-700 bg-neutral-900 shadow">
+          {busy && <div className="px-3 py-2 text-xs text-neutral-400">Searching…</div>}
+          {rows.map((v) => {
+            const title =
+              v.unit_number ||
+              v.license_plate ||
+              v.vin?.slice(-8) ||
+              [v.year, v.make, v.model].filter(Boolean).join(" ") ||
+              "Vehicle";
+            const sub = [v.license_plate, v.vin?.slice(-8), [v.year, v.make, v.model].filter(Boolean).join(" ")].filter(Boolean).join(" · ");
+            return (
+              <button
+                key={v.id}
+                type="button"
+                className="block w-full cursor-pointer px-3 py-2 text-left hover:bg-neutral-800"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onPick(v);
+                  setOpen(false);
+                }}
+              >
+                <div className="truncate">{title}</div>
                 <div className="truncate text-xs text-neutral-400">{sub || "—"}</div>
               </button>
             );
@@ -197,16 +309,19 @@ export default function CustomerVehicleForm({
     onVehicleSelected,
   } = (handlers as Handlers) ?? {};
 
+  const [currentCustomerId, setCurrentCustomerId] = useState<string | null>(null);
+
   async function handlePickedCustomer(c: CustomerRow) {
     const fallback = splitNamefallback(c.name);
 
     // Fill immediate customer fields (fallback to "name" when needed)
+    (onCustomerChange as any)("business_name", c.business_name ?? null); // ✅ business name
     onCustomerChange("first_name", (c.first_name ?? fallback.first) ?? null);
     onCustomerChange("last_name", (c.last_name ?? fallback.last) ?? null);
     onCustomerChange("phone", c.phone ?? null);
     onCustomerChange("email", c.email ?? null);
 
-    // Fill remaining fields
+    // Fill remaining fields (also ensure business_name)
     try {
       const { data } = await supabase
         .from("customers")
@@ -216,6 +331,7 @@ export default function CustomerVehicleForm({
       if (data) {
         const d = data as CustomerRow;
         const fb = splitNamefallback(d.name);
+        (onCustomerChange as any)("business_name", d.business_name ?? null);
         onCustomerChange("first_name", (d.first_name ?? fb.first) ?? null);
         onCustomerChange("last_name", (d.last_name ?? fb.last) ?? null);
         onCustomerChange("address", d.address ?? null);
@@ -227,10 +343,11 @@ export default function CustomerVehicleForm({
       /* ignore */
     }
 
-    // let parent capture id
+    // let parent capture id, and keep locally for Unit# selector
     onCustomerSelected?.(c.id);
+    setCurrentCustomerId(c.id);
 
-    // Fetch vehicles for this customer (scoped to the same shop)
+    // If they only have one vehicle, auto-fill it (keep your existing UX)
     try {
       const { data: vehs } = await supabase
         .from("vehicles")
@@ -238,14 +355,12 @@ export default function CustomerVehicleForm({
           "id, vin, year, make, model, license_plate, mileage, unit_number, color, engine_hours, created_at"
         )
         .eq("customer_id", c.id)
-        .eq("shop_id", shopId)                    // ✅ ensure shop matches (RLS + correctness)
-        .order("created_at", { ascending: false }) // most recent first
-        .limit(5);
+        .eq("shop_id", shopId)
+        .order("created_at", { ascending: false })
+        .limit(2);
 
       const arr = (vehs ?? []) as VehicleRow[];
-
-      // ✅ Auto-fill with the most recent vehicle if any exist
-      if (arr.length >= 1) {
+      if (arr.length === 1) {
         const v = arr[0];
         onVehicleChange("vin", (v.vin ?? "") || null);
         onVehicleChange("year", v.year != null ? String(v.year) : null);
@@ -258,7 +373,7 @@ export default function CustomerVehicleForm({
         onVehicleChange("engine_hours", v.engine_hours != null ? String(v.engine_hours) : null);
         onVehicleSelected?.(v.id);
       }
-      // else: leave vehicle fields as-is; user can type or add by VIN
+      // If 0 or >1, Unit # selector will let the user pick.
     } catch {
       /* ignore */
     }
@@ -272,7 +387,22 @@ export default function CustomerVehicleForm({
       </h2>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {/* First name + autocomplete */}
+        {/* ✅ Business name (above first/last) + autocomplete (same component) */}
+        <div className="sm:col-span-2">
+          <input
+            className="input"
+            placeholder="Business Name (optional)"
+            value={(customer as any).business_name ?? ""}
+            onChange={(e) => (onCustomerChange as any)("business_name", e.target.value || null)}
+          />
+          <CustomerAutocomplete
+            q={(customer as any).business_name ?? ""}
+            shopId={shopId}
+            onPick={handlePickedCustomer}
+          />
+        </div>
+
+        {/* First name + customer autocomplete (also searches business name) */}
         <div className="sm:col-span-1">
           <input
             className="input"
@@ -280,20 +410,27 @@ export default function CustomerVehicleForm({
             value={customer.first_name ?? ""}
             onChange={(e) => onCustomerChange("first_name", e.target.value || null)}
           />
-          {/* 🔒 Strict same-shop search (requires shopId) */}
-          <FirstNameAutocomplete
+          <CustomerAutocomplete
             q={customer.first_name ?? ""}
             shopId={shopId}
             onPick={handlePickedCustomer}
           />
         </div>
 
-        <input
-          className="input"
-          placeholder="Last Name"
-          value={customer.last_name ?? ""}
-          onChange={(e) => onCustomerChange("last_name", e.target.value || null)}
-        />
+        <div className="sm:col-span-1">
+          <input
+            className="input"
+            placeholder="Last Name"
+            value={customer.last_name ?? ""}
+            onChange={(e) => onCustomerChange("last_name", e.target.value || null)}
+          />
+          <CustomerAutocomplete
+            q={customer.last_name ?? ""}
+            shopId={shopId}
+            onPick={handlePickedCustomer}
+          />
+        </div>
+
         <input
           className="input"
           placeholder="Phone"
@@ -339,6 +476,33 @@ export default function CustomerVehicleForm({
       </h2>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* ✅ Unit # with selector (works after a customer has been selected) */}
+        <div className="sm:col-span-1">
+          <input
+            className="input"
+            placeholder="Unit #"
+            value={vehicle.unit_number ?? ""}
+            onChange={(e) => onVehicleChange("unit_number", e.target.value || null)}
+          />
+          <UnitNumberAutocomplete
+            q={vehicle.unit_number ?? ""}
+            shopId={shopId}
+            customerId={currentCustomerId}
+            onPick={(v) => {
+              onVehicleChange("unit_number", v.unit_number ?? null);
+              onVehicleChange("vin", (v.vin ?? "") || null);
+              onVehicleChange("year", v.year != null ? String(v.year) : null);
+              onVehicleChange("make", v.make ?? null);
+              onVehicleChange("model", v.model ?? null);
+              onVehicleChange("license_plate", v.license_plate ?? null);
+              onVehicleChange("mileage", (v.mileage ?? "") || null);
+              onVehicleChange("color", v.color ?? null);
+              onVehicleChange("engine_hours", v.engine_hours != null ? String(v.engine_hours) : null);
+              onVehicleSelected?.(v.id);
+            }}
+          />
+        </div>
+
         <input
           inputMode="numeric"
           className="input"
@@ -382,12 +546,6 @@ export default function CustomerVehicleForm({
           placeholder="Color"
           value={vehicle.color ?? ""}
           onChange={(e) => onVehicleChange("color", e.target.value || null)}
-        />
-        <input
-          className="input"
-          placeholder="Unit #"
-          value={vehicle.unit_number ?? ""}
-          onChange={(e) => onVehicleChange("unit_number", e.target.value || null)}
         />
         <input
           inputMode="numeric"
