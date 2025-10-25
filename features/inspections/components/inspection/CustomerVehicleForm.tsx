@@ -81,7 +81,7 @@ function FirstNameAutocomplete({
   onPick,
 }: {
   q: string;
-  shopId: string | null; // required for search
+  shopId: string | null;
   onPick: (c: CustomerRow) => void;
 }) {
   const supabase = useMemo(() => createClientComponentClient<Database>(), []);
@@ -91,39 +91,34 @@ function FirstNameAutocomplete({
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const reqCounter = useRef(0);
 
-  // Keep the panel OPEN while typing; only close on clear or outside click.
   useEffect(() => {
     const term = (q ?? "").trim();
 
-    // Close when empty OR when we don't have a shopId OR too short
+    // require 2+ chars and a shop
     if (!term || !shopId || term.length < 2) {
       setRows([]);
       setOpen(false);
       return;
     }
 
-    // Open immediately (avoid flicker), then fetch debounced
     setOpen(true);
 
     const thisReq = ++reqCounter.current;
     const t = window.setTimeout(async () => {
       setBusy(true);
       try {
-        const like = `%${term}%`; // contains match for friendlier finds
-        // If your table DOES NOT have "name", this still works (the or-part will simply ignore it)
+        const like = `%${term}%`;
         const { data, error } = await supabase
           .from("customers")
-          .select("id, first_name, last_name, name, phone, email")
-          .eq("shop_id", shopId) // 🔒 strict same-shop scope
-          .or(`first_name.ilike.${like},last_name.ilike.${like},name.ilike.${like}`)
-          .order("updated_at", { ascending: false })
+          .select("id, first_name, last_name, phone, email, created_at")
+          .eq("shop_id", shopId)
+          // 🔎 search ONLY first_name / last_name
+          .or(`first_name.ilike.${like},last_name.ilike.${like}`)
+          .order("created_at", { ascending: false })
           .limit(12);
 
         if (error) throw error;
-        // Guard against out-of-order responses
-        if (thisReq === reqCounter.current) {
-          setRows((data ?? []) as CustomerRow[]);
-        }
+        if (thisReq === reqCounter.current) setRows((data ?? []) as CustomerRow[]);
       } catch {
         if (thisReq === reqCounter.current) setRows([]);
       } finally {
@@ -134,7 +129,6 @@ function FirstNameAutocomplete({
     return () => window.clearTimeout(t);
   }, [q, shopId, supabase]);
 
-  // Close on outside click
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
       if (!wrapRef.current) return;
@@ -144,7 +138,6 @@ function FirstNameAutocomplete({
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
 
-  // Hide entirely if closed and not searching
   if (!open && !busy) return null;
 
   return (
@@ -153,17 +146,14 @@ function FirstNameAutocomplete({
         <div className="absolute z-20 mt-1 w-full overflow-hidden rounded border border-neutral-700 bg-neutral-900 shadow">
           {busy && <div className="px-3 py-2 text-xs text-neutral-400">Searching…</div>}
           {rows.map((c) => {
-            const fallback = splitNamefallback(c.name);
-            const fn = c.first_name ?? fallback.first;
-            const ln = c.last_name ?? fallback.last;
-            const display = [fn, ln].filter(Boolean).join(" ") || c.name || "Unnamed";
+            const display =
+              [c.first_name, c.last_name].filter(Boolean).join(" ") || "Unnamed";
             const sub = [c.phone, c.email].filter(Boolean).join(" · ");
             return (
               <button
                 key={c.id}
                 type="button"
                 className="block w-full cursor-pointer px-3 py-2 text-left hover:bg-neutral-800"
-                // onMouseDown so the pick wins the blur race
                 onMouseDown={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
