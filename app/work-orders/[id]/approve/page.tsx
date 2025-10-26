@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import SignaturePad, { openSignaturePad } from "@/features/shared/signaturePad/controller";
@@ -14,10 +14,15 @@ type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type Shop = DB["public"]["Tables"]["shops"]["Row"];
 
 export default function ApproveWorkOrderPage() {
-  const params = useParams<{ id: string }>();
-  const id = Array.isArray(params?.id) ? params.id[0] : params?.id;
   const router = useRouter();
+  const search = useSearchParams();
+  const params = useParams<{ id?: string }>();
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+
+  // accept id from path OR from ?woId=
+  const paramId = Array.isArray(params?.id) ? params.id[0] : params?.id ?? null;
+  const queryId = search.get("woId");
+  const id = paramId ?? queryId ?? null;
 
   const [wo, setWo] = useState<WorkOrder | null>(null);
   const [shop, setShop] = useState<Shop | null>(null);
@@ -32,7 +37,11 @@ export default function ApproveWorkOrderPage() {
 
   useEffect(() => {
     (async () => {
-      if (!id) return;
+      if (!id) {
+        setLoading(false);
+        setErr("Missing work order id.");
+        return;
+      }
       setLoading(true);
       setErr(null);
       try {
@@ -88,9 +97,13 @@ export default function ApproveWorkOrderPage() {
   })();
 
   async function handleSubmit(signatureDataUrl?: string) {
-    if (!id) return;
+    if (!id) {
+      setErr("Missing work order id; cannot submit.");
+      return;
+    }
     setSubmitting(true);
     try {
+      // upload signature if provided
       let signatureUrl: string | null = savedSigUrl;
       if (signatureDataUrl) {
         const uploaded = await uploadSignatureImage(signatureDataUrl, id);
@@ -106,7 +119,6 @@ export default function ApproveWorkOrderPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           workOrderId: id,
-          // 🔽 include tenant keys to satisfy RLS on the server insert
           shopId: wo?.shop_id ?? null,
           customerId: wo?.customer_id ?? null,
           approvedLineIds,
