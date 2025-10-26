@@ -22,7 +22,7 @@ import CostEstimateModal from "@/features/work-orders/components/workorders/extr
 import CustomerContactModal from "@/features/work-orders/components/workorders/extras/CustomerContactModal";
 import AddJobModal from "@work-orders/components/workorders/AddJobModal";
 
-// inspection viewer (new) — load client-side only to avoid hydration errors
+// inspection viewer (client-only)
 const InspectionModal = dynamic(
   () => import("@/features/inspections/components/InspectionModal"),
   { ssr: false }
@@ -112,7 +112,7 @@ export default function FocusedJobModal(props: {
   const [openChat, setOpenChat] = useState(false);
   const [openAddJob, setOpenAddJob] = useState(false);
 
-  // inspection modal (new)
+  // inspection modal
   const [inspectionOpen, setInspectionOpen] = useState(false);
   const [inspectionSrc, setInspectionSrc] = useState<string | null>(null);
 
@@ -207,7 +207,6 @@ export default function FocusedJobModal(props: {
         },
         (payload: RealtimePostgresChangesPayload<WorkOrderLine>) => {
           const next = payload.new;
-          // safe narrow: only set if it looks like a WorkOrderLine
           if (next && typeof (next as Partial<WorkOrderLine>).id === "string") {
             setLine(next as WorkOrderLine);
           }
@@ -239,8 +238,6 @@ export default function FocusedJobModal(props: {
       if (error) throw error;
       setAllocs((data as AllocationRow[]) ?? []);
     } catch (e) {
-      // diagnostic only
-      // eslint-disable-next-line no-console
       console.warn("[FocusedJob] load allocations failed", (e as { message?: string })?.message);
     } finally {
       setAllocsLoading(false);
@@ -359,11 +356,10 @@ export default function FocusedJobModal(props: {
 
   const applyCost = async (laborHours: number | null, _price: number | null) => {
     if (busy) return;
-    setBusy (true);
+    setBusy(true);
     try {
       const payload: DB["public"]["Tables"]["work_order_lines"]["Update"] = {
         labor_time: laborHours,
-        // price_estimate: _price as any, // enable when types include it
       };
       const { error } = await supabase
         .from("work_order_lines")
@@ -457,7 +453,7 @@ export default function FocusedJobModal(props: {
   useEffect(() => {
     const onMsg = (e: MessageEvent) => {
       if (e.origin !== window.location.origin) return;
-      const data = e.data as { type?: string; payload?: unknown };
+      const data = e.data as { type?: string; payload?: any };
       if (data?.type === "inspection:add-job") {
         setOpenAddJob(true);
       }
@@ -466,11 +462,11 @@ export default function FocusedJobModal(props: {
     return () => window.removeEventListener("message", onMsg);
   }, []);
 
-  // ---------- NEW: listen for "inspection:close" to close the InspectionModal ----------
+  // ---------- listen for "inspection:close" to close the InspectionModal ----------
   useEffect(() => {
-    const onClose = () => setInspectionOpen(false);
-    window.addEventListener("inspection:close", onClose as EventListener);
-    return () => window.removeEventListener("inspection:close", onClose as EventListener);
+    const onCloseEvt = () => setInspectionOpen(false);
+    window.addEventListener("inspection:close", onCloseEvt as EventListener);
+    return () => window.removeEventListener("inspection:close", onCloseEvt as EventListener);
   }, []);
 
   // ---------- derived UI ----------
@@ -853,7 +849,6 @@ export default function FocusedJobModal(props: {
           }
           jobDescription={line.description ?? null}
           jobNotes={line.notes ?? null}
-          // the drawer will dispatch this event on close; we listen above to setOpenParts(false)
           closeEventName={`parts-drawer:closed:${line.id}`}
         />
       )}
@@ -910,7 +905,6 @@ export default function FocusedJobModal(props: {
           isOpen={openCost}
           onClose={() => setOpenCost(false)}
           defaultLaborHours={typeof line.labor_time === "number" ? line.labor_time : null}
-          // re-enable when types include price_estimate
           defaultPrice={null}
           onApply={applyCost}
         />
@@ -958,12 +952,12 @@ export default function FocusedJobModal(props: {
 
       {/* Inspection viewer (modal within modal stack) */}
       {inspectionOpen && inspectionSrc && (
-  <InspectionModal
-    open={inspectionOpen}
-    src={inspectionSrc}
-    title="Inspection"
-  />
-)}
+        <InspectionModal
+          open={inspectionOpen}
+          src={inspectionSrc}
+          title="Inspection"
+        />
+      )}
     </>
   );
 }

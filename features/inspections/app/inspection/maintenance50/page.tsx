@@ -31,10 +31,7 @@ import { SaveInspectionButton } from "@inspections/components/inspection/SaveIns
 import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
 import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicleHeader";
 
-// ✅ shared voice helper
 import { startVoiceRecognition } from "@inspections/lib/inspection/voiceControl";
-
-// 🛎️ toasts
 import toast from "react-hot-toast";
 
 /* Header adapters */
@@ -88,7 +85,7 @@ function toHeaderVehicle(v?: SessionVehicle | null): HeaderVehicle {
   };
 }
 
-/* Hydraulic sections */
+/* Sections */
 function buildHydraulicMeasurementsSection(): InspectionSection {
   return {
     title: "Measurements (Hydraulic)",
@@ -115,68 +112,52 @@ function buildHydraulicMeasurementsSection(): InspectionSection {
     ],
   };
 }
-
 function buildLightsSection(): InspectionSection {
-  return {
-    title: "Lighting & Reflectors",
-    items: [
-      { item: "Headlights (high/low beam)" },
-      { item: "Turn signals / flashers" },
-      { item: "Brake lights" },
-      { item: "Tail lights" },
-      { item: "Reverse lights" },
-      { item: "License plate light" },
-      { item: "Clearance / marker lights" },
-      { item: "Reflective tape / reflectors" },
-      { item: "Hazard switch function" },
-    ],
-  };
+  return { title: "Lighting & Reflectors", items: [
+    { item: "Headlights (high/low beam)" },
+    { item: "Turn signals / flashers" },
+    { item: "Brake lights" },
+    { item: "Tail lights" },
+    { item: "Reverse lights" },
+    { item: "License plate light" },
+    { item: "Clearance / marker lights" },
+    { item: "Reflective tape / reflectors" },
+    { item: "Hazard switch function" },
+  ]};
 }
-
 function buildBrakesSection(): InspectionSection {
-  return {
-    title: "Brakes",
-    items: [
-      { item: "Front brake pads" },
-      { item: "Rear brake pads" },
-      { item: "Brake fluid level" },
-      { item: "Brake lines and hoses" },
-      { item: "ABS wiring / sensors" },
-      { item: "Brake warning lights" },
-    ],
-  };
+  return { title: "Brakes", items: [
+    { item: "Front brake pads" },
+    { item: "Rear brake pads" },
+    { item: "Brake fluid level" },
+    { item: "Brake lines and hoses" },
+    { item: "ABS wiring / sensors" },
+    { item: "Brake warning lights" },
+  ]};
 }
-
 function buildSuspensionSection(): InspectionSection {
-  return {
-    title: "Suspension",
-    items: [
-      { item: "Front springs (coil/leaf)" },
-      { item: "Rear springs (coil/leaf)" },
-      { item: "Shocks / struts" },
-      { item: "Control arms / ball joints" },
-      { item: "Sway bar bushings / links" },
-    ],
-  };
+  return { title: "Suspension", items: [
+    { item: "Front springs (coil/leaf)" },
+    { item: "Rear springs (coil/leaf)" },
+    { item: "Shocks / struts" },
+    { item: "Control arms / ball joints" },
+    { item: "Sway bar bushings / links" },
+  ]};
 }
-
 function buildDrivelineSection(): InspectionSection {
-  return {
-    title: "Driveline",
-    items: [
-      { item: "Driveshaft / U-joints" },
-      { item: "Center support bearing" },
-      { item: "CV shafts / joints" },
-      { item: "Transmission leaks / mounts" },
-      { item: "Transfer case leaks / mounts" },
-      { item: "Slip yokes / seals" },
-      { item: "Axle seals / leaks" },
-      { item: "Differential leaks / play" },
-    ],
-  };
+  return { title: "Driveline", items: [
+    { item: "Driveshaft / U-joints" },
+    { item: "Center support bearing" },
+    { item: "CV shafts / joints" },
+    { item: "Transmission leaks / mounts" },
+    { item: "Transfer case leaks / mounts" },
+    { item: "Slip yokes / seals" },
+    { item: "Axle seals / leaks" },
+    { item: "Differential leaks / play" },
+  ]};
 }
 
-/* Units */
+/* Units helpers */
 function unitForHydraulic(label: string, mode: "metric" | "imperial"): string {
   const l = label.toLowerCase();
   if (l.includes("pressure")) return mode === "imperial" ? "psi" : "kPa";
@@ -186,11 +167,7 @@ function unitForHydraulic(label: string, mode: "metric" | "imperial"): string {
   if (l.includes("torque")) return mode === "metric" ? "N·m" : "ft·lb";
   return "";
 }
-
-function applyUnitsHydraulic(
-  sections: InspectionSection[],
-  mode: "metric" | "imperial"
-): InspectionSection[] {
+function applyUnitsHydraulic(sections: InspectionSection[], mode: "metric" | "imperial"): InspectionSection[] {
   return sections.map((s) => {
     if ((s.title || "").toLowerCase().includes("measurements")) {
       const items = s.items.map((it) => ({
@@ -207,7 +184,7 @@ function applyUnitsHydraulic(
 export default function Maintenance50HydraulicPage(): JSX.Element {
   const searchParams = useSearchParams();
 
-  // NEW: embed/compact mode flag
+  // bare/compact mode when embedded in modal
   const isEmbed = useMemo(
     () =>
       ["1", "true", "yes"].includes(
@@ -217,9 +194,7 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
     [searchParams]
   );
 
-  // IDs for header backfill (when opened from Focused modal)
   const workOrderId = searchParams.get("workOrderId") || null;
-
   const inspectionId = useMemo<string>(
     () => searchParams.get("inspectionId") || uuidv4(),
     [searchParams]
@@ -282,7 +257,7 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
     resumeSession,
     pauseSession,
     addQuoteLine,
-    updateQuoteLine, // ✅ patch specific line by id
+    updateQuoteLine,
   } = useInspectionSession(initialSession);
 
   // Boot / restore
@@ -303,7 +278,7 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Persist
+  // Persist session
   useEffect(() => {
     if (session) {
       const key = `inspection-${inspectionId}`;
@@ -320,15 +295,12 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
         localStorage.setItem(key, JSON.stringify(payload));
       } catch {}
     };
-
     const onVisibility = () => {
       if (document.visibilityState === "hidden") persistNow();
     };
-
     window.addEventListener("beforeunload", persistNow);
     window.addEventListener("pagehide", persistNow);
     document.addEventListener("visibilitychange", onVisibility);
-
     return () => {
       window.removeEventListener("beforeunload", persistNow);
       window.removeEventListener("pagehide", persistNow);
@@ -340,7 +312,6 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
   useEffect(() => {
     if (!session) return;
     if ((session.sections?.length ?? 0) > 0) return;
-
     const next: InspectionSection[] = [
       buildHydraulicMeasurementsSection(),
       buildLightsSection(),
@@ -365,21 +336,16 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unit]);
 
-  // 🔹 Header backfill: if opened from Focused modal, we get ids but not names.
-  // If header is blank and we have workOrderId, fetch customer/vehicle from API route
-  // that the rest of the app already uses (keeps this page decoupled from DB libs).
-  // 🔹 Header backfill (works in embed + full page)
+  // Header backfill via API when launched from FocusedJobModal
   useEffect(() => {
     (async () => {
       if (!session || !workOrderId) return;
-
       const haveName =
         (session.customer?.first_name || session.customer?.last_name || "")
           .trim().length > 0;
       const haveVehicle =
         (session.vehicle?.make || session.vehicle?.model || "")
           .trim().length > 0;
-
       if (haveName && haveVehicle) return;
 
       try {
@@ -395,7 +361,6 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
           ...(session.customer ?? {}),
           ...(j.customer ?? {}),
         };
-
         const nextVeh: Partial<SessionVehicle> = {
           ...(session.vehicle ?? {}),
           ...(j.vehicle ?? {}),
@@ -406,12 +371,12 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
           vehicle: nextVeh,
         } as Partial<InspectionSession>);
       } catch {
-        // quiet fail; leave header as-is
+        // silent fail
       }
     })();
   }, [session, workOrderId, updateInspection]);
 
-  // Voice transcript handler
+  // Transcript handler
   const handleTranscript = async (text: string): Promise<void> => {
     const commands: ParsedCommand[] = await interpretCommand(text);
     const sess: InspectionSession | undefined = session ?? undefined;
@@ -429,7 +394,7 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
     }
   };
 
-  // unified start using shared helper, single instance
+  // Start listening
   const startListening = (): void => {
     if (recognitionRef.current) {
       try {
@@ -437,7 +402,6 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
       } catch {}
     }
     recognitionRef.current = startVoiceRecognition(async (text) => {
-      // keep the callback local to unify behavior
       await handleTranscript(text);
     });
     setIsListening(true);
@@ -459,22 +423,19 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
   const isMeasurements = (t?: string): boolean =>
     (t || "").toLowerCase().includes("measurements");
 
-  // ------- Compact styles -------
-  const shell =
-    isEmbed ? "mx-auto max-w-[1100px] px-3 pb-10" : "px-4 pb-14";
+  // ------- Bare embed: NO app chrome when isEmbed -------
+  const shell = isEmbed ? "mx-auto max-w-[1100px] px-3 pb-8" : "px-4 pb-14";
   const controlsGap = "mb-4 grid grid-cols-3 gap-2";
   const card =
     "rounded-lg border border-zinc-800 bg-zinc-900 " +
     (isEmbed ? "p-3 mb-6" : "p-4 mb-8");
-  const sectionTitle =
-    "text-xl font-semibold text-orange-400 text-center";
+  const sectionTitle = "text-xl font-semibold text-orange-400 text-center";
   const hint =
-    "text-xs text-zinc-400" +
-    (isEmbed ? " mt-1 block text-center" : "");
+    "text-xs text-zinc-400" + (isEmbed ? " mt-1 block text-center" : "");
 
-  return (
+  // ----- BODY (identical either way; only container spacing differs) -----
+  const Body = (
     <div className={shell}>
-      {/* Header */}
       <div className={card}>
         <div className="text-center text-lg font-semibold text-orange-400">
           {templateName}
@@ -486,7 +447,6 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
         />
       </div>
 
-      {/* Controls: even, cohesive */}
       <div className={controlsGap}>
         <StartListeningButton
           isListening={isListening}
@@ -542,7 +502,6 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
         {session.sections.map(
           (section: InspectionSection, sectionIndex: number) => (
             <div key={`${section.title}-${sectionIndex}`} className={card}>
-              {/* Single, centered section header */}
               <h2 className={sectionTitle}>{section.title}</h2>
               {isMeasurements(section.title) && (
                 <span className={hint}>
@@ -560,7 +519,7 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
                   />
                 ) : (
                   <SectionDisplay
-                    title="" /* prevent a second/inner header */
+                    title="" // no inner header
                     section={section}
                     sectionIndex={sectionIndex}
                     showNotes={true}
@@ -576,23 +535,7 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
                         const it = session.sections[secIdx].items[itemIdx];
                         const desc = it.item ?? it.name ?? "Item";
 
-                        // 🔔 Tell parent (FocusedJobModal) to open Add Job
-                        try {
-                          window.parent?.postMessage(
-                            {
-                              type: "inspection:add-job",
-                              payload: {
-                                workOrderId,
-                                description: desc,
-                                section: session.sections[secIdx].title,
-                                status,
-                              },
-                            },
-                            window.location.origin
-                          );
-                        } catch { /* no-op */ }
-
-                        // 1) Add placeholder line immediately
+                        // 1) Add placeholder in-session quote
                         const id = uuidv4();
                         const placeholder: QuoteLineItem = {
                           id,
@@ -612,10 +555,8 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
                         };
                         addQuoteLine(placeholder);
 
-                        // toast: loading
+                        // 2) Ask AI for suggestion, patch same line
                         const tId = toast.loading("Getting AI estimate…");
-
-                        // 2) Ask AI for parts/labor suggestion and patch the same line
                         try {
                           const suggestion = await requestQuoteSuggestion({
                             item: desc,
@@ -649,9 +590,36 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
                               aiState: "done",
                             });
 
-                            toast.success("AI estimate added to quote", {
-                              id: tId,
-                            });
+                            // 3) Persist to Work Order (no modal)
+                            try {
+                              if (!workOrderId) {
+                                toast.error("Missing work order id, could not add line.");
+                              } else {
+                                const r = await fetch("/api/work-orders/lines/quick-add", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({
+                                    workOrderId,
+                                    description: desc,
+                                    section: session.sections[secIdx].title,
+                                    status,
+                                    notes: it.notes ?? "",
+                                    price,
+                                    laborTime,
+                                    laborRate,
+                                    parts: suggestion.parts ?? [],
+                                    source: "inspection-ai",
+                                  }),
+                                });
+                                if (!r.ok) {
+                                  toast.error("Failed to add line to work order.");
+                                } else {
+                                  toast.success("Added to work order", { id: tId });
+                                }
+                              }
+                            } catch {
+                              toast.error("Could not persist AI line to work order", { id: tId });
+                            }
                           } else {
                             updateQuoteLine(id, { aiState: "error" });
                             toast.error("No AI suggestion available", {
@@ -692,18 +660,19 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
         )}
       </InspectionFormCtx.Provider>
 
-      <div
-        className={
-          "flex items-center justify-between gap-4 " +
-          (isEmbed ? "mt-6" : "mt-8")
-        }
-      >
+      <div className={"flex items-center justify-between gap-4 " + (isEmbed ? "mt-6" : "mt-8")}>
         <SaveInspectionButton session={session} />
         <FinishInspectionButton session={session} />
-        <div className="text-xs text-zinc-400">
-          P = PASS, F = FAIL, NA = Not Applicable
-        </div>
+        <div className="text-xs text-zinc-400">P = PASS, F = FAIL, NA = Not Applicable</div>
       </div>
     </div>
   );
+
+  // If embedded, return ONLY the body (no app chrome)
+  if (isEmbed) {
+    return Body;
+  }
+
+  // Full-page version can wrap Body with your normal layout if desired.
+  return Body;
 }
