@@ -466,6 +466,13 @@ export default function FocusedJobModal(props: {
     return () => window.removeEventListener("message", onMsg);
   }, []);
 
+  // ---------- NEW: listen for "inspection:close" to close the InspectionModal ----------
+  useEffect(() => {
+    const onClose = () => setInspectionOpen(false);
+    window.addEventListener("inspection:close", onClose as EventListener);
+    return () => window.removeEventListener("inspection:close", onClose as EventListener);
+  }, []);
+
   // ---------- derived UI ----------
   const startAt = line?.punched_in_at ?? null;
   const finishAt = line?.punched_out_at ?? null;
@@ -950,10 +957,9 @@ export default function FocusedJobModal(props: {
       )}
 
       {/* Inspection viewer (modal within modal stack) */}
-{inspectionOpen && inspectionSrc && (
+      {inspectionOpen && inspectionSrc && (
   <InspectionModal
-    isOpen
-    onClose={() => setInspectionOpen(false)}
+    open={inspectionOpen}
     src={inspectionSrc}
     title="Inspection"
   />
