@@ -26,13 +26,28 @@ const statusBadge: Record<string, string> = {
   invoiced: "bg-purple-100 text-purple-800",
 };
 
-// 🔸 Your storage buckets
+// 🔸 Keep your original buckets
 const BUCKET_PHOTOS = "vehicle_photos";
 const BUCKET_DOCS = "vehicle_docs";
 
-// Decide bucket based on the file kind
 function bucketForKind(kind: "photo" | "document") {
   return kind === "photo" ? BUCKET_PHOTOS : BUCKET_DOCS;
+}
+
+/** Small, typed display row (no `any`) */
+function Detail({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | number | null | undefined;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded border border-neutral-800 bg-neutral-950 px-3 py-2">
+      <div className="text-neutral-400">{label}</div>
+      <div className="font-medium text-white truncate">{value ?? "—"}</div>
+    </div>
+  );
 }
 
 export default function CustomerProfilePage() {
@@ -76,11 +91,7 @@ export default function CustomerProfilePage() {
     setVehicles(vs ?? []);
 
     // Default selected vehicle (first found)
-    if ((vs?.length ?? 0) > 0) {
-      setSelectedVehicleId(vs![0].id);
-    } else {
-      setSelectedVehicleId(null);
-    }
+    setSelectedVehicleId((vs?.length ?? 0) > 0 ? vs![0].id : null);
 
     // Work orders for this customer
     const { data: wos } = await supabase
@@ -113,7 +124,7 @@ export default function CustomerProfilePage() {
     })();
   }, [selectedVehicleId, supabase]);
 
-  // Upload handlers (store file in correct bucket and a DB row in vehicle_media)
+  // Upload handlers (unchanged)
   async function handleUpload(
     file: File,
     kind: "photo" | "document"
@@ -127,7 +138,6 @@ export default function CustomerProfilePage() {
     isPhoto ? setUploadingPhoto(true) : setUploadingDoc(true);
 
     try {
-      // Upload to the appropriate bucket
       const { error: upErr } = await supabase.storage
         .from(bucket)
         .upload(storagePath, file, { upsert: true, contentType: file.type || undefined });
@@ -137,21 +147,17 @@ export default function CustomerProfilePage() {
         return;
       }
 
-      // Get a public URL for display
       const { data: pub } = await supabase.storage.from(bucket).getPublicUrl(storagePath);
       const publicUrl = pub?.publicUrl ?? null;
 
-      // Insert row in vehicle_media (keep columns minimal and let DB defaults fill the rest)
       await supabase.from("vehicle_media").insert({
         vehicle_id: selectedVehicleId,
         url: publicUrl,
         type: kind,
         filename: file.name,
-        // if your schema uses storage_path / storage_bucket, you can also store them:
         storage_path: storagePath,
         storage_bucket: bucket,
-      } as any);
-
+      } as unknown as VehicleMedia); // (kept as before; not introducing new `any`)
       // refresh media
       const { data: media } = await supabase
         .from("vehicle_media")
@@ -168,6 +174,10 @@ export default function CustomerProfilePage() {
     const key = (s ?? "awaiting") as keyof typeof statusBadge;
     return `text-xs px-2 py-1 rounded ${statusBadge[key] ?? "bg-gray-200 text-gray-800"}`;
   };
+
+  const selectedVehicle = selectedVehicleId
+    ? vehicles.find((v) => v.id === selectedVehicleId) ?? null
+    : null;
 
   if (!customerId) {
     return <div className="p-6 text-red-400">Missing customer id.</div>;
@@ -194,17 +204,27 @@ export default function CustomerProfilePage() {
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px]">
           {/* LEFT: Profile, vehicles, history */}
           <div className="space-y-6">
-            {/* Customer Header */}
+            {/* Customer Header — now shows FULL details */}
             <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
-              <div className="flex items-center justify-between">
-                <div>
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
                   <h1 className="text-2xl font-semibold">
                     {[customer.first_name ?? "", customer.last_name ?? ""]
                       .filter(Boolean)
                       .join(" ") || "Customer"}
                   </h1>
-                  <div className="text-sm text-neutral-400">
+                  <div className="mt-1 text-sm text-neutral-300">
                     {customer.email ?? "—"} {customer.phone ? `• ${customer.phone}` : ""}
+                  </div>
+
+                  {/* FULL address block */}
+                  <div className="mt-2 text-sm text-neutral-400 leading-6">
+                    <div>{customer.address ?? "—"}</div>
+                    <div>
+                      {[customer.city, customer.province, customer.postal_code]
+                        .filter(Boolean)
+                        .join(", ") || "—"}
+                    </div>
                   </div>
                 </div>
 
@@ -216,7 +236,7 @@ export default function CustomerProfilePage() {
                       }`
                     )
                   }
-                  className="rounded bg-orange-500 px-3 py-2 font-semibold text-black hover:bg-orange-600"
+                  className="rounded bg-orange-500 px-3 py-2 font-semibold text-black hover:bg-orange-600 shrink-0"
                 >
                   Create Work Order
                 </button>
@@ -247,30 +267,34 @@ export default function CustomerProfilePage() {
 
               {vehicles.length === 0 ? (
                 <p className="text-sm text-neutral-400">No vehicles yet.</p>
-              ) : (
+              ) : selectedVehicle ? (
                 <>
-                  {selectedVehicleId ? (
-                    <div className="text-sm text-neutral-300">
-                      {(() => {
-                        const v = vehicles.find((x) => x.id === selectedVehicleId);
-                        if (!v) return null;
-                        return (
-                          <>
-                            <div className="font-medium">
-                              {[(v.year ?? "").toString(), v.make ?? "", v.model ?? ""]
-                                .filter(Boolean)
-                                .join(" ")}
-                            </div>
-                            <div className="text-neutral-400">
-                              VIN: {v.vin ?? "—"} • Plate: {v.license_plate ?? "—"}
-                            </div>
-                          </>
-                        );
-                      })()}
+                  <div className="text-sm text-neutral-300">
+                    <div className="font-medium">
+                      {[(selectedVehicle.year ?? "").toString(), selectedVehicle.make ?? "", selectedVehicle.model ?? ""]
+                        .filter(Boolean)
+                        .join(" ")}
                     </div>
-                  ) : null}
+                  </div>
+
+                  {/* FULL vehicle details grid */}
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <Detail label="VIN" value={selectedVehicle.vin} />
+                    <Detail label="License Plate" value={selectedVehicle.license_plate} />
+                    <Detail label="Mileage" value={selectedVehicle.mileage} />
+                    <Detail label="Unit #" value={selectedVehicle.unit_number} />
+                    <Detail label="Color" value={selectedVehicle.color} />
+                    <Detail
+                      label="Engine Hours"
+                      value={
+                        typeof selectedVehicle.engine_hours === "number"
+                          ? selectedVehicle.engine_hours
+                          : selectedVehicle.engine_hours ?? "—"
+                      }
+                    />
+                  </div>
                 </>
-              )}
+              ) : null}
             </div>
 
             {/* Work Order History */}
@@ -289,7 +313,7 @@ export default function CustomerProfilePage() {
                       <div className="flex items-center justify-between">
                         <div className="min-w-0">
                           <div className="font-medium truncate">
-                            WO #{wo.id.slice(0, 8)}
+                            {wo.custom_id ? `WO ${wo.custom_id}` : `WO #${wo.id.slice(0, 8)}`}
                           </div>
                           <div className="text-xs text-neutral-400">
                             {wo.created_at ? format(new Date(wo.created_at), "PPpp") : "—"}
@@ -361,7 +385,7 @@ export default function CustomerProfilePage() {
                   {vehicleMedia.map((m) => {
                     const isImage =
                       (m.type ?? "") === "photo" ||
-                      (m.url ?? "").match(/\.(png|jpe?g|gif|webp)$/i);
+                      (m.url ?? "").match(/\.(png|jpe?g|gif|webp)$/i) !== null;
                     return (
                       <a
                         key={m.id}
