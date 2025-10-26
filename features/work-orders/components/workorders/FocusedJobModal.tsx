@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { Dialog } from "@headlessui/react";
 import { format, formatDistanceStrict } from "date-fns";
 import { toast } from "sonner";
 import { v4 as uuidv4 } from "uuid";
-import { useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 // existing modals
@@ -22,20 +21,19 @@ import CostEstimateModal from "@/features/work-orders/components/workorders/extr
 import CustomerContactModal from "@/features/work-orders/components/workorders/extras/CustomerContactModal";
 import AddJobModal from "@work-orders/components/workorders/AddJobModal";
 
+// inspection viewer (new)
+import InspectionModal from "@/features/inspections/components/InspectionModal";
+
 // voice control
 import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
 import VoiceButton from "@/features/shared/voice/VoiceButton";
 
-// NEW: chat in the focused modal
+// chat + AI
 import NewChatModal from "@/features/ai/components/chat/NewChatModal";
-
-// NEW: AI suggestions (moved into Focused modal)
 import SuggestedQuickAdd from "@work-orders/components/SuggestedQuickAdd";
 
-// NEW: Punch button with visual confirm + finish→modal
+// Punch + parts
 import JobPunchButton from "@/features/work-orders/components/JobPunchButton";
-
-// NEW: Use Part button (opens picker, consumes stock) + nicety list support
 import { UsePartButton } from "@work-orders/components/UsePartButton";
 
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
@@ -83,15 +81,8 @@ export default function FocusedJobModal(props: {
   onChanged?: () => void | Promise<void>;
   mode?: Mode;
 }) {
-  const {
-    isOpen,
-    onClose,
-    workOrderLineId,
-    onChanged,
-    mode = "tech",
-  } = props;
+  const { isOpen, onClose, workOrderLineId, onChanged, mode = "tech" } = props;
 
-  const router = useRouter();
   const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [busy, setBusy] = useState(false);
@@ -117,7 +108,11 @@ export default function FocusedJobModal(props: {
   const [openChat, setOpenChat] = useState(false);
   const [openAddJob, setOpenAddJob] = useState(false);
 
-  // NEW: parts used nicety
+  // inspection modal (new)
+  const [inspectionOpen, setInspectionOpen] = useState(false);
+  const [inspectionSrc, setInspectionSrc] = useState<string | null>(null);
+
+  // parts used
   const [allocs, setAllocs] = useState<AllocationRow[]>([]);
   const [allocsLoading, setAllocsLoading] = useState(false);
 
@@ -184,8 +179,9 @@ export default function FocusedJobModal(props: {
             setCustomer(c ?? null);
           } else setCustomer(null);
         }
-      } catch (e: any) {
-        toast.error(e?.message ?? "Failed to load job");
+      } catch (e) {
+        const err = e as { message?: string };
+        toast.error(err?.message ?? "Failed to load job");
       } finally {
         setBusy(false);
       }
@@ -196,20 +192,24 @@ export default function FocusedJobModal(props: {
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
     const ch = supabase
-  .channel(`wol-${workOrderLineId}`)
-  .on(
-    "postgres_changes",
-    {
-      event: "*",
-      schema: "public",
-      table: "work_order_lines",
-      filter: `id=eq.${workOrderLineId}`,
-    },
-    (payload: RealtimePostgresChangesPayload<WorkOrderLine>) => {
-      if (payload.new) setLine(payload.new as WorkOrderLine);
-    },
-  )
-  .subscribe();
+      .channel(`wol-${workOrderLineId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "work_order_lines",
+          filter: `id=eq.${workOrderLineId}`,
+        },
+        (payload: RealtimePostgresChangesPayload<WorkOrderLine>) => {
+          const next = payload.new;
+          // safe narrow: only set if it looks like a WorkOrderLine
+          if (next && typeof (next as Partial<WorkOrderLine>).id === "string") {
+            setLine(next as WorkOrderLine);
+          }
+        }
+      )
+      .subscribe();
     return () => {
       void supabase.removeChannel(ch);
     };
@@ -223,7 +223,7 @@ export default function FocusedJobModal(props: {
   }, []);
 
   // ---------- allocations ----------
-  const loadAllocations = async () => {
+  const loadAllocations = useCallback(async () => {
     if (!workOrderLineId) return;
     setAllocsLoading(true);
     try {
@@ -234,14 +234,14 @@ export default function FocusedJobModal(props: {
         .order("created_at", { ascending: true });
       if (error) throw error;
       setAllocs((data as AllocationRow[]) ?? []);
-    } catch (e: any) {
-      // quiet; diagnostic only
+    } catch (e) {
+      // diagnostic only
       // eslint-disable-next-line no-console
-      console.warn("[FocusedJob] load allocations failed", e?.message);
+      console.warn("[FocusedJob] load allocations failed", (e as { message?: string })?.message);
     } finally {
       setAllocsLoading(false);
     }
-  };
+  }, [supabase, workOrderLineId]);
 
   // ---------- live timer text ----------
   useEffect(() => {
@@ -257,7 +257,7 @@ export default function FocusedJobModal(props: {
   }, [isOpen, line?.punched_in_at, line?.punched_out_at]);
 
   // ---------- refresh ----------
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     const { data: l } = await supabase
       .from("work_order_lines")
       .select("*")
@@ -267,9 +267,9 @@ export default function FocusedJobModal(props: {
     setTechNotes(l?.notes ?? "");
     await onChanged?.();
     await loadAllocations();
-  };
+  }, [supabase, workOrderLineId, onChanged, loadAllocations]);
 
-  // ---------- actions (start/finish now via JobPunchButton -> API) ----------
+  // ---------- actions ----------
   const applyHold = async (reason: string, notes?: string) => {
     if (busy) return;
     setBusy(true);
@@ -353,14 +353,13 @@ export default function FocusedJobModal(props: {
     toast.success("Photo attached");
   };
 
-  // NOTE: omit price_estimate unless your generated types include it
   const applyCost = async (laborHours: number | null, _price: number | null) => {
     if (busy) return;
     setBusy(true);
     try {
       const payload: DB["public"]["Tables"]["work_order_lines"]["Update"] = {
         labor_time: laborHours,
-        // price_estimate: _price as any, // <- re-enable when your types include it
+        // price_estimate: _price as any, // enable when types include it
       };
       const { error } = await supabase
         .from("work_order_lines")
@@ -410,7 +409,8 @@ export default function FocusedJobModal(props: {
     await refresh();
   };
 
-  const openInspection = async () => {
+  // ---------- inspection (open inside modal) ----------
+  const openInspection = async (): Promise<void> => {
     if (!line) return;
 
     const isAir = String(line.description ?? "").toLowerCase().includes("air");
@@ -422,7 +422,7 @@ export default function FocusedJobModal(props: {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          workOrderId: workOrder?.id,
+          workOrderId: workOrder?.id ?? null,
           workOrderLineId: line.id,
           vehicleId: vehicle?.id ?? null,
           customerId: customer?.id ?? null,
@@ -430,21 +430,22 @@ export default function FocusedJobModal(props: {
         }),
       });
 
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error((j as any)?.error || "Failed to create inspection session");
-
-      const sessionId: string = (j as any).sessionId;
+      const j = (await res.json().catch(() => null)) as { sessionId?: string; error?: string } | null;
+      if (!res.ok || !j?.sessionId) {
+        throw new Error(j?.error || "Failed to create inspection session");
+      }
 
       const sp = new URLSearchParams();
       if (workOrder?.id) sp.set("workOrderId", workOrder.id);
       sp.set("workOrderLineId", line.id);
-      sp.set("inspectionId", sessionId);
+      sp.set("inspectionId", j.sessionId);
       sp.set("template", template);
 
-      router.push(`/inspections/${template}?${sp.toString()}`);
+      setInspectionSrc(`/inspections/${template}?${sp.toString()}`);
+      setInspectionOpen(true);
       toast.success("Inspection opened");
-    } catch (e: any) {
-      toast.error(e?.message ?? "Unable to open inspection");
+    } catch (e) {
+      showErr("Unable to open inspection", e as { message?: string });
     }
   };
 
@@ -698,7 +699,7 @@ export default function FocusedJobModal(props: {
                   )}
                 </div>
 
-                {/* NEW: Parts used + Use Part inline */}
+                {/* Parts used + Use Part inline */}
                 <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
                   <div className="mb-2 flex items-center justify-between">
                     <div className="text-sm font-header">Parts used</div>
@@ -734,7 +735,7 @@ export default function FocusedJobModal(props: {
                   )}
                 </div>
 
-                {/* Live timer (dark) */}
+                {/* Live timer */}
                 <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
                   <div className="text-xs text-neutral-400">Live Timer</div>
                   <div className="font-medium">
@@ -756,7 +757,7 @@ export default function FocusedJobModal(props: {
                   />
                 </div>
 
-                {/* AI suggestions (dark) */}
+                {/* AI suggestions */}
                 <div className="rounded border border-neutral-800 bg-neutral-900 p-3">
                   <h3 className="mb-2 font-semibold">AI Suggested Repairs</h3>
                   {line && workOrder ? (
@@ -831,11 +832,7 @@ export default function FocusedJobModal(props: {
           // the drawer will dispatch this event on close; we listen above to setOpenParts(false)
           closeEventName={`parts-drawer:closed:${line.id}`}
         />
-          
-
       )}
-
-  
 
       {openHold && line && (
         <HoldModal
@@ -910,15 +907,15 @@ export default function FocusedJobModal(props: {
       )}
 
       {openChat && (
-  <NewChatModal
-    isOpen={openChat}
-    onClose={() => setOpenChat(false)}
-    created_by="system"
-    onCreated={() => setOpenChat(false)}
-    context_type="work_order_line"
-    context_id={line?.id ?? null}
-  />
-)}
+        <NewChatModal
+          isOpen={openChat}
+          onClose={() => setOpenChat(false)}
+          created_by="system"
+          onCreated={() => setOpenChat(false)}
+          context_type="work_order_line"
+          context_id={line?.id ?? null}
+        />
+      )}
 
       {openAddJob && workOrder?.id && (
         <AddJobModal
@@ -934,6 +931,14 @@ export default function FocusedJobModal(props: {
           }}
         />
       )}
+
+      {/* Inspection viewer (modal within modal stack) */}
+      <InspectionModal
+        isOpen={inspectionOpen}
+        onClose={() => setInspectionOpen(false)}
+        src={inspectionSrc}
+        title="Inspection"
+      />
     </>
   );
 }
