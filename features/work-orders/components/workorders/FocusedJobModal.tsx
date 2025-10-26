@@ -449,6 +449,19 @@ export default function FocusedJobModal(props: {
     }
   };
 
+  // ---------- listen for "inspection:add-job" from embedded inspection ----------
+  useEffect(() => {
+    const onMsg = (e: MessageEvent) => {
+      if (e.origin !== window.location.origin) return;
+      const data = e.data as { type?: string; payload?: unknown };
+      if (data?.type === "inspection:add-job") {
+        setOpenAddJob(true);
+      }
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, []);
+
   // ---------- derived UI ----------
   const startAt = line?.punched_in_at ?? null;
   const finishAt = line?.punched_out_at ?? null;

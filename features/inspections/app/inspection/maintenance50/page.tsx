@@ -97,24 +97,20 @@ function buildHydraulicMeasurementsSection(): InspectionSection {
       { item: "RF Tire Pressure", unit: "psi", value: "" },
       { item: "LR Tire Pressure", unit: "psi", value: "" },
       { item: "RR Tire Pressure", unit: "psi", value: "" },
-
       { item: "LF Tire Tread", unit: "mm", value: "" },
       { item: "RF Tire Tread", unit: "mm", value: "" },
       { item: "LR Tire Tread (Outer)", unit: "mm", value: "" },
       { item: "LR Tire Tread (Inner)", unit: "mm", value: "" },
       { item: "RR Tire Tread (Outer)", unit: "mm", value: "" },
       { item: "RR Tire Tread (Inner)", unit: "mm", value: "" },
-
       { item: "LF Brake Pad Thickness", unit: "mm", value: "" },
       { item: "RF Brake Pad Thickness", unit: "mm", value: "" },
       { item: "LR Brake Pad Thickness", unit: "mm", value: "" },
       { item: "RR Brake Pad Thickness", unit: "mm", value: "" },
-
       { item: "LF Rotor Condition / Thickness", unit: "mm", value: "" },
       { item: "RF Rotor Condition / Thickness", unit: "mm", value: "" },
       { item: "LR Rotor Condition / Thickness", unit: "mm", value: "" },
       { item: "RR Rotor Condition / Thickness", unit: "mm", value: "" },
-
       { item: "Wheel Torque (after road test)", unit: "ft·lb", value: "" },
     ],
   };
@@ -211,6 +207,19 @@ function applyUnitsHydraulic(
 export default function Maintenance50HydraulicPage(): JSX.Element {
   const searchParams = useSearchParams();
 
+  // NEW: embed/compact mode flag
+  const isEmbed = useMemo(
+    () =>
+      ["1", "true", "yes"].includes(
+        (searchParams.get("embed") || searchParams.get("compact") || "")
+          .toLowerCase()
+      ),
+    [searchParams]
+  );
+
+  // IDs for header backfill (when opened from Focused modal)
+  const workOrderId = searchParams.get("workOrderId") || null;
+
   const inspectionId = useMemo<string>(
     () => searchParams.get("inspectionId") || uuidv4(),
     [searchParams]
@@ -219,7 +228,6 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
   const [unit, setUnit] = useState<"metric" | "imperial">("metric");
   const [isListening, setIsListening] = useState<boolean>(false);
   const [isPaused, setIsPaused] = useState<boolean>(false);
-  const [, setTranscript] = useState<string>("");
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   const templateName: string =
@@ -277,6 +285,7 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
     updateQuoteLine, // ✅ patch specific line by id
   } = useInspectionSession(initialSession);
 
+  // Boot / restore
   useEffect(() => {
     const key = `inspection-${inspectionId}`;
     const saved =
@@ -294,6 +303,7 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Persist
   useEffect(() => {
     if (session) {
       const key = `inspection-${inspectionId}`;
@@ -301,6 +311,7 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
     }
   }, [session, inspectionId]);
 
+  // Persist on unload/visibility
   useEffect(() => {
     const key = `inspection-${inspectionId}`;
     const persistNow = () => {
@@ -325,6 +336,7 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
     };
   }, [session, inspectionId, initialSession]);
 
+  // Build sections on first load
   useEffect(() => {
     if (!session) return;
     if ((session.sections?.length ?? 0) > 0) return;
@@ -341,6 +353,7 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
     });
   }, [session, updateInspection, unit]);
 
+  // Apply units when toggled
   useEffect(() => {
     if (!session?.sections?.length) return;
     updateInspection({
@@ -352,8 +365,54 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unit]);
 
+  // 🔹 Header backfill: if opened from Focused modal, we get ids but not names.
+  // If header is blank and we have workOrderId, fetch customer/vehicle from API route
+  // that the rest of the app already uses (keeps this page decoupled from DB libs).
+  // 🔹 Header backfill (works in embed + full page)
+  useEffect(() => {
+    (async () => {
+      if (!session || !workOrderId) return;
+
+      const haveName =
+        (session.customer?.first_name || session.customer?.last_name || "")
+          .trim().length > 0;
+      const haveVehicle =
+        (session.vehicle?.make || session.vehicle?.model || "")
+          .trim().length > 0;
+
+      if (haveName && haveVehicle) return;
+
+      try {
+        const res = await fetch(`/api/work-orders/header?id=${workOrderId}`);
+        if (!res.ok) return;
+
+        const j = (await res.json()) as {
+          customer?: Partial<SessionCustomer>;
+          vehicle?: Partial<SessionVehicle>;
+        };
+
+        const nextCust: Partial<SessionCustomer> = {
+          ...(session.customer ?? {}),
+          ...(j.customer ?? {}),
+        };
+
+        const nextVeh: Partial<SessionVehicle> = {
+          ...(session.vehicle ?? {}),
+          ...(j.vehicle ?? {}),
+        };
+
+        updateInspection({
+          customer: nextCust,
+          vehicle: nextVeh,
+        } as Partial<InspectionSession>);
+      } catch {
+        // quiet fail; leave header as-is
+      }
+    })();
+  }, [session, workOrderId, updateInspection]);
+
+  // Voice transcript handler
   const handleTranscript = async (text: string): Promise<void> => {
-    setTranscript(text);
     const commands: ParsedCommand[] = await interpretCommand(text);
     const sess: InspectionSession | undefined = session ?? undefined;
     if (!sess) return;
@@ -377,7 +436,10 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
         recognitionRef.current.stop();
       } catch {}
     }
-    recognitionRef.current = startVoiceRecognition(handleTranscript);
+    recognitionRef.current = startVoiceRecognition(async (text) => {
+      // keep the callback local to unify behavior
+      await handleTranscript(text);
+    });
     setIsListening(true);
   };
 
@@ -397,15 +459,35 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
   const isMeasurements = (t?: string): boolean =>
     (t || "").toLowerCase().includes("measurements");
 
-  return (
-    <div className="px-4 pb-14">
-      <CustomerVehicleHeader
-        templateName={templateName}
-        customer={toHeaderCustomer(session.customer ?? null)}
-        vehicle={toHeaderVehicle(session.vehicle ?? null)}
-      />
+  // ------- Compact styles -------
+  const shell =
+    isEmbed ? "mx-auto max-w-[1100px] px-3 pb-10" : "px-4 pb-14";
+  const controlsGap = "mb-4 grid grid-cols-3 gap-2";
+  const card =
+    "rounded-lg border border-zinc-800 bg-zinc-900 " +
+    (isEmbed ? "p-3 mb-6" : "p-4 mb-8");
+  const sectionTitle =
+    "text-xl font-semibold text-orange-400 text-center";
+  const hint =
+    "text-xs text-zinc-400" +
+    (isEmbed ? " mt-1 block text-center" : "");
 
-      <div className="mb-4 flex flex-wrap items-center justify-center gap-3">
+  return (
+    <div className={shell}>
+      {/* Header */}
+      <div className={card}>
+        <div className="text-center text-lg font-semibold text-orange-400">
+          {templateName}
+        </div>
+        <CustomerVehicleHeader
+          templateName=""
+          customer={toHeaderCustomer(session.customer ?? null)}
+          vehicle={toHeaderVehicle(session.vehicle ?? null)}
+        />
+      </div>
+
+      {/* Controls: even, cohesive */}
+      <div className={controlsGap}>
         <StartListeningButton
           isListening={isListening}
           setIsListening={setIsListening}
@@ -441,7 +523,7 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
           onClick={(): void =>
             setUnit(unit === "metric" ? "imperial" : "metric")
           }
-          className="rounded bg-zinc-700 px-3 py-2 text-white hover:bg-zinc-600"
+          className="w-full rounded bg-zinc-700 py-2 text-white hover:bg-zinc-600"
         >
           Unit: {unit === "metric" ? "Metric" : "Imperial"}
         </button>
@@ -457,138 +539,165 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
       />
 
       <InspectionFormCtx.Provider value={{ updateItem }}>
-        {session.sections.map((section: InspectionSection, sectionIndex: number) => (
-          <div
-            key={`${section.title}-${sectionIndex}`}
-            className="mb-8 rounded-lg border border-zinc-800 bg-zinc-900 p-4"
-          >
-            <div className="mb-2 flex items-end justify-between">
-              <h2 className="text-xl font-semibold text-orange-400">
-                {section.title}
-              </h2>
+        {session.sections.map(
+          (section: InspectionSection, sectionIndex: number) => (
+            <div key={`${section.title}-${sectionIndex}`} className={card}>
+              {/* Single, centered section header */}
+              <h2 className={sectionTitle}>{section.title}</h2>
               {isMeasurements(section.title) && (
-                <span className="text-xs text-zinc-400">
+                <span className={hint}>
                   {unit === "metric"
                     ? "Enter mm / kPa / N·m"
                     : "Enter in / psi / ft·lb"}
                 </span>
               )}
-            </div>
 
-            {isMeasurements(section.title) ? (
-              <CornerGrid sectionIndex={sectionIndex} items={section.items} />
-            ) : (
-              <SectionDisplay
-                title={section.title}
-                section={section}
-                sectionIndex={sectionIndex}
-                showNotes={true}
-                showPhotos={true}
-                onUpdateStatus={async (
-                  secIdx: number,
-                  itemIdx: number,
-                  status: InspectionItemStatus
-                ): Promise<void> => {
-                  updateItem(secIdx, itemIdx, { status });
+              <div className={isEmbed ? "mt-3" : "mt-4"}>
+                {isMeasurements(section.title) ? (
+                  <CornerGrid
+                    sectionIndex={sectionIndex}
+                    items={section.items}
+                  />
+                ) : (
+                  <SectionDisplay
+                    title="" /* prevent a second/inner header */
+                    section={section}
+                    sectionIndex={sectionIndex}
+                    showNotes={true}
+                    showPhotos={true}
+                    onUpdateStatus={async (
+                      secIdx: number,
+                      itemIdx: number,
+                      status: InspectionItemStatus
+                    ): Promise<void> => {
+                      updateItem(secIdx, itemIdx, { status });
 
-                  if (status === "fail" || status === "recommend") {
-                    const it = session.sections[secIdx].items[itemIdx];
-                    const desc = it.item ?? it.name ?? "Item";
+                      if (status === "fail" || status === "recommend") {
+                        const it = session.sections[secIdx].items[itemIdx];
+                        const desc = it.item ?? it.name ?? "Item";
 
-                    // 1) Add placeholder line immediately
-                    const id = uuidv4();
-                    const placeholder: QuoteLineItem = {
-                      id,
-                      description: desc,
-                      item: desc,
-                      name: desc,
-                      status,
-                      notes: it.notes ?? "",
-                      price: 0,
-                      laborTime: 0.5,
-                      laborRate: 0,
-                      editable: true,
-                      source: "inspection",
-                      value: it.value ?? "",
-                      photoUrls: it.photoUrls ?? [],
-                      aiState: "loading",
-                    };
-                    addQuoteLine(placeholder);
+                        // 🔔 Tell parent (FocusedJobModal) to open Add Job
+                        try {
+                          window.parent?.postMessage(
+                            {
+                              type: "inspection:add-job",
+                              payload: {
+                                workOrderId,
+                                description: desc,
+                                section: session.sections[secIdx].title,
+                                status,
+                              },
+                            },
+                            window.location.origin
+                          );
+                        } catch { /* no-op */ }
 
-                    // toast: loading
-                    const tId = toast.loading("Getting AI estimate…");
+                        // 1) Add placeholder line immediately
+                        const id = uuidv4();
+                        const placeholder: QuoteLineItem = {
+                          id,
+                          description: desc,
+                          item: desc,
+                          name: desc,
+                          status,
+                          notes: it.notes ?? "",
+                          price: 0,
+                          laborTime: 0.5,
+                          laborRate: 0,
+                          editable: true,
+                          source: "inspection",
+                          value: it.value ?? "",
+                          photoUrls: it.photoUrls ?? [],
+                          aiState: "loading",
+                        };
+                        addQuoteLine(placeholder);
 
-                    // 2) Ask AI for parts/labor suggestion and patch the same line
-                    try {
-                      const suggestion = await requestQuoteSuggestion({
-                        item: desc,
-                        notes: it.notes ?? "",
-                        section: session.sections[secIdx].title,
-                        status,
-                      });
+                        // toast: loading
+                        const tId = toast.loading("Getting AI estimate…");
 
-                      if (suggestion) {
-                        const partsTotal =
-                          suggestion.parts?.reduce(
-                            (sum, p) => sum + (p.cost || 0),
-                            0
-                          ) ?? 0;
-                        const laborRate = suggestion.laborRate ?? 0;
-                        const laborTime = suggestion.laborHours ?? 0.5;
-                        const price = Math.max(
-                          0,
-                          partsTotal + laborRate * laborTime
-                        );
+                        // 2) Ask AI for parts/labor suggestion and patch the same line
+                        try {
+                          const suggestion = await requestQuoteSuggestion({
+                            item: desc,
+                            notes: it.notes ?? "",
+                            section: session.sections[secIdx].title,
+                            status,
+                          });
 
-                        updateQuoteLine(id, {
-                          price,
-                          laborTime,
-                          laborRate,
-                          ai: {
-                            summary: suggestion.summary,
-                            confidence: suggestion.confidence,
-                            parts: suggestion.parts ?? [],
-                          },
-                          aiState: "done",
-                        });
+                          if (suggestion) {
+                            const partsTotal =
+                              suggestion.parts?.reduce(
+                                (sum, p) => sum + (p.cost || 0),
+                                0
+                              ) ?? 0;
+                            const laborRate = suggestion.laborRate ?? 0;
+                            const laborTime = suggestion.laborHours ?? 0.5;
+                            const price = Math.max(
+                              0,
+                              partsTotal + laborRate * laborTime
+                            );
 
-                        toast.success("AI estimate added to quote", { id: tId });
-                      } else {
-                        updateQuoteLine(id, { aiState: "error" });
-                        toast.error("No AI suggestion available", { id: tId });
+                            updateQuoteLine(id, {
+                              price,
+                              laborTime,
+                              laborRate,
+                              ai: {
+                                summary: suggestion.summary,
+                                confidence: suggestion.confidence,
+                                parts: suggestion.parts ?? [],
+                              },
+                              aiState: "done",
+                            });
+
+                            toast.success("AI estimate added to quote", {
+                              id: tId,
+                            });
+                          } else {
+                            updateQuoteLine(id, { aiState: "error" });
+                            toast.error("No AI suggestion available", {
+                              id: tId,
+                            });
+                          }
+                        } catch (e) {
+                          console.error("AI quote suggestion failed:", e);
+                          updateQuoteLine(id, { aiState: "error" });
+                          toast.error("AI estimate failed", { id: tId });
+                        }
                       }
-                    } catch (e) {
-                      console.error("AI quote suggestion failed:", e);
-                      updateQuoteLine(id, { aiState: "error" });
-                      toast.error("AI estimate failed", { id: tId });
-                    }
-                  }
-                }}
-                onUpdateNote={(
-                  secIdx: number,
-                  itemIdx: number,
-                  note: string
-                ): void => {
-                  updateItem(secIdx, itemIdx, { notes: note });
-                }}
-                onUpload={(
-                  photoUrl: string,
-                  secIdx: number,
-                  itemIdx: number
-                ): void => {
-                  const prev =
-                    session.sections[secIdx].items[itemIdx].photoUrls ?? [];
-                  updateItem(secIdx, itemIdx, {
-                    photoUrls: [...prev, photoUrl],
-                  });
-                }}
-              />
-            )}
-          </div>
-        ))}
+                    }}
+                    onUpdateNote={(
+                      secIdx: number,
+                      itemIdx: number,
+                      note: string
+                    ): void => {
+                      updateItem(secIdx, itemIdx, { notes: note });
+                    }}
+                    onUpload={(
+                      photoUrl: string,
+                      secIdx: number,
+                      itemIdx: number
+                    ): void => {
+                      const prev =
+                        session.sections[secIdx].items[itemIdx].photoUrls ??
+                        [];
+                      updateItem(secIdx, itemIdx, {
+                        photoUrls: [...prev, photoUrl],
+                      });
+                    }}
+                  />
+                )}
+              </div>
+            </div>
+          )
+        )}
       </InspectionFormCtx.Provider>
 
-      <div className="mt-8 flex items-center justify-between gap-4">
+      <div
+        className={
+          "flex items-center justify-between gap-4 " +
+          (isEmbed ? "mt-6" : "mt-8")
+        }
+      >
         <SaveInspectionButton session={session} />
         <FinishInspectionButton session={session} />
         <div className="text-xs text-zinc-400">
