@@ -11,14 +11,6 @@ type WorkOrderLineInsert = TablesInsert<"work_order_lines">;
 
 type JobType = "maintenance" | "repair" | "diagnosis" | "inspection";
 
-type SimpleService = {
-  name: string;
-  laborHours: number | null;
-  partCost?: number | null;
-  jobType: JobType;
-  notes?: string | null;
-};
-
 type PackageItem = {
   description: string;
   jobType?: JobType;
@@ -63,19 +55,12 @@ type PartToAllocate = {
 };
 
 type AddMenuParams = {
-  /** What will appear as the job’s description on the work order. */
   name: string;
-  /** Work order line job type. */
   jobType: JobType;
-  /** Planned labor hours for that single line (nullable). */
   laborHours?: number | null;
-  /** Optional notes (e.g., package summary). */
   notes?: string | null;
-  /** Optional “source tag” for toasts/analytics. */
   source?: "single" | "package" | "menu_item" | "ai" | "inspection";
-  /** If true, return the new line id. */
   returnLineId?: boolean;
-  /** Optional explicit parts to allocate (SKU/Name + qty). */
   partsToAllocate?: PartToAllocate[];
 };
 
@@ -83,15 +68,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const router = useRouter();
 
-  // -------------------- curated menus (examples) --------------------
-  const singles: SimpleService[] = [
-    { name: "Front Brakes", laborHours: 1.5, partCost: 120, jobType: "repair" },
-    { name: "Rear Brakes", laborHours: 1.5, partCost: 110, jobType: "repair" },
-    { name: "Oil Change (Gas)", laborHours: 0.8, partCost: 40, jobType: "maintenance" },
-    { name: "Tire Rotation", laborHours: 0.6, jobType: "maintenance" },
-    { name: "Alignment", laborHours: 1.2, jobType: "maintenance" },
-  ];
-
+  // -------------------- curated Packages only --------------------
   const packages: PackageDef[] = [
     {
       id: "oil-gas",
@@ -109,7 +86,6 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       summary: "Brakes, tires, suspension, battery, lights, codes scan.",
       items: [],
     },
-    // 🔽 Added the two Maintenance 50 inspections
     {
       id: "maintenance-50",
       name: "Maintenance 50",
@@ -131,10 +107,8 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   // -------------------- UI / data state --------------------
   const [addingId, setAddingId] = useState<string | null>(null);
   const [vehicle, setVehicle] = useState<VehicleLite | null>(null);
-  const [customer, setCustomer] = useState<CustomerLite | null>(null);
+  const [, setCustomer] = useState<CustomerLite | null>(null);
   const [woLineCount, setWoLineCount] = useState<number | null>(null);
-  const [showAllPackages, setShowAllPackages] = useState(false);
-  const [showAllSingles, setShowAllSingles] = useState(false);
 
   // Saved Menu Items integration
   const [menuItems, setMenuItems] = useState<MenuItemRow[]>([]);
@@ -211,9 +185,8 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         .limit(20);
       if (error) throw error;
       setMenuItems(data ?? []);
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.warn("Failed to load menu items", e);
+    } catch {
+      // noop
     } finally {
       setMenuLoading(false);
     }
@@ -227,7 +200,6 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   //                    SHARED ADD + AUTO-ALLOC
   // ============================================================
 
-  /** Create a line; optionally return its id and/or auto-allocate explicit parts. */
   async function addMenuItem(params: AddMenuParams): Promise<string | null> {
     if (!shopReady) return null;
 
@@ -247,7 +219,6 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         shop_id: shopId!,
       };
 
-      // Ask for id back so we can allocate parts if requested
       const { data, error } = await supabase
         .from("work_order_lines")
         .insert(line)
@@ -256,19 +227,12 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
       if (error) throw error;
 
-      // Optional explicit allocation list (AI / custom flows)
       if (params.partsToAllocate && params.partsToAllocate.length && data?.id) {
         await autoAllocateExplicitParts(params.partsToAllocate, data.id);
       }
 
       window.dispatchEvent(new CustomEvent("wo:line-added"));
-      toast.success(
-        params.source === "ai"
-          ? "AI suggestion added"
-          : params.source === "menu_item"
-          ? "Menu item added"
-          : "Job added",
-      );
+      toast.success(params.source === "ai" ? "AI suggestion added" : params.source === "menu_item" ? "Menu item added" : "Job added");
 
       return params.returnLineId ? (data?.id ?? null) : null;
     } catch (e: unknown) {
@@ -299,7 +263,6 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     name?: string | null;
     shop: string;
   }): Promise<string | null> {
-    // Prefer exact SKU
     if (sku) {
       const bySku = await supabase
         .from("parts")
@@ -310,7 +273,6 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         .maybeSingle();
       if (!bySku.error && bySku.data?.id) return bySku.data.id;
     }
-    // Fallback: case-insensitive name
     if (name) {
       const byName = await supabase
         .from("parts")
@@ -325,7 +287,6 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   }
 
   async function pickDefaultLocationId(partId: string, shop: string): Promise<string | null> {
-    // Try a location with stock first
     const withStock = await supabase
       .from("part_stock")
       .select("location_id, qty")
@@ -337,7 +298,6 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       return withStock.data[0].location_id as unknown as string;
     }
 
-    // Fallback: any shop location
     const anyLoc = await supabase
       .from("stock_locations")
       .select("id")
@@ -349,7 +309,6 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     return anyLoc.data?.id ?? null;
   }
 
-  /** Convert menu_item_parts → work_order_part_allocations for a saved menu item. */
   async function autoAllocateMenuParts(menuItemId: string, workOrderLineId: string) {
     if (!shopId) return;
 
@@ -393,15 +352,12 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     const { error: allocErr } = await supabase.from("work_order_part_allocations").insert(allocations);
     if (allocErr) {
       toast.warning("Job added, but parts couldn't be allocated.");
-      // eslint-disable-next-line no-console
-      console.warn("allocations error", allocErr);
     } else {
       window.dispatchEvent(new CustomEvent("wo:parts-used"));
       toast.success(`Allocated ${allocations.length} part${allocations.length > 1 ? "s" : ""}`);
     }
   }
 
-  /** Allocate from an explicit lightweight list (used for AI or ad-hoc flows). */
   async function autoAllocateExplicitParts(list: PartToAllocate[], workOrderLineId: string) {
     if (!shopId || !list.length) return;
 
@@ -430,19 +386,8 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     if (!error) window.dispatchEvent(new CustomEvent("wo:parts-used"));
   }
 
-  // -------------------- tiny wrappers (all call addMenuItem) --------------------
-  async function addSingle(s: SimpleService) {
-    await addMenuItem({
-      name: s.name,
-      jobType: s.jobType,
-      laborHours: s.laborHours ?? null,
-      notes: s.notes ?? null,
-      source: "single",
-    });
-  }
-
+  // -------------------- tiny wrappers --------------------
   async function addPackage(pkg: PackageDef) {
-    // Inspections become a single inspection line
     if (pkg.jobType === "inspection") {
       await addMenuItem({
         name: pkg.name,
@@ -453,8 +398,6 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       });
       return;
     }
-
-    // Maintenance packages: add one summary line
     await addMenuItem({
       name: pkg.name,
       jobType: "maintenance",
@@ -465,23 +408,20 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   }
 
   async function addSavedMenuItem(mi: MenuItemRow) {
-    // 1) Add the line and get its id back
     const lineId = await addMenuItem({
       name: mi.name ?? "Service",
-      jobType: "maintenance", // (optional) add a job_type column to menu_items later and use it here
+      jobType: "maintenance",
       laborHours: typeof mi.labor_time === "number" ? mi.labor_time : null,
       notes: mi.description ?? null,
       source: "menu_item",
       returnLineId: true,
     });
-
-    // 2) Auto-allocate menu parts → work_order_part_allocations
     if (lineId && mi.id) {
       await autoAllocateMenuParts(mi.id, lineId);
     }
   }
 
-  // -------------------- AI: quick prompt → suggestions → add --------------------
+  // -------------------- AI modal flow --------------------
   async function runAiSuggest() {
     if (!aiPrompt.trim()) return;
     setAiBusy(true);
@@ -506,7 +446,6 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         return;
       }
 
-      // Add suggestions; if AI returns parts, we allocate them via the shared path
       for (const it of items) {
         await addMenuItem({
           name: it.name,
@@ -528,29 +467,22 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   }
 
   // -------------------- render --------------------
-  const visiblePackages = showAllPackages ? packages : packages.slice(0, 2);
-  const visibleSingles = showAllSingles ? singles : singles.slice(0, 6);
-
-  const vehicleName =
-    vehicle ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim() : "";
-  const customerName =
-    customer ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") : "";
 
   return (
     <div className="space-y-6">
       {/* Quick actions / Quote */}
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-orange-400">Quick Add</h3>
-        <div className="flex items-center gap-2">
+        <h3 className="font-semibold text-orange-400 text-center w-full">Quick Add</h3>
+        <div className="absolute right-0 flex items-center gap-2 pr-0 sm:pr-0">
           <button
-            type="button" // ✅ prevent parent form submit
+            type="button"
             onClick={() => router.push(`/work-orders/quote-review?woId=${workOrderId}`)}
             className="rounded border border-neutral-800 bg-neutral-950 px-3 py-1.5 text-sm hover:bg-neutral-900"
           >
             Review Quote{typeof woLineCount === "number" && woLineCount > 0 ? ` (${woLineCount})` : ""}
           </button>
           <button
-            type="button" // ✅ prevent parent form submit
+            type="button"
             onClick={() => setAiOpen(true)}
             className="rounded border border-blue-600 px-3 py-1.5 text-sm text-blue-300 hover:bg-blue-900/20"
             title="Describe work and let AI suggest service lines"
@@ -562,20 +494,13 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
       {/* Packages */}
       <div>
-        <div className="mb-2 flex items-center justify-between">
-          <h4 className="font-semibold text-neutral-200">Packages</h4>
-          <button
-            type="button" // ✅ prevent parent form submit
-            className="text-xs text-neutral-300 hover:text-white underline"
-            onClick={() => setShowAllPackages((v) => !v)}
-          >
-            {showAllPackages ? "Show less" : "Show more"}
-          </button>
+        <div className="mb-2 flex items-center justify-center">
+          <h4 className="font-semibold text-neutral-200 text-center">Packages</h4>
         </div>
         <div className="grid gap-2 sm:grid-cols-2">
-          {visiblePackages.map((p) => (
+          {packages.map((p) => (
             <button
-              type="button" // ✅ prevent parent form submit
+              type="button"
               key={p.id}
               onClick={() => addPackage(p)}
               disabled={addingId === p.id || !shopReady}
@@ -592,61 +517,18 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         </div>
       </div>
 
-      {/* Singles */}
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <h4 className="font-semibold text-neutral-200">Single Services</h4>
-          <button
-            type="button" // ✅ prevent parent form submit
-            className="text-xs text-neutral-300 hover:text-white underline"
-            onClick={() => setShowAllSingles((v) => !v)}
-          >
-            {showAllSingles ? "Show less" : "Show more"}
-          </button>
-        </div>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {visibleSingles.map((m) => (
-            <button
-              type="button" // ✅ prevent parent form submit
-              key={m.name}
-              onClick={() => addSingle(m)}
-              disabled={addingId === m.name || !shopReady}
-              className="rounded border border-neutral-800 bg-neutral-950 p-3 text-left hover:bg-neutral-900 disabled:opacity-60"
-              title={
-                customerName || vehicleName
-                  ? `For ${customerName || "customer"}${vehicleName ? ` • ${vehicleName}` : ""}`
-                  : undefined
-              }
-            >
-              <div className="font-medium">{m.name}</div>
-              <div className="text-xs text-neutral-400">
-                {m.jobType} • {m.laborHours != null ? `${m.laborHours.toFixed(1)}h` : "—"}
-              </div>
-              {m.notes ? <div className="mt-1 text-xs text-neutral-500">{m.notes}</div> : null}
-            </button>
-          ))}
-        </div>
-      </div>
-
       {/* Your saved Menu Items */}
       <div>
-        <div className="mb-2 flex items-center justify-between">
-          <h4 className="font-semibold text-neutral-200">From My Menu</h4>
-          <button
-            type="button" // ✅ prevent parent form submit
-            onClick={() => loadMenuItems()}
-            className="text-xs text-neutral-300 hover:text-white underline"
-          >
-            Refresh
-          </button>
+        <div className="mb-2 flex items-center justify-center">
+          <h4 className="font-semibold text-neutral-200 text-center">From My Menu</h4>
         </div>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {menuLoading && <div className="text-sm text-neutral-400">Loading…</div>}
+          {menuLoading && <div className="text-sm text-neutral-400 text-center w-full">Loading…</div>}
           {!menuLoading &&
             (menuItems.length ? (
               menuItems.slice(0, 9).map((mi) => (
                 <button
-                  type="button" // ✅ prevent parent form submit
+                  type="button"
                   key={mi.id}
                   onClick={() => addSavedMenuItem(mi)}
                   disabled={addingId === (mi.name ?? "") || !shopReady}
@@ -661,7 +543,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
                 </button>
               ))
             ) : (
-              <div className="text-sm text-neutral-400">No saved menu items yet.</div>
+              <div className="text-sm text-neutral-400 text-center w-full">No saved menu items yet.</div>
             ))}
         </div>
       </div>
@@ -669,10 +551,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       {/* AI modal */}
       {aiOpen && (
         <div className="fixed inset-0 z-[300] grid place-items-center">
-          <div
-            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-            onClick={() => setAiOpen(false)}
-          />
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setAiOpen(false)} />
           <div
             className="relative z-[310] w-full max-w-xl rounded border border-orange-400 bg-neutral-950 p-4 text-white"
             onClick={(e) => e.stopPropagation()}
@@ -680,7 +559,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
             <div className="mb-3 flex items-center justify-between">
               <div className="text-lg font-semibold">AI: Suggest Services</div>
               <button
-                type="button" // ✅ prevent parent form submit
+                type="button"
                 className="rounded border border-neutral-700 px-2 py-1 text-sm hover:bg-neutral-800"
                 onClick={() => setAiOpen(false)}
               >
@@ -696,14 +575,14 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
             />
             <div className="mt-3 flex justify-end gap-2">
               <button
-                type="button" // ✅ prevent parent form submit
+                type="button"
                 className="rounded border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800"
                 onClick={() => setAiOpen(false)}
               >
                 Cancel
               </button>
               <button
-                type="button" // ✅ prevent parent form submit
+                type="button"
                 disabled={aiBusy}
                 className="rounded border border-blue-600 px-3 py-1.5 text-sm text-blue-300 hover:bg-blue-900/20 disabled:opacity-60"
                 onClick={runAiSuggest}

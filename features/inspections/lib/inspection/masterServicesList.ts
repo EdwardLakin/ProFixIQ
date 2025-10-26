@@ -1,12 +1,17 @@
+// services/masterServicesList.ts
+export type ServiceCategory = {
+  title: string;
+  items: { item: string }[];
+};
 
-
-import type { ServiceCategory } from "@shared/types/types/services";
 export const masterServicesList: ServiceCategory[] = [
   {
     title: "Oil & Fluids Service",
     items: [
       { item: "Engine oil and filter change (gasoline)" },
       { item: "Engine oil and filter change (diesel)" },
+      { item: "Engine air filter replacement" },
+      { item: "Cabin air filter replacement" },
       { item: "Transmission service (automatic)" },
       { item: "Transmission service (manual)" },
       { item: "Front differential service" },
@@ -25,16 +30,19 @@ export const masterServicesList: ServiceCategory[] = [
       { item: "Diesel primary fuel filter replacement" },
       { item: "Diesel secondary fuel filter replacement" },
       { item: "Water separator drain/check" },
+      { item: "Induction/throttle body service" },
+      { item: "Fuel injector cleaning (as needed)" },
     ],
   },
   {
     title: "Chassis & Driveline",
     items: [
-      { item: "Grease chassis (light-duty)" },
+      { item: "Grease chassis (automotive)" },
       { item: "Grease chassis (heavy-duty)" },
       { item: "Grease 5th wheel" },
       { item: "Inspect driveline and U-joints" },
       { item: "Check hanger bearings" },
+      { item: "Inspect CV axles and boots" },
     ],
   },
   {
@@ -49,27 +57,41 @@ export const masterServicesList: ServiceCategory[] = [
       { item: "Brake rotor replacement" },
       { item: "Brake drum replacement" },
       { item: "Parking brake adjustment" },
-      { item: "Push rod travel check" },
+      { item: "Push rod travel check (air brakes)" },
     ],
   },
   {
-    title: "Tire & Wheel Service",
+    title: "Tire, Wheel & Alignment",
     items: [
       { item: "Tire rotation (4-wheel)" },
       { item: "Tire rotation (dually)" },
       { item: "Tire inspection and pressure check" },
       { item: "Torque wheel lug nuts" },
-      { item: "Inspect wheel bearings" },
+      { item: "Wheel balance (as needed)" },
+      { item: "Four-wheel alignment check" },
+      { item: "TPMS inspection/reset" },
     ],
   },
   {
-    title: "Diagnostic Services",
+    title: "Diagnostic & Electrical",
     items: [
+      { item: "Global scan + clear codes (report)" },
       { item: "Check engine light diagnosis" },
       { item: "ABS light diagnosis" },
       { item: "Airbag/SRS light diagnosis" },
       { item: "Battery/charging system test" },
+      { item: "Starting/charging system diagnosis" },
+      { item: "Software/TSB check (as applicable)" },
+    ],
+  },
+  {
+    title: "Cooling & Belts",
+    items: [
       { item: "Cooling system pressure test" },
+      { item: "Inspect hoses and clamps" },
+      { item: "Serpentine belt inspection/replacement" },
+      { item: "Timing belt replacement (as scheduled)" },
+      { item: "Water pump inspection (leaks/noise)" },
     ],
   },
   {
@@ -79,45 +101,30 @@ export const masterServicesList: ServiceCategory[] = [
       { item: "CVIP inspection (commercial)" },
       { item: "Annual safety inspection" },
       { item: "Multi-point inspection (50-point)" },
+      { item: "Road test and report" },
     ],
   },
   {
-    title: "HVAC & Interior Comfort",
+    title: "HVAC & Interior",
     items: [
       { item: "HVAC system inspection" },
-      { item: "Cabin air filter replacement" },
       { item: "Defrost system check" },
       { item: "Blower motor operation check" },
       { item: "Wiper blade replacement" },
       { item: "Washer fluid top-up" },
+      { item: "Cabin air filter replacement" }, // duplicated on purpose – commonly suggested
     ],
   },
   {
-    title: "Emissions & DEF Systems",
+    title: "Emissions & DEF (Diesel)",
     items: [
       { item: "DEF fluid top-up" },
       { item: "Check DEF warning lights" },
       { item: "Inspect SCR system (heavy-duty)" },
       { item: "EGR system inspection" },
       { item: "DPF cleaning or regeneration" },
-    ],
-  },
-  {
-    title: "Electrical System",
-    items: [
-      { item: "Battery test and replacement" },
-      { item: "Charging system test" },
-      { item: "Fuse check and replacement" },
-      { item: "Lighting circuit diagnostics" },
-    ],
-  },
-  {
-    title: "Chassis Lubrication",
-    items: [
-      { item: "Grease chassis (automotive)" },
-      { item: "Grease chassis (heavy-duty)" },
-      { item: "Grease 5th wheel" },
-      { item: "Grease PTO driveshaft" },
+      { item: "Glow plug system test (diesel)" },
+      { item: "NOx sensor diagnosis (diesel)" },
     ],
   },
   {

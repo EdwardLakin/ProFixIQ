@@ -10,7 +10,6 @@ type InsertLine = DB["public"]["Tables"]["work_order_lines"]["Insert"];
 // Keep in sync with your DB check constraint
 type WOJobType = "diagnosis" | "inspection" | "maintenance" | "repair";
 
-// Allowed statuses — ONLY those your DB accepts
 const ALLOWED_STATUS = [
   "awaiting",
   "in_progress",
@@ -24,7 +23,7 @@ export function NewWorkOrderLineForm(props: {
   workOrderId: string;
   vehicleId: string | null;
   defaultJobType: WOJobType | null;
-  shopId?: string | null; // ← used to satisfy RLS
+  shopId?: string | null; // satisfies RLS
   onCreated?: () => void;
 }) {
   const { workOrderId, vehicleId, defaultJobType, shopId, onCreated } = props;
@@ -39,7 +38,6 @@ export function NewWorkOrderLineForm(props: {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // Avoid redundant RPCs if user adds multiple lines in a row
   const lastSetShopId = useRef<string | null>(null);
 
   const canSave = complaint.trim().length > 0 && !!workOrderId;
@@ -55,7 +53,6 @@ export function NewWorkOrderLineForm(props: {
   }
 
   async function ensureShopContext() {
-    // Optional: only if you have RPC set_current_shop_id(p_shop_id uuid)
     if (!shopId) return;
     if (lastSetShopId.current === shopId) return;
     const { error } = await supabase.rpc("set_current_shop_id", { p_shop_id: shopId });
@@ -71,9 +68,7 @@ export function NewWorkOrderLineForm(props: {
     try {
       await ensureShopContext();
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const { data: { user } } = await supabase.auth.getUser();
 
       const payload: InsertLine = {
         work_order_id: workOrderId,
@@ -85,7 +80,6 @@ export function NewWorkOrderLineForm(props: {
         labor_time: labor ? Number(labor) : null,
         status: normalizeStatus(status),
         job_type: normalizeJobType(jobType),
-        // RLS: if your policy checks shop_id directly, this satisfies it
         shop_id: shopId ?? null,
       };
 
@@ -97,14 +91,13 @@ export function NewWorkOrderLineForm(props: {
           setErr("This status isn’t allowed by the database. Try a different status.");
         } else if (/row-level security/i.test(error.message) || /current_shop_id/i.test(error.message)) {
           setErr("Shop mismatch: your session isn’t scoped to this shop. Try again.");
-          lastSetShopId.current = null; // reattempt will reset GUC
+          lastSetShopId.current = null;
         } else {
           setErr(error.message);
         }
         return;
       }
 
-      // Success → reset form
       setComplaint("");
       setCause("");
       setCorrection("");
@@ -113,10 +106,10 @@ export function NewWorkOrderLineForm(props: {
       setJobType(defaultJobType ?? null);
       onCreated?.();
 
-      // let other components refresh
       window.dispatchEvent(new CustomEvent("wo:line-added"));
-    } catch (e: any) {
-      setErr(e?.message ?? "Failed to add line.");
+    } catch (e: unknown) {
+      const msg = (e as Error)?.message ?? "Failed to add line.";
+      setErr(msg);
       lastSetShopId.current = null;
     } finally {
       setBusy(false);
