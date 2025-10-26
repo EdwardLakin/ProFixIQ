@@ -742,7 +742,7 @@ export default function CreateWorkOrderPage() {
         }
       }
 
-      router.push(`/work-orders/quote-review?woId=${latest.id}`);
+      router.push(`/work-orders/${latest.id}/approve`);
     } catch (ex) {
       const message = ex instanceof Error ? ex.message : "Failed to create work order.";
       setError(message);
@@ -1124,7 +1124,7 @@ export default function CreateWorkOrderPage() {
           {/* Submit → Review & Sign */}
           <div className="flex items-center gap-4 pt-2 justify-center">
             <button type="submit" disabled={loading} className="btn btn-orange disabled:opacity-60">
-              {loading ? "Creating..." : "Done → Review & Sign"}
+              {loading ? "Creating..." : "Approve & Sign"}
             </button>
             <button
               type="button"

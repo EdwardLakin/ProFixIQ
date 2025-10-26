@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import SignaturePad, { openSignaturePad } from "@/features/shared/signaturePad/controller";
@@ -14,15 +14,10 @@ type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type Shop = DB["public"]["Tables"]["shops"]["Row"];
 
 export default function ApproveWorkOrderPage() {
+  const params = useParams<{ id: string }>();
+  const id = Array.isArray(params?.id) ? params.id[0] : params?.id;
   const router = useRouter();
-  const search = useSearchParams();
-  const params = useParams<{ id?: string }>();
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
-
-  // accept id from path OR from ?woId=
-  const paramId = Array.isArray(params?.id) ? params.id[0] : params?.id ?? null;
-  const queryId = search.get("woId");
-  const id = paramId ?? queryId ?? null;
 
   const [wo, setWo] = useState<WorkOrder | null>(null);
   const [shop, setShop] = useState<Shop | null>(null);
@@ -37,11 +32,7 @@ export default function ApproveWorkOrderPage() {
 
   useEffect(() => {
     (async () => {
-      if (!id) {
-        setLoading(false);
-        setErr("Missing work order id.");
-        return;
-      }
+      if (!id) return;
       setLoading(true);
       setErr(null);
       try {
@@ -89,21 +80,38 @@ export default function ApproveWorkOrderPage() {
       return next;
     });
 
-  const totals = (() => {
-    const hrs = lines
-      .filter((l) => approved.has(l.id))
-      .reduce<number>((sum, l) => sum + (typeof l.labor_time === "number" ? l.labor_time : 0), 0);
-    return { hours: hrs.toFixed(1) };
-  })();
+  // ---- Pricing helpers (mirrors Quote Review) ------------------------------
+  const hourlyRate =
+    (wo as any)?.hourly_rate ??
+    (shop as any)?.hourly_rate ??
+    120; // sensible default if not stored
+
+  const currency = (shop as any)?.currency ?? "USD";
+  const fmt = new Intl.NumberFormat("en-US", { style: "currency", currency });
+
+  const approvedLines = lines.filter((l) => approved.has(l.id));
+  const hours = approvedLines.reduce<number>(
+    (sum, l) => sum + (typeof l.labor_time === "number" ? l.labor_time : 0),
+    0
+  );
+  const laborTotal = hours * Number(hourlyRate || 0);
+
+  // if your line rows do not have any parts total, this will just be 0
+  const partsTotal = approvedLines.reduce<number>(
+    (sum, l) => sum + (typeof (l as any).parts_total === "number" ? (l as any).parts_total : 0),
+    0
+  );
+  const grandTotal = laborTotal + partsTotal;
+
+  // keep existing total hours for the small footer in the Items box
+  const totals = { hours: hours.toFixed(1) };
+
+  // --------------------------------------------------------------------------
 
   async function handleSubmit(signatureDataUrl?: string) {
-    if (!id) {
-      setErr("Missing work order id; cannot submit.");
-      return;
-    }
+    if (!id) return;
     setSubmitting(true);
     try {
-      // upload signature if provided
       let signatureUrl: string | null = savedSigUrl;
       if (signatureDataUrl) {
         const uploaded = await uploadSignatureImage(signatureDataUrl, id);
@@ -119,7 +127,7 @@ export default function ApproveWorkOrderPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           workOrderId: id,
-          shopId: wo?.shop_id ?? null,
+          shopId: wo?.shop_id ?? null,      // pass tenant keys like Quote Review
           customerId: wo?.customer_id ?? null,
           approvedLineIds,
           declinedLineIds,
@@ -209,6 +217,25 @@ export default function ApproveWorkOrderPage() {
         <div className="border-t border-neutral-800 p-3 text-sm text-neutral-300">
           Total labor (approved):{" "}
           <span className="font-semibold text-white">{totals.hours}h</span>
+        </div>
+      </div>
+
+      {/* Totals (like Quote Review) */}
+      <div className="mt-4 rounded border border-neutral-800 bg-neutral-900">
+        <div className="border-b border-neutral-800 p-3 font-semibold">Totals</div>
+        <div className="p-3 text-sm">
+          <div className="flex items-center justify-between py-1">
+            <div>Labor ({hours.toFixed(1)}h @ {fmt.format(Number(hourlyRate || 0))}/hr)</div>
+            <div className="font-medium">{fmt.format(laborTotal)}</div>
+          </div>
+          <div className="flex items-center justify-between py-1">
+            <div>Parts</div>
+            <div className="font-medium">{fmt.format(partsTotal)}</div>
+          </div>
+          <div className="mt-2 border-t border-neutral-800 pt-2 flex items-center justify-between">
+            <div className="font-semibold">Total</div>
+            <div className="font-semibold">{fmt.format(grandTotal)}</div>
+          </div>
         </div>
       </div>
 
