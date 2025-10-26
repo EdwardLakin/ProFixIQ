@@ -950,12 +950,14 @@ export default function FocusedJobModal(props: {
       )}
 
       {/* Inspection viewer (modal within modal stack) */}
-      <InspectionModal
-        isOpen={inspectionOpen}
-        onClose={() => setInspectionOpen(false)}
-        src={inspectionSrc}
-        title="Inspection"
-      />
+{inspectionOpen && inspectionSrc && (
+  <InspectionModal
+    isOpen
+    onClose={() => setInspectionOpen(false)}
+    src={inspectionSrc}
+    title="Inspection"
+  />
+)}
     </>
   );
 }
