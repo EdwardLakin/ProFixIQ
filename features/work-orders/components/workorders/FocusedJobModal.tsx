@@ -6,6 +6,7 @@ import { format, formatDistanceStrict } from "date-fns";
 import { toast } from "sonner";
 import { v4 as uuidv4 } from "uuid";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import dynamic from "next/dynamic";
 
 // existing modals
 import CauseCorrectionModal from "@work-orders/components/workorders/CauseCorrectionModal";
@@ -21,8 +22,11 @@ import CostEstimateModal from "@/features/work-orders/components/workorders/extr
 import CustomerContactModal from "@/features/work-orders/components/workorders/extras/CustomerContactModal";
 import AddJobModal from "@work-orders/components/workorders/AddJobModal";
 
-// inspection viewer (new)
-import InspectionModal from "@/features/inspections/components/InspectionModal";
+// inspection viewer (new) — load client-side only to avoid hydration errors
+const InspectionModal = dynamic(
+  () => import("@/features/inspections/components/InspectionModal"),
+  { ssr: false }
+);
 
 // voice control
 import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
@@ -355,7 +359,7 @@ export default function FocusedJobModal(props: {
 
   const applyCost = async (laborHours: number | null, _price: number | null) => {
     if (busy) return;
-    setBusy(true);
+    setBusy (true);
     try {
       const payload: DB["public"]["Tables"]["work_order_lines"]["Update"] = {
         labor_time: laborHours,
