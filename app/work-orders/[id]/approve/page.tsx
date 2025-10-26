@@ -13,6 +13,27 @@ type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type Shop = DB["public"]["Tables"]["shops"]["Row"];
 
+/* ------------------------------ helpers ---------------------------------- */
+const getStr = (obj: unknown, key: string): string | null => {
+  if (obj && typeof obj === "object") {
+    const v = (obj as Record<string, unknown>)[key];
+    if (typeof v === "string") return v.trim() || null;
+  }
+  return null;
+};
+const getNum = (obj: unknown, key: string): number | null => {
+  if (obj && typeof obj === "object") {
+    const v = (obj as Record<string, unknown>)[key];
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+    if (typeof v === "string") {
+      const n = Number(v);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return null;
+};
+/* ------------------------------------------------------------------------- */
+
 export default function ApproveWorkOrderPage() {
   const params = useParams<{ id: string }>();
   const id = Array.isArray(params?.id) ? params.id[0] : params?.id;
@@ -64,8 +85,9 @@ export default function ApproveWorkOrderPage() {
         } else {
           setShop(null);
         }
-      } catch (e: unknown) {
-        setErr(e instanceof Error ? e.message : "Failed to load work order.");
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Failed to load work order.";
+        setErr(msg);
       } finally {
         setLoading(false);
       }
@@ -80,33 +102,34 @@ export default function ApproveWorkOrderPage() {
       return next;
     });
 
-  // ---- Pricing helpers (mirrors Quote Review) ------------------------------
-  const hourlyRate =
-    (wo as any)?.hourly_rate ??
-    (shop as any)?.hourly_rate ??
-    120; // sensible default if not stored
+  /* ---- Pricing helpers (mirrors Quote Review) --------------------------- */
+  const hourlyRate: number =
+    getNum(wo, "hourly_rate") ??
+    getNum(shop, "hourly_rate") ??
+    120;
 
-  const currency = (shop as any)?.currency ?? "USD";
-  const fmt = new Intl.NumberFormat("en-US", { style: "currency", currency });
+  const currencyCode = (getStr(shop, "currency") ?? "USD").toUpperCase();
+  const fmt = useMemo(
+    () => new Intl.NumberFormat("en-US", { style: "currency", currency: currencyCode }),
+    [currencyCode]
+  );
 
   const approvedLines = lines.filter((l) => approved.has(l.id));
   const hours = approvedLines.reduce<number>(
     (sum, l) => sum + (typeof l.labor_time === "number" ? l.labor_time : 0),
     0
   );
-  const laborTotal = hours * Number(hourlyRate || 0);
+  const laborTotal = hours * hourlyRate;
 
-  // if your line rows do not have any parts total, this will just be 0
+  // if your line rows don’t include parts_total, this stays 0
   const partsTotal = approvedLines.reduce<number>(
-    (sum, l) => sum + (typeof (l as any).parts_total === "number" ? (l as any).parts_total : 0),
+    (sum, l) => sum + (getNum(l, "parts_total") ?? 0),
     0
   );
   const grandTotal = laborTotal + partsTotal;
 
-  // keep existing total hours for the small footer in the Items box
   const totals = { hours: hours.toFixed(1) };
-
-  // --------------------------------------------------------------------------
+  /* ---------------------------------------------------------------------- */
 
   async function handleSubmit(signatureDataUrl?: string) {
     if (!id) return;
@@ -119,15 +142,15 @@ export default function ApproveWorkOrderPage() {
         setSavedSigUrl(uploaded);
       }
 
-      const approvedLineIds = Array.from(approved);
-      const declinedLineIds = lines.map((l) => l.id).filter((x) => !approved.has(x));
+      const approvedLineIds: string[] = Array.from(approved);
+      const declinedLineIds: string[] = lines.map((l) => l.id).filter((x) => !approved.has(x));
 
       const res = await fetch("/work-orders/approval-webhook", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           workOrderId: id,
-          shopId: wo?.shop_id ?? null,      // pass tenant keys like Quote Review
+          shopId: wo?.shop_id ?? null,
           customerId: wo?.customer_id ?? null,
           approvedLineIds,
           declinedLineIds,
@@ -137,17 +160,13 @@ export default function ApproveWorkOrderPage() {
         }),
       });
 
-      const j: unknown = await res.json().catch(() => null);
+      const j = (await res.json().catch(() => null)) as { error?: string } | null;
       if (!res.ok) {
-        const msg =
-          typeof j === "object" && j && "error" in (j as Record<string, unknown>)
-            ? String((j as { error?: unknown }).error ?? "Failed to submit approval")
-            : "Failed to submit approval";
-        throw new Error(msg);
+        throw new Error(j?.error ?? "Failed to submit approval");
       }
 
       router.replace(`/work-orders/confirm?woId=${id}`);
-    } catch (e: unknown) {
+    } catch (e) {
       setErr(e instanceof Error ? e.message : "Approval failed");
     } finally {
       setSubmitting(false);
@@ -225,7 +244,7 @@ export default function ApproveWorkOrderPage() {
         <div className="border-b border-neutral-800 p-3 font-semibold">Totals</div>
         <div className="p-3 text-sm">
           <div className="flex items-center justify-between py-1">
-            <div>Labor ({hours.toFixed(1)}h @ {fmt.format(Number(hourlyRate || 0))}/hr)</div>
+            <div>Labor ({hours.toFixed(1)}h @ {fmt.format(hourlyRate)}/hr)</div>
             <div className="font-medium">{fmt.format(laborTotal)}</div>
           </div>
           <div className="flex items-center justify-between py-1">
@@ -247,7 +266,7 @@ export default function ApproveWorkOrderPage() {
         <button
           className="rounded bg-green-600 px-4 py-2 font-semibold text-white hover:bg-green-700 disabled:opacity-60"
           onClick={async () => {
-            const base64 = await openSignaturePad({ shopName: shop?.name || "" });
+            const base64: string | null = await openSignaturePad({ shopName: shop?.name || "" });
             if (base64) await handleSubmit(base64);
           }}
           disabled={submitting || !agreed}
@@ -258,7 +277,7 @@ export default function ApproveWorkOrderPage() {
 
         <button
           className="rounded border border-neutral-700 px-4 py-2 hover:border-orange-500 disabled:opacity-60"
-          onClick={() => void handleSubmit(undefined)}
+          onClick={() => void handleSubmit()}
           disabled={submitting || !agreed}
         >
           Submit without Signature
