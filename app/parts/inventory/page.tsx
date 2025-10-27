@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { v4 as uuidv4 } from "uuid";
@@ -12,6 +12,7 @@ type Part = DB["public"]["Tables"]["parts"]["Row"];
 type PartInsert = DB["public"]["Tables"]["parts"]["Insert"];
 type PartUpdate = DB["public"]["Tables"]["parts"]["Update"];
 type StockLoc = DB["public"]["Tables"]["stock_locations"]["Row"];
+type StockMove = DB["public"]["Tables"]["stock_moves"]["Row"];
 
 /* --------------------------- UI helpers -------------------------- */
 
@@ -121,6 +122,50 @@ function SelectField(props: {
   );
 }
 
+/* ---------------------- CSV parsing helper ---------------------- */
+
+function parseCSV(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        const next = text[i + 1];
+        if (next === '"') {
+          cell += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        cell += ch;
+      }
+    } else {
+      if (ch === '"') inQuotes = true;
+      else if (ch === ",") {
+        row.push(cell.trim());
+        cell = "";
+      } else if (ch === "\n") {
+        row.push(cell.trim());
+        rows.push(row);
+        row = [];
+        cell = "";
+      } else if (ch !== "\r") {
+        cell += ch;
+      }
+    }
+  }
+  if (cell.length > 0 || row.length > 0) {
+    row.push(cell.trim());
+    rows.push(row);
+  }
+  return rows.filter((r) => r.length > 0 && r.some((c) => c.length > 0));
+}
+
 /* ---------------------------- Page ---------------------------- */
 
 export default function InventoryPage(): JSX.Element {
@@ -132,6 +177,13 @@ export default function InventoryPage(): JSX.Element {
 
   // stock locations
   const [locs, setLocs] = useState<StockLoc[]>([]);
+
+  // on-hand map: partId -> total qty
+  const [onHand, setOnHand] = useState<Record<string, number>>({});
+  // per-location detail modal
+  const [ohOpen, setOhOpen] = useState<boolean>(false);
+  const [ohForPart, setOhForPart] = useState<Part | null>(null);
+  const [ohLines, setOhLines] = useState<{ location: string; qty: number }[]>([]);
 
   // add modal
   const [addOpen, setAddOpen] = useState<boolean>(false);
@@ -158,6 +210,15 @@ export default function InventoryPage(): JSX.Element {
   const [recvLoc, setRecvLoc] = useState<string>("");
   const [recvQty, setRecvQty] = useState<number>(0);
 
+  // CSV Import
+  const [csvOpen, setCsvOpen] = useState<boolean>(false);
+  const [csvText, setCsvText] = useState<string>("");
+  const [csvRows, setCsvRows] = useState<
+    { name: string; sku?: string; category?: string; price?: number; qty?: number }[]
+  >([]);
+  const [csvPreview, setCsvPreview] = useState<boolean>(false);
+  const [csvDefaultLoc, setCsvDefaultLoc] = useState<string>("");
+
   const load = async (sid: string) => {
     setLoading(true);
     const base = supabase
@@ -176,8 +237,78 @@ export default function InventoryPage(): JSX.Element {
         )
       : base);
 
-    if (!error) setParts((data as Part[]) ?? []);
+    const partRows = (!error && (data as Part[])) || [];
+    setParts(partRows);
     setLoading(false);
+
+    // load on-hand for these parts
+    void loadOnHand(partRows.map((p) => p.id));
+  };
+
+  // --- on-hand (total) -------------------------------------------------
+  const loadOnHand = useCallback(
+    async (partIds: string[]) => {
+      if (!partIds.length) {
+        setOnHand({});
+        return;
+      }
+
+      // Sum the real column: qty_change
+      const { data, error } = await supabase
+        .from("stock_moves")
+        .select("part_id, qty_change")
+        .in("part_id", partIds)
+        .eq("shop_id", shopId); // keep scope to current shop
+
+      if (error || !data) {
+        setOnHand({});
+        return;
+      }
+
+      const totals: Record<string, number> = {};
+      (data as StockMove[]).forEach((m) => {
+        const delta = Number(m.qty_change) || 0;
+        totals[m.part_id] = (totals[m.part_id] ?? 0) + delta;
+      });
+
+      setOnHand(totals);
+    },
+    [supabase, shopId],
+  );
+
+  // --- on-hand detail (per-location) -----------------------------------
+  const openOnHandDetail = async (p: Part) => {
+    setOhForPart(p);
+
+    const { data, error } = await supabase
+      .from("stock_moves")
+      .select("location_id, qty_change")
+      .eq("part_id", p.id)
+      .eq("shop_id", shopId);
+
+    if (error || !data) {
+      setOhLines([]);
+      setOhOpen(true);
+      return;
+    }
+
+    // Sum by location using qty_change
+    const byLoc: Record<string, number> = {};
+    (data as StockMove[]).forEach((r) => {
+      const loc = r.location_id as string;
+      const q = Number(r.qty_change) || 0;
+      byLoc[loc] = (byLoc[loc] ?? 0) + q;
+    });
+
+    const lines = locs
+      .map((l) => ({
+        location: `${l.code ?? "LOC"} — ${l.name ?? ""}`,
+        qty: byLoc[l.id] ?? 0,
+      }))
+      .filter((x) => x.qty !== 0);
+
+    setOhLines(lines);
+    setOhOpen(true);
   };
 
   /* boot */
@@ -206,12 +337,11 @@ export default function InventoryPage(): JSX.Element {
       const locRows = (l as StockLoc[]) ?? [];
       setLocs(locRows);
 
-      const main = locRows.find(
-        (x) => (x.code ?? "").toUpperCase() === "MAIN",
-      );
+      const main = locRows.find((x) => (x.code ?? "").toUpperCase() === "MAIN");
       if (main) {
         setInitLoc(main.id);
         setRecvLoc(main.id);
+        setCsvDefaultLoc(main.id);
       }
 
       await load(sid);
@@ -223,7 +353,7 @@ export default function InventoryPage(): JSX.Element {
   useEffect(() => {
     if (shopId) void load(shopId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
+  }, [search, shopId]);
 
   /* ----------------------- CRUD handlers ----------------------- */
 
@@ -235,9 +365,7 @@ export default function InventoryPage(): JSX.Element {
     const insert: PartInsert = {
       id,
       shop_id: shopId,
-      // name is required in most schemas; keep defined, not null
       name: name.trim(),
-      // optional fields: provide undefined (NOT null) to satisfy strict types
       sku: sku.trim() ? sku.trim() : undefined,
       category: category.trim() ? category.trim() : undefined,
       price: typeof price === "number" ? price : undefined,
@@ -249,7 +377,6 @@ export default function InventoryPage(): JSX.Element {
       return;
     }
 
-    // optional initial receive
     if (initLoc && initQty > 0) {
       const { error: smErr } = await supabase.rpc("apply_stock_move", {
         p_part: id,
@@ -257,17 +384,13 @@ export default function InventoryPage(): JSX.Element {
         p_qty: initQty,
         p_reason: "receive",
         p_ref_kind: "manual_receive",
-        // IMPORTANT: pass undefined, not null, to satisfy function arg types
         p_ref_id: undefined,
       });
       if (smErr) alert(`Part created, but stock receive failed: ${smErr.message}`);
     }
 
     setAddOpen(false);
-    setName("");
-    setSku("");
-    setCategory("");
-    setPrice("");
+    setName(""); setSku(""); setCategory(""); setPrice("");
     setInitQty(0);
     await load(shopId);
   };
@@ -284,7 +407,6 @@ export default function InventoryPage(): JSX.Element {
   const saveEdit = async () => {
     if (!editPart?.id) return;
 
-    // Only send fields that changed, using undefined for omitted values
     const patch: PartUpdate = {
       name: editName.trim() ? editName.trim() : undefined,
       sku: editSku.trim() ? editSku.trim() : undefined,
@@ -292,11 +414,7 @@ export default function InventoryPage(): JSX.Element {
       price: typeof editPrice === "number" ? editPrice : undefined,
     };
 
-    const { error } = await supabase
-      .from("parts")
-      .update(patch)
-      .eq("id", editPart.id);
-
+    const { error } = await supabase.from("parts").update(patch).eq("id", editPart.id);
     if (error) {
       alert(error.message);
       return;
@@ -309,7 +427,6 @@ export default function InventoryPage(): JSX.Element {
   const openReceive = (p: Part) => {
     setRecvPart(p);
     setRecvQty(0);
-    // leave recvLoc as-is (defaults to MAIN if we found it)
     setRecvOpen(true);
   };
 
@@ -321,7 +438,7 @@ export default function InventoryPage(): JSX.Element {
       p_qty: recvQty,
       p_reason: "receive",
       p_ref_kind: "manual_receive",
-      p_ref_id: undefined, // IMPORTANT: undefined not null
+      p_ref_id: undefined,
     });
     if (error) {
       alert(error.message);
@@ -331,11 +448,123 @@ export default function InventoryPage(): JSX.Element {
     await load(shopId);
   };
 
+  /* -------------------------- CSV Import -------------------------- */
+
+  const parseAndPreviewCSV = (raw: string) => {
+    const rows = parseCSV(raw);
+    if (!rows.length) {
+      setCsvRows([]);
+      setCsvPreview(false);
+      return;
+    }
+    const header = rows[0].map((h) => h.toLowerCase().trim());
+    const idx = {
+      name: header.indexOf("name"),
+      sku: header.indexOf("sku"),
+      category: header.indexOf("category"),
+      price: header.indexOf("price"),
+      qty: header.indexOf("qty"),
+    };
+
+    const out: { name: string; sku?: string; category?: string; price?: number; qty?: number }[] = [];
+
+    for (let r = 1; r < rows.length; r++) {
+      const row = rows[r];
+      const name = idx.name >= 0 ? row[idx.name] : "";
+      if (!name) continue;
+      const sku = idx.sku >= 0 ? row[idx.sku] : undefined;
+      const category = idx.category >= 0 ? row[idx.category] : undefined;
+      const priceStr = idx.price >= 0 ? row[idx.price] : undefined;
+      const qtyStr = idx.qty >= 0 ? row[idx.qty] : undefined;
+
+      const price = priceStr && priceStr.length ? Number(priceStr) : undefined;
+      const qty = qtyStr && qtyStr.length ? Number(qtyStr) : undefined;
+
+      out.push({
+        name,
+        sku: sku && sku.length ? sku : undefined,
+        category: category && category.length ? category : undefined,
+        price: typeof price === "number" && !Number.isNaN(price) ? price : undefined,
+        qty: typeof qty === "number" && !Number.isNaN(qty) ? qty : undefined,
+      });
+    }
+
+    setCsvRows(out);
+    setCsvPreview(true);
+  };
+
+  const handleCsvFile = async (file: File) => {
+    const text = await file.text();
+    setCsvText(text);
+    parseAndPreviewCSV(text);
+  };
+
+  const runCsvImport = async () => {
+    if (!shopId || !csvRows.length) return;
+
+    for (const row of csvRows) {
+      let partId: string | null = null;
+
+      if (row.sku) {
+        const { data: found } = await supabase
+          .from("parts")
+          .select("id")
+          .eq("shop_id", shopId)
+          .eq("sku", row.sku)
+          .maybeSingle();
+        if (found?.id) partId = found.id;
+      }
+
+      if (!partId) {
+        const id = uuidv4();
+        const insert: PartInsert = {
+          id,
+          shop_id: shopId,
+          name: row.name,
+          sku: row.sku || undefined,
+          category: row.category || undefined,
+          price: typeof row.price === "number" ? row.price : undefined,
+        };
+        const { error } = await supabase.from("parts").insert(insert);
+        if (error) {
+          console.warn("Insert failed:", row, error.message);
+          continue;
+        }
+        partId = id;
+      } else {
+        const patch: PartUpdate = {
+          name: row.name || undefined,
+          sku: row.sku || undefined,
+          category: row.category || undefined,
+          price: typeof row.price === "number" ? row.price : undefined,
+        };
+        await supabase.from("parts").update(patch).eq("id", partId);
+      }
+
+      if (partId && csvDefaultLoc && typeof row.qty === "number" && row.qty > 0) {
+        await supabase.rpc("apply_stock_move", {
+          p_part: partId,
+          p_loc: csvDefaultLoc,
+          p_qty: row.qty,
+          p_reason: "receive",
+          p_ref_kind: "csv_import",
+          p_ref_id: undefined,
+        });
+      }
+    }
+
+    setCsvOpen(false);
+    setCsvPreview(false);
+    setCsvText("");
+    setCsvRows([]);
+    await load(shopId);
+  };
+
   /* ----------------------------- UI ----------------------------- */
 
   return (
     <div className="space-y-4 p-6 text-white">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold">Inventory</h1>
         <div className="flex items-center gap-2">
           <input
@@ -351,6 +580,13 @@ export default function InventoryPage(): JSX.Element {
           >
             Add Part
           </button>
+          <button
+            className="font-header rounded border border-blue-600 px-3 py-1.5 text-sm text-blue-300 hover:bg-blue-900/20 disabled:opacity-60"
+            onClick={() => setCsvOpen(true)}
+            disabled={!shopId}
+          >
+            CSV Import
+          </button>
         </div>
       </div>
 
@@ -360,7 +596,7 @@ export default function InventoryPage(): JSX.Element {
         </div>
       ) : parts.length === 0 ? (
         <div className="rounded border border-neutral-800 bg-neutral-900 p-3 text-sm text-neutral-400">
-          No parts yet. Click “Add Part” to create your first item.
+          No parts yet. Click “Add Part” to create your first item or use CSV Import.
         </div>
       ) : (
         <div className="overflow-hidden rounded border border-neutral-800 bg-neutral-900">
@@ -371,36 +607,49 @@ export default function InventoryPage(): JSX.Element {
                 <th className="p-2">SKU</th>
                 <th className="p-2">Category</th>
                 <th className="p-2">Price</th>
-                <th className="p-2 w-40 text-right">Actions</th>
+                <th className="p-2">On hand</th>
+                <th className="p-2 w-48 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {parts.map((p) => (
-                <tr key={p.id} className="border-t border-neutral-800">
-                  <td className="p-2">{p.name}</td>
-                  <td className="p-2">{p.sku ?? "—"}</td>
-                  <td className="p-2">{p.category ?? "—"}</td>
-                  <td className="p-2">
-                    {typeof p.price === "number" ? `$${p.price.toFixed(2)}` : "—"}
-                  </td>
-                  <td className="p-2">
-                    <div className="flex justify-end gap-2">
+              {parts.map((p) => {
+                const total = onHand[p.id] ?? 0;
+                return (
+                  <tr key={p.id} className="border-t border-neutral-800">
+                    <td className="p-2">{p.name}</td>
+                    <td className="p-2">{p.sku ?? "—"}</td>
+                    <td className="p-2">{p.category ?? "—"}</td>
+                    <td className="p-2">
+                      {typeof p.price === "number" ? `$${p.price.toFixed(2)}` : "—"}
+                    </td>
+                    <td className="p-2">
                       <button
-                        className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
-                        onClick={() => openEdit(p)}
+                        className="rounded border border-neutral-700 px-2 py-0.5 text-xs hover:bg-neutral-800"
+                        onClick={() => openOnHandDetail(p)}
+                        title="View per-location balance"
                       >
-                        Edit
+                        {total}
                       </button>
-                      <button
-                        className="rounded border border-blue-600 px-2 py-1 text-xs text-blue-300 hover:bg-blue-900/20"
-                        onClick={() => openReceive(p)}
-                      >
-                        Receive
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="p-2">
+                      <div className="flex justify-end gap-2">
+                        <button
+                          className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
+                          onClick={() => openEdit(p)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="rounded border border-blue-600 px-2 py-1 text-xs text-blue-300 hover:bg-blue-900/20"
+                          onClick={() => openReceive(p)}
+                        >
+                          Receive
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -537,6 +786,145 @@ export default function InventoryPage(): JSX.Element {
             step={1}
             onChange={(v) => setRecvQty(typeof v === "number" ? Math.max(0, v) : 0)}
           />
+        </div>
+      </Modal>
+
+      {/* On-hand detail */}
+      <Modal
+        open={ohOpen}
+        title={ohForPart ? `On hand — ${ohForPart.name}` : "On hand"}
+        onClose={() => setOhOpen(false)}
+        widthClass="max-w-lg"
+      >
+        {ohLines.length === 0 ? (
+          <div className="text-sm text-neutral-400">No movement found for this part.</div>
+        ) : (
+          <div className="rounded border border-neutral-800">
+            <table className="w-full text-sm">
+              <thead className="text-left text-neutral-400">
+                <tr>
+                  <th className="p-2">Location</th>
+                  <th className="p-2">Qty</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ohLines.map((l, i) => (
+                  <tr key={i} className="border-t border-neutral-800">
+                    <td className="p-2">{l.location}</td>
+                    <td className="p-2">{l.qty}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Modal>
+
+      {/* CSV Import */}
+      <Modal
+        open={csvOpen}
+        title="CSV Import"
+        onClose={() => setCsvOpen(false)}
+        widthClass="max-w-3xl"
+        footer={
+          <div className="flex w-full flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <SelectField
+                label="Default receive location (for rows with qty)"
+                value={csvDefaultLoc}
+                onChange={setCsvDefaultLoc}
+                options={[
+                  { value: "", label: "— none —" },
+                  ...locs.map((l) => ({ value: l.id, label: `${l.code ?? "LOC"} — ${l.name ?? ""}` })),
+                ]}
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                className="rounded border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800"
+                onClick={() => {
+                  setCsvPreview(false);
+                  setCsvText("");
+                  setCsvRows([]);
+                  setCsvOpen(false);
+                }}
+              >
+                Close
+              </button>
+              <button
+                className="rounded border border-blue-600 px-3 py-1.5 text-sm text-blue-300 hover:bg-blue-900/20 disabled:opacity-60"
+                onClick={runCsvImport}
+                disabled={!csvPreview || csvRows.length === 0}
+              >
+                Import
+              </button>
+            </div>
+          </div>
+        }
+      >
+        <div className="grid gap-3">
+          <div className="rounded border border-neutral-800 bg-neutral-900 p-3 text-sm text-neutral-300">
+            Expected headers (case-insensitive): <code>name, sku, category, price, qty</code>. Extra columns are ignored.
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void handleCsvFile(f);
+              }}
+              className="text-sm"
+            />
+            <button
+              className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
+              onClick={() => {
+                if (csvText.trim().length) parseAndPreviewCSV(csvText);
+              }}
+            >
+              Parse text
+            </button>
+          </div>
+
+          <textarea
+            rows={8}
+            className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-sm"
+            placeholder={`Paste CSV here… e.g.:
+name,sku,category,price,qty
+Oil Filter – Ford,OF-FORD-01,Filters,9.95,10
+Spark Plug – Iridium,SP-IR-01,Ignition,9.95,24
+`}
+            value={csvText}
+            onChange={(e) => setCsvText(e.target.value)}
+          />
+
+          {csvPreview && (
+            <div className="rounded border border-neutral-800">
+              <table className="w-full text-sm">
+                <thead className="text-left text-neutral-400">
+                  <tr>
+                    <th className="p-2">Name</th>
+                    <th className="p-2">SKU</th>
+                    <th className="p-2">Category</th>
+                    <th className="p-2">Price</th>
+                    <th className="p-2">Qty</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {csvRows.map((r, i) => (
+                    <tr key={i} className="border-t border-neutral-800">
+                      <td className="p-2">{r.name}</td>
+                      <td className="p-2">{r.sku ?? "—"}</td>
+                      <td className="p-2">{r.category ?? "—"}</td>
+                      <td className="p-2">{typeof r.price === "number" ? r.price.toFixed(2) : "—"}</td>
+                      <td className="p-2">{typeof r.qty === "number" ? r.qty : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </Modal>
     </div>
