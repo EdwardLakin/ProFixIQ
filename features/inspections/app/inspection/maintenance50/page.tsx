@@ -434,9 +434,23 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
   const hint =
     "text-xs text-zinc-400" + (isEmbed ? " mt-1 block text-center" : "");
 
-  // ----- BODY (identical either way; only container spacing differs) -----
+  // ----- BODY -----
   const Body = (
     <div className={shell}>
+      {/* Hide global chrome if embedded */}
+      {isEmbed && (
+        <style jsx global>{`
+          header[data-app-header],
+          nav[data-app-nav],
+          aside[data-app-sidebar],
+          footer[data-app-footer],
+          .app-shell-nav,
+          .app-sidebar {
+            display: none !important;
+          }
+        `}</style>
+      )}
+
       <div className={card}>
         <div className="text-center text-lg font-semibold text-orange-400">
           {templateName}
@@ -520,7 +534,7 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
                   />
                 ) : (
                   <SectionDisplay
-                    title="" // no inner header
+                    title=""
                     section={section}
                     sectionIndex={sectionIndex}
                     showNotes={true}
@@ -532,7 +546,6 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
                     ): Promise<void> => {
                       updateItem(secIdx, itemIdx, { status });
 
-                      // ---------- AUTO AI + ADD WO LINE ----------
                       if (status === "fail" || status === "recommend") {
                         const it = session.sections[secIdx].items[itemIdx];
                         const desc = it.item ?? it.name ?? "Item";
@@ -572,9 +585,12 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
                             return;
                           }
 
-                          // ✅ Compute price for UI
+                          // Compute price for UI
                           const partsTotal =
-                            suggestion.parts?.reduce((sum, p) => sum + (p.cost || 0), 0) ?? 0;
+                            suggestion.parts?.reduce(
+                              (sum, p) => sum + (p.cost || 0),
+                              0
+                            ) ?? 0;
                           const laborRate = suggestion.laborRate ?? 0;
                           const laborTime = suggestion.laborHours ?? 0.5;
                           const price = Math.max(0, partsTotal + laborRate * laborTime);
@@ -591,10 +607,9 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
                             aiState: "done",
                           });
 
-                          // ✅ Persist to Work Order via your existing helper (awaiting approval)
+                          // Persist to Work Order (awaiting approval)
                           if (workOrderId) {
                             try {
-                              const jobType = status === "fail" ? "repair" : "maintenance";
                               await addWorkOrderLineFromSuggestion({
                                 workOrderId,
                                 description: desc,
@@ -602,7 +617,7 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
                                 status: status as "fail" | "recommend",
                                 suggestion,
                                 source: "inspection",
-                                jobType,
+                                jobType: "inspection",
                               });
                               toast.success("Added to work order (awaiting approval)", { id: tId });
                             } catch (e) {
@@ -618,7 +633,6 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
                           toast.error("AI estimate failed", { id: tId });
                         }
                       }
-                      // ---------- /AUTO AI + ADD WO LINE ----------
                     }}
                     onUpdateNote={(
                       secIdx: number,
@@ -655,11 +669,6 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
     </div>
   );
 
-  // If embedded, return ONLY the body (no app chrome)
-  if (isEmbed) {
-    return Body;
-  }
-
-  // Full-page version can wrap Body with your normal layout if desired.
+  if (isEmbed) return Body;
   return Body;
 }

@@ -1,16 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import type { Database } from "@shared/types/types/supabase";
 
-// --- Data Contracts ---
-type SuggestionPart = {
-  name: string;
-  qty?: number;
-  cost?: number;
-  notes?: string;
-};
-
-export type AISuggestion = {
-  parts: SuggestionPart[];
+type AISuggestion = {
+  parts: { name: string; qty?: number; cost?: number; notes?: string }[];
   laborHours: number;
   laborRate?: number;
   summary: string;
@@ -20,47 +13,28 @@ export type AISuggestion = {
   title?: string;
 };
 
-type AddLineRequest = {
+type IncomingBody = {
   workOrderId: string;
   description: string;
   section?: string;
-  status?: "recommend" | "fail"; // original inspection status
+  status?: "recommend" | "fail";
   suggestion: AISuggestion;
   source?: "inspection";
   jobType?: "inspection";
 };
 
-// --- DB Insert Payload Type ---
-type InsertWorkOrderLine = {
-  work_order_id: string;
-  description: string;
-  section: string | null;
-  job_type: string;
-  status: "awaiting_approval";
-  notes: string | null;
-  labor_time: number | null;
-  price_estimate: number | null;
-  source: string;
-};
+type DB = Database;
+type WOLInsert = DB["public"]["Tables"]["work_order_lines"]["Insert"];
+type WOLRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
 
 export async function POST(req: Request) {
   try {
-    const body: AddLineRequest = await req.json();
+    const body = (await req.json()) as IncomingBody | null;
 
-    const {
-      workOrderId,
-      description,
-      section,
-      status,
-      suggestion,
-      source = "inspection",
-      jobType = "inspection",
-    } = body;
-
-    if (!workOrderId || !description || !suggestion) {
+    if (!body?.workOrderId || !body?.description || !body?.suggestion) {
       return NextResponse.json(
         { error: "Missing required fields (workOrderId, description, suggestion)" },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -71,70 +45,64 @@ export async function POST(req: Request) {
     if (!supabaseUrl || !supabaseKey) {
       return NextResponse.json(
         { error: "Server not configured for Supabase" },
-        { status: 500 },
+        { status: 500 }
       );
     }
 
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabase = createClient<Database>(supabaseUrl, supabaseKey);
 
-    // AI Notes formatting
-    const aiSummary = suggestion.summary?.trim() || "";
+    // Compose helpful notes
+    const aiSummary = body.suggestion.summary?.trim() || "";
     const aiNotes =
       [
-        section ? `Section: ${section}` : "",
-        status ? `From inspection: ${status.toUpperCase()}` : "",
+        body.section ? `Section: ${body.section}` : "",
+        body.status ? `From inspection: ${body.status.toUpperCase()}` : "",
         aiSummary ? `AI: ${aiSummary}` : "",
       ]
         .filter(Boolean)
         .join(" • ") || null;
 
-    const labor_time =
-      typeof suggestion.laborHours === "number"
-        ? suggestion.laborHours
+    const laborTime =
+      typeof body.suggestion.laborHours === "number"
+        ? body.suggestion.laborHours
         : null;
 
-    const partsTotal = suggestion.parts?.reduce<number>(
-      (sum, p) => sum + (p.cost || 0),
-      0,
-    ) ?? 0;
-
-    const price_estimate =
-      typeof suggestion.laborRate === "number" && labor_time
-        ? partsTotal + suggestion.laborRate * labor_time
-        : partsTotal || null;
-
-    const payload: InsertWorkOrderLine = {
-      work_order_id: workOrderId,
-      description,
-      section: section ?? null,
-      job_type: jobType,
-      status: "awaiting_approval",
-      notes: aiNotes,
-      labor_time,
-      price_estimate,
-      source,
+    // ✅ status + approval_state split:
+    // - status: use your workflow value (awaiting/queued/etc.)
+    // - approval_state: awaiting_approval
+    const payload: WOLInsert = {
+      work_order_id: body.workOrderId as WOLInsert["work_order_id"],
+      description: body.description as WOLInsert["description"],
+      status: "awaiting" as WOLInsert["status"],
+      approval_state: "awaiting_approval" as WOLInsert["approval_state"],
+      job_type: "inspection" as WOLInsert["job_type"],
+      notes: aiNotes as WOLInsert["notes"],
+      labor_time: laborTime as WOLInsert["labor_time"],
     };
 
     const { data, error } = await supabase
       .from("work_order_lines")
       .insert(payload)
       .select("id")
-      .single();
+      .single<WOLRow>();
 
     if (error) {
-      console.error("Insert failure:", error);
-      return NextResponse.json(
-        { error: error.message ?? "Insert failed" },
-        { status: 500 },
-      );
+      // Log detail to help diagnose enum/constraint mismatches
+      // eslint-disable-next-line no-console
+      console.error("[add-line] insert failed", {
+        message: error.message,
+        details: (error as { details?: string }).details,
+        hint: (error as { hint?: string }).hint,
+        code: (error as { code?: string }).code,
+        payload,
+      });
+      return NextResponse.json({ error: error.message ?? "Insert failed" }, { status: 500 });
     }
 
     return NextResponse.json({ id: data.id });
-  } catch (err) {
-    console.error("Unexpected API error:", err);
-    return NextResponse.json(
-      { error: "Failed to add line" },
-      { status: 500 },
-    );
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error("[add-line] route error:", e);
+    return NextResponse.json({ error: "Failed to add line" }, { status: 500 });
   }
 }
