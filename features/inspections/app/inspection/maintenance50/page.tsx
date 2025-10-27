@@ -614,10 +614,10 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
                                 workOrderId,
                                 description: desc,
                                 section: section.title,
-                                status: status as "fail" | "recommend",
+                                status,
                                 suggestion,
                                 source: "inspection",
-                                jobType: "inspection",
+                              
                               });
                               toast.success("Added to work order (awaiting approval)", { id: tId });
                             } catch (e) {

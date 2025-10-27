@@ -20,7 +20,7 @@ type IncomingBody = {
   status?: "recommend" | "fail";
   suggestion: AISuggestion;
   source?: "inspection";
-  jobType?: "inspection";
+  // jobType intentionally omitted here to avoid enum mismatches
 };
 
 type DB = Database;
@@ -51,7 +51,7 @@ export async function POST(req: Request) {
 
     const supabase = createClient<Database>(supabaseUrl, supabaseKey);
 
-    // Compose helpful notes
+    // Compose useful notes (compact)
     const aiSummary = body.suggestion.summary?.trim() || "";
     const aiNotes =
       [
@@ -63,21 +63,17 @@ export async function POST(req: Request) {
         .join(" • ") || null;
 
     const laborTime =
-      typeof body.suggestion.laborHours === "number"
-        ? body.suggestion.laborHours
-        : null;
+      typeof body.suggestion.laborHours === "number" ? body.suggestion.laborHours : null;
 
-    // ✅ status + approval_state split:
-    // - status: use your workflow value (awaiting/queued/etc.)
-    // - approval_state: awaiting_approval
+    // IMPORTANT: split status vs approval_state
     const payload: WOLInsert = {
       work_order_id: body.workOrderId as WOLInsert["work_order_id"],
       description: body.description as WOLInsert["description"],
-      status: "awaiting" as WOLInsert["status"],
-      approval_state: "awaiting_approval" as WOLInsert["approval_state"],
-      job_type: "inspection" as WOLInsert["job_type"],
+      status: "awaiting" as WOLInsert["status"],               // valid status enum
+      approval_state: "awaiting_approval" as WOLInsert["approval_state"], // approval enum
       notes: aiNotes as WOLInsert["notes"],
       labor_time: laborTime as WOLInsert["labor_time"],
+      // Do NOT set job_type here to avoid enum mismatch; we can add it later once we confirm allowed values.
     };
 
     const { data, error } = await supabase
@@ -87,7 +83,7 @@ export async function POST(req: Request) {
       .single<WOLRow>();
 
     if (error) {
-      // Log detail to help diagnose enum/constraint mismatches
+      // log enough details to diagnose enum/constraint issues
       // eslint-disable-next-line no-console
       console.error("[add-line] insert failed", {
         message: error.message,
