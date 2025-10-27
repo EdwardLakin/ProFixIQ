@@ -4792,6 +4792,29 @@ export type Database = {
           },
         ]
       }
+      stock_balances: {
+        Row: {
+          location_id: string | null
+          on_hand: number | null
+          part_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_moves_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_moves_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       v_part_stock: {
         Row: {
           location_id: string | null
