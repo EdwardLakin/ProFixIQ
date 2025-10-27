@@ -1,6 +1,6 @@
+// app/api/work-orders/add-line/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import type { Database } from "@shared/types/types/supabase";
 
 type AISuggestion = {
   parts: { name: string; qty?: number; cost?: number; notes?: string }[];
@@ -13,92 +13,82 @@ type AISuggestion = {
   title?: string;
 };
 
-type IncomingBody = {
-  workOrderId: string;
-  description: string;
-  section?: string;
-  status?: "recommend" | "fail";
-  suggestion: AISuggestion;
-  source?: "inspection";
-  // jobType intentionally omitted here to avoid enum mismatches
-};
-
-type DB = Database;
-type WOLInsert = DB["public"]["Tables"]["work_order_lines"]["Insert"];
-type WOLRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
-
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as IncomingBody | null;
+    const body = await req.json();
+    const {
+      workOrderId,
+      description,
+      section,
+      status,
+      suggestion,
+      jobType = "inspection",
+    }: {
+      workOrderId: string;
+      description: string;
+      section?: string;
+      status?: "recommend" | "fail";
+      suggestion: AISuggestion;
+      jobType?: "inspection" | "repair" | "maintenance";
+    } = body;
 
-    if (!body?.workOrderId || !body?.description || !body?.suggestion) {
+    if (!workOrderId || !description || !suggestion) {
       return NextResponse.json(
         { error: "Missing required fields (workOrderId, description, suggestion)" },
         { status: 400 }
       );
     }
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey =
-      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
 
-    if (!supabaseUrl || !supabaseKey) {
-      return NextResponse.json(
-        { error: "Server not configured for Supabase" },
-        { status: 500 }
-      );
-    }
+    const labor_time =
+      typeof suggestion.laborHours === "number" ? suggestion.laborHours : null;
 
-    const supabase = createClient<Database>(supabaseUrl, supabaseKey);
+    const notes = [
+      section ? `Section: ${section}` : "",
+      status ? `From inspection: ${status.toUpperCase()}` : "",
+      suggestion.summary ? `AI: ${suggestion.summary}` : "",
+    ]
+      .filter(Boolean)
+      .join(" • ") || null;
 
-    // Compose useful notes (compact)
-    const aiSummary = body.suggestion.summary?.trim() || "";
-    const aiNotes =
-      [
-        body.section ? `Section: ${body.section}` : "",
-        body.status ? `From inspection: ${body.status.toUpperCase()}` : "",
-        aiSummary ? `AI: ${aiSummary}` : "",
-      ]
-        .filter(Boolean)
-        .join(" • ") || null;
-
-    const laborTime =
-      typeof body.suggestion.laborHours === "number" ? body.suggestion.laborHours : null;
-
-    // IMPORTANT: split status vs approval_state
-    const payload: WOLInsert = {
-      work_order_id: body.workOrderId as WOLInsert["work_order_id"],
-      description: body.description as WOLInsert["description"],
-      status: "awaiting" as WOLInsert["status"],               // valid status enum
-      approval_state: "awaiting_approval" as WOLInsert["approval_state"], // approval enum
-      notes: aiNotes as WOLInsert["notes"],
-      labor_time: laborTime as WOLInsert["labor_time"],
-      // Do NOT set job_type here to avoid enum mismatch; we can add it later once we confirm allowed values.
+    const insertPayload = {
+      work_order_id: workOrderId,
+      description,
+      job_type: jobType,
+      status: "awaiting",          // ✅ allowed
+      approval_state: "pending",   // ✅ allowed
+      notes,
+      labor_time,
     };
 
     const { data, error } = await supabase
       .from("work_order_lines")
-      .insert(payload)
+      .insert(insertPayload)
       .select("id")
-      .single<WOLRow>();
+      .single();
 
     if (error) {
-      // log enough details to diagnose enum/constraint issues
-      // eslint-disable-next-line no-console
-      console.error("[add-line] insert failed", {
-        message: error.message,
-        details: (error as { details?: string }).details,
-        hint: (error as { hint?: string }).hint,
-        code: (error as { code?: string }).code,
-        payload,
-      });
-      return NextResponse.json({ error: error.message ?? "Insert failed" }, { status: 500 });
+      console.error("Insert failed:", error);
+      return NextResponse.json(
+        {
+          error: error.message,
+          // helpful debug:
+          details: (error as any).details,
+          hint: (error as any).hint,
+          code: (error as any).code,
+          insertPayload,
+        },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({ id: data.id });
   } catch (e) {
-    // eslint-disable-next-line no-console
-    console.error("[add-line] route error:", e);
+    console.error("Route error:", e);
     return NextResponse.json({ error: "Failed to add line" }, { status: 500 });
   }
 }
