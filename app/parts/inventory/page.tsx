@@ -219,6 +219,37 @@ export default function InventoryPage(): JSX.Element {
   const [csvPreview, setCsvPreview] = useState<boolean>(false);
   const [csvDefaultLoc, setCsvDefaultLoc] = useState<string>("");
 
+  /* ---------- loadOnHand FIX: accept sid directly; avoid state race ---------- */
+  const loadOnHand = useCallback(
+    async (sid: string, partIds: string[]) => {
+      if (!partIds.length) {
+        setOnHand({});
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("stock_moves")
+        .select("part_id, qty_change")
+        .in("part_id", partIds)
+        .eq("shop_id", sid);
+
+      if (error || !data) {
+        setOnHand({});
+        return;
+      }
+
+      const totals: Record<string, number> = {};
+      (data as StockMove[]).forEach((m) => {
+        const delta = Number(m.qty_change) || 0;
+        totals[m.part_id] = (totals[m.part_id] ?? 0) + delta;
+      });
+
+      setOnHand(totals);
+    },
+    [supabase],
+  );
+  /* ------------------------------------------------------------------------- */
+
   const load = async (sid: string) => {
     setLoading(true);
     const base = supabase
@@ -241,40 +272,9 @@ export default function InventoryPage(): JSX.Element {
     setParts(partRows);
     setLoading(false);
 
-    // load on-hand for these parts
-    void loadOnHand(partRows.map((p) => p.id));
+    // use sid here (prevents 0s on first render)
+    void loadOnHand(sid, partRows.map((p) => p.id));
   };
-
-  // --- on-hand (total) -------------------------------------------------
-  const loadOnHand = useCallback(
-    async (partIds: string[]) => {
-      if (!partIds.length) {
-        setOnHand({});
-        return;
-      }
-
-      // Sum the real column: qty_change
-      const { data, error } = await supabase
-        .from("stock_moves")
-        .select("part_id, qty_change")
-        .in("part_id", partIds)
-        .eq("shop_id", shopId); // keep scope to current shop
-
-      if (error || !data) {
-        setOnHand({});
-        return;
-      }
-
-      const totals: Record<string, number> = {};
-      (data as StockMove[]).forEach((m) => {
-        const delta = Number(m.qty_change) || 0;
-        totals[m.part_id] = (totals[m.part_id] ?? 0) + delta;
-      });
-
-      setOnHand(totals);
-    },
-    [supabase, shopId],
-  );
 
   // --- on-hand detail (per-location) -----------------------------------
   const openOnHandDetail = async (p: Part) => {
@@ -344,7 +344,7 @@ export default function InventoryPage(): JSX.Element {
         setCsvDefaultLoc(main.id);
       }
 
-      await load(sid);
+      await load(sid); // also calls loadOnHand(sid, ids)
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase]);
@@ -390,7 +390,10 @@ export default function InventoryPage(): JSX.Element {
     }
 
     setAddOpen(false);
-    setName(""); setSku(""); setCategory(""); setPrice("");
+    setName("");
+    setSku("");
+    setCategory("");
+    setPrice("");
     setInitQty(0);
     await load(shopId);
   };
