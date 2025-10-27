@@ -16,7 +16,7 @@ export async function addWorkOrderLineFromSuggestion(args: {
   status?: "recommend" | "fail";  // original inspection status, for context
   suggestion: AISuggestion;
   source?: "inspection";
-  jobType?: "inspection";
+  jobType?: "repair" | "maintenance" | "inspection"; // ✅ widened union
 }) {
   const res = await fetch("/api/work-orders/add-line", {
     method: "POST",

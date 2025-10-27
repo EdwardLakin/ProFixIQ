@@ -1,8 +1,16 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-type AISuggestion = {
-  parts: { name: string; qty?: number; cost?: number; notes?: string }[];
+// --- Data Contracts ---
+type SuggestionPart = {
+  name: string;
+  qty?: number;
+  cost?: number;
+  notes?: string;
+};
+
+export type AISuggestion = {
+  parts: SuggestionPart[];
   laborHours: number;
   laborRate?: number;
   summary: string;
@@ -12,32 +20,47 @@ type AISuggestion = {
   title?: string;
 };
 
+type AddLineRequest = {
+  workOrderId: string;
+  description: string;
+  section?: string;
+  status?: "recommend" | "fail"; // original inspection status
+  suggestion: AISuggestion;
+  source?: "inspection";
+  jobType?: "inspection";
+};
+
+// --- DB Insert Payload Type ---
+type InsertWorkOrderLine = {
+  work_order_id: string;
+  description: string;
+  section: string | null;
+  job_type: string;
+  status: "awaiting_approval";
+  notes: string | null;
+  labor_time: number | null;
+  price_estimate: number | null;
+  source: string;
+};
+
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    const body: AddLineRequest = await req.json();
 
     const {
       workOrderId,
       description,
       section,
-      status,      // "recommend" | "fail" (from inspection)
-      suggestion,  // AISuggestion
+      status,
+      suggestion,
       source = "inspection",
       jobType = "inspection",
-    }: {
-      workOrderId: string;
-      description: string;
-      section?: string;
-      status?: "recommend" | "fail";
-      suggestion: AISuggestion;
-      source?: string;
-      jobType?: string;
-    } = body || {};
+    } = body;
 
     if (!workOrderId || !description || !suggestion) {
       return NextResponse.json(
         { error: "Missing required fields (workOrderId, description, suggestion)" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -48,58 +71,70 @@ export async function POST(req: Request) {
     if (!supabaseUrl || !supabaseKey) {
       return NextResponse.json(
         { error: "Server not configured for Supabase" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Compose a helpful notes string (don’t break strict typings)
+    // AI Notes formatting
     const aiSummary = suggestion.summary?.trim() || "";
     const aiNotes =
       [
         section ? `Section: ${section}` : "",
         status ? `From inspection: ${status.toUpperCase()}` : "",
         aiSummary ? `AI: ${aiSummary}` : "",
-      ].filter(Boolean).join(" • ") || null;
+      ]
+        .filter(Boolean)
+        .join(" • ") || null;
 
-    // Try to fill labor_time if your table has it
-    const laborTime =
-      typeof suggestion.laborHours === "number" ? suggestion.laborHours : null;
+    const labor_time =
+      typeof suggestion.laborHours === "number"
+        ? suggestion.laborHours
+        : null;
 
-    // If your table has a price/estimate column and typings allow it, you can save it too.
-    // We’ll keep it minimal to avoid type errors.
-    const insertPayload: any = {
+    const partsTotal = suggestion.parts?.reduce<number>(
+      (sum, p) => sum + (p.cost || 0),
+      0,
+    ) ?? 0;
+
+    const price_estimate =
+      typeof suggestion.laborRate === "number" && labor_time
+        ? partsTotal + suggestion.laborRate * labor_time
+        : partsTotal || null;
+
+    const payload: InsertWorkOrderLine = {
       work_order_id: workOrderId,
       description,
-      job_type: jobType,       // e.g. "inspection"
-      status: "awaiting",      // or "queued"/"awaiting_approval" per your flow
+      section: section ?? null,
+      job_type: jobType,
+      status: "awaiting_approval",
       notes: aiNotes,
-      labor_time: laborTime,
-      // price_estimate: suggestion.price ?? null, // only if column exists & types allow
-      // source: source,                            // only if you have such a column
+      labor_time,
+      price_estimate,
+      source,
     };
 
     const { data, error } = await supabase
       .from("work_order_lines")
-      .insert(insertPayload)
+      .insert(payload)
       .select("id")
       .single();
 
     if (error) {
-      console.error("Insert work_order_lines failed", error);
+      console.error("Insert failure:", error);
       return NextResponse.json(
-        { error: error.message || "Insert failed" },
-        { status: 500 }
+        { error: error.message ?? "Insert failed" },
+        { status: 500 },
       );
     }
 
-    return NextResponse.json({ id: data?.id });
-  } catch (e) {
-    console.error("add-line route error:", e);
+    return NextResponse.json({ id: data.id });
+  } catch (err) {
+    console.error("Unexpected API error:", err);
     return NextResponse.json(
       { error: "Failed to add line" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

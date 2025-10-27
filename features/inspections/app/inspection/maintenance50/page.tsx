@@ -12,6 +12,7 @@ import useInspectionSession from "@inspections/hooks/useInspectionSession";
 import { handleTranscriptFn } from "@inspections/lib/inspection/handleTranscript";
 import { interpretCommand } from "@inspections/components/inspection/interpretCommand";
 import { requestQuoteSuggestion } from "@inspections/lib/inspection/aiQuote";
+import { addWorkOrderLineFromSuggestion } from "@inspections/lib/inspection/addWorkOrderLine";
 
 import type {
   ParsedCommand,
@@ -531,11 +532,12 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
                     ): Promise<void> => {
                       updateItem(secIdx, itemIdx, { status });
 
+                      // ---------- AUTO AI + ADD WO LINE ----------
                       if (status === "fail" || status === "recommend") {
                         const it = session.sections[secIdx].items[itemIdx];
                         const desc = it.item ?? it.name ?? "Item";
 
-                        // 1) Add placeholder in-session quote
+                        // 1) Add placeholder locally for UI quote panel
                         const id = uuidv4();
                         const placeholder: QuoteLineItem = {
                           id,
@@ -555,83 +557,68 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
                         };
                         addQuoteLine(placeholder);
 
-                        // 2) Ask AI for suggestion, patch same line
                         const tId = toast.loading("Getting AI estimate…");
                         try {
                           const suggestion = await requestQuoteSuggestion({
                             item: desc,
                             notes: it.notes ?? "",
-                            section: session.sections[secIdx].title,
+                            section: section.title,
                             status,
                           });
 
-                          if (suggestion) {
-                            const partsTotal =
-                              suggestion.parts?.reduce(
-                                (sum, p) => sum + (p.cost || 0),
-                                0
-                              ) ?? 0;
-                            const laborRate = suggestion.laborRate ?? 0;
-                            const laborTime = suggestion.laborHours ?? 0.5;
-                            const price = Math.max(
-                              0,
-                              partsTotal + laborRate * laborTime
-                            );
+                          if (!suggestion) {
+                            updateQuoteLine(id, { aiState: "error" });
+                            toast.error("No AI suggestion available", { id: tId });
+                            return;
+                          }
 
-                            updateQuoteLine(id, {
-                              price,
-                              laborTime,
-                              laborRate,
-                              ai: {
-                                summary: suggestion.summary,
-                                confidence: suggestion.confidence,
-                                parts: suggestion.parts ?? [],
-                              },
-                              aiState: "done",
-                            });
+                          // ✅ Compute price for UI
+                          const partsTotal =
+                            suggestion.parts?.reduce((sum, p) => sum + (p.cost || 0), 0) ?? 0;
+                          const laborRate = suggestion.laborRate ?? 0;
+                          const laborTime = suggestion.laborHours ?? 0.5;
+                          const price = Math.max(0, partsTotal + laborRate * laborTime);
 
-                            // 3) Persist to Work Order (no modal)
+                          updateQuoteLine(id, {
+                            price,
+                            laborTime,
+                            laborRate,
+                            ai: {
+                              summary: suggestion.summary,
+                              confidence: suggestion.confidence,
+                              parts: suggestion.parts ?? [],
+                            },
+                            aiState: "done",
+                          });
+
+                          // ✅ Persist to Work Order via your existing helper (awaiting approval)
+                          if (workOrderId) {
                             try {
-                              if (!workOrderId) {
-                                toast.error("Missing work order id, could not add line.");
-                              } else {
-                                const r = await fetch("/api/work-orders/lines/quick-add", {
-                                  method: "POST",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({
-                                    workOrderId,
-                                    description: desc,
-                                    section: session.sections[secIdx].title,
-                                    status,
-                                    notes: it.notes ?? "",
-                                    price,
-                                    laborTime,
-                                    laborRate,
-                                    parts: suggestion.parts ?? [],
-                                    source: "inspection-ai",
-                                  }),
-                                });
-                                if (!r.ok) {
-                                  toast.error("Failed to add line to work order.");
-                                } else {
-                                  toast.success("Added to work order", { id: tId });
-                                }
-                              }
-                            } catch {
-                              toast.error("Could not persist AI line to work order", { id: tId });
+                              const jobType = status === "fail" ? "repair" : "maintenance";
+                              await addWorkOrderLineFromSuggestion({
+                                workOrderId,
+                                description: desc,
+                                section: section.title,
+                                status: status as "fail" | "recommend",
+                                suggestion,
+                                source: "inspection",
+                                jobType,
+                              });
+                              toast.success("Added to work order (awaiting approval)", { id: tId });
+                            } catch (e) {
+                              console.error("Add WO line failed:", e);
+                              toast.error("Couldn't add to work order", { id: tId });
                             }
                           } else {
-                            updateQuoteLine(id, { aiState: "error" });
-                            toast.error("No AI suggestion available", {
-                              id: tId,
-                            });
+                            toast.error("Missing work order id — saved locally only", { id: tId });
                           }
                         } catch (e) {
-                          console.error("AI quote suggestion failed:", e);
+                          console.error("AI estimate failed:", e);
                           updateQuoteLine(id, { aiState: "error" });
                           toast.error("AI estimate failed", { id: tId });
                         }
                       }
+                      // ---------- /AUTO AI + ADD WO LINE ----------
                     }}
                     onUpdateNote={(
                       secIdx: number,
