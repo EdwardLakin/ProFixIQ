@@ -169,10 +169,23 @@ function parseCSV(text: string): string[][] {
   return rows.filter((r) => r.length > 0 && r.some((c) => c.length > 0));
 }
 
-/* ------------------------- RPC helper -------------------------- */
-/** First tries the 6-arg function; if PostgREST schema cache hasn’t
- *  picked it up yet, falls back to the 5-arg legacy shape.
- *  No `any` used (only `unknown`→concrete type assertions).
+/* ------------------------- Error helper ------------------------- */
+function errMsg(err: unknown): string {
+  if (typeof err === "string") return err;
+  if (err && typeof err === "object" && "message" in err) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return String((err as Record<string, unknown>).message);
+  }
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
+}
+
+/* ------------------------- RPC helper --------------------------- */
+/** Try 6-arg function first; if schema cache hasn’t picked it up,
+ * fall back to the 5-arg legacy shape. Strictly typed, no `any`.
  */
 async function applyStockMoveRPC(
   supabase: ReturnType<typeof createClientComponentClient<DB>>,
@@ -185,41 +198,39 @@ async function applyStockMoveRPC(
     p_ref_id?: string | null;
   },
 ): Promise<string> {
-  // The “official” typed args from your generated DB types
   type FnArgs = DB["public"]["Functions"]["apply_stock_move"]["Args"];
   type FnRet = DB["public"]["Functions"]["apply_stock_move"]["Returns"];
 
-  // 6-arg payload (include p_ref_id only when defined to placate strict arg shapes)
+  // 6-arg payload (conditionally include p_ref_id so the arg shape matches)
   const payload6 = {
     p_part: args.p_part,
     p_loc: args.p_loc,
     p_qty: args.p_qty,
-    p_reason: args.p_reason as unknown as FnArgs extends { p_reason: infer R } ? R : never,
+    // cast only the enum field to the generated type
+    p_reason: args.p_reason as FnArgs extends { p_reason: infer R } ? R : never,
     p_ref_kind: args.p_ref_kind,
     ...(args.p_ref_id !== undefined ? { p_ref_id: args.p_ref_id } : {}),
-  } as unknown as FnArgs;
+  } as FnArgs;
 
-  // Try 6-arg first
-  let call = await supabase.rpc("apply_stock_move", payload6);
-  if (!call.error && call.data) return call.data as FnRet;
+  const call6 = await supabase.rpc("apply_stock_move", payload6);
+  if (!call6.error && call6.data) return call6.data as FnRet;
 
-  // If it’s a schema-cache shape error, fall back to 5-arg
-  const msg = (call.error?.message ?? "").toLowerCase();
-  const looksLikeShapeIssue =
+  const msg = (call6.error?.message ?? "").toLowerCase();
+  const cacheShapeIssue =
     msg.includes("could not find the function") ||
     msg.includes("schema cache") ||
     msg.includes("function apply_stock_move(");
 
-  if (!looksLikeShapeIssue) throw new Error(call.error?.message ?? "apply_stock_move failed");
+  if (!cacheShapeIssue) throw new Error(call6.error?.message ?? "apply_stock_move failed");
 
   // 5-arg legacy payload (no p_ref_id)
   const payload5 = {
     p_part: args.p_part,
     p_loc: args.p_loc,
     p_qty: args.p_qty,
-    p_reason: args.p_reason as unknown as FnArgs extends { p_reason: infer R } ? R : never,
+    p_reason: args.p_reason as FnArgs extends { p_reason: infer R } ? R : never,
     p_ref_kind: args.p_ref_kind,
-  } as unknown as FnArgs;
+  } as FnArgs;
 
   const call5 = await supabase.rpc("apply_stock_move", payload5);
   if (!call5.error && call5.data) return call5.data as FnRet;
@@ -255,7 +266,7 @@ export default function InventoryPage(): JSX.Element {
 
   // initial receive (optional) for Add
   const [initLoc, setInitLoc] = useState<string>("");
-  const [initQty, setInitQty] = useState<number | "">(""); // allow empty
+  const [initQty, setInitQty] = useState<number | "">("");
 
   // edit modal
   const [editOpen, setEditOpen] = useState<boolean>(false);
@@ -269,7 +280,7 @@ export default function InventoryPage(): JSX.Element {
   const [recvOpen, setRecvOpen] = useState<boolean>(false);
   const [recvPart, setRecvPart] = useState<Part | null>(null);
   const [recvLoc, setRecvLoc] = useState<string>("");
-  const [recvQty, setRecvQty] = useState<number | "">(""); // allow empty
+  const [recvQty, setRecvQty] = useState<number | "">("");
 
   // CSV Import
   const [csvOpen, setCsvOpen] = useState<boolean>(false);
@@ -442,8 +453,8 @@ export default function InventoryPage(): JSX.Element {
           p_ref_kind: "manual_receive",
           p_ref_id: null,
         });
-      } catch (e: any) {
-        alert(`Part created, but stock receive failed: ${e.message ?? e}`);
+      } catch (err: unknown) {
+        alert(`Part created, but stock receive failed: ${errMsg(err)}`);
       }
     }
 
@@ -504,8 +515,8 @@ export default function InventoryPage(): JSX.Element {
       });
       setRecvOpen(false);
       await load(shopId);
-    } catch (e: any) {
-      alert(e.message ?? String(e));
+    } catch (err: unknown) {
+      alert(errMsg(err));
     }
   };
 
@@ -612,8 +623,8 @@ export default function InventoryPage(): JSX.Element {
             p_ref_kind: "csv_import",
             p_ref_id: null,
           });
-        } catch (e) {
-          console.warn("Stock receive failed for row:", row, e);
+        } catch (err: unknown) {
+          console.warn("Stock receive failed for row:", row, errMsg(err));
         }
       }
     }
@@ -749,7 +760,11 @@ export default function InventoryPage(): JSX.Element {
           </div>
           <TextField label="SKU" value={sku} onChange={setSku} placeholder="Optional" />
           <TextField label="Category" value={category} onChange={setCategory} placeholder="Optional" />
-          <NumberField label="Price" value={price} onChange={setPrice} />
+          <NumberField
+            label="Price"
+            value={price}
+            onChange={(v) => setPrice(v === "" ? "" : v)}
+          />
         </div>
 
         <div className="mt-4 rounded border border-neutral-800 bg-neutral-900 p-3">
@@ -807,7 +822,7 @@ export default function InventoryPage(): JSX.Element {
           </div>
           <TextField label="SKU" value={editSku} onChange={setEditSku} />
           <TextField label="Category" value={editCategory} onChange={setEditCategory} />
-          <NumberField label="Price" value={editPrice} onChange={setEditPrice} />
+          <NumberField label="Price" value={editPrice} onChange={(v) => setEditPrice(v === "" ? "" : v)} />
         </div>
       </Modal>
 
@@ -844,7 +859,7 @@ export default function InventoryPage(): JSX.Element {
               label: `${l.code ?? "LOC"} — ${l.name ?? ""}`,
             }))}
           />
-        <NumberField
+          <NumberField
             label="Qty"
             value={recvQty}
             min={0}
