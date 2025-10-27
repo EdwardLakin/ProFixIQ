@@ -90,6 +90,7 @@ function NumberField(props: {
         step={step}
         onChange={(e) => {
           const raw = e.target.value;
+          // allow clearing to "" and allow entering 0 explicitly
           onChange(raw === "" ? "" : Number(raw));
         }}
       />
@@ -208,7 +209,7 @@ export default function InventoryPage(): JSX.Element {
   const [recvOpen, setRecvOpen] = useState<boolean>(false);
   const [recvPart, setRecvPart] = useState<Part | null>(null);
   const [recvLoc, setRecvLoc] = useState<string>("");
-  const [recvQty, setRecvQty] = useState<number>(0);
+  const [recvQty, setRecvQty] = useState<number | "">("");
 
   // CSV Import
   const [csvOpen, setCsvOpen] = useState<boolean>(false);
@@ -384,7 +385,7 @@ export default function InventoryPage(): JSX.Element {
         p_qty: initQty,
         p_reason: "receive",
         p_ref_kind: "manual_receive",
-        p_ref_id: undefined,
+        p_ref_id: undefined, // IMPORTANT: null, not undefined
       });
       if (smErr) alert(`Part created, but stock receive failed: ${smErr.message}`);
     }
@@ -429,19 +430,19 @@ export default function InventoryPage(): JSX.Element {
 
   const openReceive = (p: Part) => {
     setRecvPart(p);
-    setRecvQty(0);
+    setRecvQty(0); // allow zero explicitly; button will guard > 0
     setRecvOpen(true);
   };
 
   const applyReceive = async () => {
-    if (!recvPart?.id || !recvLoc || recvQty <= 0) return;
+    if (!recvPart?.id || !recvLoc || typeof recvQty !== "number" || recvQty <= 0) return;
     const { error } = await supabase.rpc("apply_stock_move", {
-      p_part: recvPart.id,
+      p_part: recvPart.id,     // correct order
       p_loc: recvLoc,
       p_qty: recvQty,
       p_reason: "receive",
       p_ref_kind: "manual_receive",
-      p_ref_id: undefined,
+      p_ref_id: undefined,          // use null
     });
     if (error) {
       alert(error.message);
@@ -546,12 +547,12 @@ export default function InventoryPage(): JSX.Element {
 
       if (partId && csvDefaultLoc && typeof row.qty === "number" && row.qty > 0) {
         await supabase.rpc("apply_stock_move", {
-          p_part: partId,
+          p_part: partId,          // correct order
           p_loc: csvDefaultLoc,
           p_qty: row.qty,
           p_reason: "receive",
           p_ref_kind: "csv_import",
-          p_ref_id: undefined,
+          p_ref_id: undefined,          // use null
         });
       }
     }
@@ -754,6 +755,7 @@ export default function InventoryPage(): JSX.Element {
         open={recvOpen}
         title={recvPart ? `Receive — ${recvPart.name}` : "Receive Stock"}
         onClose={() => setRecvOpen(false)}
+        
         footer={
           <div className="flex justify-end gap-2">
             <button
@@ -765,7 +767,7 @@ export default function InventoryPage(): JSX.Element {
             <button
               className="rounded border border-blue-600 px-3 py-1.5 text-sm text-blue-300 hover:bg-blue-900/20 disabled:opacity-60"
               onClick={applyReceive}
-              disabled={!recvPart?.id || !recvLoc || recvQty <= 0}
+              disabled={!recvPart?.id || !recvLoc || typeof recvQty !== "number" || recvQty <= 0}
             >
               Apply Receive
             </button>
@@ -787,7 +789,7 @@ export default function InventoryPage(): JSX.Element {
             value={recvQty}
             min={0}
             step={1}
-            onChange={(v) => setRecvQty(typeof v === "number" ? Math.max(0, v) : 0)}
+            onChange={(v) => setRecvQty(typeof v === "number" ? Math.max(0, v) : v === "" ? "" : 0)}
           />
         </div>
       </Modal>
