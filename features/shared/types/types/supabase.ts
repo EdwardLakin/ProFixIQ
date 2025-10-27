@@ -610,11 +610,13 @@ export type Database = {
       customers: {
         Row: {
           address: string | null
+          business_name: string | null
           city: string | null
           created_at: string | null
           email: string | null
           first_name: string | null
           id: string
+          is_fleet: boolean
           last_name: string | null
           name: string | null
           notes: string | null
@@ -629,11 +631,13 @@ export type Database = {
         }
         Insert: {
           address?: string | null
+          business_name?: string | null
           city?: string | null
           created_at?: string | null
           email?: string | null
           first_name?: string | null
           id?: string
+          is_fleet?: boolean
           last_name?: string | null
           name?: string | null
           notes?: string | null
@@ -648,11 +652,13 @@ export type Database = {
         }
         Update: {
           address?: string | null
+          business_name?: string | null
           city?: string | null
           created_at?: string | null
           email?: string | null
           first_name?: string | null
           id?: string
+          is_fleet?: boolean
           last_name?: string | null
           name?: string | null
           notes?: string | null
@@ -1162,7 +1168,21 @@ export type Database = {
             foreignKeyName: "inspection_sessions_work_order_line_fk"
             columns: ["work_order_line_id"]
             isOneToOne: false
+            referencedRelation: "v_quote_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspection_sessions_work_order_line_fk"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
             referencedRelation: "work_order_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspection_sessions_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_quote_queue"
             referencedColumns: ["id"]
           },
           {
@@ -2070,6 +2090,61 @@ export type Database = {
           },
         ]
       }
+      parts_quote_requests: {
+        Row: {
+          created_at: string
+          id: string
+          notes: string | null
+          requested_by: string | null
+          status: Database["public"]["Enums"]["quote_request_status"]
+          updated_at: string
+          work_order_id: string
+          work_order_line_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          requested_by?: string | null
+          status?: Database["public"]["Enums"]["quote_request_status"]
+          updated_at?: string
+          work_order_id: string
+          work_order_line_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          requested_by?: string | null
+          status?: Database["public"]["Enums"]["quote_request_status"]
+          updated_at?: string
+          work_order_id?: string
+          work_order_line_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "parts_quote_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parts_quote_requests_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_quote_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parts_quote_requests_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_lines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       parts_quotes: {
         Row: {
           created_at: string | null
@@ -2199,6 +2274,13 @@ export type Database = {
           work_order_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "parts_requests_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "v_quote_queue"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "parts_requests_job_id_fkey"
             columns: ["job_id"]
@@ -2595,6 +2677,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      saved_menu_items: {
+        Row: {
+          created_at: string
+          id: string
+          labor_time: number | null
+          make: string
+          model: string
+          parts: Json
+          title: string
+          updated_at: string
+          year_bucket: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          labor_time?: number | null
+          make: string
+          model: string
+          parts?: Json
+          title: string
+          updated_at?: string
+          year_bucket: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          labor_time?: number | null
+          make?: string
+          model?: string
+          parts?: Json
+          title?: string
+          updated_at?: string
+          year_bucket?: string
+        }
+        Relationships: []
       }
       shop_hours: {
         Row: {
@@ -3922,6 +4040,13 @@ export type Database = {
             foreignKeyName: "warranties_work_order_line_id_fkey"
             columns: ["work_order_line_id"]
             isOneToOne: false
+            referencedRelation: "v_quote_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "warranties_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
             referencedRelation: "work_order_lines"
             referencedColumns: ["id"]
           },
@@ -4089,6 +4214,13 @@ export type Database = {
             foreignKeyName: "work_order_line_history_line_id_fkey"
             columns: ["line_id"]
             isOneToOne: false
+            referencedRelation: "v_quote_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_line_history_line_id_fkey"
+            columns: ["line_id"]
+            isOneToOne: false
             referencedRelation: "work_order_lines"
             referencedColumns: ["id"]
           },
@@ -4130,6 +4262,7 @@ export type Database = {
           priority: number | null
           punched_in_at: string | null
           punched_out_at: string | null
+          quoted_at: string | null
           shop_id: string | null
           status: string | null
           template_id: string | null
@@ -4168,6 +4301,7 @@ export type Database = {
           priority?: number | null
           punched_in_at?: string | null
           punched_out_at?: string | null
+          quoted_at?: string | null
           shop_id?: string | null
           status?: string | null
           template_id?: string | null
@@ -4206,6 +4340,7 @@ export type Database = {
           priority?: number | null
           punched_in_at?: string | null
           punched_out_at?: string | null
+          quoted_at?: string | null
           shop_id?: string | null
           status?: string | null
           template_id?: string | null
@@ -4371,6 +4506,13 @@ export type Database = {
             columns: ["stock_move_id"]
             isOneToOne: false
             referencedRelation: "stock_moves"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_part_allocations_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_quote_queue"
             referencedColumns: ["id"]
           },
           {
@@ -4689,6 +4831,114 @@ export type Database = {
           },
         ]
       }
+      v_quote_queue: {
+        Row: {
+          approval_at: string | null
+          approval_by: string | null
+          approval_note: string | null
+          approval_state: string | null
+          assigned_tech_id: string | null
+          assigned_to: string | null
+          cause: string | null
+          complaint: string | null
+          correction: string | null
+          created_at: string | null
+          description: string | null
+          hold_reason: string | null
+          id: string | null
+          inspection_session_id: string | null
+          job_type: string | null
+          labor_time: number | null
+          line_status: string | null
+          notes: string | null
+          on_hold_since: string | null
+          parts: string | null
+          parts_needed: Json | null
+          parts_received: Json | null
+          parts_required: Json | null
+          price_estimate: number | null
+          priority: number | null
+          punched_in_at: string | null
+          punched_out_at: string | null
+          shop_id: string | null
+          status: string | null
+          template_id: string | null
+          tools: string | null
+          updated_at: string | null
+          urgency: string | null
+          user_id: string | null
+          vehicle_id: string | null
+          work_order_custom_id: string | null
+          work_order_customer_id: string | null
+          work_order_id: string | null
+          work_order_vehicle_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_order_lines_assigned_tech_id_fkey"
+            columns: ["assigned_tech_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_lines_inspection_session_fk"
+            columns: ["inspection_session_id"]
+            isOneToOne: false
+            referencedRelation: "inspection_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_lines_inspection_session_id_fkey"
+            columns: ["inspection_session_id"]
+            isOneToOne: false
+            referencedRelation: "inspection_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_lines_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_lines_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_lines_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_lines_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_orders_customer_id_fkey"
+            columns: ["work_order_customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_orders_vehicle_id_fkey"
+            columns: ["work_order_vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       v_shift_rollups: {
         Row: {
           shift_id: string | null
@@ -4800,6 +5050,7 @@ export type Database = {
         | "lunch_start"
         | "lunch_end"
         | "end"
+      quote_request_status: "pending" | "in_progress" | "done"
       shift_status: "active" | "ended"
       stock_move_reason:
         | "receive"
@@ -4956,6 +5207,7 @@ export const Constants = {
         "lunch_end",
         "end",
       ],
+      quote_request_status: ["pending", "in_progress", "done"],
       shift_status: ["active", "ended"],
       stock_move_reason: [
         "receive",

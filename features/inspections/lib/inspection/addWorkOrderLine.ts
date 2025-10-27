@@ -9,23 +9,28 @@ export type AISuggestion = {
   title?: string;
 };
 
+type JobType = "diagnosis" | "inspection" | "maintenance" | "repair" | "tech-suggested";
+
 export async function addWorkOrderLineFromSuggestion(args: {
   workOrderId: string;
-  description: string;            // line text (what the job is)
-  section?: string;               // optional e.g. “Brakes”
-  status?: "recommend" | "fail";  // original inspection status, for context
+  description: string;
+  section?: string;
+  status?: "recommend" | "fail";
   suggestion: AISuggestion;
   source?: "inspection";
-  jobType?: "repair" | "maintenance" | "inspection"; // ✅ widened union
+  /** mark AI-added items clearly for UI rules like “not punchable until approved” */
+  jobType?: JobType; // default will be set server-side if omitted
 }) {
   const res = await fetch("/api/work-orders/add-line", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(args),
   });
+
   if (!res.ok) {
-    const j = await res.json().catch(() => null);
+    const j = (await res.json().catch(() => null)) as { error?: string } | null;
     throw new Error(j?.error || "Failed to add work order line");
   }
+
   return (await res.json()) as { id: string };
 }

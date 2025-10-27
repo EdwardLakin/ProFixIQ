@@ -7,6 +7,13 @@
  * - Realtime updates for WO & lines.
  * - Voice context + FocusedJob modal.
  * - WORK ORDER STATUS: header badge & details cell reflect wo.status exactly.
+ *
+ * Updates:
+ * - New "Awaiting Customer Approval" section (approval_state = 'pending')
+ * - Approve/Decline actions per line
+ * - Per-line "Send to Parts" (opens Parts Drawer; marks hold/status)
+ * - Bulk "Quote all pending lines" (queues Parts Drawer across all pending)
+ * - Job numbering in lists
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -26,6 +33,7 @@ import { UsePartButton } from "@work-orders/components/UsePartButton";
 import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
 import VoiceButton from "@/features/shared/voice/VoiceButton";
 import { useTabState } from "@/features/shared/hooks/useTabState";
+import PartsDrawer from "@/features/parts/components/PartsDrawer";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -70,7 +78,7 @@ const BADGE: Record<KnownStatus, string> = {
   on_hold:           "bg-amber-900/20  border-amber-500/40  text-amber-300",
   planned:           "bg-purple-900/20 border-purple-500/40 text-purple-300",
   new:               "bg-neutral-800   border-neutral-600   text-neutral-200",
-  completed:         "bg-green-900/20  border-green-500/40  text-green-300",
+  completed:         "bg-green-900/20  border-green-500/40 text-green-300",
   ready_to_invoice:  "bg-emerald-900/20 border-emerald-500/40 text-emerald-300",
   invoiced:          "bg-teal-900/20    border-teal-500/40    text-teal-300",
 };
@@ -124,6 +132,11 @@ export default function WorkOrderIdClient(): JSX.Element {
   const [focusedJobId, setFocusedJobId] = useState<string | null>(null);
   const [focusedOpen, setFocusedOpen] = useState(false);
   const [warnedMissing, setWarnedMissing] = useState(false);
+
+  // Parts Drawer controls (per-line) + bulk queue
+  const [partsLineId, setPartsLineId] = useState<string | null>(null);
+  const [bulkQueue, setBulkQueue] = useState<string[]>([]);
+  const [bulkActive, setBulkActive] = useState<boolean>(false);
 
   /* ---------------------- AUTH wait ---------------------- */
   useEffect(() => {
@@ -289,6 +302,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "Failed to load work order.";
         setViewError(msg);
+        // eslint-disable-next-line no-console
         console.error("[WO id page] load error:", e);
       } finally {
         setLoading(false);
@@ -337,9 +351,22 @@ export default function WorkOrderIdClient(): JSX.Element {
   }, [supabase, wo?.id, fetchAll]);
 
   /* ----------------------- Helpers ----------------------- */
+
+  // Separate approval-pending lines
+  const approvalPending = useMemo(
+    () => lines.filter((l) => (l.approval_state ?? null) === "pending"),
+    [lines],
+  );
+
+  // Active job lines (exclude approval pending)
+  const activeJobLines = useMemo(
+    () => lines.filter((l) => (l.approval_state ?? null) !== "pending"),
+    [lines],
+  );
+
   const sortedLines = useMemo(() => {
     const pr: Record<string, number> = { diagnosis: 1, inspection: 2, maintenance: 3, repair: 4 };
-    return [...lines].sort((a, b) => {
+    return [...activeJobLines].sort((a, b) => {
       const pa = pr[String(a.job_type ?? "repair")] ?? 999;
       const pb = pr[String(b.job_type ?? "repair")] ?? 999;
       if (pa !== pb) return pa - pb;
@@ -347,10 +374,111 @@ export default function WorkOrderIdClient(): JSX.Element {
       const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
       return ta - tb;
     });
-  }, [lines]);
+  }, [activeJobLines]);
 
   const createdAt = wo?.created_at ? new Date(wo.created_at) : null;
   const createdAtText = createdAt && !isNaN(createdAt.getTime()) ? format(createdAt, "PPpp") : "—";
+
+  // Actions: approve/decline/parts
+  const approveLine = useCallback(
+    async (lineId: string) => {
+      if (!lineId) return;
+      const { error } = await supabase
+        .from("work_order_lines")
+        .update({
+          approval_state: "approved",
+          status: "queued",
+        } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+        .eq("id", lineId);
+      if (error) return toast.error(error.message);
+      toast.success("Line approved");
+      void fetchAll();
+    },
+    [supabase, fetchAll],
+  );
+
+  const declineLine = useCallback(
+    async (lineId: string) => {
+      if (!lineId) return;
+      const { error } = await supabase
+        .from("work_order_lines")
+        .update({
+          approval_state: "declined",
+          status: "awaiting",
+        } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+        .eq("id", lineId);
+      if (error) return toast.error(error.message);
+      toast.success("Line declined");
+      void fetchAll();
+    },
+    [supabase, fetchAll],
+  );
+
+  const sendToParts = useCallback(
+    async (lineId: string) => {
+      if (!lineId) return;
+      // Mark line for parts quote and open drawer
+      const { error } = await supabase
+        .from("work_order_lines")
+        .update({
+          status: "on_hold",
+          hold_reason: "Awaiting parts quote",
+        } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+        .eq("id", lineId);
+      if (error) return toast.error(error.message);
+      setPartsLineId(lineId);
+      toast.success("Sent to parts for quoting");
+    },
+    [supabase],
+  );
+
+  const sendAllPendingToParts = useCallback(async () => {
+    if (!approvalPending.length) return;
+    // Build queue, mark each on_hold + reason
+    const ids = approvalPending.map((l) => l.id);
+    const { error } = await supabase
+      .from("work_order_lines")
+      .update({
+        status: "on_hold",
+        hold_reason: "Awaiting parts quote",
+      } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+      .in("id", ids);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    setBulkQueue(ids);
+    setBulkActive(true);
+    setPartsLineId(ids[0] ?? null);
+    toast.success("Queued all pending lines for parts quoting");
+  }, [approvalPending, supabase]);
+
+  // When a PartsDrawer closes, open the next one in bulk queue
+  useEffect(() => {
+  if (!partsLineId) return;
+
+  const evtName = `parts-drawer:closed:${partsLineId}`;
+
+  const handler = () => {
+    if (bulkActive && bulkQueue.length > 0) {
+      // open the next queued line
+      const [, ...rest] = bulkQueue;
+      setBulkQueue(rest);
+      setPartsLineId(rest[0] ?? null);
+      if (rest.length === 0) {
+        setBulkActive(false);
+        void fetchAll();
+      }
+    } else {
+      // single-drawer case: just clear and refresh
+      setPartsLineId(null);
+      void fetchAll();
+    }
+  };
+
+  window.addEventListener(evtName, handler as EventListener);
+  return () => window.removeEventListener(evtName, handler as EventListener);
+}, [partsLineId, bulkActive, bulkQueue, fetchAll]);
 
   /* -------------------------- UI -------------------------- */
   if (!routeId) return <div className="p-6 text-red-500">Missing work order id.</div>;
@@ -497,7 +625,79 @@ export default function WorkOrderIdClient(): JSX.Element {
               )}
             </div>
 
-            {/* Jobs list */}
+            {/* Awaiting Customer Approval */}
+            <div className="rounded border border-blue-900/40 bg-neutral-950 p-4">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h2 className="text-lg font-semibold text-blue-300">Awaiting Customer Approval</h2>
+                {approvalPending.length > 1 && (
+                  <button
+                    type="button"
+                    className="rounded bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-500"
+                    onClick={sendAllPendingToParts}
+                    title="Queue all lines for parts quoting"
+                  >
+                    Quote all pending lines
+                  </button>
+                )}
+              </div>
+
+              {approvalPending.length === 0 ? (
+                <p className="text-sm text-neutral-400">No lines waiting for approval.</p>
+              ) : (
+                <div className="space-y-2">
+                  {approvalPending.map((ln, idx) => (
+                    <div
+                      key={ln.id}
+                      className="rounded border border-neutral-800 bg-neutral-900 p-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate font-medium">
+                            {idx + 1}. {ln.description || ln.complaint || "Untitled job"}
+                          </div>
+                          <div className="text-xs text-neutral-400">
+                            {String(ln.job_type ?? "job").replaceAll("_", " ")} •{" "}
+                            {typeof ln.labor_time === "number" ? `${ln.labor_time}h` : "—"} • Status:{" "}
+                            {(ln.status ?? "awaiting").replaceAll("_", " ")} • Approval:{" "}
+                            {(ln.approval_state ?? "pending").replaceAll("_", " ")}
+                          </div>
+                          {ln.notes && (
+                            <div className="mt-1 text-xs text-neutral-400">Notes: {ln.notes}</div>
+                          )}
+                        </div>
+
+                        <div className="flex shrink-0 flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            className="rounded border border-green-700 px-2 py-1 text-xs text-green-300 hover:bg-green-900/20"
+                            onClick={() => approveLine(ln.id)}
+                          >
+                            Approve
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded border border-red-700 px-2 py-1 text-xs text-red-300 hover:bg-red-900/20"
+                            onClick={() => declineLine(ln.id)}
+                          >
+                            Decline
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded border border-blue-700 px-2 py-1 text-xs text-blue-300 hover:bg-blue-900/20"
+                            onClick={() => sendToParts(ln.id)}
+                            title="Send to parts for quoting"
+                          >
+                            Send to Parts
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Jobs list (excludes approval-pending) */}
             <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold">Jobs in this Work Order</h2>
@@ -507,7 +707,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                 <p className="text-sm text-neutral-400">No lines yet.</p>
               ) : (
                 <div className="space-y-2">
-                  {sortedLines.map((ln) => {
+                  {sortedLines.map((ln, idx) => {
                     const statusKey = (ln.status ?? "awaiting").toLowerCase().replaceAll(" ", "_");
                     const borderCls = statusBorder[statusKey] || "border-l-4 border-gray-400";
                     const tintCls = statusRowTint[statusKey] || "bg-neutral-950";
@@ -530,7 +730,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <div className="truncate font-medium">
-                              {ln.description || ln.complaint || "Untitled job"}
+                              {idx + 1}. {ln.description || ln.complaint || "Untitled job"}
                             </div>
                             <div className="text-xs text-neutral-400">
                               {String(ln.job_type ?? "job").replaceAll("_", " ")} •{" "}
@@ -614,6 +814,31 @@ export default function WorkOrderIdClient(): JSX.Element {
           workOrderLineId={focusedJobId}
           onChanged={fetchAll}
           mode="tech"
+        />
+      )}
+
+      {/* Parts Drawer (single) */}
+      {partsLineId && wo?.id && (
+        <PartsDrawer
+          open={!!partsLineId}
+          workOrderId={wo.id}
+          workOrderLineId={partsLineId}
+          vehicleSummary={
+            vehicle
+              ? {
+                  year: (vehicle.year as string | number | null)?.toString() ?? null,
+                  make: vehicle.make ?? null,
+                  model: vehicle.model ?? null,
+                }
+              : null
+          }
+          jobDescription={
+            (lines.find((l) => l.id === partsLineId)?.description ??
+              lines.find((l) => l.id === partsLineId)?.complaint ??
+              null)
+          }
+          jobNotes={lines.find((l) => l.id === partsLineId)?.notes ?? null}
+          closeEventName={`parts-drawer:closed:${partsLineId}`}
         />
       )}
 

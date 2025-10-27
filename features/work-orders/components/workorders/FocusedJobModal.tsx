@@ -51,8 +51,8 @@ const statusTextColor: Record<string, string> = {
   queued: "text-indigo-300",
   on_hold: "text-amber-300",
   completed: "text-green-300",
-  awaiting_approval: "text-blue-300",
-  planned: "text-purple-300",
+  awaiting_approval: "text-blue-300", // display convenience, not a DB status
+  planned: "text-purple-300",         // display convenience, not a DB status
   new: "text-neutral-200",
   paused: "text-amber-300",
 };
@@ -60,7 +60,8 @@ const chip = (s: string | null) =>
   statusTextColor[(s ?? "awaiting").toLowerCase().replaceAll(" ", "_")] ??
   "text-neutral-200";
 
-const outlineBtn = "font-header rounded border px-3 py-2 text-sm transition-colors";
+const outlineBtn =
+  "font-header rounded border px-3 py-2 text-sm transition-colors";
 const outlineNeutral = `${outlineBtn} border-neutral-700 text-neutral-200 hover:bg-neutral-800`;
 const outlineWarn = `${outlineBtn} border-amber-600 text-amber-300 hover:bg-amber-900/20`;
 const outlineDanger = `${outlineBtn} border-red-600 text-red-300 hover:bg-red-900/20`;
@@ -73,10 +74,35 @@ type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
 
+
 type AllocationRow =
   DB["public"]["Tables"]["work_order_part_allocations"]["Row"] & {
     parts?: { name: string | null } | null;
   };
+
+  /** Per CHECK constraints in Supabase */
+type WorkflowStatus =
+  | "awaiting"
+  | "queued"
+  | "in_progress"
+  | "on_hold"
+  | "paused"
+  | "completed"
+  | "assigned"
+  | "unassigned";
+
+type ApprovalState =
+  | "pending"
+  | "approved"
+  | "declined"
+  | null;
+
+/** Encoded picker value from StatusPickerModal */
+type PickerValue =
+  | `status:${WorkflowStatus}`
+  | "approval:pending"
+  | "approval:approved"
+  | "approval:declined";
 
 export default function FocusedJobModal(props: {
   isOpen: boolean;
@@ -129,7 +155,10 @@ export default function FocusedJobModal(props: {
 
   const msToTenthHours = (ms: number) =>
     (Math.max(0, Math.round(ms / 360000)) / 10).toFixed(1) + " hr";
-  const renderLiveTenthHours = (startAt: string | null, finishAt: string | null) => {
+  const renderLiveTenthHours = (
+    startAt: string | null,
+    finishAt: string | null
+  ) => {
     if (startAt && !finishAt)
       return msToTenthHours(Date.now() - new Date(startAt).getTime());
     if (startAt && finishAt)
@@ -238,7 +267,11 @@ export default function FocusedJobModal(props: {
       if (error) throw error;
       setAllocs((data as AllocationRow[]) ?? []);
     } catch (e) {
-      console.warn("[FocusedJob] load allocations failed", (e as { message?: string })?.message);
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[FocusedJob] load allocations failed",
+        (e as { message?: string })?.message
+      );
     } finally {
       setAllocsLoading(false);
     }
@@ -249,7 +282,9 @@ export default function FocusedJobModal(props: {
     if (!isOpen) return;
     const t = setInterval(() => {
       if (line?.punched_in_at && !line?.punched_out_at) {
-        setDuration(formatDistanceStrict(new Date(), new Date(line.punched_in_at)));
+        setDuration(
+          formatDistanceStrict(new Date(), new Date(line.punched_in_at))
+        );
       } else {
         setDuration("");
       }
@@ -297,7 +332,10 @@ export default function FocusedJobModal(props: {
     try {
       const { error } = await supabase
         .from("work_order_lines")
-        .update({ hold_reason: null, status: "awaiting" } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+        .update({
+          hold_reason: null,
+          status: "awaiting",
+        } as DB["public"]["Tables"]["work_order_lines"]["Update"])
         .eq("id", workOrderLineId);
       if (error) return showErr("Remove hold failed", error);
       toast.success("Hold removed");
@@ -307,20 +345,30 @@ export default function FocusedJobModal(props: {
     }
   };
 
-  const changeStatus = async (next: string) => {
-    if (busy) return;
-    setBusy(true);
-    try {
+  const changeStatus = async (next: PickerValue) => {
+    // approval:* -> update approval_state
+    if (next.startsWith("approval:")) {
+      const val = next.split(":")[1] as ApprovalState;
+      if (!line?.id) return;
       const { error } = await supabase
         .from("work_order_lines")
-        .update({ status: next } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-        .eq("id", workOrderLineId);
-      if (error) return showErr("Update status failed", error);
-      toast.success("Status updated");
+        .update({ approval_state: val } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+        .eq("id", line.id);
+      if (error) return showErr("Update approval failed", error);
+      toast.success("Approval state updated");
       await refresh();
-    } finally {
-      setBusy(false);
+      return;
     }
+
+    // status:* -> update status
+    const workflow = next.split(":")[1] as WorkflowStatus;
+    const { error } = await supabase
+      .from("work_order_lines")
+      .update({ status: workflow } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+      .eq("id", workOrderLineId);
+    if (error) return showErr("Update status failed", error);
+    toast.success("Status updated");
+    await refresh();
   };
 
   const updateTime = async (inAt: string | null, outAt: string | null) => {
@@ -329,7 +377,10 @@ export default function FocusedJobModal(props: {
     try {
       const { error } = await supabase
         .from("work_order_lines")
-        .update({ punched_in_at: inAt, punched_out_at: outAt } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+        .update({
+          punched_in_at: inAt,
+          punched_out_at: outAt,
+        } as DB["public"]["Tables"]["work_order_lines"]["Update"])
         .eq("id", workOrderLineId)
         .select("id, punched_in_at, punched_out_at")
         .single();
@@ -401,7 +452,9 @@ export default function FocusedJobModal(props: {
     setSavingNotes(true);
     const { error } = await supabase
       .from("work_order_lines")
-      .update({ notes: techNotes } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+      .update({
+        notes: techNotes,
+      } as DB["public"]["Tables"]["work_order_lines"]["Update"])
       .eq("id", workOrderLineId);
     setSavingNotes(false);
     if (error) return showErr("Update notes failed", error);
@@ -413,7 +466,9 @@ export default function FocusedJobModal(props: {
   const openInspection = async (): Promise<void> => {
     if (!line) return;
 
-    const isAir = String(line.description ?? "").toLowerCase().includes("air");
+    const isAir = String(line.description ?? "")
+      .toLowerCase()
+      .includes("air");
     const template: "maintenance50" | "maintenance50-air" =
       isAir ? "maintenance50-air" : "maintenance50";
 
@@ -430,7 +485,9 @@ export default function FocusedJobModal(props: {
         }),
       });
 
-      const j = (await res.json().catch(() => null)) as { sessionId?: string; error?: string } | null;
+      const j = (await res.json().catch(() => null)) as
+        | { sessionId?: string; error?: string }
+        | null;
       if (!res.ok || !j?.sessionId) {
         throw new Error(j?.error || "Failed to create inspection session");
       }
@@ -449,11 +506,11 @@ export default function FocusedJobModal(props: {
     }
   };
 
-  // ---------- listen for "inspection:add-job" from embedded inspection ----------
+  // ---------- listen for "inspection:add-job" (legacy) ----------
   useEffect(() => {
     const onMsg = (e: MessageEvent) => {
       if (e.origin !== window.location.origin) return;
-      const data = e.data as { type?: string; payload?: any };
+      const data = e.data as { type?: string; payload?: unknown };
       if (data?.type === "inspection:add-job") {
         setOpenAddJob(true);
       }
@@ -462,7 +519,7 @@ export default function FocusedJobModal(props: {
     return () => window.removeEventListener("message", onMsg);
   }, []);
 
-  // ---------- listen for "inspection:close" to close the InspectionModal ----------
+  // ---------- listen for "inspection:close" ----------
   useEffect(() => {
     const onCloseEvt = () => setInspectionOpen(false);
     window.addEventListener("inspection:close", onCloseEvt as EventListener);
@@ -508,7 +565,10 @@ export default function FocusedJobModal(props: {
         className="fixed inset-0 z-[100] flex items-center justify-center"
       >
         {/* Dark overlay */}
-        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm" aria-hidden="true" />
+        <div
+          className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm"
+          aria-hidden="true"
+        />
 
         {/* Panel */}
         <div
@@ -590,22 +650,30 @@ export default function FocusedJobModal(props: {
                       <div className="text-neutral-400">Vehicle</div>
                       <div className="truncate">
                         {vehicle
-                          ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim() || "—"
+                          ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${
+                              vehicle.model ?? ""
+                            }`
+                              .trim()
+                              .replace(/\s+/g, " ") || "—"
                           : "—"}
                       </div>
                       <div className="text-xs text-neutral-500">
-                        VIN: {vehicle?.vin ?? "—"} • Plate: {vehicle?.license_plate ?? "—"}
+                        VIN: {vehicle?.vin ?? "—"} • Plate:{" "}
+                        {vehicle?.license_plate ?? "—"}
                       </div>
                     </div>
                     <div>
                       <div className="text-neutral-400">Customer</div>
                       <div className="truncate">
                         {customer
-                          ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") || "—"
+                          ? [customer.first_name ?? "", customer.last_name ?? ""]
+                              .filter(Boolean)
+                              .join(" ") || "—"
                           : "—"}
                       </div>
                       <div className="text-xs text-neutral-500">
-                        {customer?.phone ?? "—"} {customer?.email ? `• ${customer.email}` : ""}
+                        {customer?.phone ?? "—"}{" "}
+                        {customer?.email ? `• ${customer.email}` : ""}
                       </div>
                     </div>
                   </div>
@@ -621,8 +689,20 @@ export default function FocusedJobModal(props: {
                       status={line.status}
                       onFinishRequested={() => setOpenComplete(true)}
                       onUpdated={refresh}
-                      disabled={busy}
+                      // ✅ not punchable until approved
+                      disabled={
+                        (!!line.approval_state &&
+                          line.approval_state !== "approved") || busy
+                      }
                     />
+                    {!!line.approval_state &&
+                      line.approval_state !== "approved" && (
+                        <div className="mt-1 text-xs text-amber-300">
+                          {line.approval_state === "pending"
+                            ? "Awaiting approval — punching disabled"
+                            : "Declined — punching disabled"}
+                        </div>
+                      )}
                   </div>
                 )}
 
@@ -677,9 +757,21 @@ export default function FocusedJobModal(props: {
 
                       <button
                         type="button"
-                        className={`${outlineInfo} ${line?.job_type === "inspection" ? "" : "opacity-50 cursor-not-allowed"}`}
-                        onClick={line?.job_type === "inspection" ? openInspection : undefined}
-                        title={line?.job_type === "inspection" ? "Open inspection" : "Not an inspection line"}
+                        className={`${outlineInfo} ${
+                          line?.job_type === "inspection"
+                            ? ""
+                            : "opacity-50 cursor-not-allowed"
+                        }`}
+                        onClick={
+                          line?.job_type === "inspection"
+                            ? openInspection
+                            : undefined
+                        }
+                        title={
+                          line?.job_type === "inspection"
+                            ? "Open inspection"
+                            : "Not an inspection line"
+                        }
                         disabled={busy || line?.job_type !== "inspection"}
                       >
                         Open Inspection
@@ -695,24 +787,48 @@ export default function FocusedJobModal(props: {
                     </>
                   ) : (
                     <>
-                      <button type="button" className={outlineNeutral} onClick={() => setOpenCost(true)}>
+                      <button
+                        type="button"
+                        className={outlineNeutral}
+                        onClick={() => setOpenCost(true)}
+                      >
                         Cost / Estimate
                       </button>
-                      <button type="button" className={outlineNeutral} onClick={() => setOpenContact(true)}>
+                      <button
+                        type="button"
+                        className={outlineNeutral}
+                        onClick={() => setOpenContact(true)}
+                      >
                         Contact Customer
                       </button>
-                      <button type="button" className={outlineInfo} onClick={() => setOpenStatus(true)}>
+                      <button
+                        type="button"
+                        className={outlineInfo}
+                        onClick={() => setOpenStatus(true)}
+                      >
                         Change Status
                       </button>
                       <button
                         type="button"
-                        className={`${outlineInfo} ${line?.job_type === "inspection" ? "" : "opacity-50 cursor-not-allowed"}`}
-                        onClick={line?.job_type === "inspection" ? openInspection : undefined}
+                        className={`${outlineInfo} ${
+                          line?.job_type === "inspection"
+                            ? ""
+                            : "opacity-50 cursor-not-allowed"
+                        }`}
+                        onClick={
+                          line?.job_type === "inspection"
+                            ? openInspection
+                            : undefined
+                        }
                         disabled={line?.job_type !== "inspection"}
                       >
                         Open Inspection
                       </button>
-                      <button type="button" className={outlineInfo} onClick={() => setOpenChat(true)}>
+                      <button
+                        type="button"
+                        className={outlineInfo}
+                        onClick={() => setOpenChat(true)}
+                      >
                         Chat
                       </button>
                     </>
@@ -727,7 +843,9 @@ export default function FocusedJobModal(props: {
                       <UsePartButton
                         workOrderLineId={line.id}
                         onApplied={() => {
-                          window.dispatchEvent(new CustomEvent("wo:parts-used"));
+                          window.dispatchEvent(
+                            new CustomEvent("wo:parts-used")
+                          );
                           void refresh();
                         }}
                       />
@@ -737,13 +855,20 @@ export default function FocusedJobModal(props: {
                   {allocsLoading ? (
                     <div className="text-sm text-neutral-400">Loading…</div>
                   ) : allocs.length === 0 ? (
-                    <div className="text-sm text-neutral-400">No parts used yet.</div>
+                    <div className="text-sm text-neutral-400">
+                      No parts used yet.
+                    </div>
                   ) : (
                     <ul className="divide-y divide-neutral-800 rounded border border-neutral-800 text-sm">
                       {allocs.map((a) => (
-                        <li key={a.id} className="flex items-center justify-between p-2">
+                        <li
+                          key={a.id}
+                          className="flex items-center justify-between p-2"
+                        >
                           <div className="min-w-0">
-                            <div className="truncate">{a.parts?.name ?? "Part"}</div>
+                            <div className="truncate">
+                              {a.parts?.name ?? "Part"}
+                            </div>
                             <div className="text-xs text-neutral-500">
                               loc {String(a.location_id).slice(0, 6)}…
                             </div>
@@ -765,7 +890,9 @@ export default function FocusedJobModal(props: {
 
                 {/* Tech notes */}
                 <div>
-                  <label className="mb-1 block text-sm font-header">Tech Notes</label>
+                  <label className="mb-1 block text-sm font-header">
+                    Tech Notes
+                  </label>
                   <textarea
                     rows={4}
                     value={techNotes}
@@ -791,14 +918,21 @@ export default function FocusedJobModal(props: {
                       }}
                     />
                   ) : (
-                    <div className="text-sm text-neutral-400">Vehicle/work order details required.</div>
+                    <div className="text-sm text-neutral-400">
+                      Vehicle/work order details required.
+                    </div>
                   )}
                 </div>
 
                 <div className="text-xs text-neutral-500">
                   Job ID: {line.id}
-                  {typeof line.labor_time === "number" ? ` • Labor: ${line.labor_time.toFixed(1)}h` : ""}
+                  {typeof line.labor_time === "number"
+                    ? ` • Labor: ${line.labor_time.toFixed(1)}h`
+                    : ""}
                   {line.hold_reason ? ` • Hold: ${line.hold_reason}` : ""}
+                  {line.approval_state
+                    ? ` • Approval: ${line.approval_state}`
+                    : ""}
                 </div>
               </div>
             )}
@@ -841,7 +975,9 @@ export default function FocusedJobModal(props: {
           vehicleSummary={
             vehicle
               ? {
-                  year: (vehicle.year as string | number | null)?.toString() ?? null,
+                  year:
+                    (vehicle.year as string | number | null)?.toString() ??
+                    null,
                   make: vehicle.make ?? null,
                   model: vehicle.model ?? null,
                 }
@@ -877,7 +1013,7 @@ export default function FocusedJobModal(props: {
         <StatusPickerModal
           isOpen={openStatus}
           onClose={() => setOpenStatus(false)}
-          current={(line.status || "awaiting") as Parameters<typeof StatusPickerModal>[0]["current"]}
+          current={(line?.status || "awaiting") as Parameters<typeof StatusPickerModal>[0]["current"]}
           onChange={changeStatus}
         />
       )}
@@ -904,7 +1040,9 @@ export default function FocusedJobModal(props: {
         <CostEstimateModal
           isOpen={openCost}
           onClose={() => setOpenCost(false)}
-          defaultLaborHours={typeof line.labor_time === "number" ? line.labor_time : null}
+          defaultLaborHours={
+            typeof line.labor_time === "number" ? line.labor_time : null
+          }
           defaultPrice={null}
           onApply={applyCost}
         />
@@ -915,7 +1053,11 @@ export default function FocusedJobModal(props: {
           isOpen={openContact}
           onClose={() => setOpenContact(false)}
           customerName={
-            customer ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") : ""
+            customer
+              ? [customer.first_name ?? "", customer.last_name ?? ""]
+                  .filter(Boolean)
+                  .join(" ")
+              : ""
           }
           customerEmail={customer?.email ?? ""}
           customerPhone={customer?.phone ?? ""}
@@ -952,11 +1094,7 @@ export default function FocusedJobModal(props: {
 
       {/* Inspection viewer (modal within modal stack) */}
       {inspectionOpen && inspectionSrc && (
-        <InspectionModal
-          open={inspectionOpen}
-          src={inspectionSrc}
-          title="Inspection"
-        />
+        <InspectionModal open={inspectionOpen} src={inspectionSrc} title="Inspection" />
       )}
     </>
   );
