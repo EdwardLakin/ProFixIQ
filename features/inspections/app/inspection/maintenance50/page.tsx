@@ -261,6 +261,106 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
     updateQuoteLine,
   } = useInspectionSession(initialSession);
 
+  // NEW: prevent duplicate submits
+  const inFlightRef = useRef<Set<string>>(new Set());
+  const isSubmittingAI = (secIdx: number, itemIdx: number): boolean =>
+    inFlightRef.current.has(`${secIdx}:${itemIdx}`);
+
+  const submitAIForItem = async (secIdx: number, itemIdx: number): Promise<void> => {
+    if (!session) return;
+    const key = `${secIdx}:${itemIdx}`;
+    if (inFlightRef.current.has(key)) return;
+    const it = session.sections[secIdx].items[itemIdx];
+    const status = String(it.status ?? "").toLowerCase();
+    const note = (it.notes ?? "").trim();
+    if (!(status === "fail" || status === "recommend")) return;
+    if (note.length === 0) {
+      toast.error("Add a note before submitting.");
+      return;
+    }
+
+    inFlightRef.current.add(key);
+    try {
+      const desc = it.item ?? it.name ?? "Item";
+
+      // 1) placeholder for local quote UI
+      const id = uuidv4();
+      const placeholder: QuoteLineItem = {
+        id,
+        description: desc,
+        item: desc,
+        name: desc,
+        status: status as "fail" | "recommend",
+        notes: it.notes ?? "",
+        price: 0,
+        laborTime: 0.5,
+        laborRate: 0,
+        editable: true,
+        source: "inspection",
+        value: it.value ?? "",
+        photoUrls: it.photoUrls ?? [],
+        aiState: "loading",
+      };
+      addQuoteLine(placeholder);
+
+      // 2) AI suggestion with vehicle context
+      const tId = toast.loading("Getting AI estimate…");
+      const suggestion = await requestQuoteSuggestion({
+        item: desc,
+        notes: it.notes ?? "",
+        section: session.sections[secIdx].title,
+        status,
+        vehicle: session.vehicle ?? undefined,
+      });
+
+      if (!suggestion) {
+        updateQuoteLine(id, { aiState: "error" });
+        toast.error("No AI suggestion available", { id: tId });
+        return;
+      }
+
+      const partsTotal =
+        suggestion.parts?.reduce((sum, p) => sum + (p.cost || 0), 0) ?? 0;
+      const laborRate = suggestion.laborRate ?? 0;
+      const laborTime = suggestion.laborHours ?? 0.5;
+      const price = Math.max(0, partsTotal + laborRate * laborTime);
+
+      updateQuoteLine(id, {
+        price,
+        laborTime,
+        laborRate,
+        ai: {
+          summary: suggestion.summary,
+          confidence: suggestion.confidence,
+          parts: suggestion.parts ?? [],
+        },
+        aiState: "done",
+      });
+
+      // 3) Persist to WO (awaiting approval)
+      if (workOrderId) {
+        await addWorkOrderLineFromSuggestion({
+          workOrderId,
+          description: desc,
+          section: session.sections[secIdx].title,
+          status: status as "fail" | "recommend",
+          suggestion,
+          source: "inspection",
+          jobType: "inspection",
+        });
+        toast.success("Added to work order (awaiting approval)", { id: tId });
+      } else {
+        toast.error("Missing work order id — saved locally only", { id: tId });
+      }
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("Submit AI failed:", e);
+      toast.error("Couldn't add to work order");
+    } finally {
+      inFlightRef.current.delete(key);
+    }
+  };
+
   // Boot / restore
   useEffect(() => {
     const key = `inspection-${inspectionId}`;
@@ -539,100 +639,13 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
                     sectionIndex={sectionIndex}
                     showNotes={true}
                     showPhotos={true}
-                    onUpdateStatus={async (
+                    onUpdateStatus={(
                       secIdx: number,
                       itemIdx: number,
                       status: InspectionItemStatus
-                    ): Promise<void> => {
+                    ): void => {
+                      // Only update status here — AI flow moved to explicit Submit
                       updateItem(secIdx, itemIdx, { status });
-
-                      if (status === "fail" || status === "recommend") {
-                        const it = session.sections[secIdx].items[itemIdx];
-                        const desc = it.item ?? it.name ?? "Item";
-
-                        // 1) Add placeholder locally for UI quote panel
-                        const id = uuidv4();
-                        const placeholder: QuoteLineItem = {
-                          id,
-                          description: desc,
-                          item: desc,
-                          name: desc,
-                          status,
-                          notes: it.notes ?? "",
-                          price: 0,
-                          laborTime: 0.5,
-                          laborRate: 0,
-                          editable: true,
-                          source: "inspection",
-                          value: it.value ?? "",
-                          photoUrls: it.photoUrls ?? [],
-                          aiState: "loading",
-                        };
-                        addQuoteLine(placeholder);
-
-                        const tId = toast.loading("Getting AI estimate…");
-                        try {
-                          const suggestion = await requestQuoteSuggestion({
-                            item: desc,
-                            notes: it.notes ?? "",
-                            section: section.title,
-                            status,
-                          });
-
-                          if (!suggestion) {
-                            updateQuoteLine(id, { aiState: "error" });
-                            toast.error("No AI suggestion available", { id: tId });
-                            return;
-                          }
-
-                          // Compute price for UI
-                          const partsTotal =
-                            suggestion.parts?.reduce(
-                              (sum, p) => sum + (p.cost || 0),
-                              0
-                            ) ?? 0;
-                          const laborRate = suggestion.laborRate ?? 0;
-                          const laborTime = suggestion.laborHours ?? 0.5;
-                          const price = Math.max(0, partsTotal + laborRate * laborTime);
-
-                          updateQuoteLine(id, {
-                            price,
-                            laborTime,
-                            laborRate,
-                            ai: {
-                              summary: suggestion.summary,
-                              confidence: suggestion.confidence,
-                              parts: suggestion.parts ?? [],
-                            },
-                            aiState: "done",
-                          });
-
-                          // Persist to Work Order (awaiting approval)
-                          if (workOrderId) {
-                            try {
-                              await addWorkOrderLineFromSuggestion({
-                                workOrderId,
-                                description: desc,
-                                section: section.title,
-                                status,
-                                suggestion,
-                                source: "inspection",
-                              
-                              });
-                              toast.success("Added to work order (awaiting approval)", { id: tId });
-                            } catch (e) {
-                              console.error("Add WO line failed:", e);
-                              toast.error("Couldn't add to work order", { id: tId });
-                            }
-                          } else {
-                            toast.error("Missing work order id — saved locally only", { id: tId });
-                          }
-                        } catch (e) {
-                          console.error("AI estimate failed:", e);
-                          updateQuoteLine(id, { aiState: "error" });
-                          toast.error("AI estimate failed", { id: tId });
-                        }
-                      }
                     }}
                     onUpdateNote={(
                       secIdx: number,
@@ -653,6 +666,12 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
                         photoUrls: [...prev, photoUrl],
                       });
                     }}
+                    /* NEW: require note + explicit submit to run AI */
+                    requireNoteForAI
+                    onSubmitAI={(secIdx, itemIdx) => {
+                      void submitAIForItem(secIdx, itemIdx);
+                    }}
+                    isSubmittingAI={isSubmittingAI}
                   />
                 )}
               </div>

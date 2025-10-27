@@ -28,9 +28,16 @@ interface SectionDisplayProps {
     sectionIndex: number,
     itemIndex: number,
   ) => void;
+
+  /** NEW: require a note and show a Submit button for AI */
+  requireNoteForAI?: boolean;
+  /** NEW: handler to run AI + persist, invoked per item */
+  onSubmitAI?: (sectionIndex: number, itemIndex: number) => void;
+  /** NEW: let parent indicate a submit is in-flight for this item */
+  isSubmittingAI?: (sectionIndex: number, itemIndex: number) => boolean;
 }
 
-export default function SectionDisplay(_props: any) {
+export default function SectionDisplay(props: SectionDisplayProps) {
   const {
     title,
     section,
@@ -40,7 +47,10 @@ export default function SectionDisplay(_props: any) {
     onUpdateStatus,
     onUpdateNote,
     onUpload,
-  } = _props as SectionDisplayProps;
+    requireNoteForAI,
+    onSubmitAI,
+    isSubmittingAI,
+  } = props;
 
   const [open, setOpen] = useState(true);
 
@@ -132,18 +142,45 @@ export default function SectionDisplay(_props: any) {
               (item.item ?? item.name ?? `item-${sectionIndex}-${itemIndex}`) +
               `-${itemIndex}`;
 
+            // NEW: Submit gating logic
+            const status = String(item.status ?? "").toLowerCase();
+            const isFailOrRec = status === "fail" || status === "recommend";
+            const note = (item.notes ?? "").trim();
+            const canShowSubmit =
+              !!requireNoteForAI &&
+              isFailOrRec &&
+              note.length > 0 &&
+              typeof onSubmitAI === "function";
+
+            const submitting = isSubmittingAI?.(sectionIndex, itemIndex) ?? false;
+
             return (
-              <InspectionItemCard
-                key={key}
-                item={item}
-                sectionIndex={sectionIndex}
-                itemIndex={itemIndex}
-                showNotes={showNotes}
-                showPhotos={showPhotos}
-                onUpdateStatus={onUpdateStatus}
-                onUpdateNote={onUpdateNote}
-                onUpload={onUpload}
-              />
+              <div key={key}>
+                <InspectionItemCard
+                  item={item}
+                  sectionIndex={sectionIndex}
+                  itemIndex={itemIndex}
+                  showNotes={showNotes}
+                  showPhotos={showPhotos}
+                  onUpdateStatus={onUpdateStatus}
+                  onUpdateNote={onUpdateNote}
+                  onUpload={onUpload}
+                />
+
+                {/* NEW: per-item Submit button, shown only when note present + fail/recommend */}
+                {canShowSubmit && (
+                  <div className="mt-2 flex items-center justify-end">
+                    <button
+                      type="button"
+                      disabled={submitting}
+                      onClick={() => onSubmitAI!(sectionIndex, itemIndex)}
+                      className="rounded border border-blue-600 px-3 py-1.5 text-sm text-blue-300 hover:bg-blue-900/20 disabled:opacity-60"
+                    >
+                      {submitting ? "Submitting…" : "Submit"}
+                    </button>
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>
