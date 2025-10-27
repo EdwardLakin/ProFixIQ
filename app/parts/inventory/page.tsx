@@ -14,6 +14,9 @@ type PartUpdate = DB["public"]["Tables"]["parts"]["Update"];
 type StockLoc = DB["public"]["Tables"]["stock_locations"]["Row"];
 type StockMove = DB["public"]["Tables"]["stock_moves"]["Row"];
 
+// app-side view of the enum
+type StockMoveReason = "receive" | "adjust" | "consume" | "transfer";
+
 /* --------------------------- UI helpers -------------------------- */
 
 function Modal(props: {
@@ -90,7 +93,6 @@ function NumberField(props: {
         step={step}
         onChange={(e) => {
           const raw = e.target.value;
-          // allow clearing to "" and allow entering 0 explicitly
           onChange(raw === "" ? "" : Number(raw));
         }}
       />
@@ -167,6 +169,64 @@ function parseCSV(text: string): string[][] {
   return rows.filter((r) => r.length > 0 && r.some((c) => c.length > 0));
 }
 
+/* ------------------------- RPC helper -------------------------- */
+/** First tries the 6-arg function; if PostgREST schema cache hasn’t
+ *  picked it up yet, falls back to the 5-arg legacy shape.
+ *  No `any` used (only `unknown`→concrete type assertions).
+ */
+async function applyStockMoveRPC(
+  supabase: ReturnType<typeof createClientComponentClient<DB>>,
+  args: {
+    p_part: string;
+    p_loc: string;
+    p_qty: number;
+    p_reason: StockMoveReason;
+    p_ref_kind: string;
+    p_ref_id?: string | null;
+  },
+): Promise<string> {
+  // The “official” typed args from your generated DB types
+  type FnArgs = DB["public"]["Functions"]["apply_stock_move"]["Args"];
+  type FnRet = DB["public"]["Functions"]["apply_stock_move"]["Returns"];
+
+  // 6-arg payload (include p_ref_id only when defined to placate strict arg shapes)
+  const payload6 = {
+    p_part: args.p_part,
+    p_loc: args.p_loc,
+    p_qty: args.p_qty,
+    p_reason: args.p_reason as unknown as FnArgs extends { p_reason: infer R } ? R : never,
+    p_ref_kind: args.p_ref_kind,
+    ...(args.p_ref_id !== undefined ? { p_ref_id: args.p_ref_id } : {}),
+  } as unknown as FnArgs;
+
+  // Try 6-arg first
+  let call = await supabase.rpc("apply_stock_move", payload6);
+  if (!call.error && call.data) return call.data as FnRet;
+
+  // If it’s a schema-cache shape error, fall back to 5-arg
+  const msg = (call.error?.message ?? "").toLowerCase();
+  const looksLikeShapeIssue =
+    msg.includes("could not find the function") ||
+    msg.includes("schema cache") ||
+    msg.includes("function apply_stock_move(");
+
+  if (!looksLikeShapeIssue) throw new Error(call.error?.message ?? "apply_stock_move failed");
+
+  // 5-arg legacy payload (no p_ref_id)
+  const payload5 = {
+    p_part: args.p_part,
+    p_loc: args.p_loc,
+    p_qty: args.p_qty,
+    p_reason: args.p_reason as unknown as FnArgs extends { p_reason: infer R } ? R : never,
+    p_ref_kind: args.p_ref_kind,
+  } as unknown as FnArgs;
+
+  const call5 = await supabase.rpc("apply_stock_move", payload5);
+  if (!call5.error && call5.data) return call5.data as FnRet;
+
+  throw new Error(call5.error?.message ?? "apply_stock_move failed");
+}
+
 /* ---------------------------- Page ---------------------------- */
 
 export default function InventoryPage(): JSX.Element {
@@ -195,7 +255,7 @@ export default function InventoryPage(): JSX.Element {
 
   // initial receive (optional) for Add
   const [initLoc, setInitLoc] = useState<string>("");
-  const [initQty, setInitQty] = useState<number>(0);
+  const [initQty, setInitQty] = useState<number | "">(""); // allow empty
 
   // edit modal
   const [editOpen, setEditOpen] = useState<boolean>(false);
@@ -209,7 +269,7 @@ export default function InventoryPage(): JSX.Element {
   const [recvOpen, setRecvOpen] = useState<boolean>(false);
   const [recvPart, setRecvPart] = useState<Part | null>(null);
   const [recvLoc, setRecvLoc] = useState<string>("");
-  const [recvQty, setRecvQty] = useState<number | "">("");
+  const [recvQty, setRecvQty] = useState<number | "">(""); // allow empty
 
   // CSV Import
   const [csvOpen, setCsvOpen] = useState<boolean>(false);
@@ -220,14 +280,13 @@ export default function InventoryPage(): JSX.Element {
   const [csvPreview, setCsvPreview] = useState<boolean>(false);
   const [csvDefaultLoc, setCsvDefaultLoc] = useState<string>("");
 
-  /* ---------- loadOnHand FIX: accept sid directly; avoid state race ---------- */
+  // ---------- on-hand loader (pass sid directly; avoids first-render zeros)
   const loadOnHand = useCallback(
     async (sid: string, partIds: string[]) => {
       if (!partIds.length) {
         setOnHand({});
         return;
       }
-
       const { data, error } = await supabase
         .from("stock_moves")
         .select("part_id, qty_change")
@@ -244,12 +303,10 @@ export default function InventoryPage(): JSX.Element {
         const delta = Number(m.qty_change) || 0;
         totals[m.part_id] = (totals[m.part_id] ?? 0) + delta;
       });
-
       setOnHand(totals);
     },
     [supabase],
   );
-  /* ------------------------------------------------------------------------- */
 
   const load = async (sid: string) => {
     setLoading(true);
@@ -273,14 +330,12 @@ export default function InventoryPage(): JSX.Element {
     setParts(partRows);
     setLoading(false);
 
-    // use sid here (prevents 0s on first render)
     void loadOnHand(sid, partRows.map((p) => p.id));
   };
 
-  // --- on-hand detail (per-location) -----------------------------------
+  // --- on-hand detail (per-location)
   const openOnHandDetail = async (p: Part) => {
     setOhForPart(p);
-
     const { data, error } = await supabase
       .from("stock_moves")
       .select("location_id, qty_change")
@@ -293,7 +348,6 @@ export default function InventoryPage(): JSX.Element {
       return;
     }
 
-    // Sum by location using qty_change
     const byLoc: Record<string, number> = {};
     (data as StockMove[]).forEach((r) => {
       const loc = r.location_id as string;
@@ -345,7 +399,7 @@ export default function InventoryPage(): JSX.Element {
         setCsvDefaultLoc(main.id);
       }
 
-      await load(sid); // also calls loadOnHand(sid, ids)
+      await load(sid);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase]);
@@ -362,7 +416,6 @@ export default function InventoryPage(): JSX.Element {
     if (!shopId || !name.trim()) return;
 
     const id = uuidv4();
-
     const insert: PartInsert = {
       id,
       shop_id: shopId,
@@ -378,16 +431,20 @@ export default function InventoryPage(): JSX.Element {
       return;
     }
 
-    if (initLoc && initQty > 0) {
-      const { error: smErr } = await supabase.rpc("apply_stock_move", {
-        p_part: id,
-        p_loc: initLoc,
-        p_qty: initQty,
-        p_reason: "receive",
-        p_ref_kind: "manual_receive",
-        p_ref_id: undefined, // IMPORTANT: null, not undefined
-      });
-      if (smErr) alert(`Part created, but stock receive failed: ${smErr.message}`);
+    // optional initial receive
+    if (initLoc && typeof initQty === "number" && initQty > 0) {
+      try {
+        await applyStockMoveRPC(supabase, {
+          p_part: id,
+          p_loc: initLoc,
+          p_qty: initQty,
+          p_reason: "receive",
+          p_ref_kind: "manual_receive",
+          p_ref_id: null,
+        });
+      } catch (e: any) {
+        alert(`Part created, but stock receive failed: ${e.message ?? e}`);
+      }
     }
 
     setAddOpen(false);
@@ -395,7 +452,7 @@ export default function InventoryPage(): JSX.Element {
     setSku("");
     setCategory("");
     setPrice("");
-    setInitQty(0);
+    setInitQty("");
     await load(shopId);
   };
 
@@ -430,26 +487,26 @@ export default function InventoryPage(): JSX.Element {
 
   const openReceive = (p: Part) => {
     setRecvPart(p);
-    setRecvQty(0); // allow zero explicitly; button will guard > 0
+    setRecvQty("");
     setRecvOpen(true);
   };
 
   const applyReceive = async () => {
     if (!recvPart?.id || !recvLoc || typeof recvQty !== "number" || recvQty <= 0) return;
-    const { error } = await supabase.rpc("apply_stock_move", {
-      p_part: recvPart.id,     // correct order
-      p_loc: recvLoc,
-      p_qty: recvQty,
-      p_reason: "receive",
-      p_ref_kind: "manual_receive",
-      p_ref_id: undefined,          // use null
-    });
-    if (error) {
-      alert(error.message);
-      return;
+    try {
+      await applyStockMoveRPC(supabase, {
+        p_part: recvPart.id,
+        p_loc: recvLoc,
+        p_qty: recvQty,
+        p_reason: "receive",
+        p_ref_kind: "manual_receive",
+        p_ref_id: null,
+      });
+      setRecvOpen(false);
+      await load(shopId);
+    } catch (e: any) {
+      alert(e.message ?? String(e));
     }
-    setRecvOpen(false);
-    await load(shopId);
   };
 
   /* -------------------------- CSV Import -------------------------- */
@@ -546,14 +603,18 @@ export default function InventoryPage(): JSX.Element {
       }
 
       if (partId && csvDefaultLoc && typeof row.qty === "number" && row.qty > 0) {
-        await supabase.rpc("apply_stock_move", {
-          p_part: partId,          // correct order
-          p_loc: csvDefaultLoc,
-          p_qty: row.qty,
-          p_reason: "receive",
-          p_ref_kind: "csv_import",
-          p_ref_id: undefined,          // use null
-        });
+        try {
+          await applyStockMoveRPC(supabase, {
+            p_part: partId,
+            p_loc: csvDefaultLoc,
+            p_qty: row.qty,
+            p_reason: "receive",
+            p_ref_kind: "csv_import",
+            p_ref_id: null,
+          });
+        } catch (e) {
+          console.warn("Stock receive failed for row:", row, e);
+        }
       }
     }
 
@@ -711,7 +772,7 @@ export default function InventoryPage(): JSX.Element {
               value={initQty}
               min={0}
               step={1}
-              onChange={(v) => setInitQty(typeof v === "number" ? Math.max(0, v) : 0)}
+              onChange={(v) => setInitQty(v === "" ? "" : Math.max(0, v))}
             />
           </div>
         </div>
@@ -755,7 +816,6 @@ export default function InventoryPage(): JSX.Element {
         open={recvOpen}
         title={recvPart ? `Receive — ${recvPart.name}` : "Receive Stock"}
         onClose={() => setRecvOpen(false)}
-        
         footer={
           <div className="flex justify-end gap-2">
             <button
@@ -784,12 +844,12 @@ export default function InventoryPage(): JSX.Element {
               label: `${l.code ?? "LOC"} — ${l.name ?? ""}`,
             }))}
           />
-          <NumberField
+        <NumberField
             label="Qty"
             value={recvQty}
             min={0}
             step={1}
-            onChange={(v) => setRecvQty(typeof v === "number" ? Math.max(0, v) : v === "" ? "" : 0)}
+            onChange={(v) => setRecvQty(v === "" ? "" : Math.max(0, v))}
           />
         </div>
       </Modal>
