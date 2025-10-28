@@ -1846,13 +1846,56 @@ export type Database = {
           },
         ]
       }
+      part_request_lines: {
+        Row: {
+          created_at: string
+          id: string
+          request_id: string
+          work_order_line_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          request_id: string
+          work_order_line_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          request_id?: string
+          work_order_line_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "part_request_lines_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "part_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_request_lines_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_quote_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_request_lines_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_lines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       part_requests: {
         Row: {
           assigned_to: string | null
           created_at: string
           id: string
           notes: string | null
-          requested_by: string
+          requested_by: string | null
           shop_id: string
           status: Database["public"]["Enums"]["part_request_status"]
           work_order_id: string | null
@@ -1862,7 +1905,7 @@ export type Database = {
           created_at?: string
           id?: string
           notes?: string | null
-          requested_by: string
+          requested_by?: string | null
           shop_id: string
           status?: Database["public"]["Enums"]["part_request_status"]
           work_order_id?: string | null
@@ -1872,7 +1915,7 @@ export type Database = {
           created_at?: string
           id?: string
           notes?: string | null
-          requested_by?: string
+          requested_by?: string | null
           shop_id?: string
           status?: Database["public"]["Enums"]["part_request_status"]
           work_order_id?: string | null

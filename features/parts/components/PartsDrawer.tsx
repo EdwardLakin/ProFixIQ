@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import PartPicker, { PickedPart } from "@/features/parts/components/PartPicker";
@@ -16,19 +16,13 @@ type SerializableVehicle = {
 } | null;
 
 type Props = {
-  /** Fully serializable props only */
   open: boolean;
   workOrderId: string;
   workOrderLineId: string;
   vehicleSummary?: SerializableVehicle;
   jobDescription?: string | null;
   jobNotes?: string | null;
-
-  /**
-   * Optional DOM event name to emit when the drawer closes itself.
-   * Parent can listen and flip its state. Defaults to "parts-drawer:closed".
-   */
-  closeEventName?: string;
+  closeEventName?: string; // default: "parts-drawer:closed"
 };
 
 export default function PartsDrawer({
@@ -47,14 +41,13 @@ export default function PartsDrawer({
     window.dispatchEvent(new CustomEvent(closeEventName));
   }, [closeEventName]);
 
+  /** handle parts used directly from inventory */
   const handleUsePart = useCallback(
     async ({ part_id, location_id, qty }: PickedPart) => {
       try {
-        // Prefer provided location; otherwise try to find a MAIN location.
         let locId = location_id ?? null;
 
         if (!locId) {
-          // NOTE: RLS should scope to shop via your auth/session RPCs.
           const { data: locs } = await supabase
             .from("stock_locations")
             .select("id, code")
@@ -76,9 +69,7 @@ export default function PartsDrawer({
         });
 
         if (error) throw error;
-
         toast.success("Part allocated to job.");
-        // Let the WO page refresh itself.
         window.dispatchEvent(new CustomEvent("wo:parts-used"));
         emitClose();
       } catch (e: any) {
@@ -87,6 +78,24 @@ export default function PartsDrawer({
     },
     [emitClose, supabase, workOrderId, workOrderLineId],
   );
+
+  // Event listeners for modal communication
+  useEffect(() => {
+    if (!open) return;
+
+    const onCloseReq = () => emitClose();
+    const onSubmitted = () => {
+      toast.success("Parts request submitted");
+      emitClose();
+    };
+
+    window.addEventListener("parts-request:close", onCloseReq);
+    window.addEventListener("parts-request:submitted", onSubmitted);
+    return () => {
+      window.removeEventListener("parts-request:close", onCloseReq);
+      window.removeEventListener("parts-request:submitted", onSubmitted);
+    };
+  }, [open, emitClose]);
 
   if (!open) return null;
 
@@ -129,19 +138,23 @@ export default function PartsDrawer({
           {tab === "use" ? (
             <PartPicker
               open={true}
-              onClose={emitClose}            
-              onPick={handleUsePart}         
+              onClose={emitClose}
+              onPick={handleUsePart}
               initialSearch=""
+              workOrderId={workOrderId}
+              workOrderLineId={workOrderLineId}
+              jobDescription={_jobDescription}
+              jobNotes={_jobNotes}
+              vehicleSummary={_vehicleSummary}
             />
           ) : (
             <div className="relative">
               <PartsRequestModal
                 isOpen={true}
-                onClose={emitClose}          
-                jobId={workOrderLineId}
                 workOrderId={workOrderId}
-                requested_by="system"
-                existingRequest={null}
+                jobId={workOrderLineId}
+                closeEventName="parts-request:close"
+                submittedEventName="parts-request:submitted"
               />
             </div>
           )}
