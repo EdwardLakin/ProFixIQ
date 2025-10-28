@@ -10,7 +10,6 @@ export async function POST(req: Request) {
   try {
     const supabase = createRouteHandlerClient<DB>({ cookies });
 
-    // Parse and validate body
     const body = (await req.json().catch(() => ({}))) as Partial<{
       part_id: string;
       location_id: string;
@@ -27,15 +26,16 @@ export async function POST(req: Request) {
       );
     }
 
-    // Apply stock move
+    // ✅ Explicit, properly typed RPC call
     const { error: smErr } = await supabase.rpc("apply_stock_move", {
       p_part: part_id,
       p_loc: location_id,
       p_qty: qty,
       p_reason: "receive",
       p_ref_kind: po_id ? "purchase_order" : "manual_receive",
-      p_ref_id: po_id ?? undefined,
+      p_ref_id: po_id ?? "", // must be string | null, not undefined
     });
+
     if (smErr) throw smErr;
 
     // --- Update PO lines ---
@@ -61,7 +61,6 @@ export async function POST(req: Request) {
             .from("purchase_order_lines")
             .update({ received_qty: received + delta })
             .eq("id", ln.id);
-
           if (updateErr) throw updateErr;
           remain -= delta;
         }
@@ -90,7 +89,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true });
   } catch (e: unknown) {
-    // Narrow the unknown error safely
     const message =
       e instanceof Error
         ? e.message
