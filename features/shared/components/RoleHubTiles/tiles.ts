@@ -144,6 +144,13 @@ export const TILES: Tile[] = [
     roles: ["parts", "manager", "owner", "admin"],
     scopes: ["parts", "all"],
   },
+  {
+    href: "/parts/inventory",
+    title: "Inventory",
+    subtitle: "On-hand stock",
+    roles: ["parts", "manager", "owner", "admin"],
+    scopes: ["parts", "all"],
+  },
   // NEW: Purchase Orders list
   {
     href: "/parts/po",
