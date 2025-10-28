@@ -173,7 +173,6 @@ function parseCSV(text: string): string[][] {
 function errMsg(err: unknown): string {
   if (typeof err === "string") return err;
   if (err && typeof err === "object" && "message" in err) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return String((err as Record<string, unknown>).message);
   }
   try {
@@ -185,7 +184,7 @@ function errMsg(err: unknown): string {
 
 /* ------------------------- RPC helper --------------------------- */
 /** Try 6-arg function first; if schema cache hasn’t picked it up,
- * fall back to the 5-arg legacy shape. Strictly typed, no `any`.
+ * fall back to the 5-arg legacy shape. Strictly typed; ignores return value.
  */
 async function applyStockMoveRPC(
   supabase: ReturnType<typeof createClientComponentClient<DB>>,
@@ -197,23 +196,21 @@ async function applyStockMoveRPC(
     p_ref_kind: string;
     p_ref_id?: string | null;
   },
-): Promise<string> {
+): Promise<void> {
   type FnArgs = DB["public"]["Functions"]["apply_stock_move"]["Args"];
-  type FnRet = DB["public"]["Functions"]["apply_stock_move"]["Returns"];
 
-  // 6-arg payload (conditionally include p_ref_id so the arg shape matches)
+  // 6-arg (conditionally include p_ref_id so shapes match)
   const payload6 = {
     p_part: args.p_part,
     p_loc: args.p_loc,
     p_qty: args.p_qty,
-    // cast only the enum field to the generated type
     p_reason: args.p_reason as FnArgs extends { p_reason: infer R } ? R : never,
     p_ref_kind: args.p_ref_kind,
     ...(args.p_ref_id !== undefined ? { p_ref_id: args.p_ref_id } : {}),
   } as FnArgs;
 
   const call6 = await supabase.rpc("apply_stock_move", payload6);
-  if (!call6.error && call6.data) return call6.data as FnRet;
+  if (!call6.error) return;
 
   const msg = (call6.error?.message ?? "").toLowerCase();
   const cacheShapeIssue =
@@ -223,7 +220,7 @@ async function applyStockMoveRPC(
 
   if (!cacheShapeIssue) throw new Error(call6.error?.message ?? "apply_stock_move failed");
 
-  // 5-arg legacy payload (no p_ref_id)
+  // 5-arg (legacy, no p_ref_id)
   const payload5 = {
     p_part: args.p_part,
     p_loc: args.p_loc,
@@ -233,9 +230,9 @@ async function applyStockMoveRPC(
   } as FnArgs;
 
   const call5 = await supabase.rpc("apply_stock_move", payload5);
-  if (!call5.error && call5.data) return call5.data as FnRet;
-
-  throw new Error(call5.error?.message ?? "apply_stock_move failed");
+  if (call5.error) {
+    throw new Error(call5.error.message ?? "apply_stock_move failed");
+  }
 }
 
 /* ---------------------------- Page ---------------------------- */

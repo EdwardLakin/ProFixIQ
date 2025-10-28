@@ -51,11 +51,14 @@ const statusTextColor: Record<string, string> = {
   queued: "text-indigo-300",
   on_hold: "text-amber-300",
   completed: "text-green-300",
-  awaiting_approval: "text-blue-300", // display convenience, not a DB status
-  planned: "text-purple-300",         // display convenience, not a DB status
-  new: "text-neutral-200",
   paused: "text-amber-300",
+  assigned: "text-sky-300",
+  unassigned: "text-neutral-200",
+  // ✅ These are now real DB statuses:
+  awaiting_approval: "text-blue-300",
+  declined: "text-red-300",
 };
+
 const chip = (s: string | null) =>
   statusTextColor[(s ?? "awaiting").toLowerCase().replaceAll(" ", "_")] ??
   "text-neutral-200";
@@ -74,15 +77,16 @@ type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
 
-
 type AllocationRow =
   DB["public"]["Tables"]["work_order_part_allocations"]["Row"] & {
     parts?: { name: string | null } | null;
   };
 
-  /** Per CHECK constraints in Supabase */
+/** Per CHECK constraints in Supabase */
 type WorkflowStatus =
   | "awaiting"
+  | "awaiting_approval"   // ✅ add to UI enum
+  | "declined"            // ✅ add to UI enum
   | "queued"
   | "in_progress"
   | "on_hold"
@@ -531,6 +535,7 @@ export default function FocusedJobModal(props: {
   const finishAt = line?.punched_out_at ?? null;
 
   const titleText =
+    `${line?.line_no ? `#${line.line_no} ` : ""}` +    // ✅ show line number if present
     (line?.description || line?.complaint || "Focused Job") +
     (line?.job_type ? ` — ${String(line.job_type).replaceAll("_", " ")}` : "");
 
@@ -585,6 +590,17 @@ export default function FocusedJobModal(props: {
                     WO #{workOrder.custom_id || workOrder.id?.slice(0, 8)}
                   </span>
                 ) : null}
+                {/* Small status chip for awaiting_approval / declined */}
+                {line?.status === "awaiting_approval" && (
+                  <span className="ml-2 rounded border border-blue-500 px-2 py-0.5 text-xs text-blue-300">
+                    Awaiting approval
+                  </span>
+                )}
+                {line?.status === "declined" && (
+                  <span className="ml-2 rounded border border-red-500 px-2 py-0.5 text-xs text-red-300">
+                    Declined
+                  </span>
+                )}
               </div>
 
               {/* RIGHT actions: Add Job + Close */}
@@ -686,23 +702,28 @@ export default function FocusedJobModal(props: {
                       lineId={line.id}
                       punchedInAt={line.punched_in_at}
                       punchedOutAt={line.punched_out_at}
-                      status={line.status}
+                      status={line.status as WorkflowStatus}
                       onFinishRequested={() => setOpenComplete(true)}
                       onUpdated={refresh}
-                      // ✅ not punchable until approved
+                      // ✅ not punchable until approved AND not awaiting_approval/declined
                       disabled={
-                        (!!line.approval_state &&
-                          line.approval_state !== "approved") || busy
+                        busy ||
+                        line.status === "awaiting_approval" ||
+                        line.status === "declined" ||
+                        (!!line.approval_state && line.approval_state !== "approved")
                       }
                     />
-                    {!!line.approval_state &&
-                      line.approval_state !== "approved" && (
-                        <div className="mt-1 text-xs text-amber-300">
-                          {line.approval_state === "pending"
-                            ? "Awaiting approval — punching disabled"
-                            : "Declined — punching disabled"}
-                        </div>
-                      )}
+                    {(line.status === "awaiting_approval" ||
+                      (line.approval_state && line.approval_state !== "approved") ||
+                      line.status === "declined") && (
+                      <div className="mt-1 text-xs text-amber-300">
+                        {line.status === "awaiting_approval"
+                          ? "Awaiting approval — punching disabled"
+                          : line.status === "declined"
+                          ? "Declined — punching disabled"
+                          : "Not approved — punching disabled"}
+                      </div>
+                    )}
                   </div>
                 )}
 

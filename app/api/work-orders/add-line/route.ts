@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient, type PostgrestError } from "@supabase/supabase-js";
 
+type PartLine = { name: string; qty?: number; cost?: number; notes?: string };
+
 type AISuggestion = {
-  parts: { name: string; qty?: number; cost?: number; notes?: string }[];
+  parts: PartLine[];
   laborHours: number;
   laborRate?: number;
   summary: string;
@@ -20,7 +22,9 @@ type LineStatus =
   | "paused"
   | "completed"
   | "assigned"
-  | "unassigned";
+  | "unassigned"
+  | "awaiting_approval"   // ✅ now supported in DB CHECK
+  | "declined";           // ✅ now supported in DB CHECK
 
 type ApprovalState = "pending" | "approved" | "declined" | null;
 
@@ -48,7 +52,7 @@ interface AddLineRequestBody {
   section?: string;
   status?: "recommend" | "fail";
   suggestion: AISuggestion;
-  jobType?: "inspection" | "repair" | "maintenance";
+  jobType?: "inspection" | "repair" | "maintenance" | "diagnosis" | "tech-suggested";
 }
 
 function isValidBody(b: unknown): b is AddLineRequestBody {
@@ -57,7 +61,8 @@ function isValidBody(b: unknown): b is AddLineRequestBody {
   return (
     typeof o.workOrderId === "string" &&
     typeof o.description === "string" &&
-    o.suggestion !== undefined
+    typeof o.suggestion === "object" &&
+    o.suggestion !== null
   );
 }
 
@@ -76,7 +81,7 @@ export async function POST(req: Request) {
       workOrderId,
       description,
       section,
-      status,
+      status,     // "recommend" | "fail" from inspection
       suggestion,
       jobType = "inspection",
     } = bodyUnknown;
@@ -94,20 +99,27 @@ export async function POST(req: Request) {
 
     const supabase = createClient(supabaseUrl, serviceKey);
 
+    // Build compact notes (extra context for advisors)
     const notesParts: string[] = [];
     if (section) notesParts.push(`Section: ${section}`);
     if (status) notesParts.push(`From inspection: ${status.toUpperCase()}`);
     if (suggestion.summary?.trim()) notesParts.push(`AI: ${suggestion.summary.trim()}`);
+    const notes: string | null = notesParts.length ? notesParts.join(" • ") : null;
 
+    const laborTime: number | null =
+      typeof suggestion.laborHours === "number" ? suggestion.laborHours : null;
+
+    // ✅ Create as a quote line:
+    // - status: awaiting_approval (non-punchable)
+    // - approval_state: pending
     const insertPayload: InsertWorkOrderLine = {
       work_order_id: workOrderId,
       description,
       job_type: (jobType as JobType) ?? "inspection",
-      status: "awaiting",
+      status: "awaiting_approval",
       approval_state: "pending",
-      notes: notesParts.length ? notesParts.join(" • ") : null,
-      labor_time:
-        typeof suggestion.laborHours === "number" ? suggestion.laborHours : null,
+      notes,
+      labor_time: laborTime,
     };
 
     const { data, error } = await supabase
@@ -124,7 +136,7 @@ export async function POST(req: Request) {
       );
     }
 
-    return NextResponse.json({ id: data!.id });
+    return NextResponse.json({ id: (data as { id: string }).id });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unknown error";
     return NextResponse.json({ error: msg }, { status: 500 });

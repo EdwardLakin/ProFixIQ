@@ -9,8 +9,18 @@ import { toast } from "sonner";
 import { useAiPartSuggestions } from "@/features/parts/hooks/useAiPartSuggestions";
 
 type DB = Database;
-type PartsRequest = DB["public"]["Tables"]["parts_requests"]["Insert"];
 type PartRow = DB["public"]["Tables"]["parts"]["Row"];
+
+/** Only the fields this modal actually reads/writes */
+type ExistingRequestShape = Partial<{
+  id: string;
+  part_name: string;
+  urgency: "low" | "medium" | "high";
+  quantity: number;
+  notes: string;
+  photo_urls: string[];
+  archived: boolean;
+}>;
 
 interface Props {
   isOpen: boolean;
@@ -18,7 +28,7 @@ interface Props {
   jobId: string;
   workOrderId: string;
   requested_by: string;
-  existingRequest?: Partial<PartsRequest> | null;
+  existingRequest?: ExistingRequestShape | null;
   /** Optional: allow AI to use more context */
   vehicleSummary?: { year?: number | string | null; make?: string | null; model?: string | null } | null;
   jobDescription?: string | null;
@@ -53,16 +63,17 @@ export default function PartsRequestModal(props: Props) {
   const [selectedPart, setSelectedPart] = useState<PartRow | null>(null);
 
   // AI
-  const { loading: aiLoading, items: aiItems, error: aiErr, suggest, setItems: setAiItems } = useAiPartSuggestions();
+  const { loading: aiLoading, items: aiItems, error: aiErr, suggest, setItems: setAiItems } =
+    useAiPartSuggestions();
 
   // preload if editing an existing request
   useEffect(() => {
     if (existingRequest) {
       setPartsNeeded(existingRequest.part_name || "");
-      setUrgency((existingRequest.urgency as "low" | "medium" | "high") ?? "medium");
+      setUrgency(existingRequest.urgency ?? "medium");
       setNotes(existingRequest.notes || "");
-      setQuantity(existingRequest.quantity || 1);
-      setPhotoUrls(existingRequest.photo_urls || []);
+      setQuantity(existingRequest.quantity ?? 1);
+      setPhotoUrls(existingRequest.photo_urls ?? []);
     } else {
       setPartsNeeded("");
       setUrgency("medium");
@@ -79,14 +90,15 @@ export default function PartsRequestModal(props: Props) {
   // load user shop for scoping part search
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const { data: auth } = await supabase.auth.getUser();
+      const uid = auth.user?.id;
+      if (!uid) return;
       const { data: prof } = await supabase
         .from("profiles")
         .select("shop_id")
-        .eq("user_id", user.id)
+        .eq("user_id", uid)
         .single();
-      setShopId(prof?.shop_id ?? "");
+      setShopId((prof?.shop_id as string) ?? "");
     })();
   }, [supabase]);
 
@@ -102,21 +114,19 @@ export default function PartsRequestModal(props: Props) {
     (async () => {
       setSearching(true);
       try {
-        let q = supabase
+        const { data, error } = await supabase
           .from("parts")
           .select("*")
           .eq("shop_id", shopId)
           .limit(8)
           .order("name", { ascending: true })
           .or(`name.ilike.%${term}%,sku.ilike.%${term}%`);
-        const { data, error } = await q;
         if (error) throw error;
-        if (cancelled) return;
-        setResults((data as PartRow[]) ?? []);
-      } catch (e: any) {
+        if (!cancelled) setResults((data as PartRow[]) ?? []);
+      } catch (e) {
         // eslint-disable-next-line no-console
-        console.warn("[parts search] failed:", e?.message);
-        setResults([]);
+        console.warn("[parts search] failed:", e);
+        if (!cancelled) setResults([]);
       } finally {
         if (!cancelled) setSearching(false);
       }
@@ -156,8 +166,8 @@ export default function PartsRequestModal(props: Props) {
       ? `\n\n[Linked Part: ${selectedPart.name ?? "Part"} • SKU ${selectedPart.sku ?? "—"}]`
       : "";
 
-    const payload: PartsRequest = {
-      id: (existingRequest?.id as string) || uuidv4(),
+    const payload = {
+      id: existingRequest?.id || uuidv4(),
       job_id: jobId,
       work_order_id: workOrderId,
       part_name: finalPartName,
@@ -171,9 +181,12 @@ export default function PartsRequestModal(props: Props) {
       archived: existingRequest?.archived ?? false,
     };
 
+    // Use the table name you’re using elsewhere (we’ve been using "part_requests")
+    const table = "part_requests";
+
     const { error } = existingRequest
-      ? await supabase.from("parts_requests").update(payload).eq("id", existingRequest.id as string)
-      : await supabase.from("parts_requests").insert(payload);
+      ? await supabase.from(table).update(payload).eq("id", payload.id)
+      : await supabase.from(table).insert(payload);
 
     if (error) {
       toast.error("Failed to submit parts request: " + error.message);
@@ -190,19 +203,25 @@ export default function PartsRequestModal(props: Props) {
     if (!files || files.length === 0) return;
 
     const maxFiles = Math.max(0, 5 - photoUrls.length);
-    const filesToUpload = Array.from(files).slice(0, maxFiles) as File[];
+    const filesToUpload = Array.from(files).slice(0, maxFiles);
     if (!filesToUpload.length) return;
 
     setUploading(true);
     try {
       for (const file of filesToUpload) {
         const fileName = `${uuidv4()}-${file.name}`;
-        const { data, error } = await supabase.storage.from("parts-request-photos").upload(fileName, file);
+        const { data, error } = await supabase
+          .storage
+          .from("parts-request-photos")
+          .upload(fileName, file);
         if (error) {
           toast.error(`Upload failed: ${file.name}`);
           continue;
         }
-        const { data: pub } = supabase.storage.from("parts-request-photos").getPublicUrl(data!.path);
+        const { data: pub } = supabase
+          .storage
+          .from("parts-request-photos")
+          .getPublicUrl(data!.path);
         const url = pub?.publicUrl ?? "";
         if (url) setPhotoUrls((prev) => [...prev, url]);
       }
@@ -228,11 +247,7 @@ export default function PartsRequestModal(props: Props) {
   }
 
   return (
-    <Dialog
-      open={isOpen}
-      onClose={onClose}
-      className="fixed inset-0 z-[320] flex items-center justify-center"
-    >
+    <Dialog open={isOpen} onClose={onClose} className="fixed inset-0 z-[320] flex items-center justify-center">
       {/* Backdrop */}
       <div className="fixed inset-0 z-[320] bg-black/70 backdrop-blur-sm" aria-hidden="true" />
 

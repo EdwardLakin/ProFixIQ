@@ -25,7 +25,6 @@ export type Tile = {
 };
 
 export const TILES: Tile[] = [
-
   // --- Work Orders ---
   {
     href: "/work-orders/create?autostart=1", // ✅ auto-start work order draft
@@ -71,14 +70,13 @@ export const TILES: Tile[] = [
     scopes: ["work_orders", "all"],
   },
   // NEW: Billing (Ready to invoice)
-{
-  href: "/billing",
-  title: "Billing",
-  subtitle: "Ready to invoice",
-  roles: ["advisor", "manager", "owner", "admin"],
-  scopes: ["work_orders", "all"],
-},
-  
+  {
+    href: "/billing",
+    title: "Billing",
+    subtitle: "Ready to invoice",
+    roles: ["advisor", "manager", "owner", "admin"],
+    scopes: ["work_orders", "all"],
+  },
 
   // --- Inspections ---
   {

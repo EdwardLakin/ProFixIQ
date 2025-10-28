@@ -745,6 +745,13 @@ export type Database = {
             foreignKeyName: "defective_parts_part_id_fkey"
             columns: ["part_id"]
             isOneToOne: false
+            referencedRelation: "part_stock_summary"
+            referencedColumns: ["part_id"]
+          },
+          {
+            foreignKeyName: "defective_parts_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
             referencedRelation: "parts"
             referencedColumns: ["id"]
           },
@@ -1689,6 +1696,13 @@ export type Database = {
             foreignKeyName: "part_barcodes_part_id_fkey"
             columns: ["part_id"]
             isOneToOne: false
+            referencedRelation: "part_stock_summary"
+            referencedColumns: ["part_id"]
+          },
+          {
+            foreignKeyName: "part_barcodes_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
             referencedRelation: "parts"
             referencedColumns: ["id"]
           },
@@ -1723,6 +1737,13 @@ export type Database = {
           year_range?: unknown
         }
         Relationships: [
+          {
+            foreignKeyName: "part_compatibility_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "part_stock_summary"
+            referencedColumns: ["part_id"]
+          },
           {
             foreignKeyName: "part_compatibility_part_id_fkey"
             columns: ["part_id"]
@@ -1765,6 +1786,13 @@ export type Database = {
             foreignKeyName: "part_purchases_part_id_fkey"
             columns: ["part_id"]
             isOneToOne: false
+            referencedRelation: "part_stock_summary"
+            referencedColumns: ["part_id"]
+          },
+          {
+            foreignKeyName: "part_purchases_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
             referencedRelation: "parts"
             referencedColumns: ["id"]
           },
@@ -1776,6 +1804,80 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      part_request_items: {
+        Row: {
+          approved: boolean
+          description: string
+          id: string
+          part_id: string | null
+          qty: number
+          quoted_price: number | null
+          request_id: string
+          vendor: string | null
+        }
+        Insert: {
+          approved?: boolean
+          description: string
+          id?: string
+          part_id?: string | null
+          qty: number
+          quoted_price?: number | null
+          request_id: string
+          vendor?: string | null
+        }
+        Update: {
+          approved?: boolean
+          description?: string
+          id?: string
+          part_id?: string | null
+          qty?: number
+          quoted_price?: number | null
+          request_id?: string
+          vendor?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "part_request_items_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "part_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      part_requests: {
+        Row: {
+          assigned_to: string | null
+          created_at: string
+          id: string
+          notes: string | null
+          requested_by: string
+          shop_id: string
+          status: Database["public"]["Enums"]["part_request_status"]
+          work_order_id: string | null
+        }
+        Insert: {
+          assigned_to?: string | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          requested_by: string
+          shop_id: string
+          status?: Database["public"]["Enums"]["part_request_status"]
+          work_order_id?: string | null
+        }
+        Update: {
+          assigned_to?: string | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          requested_by?: string
+          shop_id?: string
+          status?: Database["public"]["Enums"]["part_request_status"]
+          work_order_id?: string | null
+        }
+        Relationships: []
       }
       part_returns: {
         Row: {
@@ -1806,6 +1908,13 @@ export type Database = {
           shop_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "part_returns_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "part_stock_summary"
+            referencedColumns: ["part_id"]
+          },
           {
             foreignKeyName: "part_returns_part_id_fkey"
             columns: ["part_id"]
@@ -1855,63 +1964,14 @@ export type Database = {
             foreignKeyName: "part_stock_part_id_fkey"
             columns: ["part_id"]
             isOneToOne: false
-            referencedRelation: "parts"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      part_stock_summary: {
-        Row: {
-          location_id: string
-          part_id: string
-          qty_available: number | null
-          qty_on_hand: number
-          qty_reserved: number
-          shop_id: string
-        }
-        Insert: {
-          location_id: string
-          part_id: string
-          qty_available?: number | null
-          qty_on_hand?: number
-          qty_reserved?: number
-          shop_id: string
-        }
-        Update: {
-          location_id?: string
-          part_id?: string
-          qty_available?: number | null
-          qty_on_hand?: number
-          qty_reserved?: number
-          shop_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "part_stock_summary_location_id_fkey"
-            columns: ["location_id"]
-            isOneToOne: false
-            referencedRelation: "stock_locations"
-            referencedColumns: ["id"]
+            referencedRelation: "part_stock_summary"
+            referencedColumns: ["part_id"]
           },
           {
-            foreignKeyName: "part_stock_summary_part_id_fkey"
+            foreignKeyName: "part_stock_part_id_fkey"
             columns: ["part_id"]
             isOneToOne: false
             referencedRelation: "parts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "part_stock_summary_shop_id_fkey"
-            columns: ["shop_id"]
-            isOneToOne: false
-            referencedRelation: "shop_public_profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "part_stock_summary_shop_id_fkey"
-            columns: ["shop_id"]
-            isOneToOne: false
-            referencedRelation: "shops"
             referencedColumns: ["id"]
           },
         ]
@@ -1969,6 +2029,13 @@ export type Database = {
           warranty_provider?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "part_warranties_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "part_stock_summary"
+            referencedColumns: ["part_id"]
+          },
           {
             foreignKeyName: "part_warranties_part_id_fkey"
             columns: ["part_id"]
@@ -2046,6 +2113,13 @@ export type Database = {
           shop_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "parts_barcodes_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "part_stock_summary"
+            referencedColumns: ["part_id"]
+          },
           {
             foreignKeyName: "parts_barcodes_part_id_fkey"
             columns: ["part_id"]
@@ -2469,6 +2543,13 @@ export type Database = {
             foreignKeyName: "purchase_order_items_part_id_fkey"
             columns: ["part_id"]
             isOneToOne: false
+            referencedRelation: "part_stock_summary"
+            referencedColumns: ["part_id"]
+          },
+          {
+            foreignKeyName: "purchase_order_items_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
             referencedRelation: "parts"
             referencedColumns: ["id"]
           },
@@ -2525,6 +2606,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "stock_locations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_order_lines_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "part_stock_summary"
+            referencedColumns: ["part_id"]
           },
           {
             foreignKeyName: "purchase_order_lines_part_id_fkey"
@@ -2782,6 +2870,13 @@ export type Database = {
           shop_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "shop_parts_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "part_stock_summary"
+            referencedColumns: ["part_id"]
+          },
           {
             foreignKeyName: "shop_parts_part_id_fkey"
             columns: ["part_id"]
@@ -3327,6 +3422,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "stock_locations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_moves_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "part_stock_summary"
+            referencedColumns: ["part_id"]
           },
           {
             foreignKeyName: "stock_moves_part_id_fkey"
@@ -3889,6 +3991,13 @@ export type Database = {
             foreignKeyName: "vendor_part_numbers_part_id_fkey"
             columns: ["part_id"]
             isOneToOne: false
+            referencedRelation: "part_stock_summary"
+            referencedColumns: ["part_id"]
+          },
+          {
+            foreignKeyName: "vendor_part_numbers_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
             referencedRelation: "parts"
             referencedColumns: ["id"]
           },
@@ -3993,6 +4102,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "customers"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "warranties_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "part_stock_summary"
+            referencedColumns: ["part_id"]
           },
           {
             foreignKeyName: "warranties_part_id_fkey"
@@ -4251,6 +4367,7 @@ export type Database = {
           inspection_session_id: string | null
           job_type: string | null
           labor_time: number | null
+          line_no: number | null
           line_status: string | null
           notes: string | null
           on_hold_since: string | null
@@ -4260,6 +4377,7 @@ export type Database = {
           parts_required: Json | null
           price_estimate: number | null
           priority: number | null
+          punchable: boolean | null
           punched_in_at: string | null
           punched_out_at: string | null
           quoted_at: string | null
@@ -4290,6 +4408,7 @@ export type Database = {
           inspection_session_id?: string | null
           job_type?: string | null
           labor_time?: number | null
+          line_no?: number | null
           line_status?: string | null
           notes?: string | null
           on_hold_since?: string | null
@@ -4299,6 +4418,7 @@ export type Database = {
           parts_required?: Json | null
           price_estimate?: number | null
           priority?: number | null
+          punchable?: boolean | null
           punched_in_at?: string | null
           punched_out_at?: string | null
           quoted_at?: string | null
@@ -4329,6 +4449,7 @@ export type Database = {
           inspection_session_id?: string | null
           job_type?: string | null
           labor_time?: number | null
+          line_no?: number | null
           line_status?: string | null
           notes?: string | null
           on_hold_since?: string | null
@@ -4338,6 +4459,7 @@ export type Database = {
           parts_required?: Json | null
           price_estimate?: number | null
           priority?: number | null
+          punchable?: boolean | null
           punched_in_at?: string | null
           punched_out_at?: string | null
           quoted_at?: string | null
@@ -4498,6 +4620,13 @@ export type Database = {
             foreignKeyName: "work_order_part_allocations_part_id_fkey"
             columns: ["part_id"]
             isOneToOne: false
+            referencedRelation: "part_stock_summary"
+            referencedColumns: ["part_id"]
+          },
+          {
+            foreignKeyName: "work_order_part_allocations_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
             referencedRelation: "parts"
             referencedColumns: ["id"]
           },
@@ -4556,6 +4685,13 @@ export type Database = {
           work_order_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "work_order_parts_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "part_stock_summary"
+            referencedColumns: ["part_id"]
+          },
           {
             foreignKeyName: "work_order_parts_part_id_fkey"
             columns: ["part_id"]
@@ -4711,6 +4847,19 @@ export type Database = {
       }
     }
     Views: {
+      part_stock_summary: {
+        Row: {
+          category: string | null
+          move_count: number | null
+          name: string | null
+          on_hand: number | null
+          part_id: string | null
+          price: number | null
+          shop_id: string | null
+          sku: string | null
+        }
+        Relationships: []
+      }
       shop_public_profiles: {
         Row: {
           city: string | null
@@ -4810,6 +4959,13 @@ export type Database = {
             foreignKeyName: "stock_moves_part_id_fkey"
             columns: ["part_id"]
             isOneToOne: false
+            referencedRelation: "part_stock_summary"
+            referencedColumns: ["part_id"]
+          },
+          {
+            foreignKeyName: "stock_moves_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
             referencedRelation: "parts"
             referencedColumns: ["id"]
           },
@@ -4844,6 +5000,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "stock_locations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_stock_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "part_stock_summary"
+            referencedColumns: ["part_id"]
           },
           {
             foreignKeyName: "part_stock_part_id_fkey"
@@ -4989,29 +5152,34 @@ export type Database = {
     Functions: {
       _ensure_same_shop: { Args: { _wo: string }; Returns: boolean }
       agent_can_start: { Args: never; Returns: boolean }
-      apply_stock_move:
-        | {
-            Args: {
-              p_loc: string
-              p_part: string
-              p_qty: number
-              p_reason: string
-              p_ref_id: string
-              p_ref_kind: string
-            }
-            Returns: string
-          }
-        | {
-            Args: {
-              p_loc: string
-              p_part: string
-              p_qty: number
-              p_reason: Database["public"]["Enums"]["stock_move_reason"]
-              p_ref_id?: string
-              p_ref_kind?: string
-            }
-            Returns: string
-          }
+      apply_stock_move: {
+        Args: {
+          p_loc: string
+          p_part: string
+          p_qty: number
+          p_reason: string
+          p_ref_id: string
+          p_ref_kind: string
+        }
+        Returns: {
+          created_at: string
+          created_by: string | null
+          id: string
+          location_id: string
+          part_id: string
+          qty_change: number
+          reason: Database["public"]["Enums"]["stock_move_reason"]
+          reference_id: string | null
+          reference_kind: string | null
+          shop_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "stock_moves"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       approve_lines: {
         Args: {
           _approved_ids: string[]
@@ -5036,6 +5204,10 @@ export type Database = {
       }
       check_plan_limit: { Args: { _feature: string }; Returns: boolean }
       clear_auth: { Args: never; Returns: undefined }
+      create_part_request: {
+        Args: { p_items: Json; p_notes: string; p_work_order: string }
+        Returns: string
+      }
       current_shop_id: { Args: never; Returns: string }
       first_segment_uuid: { Args: { p: string }; Returns: string }
       has_column: { Args: { _col: string; _table: unknown }; Returns: boolean }
@@ -5059,12 +5231,35 @@ export type Database = {
       set_authenticated: { Args: { uid: string }; Returns: undefined }
       set_current_shop_id: { Args: { p_shop_id: string }; Returns: undefined }
       set_last_active_now: { Args: never; Returns: undefined }
+      set_part_request_status: {
+        Args: {
+          p_request: string
+          p_status: Database["public"]["Enums"]["part_request_status"]
+        }
+        Returns: undefined
+      }
       shop_id_for: { Args: { uid: string }; Returns: string }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      update_part_quote: {
+        Args: {
+          p_item: string
+          p_price: number
+          p_request: string
+          p_vendor: string
+        }
+        Returns: undefined
+      }
     }
     Enums: {
       job_type_enum: "diagnosis" | "inspection" | "maintenance" | "repair"
+      part_request_status:
+        | "requested"
+        | "quoted"
+        | "approved"
+        | "fulfilled"
+        | "rejected"
+        | "cancelled"
       plan_t: "free" | "diy" | "pro" | "pro_plus"
       punch_event_type:
         | "start"
@@ -5221,6 +5416,14 @@ export const Constants = {
   public: {
     Enums: {
       job_type_enum: ["diagnosis", "inspection", "maintenance", "repair"],
+      part_request_status: [
+        "requested",
+        "quoted",
+        "approved",
+        "fulfilled",
+        "rejected",
+        "cancelled",
+      ],
       plan_t: ["free", "diy", "pro", "pro_plus"],
       punch_event_type: [
         "start",
