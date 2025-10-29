@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { Dialog } from "@headlessui/react";
-import { format, formatDistanceStrict } from "date-fns";
+import { format } from "date-fns";
 import { toast } from "sonner";
 import { v4 as uuidv4 } from "uuid";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
@@ -10,18 +10,17 @@ import dynamic from "next/dynamic";
 
 // existing modals
 import CauseCorrectionModal from "@work-orders/components/workorders/CauseCorrectionModal";
-// ⬇️ use new request modal (replaces Drawer)
+// ⬇️ new request modal (replaces Drawer)
 import PartsRequestModal from "@/features/work-orders/components/workorders/PartsRequestModal";
 
-// extras
+// extras (kept)
 import HoldModal from "@/features/work-orders/components/workorders/HoldModal";
-import AssignTechModal from "@/features/work-orders/components/workorders/extras/AssignTechModal";
 import StatusPickerModal from "@/features/work-orders/components/workorders/extras/StatusPickerModal";
 import TimeAdjustModal from "@/features/work-orders/components/workorders/extras/TimeAdjustModal";
 import PhotoCaptureModal from "@/features/work-orders/components/workorders/extras/PhotoCaptureModal";
-import CostEstimateModal from "@/features/work-orders/components/workorders/extras/CostEstimateModal";
-import CustomerContactModal from "@/features/work-orders/components/workorders/extras/CustomerContactModal";
 import AddJobModal from "@work-orders/components/workorders/AddJobModal";
+
+// removed: AssignTechModal, CostEstimateModal, CustomerContactModal
 
 // inspection viewer (client-only)
 const InspectionModal = dynamic(
@@ -37,9 +36,10 @@ import VoiceButton from "@/features/shared/voice/VoiceButton";
 import NewChatModal from "@/features/ai/components/chat/NewChatModal";
 import SuggestedQuickAdd from "@work-orders/components/SuggestedQuickAdd";
 
-// Punch + parts
+// Punch
 import JobPunchButton from "@/features/work-orders/components/JobPunchButton";
-import { UsePartButton } from "@work-orders/components/UsePartButton";
+
+// removed: UsePartButton
 
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
@@ -55,7 +55,7 @@ const statusTextColor: Record<string, string> = {
   paused: "text-amber-300",
   assigned: "text-sky-300",
   unassigned: "text-neutral-200",
-  // ✅ real DB statuses
+  // real DB statuses
   awaiting_approval: "text-blue-300",
   declined: "text-red-300",
 };
@@ -121,7 +121,6 @@ export default function FocusedJobModal(props: {
   const [workOrder, setWorkOrder] = useState<WorkOrder | null>(null);
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
-  const [duration, setDuration] = useState("");
 
   const [techNotes, setTechNotes] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
@@ -130,12 +129,9 @@ export default function FocusedJobModal(props: {
   const [openComplete, setOpenComplete] = useState(false);
   const [openParts, setOpenParts] = useState(false);
   const [openHold, setOpenHold] = useState(false);
-  const [openAssign, setOpenAssign] = useState(false);
   const [openStatus, setOpenStatus] = useState(false);
   const [openTime, setOpenTime] = useState(false);
   const [openPhoto, setOpenPhoto] = useState(false);
-  const [openCost, setOpenCost] = useState(false);
-  const [openContact, setOpenContact] = useState(false);
   const [openChat, setOpenChat] = useState(false);
   const [openAddJob, setOpenAddJob] = useState(false);
 
@@ -152,21 +148,6 @@ export default function FocusedJobModal(props: {
     toast.error(`${prefix}: ${err?.message ?? "Something went wrong."}`);
     // eslint-disable-next-line no-console
     console.error(prefix, err);
-  };
-
-  const msToTenthHours = (ms: number) =>
-    (Math.max(0, Math.round(ms / 360000)) / 10).toFixed(1) + " hr";
-  const renderLiveTenthHours = (
-    startAt: string | null,
-    finishAt: string | null
-  ) => {
-    if (startAt && !finishAt)
-      return msToTenthHours(Date.now() - new Date(startAt).getTime());
-    if (startAt && finishAt)
-      return msToTenthHours(
-        new Date(finishAt).getTime() - new Date(startAt).getTime()
-      );
-    return "0.0 hr";
   };
 
   // ---------- load initial ----------
@@ -307,21 +288,6 @@ export default function FocusedJobModal(props: {
     };
   }, [refresh]);
 
-  // ---------- live timer text ----------
-  useEffect(() => {
-    if (!isOpen) return;
-    const t = setInterval(() => {
-      if (line?.punched_in_at && !line?.punched_out_at) {
-        setDuration(
-          formatDistanceStrict(new Date(), new Date(line.punched_in_at))
-        );
-      } else {
-        setDuration("");
-      }
-    }, 10_000);
-    return () => clearInterval(t);
-  }, [isOpen, line?.punched_in_at, line?.punched_out_at]);
-
   // ---------- actions ----------
   const applyHold = async (reason: string, notes?: string) => {
     if (busy) return;
@@ -422,49 +388,6 @@ export default function FocusedJobModal(props: {
     toast.success("Photo attached");
   };
 
-  const applyCost = async (laborHours: number | null, _price: number | null) => {
-    if (busy) return;
-    setBusy(true);
-    try {
-      const payload: DB["public"]["Tables"]["work_order_lines"]["Update"] = {
-        labor_time: laborHours,
-      };
-      const { error } = await supabase
-        .from("work_order_lines")
-        .update(payload)
-        .eq("id", workOrderLineId);
-      if (error) return showErr("Save cost failed", error);
-      toast.success("Estimate updated");
-      await refresh();
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const sendEmail = async (subject: string, body: string) => {
-    if (!customer?.email) return toast.error("No customer email on file");
-    await fetch("/api/send-email", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: customer.email,
-        subject,
-        html: `<p>${body}</p>`,
-      }),
-    }).catch(() => null);
-    toast.success("Email queued");
-  };
-
-  const sendSms = async (message: string) => {
-    if (!customer?.phone) return toast.error("No customer phone on file");
-    await fetch("/api/send-sms", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ to: customer.phone, message }),
-    }).catch(() => null);
-    toast.success("SMS queued");
-  };
-
   const saveNotes = async () => {
     setSavingNotes(true);
     const { error } = await supabase
@@ -528,7 +451,7 @@ export default function FocusedJobModal(props: {
   const finishAt = line?.punched_out_at ?? null;
 
   const titleText =
-    `${line?.line_no ? `#${line.line_no} ` : ""}` + // ✅ show line number if present
+    `${line?.line_no ? `#${line.line_no} ` : ""}` + // show line number if present
     (line?.description || line?.complaint || "Focused Job") +
     (line?.job_type ? ` — ${String(line.job_type).replaceAll("_", " ")}` : "");
 
@@ -689,7 +612,7 @@ export default function FocusedJobModal(props: {
                       status={line.status as WorkflowStatus}
                       onFinishRequested={() => setOpenComplete(true)}
                       onUpdated={refresh}
-                      // ✅ not punchable until approved AND not awaiting_approval/declined
+                      // not punchable until approved AND not awaiting_approval/declined
                       disabled={
                         busy ||
                         line.status === "awaiting_approval" ||
@@ -794,20 +717,6 @@ export default function FocusedJobModal(props: {
                     <>
                       <button
                         type="button"
-                        className={outlineNeutral}
-                        onClick={() => setOpenCost(true)}
-                      >
-                        Cost / Estimate
-                      </button>
-                      <button
-                        type="button"
-                        className={outlineNeutral}
-                        onClick={() => setOpenContact(true)}
-                      >
-                        Contact Customer
-                      </button>
-                      <button
-                        type="button"
                         className={outlineInfo}
                         onClick={() => setOpenStatus(true)}
                       >
@@ -840,22 +749,9 @@ export default function FocusedJobModal(props: {
                   )}
                 </div>
 
-                {/* Parts used + Use Part inline */}
+                {/* Parts used (itemized list; no Use Part button) */}
                 <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
-                  <div className="mb-2 flex items-center justify-between">
-                    <div className="text-sm font-header">Parts used</div>
-                    {line?.id && (
-                      <UsePartButton
-                        workOrderLineId={line.id}
-                        onApplied={() => {
-                          window.dispatchEvent(
-                            new CustomEvent("wo:parts-used")
-                          );
-                          void refresh();
-                        }}
-                      />
-                    )}
-                  </div>
+                  <div className="mb-2 text-sm font-header">Parts used</div>
 
                   {allocsLoading ? (
                     <div className="text-sm text-neutral-400">Loading…</div>
@@ -864,33 +760,34 @@ export default function FocusedJobModal(props: {
                       No parts used yet.
                     </div>
                   ) : (
-                    <ul className="divide-y divide-neutral-800 rounded border border-neutral-800 text-sm">
-                      {allocs.map((a) => (
-                        <li
-                          key={a.id}
-                          className="flex items-center justify-between p-2"
-                        >
-                          <div className="min-w-0">
-                            <div className="truncate">
+                    <div className="overflow-hidden rounded border border-neutral-800">
+                      <div className="grid grid-cols-12 bg-neutral-900 px-3 py-2 text-xs text-neutral-400">
+                        <div className="col-span-7">Part</div>
+                        <div className="col-span-3">Location</div>
+                        <div className="col-span-2 text-right">Qty</div>
+                      </div>
+                      <ul className="max-h-56 overflow-auto divide-y divide-neutral-800">
+                        {allocs.map((a) => (
+                          <li
+                            key={a.id}
+                            className="grid grid-cols-12 items-center px-3 py-2 text-sm"
+                          >
+                            <div className="col-span-7 truncate">
                               {a.parts?.name ?? "Part"}
                             </div>
-                            <div className="text-xs text-neutral-500">
-                              loc {String(a.location_id).slice(0, 6)}…
+                            <div className="col-span-3 truncate text-neutral-500">
+                              {a.location_id
+                                ? `loc ${String(a.location_id).slice(0, 6)}…`
+                                : "—"}
                             </div>
-                          </div>
-                          <div className="pl-3 font-semibold">× {a.qty}</div>
-                        </li>
-                      ))}
-                    </ul>
+                            <div className="col-span-2 text-right font-semibold">
+                              {a.qty}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   )}
-                </div>
-
-                {/* Live timer */}
-                <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
-                  <div className="text-xs text-neutral-400">Live Timer</div>
-                  <div className="font-medium">
-                    {duration || renderLiveTenthHours(startAt, finishAt)}
-                  </div>
                 </div>
 
                 {/* Tech notes */}
@@ -979,9 +876,7 @@ export default function FocusedJobModal(props: {
           workOrderId={workOrder.id}
           jobId={line.id}
           requestNote={line.description ?? ""}
-          // using default event names from the component:
-          // closeEventName="parts-request:close"
-          // submittedEventName="parts-request:submitted"
+          // default event names: parts-request:close / parts-request:submitted
         />
       )}
 
@@ -996,14 +891,7 @@ export default function FocusedJobModal(props: {
         />
       )}
 
-      {openAssign && line && (
-        <AssignTechModal
-          isOpen={openAssign}
-          onClose={() => setOpenAssign(false)}
-          workOrderLineId={line.id}
-          onAssigned={refresh}
-        />
-      )}
+      {/* Removed AssignTechModal */}
 
       {openStatus && line && (
         <StatusPickerModal
@@ -1036,35 +924,7 @@ export default function FocusedJobModal(props: {
         />
       )}
 
-      {openCost && line && (
-        <CostEstimateModal
-          isOpen={openCost}
-          onClose={() => setOpenCost(false)}
-          defaultLaborHours={
-            typeof line.labor_time === "number" ? line.labor_time : null
-          }
-          defaultPrice={null}
-          onApply={applyCost}
-        />
-      )}
-
-      {openContact && (
-        <CustomerContactModal
-          isOpen={openContact}
-          onClose={() => setOpenContact(false)}
-          customerName={
-            customer
-              ? [customer.first_name ?? "", customer.last_name ?? ""]
-                  .filter(Boolean)
-                  .join(" ")
-              : ""
-          }
-          customerEmail={customer?.email ?? ""}
-          customerPhone={customer?.phone ?? ""}
-          onSendEmail={sendEmail}
-          onSendSms={sendSms}
-        />
-      )}
+      {/* Removed CostEstimateModal & CustomerContactModal */}
 
       {openChat && (
         <NewChatModal

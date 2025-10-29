@@ -14,7 +14,8 @@ type AISuggestion = {
 
 export async function POST(req: Request) {
   try {
-    const { item, notes, section, status } = await req.json();
+    // ✅ also accept vehicle if provided, but keep behavior unchanged otherwise
+    const { item, notes, section, status, vehicle } = await req.json();
 
     const openaiApiKey = process.env.OPENAI_API_KEY;
     if (!openaiApiKey) {
@@ -27,6 +28,11 @@ export async function POST(req: Request) {
 
     const openai = new OpenAI({ apiKey: openaiApiKey });
 
+    // ✅ Clear, strict rules:
+    // - If notes exist (non-empty), the summary MUST be EXACTLY the tech's note (verbatim). No paraphrasing.
+    // - If notes are empty/missing, create a concise summary from the item text.
+    // - Do NOT include any "Section: ... • From inspection: ..." header in the summary. The UI handles that.
+    // - Keep suggestions realistic and compact.
     const system = `You are a repair estimator for commercial vehicles.
 Return ONLY a compact JSON object with keys:
 - parts: array of { name, qty?, cost?, notes? }
@@ -34,16 +40,26 @@ Return ONLY a compact JSON object with keys:
 - laborRate?: number
 - summary: short plain text (max 160 chars)
 - confidence?: "low"|"medium"|"high"
-No extra prose.`;
+
+STRICT RULES:
+- If "Tech notes" are provided (non-empty), set "summary" to EXACTLY the tech notes text, verbatim, with no paraphrasing or additions.
+- If "Tech notes" are empty or missing, set "summary" using a concise phrase derived from "Item".
+- Do NOT include any "Section: ... • From inspection: ..." header in "summary" — the caller will add that line separately.
+- Use realistic parts and labor. Keep JSON minimal. No extra prose outside JSON.`;
+
+    const vehicleContext = vehicle
+      ? `Vehicle (optional): ${JSON.stringify(vehicle)}`
+      : "Vehicle: unknown";
 
     const user = `
 Status: ${status}
 Section: ${section}
 Item: ${item}
-Tech notes: ${notes || "none"}
+Tech notes: ${notes || ""}
 
-Vehicle context unknown; suggest a reasonable baseline.
-Prefer concise, realistic parts and labor.`;
+${vehicleContext}
+When Tech notes are present, "summary" MUST equal the notes verbatim. Otherwise summarize from Item.
+`;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -60,7 +76,12 @@ Prefer concise, realistic parts and labor.`;
     try {
       suggestion = JSON.parse(raw) as AISuggestion;
     } catch {
-      suggestion = { parts: [], laborHours: 0.5, summary: "No suggestion." };
+      suggestion = { parts: [], laborHours: 0.5, summary: "No suggestion.", confidence: "low" };
+    }
+
+    // ✅ Hard guarantee: if tech notes exist, force summary to be exactly the note (no changes).
+    if (typeof notes === "string" && notes.trim().length > 0) {
+      suggestion.summary = notes.trim();
     }
 
     // --- Optional: persist the AI call (skip if envs are missing) ---

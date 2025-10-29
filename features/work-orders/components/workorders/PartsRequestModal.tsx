@@ -11,8 +11,6 @@ type Props = {
   workOrderId: string;
   jobId: string;
   requestNote?: string | null;
-
-  /** Events (strings = serializable) */
   closeEventName?: string;      // default: "parts-request:close"
   submittedEventName?: string;  // default: "parts-request:submitted"
 };
@@ -54,8 +52,7 @@ export default function PartsRequestModal({
     }))
     .filter((i) => i.description && i.qty > 0);
 
-  const emit = (name: string) =>
-    window.dispatchEvent(new CustomEvent(name));
+  const emit = (name: string) => window.dispatchEvent(new CustomEvent(name));
 
   async function submit() {
     if (validItems.length === 0) {
@@ -64,7 +61,8 @@ export default function PartsRequestModal({
     }
     setSubmitting(true);
     try {
-      const res = await fetch("/api/parts/requests/create", {
+      // 🔧 align with your new route: /api/parts/create/request
+      const res = await fetch("/api/parts/create/request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -74,6 +72,7 @@ export default function PartsRequestModal({
           notes: headerNotes || undefined,
         }),
       });
+
       const j = (await res.json().catch(() => null)) as { id?: string; error?: string } | null;
       if (!res.ok || !j?.id) throw new Error(j?.error || "Failed to create parts request");
 
