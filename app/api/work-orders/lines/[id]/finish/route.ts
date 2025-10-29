@@ -12,20 +12,27 @@ type Body = {
 
 export async function POST(
   req: Request,
-  { params }: { params: { lineId: string } }
+  { params }: { params: { id: string } }
 ) {
-  const id = params?.lineId;
-  if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+  const id = params?.id;
+  if (!id) {
+    return NextResponse.json({ error: "Missing id" }, { status: 400 });
+  }
 
   const supabase = createRouteHandlerClient<Database>({ cookies });
 
+  // --- Auth ---
   const { data: auth, error: authErr } = await supabase.auth.getUser();
-  if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
-  if (!auth?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (authErr)
+    return NextResponse.json({ error: authErr.message }, { status: 500 });
+  if (!auth?.user)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  // --- Parse request ---
   const now = new Date().toISOString();
   const { cause, correction } = (await req.json().catch(() => ({}))) as Body;
 
+  // --- Update work order line ---
   const updatePayload: Database["public"]["Tables"]["work_order_lines"]["Update"] = {
     status: "completed",
     punched_out_at: now,
@@ -40,8 +47,10 @@ export async function POST(
     .select("id, status, punched_in_at, punched_out_at, cause, correction")
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error)
+    return NextResponse.json({ error: error.message }, { status: 400 });
 
+  // --- Log activity ---
   await supabase.from("activity_logs").insert({
     entity_type: "work_order_line",
     entity_id: id,
@@ -50,5 +59,6 @@ export async function POST(
     created_at: now,
   });
 
+  // --- Respond ---
   return NextResponse.json({ success: true, line: data });
 }
