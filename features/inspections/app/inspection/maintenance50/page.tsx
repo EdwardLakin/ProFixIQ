@@ -551,48 +551,94 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
       {/* Hide global chrome if embedded */}
       {isEmbed && (
         <>
+          {/* Add marker classes + robust, persistent chrome hider */}
           <script
             dangerouslySetInnerHTML={{
-              __html: `document.documentElement.classList.add('inspection-embed');`,
+              __html: `
+                (function(){
+                  var html = document.documentElement;
+                  var body = document.body || document.getElementsByTagName('body')[0];
+                  html && html.classList.add('inspection-embed');
+                  body && body.classList.add('inspection-embed');
+
+                  var CSS = \`
+                    html.inspection-embed, body.inspection-embed { background:#000 !important; overflow:auto !important; }
+
+                    /* Hide common app chrome */
+                    .inspection-embed header,
+                    .inspection-embed nav,
+                    .inspection-embed aside,
+                    .inspection-embed footer,
+                    .inspection-embed [data-app-chrome],
+                    .inspection-embed [data-app-header],
+                    .inspection-embed [data-app-nav],
+                    .inspection-embed [data-app-sidebar],
+                    .inspection-embed [data-app-footer],
+                    .inspection-embed .app-shell,
+                    .inspection-embed .app-shell-nav,
+                    .inspection-embed .app-shell-header,
+                    .inspection-embed .app-shell-footer,
+                    .inspection-embed .app-sidebar,
+                    .inspection-embed .app-topbar,
+                    .inspection-embed .nav-tabs,
+                    .inspection-embed .tabs-bar,
+                    .inspection-embed .dashboard-tabs,
+                    .inspection-embed .global-nav,
+                    .inspection-embed .global-header,
+                    .inspection-embed .global-footer {
+                      display: none !important;
+                      visibility: hidden !important;
+                    }
+
+                    /* Let the page content expand edge-to-edge */
+                    .inspection-embed main,
+                    .inspection-embed [data-app-content],
+                    .inspection-embed .app-content,
+                    .inspection-embed #__next > *:not(main) {
+                      margin: 0 !important;
+                      padding: 0 !important;
+                      width: 100% !important;
+                      max-width: none !important;
+                    }
+
+                    /* Guard against fixed headers/footers */
+                    .inspection-embed *[style*="position: fixed"],
+                    .inspection-embed *[style*="position:sticky"] {
+                      display: none !important;
+                    }
+                  \`;
+
+                  var s = document.createElement('style');
+                  s.setAttribute('data-inspection-embed-style','1');
+                  s.type = 'text/css';
+                  s.appendChild(document.createTextNode(CSS));
+                  document.head.appendChild(s);
+
+                  /* MutationObserver to re-hide chrome if layouts mount late */
+                  var targets = [
+                    document.body,
+                    document.querySelector('#__next'),
+                    document.documentElement
+                  ].filter(Boolean);
+
+                  var again = function() {
+                    if (!document.querySelector('style[data-inspection-embed-style]')) {
+                      var s2 = document.createElement('style');
+                      s2.setAttribute('data-inspection-embed-style','1');
+                      s2.type = 'text/css';
+                      s2.appendChild(document.createTextNode(CSS));
+                      document.head.appendChild(s2);
+                    }
+                  };
+
+                  var mo = new MutationObserver(function() { again(); });
+                  targets.forEach(function(t){
+                    try { mo.observe(t, { childList: true, subtree: true, attributes: true }); } catch(e){}
+                  });
+                })();
+              `,
             }}
           />
-          <style jsx global>{`
-            .inspection-embed header,
-            .inspection-embed nav,
-            .inspection-embed aside,
-            .inspection-embed footer,
-            .inspection-embed [data-app-chrome],
-            .inspection-embed [data-app-header],
-            .inspection-embed [data-app-nav],
-            .inspection-embed [data-app-sidebar],
-            .inspection-embed [data-app-footer],
-            .inspection-embed .app-shell,
-            .inspection-embed .app-shell-nav,
-            .inspection-embed .app-shell-header,
-            .inspection-embed .app-shell-footer,
-            .inspection-embed .app-sidebar,
-            .inspection-embed .app-topbar,
-            .inspection-embed .nav-tabs,
-            .inspection-embed .tabs-bar,
-            .inspection-embed .dashboard-tabs,
-            .inspection-embed .global-nav,
-            .inspection-embed .global-header,
-            .inspection-embed .global-footer {
-              display: none !important;
-            }
-            .inspection-embed body {
-              margin: 0 !important;
-              padding: 0 !important;
-              overflow: auto !important;
-            }
-            .inspection-embed [data-app-content],
-            .inspection-embed .app-content,
-            .inspection-embed main {
-              padding: 0 !important;
-              margin: 0 !important;
-              max-width: none !important;
-            }
-          `}</style>
         </>
       )}
 
