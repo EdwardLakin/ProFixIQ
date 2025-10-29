@@ -550,16 +550,50 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
     <div className={shell}>
       {/* Hide global chrome if embedded */}
       {isEmbed && (
-        <style jsx global>{`
-          header[data-app-header],
-          nav[data-app-nav],
-          aside[data-app-sidebar],
-          footer[data-app-footer],
-          .app-shell-nav,
-          .app-sidebar {
-            display: none !important;
-          }
-        `}</style>
+        <>
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `document.documentElement.classList.add('inspection-embed');`,
+            }}
+          />
+          <style jsx global>{`
+            .inspection-embed header,
+            .inspection-embed nav,
+            .inspection-embed aside,
+            .inspection-embed footer,
+            .inspection-embed [data-app-chrome],
+            .inspection-embed [data-app-header],
+            .inspection-embed [data-app-nav],
+            .inspection-embed [data-app-sidebar],
+            .inspection-embed [data-app-footer],
+            .inspection-embed .app-shell,
+            .inspection-embed .app-shell-nav,
+            .inspection-embed .app-shell-header,
+            .inspection-embed .app-shell-footer,
+            .inspection-embed .app-sidebar,
+            .inspection-embed .app-topbar,
+            .inspection-embed .nav-tabs,
+            .inspection-embed .tabs-bar,
+            .inspection-embed .dashboard-tabs,
+            .inspection-embed .global-nav,
+            .inspection-embed .global-header,
+            .inspection-embed .global-footer {
+              display: none !important;
+            }
+            .inspection-embed body {
+              margin: 0 !important;
+              padding: 0 !important;
+              overflow: auto !important;
+            }
+            .inspection-embed [data-app-content],
+            .inspection-embed .app-content,
+            .inspection-embed main {
+              padding: 0 !important;
+              margin: 0 !important;
+              max-width: none !important;
+            }
+          `}</style>
+        </>
       )}
 
       <div className={card}>
