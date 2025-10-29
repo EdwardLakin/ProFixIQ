@@ -55,6 +55,7 @@ const statusTextColor: Record<string, string> = {
   paused: "text-amber-300",
   assigned: "text-sky-300",
   unassigned: "text-neutral-200",
+  // ✅ real DB statuses
   awaiting_approval: "text-blue-300",
   declined: "text-red-300",
 };
@@ -82,6 +83,7 @@ type AllocationRow =
     parts?: { name: string | null } | null;
   };
 
+/** Per CHECK constraints in Supabase */
 type WorkflowStatus =
   | "awaiting"
   | "awaiting_approval"
@@ -96,6 +98,7 @@ type WorkflowStatus =
 
 type ApprovalState = "pending" | "approved" | "declined" | null;
 
+/** Encoded picker value from StatusPickerModal */
 type PickerValue =
   | `status:${WorkflowStatus}`
   | "approval:pending"
@@ -144,8 +147,10 @@ export default function FocusedJobModal(props: {
   const [allocs, setAllocs] = useState<AllocationRow[]>([]);
   const [allocsLoading, setAllocsLoading] = useState(false);
 
+  // ---------- helpers ----------
   const showErr = (prefix: string, err?: { message?: string } | null) => {
     toast.error(`${prefix}: ${err?.message ?? "Something went wrong."}`);
+    // eslint-disable-next-line no-console
     console.error(prefix, err);
   };
 
@@ -164,6 +169,7 @@ export default function FocusedJobModal(props: {
     return "0.0 hr";
   };
 
+  // ---------- load initial ----------
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
     (async () => {
@@ -216,6 +222,7 @@ export default function FocusedJobModal(props: {
     })();
   }, [isOpen, workOrderLineId, supabase]);
 
+  // ---------- realtime sync for this line ----------
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
     const ch = supabase
@@ -241,12 +248,14 @@ export default function FocusedJobModal(props: {
     };
   }, [isOpen, workOrderLineId, supabase]);
 
+  // also listen for local UI refresh events from child buttons
   useEffect(() => {
     const handler = () => void refresh();
     window.addEventListener("wol:refresh", handler);
     return () => window.removeEventListener("wol:refresh", handler);
   }, []);
 
+  // ---------- allocations ----------
   const loadAllocations = useCallback(async () => {
     if (!workOrderLineId) return;
     setAllocsLoading(true);
@@ -259,6 +268,7 @@ export default function FocusedJobModal(props: {
       if (error) throw error;
       setAllocs((data as AllocationRow[]) ?? []);
     } catch (e) {
+      // eslint-disable-next-line no-console
       console.warn(
         "[FocusedJob] load allocations failed",
         (e as { message?: string })?.message
@@ -268,6 +278,36 @@ export default function FocusedJobModal(props: {
     }
   }, [supabase, workOrderLineId]);
 
+  // ---------- refresh ----------
+  const refresh = useCallback(async () => {
+    const { data: l } = await supabase
+      .from("work_order_lines")
+      .select("*")
+      .eq("id", workOrderLineId)
+      .maybeSingle<WorkOrderLine>();
+    setLine(l ?? null);
+    setTechNotes(l?.notes ?? "");
+    await onChanged?.();
+    await loadAllocations();
+  }, [supabase, workOrderLineId, onChanged, loadAllocations]);
+
+  // ---------- parts request modal events (close & submitted) ----------
+  useEffect(() => {
+    const handleClose = () => setOpenParts(false);
+    const handleSubmitted = async () => {
+      setOpenParts(false);
+      await refresh(); // reload any updates after a request is created
+    };
+
+    window.addEventListener("parts-request:close", handleClose);
+    window.addEventListener("parts-request:submitted", handleSubmitted);
+    return () => {
+      window.removeEventListener("parts-request:close", handleClose);
+      window.removeEventListener("parts-request:submitted", handleSubmitted);
+    };
+  }, [refresh]);
+
+  // ---------- live timer text ----------
   useEffect(() => {
     if (!isOpen) return;
     const t = setInterval(() => {
@@ -282,19 +322,7 @@ export default function FocusedJobModal(props: {
     return () => clearInterval(t);
   }, [isOpen, line?.punched_in_at, line?.punched_out_at]);
 
-  const refresh = useCallback(async () => {
-    const { data: l } = await supabase
-      .from("work_order_lines")
-      .select("*")
-      .eq("id", workOrderLineId)
-      .maybeSingle<WorkOrderLine>();
-    setLine(l ?? null);
-    setTechNotes(l?.notes ?? "");
-    await onChanged?.();
-    await loadAllocations();
-  }, [supabase, workOrderLineId, onChanged, loadAllocations]);
-
-  // actions …
+  // ---------- actions ----------
   const applyHold = async (reason: string, notes?: string) => {
     if (busy) return;
     setBusy(true);
@@ -335,6 +363,7 @@ export default function FocusedJobModal(props: {
   };
 
   const changeStatus = async (next: PickerValue) => {
+    // approval:* -> update approval_state
     if (next.startsWith("approval:")) {
       const val = next.split(":")[1] as ApprovalState;
       if (!line?.id) return;
@@ -348,6 +377,7 @@ export default function FocusedJobModal(props: {
       return;
     }
 
+    // status:* -> update status
     const workflow = next.split(":")[1] as WorkflowStatus;
     const { error } = await supabase
       .from("work_order_lines")
@@ -449,11 +479,13 @@ export default function FocusedJobModal(props: {
     await refresh();
   };
 
-  // inspection open …
+  // ---------- inspection (open inside modal) ----------
   const openInspection = async (): Promise<void> => {
     if (!line) return;
 
-    const isAir = String(line.description ?? "").toLowerCase().includes("air");
+    const isAir = String(line.description ?? "")
+      .toLowerCase()
+      .includes("air");
     const template: "maintenance50" | "maintenance50-air" =
       isAir ? "maintenance50-air" : "maintenance50";
 
@@ -491,27 +523,19 @@ export default function FocusedJobModal(props: {
     }
   };
 
-  // close listener for request modal
-  useEffect(() => {
-    if (!openParts) return;
-    const handleClose = () => setOpenParts(false);
-    window.addEventListener("parts:request-closed", handleClose as EventListener);
-    return () =>
-      window.removeEventListener("parts:request-closed", handleClose as EventListener);
-  }, [openParts]);
-
-  // derived UI
+  // ---------- derived UI ----------
   const startAt = line?.punched_in_at ?? null;
   const finishAt = line?.punched_out_at ?? null;
 
   const titleText =
-    `${line?.line_no ? `#${line.line_no} ` : ""}` +
+    `${line?.line_no ? `#${line.line_no} ` : ""}` + // ✅ show line number if present
     (line?.description || line?.complaint || "Focused Job") +
     (line?.job_type ? ` — ${String(line.job_type).replaceAll("_", " ")}` : "");
 
   const startedText = startAt ? format(new Date(startAt), "PPpp") : "—";
   const finishedText = finishAt ? format(new Date(finishAt), "PPpp") : "—";
 
+  // ---------- render ----------
   return (
     <>
       {isOpen && (
@@ -529,12 +553,18 @@ export default function FocusedJobModal(props: {
         onClose={onClose}
         className="fixed inset-0 z-[100] flex items-center justify-center"
       >
-        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm" aria-hidden="true" />
+        {/* Dark overlay */}
+        <div
+          className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm"
+          aria-hidden="true"
+        />
+
+        {/* Panel */}
         <div
           className="relative z-[110] mx-4 my-6 w-full max-w-5xl"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="max-h:[85vh] overflow-y-auto rounded-lg border border-orange-400 bg-neutral-950 p-5 text-white shadow-xl">
+          <div className="max-h-[75vh] overflow-y-auto rounded-lg border border-orange-400 bg-neutral-950 p-5 text-white shadow-xl">
             {/* Title row */}
             <div className="mb-2 flex items-start justify-between gap-3">
               <div className="text-lg font-header font-semibold tracking-wide">
@@ -544,6 +574,7 @@ export default function FocusedJobModal(props: {
                     WO #{workOrder.custom_id || workOrder.id?.slice(0, 8)}
                   </span>
                 ) : null}
+                {/* Small status chip for awaiting_approval / declined */}
                 {line?.status === "awaiting_approval" && (
                   <span className="ml-2 rounded border border-blue-500 px-2 py-0.5 text-xs text-blue-300">
                     Awaiting approval
@@ -556,6 +587,7 @@ export default function FocusedJobModal(props: {
                 )}
               </div>
 
+              {/* RIGHT actions: Add Job + Close */}
               <div className="flex items-center gap-2">
                 {workOrder?.id && (
                   <button
@@ -618,13 +650,16 @@ export default function FocusedJobModal(props: {
                       <div className="text-neutral-400">Vehicle</div>
                       <div className="truncate">
                         {vehicle
-                          ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`
+                          ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${
+                              vehicle.model ?? ""
+                            }`
                               .trim()
                               .replace(/\s+/g, " ") || "—"
                           : "—"}
                       </div>
                       <div className="text-xs text-neutral-500">
-                        VIN: {vehicle?.vin ?? "—"} • Plate: {vehicle?.license_plate ?? "—"}
+                        VIN: {vehicle?.vin ?? "—"} • Plate:{" "}
+                        {vehicle?.license_plate ?? "—"}
                       </div>
                     </div>
                     <div>
@@ -637,7 +672,8 @@ export default function FocusedJobModal(props: {
                           : "—"}
                       </div>
                       <div className="text-xs text-neutral-500">
-                        {customer?.phone ?? "—"} {customer?.email ? `• ${customer.email}` : ""}
+                        {customer?.phone ?? "—"}{" "}
+                        {customer?.email ? `• ${customer.email}` : ""}
                       </div>
                     </div>
                   </div>
@@ -653,6 +689,7 @@ export default function FocusedJobModal(props: {
                       status={line.status as WorkflowStatus}
                       onFinishRequested={() => setOpenComplete(true)}
                       onUpdated={refresh}
+                      // ✅ not punchable until approved AND not awaiting_approval/declined
                       disabled={
                         busy ||
                         line.status === "awaiting_approval" ||
@@ -726,10 +763,20 @@ export default function FocusedJobModal(props: {
                       <button
                         type="button"
                         className={`${outlineInfo} ${
-                          line?.job_type === "inspection" ? "" : "opacity-50 cursor-not-allowed"
+                          line?.job_type === "inspection"
+                            ? ""
+                            : "opacity-50 cursor-not-allowed"
                         }`}
-                        onClick={line?.job_type === "inspection" ? openInspection : undefined}
-                        title={line?.job_type === "inspection" ? "Open inspection" : "Not an inspection line"}
+                        onClick={
+                          line?.job_type === "inspection"
+                            ? openInspection
+                            : undefined
+                        }
+                        title={
+                          line?.job_type === "inspection"
+                            ? "Open inspection"
+                            : "Not an inspection line"
+                        }
                         disabled={busy || line?.job_type !== "inspection"}
                       >
                         Open Inspection
@@ -769,9 +816,15 @@ export default function FocusedJobModal(props: {
                       <button
                         type="button"
                         className={`${outlineInfo} ${
-                          line?.job_type === "inspection" ? "" : "opacity-50 cursor-not-allowed"
+                          line?.job_type === "inspection"
+                            ? ""
+                            : "opacity-50 cursor-not-allowed"
                         }`}
-                        onClick={line?.job_type === "inspection" ? openInspection : undefined}
+                        onClick={
+                          line?.job_type === "inspection"
+                            ? openInspection
+                            : undefined
+                        }
                         disabled={line?.job_type !== "inspection"}
                       >
                         Open Inspection
@@ -795,7 +848,9 @@ export default function FocusedJobModal(props: {
                       <UsePartButton
                         workOrderLineId={line.id}
                         onApplied={() => {
-                          window.dispatchEvent(new CustomEvent("wo:parts-used"));
+                          window.dispatchEvent(
+                            new CustomEvent("wo:parts-used")
+                          );
                           void refresh();
                         }}
                       />
@@ -805,13 +860,20 @@ export default function FocusedJobModal(props: {
                   {allocsLoading ? (
                     <div className="text-sm text-neutral-400">Loading…</div>
                   ) : allocs.length === 0 ? (
-                    <div className="text-sm text-neutral-400">No parts used yet.</div>
+                    <div className="text-sm text-neutral-400">
+                      No parts used yet.
+                    </div>
                   ) : (
                     <ul className="divide-y divide-neutral-800 rounded border border-neutral-800 text-sm">
                       {allocs.map((a) => (
-                        <li key={a.id} className="flex items-center justify-between p-2">
+                        <li
+                          key={a.id}
+                          className="flex items-center justify-between p-2"
+                        >
                           <div className="min-w-0">
-                            <div className="truncate">{a.parts?.name ?? "Part"}</div>
+                            <div className="truncate">
+                              {a.parts?.name ?? "Part"}
+                            </div>
                             <div className="text-xs text-neutral-500">
                               loc {String(a.location_id).slice(0, 6)}…
                             </div>
@@ -833,7 +895,9 @@ export default function FocusedJobModal(props: {
 
                 {/* Tech notes */}
                 <div>
-                  <label className="mb-1 block text-sm font-header">Tech Notes</label>
+                  <label className="mb-1 block text-sm font-header">
+                    Tech Notes
+                  </label>
                   <textarea
                     rows={4}
                     value={techNotes}
@@ -867,9 +931,13 @@ export default function FocusedJobModal(props: {
 
                 <div className="text-xs text-neutral-500">
                   Job ID: {line.id}
-                  {typeof line.labor_time === "number" ? ` • Labor: ${line.labor_time.toFixed(1)}h` : ""}
+                  {typeof line.labor_time === "number"
+                    ? ` • Labor: ${line.labor_time.toFixed(1)}h`
+                    : ""}
                   {line.hold_reason ? ` • Hold: ${line.hold_reason}` : ""}
-                  {line.approval_state ? ` • Approval: ${line.approval_state}` : ""}
+                  {line.approval_state
+                    ? ` • Approval: ${line.approval_state}`
+                    : ""}
                 </div>
               </div>
             )}
@@ -877,6 +945,7 @@ export default function FocusedJobModal(props: {
         </div>
       </Dialog>
 
+      {/* Float the voice mic ABOVE the modal overlay */}
       {isOpen && <VoiceButton />}
 
       {/* Sub-modals */}
@@ -904,14 +973,17 @@ export default function FocusedJobModal(props: {
       )}
 
       {/* Parts request modal */}
-{openParts && workOrder?.id && line && (
-  <PartsRequestModal
-    isOpen={openParts}
-    workOrderId={workOrder.id}
-    jobId={line.id}
-    requestNote={line.description ?? ""}
-  />
-)}
+      {openParts && workOrder?.id && line && (
+        <PartsRequestModal
+          isOpen={openParts}
+          workOrderId={workOrder.id}
+          jobId={line.id}
+          requestNote={line.description ?? ""}
+          // using default event names from the component:
+          // closeEventName="parts-request:close"
+          // submittedEventName="parts-request:submitted"
+        />
+      )}
 
       {openHold && line && (
         <HoldModal
@@ -937,9 +1009,11 @@ export default function FocusedJobModal(props: {
         <StatusPickerModal
           isOpen={openStatus}
           onClose={() => setOpenStatus(false)}
-          current={(line?.status || "awaiting") as Parameters<
-            typeof StatusPickerModal
-          >[0]["current"]}
+          current={
+            (line?.status || "awaiting") as Parameters<
+              typeof StatusPickerModal
+            >[0]["current"]
+          }
           onChange={changeStatus}
         />
       )}
@@ -1018,8 +1092,13 @@ export default function FocusedJobModal(props: {
         />
       )}
 
+      {/* Inspection viewer (modal within modal stack) */}
       {inspectionOpen && inspectionSrc && (
-        <InspectionModal open={inspectionOpen} src={inspectionSrc} title="Inspection" />
+        <InspectionModal
+          open={inspectionOpen}
+          src={inspectionSrc}
+          title="Inspection"
+        />
       )}
     </>
   );
