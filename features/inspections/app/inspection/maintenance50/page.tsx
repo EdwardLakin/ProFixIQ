@@ -1,3 +1,4 @@
+// features/inspections/app/inspection/maintenance50/page.tsx
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -114,48 +115,60 @@ function buildHydraulicMeasurementsSection(): InspectionSection {
   };
 }
 function buildLightsSection(): InspectionSection {
-  return { title: "Lighting & Reflectors", items: [
-    { item: "Headlights (high/low beam)" },
-    { item: "Turn signals / flashers" },
-    { item: "Brake lights" },
-    { item: "Tail lights" },
-    { item: "Reverse lights" },
-    { item: "License plate light" },
-    { item: "Clearance / marker lights" },
-    { item: "Reflective tape / reflectors" },
-    { item: "Hazard switch function" },
-  ]};
+  return {
+    title: "Lighting & Reflectors",
+    items: [
+      { item: "Headlights (high/low beam)" },
+      { item: "Turn signals / flashers" },
+      { item: "Brake lights" },
+      { item: "Tail lights" },
+      { item: "Reverse lights" },
+      { item: "License plate light" },
+      { item: "Clearance / marker lights" },
+      { item: "Reflective tape / reflectors" },
+      { item: "Hazard switch function" },
+    ],
+  };
 }
 function buildBrakesSection(): InspectionSection {
-  return { title: "Brakes", items: [
-    { item: "Front brake pads" },
-    { item: "Rear brake pads" },
-    { item: "Brake fluid level" },
-    { item: "Brake lines and hoses" },
-    { item: "ABS wiring / sensors" },
-    { item: "Brake warning lights" },
-  ]};
+  return {
+    title: "Brakes",
+    items: [
+      { item: "Front brake pads" },
+      { item: "Rear brake pads" },
+      { item: "Brake fluid level" },
+      { item: "Brake lines and hoses" },
+      { item: "ABS wiring / sensors" },
+      { item: "Brake warning lights" },
+    ],
+  };
 }
 function buildSuspensionSection(): InspectionSection {
-  return { title: "Suspension", items: [
-    { item: "Front springs (coil/leaf)" },
-    { item: "Rear springs (coil/leaf)" },
-    { item: "Shocks / struts" },
-    { item: "Control arms / ball joints" },
-    { item: "Sway bar bushings / links" },
-  ]};
+  return {
+    title: "Suspension",
+    items: [
+      { item: "Front springs (coil/leaf)" },
+      { item: "Rear springs (coil/leaf)" },
+      { item: "Shocks / struts" },
+      { item: "Control arms / ball joints" },
+      { item: "Sway bar bushings / links" },
+    ],
+  };
 }
 function buildDrivelineSection(): InspectionSection {
-  return { title: "Driveline", items: [
-    { item: "Driveshaft / U-joints" },
-    { item: "Center support bearing" },
-    { item: "CV shafts / joints" },
-    { item: "Transmission leaks / mounts" },
-    { item: "Transfer case leaks / mounts" },
-    { item: "Slip yokes / seals" },
-    { item: "Axle seals / leaks" },
-    { item: "Differential leaks / play" },
-  ]};
+  return {
+    title: "Driveline",
+    items: [
+      { item: "Driveshaft / U-joints" },
+      { item: "Center support bearing" },
+      { item: "CV shafts / joints" },
+      { item: "Transmission leaks / mounts" },
+      { item: "Transfer case leaks / mounts" },
+      { item: "Slip yokes / seals" },
+      { item: "Axle seals / leaks" },
+      { item: "Differential leaks / play" },
+    ],
+  };
 }
 
 /* Units helpers */
@@ -168,7 +181,10 @@ function unitForHydraulic(label: string, mode: "metric" | "imperial"): string {
   if (l.includes("torque")) return mode === "metric" ? "N·m" : "ft·lb";
   return "";
 }
-function applyUnitsHydraulic(sections: InspectionSection[], mode: "metric" | "imperial"): InspectionSection[] {
+function applyUnitsHydraulic(
+  sections: InspectionSection[],
+  mode: "metric" | "imperial"
+): InspectionSection[] {
   return sections.map((s) => {
     if ((s.title || "").toLowerCase().includes("measurements")) {
       const items = s.items.map((it) => ({
@@ -185,16 +201,16 @@ function applyUnitsHydraulic(sections: InspectionSection[], mode: "metric" | "im
 export default function Maintenance50HydraulicPage(): JSX.Element {
   const searchParams = useSearchParams();
 
-  // bare/compact mode when embedded in modal
+  // embed mode in iframe
   const isEmbed = useMemo(
     () =>
       ["1", "true", "yes"].includes(
-        (searchParams.get("embed") || searchParams.get("compact") || "")
-          .toLowerCase()
+        (searchParams.get("embed") || searchParams.get("compact") || "").toLowerCase()
       ),
     [searchParams]
   );
 
+  const workOrderLineId = searchParams.get("workOrderLineId") || null;
   const workOrderId = searchParams.get("workOrderId") || null;
   const inspectionId = useMemo<string>(
     () => searchParams.get("inspectionId") || uuidv4(),
@@ -261,7 +277,7 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
     updateQuoteLine,
   } = useInspectionSession(initialSession);
 
-  // NEW: prevent duplicate submits
+  // prevent duplicate AI submits
   const inFlightRef = useRef<Set<string>>(new Set());
   const isSubmittingAI = (secIdx: number, itemIdx: number): boolean =>
     inFlightRef.current.has(`${secIdx}:${itemIdx}`);
@@ -270,9 +286,11 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
     if (!session) return;
     const key = `${secIdx}:${itemIdx}`;
     if (inFlightRef.current.has(key)) return;
+
     const it = session.sections[secIdx].items[itemIdx];
     const status = String(it.status ?? "").toLowerCase();
     const note = (it.notes ?? "").trim();
+
     if (!(status === "fail" || status === "recommend")) return;
     if (note.length === 0) {
       toast.error("Add a note before submitting.");
@@ -364,8 +382,7 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
   // Boot / restore
   useEffect(() => {
     const key = `inspection-${inspectionId}`;
-    const saved =
-      typeof window !== "undefined" ? localStorage.getItem(key) : null;
+    const saved = typeof window !== "undefined" ? localStorage.getItem(key) : null;
     if (saved) {
       try {
         const parsed = JSON.parse(saved) as InspectionSession;
@@ -429,10 +446,7 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
   useEffect(() => {
     if (!session?.sections?.length) return;
     updateInspection({
-      sections: applyUnitsHydraulic(
-        session.sections,
-        unit
-      ) as typeof session.sections,
+      sections: applyUnitsHydraulic(session.sections, unit) as typeof session.sections,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unit]);
@@ -442,11 +456,9 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
     (async () => {
       if (!session || !workOrderId) return;
       const haveName =
-        (session.customer?.first_name || session.customer?.last_name || "")
-          .trim().length > 0;
+        (session.customer?.first_name || session.customer?.last_name || "").trim().length > 0;
       const haveVehicle =
-        (session.vehicle?.make || session.vehicle?.model || "")
-          .trim().length > 0;
+        (session.vehicle?.make || session.vehicle?.model || "").trim().length > 0;
       if (haveName && haveVehicle) return;
 
       try {
@@ -531,8 +543,7 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
     "rounded-lg border border-zinc-800 bg-zinc-900 " +
     (isEmbed ? "p-3 mb-6" : "p-4 mb-8");
   const sectionTitle = "text-xl font-semibold text-orange-400 text-center";
-  const hint =
-    "text-xs text-zinc-400" + (isEmbed ? " mt-1 block text-center" : "");
+  const hint = "text-xs text-zinc-400" + (isEmbed ? " mt-1 block text-center" : "");
 
   // ----- BODY -----
   const Body = (
@@ -584,20 +595,15 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
             resumeSession();
             recognitionRef.current = startVoiceRecognition(handleTranscript);
           }}
-          recognitionInstance={
-            recognitionRef.current as unknown as SpeechRecognition | null
-          }
+          recognitionInstance={recognitionRef.current as unknown as SpeechRecognition | null}
           onTranscript={handleTranscript}
           setRecognitionRef={(instance: SpeechRecognition | null): void => {
-            (
-              recognitionRef as React.MutableRefObject<SpeechRecognition | null>
-            ).current = instance ?? null;
+            (recognitionRef as React.MutableRefObject<SpeechRecognition | null>).current =
+              instance ?? null;
           }}
         />
         <button
-          onClick={(): void =>
-            setUnit(unit === "metric" ? "imperial" : "metric")
-          }
+          onClick={(): void => setUnit(unit === "metric" ? "imperial" : "metric")}
           className="w-full rounded bg-zinc-700 py-2 text-white hover:bg-zinc-600"
         >
           Unit: {unit === "metric" ? "Metric" : "Imperial"}
@@ -608,82 +614,83 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
         currentItem={session.currentItemIndex}
         currentSection={session.currentSectionIndex}
         totalSections={session.sections.length}
-        totalItems={
-          session.sections[session.currentSectionIndex]?.items.length || 0
-        }
+        totalItems={session.sections[session.currentSectionIndex]?.items.length || 0}
       />
 
       <InspectionFormCtx.Provider value={{ updateItem }}>
-        {session.sections.map(
-          (section: InspectionSection, sectionIndex: number) => (
-            <div key={`${section.title}-${sectionIndex}`} className={card}>
-              <h2 className={sectionTitle}>{section.title}</h2>
-              {isMeasurements(section.title) && (
-                <span className={hint}>
-                  {unit === "metric"
-                    ? "Enter mm / kPa / N·m"
-                    : "Enter in / psi / ft·lb"}
-                </span>
-              )}
+        {session.sections.map((section: InspectionSection, sectionIndex: number) => (
+          <div key={`${section.title}-${sectionIndex}`} className={card}>
+            <h2 className={sectionTitle}>{section.title}</h2>
+            {isMeasurements(section.title) && (
+              <span className={hint}>
+                {unit === "metric" ? "Enter mm / kPa / N·m" : "Enter in / psi / ft·lb"}
+              </span>
+            )}
 
-              <div className={isEmbed ? "mt-3" : "mt-4"}>
-                {isMeasurements(section.title) ? (
-                  <CornerGrid
-                    sectionIndex={sectionIndex}
-                    items={section.items}
-                  />
-                ) : (
-                  <SectionDisplay
-                    title=""
-                    section={section}
-                    sectionIndex={sectionIndex}
-                    showNotes={true}
-                    showPhotos={true}
-                    onUpdateStatus={(
-                      secIdx: number,
-                      itemIdx: number,
-                      status: InspectionItemStatus
-                    ): void => {
-                      // Only update status here — AI flow moved to explicit Submit
-                      updateItem(secIdx, itemIdx, { status });
-                    }}
-                    onUpdateNote={(
-                      secIdx: number,
-                      itemIdx: number,
-                      note: string
-                    ): void => {
-                      updateItem(secIdx, itemIdx, { notes: note });
-                    }}
-                    onUpload={(
-                      photoUrl: string,
-                      secIdx: number,
-                      itemIdx: number
-                    ): void => {
-                      const prev =
-                        session.sections[secIdx].items[itemIdx].photoUrls ??
-                        [];
-                      updateItem(secIdx, itemIdx, {
-                        photoUrls: [...prev, photoUrl],
-                      });
-                    }}
-                    /* NEW: require note + explicit submit to run AI */
-                    requireNoteForAI
-                    onSubmitAI={(secIdx, itemIdx) => {
-                      void submitAIForItem(secIdx, itemIdx);
-                    }}
-                    isSubmittingAI={isSubmittingAI}
-                  />
-                )}
-              </div>
+            <div className={isEmbed ? "mt-3" : "mt-4"}>
+              {isMeasurements(section.title) ? (
+                <CornerGrid sectionIndex={sectionIndex} items={section.items} />
+              ) : (
+                <SectionDisplay
+                  title=""
+                  section={section}
+                  sectionIndex={sectionIndex}
+                  showNotes={true}
+                  showPhotos={true}
+                  onUpdateStatus={(
+                    secIdx: number,
+                    itemIdx: number,
+                    status: InspectionItemStatus
+                  ): void => {
+                    // Only update status here — AI flow moved to explicit Submit
+                    updateItem(secIdx, itemIdx, { status });
+                  }}
+                  onUpdateNote={(secIdx: number, itemIdx: number, note: string): void => {
+                    updateItem(secIdx, itemIdx, { notes: note });
+                  }}
+                  onUpload={(photoUrl: string, secIdx: number, itemIdx: number): void => {
+                    const prev = session.sections[secIdx].items[itemIdx].photoUrls ?? [];
+                    updateItem(secIdx, itemIdx, { photoUrls: [...prev, photoUrl] });
+                  }}
+                  /* require note + explicit submit to run AI */
+                  requireNoteForAI
+                  onSubmitAI={(secIdx, itemIdx) => {
+                    void submitAIForItem(secIdx, itemIdx);
+                  }}
+                  isSubmittingAI={isSubmittingAI}
+                />
+              )}
             </div>
-          )
-        )}
+          </div>
+        ))}
       </InspectionFormCtx.Provider>
 
-      <div className={"flex items-center justify-between gap-4 " + (isEmbed ? "mt-6" : "mt-8")}>
-        <SaveInspectionButton session={session} />
-        <FinishInspectionButton session={session} />
-        <div className="text-xs text-zinc-400">P = PASS, F = FAIL, NA = Not Applicable</div>
+      <div
+        className={
+          "flex items-center justify-between gap-4 " + (isEmbed ? "mt-6" : "mt-8")
+        }
+      >
+        {/* Pass workOrderLineId down; disable when missing */}
+        <div className="flex items-center gap-3">
+          <SaveInspectionButton
+            session={session}
+            workOrderLineId={workOrderLineId ?? ""}
+          />
+          <FinishInspectionButton
+            session={session}
+            workOrderLineId={workOrderLineId ?? ""}
+          />
+        </div>
+
+        {!workOrderLineId && (
+          <div className="text-xs text-red-400">
+            Missing <code>workOrderLineId</code> in URL — save/finish will be blocked.
+          </div>
+        )}
+
+        <div className="ml-auto text-xs text-zinc-400">
+          P = PASS, F = FAIL, NA = Not Applicable
+        </div>
       </div>
     </div>
   );

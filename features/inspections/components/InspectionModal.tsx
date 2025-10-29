@@ -1,3 +1,4 @@
+// features/shared/components/InspectionModal.tsx
 "use client";
 
 import { useEffect, useMemo } from "react";
@@ -5,22 +6,27 @@ import ModalShell from "@/features/shared/components/ModalShell";
 
 type Props = {
   open: boolean;           // simple boolean; no onClose prop to avoid serialization issues
-  src: string | null;      // inspection page path (e.g. /inspections/maintenance50?workOrderId=...)
+  src: string | null;      // full inspection page path, e.g. /inspections/maintenance50?workOrderId=...&workOrderLineId=...
   title?: string;
 };
 
 export default function InspectionModal({ open, src, title = "Inspection" }: Props) {
   // Build iframe src in the client and force bare/compact embed flags
-  const iframeSrc = useMemo(() => {
-    if (!src) return null;
+  const { iframeSrc, missingWorkOrderLineId } = useMemo(() => {
+    if (!src) return { iframeSrc: null as string | null, missingWorkOrderLineId: false };
     try {
       const base = typeof window !== "undefined" ? window.location.origin : "";
       const u = new URL(src, base);
+
+      // Add the embed flags but preserve all original params (including workOrderLineId/workOrderId/etc.)
       u.searchParams.set("embed", "1");   // <- bare embed mode (no chrome)
-      u.searchParams.set("compact", "1"); // keep tight spacing inside iframe
-      return u.toString();
+      u.searchParams.set("compact", "1"); // <- tight spacing inside iframe
+
+      const hasWOLine = !!u.searchParams.get("workOrderLineId");
+      return { iframeSrc: u.toString(), missingWorkOrderLineId: !hasWOLine };
     } catch {
-      return src;
+      // Fallback: we can’t safely manipulate URL; still attempt to render what we were given.
+      return { iframeSrc: src, missingWorkOrderLineId: false };
     }
   }, [src]);
 
@@ -64,11 +70,22 @@ export default function InspectionModal({ open, src, title = "Inspection" }: Pro
           No inspection selected.
         </div>
       ) : (
-        <div className="flex items-center justify-center">
+        <div className="flex w-full flex-col items-center gap-2">
+          {missingWorkOrderLineId && (
+            <div className="w-full max-w-5xl rounded border border-yellow-700 bg-yellow-900/30 px-3 py-2 text-xs text-yellow-200">
+              <strong>Heads up:</strong> <code>workOrderLineId</code> is missing from the inspection URL.
+              Save/Finish actions that require it may be blocked.
+            </div>
+          )}
           <iframe
             key={iframeSrc}
             src={iframeSrc}
+            // allow mic (for voice/recognition), plus clipboard QoL if needed
+            allow="microphone; clipboard-read; clipboard-write"
             className="h-[75vh] w-full max-w-5xl rounded border border-neutral-800"
+            // helpful for accessibility & testing
+            title={title}
+            data-testid="inspection-iframe"
           />
         </div>
       )}

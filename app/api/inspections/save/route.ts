@@ -1,3 +1,4 @@
+// app/api/inspections/save/route.ts
 import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
@@ -10,11 +11,7 @@ type DB = Database;
 /**
  * Upsert an inspection session payload by work_order_line_id.
  * Body: { workOrderLineId: string, session: InspectionSession }
- * Assumes `inspection_sessions` has columns:
- *   - id (uuid)
- *   - work_order_line_id (uuid, unique)
- *   - payload (jsonb)
- *   - updated_at (timestamptz)
+ * Table: inspection_sessions(work_order_line_id uuid unique, payload jsonb, updated_at timestamptz)
  */
 export async function POST(req: NextRequest) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
@@ -32,16 +29,19 @@ export async function POST(req: NextRequest) {
   };
 
   if (!workOrderLineId || !session) {
-    return NextResponse.json({ error: "Missing workOrderLineId or session" }, { status: 400 });
-  }
+    return NextResponse.json(
+      { error: "Missing workOrderLineId or session" },
+      { status: 400 }
+    );
+    }
 
-  // Ensure the caller is signed in
+  // Require auth
   const { data: { user }, error: userErr } = await supabase.auth.getUser();
   if (userErr || !user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Upsert by line id (unique)
+  // Upsert by unique line id
   const { error: upErr } = await supabase
     .from("inspection_sessions")
     .upsert(

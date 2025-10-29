@@ -1,20 +1,23 @@
+// features/inspections/components/inspection/SaveInspectionButton.tsx
 "use client";
 
 import { saveInspectionSession } from "@inspections/lib/inspection/save";
 import type { InspectionSession } from "@inspections/lib/inspection/types";
 
 type Props = {
-  session: InspectionSession; // ✅ serializable
+  session: InspectionSession;
+  workOrderLineId: string; // NEW
 };
 
-export function SaveInspectionButton({ session }: Props) {
+export function SaveInspectionButton({ session, workOrderLineId }: Props) {
   const handleSave = async () => {
     try {
-      await saveInspectionSession(session);
+      if (!workOrderLineId) throw new Error("Missing workOrderLineId");
+      await saveInspectionSession(session, workOrderLineId);
       alert("Inspection saved");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Save error:", error);
-      alert("Failed to save inspection.");
+      alert(error?.message || "Failed to save inspection.");
     }
   };
 

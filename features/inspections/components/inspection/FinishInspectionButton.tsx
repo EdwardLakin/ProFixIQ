@@ -1,3 +1,4 @@
+// features/inspections/components/inspection/FinishInspectionButton.tsx
 "use client";
 
 import { useRouter } from "next/navigation";
@@ -7,15 +8,15 @@ import { generateInspectionSummary } from "@inspections/lib/inspection/generateI
 import type { InspectionSession } from "@inspections/lib/inspection/types";
 
 type Props = {
-  session: InspectionSession; // ✅ serializable
+  session: InspectionSession;
+  workOrderLineId: string; // NEW
 };
 
-export default function FinishInspectionButton({ session }: Props) {
+export default function FinishInspectionButton({ session, workOrderLineId }: Props) {
   const router = useRouter();
 
   const handleFinish = async () => {
     try {
-      // Mark complete locally (no function prop needed)
       const finished: InspectionSession = {
         ...session,
         completed: true,
@@ -24,20 +25,19 @@ export default function FinishInspectionButton({ session }: Props) {
         lastUpdated: new Date().toISOString(),
       };
 
-      // Optional: still handy for preview/logs
       void generateInspectionSummary(finished);
 
-      await saveInspectionSession(finished);
+      if (!workOrderLineId) throw new Error("Missing workOrderLineId");
+      await saveInspectionSession(finished, workOrderLineId);
 
-      // Persist local copy too (keeps summary page in sync if it reads local)
       try {
         localStorage.setItem(`inspection-${finished.id}`, JSON.stringify(finished));
       } catch {}
 
       router.push("/app/inspection/summary");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to finish inspection:", error);
-      alert("Failed to finish inspection. Please try again.");
+      alert(error?.message || "Failed to finish inspection. Please try again.");
     }
   };
 
