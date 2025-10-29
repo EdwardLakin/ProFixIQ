@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
-import { toast } from "react-hot-toast"; // 🟧 added
+import toast from "react-hot-toast";
 
 import PauseResumeButton from "@inspections/lib/inspection/PauseResume";
 import StartListeningButton from "@inspections/lib/inspection/StartListeningButton";
@@ -12,6 +12,8 @@ import useInspectionSession from "@inspections/hooks/useInspectionSession";
 
 import { handleTranscriptFn } from "@inspections/lib/inspection/handleTranscript";
 import { interpretCommand } from "@inspections/components/inspection/interpretCommand";
+import { requestQuoteSuggestion } from "@inspections/lib/inspection/aiQuote";
+import { addWorkOrderLineFromSuggestion } from "@inspections/lib/inspection/addWorkOrderLine";
 
 import type {
   ParsedCommand,
@@ -33,10 +35,8 @@ import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicl
 
 import { buildAirAxleItems } from "@inspections/lib/inspection/builders/addAxleHelpers";
 import { startVoiceRecognition } from "@inspections/lib/inspection/voiceControl";
-import { requestQuoteSuggestion } from "@inspections/lib/inspection/aiQuote";
 
-/* ------------------------------ Header types ------------------------------ */
-
+/* ------------------------------ Header adapters ------------------------------ */
 type HeaderCustomer = {
   first_name: string;
   last_name: string;
@@ -87,8 +87,7 @@ function toHeaderVehicle(v?: SessionVehicle | null): HeaderVehicle {
   };
 }
 
-/* ------------------------------ Section builders ------------------------------ */
-
+/* ------------------------------ Section builders (AIR) ------------------------------ */
 function buildAirCornerMeasurementsSection(): InspectionSection {
   return {
     title: "Measurements (Air – Corner Checks)",
@@ -170,8 +169,7 @@ function buildDrivelineSection(): InspectionSection {
   };
 }
 
-/* ------------------------------ Units + toggle ------------------------------ */
-
+/* ------------------------------ Units helpers (AIR) ------------------------------ */
 function unitForAir(label: string, mode: "metric" | "imperial"): string {
   const l = label.toLowerCase();
   if (l.includes("tire pressure")) return mode === "imperial" ? "psi" : "kPa";
@@ -183,7 +181,10 @@ function unitForAir(label: string, mode: "metric" | "imperial"): string {
   return "";
 }
 
-function applyUnitsAir(sections: InspectionSection[], mode: "metric" | "imperial"): InspectionSection[] {
+function applyUnitsAir(
+  sections: InspectionSection[],
+  mode: "metric" | "imperial"
+): InspectionSection[] {
   return sections.map((s) => {
     const isCorner = (s.title || "").toLowerCase().includes("corner");
     const isAirMeas = (s.title || "").toLowerCase().includes("air system");
@@ -200,10 +201,10 @@ function applyUnitsAir(sections: InspectionSection[], mode: "metric" | "imperial
       const items = s.items.map((it) => {
         const label = (it.item ?? "").toLowerCase();
         if (label.includes("build time")) return { ...it, unit: "sec" };
-        if (label.includes("leak")) return { ...it, unit: mode === "metric" ? "kPa/min" : "psi/min" };
-        if (label.includes("gov") || label.includes("warning") || label.includes("compressor")) {
+        if (label.includes("leak"))
+          return { ...it, unit: mode === "metric" ? "kPa/min" : "psi/min" };
+        if (label.includes("gov") || label.includes("warning") || label.includes("compressor"))
           return { ...it, unit: mode === "metric" ? "kPa" : "psi" };
-        }
         if (label.includes("torque")) return { ...it, unit: mode === "metric" ? "N·m" : "ft·lb" };
         return it;
       });
@@ -215,19 +216,33 @@ function applyUnitsAir(sections: InspectionSection[], mode: "metric" | "imperial
 }
 
 /* ------------------------------ Page ------------------------------ */
-
 export default function Maintenance50AirPage(): JSX.Element {
   const searchParams = useSearchParams();
 
-  const inspectionId = useMemo<string>(() => searchParams.get("inspectionId") || uuidv4(), [searchParams]);
+  // Match hydraulic page: support embed/compact
+  const isEmbed = useMemo(
+    () =>
+      ["1", "true", "yes"].includes(
+        (searchParams.get("embed") || searchParams.get("compact") || "").toLowerCase()
+      ),
+    [searchParams]
+  );
+
+  const workOrderLineId = searchParams.get("workOrderLineId") || null;
+  const workOrderId = searchParams.get("workOrderId") || null;
+
+  const inspectionId = useMemo<string>(
+    () => searchParams.get("inspectionId") || uuidv4(),
+    [searchParams]
+  );
 
   const [unit, setUnit] = useState<"metric" | "imperial">("metric");
   const [isListening, setIsListening] = useState<boolean>(false);
   const [isPaused, setIsPaused] = useState<boolean>(false);
-  const [, setTranscript] = useState<string>("");
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
-  const templateName: string = searchParams.get("template") || "Maintenance 50 (Air Brake CVIP)";
+  const templateName: string =
+    searchParams.get("template") || "Maintenance 50 (Air Brake CVIP)";
 
   const customer: SessionCustomer = {
     first_name: searchParams.get("first_name") || "",
@@ -278,10 +293,112 @@ export default function Maintenance50AirPage(): JSX.Element {
     resumeSession,
     pauseSession,
     addQuoteLine,
-    updateQuoteLines,
+    updateQuoteLine,
   } = useInspectionSession(initialSession);
 
-  /* hydrate/persist */
+  /* ---------- AI submit flow parity with Hydraulic ---------- */
+  const inFlightRef = useRef<Set<string>>(new Set());
+  const isSubmittingAI = (secIdx: number, itemIdx: number): boolean =>
+    inFlightRef.current.has(`${secIdx}:${itemIdx}`);
+
+  const submitAIForItem = async (secIdx: number, itemIdx: number): Promise<void> => {
+    if (!session) return;
+    const key = `${secIdx}:${itemIdx}`;
+    if (inFlightRef.current.has(key)) return;
+
+    const it = session.sections[secIdx].items[itemIdx];
+    const status = String(it.status ?? "").toLowerCase();
+    const note = (it.notes ?? "").trim();
+
+    if (!(status === "fail" || status === "recommend")) return;
+    if (note.length === 0) {
+      toast.error("Add a note before submitting.");
+      return;
+    }
+
+    inFlightRef.current.add(key);
+    try {
+      const desc = it.item ?? it.name ?? "Item";
+
+      // 1) placeholder for local quote UI
+      const id = uuidv4();
+      const placeholder: QuoteLineItem = {
+        id,
+        description: desc,
+        item: desc,
+        name: desc,
+        status: status as "fail" | "recommend",
+        notes: it.notes ?? "",
+        price: 0,
+        laborTime: 0.5,
+        laborRate: 0,
+        editable: true,
+        source: "inspection",
+        value: it.value ?? "",
+        photoUrls: it.photoUrls ?? [],
+        aiState: "loading",
+      };
+      addQuoteLine(placeholder);
+
+      // 2) AI suggestion (vehicle context if present)
+      const tId = toast.loading("Getting AI estimate…");
+      const suggestion = await requestQuoteSuggestion({
+        item: desc,
+        notes: it.notes ?? "",
+        section: session.sections[secIdx].title,
+        status,
+        vehicle: session.vehicle ?? undefined,
+      });
+
+      if (!suggestion) {
+        updateQuoteLine(id, { aiState: "error" });
+        toast.error("No AI suggestion available", { id: tId });
+        return;
+      }
+
+      const partsTotal =
+        suggestion.parts?.reduce((sum, p) => sum + (p.cost || 0), 0) ?? 0;
+      const laborRate = suggestion.laborRate ?? 0;
+      const laborTime = suggestion.laborHours ?? 0.5;
+      const price = Math.max(0, partsTotal + laborRate * laborTime);
+
+      updateQuoteLine(id, {
+        price,
+        laborTime,
+        laborRate,
+        ai: {
+          summary: suggestion.summary,
+          confidence: suggestion.confidence,
+          parts: suggestion.parts ?? [],
+        },
+        aiState: "done",
+      });
+
+      // 3) Persist to Work Order if we have one
+      if (workOrderId) {
+        await addWorkOrderLineFromSuggestion({
+          workOrderId,
+          description: desc,
+          section: session.sections[secIdx].title,
+          status: status as "fail" | "recommend",
+          suggestion,
+          source: "inspection",
+          jobType: "inspection",
+        });
+        toast.success("Added to work order (awaiting approval)", { id: tId });
+      } else {
+        toast.error("Missing work order id — saved locally only", { id: tId });
+      }
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("Submit AI failed:", e);
+      toast.error("Couldn't add to work order");
+    } finally {
+      inFlightRef.current.delete(key);
+    }
+  };
+
+  /* ------------------------------ hydrate / persist ------------------------------ */
   useEffect(() => {
     const key = `inspection-${inspectionId}`;
     const saved = typeof window !== "undefined" ? localStorage.getItem(key) : null;
@@ -329,7 +446,7 @@ export default function Maintenance50AirPage(): JSX.Element {
     };
   }, [session, inspectionId, initialSession]);
 
-  /* sections + unit toggle */
+  /* ------------------------------ sections + unit toggle ------------------------------ */
   useEffect(() => {
     if (!session) return;
     if ((session.sections?.length ?? 0) > 0) return;
@@ -341,18 +458,61 @@ export default function Maintenance50AirPage(): JSX.Element {
       buildSuspensionSection(),
       buildDrivelineSection(),
     ];
-    updateInspection({ sections: applyUnitsAir(next, unit) as typeof session.sections });
+    updateInspection({
+      sections: applyUnitsAir(next, unit) as typeof session.sections,
+    });
   }, [session, updateInspection, unit]);
 
   useEffect(() => {
     if (!session?.sections?.length) return;
-    updateInspection({ sections: applyUnitsAir(session.sections, unit) as typeof session.sections });
+    updateInspection({
+      sections: applyUnitsAir(session.sections, unit) as typeof session.sections,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unit]);
 
-  /* speech -> commands */
+  /* ------------------------------ header backfill (same as Hydraulic) ------------------------------ */
+  useEffect(() => {
+    (async () => {
+      if (!session || !workOrderId) return;
+      const haveName =
+        (session.customer?.first_name || session.customer?.last_name || "")
+          .trim().length > 0;
+      const haveVehicle =
+        (session.vehicle?.make || session.vehicle?.model || "")
+          .trim().length > 0;
+      if (haveName && haveVehicle) return;
+
+      try {
+        const res = await fetch(`/api/work-orders/header?id=${workOrderId}`);
+        if (!res.ok) return;
+
+        const j = (await res.json()) as {
+          customer?: Partial<SessionCustomer>;
+          vehicle?: Partial<SessionVehicle>;
+        };
+
+        const nextCust: Partial<SessionCustomer> = {
+          ...(session.customer ?? {}),
+          ...(j.customer ?? {}),
+        };
+        const nextVeh: Partial<SessionVehicle> = {
+          ...(session.vehicle ?? {}),
+          ...(j.vehicle ?? {}),
+        };
+
+        updateInspection({
+          customer: nextCust,
+          vehicle: nextVeh,
+        } as Partial<InspectionSession>);
+      } catch {
+        // silent fail
+      }
+    })();
+  }, [session, workOrderId, updateInspection]);
+
+  /* ------------------------------ speech → commands ------------------------------ */
   const handleTranscript = async (text: string): Promise<void> => {
-    setTranscript(text);
     const commands: ParsedCommand[] = await interpretCommand(text);
     const sess: InspectionSession | undefined = session ?? undefined;
     if (!sess) return;
@@ -373,7 +533,9 @@ export default function Maintenance50AirPage(): JSX.Element {
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch {}
     }
-    recognitionRef.current = startVoiceRecognition(handleTranscript);
+    recognitionRef.current = startVoiceRecognition(async (text) => {
+      await handleTranscript(text);
+    });
     setIsListening(true);
   };
 
@@ -387,17 +549,46 @@ export default function Maintenance50AirPage(): JSX.Element {
     return <div className="p-4 text-white">Loading inspection…</div>;
   }
 
-  const isCorner = (t?: string): boolean => (t || "").toLowerCase().includes("corner");
+  const isCorner = (t?: string): boolean =>
+    (t || "").toLowerCase().includes("corner");
 
-  return (
-    <div className="px-4 pb-14">
-      <CustomerVehicleHeader
-        templateName={templateName}
-        customer={toHeaderCustomer(session.customer ?? null)}
-        vehicle={toHeaderVehicle(session.vehicle ?? null)}
-      />
+  /* ------------------------------ layout parity with Hydraulic ------------------------------ */
+  const shell = isEmbed ? "mx-auto max-w-[1100px] px-3 pb-8" : "px-4 pb-14";
+  const controlsGap = "mb-4 grid grid-cols-3 gap-2";
+  const card =
+    "rounded-lg border border-zinc-800 bg-zinc-900 " +
+    (isEmbed ? "p-3 mb-6" : "p-4 mb-8");
+  const sectionTitle = "text-xl font-semibold text-orange-400 text-center";
+  const hint = "text-xs text-zinc-400" + (isEmbed ? " mt-1 block text-center" : "");
 
-      <div className="mb-4 flex flex-wrap items-center justify-center gap-3">
+  const Body = (
+    <div className={shell}>
+      {/* Hide global chrome if embedded */}
+      {isEmbed && (
+        <style jsx global>{`
+          header[data-app-header],
+          nav[data-app-nav],
+          aside[data-app-sidebar],
+          footer[data-app-footer],
+          .app-shell-nav,
+          .app-sidebar {
+            display: none !important;
+          }
+        `}</style>
+      )}
+
+      <div className={card}>
+        <div className="text-center text-lg font-semibold text-orange-400">
+          {templateName}
+        </div>
+        <CustomerVehicleHeader
+          templateName=""
+          customer={toHeaderCustomer(session.customer ?? null)}
+          vehicle={toHeaderVehicle(session.vehicle ?? null)}
+        />
+      </div>
+
+      <div className={controlsGap}>
         <StartListeningButton
           isListening={isListening}
           setIsListening={setIsListening}
@@ -417,16 +608,19 @@ export default function Maintenance50AirPage(): JSX.Element {
             resumeSession();
             recognitionRef.current = startVoiceRecognition(handleTranscript);
           }}
-          recognitionInstance={recognitionRef.current as unknown as SpeechRecognition | null}
+          recognitionInstance={
+            recognitionRef.current as unknown as SpeechRecognition | null
+          }
           onTranscript={handleTranscript}
           setRecognitionRef={(instance: SpeechRecognition | null): void => {
-            (recognitionRef as React.MutableRefObject<SpeechRecognition | null>).current =
-              instance ?? null;
+            (
+              recognitionRef as React.MutableRefObject<SpeechRecognition | null>
+            ).current = instance ?? null;
           }}
         />
         <button
           onClick={(): void => setUnit(unit === "metric" ? "imperial" : "metric")}
-          className="rounded bg-zinc-700 px-3 py-2 text-white hover:bg-zinc-600"
+          className="w-full rounded bg-zinc-700 py-2 text-white hover:bg-zinc-600"
         >
           Unit: {unit === "metric" ? "Metric" : "Imperial"}
         </button>
@@ -441,132 +635,100 @@ export default function Maintenance50AirPage(): JSX.Element {
 
       <InspectionFormCtx.Provider value={{ updateItem }}>
         {session.sections.map((section: InspectionSection, sectionIndex: number) => (
-          <div
-            key={`${section.title}-${sectionIndex}`}
-            className="mb-8 rounded-lg border border-zinc-800 bg-zinc-900 p-4"
-          >
-            <div className="mb-2 flex items-end justify-between">
-              <h2 className="text-xl font-semibold text-orange-400">{section.title}</h2>
-              {isCorner(section.title) && (
-                <span className="text-xs text-zinc-400">
-                  {unit === "metric" ? "Enter mm / kPa / N·m" : "Enter in / psi / ft·lb"}
-                </span>
+          <div key={`${section.title}-${sectionIndex}`} className={card}>
+            <h2 className={sectionTitle}>{section.title}</h2>
+            {isCorner(section.title) && (
+              <span className={hint}>
+                {unit === "metric" ? "Enter mm / kPa / N·m" : "Enter in / psi / ft·lb"}
+              </span>
+            )}
+
+            <div className={isEmbed ? "mt-3" : "mt-4"}>
+              {isCorner(section.title) ? (
+                <AirCornerGrid
+                  sectionIndex={sectionIndex}
+                  items={section.items}
+                  unitHint={(label: string) => unitForAir(label, unit)}
+                  onAddAxle={(axleLabel: string) => {
+                    const extra = buildAirAxleItems(axleLabel);
+                    updateSection(sectionIndex, { items: [...section.items, ...extra] });
+                  }}
+                />
+              ) : (
+                <SectionDisplay
+                  title=""
+                  section={section}
+                  sectionIndex={sectionIndex}
+                  showNotes={true}
+                  showPhotos={true}
+                  onUpdateStatus={(
+                    secIdx: number,
+                    itemIdx: number,
+                    status: InspectionItemStatus
+                  ): void => {
+                    // Match hydraulic: only update status; AI is explicit via Submit
+                    updateItem(secIdx, itemIdx, { status });
+                  }}
+                  onUpdateNote={(
+                    secIdx: number,
+                    itemIdx: number,
+                    note: string
+                  ): void => {
+                    updateItem(secIdx, itemIdx, { notes: note });
+                  }}
+                  onUpload={(
+                    photoUrl: string,
+                    secIdx: number,
+                    itemIdx: number
+                  ): void => {
+                    const prev =
+                      session.sections[secIdx].items[itemIdx].photoUrls ?? [];
+                    updateItem(secIdx, itemIdx, {
+                      photoUrls: [...prev, photoUrl],
+                    });
+                  }}
+                  /* Require note + explicit submit to run AI, same as Hydraulic */
+                  requireNoteForAI
+                  onSubmitAI={(secIdx, itemIdx) => {
+                    void submitAIForItem(secIdx, itemIdx);
+                  }}
+                  isSubmittingAI={isSubmittingAI}
+                />
               )}
             </div>
-
-            {isCorner(section.title) ? (
-              <AirCornerGrid
-                sectionIndex={sectionIndex}
-                items={section.items}
-                unitHint={(label: string) => unitForAir(label, unit)}
-                onAddAxle={(axleLabel: string) => {
-                  const extra = buildAirAxleItems(axleLabel);
-                  updateSection(sectionIndex, { items: [...section.items, ...extra] });
-                }}
-              />
-            ) : (
-              <SectionDisplay
-                title={section.title}
-                section={section}
-                sectionIndex={sectionIndex}
-                showNotes={true}
-                showPhotos={true}
-                onUpdateStatus={(
-                  secIdx: number,
-                  itemIdx: number,
-                  status: InspectionItemStatus
-                ): void => {
-                  updateItem(secIdx, itemIdx, { status });
-
-                  if (status === "fail" || status === "recommend") {
-                    const it = session.sections[secIdx].items[itemIdx];
-                    const desc = it.item ?? it.name ?? "Item";
-
-                    // 1) Add the base line immediately
-                    const id = uuidv4();
-                    const baseLine: QuoteLineItem = {
-                      id,
-                      description: desc,
-                      item: desc,
-                      name: desc,
-                      status,
-                      notes: it.notes ?? "",
-                      price: 0,
-                      laborTime: 0.5,
-                      laborRate: 0,
-                      editable: true,
-                      source: "inspection",
-                      value: it.value ?? "",
-                      photoUrls: it.photoUrls ?? [],
-                    };
-                    addQuoteLine(baseLine);
-
-                    // 🟧 Toast immediately so the tech gets feedback
-                    toast.loading("Getting AI estimate…", { id: `ai-${id}`, duration: 4000 });
-
-                    // 2) Ask AI for parts/labor suggestion and merge onto the same id
-                    (async () => {
-                      try {
-                        const suggestion = await requestQuoteSuggestion({
-                          item: desc,
-                          notes: it.notes ?? "",
-                          section: session.sections[secIdx].title,
-                          status,
-                        });
-                        if (!suggestion) return;
-
-                        const partsTotal =
-                          suggestion.parts?.reduce((sum, p) => sum + (p.cost || 0), 0) ?? 0;
-                        const laborRate = suggestion.laborRate ?? 0;
-                        const laborTime = suggestion.laborHours ?? 0.5;
-                        const price = Math.max(0, partsTotal + laborRate * laborTime);
-
-                        const current = session.quote ?? [];
-                        const next: QuoteLineItem[] = current.map((line) =>
-                          line.id === id
-                            ? {
-                                ...line,
-                                price,
-                                laborRate,
-                                laborTime,
-                                ai: {
-                                  summary: suggestion.summary,
-                                  confidence: suggestion.confidence,
-                                  parts: suggestion.parts ?? [],
-                                },
-                              }
-                            : line
-                        ) as QuoteLineItem[];
-
-                        updateQuoteLines(next);
-
-                        // 🟧 Swap toast to success
-                        toast.success("AI estimate ready", { id: `ai-${id}` });
-                      } catch (e) {
-                        console.error("AI quote suggestion failed:", e);
-                        toast.error("AI estimate failed", { id: `ai-${id}` });
-                      }
-                    })();
-                  }
-                }}
-                onUpdateNote={(secIdx: number, itemIdx: number, note: string): void => {
-                  updateItem(secIdx, itemIdx, { notes: note });
-                }}
-                onUpload={(photoUrl: string, secIdx: number, itemIdx: number): void => {
-                  const prev = session.sections[secIdx].items[itemIdx].photoUrls ?? [];
-                  updateItem(secIdx, itemIdx, { photoUrls: [...prev, photoUrl] });
-                }}
-              />
-            )}
           </div>
         ))}
       </InspectionFormCtx.Provider>
 
-      <div className="mt-8 flex items-center justify-between gap-4">
-        <SaveInspectionButton session={session} />
-        <FinishInspectionButton session={session} />
-        <div className="text-xs text-zinc-400">P = PASS, F = FAIL, NA = Not Applicable</div>
+      <div
+        className={
+          "flex items-center justify-between gap-4 " + (isEmbed ? "mt-6" : "mt-8")
+        }
+      >
+        <div className="flex items-center gap-3">
+          <SaveInspectionButton
+            session={session}
+            workOrderLineId={workOrderLineId ?? ""}
+          />
+          <FinishInspectionButton
+            session={session}
+            workOrderLineId={workOrderLineId ?? ""}
+          />
+        </div>
+
+        {!workOrderLineId && (
+          <div className="text-xs text-red-400">
+            Missing <code>workOrderLineId</code> in URL — save/finish will be blocked.
+          </div>
+        )}
+
+        <div className="ml-auto text-xs text-zinc-400">
+          P = PASS, F = FAIL, NA = Not Applicable
+        </div>
       </div>
     </div>
   );
+
+  if (isEmbed) return Body;
+  return Body;
 }
