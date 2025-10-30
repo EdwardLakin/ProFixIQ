@@ -19,7 +19,8 @@ function paramsToObject(sp: URLSearchParams) {
 }
 
 export default function InspectionModal({ open, src, title = "Inspection", onClose }: Props) {
-  const [compact, setCompact] = useState(false);
+  // Start compact by default so it’s smaller out of the gate
+  const [compact, setCompact] = useState(true);
 
   // Derive template + params from `src`
   const derived = useMemo(() => {
@@ -54,8 +55,9 @@ export default function InspectionModal({ open, src, title = "Inspection", onClo
     <ModalShell
       isOpen={open}
       onClose={close}
-      // Visual size is governed by the content wrapper below; keep shell “lg”
-      size="lg"
+      /* If ModalShell supports sizes, md keeps the chrome tighter.
+         Safe even if ModalShell ignores it. */
+      size="md"
       title={title}
       footerLeft={
         <div className="flex items-center gap-2">
@@ -86,11 +88,13 @@ export default function InspectionModal({ open, src, title = "Inspection", onClo
         </div>
       ) : (
         <div
-          className={
-            // Height clamp lives here; iframe-less render inside
-            "mx-auto w-full max-w-5xl " +
-            (compact ? "max-h-[56vh]" : "max-h-[85vh]")
-          }
+          className={[
+            "mx-auto w-full",
+            // ⬇️ make the panel narrower overall
+            "max-w-3xl",
+            // ⬇️ clamp the usable height
+            compact ? "max-h-[56vh]" : "max-h-[70vh]",
+          ].join(" ")}
         >
           {derived.missingWOLine && (
             <div className="mb-2 rounded border border-yellow-700 bg-yellow-900/30 px-3 py-2 text-xs text-yellow-200">
@@ -99,13 +103,9 @@ export default function InspectionModal({ open, src, title = "Inspection", onClo
             </div>
           )}
 
-          <div className="h-full w-full overflow-auto rounded border border-neutral-800 bg-neutral-900 p-0.5">
-            {/* Pass embed for compact spacing; keep params so screens can consume them */}
-            <InspectionHost
-              template={derived.template!}
-              embed
-              params={derived.params}
-            />
+          <div className="h-full w-full overflow-auto rounded border border-neutral-800 bg-neutral-900 p-0">
+            {/* Pass embed for compact spacing; params are parsed but not forwarded by the host */}
+            <InspectionHost template={derived.template!} embed params={derived.params} />
           </div>
         </div>
       )}
