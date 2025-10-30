@@ -446,7 +446,7 @@ export default function FocusedJobModal(props: {
     sp.set("embed", "1"); // ← ensure iframe-friendly UI
 
     // NOTE: singular base path
-    setInspectionSrc(`/inspection/${templateSlug}?${sp.toString()}`);
+    setInspectionSrc(`/inspectionHost/${templateSlug}?${sp.toString()}`);
     setInspectionOpen(true);
     toast.success("Inspection opened");
   } catch (e) {

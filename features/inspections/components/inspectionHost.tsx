@@ -20,7 +20,7 @@ type HostProps = {
 };
 
 // Specialized renderers (lazy-loaded)
-const Maintenance50Hydraulic = dynamic<ScreenProps>(
+const Maintenance50 = dynamic<ScreenProps>(
   () => import("../screens/Maintenance50Screen")
 );
 const Maintenance50Air = dynamic<ScreenProps>(
@@ -34,7 +34,7 @@ const GenericInspectionScreen = dynamic<ScreenProps>(
 
 // Template registry
 const REGISTRY: Record<string, React.ComponentType<ScreenProps>> = {
-  "maintenance50-hydraulic": Maintenance50Hydraulic,
+  "maintenance50": Maintenance50,
   "maintenance50-air": Maintenance50Air,
   // add more specialized templates here
 };
