@@ -208,22 +208,21 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
   const searchParams = useSearchParams();
   const p = props.params ?? {};
 
-  // Helper: read from props.params first, fallback to search params
+  // read from props.params first, then URL
   const get = (k: string): string => {
     const v = p[k];
     if (v !== undefined && v !== null) return String(v);
     return searchParams.get(k) ?? "";
   };
 
-  // Embed detection: explicit prop wins; otherwise query flags or iframe
-  const isEmbed = useMemo(() => {
-    if (typeof props.embed === "boolean") return props.embed;
-    const flag = ["1", "true", "yes"].includes(
-      (get("embed") || get("compact")).toLowerCase()
-    );
-    const inIframe = typeof window !== "undefined" && window.self !== window.top;
-    return flag || inIframe;
-  }, [props.embed, searchParams, p]);
+  // Only treat as "iframe-embed" when truly inside an iframe
+  const inIframe =
+    typeof window !== "undefined" && window.self !== window.top;
+
+  // compact UI flag (no global CSS side-effects)
+  const compact = !!props.embed || ["1", "true", "yes"].includes(
+    (get("embed") || get("compact")).toLowerCase()
+  );
 
   const workOrderLineId = get("workOrderLineId") || null;
   const workOrderId = get("workOrderId") || null;
@@ -541,12 +540,10 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
     };
   }, []);
 
-  // --- Screen embed: hide shell + notify parent (robust) ---
+  // --- Only inject global CSS when inside an iframe ---
   useEffect(() => {
-    if (!isEmbed) return;
-
+    if (!inIframe) return;
     try {
-      // mark & inject CSS
       document.documentElement.classList.add("inspection-embed");
       document.body?.classList.add("inspection-embed");
 
@@ -587,7 +584,6 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
       tag.appendChild(document.createTextNode(CSS));
       document.head.appendChild(tag);
 
-      // MutationObserver keeps it applied if layouts mount later
       const mo = new MutationObserver(() => {
         if (!document.querySelector('style[data-inspection-embed-style="1"]')) {
           const t2 = document.createElement("style");
@@ -597,17 +593,9 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
         }
       });
       mo.observe(document.documentElement, { childList: true, subtree: true });
-
-      // Notify parent we're ready (helps modal measure iframe)
-      if (window.parent && window.parent !== window) {
-        window.parent.postMessage({ type: "inspection:ready" }, window.location.origin);
-      }
-
       return () => mo.disconnect();
-    } catch {
-      /* no-op */
-    }
-  }, [isEmbed]);
+    } catch {}
+  }, [inIframe]);
 
   if (!session || !session.sections || session.sections.length === 0) {
     return <div className="p-4 text-white">Loading inspection…</div>;
@@ -616,14 +604,14 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
   const isMeasurements = (t?: string): boolean =>
     (t || "").toLowerCase().includes("measurements");
 
-  // ------- Bare embed spacing when isEmbed -------
-  const shell = isEmbed ? "mx-auto max-w-[1100px] px-3 pb-8" : "px-4 pb-14";
+  // compact spacing when embed flag is set (no global CSS)
+  const shell = compact ? "mx-auto max-w-[1100px] px-3 pb-8" : "px-4 pb-14";
   const controlsGap = "mb-4 grid grid-cols-3 gap-2";
   const card =
     "rounded-lg border border-zinc-800 bg-zinc-900 " +
-    (isEmbed ? "p-3 mb-6" : "p-4 mb-8");
+    (compact ? "p-3 mb-6" : "p-4 mb-8");
   const sectionTitle = "text-xl font-semibold text-orange-400 text-center";
-  const hint = "text-xs text-zinc-400" + (isEmbed ? " mt-1 block text-center" : "");
+  const hint = "text-xs text-zinc-400" + (compact ? " mt-1 block text-center" : "");
 
   return (
     <div className={shell}>
@@ -692,7 +680,7 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
               </span>
             )}
 
-            <div className={isEmbed ? "mt-3" : "mt-4"}>
+            <div className={compact ? "mt-3" : "mt-4"}>
               {isMeasurements(section.title) ? (
                 <CornerGrid sectionIndex={sectionIndex} items={section.items} />
               ) : (
@@ -707,7 +695,6 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
                     itemIdx: number,
                     status: InspectionItemStatus
                   ): void => {
-                    // Only update status here — AI flow moved to explicit Submit
                     updateItem(secIdx, itemIdx, { status });
                   }}
                   onUpdateNote={(secIdx: number, itemIdx: number, note: string): void => {
@@ -717,7 +704,6 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
                     const prev = session.sections[secIdx].items[itemIdx].photoUrls ?? [];
                     updateItem(secIdx, itemIdx, { photoUrls: [...prev, photoUrl] });
                   }}
-                  /* require note + explicit submit to run AI */
                   requireNoteForAI
                   onSubmitAI={(secIdx, itemIdx) => {
                     void submitAIForItem(secIdx, itemIdx);
@@ -732,7 +718,7 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
 
       <div
         className={
-          "flex items-center justify-between gap-4 " + (isEmbed ? "mt-6" : "mt-8")
+          "flex items-center justify-between gap-4 " + (compact ? "mt-6" : "mt-8")
         }
       >
         <div className="flex items-center gap-3">

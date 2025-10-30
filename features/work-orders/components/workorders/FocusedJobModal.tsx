@@ -403,19 +403,22 @@ export default function FocusedJobModal(props: {
   };
 
   // ---------- inspection (open inside modal) ----------
-    const openInspection = async (): Promise<void> => {
+  // ---------- inspection (open inside modal) ----------
+const openInspection = async (): Promise<void> => {
   if (!line) return;
 
-  // Heuristic: prefer Air if description hints at it; else Hydraulic; else Generic
+  // Decide template (now includes custom builder)
   const desc = String(line.description ?? "").toLowerCase();
-  const isAir = /\bair\b|cvip|push\s*rod|air\s*brake/.test(desc);
-  const isHydraulic = !isAir && /\bhydraulic|pads?|rotors?|calipers?/.test(desc);
 
-  const templateSlug = isAir
-    ? "maintenance50-air"
-    : isHydraulic
-    ? "maintenance50"
-    : "generic"; // ← new generic screen
+  const isAir = /\bair\b|cvip|push\s*rod|air\s*brake/.test(desc);
+  const isCustom = /\bcustom\b|\bbuilder\b|\bprompt\b|\bad[-\s]?hoc\b/.test(desc);
+
+  // Temporary slug; finalized after we get a sessionId
+  let templateSlug = isAir ? "maintenance50-air" : "maintenance50";
+  if (isCustom) {
+    // We'll turn this into "custom:<sessionId>" once we have it
+    templateSlug = "custom:pending";
+  }
 
   try {
     const res = await fetch("/api/inspections/session/create", {
@@ -426,7 +429,7 @@ export default function FocusedJobModal(props: {
         workOrderLineId: line.id,
         vehicleId: vehicle?.id ?? null,
         customerId: customer?.id ?? null,
-        template: templateSlug,
+        template: templateSlug, // server can ignore the pending slug
       }),
     });
 
@@ -438,22 +441,29 @@ export default function FocusedJobModal(props: {
       throw new Error(j?.error || "Failed to create inspection session");
     }
 
+    // Finalize template for custom builder: "custom:<sessionId>"
+    if (isCustom) {
+      templateSlug = `custom:${j.sessionId}`;
+    }
+
     const sp = new URLSearchParams();
     if (workOrder?.id) sp.set("workOrderId", workOrder.id);
     sp.set("workOrderLineId", line.id);
     sp.set("inspectionId", j.sessionId);
     sp.set("template", templateSlug);
-    sp.set("embed", "1"); // ← ensure iframe-friendly UI
+    sp.set("embed", "1"); // compact UI (no global CSS)
+    // Optional: prefill the custom builder with the job description as a seed prompt
+    if (isCustom && line.description) sp.set("seed", String(line.description));
 
-    // NOTE: singular base path
-    setInspectionSrc(`/inspectionHost/${templateSlug}?${sp.toString()}`);
+    // Use /inspection/<template> so InspectionModal resolves correctly.
+    // For custom this becomes /inspection/custom:<sessionId>
+    setInspectionSrc(`/inspection/${templateSlug}?${sp.toString()}`);
     setInspectionOpen(true);
     toast.success("Inspection opened");
   } catch (e) {
     showErr("Unable to open inspection", e as { message?: string });
   }
 };
-
 
   // ---------- derived UI ----------
   const startAt = line?.punched_in_at ?? null;
@@ -967,6 +977,7 @@ export default function FocusedJobModal(props: {
           open={inspectionOpen}
           src={inspectionSrc}
           title="Inspection"
+          onClose={() => setInspectionOpen(false)}
         />
       )}
     </>
