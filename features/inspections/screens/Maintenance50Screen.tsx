@@ -1,4 +1,3 @@
-// features/inspections/app/inspection/maintenance50/page.tsx
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -36,7 +35,14 @@ import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicl
 import { startVoiceRecognition } from "@inspections/lib/inspection/voiceControl";
 import toast from "react-hot-toast";
 
-/* Header adapters */
+/* ---------- Props for screen usage (modal + page) ---------- */
+type ScreenProps = {
+  embed?: boolean;
+  template?: string;
+  params?: Record<string, string | number | boolean | null | undefined>;
+};
+
+/* ---------- Header adapters ---------- */
 type HeaderCustomer = {
   first_name: string;
   last_name: string;
@@ -87,7 +93,7 @@ function toHeaderVehicle(v?: SessionVehicle | null): HeaderVehicle {
   };
 }
 
-/* Sections */
+/* ---------- Sections ---------- */
 function buildHydraulicMeasurementsSection(): InspectionSection {
   return {
     title: "Measurements (Hydraulic)",
@@ -171,7 +177,7 @@ function buildDrivelineSection(): InspectionSection {
   };
 }
 
-/* Units helpers */
+/* ---------- Units helpers ---------- */
 function unitForHydraulic(label: string, mode: "metric" | "imperial"): string {
   const l = label.toLowerCase();
   if (l.includes("pressure")) return mode === "imperial" ? "psi" : "kPa";
@@ -197,27 +203,31 @@ function applyUnitsHydraulic(
   });
 }
 
-/* Page (Screen) */
-export default function Maintenance50HydraulicPage(): JSX.Element {
+/* ---------- Screen (component) ---------- */
+export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
   const searchParams = useSearchParams();
+  const p = props.params ?? {};
 
-  // Treat as embed when actually inside an iframe OR when flags are present
+  // Helper: read from props.params first, fallback to search params
+  const get = (k: string): string => {
+    const v = p[k];
+    if (v !== undefined && v !== null) return String(v);
+    return searchParams.get(k) ?? "";
+  };
+
+  // Embed detection: explicit prop wins; otherwise query flags or iframe
   const isEmbed = useMemo(() => {
-    const flag =
-      ["1", "true", "yes"].includes(
-        (searchParams.get("embed") || searchParams.get("compact") || "").toLowerCase()
-      );
-    const inIframe =
-      typeof window !== "undefined" && window.self !== window.top;
+    if (typeof props.embed === "boolean") return props.embed;
+    const flag = ["1", "true", "yes"].includes(
+      (get("embed") || get("compact")).toLowerCase()
+    );
+    const inIframe = typeof window !== "undefined" && window.self !== window.top;
     return flag || inIframe;
-  }, [searchParams]);
+  }, [props.embed, searchParams, p]);
 
-  const workOrderLineId = searchParams.get("workOrderLineId") || null;
-  const workOrderId = searchParams.get("workOrderId") || null;
-  const inspectionId = useMemo<string>(
-    () => searchParams.get("inspectionId") || uuidv4(),
-    [searchParams]
-  );
+  const workOrderLineId = get("workOrderLineId") || null;
+  const workOrderId = get("workOrderId") || null;
+  const inspectionId = useMemo<string>(() => get("inspectionId") || uuidv4(), [p, searchParams]);
 
   const [unit, setUnit] = useState<"metric" | "imperial">("metric");
   const [isListening, setIsListening] = useState<boolean>(false);
@@ -225,29 +235,29 @@ export default function Maintenance50HydraulicPage(): JSX.Element {
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   const templateName: string =
-    searchParams.get("template") || "Maintenance 50 (Hydraulic)";
+    props.template || get("template") || "Maintenance 50 (Hydraulic)";
 
   const customer: SessionCustomer = {
-    first_name: searchParams.get("first_name") || "",
-    last_name: searchParams.get("last_name") || "",
-    phone: searchParams.get("phone") || "",
-    email: searchParams.get("email") || "",
-    address: searchParams.get("address") || "",
-    city: searchParams.get("city") || "",
-    province: searchParams.get("province") || "",
-    postal_code: searchParams.get("postal_code") || "",
+    first_name: get("first_name"),
+    last_name: get("last_name"),
+    phone: get("phone"),
+    email: get("email"),
+    address: get("address"),
+    city: get("city"),
+    province: get("province"),
+    postal_code: get("postal_code"),
   };
 
   const vehicle: SessionVehicle = {
-    year: searchParams.get("year") || "",
-    make: searchParams.get("make") || "",
-    model: searchParams.get("model") || "",
-    vin: searchParams.get("vin") || "",
-    license_plate: searchParams.get("license_plate") || "",
-    mileage: searchParams.get("mileage") || "",
-    color: searchParams.get("color") || "",
-    unit_number: searchParams.get("unit_number") || "",
-    engine_hours: searchParams.get("engine_hours") || "",
+    year: get("year"),
+    make: get("make"),
+    model: get("model"),
+    vin: get("vin"),
+    license_plate: get("license_plate"),
+    mileage: get("mileage"),
+    color: get("color"),
+    unit_number: get("unit_number"),
+    engine_hours: get("engine_hours"),
   };
 
   const initialSession = useMemo<Partial<InspectionSession>>(
