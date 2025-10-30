@@ -454,6 +454,7 @@ export default function FocusedJobModal(props: {
   }
 };
 
+
   // ---------- derived UI ----------
   const startAt = line?.punched_in_at ?? null;
   const finishAt = line?.punched_out_at ?? null;
