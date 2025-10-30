@@ -403,48 +403,56 @@ export default function FocusedJobModal(props: {
   };
 
   // ---------- inspection (open inside modal) ----------
-  const openInspection = async (): Promise<void> => {
-    if (!line) return;
+    const openInspection = async (): Promise<void> => {
+  if (!line) return;
 
-    const isAir = String(line.description ?? "")
-      .toLowerCase()
-      .includes("air");
-    const template: "maintenance50" | "maintenance50-air" =
-      isAir ? "maintenance50-air" : "maintenance50";
+  // Heuristic: prefer Air if description hints at it; else Hydraulic; else Generic
+  const desc = String(line.description ?? "").toLowerCase();
+  const isAir = /\bair\b|cvip|push\s*rod|air\s*brake/.test(desc);
+  const isHydraulic = !isAir && /\bhydraulic|pads?|rotors?|calipers?/.test(desc);
 
-    try {
-      const res = await fetch("/api/inspections/session/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workOrderId: workOrder?.id ?? null,
-          workOrderLineId: line.id,
-          vehicleId: vehicle?.id ?? null,
-          customerId: customer?.id ?? null,
-          template,
-        }),
-      });
+  const templateSlug = isAir
+    ? "maintenance50-air"
+    : isHydraulic
+    ? "maintenance50"
+    : "generic"; // ← new generic screen
 
-      const j = (await res.json().catch(() => null)) as
-        | { sessionId?: string; error?: string }
-        | null;
-      if (!res.ok || !j?.sessionId) {
-        throw new Error(j?.error || "Failed to create inspection session");
-      }
+  try {
+    const res = await fetch("/api/inspections/session/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        workOrderId: workOrder?.id ?? null,
+        workOrderLineId: line.id,
+        vehicleId: vehicle?.id ?? null,
+        customerId: customer?.id ?? null,
+        template: templateSlug,
+      }),
+    });
 
-      const sp = new URLSearchParams();
-      if (workOrder?.id) sp.set("workOrderId", workOrder.id);
-      sp.set("workOrderLineId", line.id);
-      sp.set("inspectionId", j.sessionId);
-      sp.set("template", template);
+    const j = (await res.json().catch(() => null)) as
+      | { sessionId?: string; error?: string }
+      | null;
 
-      setInspectionSrc(`/inspections/${template}?${sp.toString()}`);
-      setInspectionOpen(true);
-      toast.success("Inspection opened");
-    } catch (e) {
-      showErr("Unable to open inspection", e as { message?: string });
+    if (!res.ok || !j?.sessionId) {
+      throw new Error(j?.error || "Failed to create inspection session");
     }
-  };
+
+    const sp = new URLSearchParams();
+    if (workOrder?.id) sp.set("workOrderId", workOrder.id);
+    sp.set("workOrderLineId", line.id);
+    sp.set("inspectionId", j.sessionId);
+    sp.set("template", templateSlug);
+    sp.set("embed", "1"); // ← ensure iframe-friendly UI
+
+    // NOTE: singular base path
+    setInspectionSrc(`/inspection/${templateSlug}?${sp.toString()}`);
+    setInspectionOpen(true);
+    toast.success("Inspection opened");
+  } catch (e) {
+    showErr("Unable to open inspection", e as { message?: string });
+  }
+};
 
   // ---------- derived UI ----------
   const startAt = line?.punched_in_at ?? null;

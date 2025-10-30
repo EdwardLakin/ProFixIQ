@@ -1,61 +1,72 @@
 // features/shared/components/InspectionModal.tsx
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import ModalShell from "@/features/shared/components/ModalShell";
+import InspectionHost from "@/features/inspections/components/inspectionHost";
 
 type Props = {
-  open: boolean;           // simple boolean; no onClose prop to avoid serialization issues
-  src: string | null;      // full inspection page path, e.g. /inspections/maintenance50?workOrderId=...&workOrderLineId=...
+  open: boolean;            // unchanged
+  src: string | null;       // e.g. /inspection/maintenance50?workOrderId=...&workOrderLineId=...
   title?: string;
+  onClose?: () => void;     // optional escape hatch to close from parent
 };
 
-export default function InspectionModal({ open, src, title = "Inspection" }: Props) {
-  // Build iframe src in the client and force bare/compact embed flags
-  const { iframeSrc, missingWorkOrderLineId } = useMemo(() => {
-    if (!src) return { iframeSrc: null as string | null, missingWorkOrderLineId: false };
+// Helper: convert URLSearchParams -> plain object
+function paramsToObject(sp: URLSearchParams) {
+  const out: Record<string, string> = {};
+  sp.forEach((v, k) => { out[k] = v; });
+  return out;
+}
+
+export default function InspectionModal({ open, src, title = "Inspection", onClose }: Props) {
+  // Derive a template slug and params from the provided `src`
+  const derived = useMemo(() => {
+    if (!src) return { template: null as string | null, params: {}, missingWOLine: false };
+
     try {
-      const base = typeof window !== "undefined" ? window.location.origin : "";
-      const u = new URL(src, base);
+      const base = typeof window !== "undefined" ? window.location.origin : "http://localhost";
+      const url = new URL(src, base);
 
-      // Add the embed flags but preserve all original params (including workOrderLineId/workOrderId/etc.)
-      u.searchParams.set("embed", "1");   // <- bare embed mode (no chrome)
-      u.searchParams.set("compact", "1"); // <- tight spacing inside iframe
+      // Path shape examples:
+      //   /inspection/maintenance50
+      //   /inspection/custom:123
+      //   /inspections/maintenance50        (tolerate plural too)
+      const parts = url.pathname.split("/").filter(Boolean);
+      // find the segment after "inspection" or "inspections"
+      const idx = parts.findIndex(p => p === "inspection" || p === "inspections");
+      const template = idx >= 0 ? parts[idx + 1] : parts[parts.length - 1];
 
-      const hasWOLine = !!u.searchParams.get("workOrderLineId");
-      return { iframeSrc: u.toString(), missingWorkOrderLineId: !hasWOLine };
+      // Collect all query params (workOrderId, workOrderLineId, etc.)
+      const params = paramsToObject(url.searchParams);
+
+      const missingWOLine = !url.searchParams.get("workOrderLineId");
+
+      return { template, params, missingWOLine };
     } catch {
-      // Fallback: we can’t safely manipulate URL; still attempt to render what we were given.
-      return { iframeSrc: src, missingWorkOrderLineId: false };
+      // Fallback: treat whole src as a template slug (unlikely but safe)
+      return { template: src.replace(/^\//, ""), params: {}, missingWOLine: false };
     }
   }, [src]);
 
-  // Listen for messages from inside iframe to close/minimize
-  useEffect(() => {
-    const handler = (e: MessageEvent) => {
-      if (typeof window === "undefined") return;
-      if (e.origin !== window.location.origin) return;
-
-      if (e.data?.type === "inspection:close" || e.data?.type === "inspection:minimize") {
-        window.dispatchEvent(new CustomEvent("inspection:close"));
-      }
-    };
-    window.addEventListener("message", handler);
-    return () => window.removeEventListener("message", handler);
-  }, []);
+  const close = () => {
+    if (onClose) onClose();
+    // keep existing behavior for legacy listeners
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("inspection:close"));
+    }
+  };
 
   return (
     <ModalShell
       isOpen={open}
-      onClose={() => window.dispatchEvent(new CustomEvent("inspection:close"))}
+      onClose={close}
       size="lg"
       title={title}
       footerLeft={
         <button
           type="button"
-          onClick={() =>
-            window.postMessage({ type: "inspection:close" }, window.location.origin)
-          }
+          onClick={close}
           className="font-header rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs hover:bg-neutral-800"
           title="Minimize"
         >
@@ -65,28 +76,22 @@ export default function InspectionModal({ open, src, title = "Inspection" }: Pro
       submitText={undefined}
       onSubmit={undefined}
     >
-      {!iframeSrc ? (
+      {!derived.template ? (
         <div className="rounded border border-neutral-800 bg-neutral-900 p-4 text-center text-neutral-400">
           No inspection selected.
         </div>
       ) : (
         <div className="flex w-full flex-col items-center gap-2">
-          {missingWorkOrderLineId && (
+          {derived.missingWOLine && (
             <div className="w-full max-w-5xl rounded border border-yellow-700 bg-yellow-900/30 px-3 py-2 text-xs text-yellow-200">
               <strong>Heads up:</strong> <code>workOrderLineId</code> is missing from the inspection URL.
               Save/Finish actions that require it may be blocked.
             </div>
           )}
-          <iframe
-            key={iframeSrc}
-            src={iframeSrc}
-            // allow mic (for voice/recognition), plus clipboard QoL if needed
-            allow="microphone; clipboard-read; clipboard-write"
-            className="h-[75vh] w-full max-w-5xl rounded border border-neutral-800"
-            // helpful for accessibility & testing
-            title={title}
-            data-testid="inspection-iframe"
-          />
+          <div className="w-full max-w-5xl">
+            {/* embed prop => compact spacing / hides app chrome inside the screen */}
+            <InspectionHost template={derived.template!} params={derived.params} embed />
+          </div>
         </div>
       )}
     </ModalShell>

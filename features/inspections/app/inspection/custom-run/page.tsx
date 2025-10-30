@@ -1,3 +1,4 @@
+// features/inspections/app/inspection/custom-run/page.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -42,19 +43,33 @@ function resolveSR(): SRConstructor | undefined {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? undefined;
 }
 
-/* ------------------------------------------------------------------ */
-/* Unit hints + Axles renderer                                        */
-/* ------------------------------------------------------------------ */
+/* ------------------------------- helpers -------------------------------- */
 
 function unitHint(label: string, mode: "metric" | "imperial") {
   const l = label.toLowerCase();
-  if (l.includes("tread") || l.includes("lining") || l.includes("pad")) return mode === "metric" ? "mm" : "in";
+  if (l.includes("tread") || l.includes("lining") || l.includes("pad"))
+    return mode === "metric" ? "mm" : "in";
   if (l.includes("pressure")) return mode === "metric" ? "kPa" : "psi";
   if (l.includes("push rod")) return mode === "metric" ? "mm" : "in";
   if (l.includes("wheel torque")) return mode === "metric" ? "N·m" : "ft·lb";
   if (l.includes("rotor") || l.includes("drum")) return mode === "metric" ? "mm" : "in";
   return "";
 }
+
+function buildOilChangeSection(): InspectionSection {
+  return {
+    title: "Oil Change",
+    items: [
+      { item: "Drain engine oil", status: "na" },
+      { item: "Replace oil filter", status: "na" },
+      { item: "Refill with correct viscosity", status: "na" },
+      { item: "Reset maintenance reminder", status: "na" },
+      { item: "Inspect for leaks after start", status: "na" },
+    ],
+  };
+}
+
+/* --------------- Axles condensed items → paired inputs UI --------------- */
 
 const AXLE_FULL_RE = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
 const AXLE_SIDE_RE = /^(?<side>Left|Right)\s+(?<metric>.+)$/i;
@@ -88,14 +103,12 @@ function AxlesSection({
     let side: "Left" | "Right" | undefined;
     let metric = "";
 
-    // Try "Steer Left Tread Depth"
     let m = label.match(AXLE_FULL_RE);
     if (m?.groups) {
       axle = m.groups.axle.trim();
       side = m.groups.side as "Left" | "Right";
       metric = m.groups.metric.trim();
     } else {
-      // Fallback: "Left Tread Depth" with section.title as axle
       m = label.match(AXLE_SIDE_RE);
       if (m?.groups) {
         axle = section.title;
@@ -161,21 +174,12 @@ function AxlesSection({
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Small client fallback: build sections from a free-text prompt      */
-/* ------------------------------------------------------------------ */
+/* ------------------------------- cheap AI fallback ------------------------------- */
 function cheapBuildFromPrompt(prompt: string): InspectionSection[] {
-  // extremely simple keyword bucketing; your server route should do the heavy lifting
   const p = prompt.toLowerCase();
-
   const sections: InspectionSection[] = [];
-
-  const add = (title: string, items: string[]) => {
-    sections.push({
-      title,
-      items: items.map((item) => ({ item, status: "na" as InspectionItemStatus })),
-    });
-  };
+  const add = (title: string, items: string[]) =>
+    sections.push({ title, items: items.map((item) => ({ item, status: "na" as InspectionItemStatus })) });
 
   if (/brake/.test(p)) {
     add("Brakes", [
@@ -187,7 +191,6 @@ function cheapBuildFromPrompt(prompt: string): InspectionSection[] {
       "ABS wiring / sensors",
     ]);
   }
-
   if (/tire|tread/.test(p)) {
     add("Tires", [
       "LF Tread Depth",
@@ -202,7 +205,6 @@ function cheapBuildFromPrompt(prompt: string): InspectionSection[] {
       "RR Tire Pressure",
     ]);
   }
-
   if (/suspension|shock|strut|bushing|control arm/.test(p)) {
     add("Suspension", [
       "Front springs (coil/leaf)",
@@ -212,7 +214,6 @@ function cheapBuildFromPrompt(prompt: string): InspectionSection[] {
       "Sway bar bushings / links",
     ]);
   }
-
   if (/light|signal|lamp|headlight|tail/.test(p)) {
     add("Lighting & Reflectors", [
       "Headlights (high/low beam)",
@@ -226,7 +227,6 @@ function cheapBuildFromPrompt(prompt: string): InspectionSection[] {
       "Hazard switch function",
     ]);
   }
-
   if (/fluid|oil|coolant|ps fluid|power steering|washer/.test(p)) {
     add("Fluids", [
       "Engine oil level / condition",
@@ -237,22 +237,13 @@ function cheapBuildFromPrompt(prompt: string): InspectionSection[] {
       "Transmission fluid level / leaks",
     ]);
   }
-
   if (sections.length === 0) {
-    add("General", [
-      "Visual walkaround",
-      "Record warning lights",
-      "Note customer concerns",
-      "Road-test notes",
-    ]);
+    add("General", ["Visual walkaround", "Record warning lights", "Note customer concerns", "Road-test notes"]);
   }
-
   return sections;
 }
 
-/* ------------------------------------------------------------------ */
-/* Page                                                               */
-/* ------------------------------------------------------------------ */
+/* ---------------------------------- Page ---------------------------------- */
 
 export default function CustomRunPage() {
   const supabase = useMemo(() => createClientComponentClient<Database>(), []);
@@ -272,14 +263,15 @@ export default function CustomRunPage() {
   // SR
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
-  // Header
-  const templateName = searchParams.get("template") || "Custom Inspection Run";
-
   // Work-order context (needed by buttons/types)
   const workOrderId = searchParams.get("workOrderId") || null;
   const workOrderLineId = (searchParams.get("workOrderLineId") || "missing") as string;
 
-  // These can be passed on the URL; default blanks are ok per your types
+  // vehicleType for axle expansion if we rebuild
+  const vehicleTypeParam =
+    (searchParams.get("vehicleType") as "car" | "truck" | "bus" | "trailer" | null) || null;
+
+  // These can be passed on the URL; default blanks OK
   const customer = {
     first_name: searchParams.get("first_name") || "",
     last_name: searchParams.get("last_name") || "",
@@ -300,49 +292,12 @@ export default function CustomRunPage() {
     color: searchParams.get("color") || "",
   };
 
-  // Builder selections (produced by your builder UI)
-  // Expect a JSON string under ?selections= and optional ?vehicleType=
-  const selectionsParam = searchParams.get("selections"); // base64 or json
-  const vehicleTypeParam =
-    (searchParams.get("vehicleType") as "car" | "truck" | "bus" | "trailer" | null) || null;
+  // Template name: prefer storage title if present
+  const [templateName, setTemplateName] = useState(
+    searchParams.get("template") || "Custom Inspection Run"
+  );
 
-  const builtSections = useMemo<InspectionSection[]>(() => {
-    // Try to parse selections; if absent, start empty
-    let selections: Record<string, string[]> = {};
-    try {
-      if (selectionsParam) {
-        // allow plain JSON or base64 JSON
-        const raw =
-          selectionsParam.startsWith("{") || selectionsParam.startsWith("[")
-            ? selectionsParam
-            : atob(selectionsParam);
-        selections = JSON.parse(raw);
-      }
-    } catch {
-      selections = {};
-    }
-
-    const axleOpt = vehicleTypeParam ? { vehicleType: vehicleTypeParam } : null;
-    const built = buildInspectionFromSelections({
-      selections,
-      axle: axleOpt,
-      extraServiceItems: [],
-    });
-
-    // If the caller wants a *pure* axle layout without the flat “Axles” section,
-    // convert to CVIP-style multi-sections:
-    if (axleOpt) {
-      const axles = generateAxleLayout(axleOpt.vehicleType);
-      const axleSections = axlesToSections(axles);
-      // Replace the “Axles” section (if present) with the expanded set
-      const rest = built.filter((s) => s.title !== "Axles");
-      return [...axleSections, ...rest];
-    }
-
-    return built;
-  }, [selectionsParam, vehicleTypeParam]);
-
-  // Initial session (empty; we’ll inject sections after mount)
+  // Initial session shell
   const initialSession = useMemo(
     () => ({
       id: uuidv4(),
@@ -357,7 +312,8 @@ export default function CustomRunPage() {
       sections: [],
       workOrderId: workOrderId || undefined,
     }),
-    [templateName, workOrderId] // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [templateName, workOrderId]
   );
 
   const {
@@ -372,21 +328,76 @@ export default function CustomRunPage() {
     addQuoteLine,
   } = useInspectionSession(initialSession);
 
-  // start session once
+  // start once
   useEffect(() => {
     startSession(initialSession);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // inject built sections once session exists
+  /* ---------------------- IMPORT FROM sessionStorage (builder) ---------------------- */
   useEffect(() => {
     if (!session) return;
-    if ((session.sections?.length ?? 0) === 0 && builtSections.length > 0) {
-      updateInspection({ sections: builtSections });
-    }
-  }, [session, builtSections, updateInspection]);
 
-  // AI: build sections from free-text prompt
+    try {
+      const raw = typeof window !== "undefined" ? sessionStorage.getItem("customInspection:sections") : null;
+      const title = typeof window !== "undefined" ? sessionStorage.getItem("customInspection:title") : null;
+      const includeOilRaw =
+        typeof window !== "undefined" ? sessionStorage.getItem("customInspection:includeOil") : null;
+
+      const includeOil = includeOilRaw ? JSON.parse(includeOilRaw) === true : false;
+
+      if (title && title.trim()) setTemplateName(title.trim());
+
+      if (raw) {
+        const parsed = JSON.parse(raw) as InspectionSection[];
+        let next = parsed;
+
+        // Append oil section if requested
+        if (includeOil) next = [...parsed, buildOilChangeSection()];
+
+        updateInspection({ sections: next });
+
+        // clear so a future run doesn’t reuse stale data
+        sessionStorage.removeItem("customInspection:sections");
+        sessionStorage.removeItem("customInspection:title");
+        sessionStorage.removeItem("customInspection:includeOil");
+        return;
+      }
+    } catch {
+      /* ignore; we’ll fall back to URL */
+    }
+
+    // If storage missing, fall back to URL `?selections=` or AI prompt later
+    const selectionsParam = searchParams.get("selections"); // base64 or json
+    if (selectionsParam) {
+      try {
+        const raw =
+          selectionsParam.startsWith("{") || selectionsParam.startsWith("[")
+            ? selectionsParam
+            : atob(selectionsParam);
+        const selections = JSON.parse(raw) as Record<string, string[]>;
+        const built = buildInspectionFromSelections({
+          selections,
+          axle: vehicleTypeParam ? { vehicleType: vehicleTypeParam } : null,
+          extraServiceItems: [],
+        });
+
+        if (vehicleTypeParam) {
+          const axles = generateAxleLayout(vehicleTypeParam);
+          const axleSections = axlesToSections(axles);
+          const rest = built.filter((s) => s.title !== "Axles");
+          updateInspection({ sections: [...axleSections, ...rest] });
+        } else {
+          updateInspection({ sections: built });
+        }
+      } catch {
+        // nothing – user can build via AI box
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
+
+  /* ------------------------------ AI builder ------------------------------ */
   const buildWithAI = async () => {
     if (!aiPrompt.trim()) {
       toast.error("Type what you want inspected first.");
@@ -394,7 +405,6 @@ export default function CustomRunPage() {
     }
     setAiBusy(true);
     try {
-      // Try server route first (recommended: do your LLM there)
       const res = await fetch("/api/inspections/build-from-prompt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -421,7 +431,6 @@ export default function CustomRunPage() {
             axle: vehicleTypeParam ? { vehicleType: vehicleTypeParam } : null,
             extraServiceItems: [],
           });
-          // Expand axles if needed
           if (vehicleTypeParam) {
             const axles = generateAxleLayout(vehicleTypeParam);
             const axleSections = axlesToSections(axles);
@@ -433,7 +442,6 @@ export default function CustomRunPage() {
         }
       }
 
-      // Fallback to quick client builder
       if (!nextSections) {
         nextSections = cheapBuildFromPrompt(aiPrompt);
       }
@@ -459,7 +467,7 @@ export default function CustomRunPage() {
     }
   };
 
-  // voice handling
+  /* ------------------------------ speech → commands ------------------------------ */
   const onTranscript = async (text: string) => {
     setTranscript(text);
     const cmds: ParsedCommand[] = await interpretCommand(text);
@@ -499,7 +507,6 @@ export default function CustomRunPage() {
     setIsListening(true);
   };
 
-  // stop on unmount
   useEffect(() => {
     return () => {
       try {
@@ -508,17 +515,14 @@ export default function CustomRunPage() {
     };
   }, []);
 
-  // simple header card (same style used on 50 pages)
+  // header card
   function HeaderCard() {
     return (
       <div className="mb-5 rounded-lg border border-zinc-700 bg-zinc-900 p-4 text-white">
         <h1 className="mb-3 text-center text-2xl font-bold">{templateName}</h1>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          {/* Vehicle */}
           <div className="rounded-md border border-zinc-700 p-3">
-            <div className="mb-2 text-sm font-semibold text-orange-400">
-              Vehicle Information
-            </div>
+            <div className="mb-2 text-sm font-semibold text-orange-400">Vehicle Information</div>
             <div className="grid grid-cols-2 gap-2 text-sm">
               <label className="opacity-70">VIN</label>
               <div className="truncate">{session?.vehicle?.vin || "—"}</div>
@@ -536,17 +540,12 @@ export default function CustomRunPage() {
               <div>{session?.vehicle?.color || "—"}</div>
             </div>
           </div>
-          {/* Customer */}
           <div className="rounded-md border border-zinc-700 p-3">
-            <div className="mb-2 text-sm font-semibold text-orange-400">
-              Customer Information
-            </div>
+            <div className="mb-2 text-sm font-semibold text-orange-400">Customer Information</div>
             <div className="grid grid-cols-2 gap-2 text-sm">
               <label className="opacity-70">Name</label>
               <div>
-                {[session?.customer?.first_name, session?.customer?.last_name]
-                  .filter(Boolean)
-                  .join(" ") || "—"}
+                {[session?.customer?.first_name, session?.customer?.last_name].filter(Boolean).join(" ") || "—"}
               </div>
               <label className="opacity-70">Phone</label>
               <div>{session?.customer?.phone || "—"}</div>
@@ -554,12 +553,7 @@ export default function CustomRunPage() {
               <div className="truncate">{session?.customer?.email || "—"}</div>
               <label className="opacity-70">Address</label>
               <div className="col-span-1 truncate">
-                {[
-                  session?.customer?.address,
-                  session?.customer?.city,
-                  session?.customer?.province,
-                  session?.customer?.postal_code,
-                ]
+                {[session?.customer?.address, session?.customer?.city, session?.customer?.province, session?.customer?.postal_code]
                   .filter(Boolean)
                   .join(", ") || "—"}
               </div>
@@ -580,9 +574,7 @@ export default function CustomRunPage() {
 
       {/* AI prompt builder */}
       <div className="mb-5 rounded-lg border border-zinc-700 bg-zinc-900 p-4 text-white">
-        <div className="mb-2 text-sm font-semibold text-orange-400">
-          Build inspection with AI
-        </div>
+        <div className="mb-2 text-sm font-semibold text-orange-400">Build inspection with AI</div>
         <textarea
           value={aiPrompt}
           onChange={(e) => setAiPrompt(e.target.value)}
@@ -591,11 +583,7 @@ export default function CustomRunPage() {
         />
         <div className="mb-3 flex items-center gap-3">
           <label className="flex items-center gap-2 text-xs text-zinc-300">
-            <input
-              type="checkbox"
-              checked={aiAppend}
-              onChange={(e) => setAiAppend(e.target.checked)}
-            />
+            <input type="checkbox" checked={aiAppend} onChange={(e) => setAiAppend(e.target.checked)} />
             Append to existing sections (don’t replace)
           </label>
 
@@ -607,17 +595,11 @@ export default function CustomRunPage() {
             {aiBusy ? "Building…" : "Build with AI"}
           </button>
         </div>
-        <div className="text-xs text-zinc-400">
-          Tip: include “left/right”, “tread”, “pressure”, “fluids”, “suspension”, etc. to guide the layout.
-        </div>
+        <div className="text-xs text-zinc-400">Tip: include “left/right”, “tread”, “pressure”, “fluids”, “suspension”, etc.</div>
       </div>
 
       <div className="mb-4 flex flex-wrap items-center justify-center gap-3">
-        <StartListeningButton
-          isListening={isListening}
-          setIsListening={setIsListening}
-          onStart={startListening}
-        />
+        <StartListeningButton isListening={isListening} setIsListening={setIsListening} onStart={startListening} />
 
         <PauseResumeButton
           isPaused={isPaused}
@@ -652,9 +634,7 @@ export default function CustomRunPage() {
             const user = data.user;
             if (!user) return toast.error("Please sign in to save a template.");
 
-            const name =
-              prompt("Template name?", templateName || "Custom Template") ||
-              "Custom Template";
+            const name = prompt("Template name?", templateName || "Custom Template") || "Custom Template";
             const payload: Database["public"]["Tables"]["inspection_templates"]["Insert"] = {
               user_id: user.id,
               template_name: name,
@@ -688,39 +668,23 @@ export default function CustomRunPage() {
       />
 
       {session.sections.map((section: InspectionSection, sectionIndex: number) => {
-        const isAxles =
-          section.title === "Axles" || /(steer|drive|trailer)/i.test(section.title);
+        const isAxles = section.title === "Axles" || /(steer|drive|trailer)/i.test(section.title);
 
         return (
-          <div
-            key={sectionIndex}
-            className="mb-8 rounded-lg border border-zinc-800 bg-zinc-900 p-4"
-          >
+          <div key={sectionIndex} className="mb-8 rounded-lg border border-zinc-800 bg-zinc-900 p-4">
             <div className="mb-2 flex items-end justify-between">
-              <h2 className="text-xl font-semibold text-orange-400">
-                {section.title}
-              </h2>
-              {isAxles ? (
-                <span className="text-xs text-zinc-400">
-                  Enter mm / in / kPa / psi / N·m / ft·lb
-                </span>
-              ) : null}
+              <h2 className="text-xl font-semibold text-orange-400">{section.title}</h2>
+              {isAxles ? <span className="text-xs text-zinc-400">Enter mm / in / kPa / psi / N·m / ft·lb</span> : null}
             </div>
 
             {isAxles ? (
-              <AxlesSection
-                section={section}
-                sectionIndex={sectionIndex}
-                unitMode={unit}
-                updateItem={updateItem}
-              />
+              <AxlesSection section={section} sectionIndex={sectionIndex} unitMode={unit} updateItem={updateItem} />
             ) : (
               section.items.map((item: InspectionItem, itemIndex: number) => {
                 const selected = (val: InspectionItemStatus) => item.status === val;
                 const onStatusClick = (val: InspectionItemStatus) => {
                   updateItem(sectionIndex, itemIndex, { status: val });
                   if ((val === "fail" || val === "recommend") && item.item) {
-                    // lightweight placeholder line; merging AI later is fine
                     addQuoteLine({
                       item: item.item,
                       description: item.notes || "",
@@ -742,62 +706,51 @@ export default function CustomRunPage() {
                 };
 
                 return (
-                  <div
-                    key={itemIndex}
-                    className="mb-3 rounded border border-zinc-800 bg-zinc-950 p-3"
-                  >
+                  <div key={itemIndex} className="mb-3 rounded border border-zinc-800 bg-zinc-950 p-3">
                     <div className="mb-2 flex items-start justify-between gap-3">
                       <h3 className="min-w-0 truncate text-base font-medium text-white">
                         {item.item ?? (item as any).name ?? "Item"}
                       </h3>
                       <div className="flex shrink-0 flex-wrap gap-1">
-                        {(["ok", "fail", "na", "recommend"] as InspectionItemStatus[]).map(
-                          (val) => (
-                            <button
-                              key={val}
-                              onClick={() => onStatusClick(val)}
-                              className={
-                                "rounded px-2 py-1 text-xs " +
-                                (selected(val)
-                                  ? val === "ok"
-                                    ? "bg-green-600 text-white"
-                                    : val === "fail"
-                                    ? "bg-red-600 text-white"
-                                    : val === "na"
-                                    ? "bg-yellow-500 text-white"
-                                    : "bg-blue-500 text-white"
-                                  : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700")
-                              }
-                            >
-                              {val.toUpperCase()}
-                            </button>
-                          ),
-                        )}
+                        {(["ok", "fail", "na", "recommend"] as InspectionItemStatus[]).map((val) => (
+                          <button
+                            key={val}
+                            onClick={() => onStatusClick(val)}
+                            className={
+                              "rounded px-2 py-1 text-xs " +
+                              (selected(val)
+                                ? val === "ok"
+                                  ? "bg-green-600 text-white"
+                                  : val === "fail"
+                                  ? "bg-red-600 text-white"
+                                  : val === "na"
+                                  ? "bg-yellow-500 text-white"
+                                  : "bg-blue-500 text-white"
+                                : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700")
+                            }
+                          >
+                            {val.toUpperCase()}
+                          </button>
+                        ))}
                       </div>
                     </div>
 
                     <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto]">
                       <input
                         value={(item.value as string) ?? ""}
-                        onChange={(e) =>
-                          updateItem(sectionIndex, itemIndex, { value: e.target.value })
-                        }
+                        onChange={(e) => updateItem(sectionIndex, itemIndex, { value: e.target.value })}
                         placeholder="Value"
                         className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400"
                       />
                       <input
                         value={item.unit ?? unitHint(item.item || "", unit)}
-                        onChange={(e) =>
-                          updateItem(sectionIndex, itemIndex, { unit: e.target.value })
-                        }
+                        onChange={(e) => updateItem(sectionIndex, itemIndex, { unit: e.target.value })}
                         placeholder="Unit"
                         className="sm:w-28 w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400"
                       />
                       <input
                         value={item.notes ?? ""}
-                        onChange={(e) =>
-                          updateItem(sectionIndex, itemIndex, { notes: e.target.value })
-                        }
+                        onChange={(e) => updateItem(sectionIndex, itemIndex, { notes: e.target.value })}
                         placeholder="Notes"
                         className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white placeholder:text-zinc-400 sm:col-span-1 col-span-1"
                       />
@@ -826,7 +779,6 @@ export default function CustomRunPage() {
       })}
 
       <div className="mt-8 flex items-center justify-between gap-4">
-        {/* ⬇️ Both buttons receive workOrderLineId (string required by their types) */}
         <SaveInspectionButton session={session} workOrderLineId={workOrderLineId} />
         <FinishInspectionButton session={session} workOrderLineId={workOrderLineId} />
       </div>
