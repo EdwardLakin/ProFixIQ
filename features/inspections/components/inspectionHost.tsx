@@ -3,19 +3,23 @@
 import React, { Suspense } from "react";
 import dynamic from "next/dynamic";
 
-/** Props that our screens may accept (both are optional on the screens themselves). */
+/** Props our screens accept (keep tight so extra props don't slip through). */
 type ScreenProps = {
   embed?: boolean;
   template?: string;
 };
 
-/** Host props coming from the caller. */
+/** Back-compat host props.
+ *  NOTE: `params` is accepted because some callers still pass it,
+ *  but it is intentionally NOT forwarded to the screen.
+ */
 type HostProps = {
   template: string; // e.g. "maintenance50-hydraulic", "maintenance50-air", "custom:<id>"
-  embed?: boolean;   // compact/iframe layout toggle
+  embed?: boolean;
+  params?: Record<string, string | number | boolean | null | undefined>;
 };
 
-// 1) Specialized renderers (lazy-loaded)
+// Specialized renderers (lazy-loaded)
 const Maintenance50Hydraulic = dynamic<ScreenProps>(
   () => import("../screens/Maintenance50Screen")
 );
@@ -23,26 +27,25 @@ const Maintenance50Air = dynamic<ScreenProps>(
   () => import("../screens/Maintenance50AirScreen")
 );
 
-// 2) Generic schema-driven screen (handles most inspections, incl. custom)
+// Generic schema-driven screen (default)
 const GenericInspectionScreen = dynamic<ScreenProps>(
   () => import("../screens/GenericInspectionScreen")
 );
 
-// Registry for named templates -> screen components
+// Template registry
 const REGISTRY: Record<string, React.ComponentType<ScreenProps>> = {
   "maintenance50-hydraulic": Maintenance50Hydraulic,
   "maintenance50-air": Maintenance50Air,
-  // add more specialized templates here as you create them
+  // add more specialized templates here
 };
 
 export default function InspectionHost({ template, embed = false }: HostProps) {
-  // Custom templates: "custom:123" -> handled by generic screen
   const isCustom = template.startsWith("custom:");
   const Renderer = (!isCustom && REGISTRY[template]) || GenericInspectionScreen;
 
   return (
     <Suspense fallback={<div className="p-4 text-neutral-400">Loading…</div>}>
-      {/* Only pass props that screens are typed to accept */}
+      {/* Do NOT forward `params` — screens don't accept it */}
       <Renderer embed={embed} template={template} />
     </Suspense>
   );
