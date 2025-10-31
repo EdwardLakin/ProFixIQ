@@ -1,3 +1,4 @@
+// app/api/inspections/generate/route.ts
 import "server-only";
 import { NextResponse } from "next/server";
 
@@ -12,12 +13,9 @@ type InspectionItem = {
   recommend?: string[];
 };
 
-type InspectionSection = {
-  title: string;
-  items: InspectionItem[];
-};
+type InspectionSection = { title: string; items: InspectionItem[] };
 
-export const dynamic = "force-dynamic"; // no caching while you iterate
+export const runtime = "edge"; // or omit; optional
 
 export async function POST(req: Request) {
   try {
@@ -25,12 +23,9 @@ export async function POST(req: Request) {
       prompt: string;
       vehicleType?: "car" | "truck" | "bus" | "trailer";
     };
-
     if (!prompt || typeof prompt !== "string") {
       return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
     }
-
-    // Stubbed output your UI already understands
     const sections: InspectionSection[] = [
       {
         title: "Lights & Safety (AI)",
@@ -49,7 +44,6 @@ export async function POST(req: Request) {
         ],
       },
     ];
-
     return NextResponse.json({ sections });
   } catch (e) {
     console.error(e);
