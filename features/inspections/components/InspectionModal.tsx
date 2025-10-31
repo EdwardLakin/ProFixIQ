@@ -1,4 +1,4 @@
-// features/inspections/components/InspectionModal.tsx (your “Current inspection modal” file)
+// features/inspections/components/InspectionModal.tsx
 "use client";
 
 import React, { useMemo, useState } from "react";
@@ -48,12 +48,18 @@ export default function InspectionModal({ open, src, title = "Inspection", onClo
     <Dialog
       open={open}
       onClose={close}
-      className="fixed inset-0 z-[300] flex items-center justify-center"
+      // allow the whole dialog environment to scroll on very small screens
+      className="fixed inset-0 z-[300] flex items-center justify-center overflow-y-auto"
     >
+      {/* Backdrop */}
       <div className="fixed inset-0 z-[300] bg-black/70 backdrop-blur-sm" aria-hidden="true" />
 
-      <div className="relative z-[310] mx-4 my-6 w-full max-w-5xl" onClick={(e) => e.stopPropagation()}>
-        {/* Title row (fixed above scroller) */}
+      {/* Panel (HeadlessUI expects content inside Dialog.Panel) */}
+      <Dialog.Panel
+        className="relative z-[310] mx-4 my-6 w-full max-w-5xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Title row (outside the inner scroller) */}
         <div className="mb-2 flex items-start justify-between gap-3">
           <Dialog.Title className="text-lg font-header font-semibold tracking-wide text-white">
             {title}
@@ -79,12 +85,17 @@ export default function InspectionModal({ open, src, title = "Inspection", onClo
           </div>
         </div>
 
-        {/* SCROLLER lives in ModalShell (via bodyClassName default). 
-            If you aren't wrapping this with ModalShell, add the same classes here:
-            max-h-[85vh] overflow-y-auto overscroll-contain, WebKit momentum. */}
+        {/* Inner scroll container */}
         <div
-          className="max-h-[85vh] overflow-y-auto overscroll-contain rounded-lg border border-orange-400 bg-neutral-950 p-4 text-white shadow-xl min-h-0"
-          style={{ WebkitOverflowScrolling: "touch" as any, scrollbarGutter: "stable both-edges" }}
+          className="
+            max-h-[85vh] overflow-y-auto
+            overscroll-contain touch-pan-y
+            rounded-lg border border-orange-400 bg-neutral-950 p-4 text-white shadow-xl
+          "
+          style={{
+            WebkitOverflowScrolling: "touch", // momentum scrolling on iOS
+            scrollbarGutter: "stable both-edges",
+          }}
         >
           {derived.missingWOLine && (
             <div className="mb-3 rounded border border-yellow-700 bg-yellow-900/30 px-3 py-2 text-xs text-yellow-200">
@@ -97,11 +108,12 @@ export default function InspectionModal({ open, src, title = "Inspection", onClo
               No inspection selected.
             </div>
           ) : (
-            <div className="mx-auto w-full max-w-5xl min-h-0">
+            <div className="mx-auto w-full max-w-5xl">
               <InspectionHost template={derived.template} embed params={derived.params} />
             </div>
           )}
 
+          {/* Footer lives inside scroller so it’s reachable on small screens */}
           <div className="mt-4 flex items-center justify-between">
             <button
               type="button"
@@ -128,7 +140,7 @@ export default function InspectionModal({ open, src, title = "Inspection", onClo
             </div>
           </div>
         </div>
-      </div>
+      </Dialog.Panel>
     </Dialog>
   );
 }

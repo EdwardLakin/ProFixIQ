@@ -16,24 +16,22 @@ interface Props {
   size?: Size;
   footerLeft?: ReactNode;
   children?: ReactNode;
-  /** NEW: classes applied to the scrollable body wrapper */
+  /** Custom scroll wrapper (e.g. override height or layout) */
   bodyClassName?: string;
 }
 
-export default function ModalShell(props: Props) {
-  const {
-    isOpen,
-    onClose,
-    onSubmit,
-    title,
-    subtitle,
-    submitText,
-    size = "md",
-    footerLeft,
-    children,
-    bodyClassName,
-  } = props;
-
+export default function ModalShell({
+  isOpen,
+  onClose,
+  onSubmit,
+  title,
+  subtitle,
+  submitText,
+  size = "md",
+  footerLeft,
+  children,
+  bodyClassName,
+}: Props) {
   const maxW =
     size === "sm" ? "max-w-md" : size === "lg" ? "max-w-3xl" : "max-w-xl";
 
@@ -41,10 +39,14 @@ export default function ModalShell(props: Props) {
     <Dialog
       open={isOpen}
       onClose={onClose}
-      className="fixed inset-0 z-[300] flex items-center justify-center"
+      // ✅ allows scrolling on very small screens (esp. iOS)
+      className="fixed inset-0 z-[300] flex items-start justify-center overflow-y-auto"
     >
       {/* Backdrop */}
-      <div className="fixed inset-0 z-[300] bg-black/70 backdrop-blur-sm" aria-hidden="true" />
+      <div
+        className="fixed inset-0 z-[300] bg-black/70 backdrop-blur-sm"
+        aria-hidden="true"
+      />
 
       {/* Panel */}
       <div className="relative z-[310] mx-4 my-6 w-full">
@@ -64,30 +66,33 @@ export default function ModalShell(props: Props) {
             </header>
           )}
 
-          {/* SCROLLABLE BODY */}
+          {/* BODY (scrollable) */}
           <div
             className={
               bodyClassName ??
-              // sensible default: 85vh cap, vertical scroll, iOS momentum, stable scrollbar gutter
-              "max-h-[85vh] overflow-y-auto overscroll-contain pr-1"
+              "max-h-[85vh] min-h-0 overflow-y-auto overscroll-contain pr-1"
             }
             style={{
-              WebkitOverflowScrolling: "touch",
+              WebkitOverflowScrolling: "touch", // ✅ iOS momentum scroll
               scrollbarGutter: "stable both-edges",
+              willChange: "transform",
+              transform: "translateZ(0)", // ✅ compositing layer to fix iOS freeze
             }}
           >
-            {/* Neutralize any h-screen in children so they don't kill scroll */}
+            {/* Prevent child h-screen layouts from blocking scroll */}
             <style
               dangerouslySetInnerHTML={{
                 __html: `
                   .profix-modal :is(.h-screen, [class*="h-screen"]) { height: auto !important; }
                   .profix-modal :is(.min-h-screen, [class*="min-h-screen"]) { min-height: 0 !important; }
+                  .profix-modal :is(.overflow-hidden, [class*="overflow-hidden"]) { overflow: visible !important; }
                 `,
               }}
             />
             {children}
           </div>
 
+          {/* FOOTER */}
           <footer className="mt-6 flex items-center justify-between gap-2">
             <div>{footerLeft}</div>
             <div className="flex items-center gap-2">
