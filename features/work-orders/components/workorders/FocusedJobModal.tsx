@@ -1,7 +1,6 @@
-// features/work-orders/components/workorders/FocusedJobModal.tsx
 "use client";
 
-import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { Dialog } from "@headlessui/react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -11,12 +10,17 @@ import dynamic from "next/dynamic";
 
 // existing modals
 import CauseCorrectionModal from "@work-orders/components/workorders/CauseCorrectionModal";
+// ⬇️ new request modal (replaces Drawer)
 import PartsRequestModal from "@/features/work-orders/components/workorders/PartsRequestModal";
+
+// extras (kept)
 import HoldModal from "@/features/work-orders/components/workorders/HoldModal";
 import StatusPickerModal from "@/features/work-orders/components/workorders/extras/StatusPickerModal";
 import TimeAdjustModal from "@/features/work-orders/components/workorders/extras/TimeAdjustModal";
 import PhotoCaptureModal from "@/features/work-orders/components/workorders/extras/PhotoCaptureModal";
 import AddJobModal from "@work-orders/components/workorders/AddJobModal";
+
+// removed: AssignTechModal, CostEstimateModal, CustomerContactModal
 
 // inspection viewer (client-only)
 const InspectionModal = dynamic(
@@ -35,6 +39,8 @@ import SuggestedQuickAdd from "@work-orders/components/SuggestedQuickAdd";
 // Punch
 import JobPunchButton from "@/features/work-orders/components/JobPunchButton";
 
+// removed: UsePartButton
+
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -49,6 +55,7 @@ const statusTextColor: Record<string, string> = {
   paused: "text-amber-300",
   assigned: "text-sky-300",
   unassigned: "text-neutral-200",
+  // real DB statuses
   awaiting_approval: "text-blue-300",
   declined: "text-red-300",
 };
@@ -98,46 +105,6 @@ type PickerValue =
   | "approval:approved"
   | "approval:declined";
 
-/* ──────────────────────────────────────────────────────────────────────────
-   Scroll jailbreak: keep our scroll container alive even if body gets locked
-   ────────────────────────────────────────────────────────────────────────── */
-function useScrollJailbreaker(active: boolean, scrollerRef: React.RefObject<HTMLElement>) {
-  useEffect(() => {
-    if (!active) return;
-
-    const restore = () => {
-      const html = document.documentElement;
-      const body = document.body;
-
-      // If something (Headless UI / nested dialog) locked the page again, undo it
-      if (getComputedStyle(html).overflow === "hidden") html.style.overflow = "auto";
-      if (getComputedStyle(body).overflow === "hidden") body.style.overflow = "auto";
-
-      // Ensure our own panel remains scrollable
-      const el = scrollerRef.current as HTMLElement | null;
-      if (el) {
-        el.style.overflowY = "auto";
-        el.style.maxHeight = el.style.maxHeight || "75vh";
-        (el.style as any).webkitOverflowScrolling = "touch";
-      }
-    };
-
-    restore();
-    const t1 = setTimeout(restore, 300);
-    const t2 = setTimeout(restore, 1500);
-
-    const mo = new MutationObserver(restore);
-    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["style", "class"] });
-    mo.observe(document.body, { attributes: true, attributeFilter: ["style", "class"] });
-
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      mo.disconnect();
-    };
-  }, [active, scrollerRef]);
-}
-
 export default function FocusedJobModal(props: {
   isOpen: boolean;
   onClose: () => void;
@@ -176,16 +143,14 @@ export default function FocusedJobModal(props: {
   const [allocs, setAllocs] = useState<AllocationRow[]>([]);
   const [allocsLoading, setAllocsLoading] = useState(false);
 
-  // SCROLLER REF + GUARD
-  const scrollRef = useRef<HTMLDivElement>(null);
-  useScrollJailbreaker(isOpen, scrollRef);
-
+  // ---------- helpers ----------
   const showErr = (prefix: string, err?: { message?: string } | null) => {
     toast.error(`${prefix}: ${err?.message ?? "Something went wrong."}`);
+    // eslint-disable-next-line no-console
     console.error(prefix, err);
   };
 
-  /* ───────────────────────── load initial ───────────────────────── */
+  // ---------- load initial ----------
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
     (async () => {
@@ -238,7 +203,7 @@ export default function FocusedJobModal(props: {
     })();
   }, [isOpen, workOrderLineId, supabase]);
 
-  /* ───────────────────── realtime sync for this line ───────────────────── */
+  // ---------- realtime sync for this line ----------
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
     const ch = supabase
@@ -264,13 +229,14 @@ export default function FocusedJobModal(props: {
     };
   }, [isOpen, workOrderLineId, supabase]);
 
+  // also listen for local UI refresh events from child buttons
   useEffect(() => {
     const handler = () => void refresh();
     window.addEventListener("wol:refresh", handler);
     return () => window.removeEventListener("wol:refresh", handler);
   }, []);
 
-  /* ───────────────────────── allocations ───────────────────────── */
+  // ---------- allocations ----------
   const loadAllocations = useCallback(async () => {
     if (!workOrderLineId) return;
     setAllocsLoading(true);
@@ -283,12 +249,17 @@ export default function FocusedJobModal(props: {
       if (error) throw error;
       setAllocs((data as AllocationRow[]) ?? []);
     } catch (e) {
-      console.warn("[FocusedJob] load allocations failed", (e as { message?: string })?.message);
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[FocusedJob] load allocations failed",
+        (e as { message?: string })?.message
+      );
     } finally {
       setAllocsLoading(false);
     }
   }, [supabase, workOrderLineId]);
 
+  // ---------- refresh ----------
   const refresh = useCallback(async () => {
     const { data: l } = await supabase
       .from("work_order_lines")
@@ -301,13 +272,14 @@ export default function FocusedJobModal(props: {
     await loadAllocations();
   }, [supabase, workOrderLineId, onChanged, loadAllocations]);
 
-  /* ───────────────────────── parts request events ───────────────────────── */
+  // ---------- parts request modal events (close & submitted) ----------
   useEffect(() => {
     const handleClose = () => setOpenParts(false);
     const handleSubmitted = async () => {
       setOpenParts(false);
-      await refresh();
+      await refresh(); // reload any updates after a request is created
     };
+
     window.addEventListener("parts-request:close", handleClose);
     window.addEventListener("parts-request:submitted", handleSubmitted);
     return () => {
@@ -316,8 +288,7 @@ export default function FocusedJobModal(props: {
     };
   }, [refresh]);
 
-  /* ───────────────────────── actions (unchanged) ───────────────────────── */
-
+  // ---------- actions ----------
   const applyHold = async (reason: string, notes?: string) => {
     if (busy) return;
     setBusy(true);
@@ -358,6 +329,7 @@ export default function FocusedJobModal(props: {
   };
 
   const changeStatus = async (next: PickerValue) => {
+    // approval:* -> update approval_state
     if (next.startsWith("approval:")) {
       const val = next.split(":")[1] as ApprovalState;
       if (!line?.id) return;
@@ -370,6 +342,8 @@ export default function FocusedJobModal(props: {
       await refresh();
       return;
     }
+
+    // status:* -> update status
     const workflow = next.split(":")[1] as WorkflowStatus;
     const { error } = await supabase
       .from("work_order_lines")
@@ -386,7 +360,10 @@ export default function FocusedJobModal(props: {
     try {
       const { error } = await supabase
         .from("work_order_lines")
-        .update({ punched_in_at: inAt, punched_out_at: outAt } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+        .update({
+          punched_in_at: inAt,
+          punched_out_at: outAt,
+        } as DB["public"]["Tables"]["work_order_lines"]["Update"])
         .eq("id", workOrderLineId)
         .select("id, punched_in_at, punched_out_at")
         .single();
@@ -403,7 +380,10 @@ export default function FocusedJobModal(props: {
     const path = `wo/${workOrder.id}/lines/${workOrderLineId}/${uuidv4()}_${file.name}`;
     const { error } = await supabase.storage
       .from("job-photos")
-      .upload(path, file, { contentType: file.type || "image/jpeg", upsert: true });
+      .upload(path, file, {
+        contentType: file.type || "image/jpeg",
+        upsert: true,
+      });
     if (error) return showErr("Photo upload failed", error);
     toast.success("Photo attached");
   };
@@ -412,7 +392,9 @@ export default function FocusedJobModal(props: {
     setSavingNotes(true);
     const { error } = await supabase
       .from("work_order_lines")
-      .update({ notes: techNotes } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+      .update({
+        notes: techNotes,
+      } as DB["public"]["Tables"]["work_order_lines"]["Update"])
       .eq("id", workOrderLineId);
     setSavingNotes(false);
     if (error) return showErr("Update notes failed", error);
@@ -420,62 +402,82 @@ export default function FocusedJobModal(props: {
     await refresh();
   };
 
-  /* ───────────────────────── open inspection (unchanged) ───────────────────────── */
-  const openInspection = async (): Promise<void> => {
-    if (!line) return;
+  // ---------- inspection (open inside modal) ----------
+  // ---------- inspection (open inside modal) ----------
+const openInspection = async (): Promise<void> => {
+  if (!line) return;
 
-    const desc = String(line.description ?? "").toLowerCase();
-    const isAir = /\bair\b|cvip|push\s*rod|air\s*brake/.test(desc);
-    const isCustom = /\bcustom\b|\bbuilder\b|\bprompt\b|\bad[-\s]?hoc\b/.test(desc);
+  // Decide template (now includes custom builder)
+  const desc = String(line.description ?? "").toLowerCase();
 
-    let templateSlug = isAir ? "maintenance50-air" : "maintenance50";
-    if (isCustom) templateSlug = "custom:pending";
+  const isAir = /\bair\b|cvip|push\s*rod|air\s*brake/.test(desc);
+  const isCustom = /\bcustom\b|\bbuilder\b|\bprompt\b|\bad[-\s]?hoc\b/.test(desc);
 
-    try {
-      const res = await fetch("/api/inspections/session/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workOrderId: workOrder?.id ?? null,
-          workOrderLineId: line.id,
-          vehicleId: vehicle?.id ?? null,
-          customerId: customer?.id ?? null,
-          template: templateSlug,
-        }),
-      });
+  // Temporary slug; finalized after we get a sessionId
+  let templateSlug = isAir ? "maintenance50-air" : "maintenance50";
+  if (isCustom) {
+    // We'll turn this into "custom:<sessionId>" once we have it
+    templateSlug = "custom:pending";
+  }
 
-      const j = (await res.json().catch(() => null)) as { sessionId?: string; error?: string } | null;
-      if (!res.ok || !j?.sessionId) throw new Error(j?.error || "Failed to create inspection session");
+  try {
+    const res = await fetch("/api/inspections/session/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        workOrderId: workOrder?.id ?? null,
+        workOrderLineId: line.id,
+        vehicleId: vehicle?.id ?? null,
+        customerId: customer?.id ?? null,
+        template: templateSlug, // server can ignore the pending slug
+      }),
+    });
 
-      if (isCustom) templateSlug = `custom:${j.sessionId}`;
+    const j = (await res.json().catch(() => null)) as
+      | { sessionId?: string; error?: string }
+      | null;
 
-      const sp = new URLSearchParams();
-      if (workOrder?.id) sp.set("workOrderId", workOrder.id);
-      sp.set("workOrderLineId", line.id);
-      sp.set("inspectionId", j.sessionId);
-      sp.set("template", templateSlug);
-      sp.set("embed", "1");
-      if (isCustom && line.description) sp.set("seed", String(line.description));
-
-      setInspectionSrc(`/inspection/${templateSlug}?${sp.toString()}`);
-      setInspectionOpen(true);
-      toast.success("Inspection opened");
-    } catch (e) {
-      showErr("Unable to open inspection", e as { message?: string });
+    if (!res.ok || !j?.sessionId) {
+      throw new Error(j?.error || "Failed to create inspection session");
     }
-  };
 
+    // Finalize template for custom builder: "custom:<sessionId>"
+    if (isCustom) {
+      templateSlug = `custom:${j.sessionId}`;
+    }
+
+    const sp = new URLSearchParams();
+    if (workOrder?.id) sp.set("workOrderId", workOrder.id);
+    sp.set("workOrderLineId", line.id);
+    sp.set("inspectionId", j.sessionId);
+    sp.set("template", templateSlug);
+    sp.set("embed", "1"); // compact UI (no global CSS)
+    // Optional: prefill the custom builder with the job description as a seed prompt
+    if (isCustom && line.description) sp.set("seed", String(line.description));
+
+    // Use /inspection/<template> so InspectionModal resolves correctly.
+    // For custom this becomes /inspection/custom:<sessionId>
+    setInspectionSrc(`/inspection/${templateSlug}?${sp.toString()}`);
+    setInspectionOpen(true);
+    toast.success("Inspection opened");
+  } catch (e) {
+    showErr("Unable to open inspection", e as { message?: string });
+  }
+};
+
+  // ---------- derived UI ----------
   const startAt = line?.punched_in_at ?? null;
   const finishAt = line?.punched_out_at ?? null;
 
   const titleText =
-    `${line?.line_no ? `#${line.line_no} ` : ""}` +
+    `${line?.line_no ? `#${line.line_no} ` : ""}` + // show line number if present
     (line?.description || line?.complaint || "Focused Job") +
     (line?.job_type ? ` — ${String(line.job_type).replaceAll("_", " ")}` : "");
 
   const startedText = startAt ? format(new Date(startAt), "PPpp") : "—";
   const finishedText = finishAt ? format(new Date(finishAt), "PPpp") : "—";
 
+  // ---------- render ----------
   return (
     <>
       {isOpen && (
@@ -494,29 +496,17 @@ export default function FocusedJobModal(props: {
         className="fixed inset-0 z-[100] flex items-center justify-center"
       >
         {/* Dark overlay */}
-        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm" aria-hidden="true" />
+        <div
+          className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm"
+          aria-hidden="true"
+        />
 
         {/* Panel */}
         <div
-          className="focused-modal relative z-[110] mx-4 my-6 w-full max-w-5xl"
+          className="relative z-[110] mx-4 my-6 w-full max-w-5xl"
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Neutralize layout killers inside this modal only */}
-          <style
-            dangerouslySetInnerHTML={{
-              __html: `
-                .focused-modal :is(.h-screen, [class*="h-screen"]) { height:auto !important; }
-                .focused-modal :is(.min-h-screen, [class*="min-h-screen"]) { min-height:0 !important; }
-                .focused-modal :is(.overflow-hidden, [class*="overflow-hidden"]) { overflow:visible !important; }
-              `,
-            }}
-          />
-
-          <div
-            ref={scrollRef}
-            className="max-h-[75vh] overflow-y-auto overscroll-contain rounded-lg border border-orange-400 bg-neutral-950 p-5 text-white shadow-xl"
-            style={{ WebkitOverflowScrolling: "touch" as any, scrollbarGutter: "stable both-edges" }}
-          >
+          <div className="max-h-[75vh] overflow-y-auto rounded-lg border border-orange-400 bg-neutral-950 p-5 text-white shadow-xl">
             {/* Title row */}
             <div className="mb-2 flex items-start justify-between gap-3">
               <div className="text-lg font-header font-semibold tracking-wide">
@@ -526,6 +516,7 @@ export default function FocusedJobModal(props: {
                     WO #{workOrder.custom_id || workOrder.id?.slice(0, 8)}
                   </span>
                 ) : null}
+                {/* Small status chip for awaiting_approval / declined */}
                 {line?.status === "awaiting_approval" && (
                   <span className="ml-2 rounded border border-blue-500 px-2 py-0.5 text-xs text-blue-300">
                     Awaiting approval
@@ -562,7 +553,7 @@ export default function FocusedJobModal(props: {
               </div>
             </div>
 
-            {/* Body (unchanged from your version) */}
+            {/* Body */}
             {busy && !line ? (
               <div className="grid gap-3">
                 <div className="h-6 w-40 animate-pulse rounded bg-neutral-800/60" />
@@ -601,24 +592,30 @@ export default function FocusedJobModal(props: {
                       <div className="text-neutral-400">Vehicle</div>
                       <div className="truncate">
                         {vehicle
-                          ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`
+                          ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${
+                              vehicle.model ?? ""
+                            }`
                               .trim()
                               .replace(/\s+/g, " ") || "—"
                           : "—"}
                       </div>
                       <div className="text-xs text-neutral-500">
-                        VIN: {vehicle?.vin ?? "—"} • Plate: {vehicle?.license_plate ?? "—"}
+                        VIN: {vehicle?.vin ?? "—"} • Plate:{" "}
+                        {vehicle?.license_plate ?? "—"}
                       </div>
                     </div>
                     <div>
                       <div className="text-neutral-400">Customer</div>
                       <div className="truncate">
                         {customer
-                          ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") || "—"
+                          ? [customer.first_name ?? "", customer.last_name ?? ""]
+                              .filter(Boolean)
+                              .join(" ") || "—"
                           : "—"}
                       </div>
                       <div className="text-xs text-neutral-500">
-                        {customer?.phone ?? "—"} {customer?.email ? `• ${customer.email}` : ""}
+                        {customer?.phone ?? "—"}{" "}
+                        {customer?.email ? `• ${customer.email}` : ""}
                       </div>
                     </div>
                   </div>
@@ -634,6 +631,7 @@ export default function FocusedJobModal(props: {
                       status={line.status as WorkflowStatus}
                       onFinishRequested={() => setOpenComplete(true)}
                       onUpdated={refresh}
+                      // not punchable until approved AND not awaiting_approval/declined
                       disabled={
                         busy ||
                         line.status === "awaiting_approval" ||
@@ -659,68 +657,127 @@ export default function FocusedJobModal(props: {
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {mode === "tech" ? (
                     <>
-                      <button type="button" className={outlinePurple} onClick={() => setOpenComplete(true)} disabled={busy}>
+                      <button
+                        type="button"
+                        className={outlinePurple}
+                        onClick={() => setOpenComplete(true)}
+                        disabled={busy}
+                      >
                         Complete (Cause/Correction)
                       </button>
 
-                      <button type="button" className={outlineDanger} onClick={() => setOpenParts(true)} disabled={busy}>
+                      <button
+                        type="button"
+                        className={outlineDanger}
+                        onClick={() => setOpenParts(true)}
+                        disabled={busy}
+                      >
                         Request Parts
                       </button>
 
-                      <button type="button" className={outlineWarn} onClick={() => setOpenHold(true)} disabled={busy}>
+                      <button
+                        type="button"
+                        className={outlineWarn}
+                        onClick={() => setOpenHold(true)}
+                        disabled={busy}
+                      >
                         {line.status === "on_hold" ? "On Hold" : "Hold"}
                       </button>
 
-                      <button type="button" className={outlineInfo} onClick={() => setOpenStatus(true)} disabled={busy}>
+                      <button
+                        type="button"
+                        className={outlineInfo}
+                        onClick={() => setOpenStatus(true)}
+                        disabled={busy}
+                      >
                         Change Status
                       </button>
 
-                      <button type="button" className={outlineNeutral} onClick={() => setOpenPhoto(true)} disabled={busy}>
+                      <button
+                        type="button"
+                        className={outlineNeutral}
+                        onClick={() => setOpenPhoto(true)}
+                        disabled={busy}
+                      >
                         Add Photo
                       </button>
 
                       <button
                         type="button"
-                        className={`${outlineInfo} ${line?.job_type === "inspection" ? "" : "opacity-50 cursor-not-allowed"}`}
-                        onClick={line?.job_type === "inspection" ? openInspection : undefined}
-                        title={line?.job_type === "inspection" ? "Open inspection" : "Not an inspection line"}
+                        className={`${outlineInfo} ${
+                          line?.job_type === "inspection"
+                            ? ""
+                            : "opacity-50 cursor-not-allowed"
+                        }`}
+                        onClick={
+                          line?.job_type === "inspection"
+                            ? openInspection
+                            : undefined
+                        }
+                        title={
+                          line?.job_type === "inspection"
+                            ? "Open inspection"
+                            : "Not an inspection line"
+                        }
                         disabled={busy || line?.job_type !== "inspection"}
                       >
                         Open Inspection
                       </button>
 
-                      <button type="button" className={outlineInfo} onClick={() => setOpenChat(true)}>
+                      <button
+                        type="button"
+                        className={outlineInfo}
+                        onClick={() => setOpenChat(true)}
+                      >
                         Chat
                       </button>
                     </>
                   ) : (
                     <>
-                      <button type="button" className={outlineInfo} onClick={() => setOpenStatus(true)}>
+                      <button
+                        type="button"
+                        className={outlineInfo}
+                        onClick={() => setOpenStatus(true)}
+                      >
                         Change Status
                       </button>
                       <button
                         type="button"
-                        className={`${outlineInfo} ${line?.job_type === "inspection" ? "" : "opacity-50 cursor-not-allowed"}`}
-                        onClick={line?.job_type === "inspection" ? openInspection : undefined}
+                        className={`${outlineInfo} ${
+                          line?.job_type === "inspection"
+                            ? ""
+                            : "opacity-50 cursor-not-allowed"
+                        }`}
+                        onClick={
+                          line?.job_type === "inspection"
+                            ? openInspection
+                            : undefined
+                        }
                         disabled={line?.job_type !== "inspection"}
                       >
                         Open Inspection
                       </button>
-                      <button type="button" className={outlineInfo} onClick={() => setOpenChat(true)}>
+                      <button
+                        type="button"
+                        className={outlineInfo}
+                        onClick={() => setOpenChat(true)}
+                      >
                         Chat
                       </button>
                     </>
                   )}
                 </div>
 
-                {/* Parts used */}
+                {/* Parts used (itemized list; no Use Part button) */}
                 <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
                   <div className="mb-2 text-sm font-header">Parts used</div>
 
                   {allocsLoading ? (
                     <div className="text-sm text-neutral-400">Loading…</div>
                   ) : allocs.length === 0 ? (
-                    <div className="text-sm text-neutral-400">No parts used yet.</div>
+                    <div className="text-sm text-neutral-400">
+                      No parts used yet.
+                    </div>
                   ) : (
                     <div className="overflow-hidden rounded border border-neutral-800">
                       <div className="grid grid-cols-12 bg-neutral-900 px-3 py-2 text-xs text-neutral-400">
@@ -730,12 +787,21 @@ export default function FocusedJobModal(props: {
                       </div>
                       <ul className="max-h-56 overflow-auto divide-y divide-neutral-800">
                         {allocs.map((a) => (
-                          <li key={a.id} className="grid grid-cols-12 items-center px-3 py-2 text-sm">
-                            <div className="col-span-7 truncate">{a.parts?.name ?? "Part"}</div>
-                            <div className="col-span-3 truncate text-neutral-500">
-                              {a.location_id ? `loc ${String(a.location_id).slice(0, 6)}…` : "—"}
+                          <li
+                            key={a.id}
+                            className="grid grid-cols-12 items-center px-3 py-2 text-sm"
+                          >
+                            <div className="col-span-7 truncate">
+                              {a.parts?.name ?? "Part"}
                             </div>
-                            <div className="col-span-2 text-right font-semibold">{a.qty}</div>
+                            <div className="col-span-3 truncate text-neutral-500">
+                              {a.location_id
+                                ? `loc ${String(a.location_id).slice(0, 6)}…`
+                                : "—"}
+                            </div>
+                            <div className="col-span-2 text-right font-semibold">
+                              {a.qty}
+                            </div>
                           </li>
                         ))}
                       </ul>
@@ -745,7 +811,9 @@ export default function FocusedJobModal(props: {
 
                 {/* Tech notes */}
                 <div>
-                  <label className="mb-1 block text-sm font-header">Tech Notes</label>
+                  <label className="mb-1 block text-sm font-header">
+                    Tech Notes
+                  </label>
                   <textarea
                     rows={4}
                     value={techNotes}
@@ -771,15 +839,21 @@ export default function FocusedJobModal(props: {
                       }}
                     />
                   ) : (
-                    <div className="text-sm text-neutral-400">Vehicle/work order details required.</div>
+                    <div className="text-sm text-neutral-400">
+                      Vehicle/work order details required.
+                    </div>
                   )}
                 </div>
 
                 <div className="text-xs text-neutral-500">
                   Job ID: {line.id}
-                  {typeof line.labor_time === "number" ? ` • Labor: ${line.labor_time.toFixed(1)}h` : ""}
+                  {typeof line.labor_time === "number"
+                    ? ` • Labor: ${line.labor_time.toFixed(1)}h`
+                    : ""}
                   {line.hold_reason ? ` • Hold: ${line.hold_reason}` : ""}
-                  {line.approval_state ? ` • Approval: ${line.approval_state}` : ""}
+                  {line.approval_state
+                    ? ` • Approval: ${line.approval_state}`
+                    : ""}
                 </div>
               </div>
             )}
@@ -790,7 +864,7 @@ export default function FocusedJobModal(props: {
       {/* Float the voice mic ABOVE the modal overlay */}
       {isOpen && <VoiceButton />}
 
-      {/* Sub-modals (unchanged) */}
+      {/* Sub-modals */}
       {openComplete && line && (
         <CauseCorrectionModal
           isOpen={openComplete}
@@ -814,12 +888,14 @@ export default function FocusedJobModal(props: {
         />
       )}
 
+      {/* Parts request modal */}
       {openParts && workOrder?.id && line && (
         <PartsRequestModal
           isOpen={openParts}
           workOrderId={workOrder.id}
           jobId={line.id}
           requestNote={line.description ?? ""}
+          // default event names: parts-request:close / parts-request:submitted
         />
       )}
 
@@ -834,11 +910,17 @@ export default function FocusedJobModal(props: {
         />
       )}
 
+      {/* Removed AssignTechModal */}
+
       {openStatus && line && (
         <StatusPickerModal
           isOpen={openStatus}
           onClose={() => setOpenStatus(false)}
-          current={(line?.status || "awaiting") as Parameters<typeof StatusPickerModal>[0]["current"]}
+          current={
+            (line?.status || "awaiting") as Parameters<
+              typeof StatusPickerModal
+            >[0]["current"]
+          }
           onChange={changeStatus}
         />
       )}
@@ -854,8 +936,14 @@ export default function FocusedJobModal(props: {
       )}
 
       {openPhoto && (
-        <PhotoCaptureModal isOpen={openPhoto} onClose={() => setOpenPhoto(false)} onCapture={uploadPhoto} />
+        <PhotoCaptureModal
+          isOpen={openPhoto}
+          onClose={() => setOpenPhoto(false)}
+          onCapture={uploadPhoto}
+        />
       )}
+
+      {/* Removed CostEstimateModal & CustomerContactModal */}
 
       {openChat && (
         <NewChatModal
@@ -883,7 +971,7 @@ export default function FocusedJobModal(props: {
         />
       )}
 
-      {/* Nested inspection modal (uses its own guard) */}
+      {/* Inspection viewer (modal within modal stack) */}
       {inspectionOpen && inspectionSrc && (
         <InspectionModal
           open={inspectionOpen}
