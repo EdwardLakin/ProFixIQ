@@ -1,137 +1,136 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Input } from "@shared/components/ui/input";
-import { Button } from "@shared/components/ui/Button";
+import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import { useRouter } from "next/navigation";
-
 import type { Database } from "@shared/types/types/supabase";
 
-type InspectionTemplate =
-  Database["public"]["Tables"]["inspection_templates"]["Row"];
+type DB = Database;
+type Template = DB["public"]["Tables"]["inspection_templates"]["Row"];
+
+type Scope = "mine" | "shared" | "all";
 
 export default function InspectionTemplatesPage() {
-  const [templates, setTemplates] = useState<InspectionTemplate[]>([]);
-  const [filtered, setFiltered] = useState<InspectionTemplate[]>([]);
+  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const [scope, setScope] = useState<Scope>("mine");
   const [search, setSearch] = useState("");
+  const [mine, setMine] = useState<Template[]>([]);
+  const [shared, setShared] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
-  const supabase = createClientComponentClient<Database>();
-  const router = useRouter();
 
   useEffect(() => {
-    const loadTemplates = async () => {
-      const { data, error } = await supabase
+    (async () => {
+      setLoading(true);
+
+      // who am I
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      // parallel fetch
+      const minePromise = user
+        ? supabase
+            .from("inspection_templates")
+            .select("*")
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: false })
+        : Promise.resolve({ data: [] as Template[], error: null });
+
+      const sharedPromise = supabase
         .from("inspection_templates")
         .select("*")
         .eq("is_public", true)
         .order("created_at", { ascending: false });
 
-      if (error) {
-        console.error("Error loading templates:", error.message);
-      } else {
-        setTemplates(data ?? []);
-        setFiltered(data ?? []);
-      }
-      setLoading(false);
-    };
+      const [{ data: mineRaw }, { data: sharedRaw }] = await Promise.all([
+        minePromise,
+        sharedPromise,
+      ]);
 
-    loadTemplates();
+      // Guard against nulls coming from Supabase client
+      setMine(Array.isArray(mineRaw) ? mineRaw : []);
+      setShared(Array.isArray(sharedRaw) ? sharedRaw : []);
+
+      setLoading(false);
+    })();
   }, [supabase]);
 
-  useEffect(() => {
+  const rows = useMemo<Template[]>(() => {
+    const pool =
+      scope === "mine" ? mine : scope === "shared" ? shared : [...mine, ...shared];
+
+    if (!search.trim()) return pool;
+
     const q = search.toLowerCase();
-    if (!q) {
-      setFiltered(templates);
-    } else {
-      setFiltered(
-        templates.filter(
-          (t) =>
-            (t.template_name || "").toLowerCase().includes(q) ||
-            (t.description || "").toLowerCase().includes(q)
-        )
-      );
-    }
-  }, [search, templates]);
-
-  const handleLoad = (id: string) => {
-    router.push(`/dashboard/inspections/custom-inspection?id=${id}`);
-  };
-
-  const handleEdit = (id: string) => {
-    router.push(`/dashboard/inspections/custom-inspection?id=${id}&edit=true`);
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm("Delete this template?")) return;
-    const { error } = await supabase
-      .from("inspection_templates")
-      .delete()
-      .eq("id", id);
-
-    if (error) console.error(error.message);
-    else {
-      setTemplates((prev) => prev.filter((t) => t.id !== id));
-      setFiltered((prev) => prev.filter((t) => t.id !== id));
-    }
-  };
+    return pool.filter((t) => {
+      const name = (t.template_name ?? "").toLowerCase();
+      const desc = (t.description ?? "").toLowerCase();
+      return name.includes(q) || desc.includes(q);
+    });
+  }, [scope, mine, shared, search]);
 
   return (
-    <div className="p-6">
-      <h1 className="text-3xl font-bold text-white mb-4">
-        Shared Inspection Templates
-      </h1>
+    <div className="mx-auto max-w-5xl p-4 text-white">
+      <h1 className="mb-4 text-2xl font-bold">Inspection Templates</h1>
 
-      <Input
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="Search by title or description"
-        className="mb-4 text-black"
-      />
-
-      {loading ? (
-        <p className="text-white">Loading templates...</p>
-      ) : filtered.length === 0 ? (
-        <p className="text-white">No templates found.</p>
-      ) : (
-        <div className="space-y-4">
-          {filtered.map((t) => (
-            <div
-              key={t.id}
-              className="border border-gray-700 p-4 rounded-md bg-zinc-800"
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="flex overflow-hidden rounded border border-zinc-700">
+          {(["mine", "shared", "all"] as Scope[]).map((s) => (
+            <button
+              key={s}
+              onClick={() => setScope(s)}
+              className={
+                "px-3 py-1 text-sm " +
+                (scope === s ? "bg-orange-600" : "bg-zinc-800 hover:bg-zinc-700")
+              }
             >
-              <div className="flex justify-between items-center mb-2">
-                <h2 className="text-xl font-semibold text-orange-400">
-                  {t.template_name}
-                </h2>
-                <div className="flex gap-2">
-                  <Button onClick={() => handleLoad(t.id)}>Load</Button>
-                  <Button
-                    variant="secondary"
-                    onClick={() => handleEdit(t.id)}
-                  >
-                    Edit
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    onClick={() => handleDelete(t.id)}
-                  >
-                    Delete
-                  </Button>
-                </div>
-              </div>
-              {t.description && (
-                <p className="text-sm text-gray-300 mb-1">{t.description}</p>
-              )}
-              <p className="text-xs text-gray-500">
-                Created:{" "}
-                {t.created_at
-                  ? new Date(t.created_at).toLocaleString()
-                  : "N/A"}
-              </p>
-            </div>
+              {s.toUpperCase()}
+            </button>
           ))}
         </div>
+
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search templates…"
+          className="min-w-[220px] flex-1 rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm placeholder:text-zinc-500"
+        />
+      </div>
+
+      {loading ? (
+        <div className="rounded border border-zinc-800 bg-zinc-900 p-4">Loading…</div>
+      ) : rows.length === 0 ? (
+        <div className="rounded border border-zinc-800 bg-zinc-900 p-6 text-center text-zinc-400">
+          No templates found.
+        </div>
+      ) : (
+        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {rows.map((t) => (
+            <li
+              key={t.id}
+              className="rounded border border-zinc-800 bg-zinc-900 p-4"
+            >
+              <div className="mb-1 text-lg font-semibold text-orange-400">
+                {t.template_name ?? "Untitled Template"}
+              </div>
+              <div className="mb-3 line-clamp-3 text-sm text-zinc-300">
+                {t.description || "—"}
+              </div>
+              <div className="flex items-center justify-between text-xs text-zinc-500">
+                <span>
+                  {t.is_public ? "Shared" : "Private"} ·{" "}
+                  {new Date(t.created_at ?? Date.now()).toLocaleDateString()}
+                </span>
+                {/* Example: open a run page preloaded with this template */}
+                <a
+                  href={`/inspections/custom-inspection?templateId=${t.id}`}
+                  className="rounded border border-zinc-700 px-2 py-1 text-zinc-200 hover:bg-zinc-800"
+                >
+                  Use Template
+                </a>
+              </div>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

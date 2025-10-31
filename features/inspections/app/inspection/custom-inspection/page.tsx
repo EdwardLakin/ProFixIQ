@@ -13,16 +13,22 @@ export default function CustomBuilderPage() {
   const router = useRouter();
   const sp = useSearchParams();
 
-  // Vehicle/customer (prefilled if present in URL)
+  // Prefills
   const [vehicleType, setVehicleType] = useState<VehicleType>("truck");
   const [title, setTitle] = useState(sp.get("template") || "Custom Inspection");
 
-  // selections[sectionTitle] = string[]
+  // Manual builder state
   const [selections, setSelections] = useState<Record<string, string[]>>({});
   const [services, setServices] = useState<string[]>([]);
   const [includeAxle, setIncludeAxle] = useState(true);
-  const [includeOil, setIncludeOil] = useState(true); // optional add-on
+  const [includeOil, setIncludeOil] = useState(true);
 
+  // AI builder state
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  /* ------------------------------- helpers ------------------------------- */
   const toggle = (section: string, item: string) =>
     setSelections((prev) => {
       const cur = new Set(prev[section] ?? []);
@@ -31,35 +37,66 @@ export default function CustomBuilderPage() {
     });
 
   const toggleService = (item: string) =>
-    setServices((prev) => (prev.includes(item) ? prev.filter((i) => i !== item) : [...prev, item]));
+    setServices((prev) =>
+      prev.includes(item) ? prev.filter((i) => i !== item) : [...prev, item]
+    );
 
-  function start() {
+  function goToRunWithSections(sections: unknown, tplTitle: string) {
+    // /inspection/custom-run reads these from sessionStorage
+    sessionStorage.setItem("customInspection:sections", JSON.stringify(sections));
+    sessionStorage.setItem("customInspection:title", tplTitle);
+    sessionStorage.setItem(
+      "customInspection:includeOil",
+      JSON.stringify(includeOil)
+    );
+
+    // Keep any existing URL params (e.g., customer/vehicle), and add vehicleType/template
+    const qs = new URLSearchParams(sp.toString());
+    qs.set("vehicleType", vehicleType);
+    qs.set("template", tplTitle);
+    router.push(`/inspection/custom-run?${qs.toString()}`);
+  }
+
+  /* ------------------------- Manual: Start Inspection ------------------------- */
+  function startManual() {
     const built = buildInspectionFromSelections({
       selections,
       axle: includeAxle ? { vehicleType } : null,
       extraServiceItems: services,
     });
-
-    // Stash the built sections in sessionStorage (used by /inspection/custom-run)
-    sessionStorage.setItem("customInspection:sections", JSON.stringify(built));
-    sessionStorage.setItem("customInspection:title", title);
-    sessionStorage.setItem("customInspection:includeOil", JSON.stringify(includeOil));
-
-    // Pass through any existing customer/vehicle params AND add vehicleType + template
-    const qs = new URLSearchParams(sp.toString());
-    qs.set("vehicleType", vehicleType);
-    qs.set("template", title);
-
-    // (Optional) If you ever want to pass raw selections too:
-    // qs.set("selections", btoa(JSON.stringify(selections)));
-
-    router.push(`/inspection/custom-run?${qs.toString()}`);
+    goToRunWithSections(built, title);
   }
 
+  /* --------------------------- AI: Build from prompt -------------------------- */
+  async function buildFromPrompt() {
+    if (!aiPrompt.trim()) return;
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const res = await fetch("/api/inspections/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: aiPrompt, vehicleType }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error || `Generate failed (${res.status})`);
+      }
+      const { sections } = (await res.json()) as { sections: unknown };
+      goToRunWithSections(sections, title || "AI Inspection");
+    } catch (e: any) {
+      setAiError(e?.message || "Failed to generate inspection.");
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
+  /* ---------------------------------- UI ---------------------------------- */
   return (
     <div className="p-4 text-white">
       <h1 className="mb-3 text-2xl font-bold">Build Custom Inspection</h1>
 
+      {/* Title + Vehicle type */}
       <div className="mb-4 grid gap-3 md:grid-cols-2">
         <label className="flex flex-col gap-1">
           <span className="text-sm text-neutral-300">Title</span>
@@ -85,7 +122,8 @@ export default function CustomBuilderPage() {
         </label>
       </div>
 
-      <div className="mb-4 flex gap-4">
+      {/* Toggles */}
+      <div className="mb-6 flex flex-wrap gap-4">
         <label className="flex items-center gap-2">
           <input
             type="checkbox"
@@ -104,7 +142,32 @@ export default function CustomBuilderPage() {
         </label>
       </div>
 
-      {/* Pick items from master list */}
+      {/* ------------------------------- AI builder ------------------------------- */}
+      <div className="mb-8 rounded border border-neutral-800 bg-neutral-900 p-3">
+        <div className="mb-2 font-semibold text-orange-400">Build with AI (optional)</div>
+        <p className="mb-2 text-sm text-neutral-300">
+          Describe what you want to inspect (vehicle system, depth, measurements, compliance, etc.).
+          We’ll generate sections & items you can run immediately.
+        </p>
+        <textarea
+          className="mb-3 min-h-[90px] w-full rounded bg-neutral-800 p-3"
+          placeholder="e.g. CVIP pre-trip for 5-axle tractor with emphasis on air brakes, tread depth, lighting, and documentation checks."
+          value={aiPrompt}
+          onChange={(e) => setAiPrompt(e.target.value)}
+        />
+        <div className="flex items-center gap-3">
+          <button
+            onClick={buildFromPrompt}
+            disabled={aiLoading || !aiPrompt.trim()}
+            className="rounded bg-indigo-600 px-4 py-2 font-semibold text-white hover:bg-indigo-500 disabled:opacity-60"
+          >
+            {aiLoading ? "Generating…" : "Build from AI Prompt"}
+          </button>
+          {aiError ? <span className="text-sm text-red-400">{aiError}</span> : null}
+        </div>
+      </div>
+
+      {/* ----------------------------- Manual pick list ----------------------------- */}
       <div className="mb-8 space-y-4">
         {masterInspectionList.map((sec) => (
           <div
@@ -150,12 +213,23 @@ export default function CustomBuilderPage() {
         </div>
       </div>
 
-      <button
-        onClick={start}
-        className="rounded bg-orange-600 px-4 py-2 font-semibold text-black hover:bg-orange-500"
-      >
-        Start Inspection
-      </button>
+      {/* Actions */}
+      <div className="flex flex-wrap gap-3">
+        <button
+          onClick={startManual}
+          className="rounded bg-orange-600 px-4 py-2 font-semibold text-black hover:bg-orange-500"
+        >
+          Start Inspection (Manual)
+        </button>
+        <button
+          onClick={buildFromPrompt}
+          disabled={aiLoading || !aiPrompt.trim()}
+          className="rounded bg-indigo-600 px-4 py-2 font-semibold text-white hover:bg-indigo-500 disabled:opacity-60"
+          title="Use AI prompt above"
+        >
+          {aiLoading ? "Generating…" : "Start with AI"}
+        </button>
+      </div>
     </div>
   );
 }
