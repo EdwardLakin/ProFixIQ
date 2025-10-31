@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import ModalShell from "@/features/shared/components/ModalShell";
+import { Dialog } from "@headlessui/react";
 import InspectionHost from "@/features/inspections/components/inspectionHost";
 
+/** Props */
 type Props = {
   open: boolean;
   src: string | null;
@@ -11,47 +12,30 @@ type Props = {
   onClose?: () => void;
 };
 
-// Helper: URLSearchParams → plain object
+/** URLSearchParams -> object */
 function paramsToObject(sp: URLSearchParams) {
   const out: Record<string, string> = {};
-  sp.forEach((v, k) => {
-    out[k] = v;
-  });
+  sp.forEach((v, k) => (out[k] = v));
   return out;
 }
 
-export default function InspectionModal({
-  open,
-  src,
-  title = "Inspection",
-  onClose,
-}: Props) {
+export default function InspectionModal({ open, src, title = "Inspection", onClose }: Props) {
   const [compact, setCompact] = useState(true);
 
   const derived = useMemo(() => {
-    if (!src)
-      return { template: null as string | null, params: {}, missingWOLine: false };
+    if (!src) return { template: null as string | null, params: {}, missingWOLine: false };
 
     try {
-      const base =
-        typeof window !== "undefined" ? window.location.origin : "http://localhost";
+      const base = typeof window !== "undefined" ? window.location.origin : "http://localhost";
       const url = new URL(src, base);
-
       const parts = url.pathname.split("/").filter(Boolean);
-      const idx = parts.findIndex(
-        (p) => p === "inspection" || p === "inspections"
-      );
+      const idx = parts.findIndex((p) => p === "inspection" || p === "inspections");
       const template = idx >= 0 ? parts[idx + 1] : parts[parts.length - 1];
       const params = paramsToObject(url.searchParams);
       const missingWOLine = !url.searchParams.get("workOrderLineId");
-
       return { template, params, missingWOLine };
     } catch {
-      return {
-        template: src.replace(/^\//, ""),
-        params: {},
-        missingWOLine: false,
-      };
+      return { template: src.replace(/^\//, ""), params: {}, missingWOLine: false };
     }
   }, [src]);
 
@@ -63,70 +47,98 @@ export default function InspectionModal({
   };
 
   return (
-    <ModalShell
-      isOpen={open}
+    <Dialog
+      open={open}
       onClose={close}
-      size="xl" // allows more room for wide screens
-      title={title}
-      footerLeft={
-        <div className="relative z-[2] flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setCompact((v) => !v)}
-            className="font-header rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs hover:bg-neutral-800"
-            title={compact ? "Maximize" : "Minimize"}
-          >
-            {compact ? "Maximize" : "Minimize"}
-          </button>
-          <button
-            type="button"
-            onClick={close}
-            className="font-header rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs hover:bg-neutral-800"
-            title="Close"
-          >
-            Close
-          </button>
-        </div>
-      }
-      submitText={undefined}
-      onSubmit={undefined}
+      // keep this ABOVE FocusedJobModal (z-[100]/[110])
+      className="fixed inset-0 z-[300] flex items-center justify-center"
     >
-      {!derived.template ? (
-        <div className="rounded border border-neutral-800 bg-neutral-900 p-4 text-center text-neutral-400">
-          No inspection selected.
+      {/* Backdrop */}
+      <div className="fixed inset-0 z-[300] bg-black/70 backdrop-blur-sm" aria-hidden="true" />
+
+      {/* Panel wrapper — SAME width as Focused Job modal */}
+      <div className="relative z-[310] mx-4 my-6 w-full max-w-5xl" onClick={(e) => e.stopPropagation()}>
+        {/* Title row (outside scroller, stays put) */}
+        <div className="mb-2 flex items-start justify-between gap-3">
+          <Dialog.Title className="text-lg font-header font-semibold tracking-wide text-white">
+            {title}
+          </Dialog.Title>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setCompact((v) => !v)}
+              className="rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs text-white hover:bg-neutral-800"
+              title={compact ? "Maximize" : "Minimize"}
+            >
+              {compact ? "Maximize" : "Minimize"}
+            </button>
+            <button
+              type="button"
+              onClick={close}
+              className="rounded border border-neutral-700 px-2 py-1 text-sm text-neutral-200 hover:bg-neutral-800"
+              title="Close"
+            >
+              ✕
+            </button>
+          </div>
         </div>
-      ) : (
-        <div className="mx-auto w-full max-w-5xl"> {/* widened from 3xl → 5xl */}
+
+        {/* Scroll container — SAME height/scroll as Focused Job modal */}
+        <div className="max-h-[75vh] overflow-y-auto rounded-lg border border-orange-400 bg-neutral-950 p-4 text-white shadow-xl">
+          {/* Optional warning if WO line is missing */}
           {derived.missingWOLine && (
-            <div className="mb-2 rounded border border-yellow-700 bg-yellow-900/30 px-3 py-2 text-xs text-yellow-200">
-              <strong>Heads up:</strong>{" "}
-              <code>workOrderLineId</code> is missing from the inspection URL.
-              Save/Finish actions that require it may be blocked.
+            <div className="mb-3 rounded border border-yellow-700 bg-yellow-900/30 px-3 py-2 text-xs text-yellow-200">
+              <strong>Heads up:</strong> <code>workOrderLineId</code> is missing; Save/Finish may be
+              blocked.
             </div>
           )}
 
-          <div
-            className={[
-              "flex min-h-0 flex-col rounded border border-neutral-800 bg-neutral-900",
-              compact ? "h-[56vh]" : "h-[70vh]",
-            ].join(" ")}
-          >
+          {!derived.template ? (
+            <div className="rounded border border-neutral-800 bg-neutral-900 p-4 text-center text-neutral-400">
+              No inspection selected.
+            </div>
+          ) : (
             <div
-              className="min-h-0 flex-1 overflow-y-auto overflow-x-visible px-3 py-2"
-              style={{
-                WebkitOverflowScrolling: "touch",
-                overscrollBehaviorY: "contain",
-              }}
+              className={[
+                "mx-auto w-full",
+                // give the screen a bit more breathing room on wide view
+                "max-w-5xl",
+                // internal height of the host is flexible; we keep the outer scroller
+              ].join(" ")}
             >
-              <InspectionHost
-                template={derived.template!}
-                embed
-                params={derived.params}
-              />
+              <InspectionHost template={derived.template} embed params={derived.params} />
+            </div>
+          )}
+
+          {/* Footer (inside scroller so it’s visible on small screens too) */}
+          <div className="mt-4 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => setCompact((v) => !v)}
+              className="rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs hover:bg-neutral-800"
+            >
+              {compact ? "Maximize" : "Minimize"}
+            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={close}
+                className="rounded border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm hover:bg-neutral-800"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={close}
+                className="rounded border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm hover:bg-neutral-800"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
-      )}
-    </ModalShell>
+      </div>
+    </Dialog>
   );
 }

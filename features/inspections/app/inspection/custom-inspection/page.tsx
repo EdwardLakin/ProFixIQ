@@ -1,4 +1,4 @@
-// features/inspections/app/inspection/custom/page.tsx
+// features/inspections/app/inspection/custom-inspection/page.tsx
 "use client";
 
 import { useState } from "react";

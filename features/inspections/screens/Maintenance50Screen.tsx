@@ -30,8 +30,6 @@ import SectionDisplay from "@inspections/lib/inspection/SectionDisplay";
 import { InspectionFormCtx } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import { SaveInspectionButton } from "@inspections/components/inspection/SaveInspectionButton";
 import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
-import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicleHeader";
-
 import { startVoiceRecognition } from "@inspections/lib/inspection/voiceControl";
 import toast from "react-hot-toast";
 
@@ -41,57 +39,6 @@ type ScreenProps = {
   template?: string;
   params?: Record<string, string | number | boolean | null | undefined>;
 };
-
-/* ---------- Header adapters ---------- */
-type HeaderCustomer = {
-  first_name: string;
-  last_name: string;
-  phone: string;
-  email: string;
-  address: string;
-  city: string;
-  province: string;
-  postal_code: string;
-};
-
-type HeaderVehicle = {
-  year: string;
-  make: string;
-  model: string;
-  vin: string;
-  license_plate: string;
-  mileage: string;
-  color: string;
-  unit_number: string;
-  engine_hours: string;
-};
-
-function toHeaderCustomer(c?: SessionCustomer | null): HeaderCustomer {
-  return {
-    first_name: c?.first_name ?? "",
-    last_name: c?.last_name ?? "",
-    phone: c?.phone ?? "",
-    email: c?.email ?? "",
-    address: c?.address ?? "",
-    city: c?.city ?? "",
-    province: c?.province ?? "",
-    postal_code: c?.postal_code ?? "",
-  };
-}
-
-function toHeaderVehicle(v?: SessionVehicle | null): HeaderVehicle {
-  return {
-    year: v?.year ?? "",
-    make: v?.make ?? "",
-    model: v?.model ?? "",
-    vin: v?.vin ?? "",
-    license_plate: v?.license_plate ?? "",
-    mileage: v?.mileage ?? "",
-    color: v?.color ?? "",
-    unit_number: v?.unit_number ?? "",
-    engine_hours: v?.engine_hours ?? "",
-  };
-}
 
 /* ---------- Sections ---------- */
 function buildHydraulicMeasurementsSection(): InspectionSection {
@@ -208,21 +155,20 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
   const searchParams = useSearchParams();
   const p = props.params ?? {};
 
-  // read from props.params first, then URL
+  // prefer params passed from modal, then URL
   const get = (k: string): string => {
     const v = p[k];
     if (v !== undefined && v !== null) return String(v);
     return searchParams.get(k) ?? "";
   };
 
-  // Only treat as "iframe-embed" when truly inside an iframe
-  const inIframe =
-    typeof window !== "undefined" && window.self !== window.top;
+  // detect true iframe usage only
+  const inIframe = typeof window !== "undefined" && window.self !== window.top;
 
-  // compact UI flag (no global CSS side-effects)
-  const compact = !!props.embed || ["1", "true", "yes"].includes(
-    (get("embed") || get("compact")).toLowerCase()
-  );
+  // compact spacing when embedded from modal
+  const compact =
+    !!props.embed ||
+    ["1", "true", "yes"].includes((get("embed") || get("compact")).toLowerCase());
 
   const workOrderLineId = get("workOrderLineId") || null;
   const workOrderId = get("workOrderId") || null;
@@ -233,32 +179,9 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
   const [isPaused, setIsPaused] = useState<boolean>(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
-  const templateName: string =
-    props.template || get("template") || "Maintenance 50 (Hydraulic)";
+  const templateName: string = props.template || get("template") || "maintenance50";
 
-  const customer: SessionCustomer = {
-    first_name: get("first_name"),
-    last_name: get("last_name"),
-    phone: get("phone"),
-    email: get("email"),
-    address: get("address"),
-    city: get("city"),
-    province: get("province"),
-    postal_code: get("postal_code"),
-  };
-
-  const vehicle: SessionVehicle = {
-    year: get("year"),
-    make: get("make"),
-    model: get("model"),
-    vin: get("vin"),
-    license_plate: get("license_plate"),
-    mileage: get("mileage"),
-    color: get("color"),
-    unit_number: get("unit_number"),
-    engine_hours: get("engine_hours"),
-  };
-
+  // minimal session (customer/vehicle omitted – they’re tied to the WO)
   const initialSession = useMemo<Partial<InspectionSession>>(
     () => ({
       id: inspectionId,
@@ -268,11 +191,9 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
       isListening: false,
       transcript: "",
       quote: [],
-      customer,
-      vehicle,
       sections: [],
     }),
-    [inspectionId, templateName, customer, vehicle]
+    [inspectionId, templateName]
   );
 
   const {
@@ -288,7 +209,7 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
     updateQuoteLine,
   } = useInspectionSession(initialSession);
 
-  // prevent duplicate AI submits
+  // ---- AI submit guarding ----
   const inFlightRef = useRef<Set<string>>(new Set());
   const isSubmittingAI = (secIdx: number, itemIdx: number): boolean =>
     inFlightRef.current.has(`${secIdx}:${itemIdx}`);
@@ -312,7 +233,6 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
     try {
       const desc = it.item ?? it.name ?? "Item";
 
-      // 1) placeholder for local quote UI
       const id = uuidv4();
       const placeholder: QuoteLineItem = {
         id,
@@ -332,14 +252,12 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
       };
       addQuoteLine(placeholder);
 
-      // 2) AI suggestion with vehicle context
       const tId = toast.loading("Getting AI estimate…");
       const suggestion = await requestQuoteSuggestion({
         item: desc,
         notes: it.notes ?? "",
         section: session.sections[secIdx].title,
         status,
-        vehicle: session.vehicle ?? undefined,
       });
 
       if (!suggestion) {
@@ -366,7 +284,6 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
         aiState: "done",
       });
 
-      // 3) Persist to WO (awaiting approval)
       if (workOrderId) {
         await addWorkOrderLineFromSuggestion({
           workOrderId,
@@ -382,7 +299,6 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
         toast.error("Missing work order id — saved locally only", { id: tId });
       }
     } catch (e) {
-      // eslint-disable-next-line no-console
       console.error("Submit AI failed:", e);
       toast.error("Couldn't add to work order");
     } finally {
@@ -390,7 +306,7 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
     }
   };
 
-  // Boot / restore
+  // ---- boot/restore ----
   useEffect(() => {
     const key = `inspection-${inspectionId}`;
     const saved = typeof window !== "undefined" ? localStorage.getItem(key) : null;
@@ -407,7 +323,7 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Persist session
+  // persist
   useEffect(() => {
     if (session) {
       const key = `inspection-${inspectionId}`;
@@ -415,13 +331,12 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
     }
   }, [session, inspectionId]);
 
-  // Persist on unload/visibility
+  // persist on unload
   useEffect(() => {
     const key = `inspection-${inspectionId}`;
     const persistNow = () => {
       try {
-        const payload = session ?? initialSession;
-        localStorage.setItem(key, JSON.stringify(payload));
+        localStorage.setItem(key, JSON.stringify(session ?? initialSession));
       } catch {}
     };
     const onVisibility = () => {
@@ -437,7 +352,7 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
     };
   }, [session, inspectionId, initialSession]);
 
-  // Build sections on first load
+  // build sections once
   useEffect(() => {
     if (!session) return;
     if ((session.sections?.length ?? 0) > 0) return;
@@ -448,77 +363,27 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
       buildSuspensionSection(),
       buildDrivelineSection(),
     ];
-    updateInspection({
-      sections: applyUnitsHydraulic(next, unit) as typeof session.sections,
-    });
+    updateInspection({ sections: applyUnitsHydraulic(next, unit) as typeof session.sections });
   }, [session, updateInspection, unit]);
 
-  // Apply units when toggled
+  // re-apply units
   useEffect(() => {
     if (!session?.sections?.length) return;
-    updateInspection({
-      sections: applyUnitsHydraulic(session.sections, unit) as typeof session.sections,
-    });
+    updateInspection({ sections: applyUnitsHydraulic(session.sections, unit) as typeof session.sections });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unit]);
 
-  // Header backfill via API when launched from FocusedJobModal
-  useEffect(() => {
-    (async () => {
-      if (!session || !workOrderId) return;
-      const haveName =
-        (session.customer?.first_name || session.customer?.last_name || "").trim().length > 0;
-      const haveVehicle =
-        (session.vehicle?.make || session.vehicle?.model || "").trim().length > 0;
-      if (haveName && haveVehicle) return;
-
-      try {
-        const res = await fetch(`/api/work-orders/header?id=${workOrderId}`);
-        if (!res.ok) return;
-
-        const j = (await res.json()) as {
-          customer?: Partial<SessionCustomer>;
-          vehicle?: Partial<SessionVehicle>;
-        };
-
-        const nextCust: Partial<SessionCustomer> = {
-          ...(session.customer ?? {}),
-          ...(j.customer ?? {}),
-        };
-        const nextVeh: Partial<SessionVehicle> = {
-          ...(session.vehicle ?? {}),
-          ...(j.vehicle ?? {}),
-        };
-
-        updateInspection({
-          customer: nextCust,
-          vehicle: nextVeh,
-        } as Partial<InspectionSession>);
-      } catch {
-        // silent fail
-      }
-    })();
-  }, [session, workOrderId, updateInspection]);
-
-  // Transcript handler
+  // transcript
   const handleTranscript = async (text: string): Promise<void> => {
     const commands: ParsedCommand[] = await interpretCommand(text);
     const sess: InspectionSession | undefined = session ?? undefined;
     if (!sess) return;
-
     for (const command of commands) {
-      await handleTranscriptFn({
-        command,
-        session: sess,
-        updateInspection,
-        updateItem,
-        updateSection,
-        finishSession,
-      });
+      await handleTranscriptFn({ command, session: sess, updateInspection, updateItem, updateSection, finishSession });
     }
   };
 
-  // Start listening
+  // speech
   const startListening = (): void => {
     if (recognitionRef.current) {
       try {
@@ -530,8 +395,6 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
     });
     setIsListening(true);
   };
-
-  // stop on unmount
   useEffect(() => {
     return () => {
       try {
@@ -540,13 +403,12 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
     };
   }, []);
 
-  // --- Only inject global CSS when inside an iframe ---
+  // only inject isolation CSS when truly inside an iframe
   useEffect(() => {
     if (!inIframe) return;
     try {
       document.documentElement.classList.add("inspection-embed");
       document.body?.classList.add("inspection-embed");
-
       const CSS = `
         html.inspection-embed, body.inspection-embed { background:#000 !important; overflow:auto !important; }
         .inspection-embed header,
@@ -554,36 +416,16 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
         .inspection-embed aside,
         .inspection-embed footer,
         .inspection-embed [data-app-chrome],
-        .inspection-embed [data-app-header],
-        .inspection-embed [data-app-nav],
-        .inspection-embed [data-app-sidebar],
-        .inspection-embed [data-app-footer],
         .inspection-embed .app-shell,
-        .inspection-embed .app-shell-nav,
-        .inspection-embed .app-shell-header,
-        .inspection-embed .app-shell-footer,
-        .inspection-embed .app-sidebar,
-        .inspection-embed .app-topbar,
-        .inspection-embed .nav-tabs,
-        .inspection-embed .tabs-bar,
-        .inspection-embed .dashboard-tabs,
-        .inspection-embed .global-nav,
         .inspection-embed .global-header,
-        .inspection-embed .global-footer {
-          display: none !important; visibility: hidden !important;
-        }
+        .inspection-embed .global-footer { display:none !important; visibility:hidden !important; }
         .inspection-embed main,
-        .inspection-embed [data-app-content],
-        .inspection-embed .app-content,
-        .inspection-embed #__next > *:not(main) {
-          margin: 0 !important; padding: 0 !important; width: 100% !important; max-width: none !important;
-        }
+        .inspection-embed #__next > *:not(main) { margin:0 !important; padding:0 !important; width:100% !important; max-width:none !important; }
       `;
       const tag = document.createElement("style");
       tag.setAttribute("data-inspection-embed-style", "1");
       tag.appendChild(document.createTextNode(CSS));
       document.head.appendChild(tag);
-
       const mo = new MutationObserver(() => {
         if (!document.querySelector('style[data-inspection-embed-style="1"]')) {
           const t2 = document.createElement("style");
@@ -601,37 +443,27 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
     return <div className="p-4 text-white">Loading inspection…</div>;
   }
 
-  const isMeasurements = (t?: string): boolean =>
-    (t || "").toLowerCase().includes("measurements");
+  const isMeasurements = (t?: string): boolean => (t || "").toLowerCase().includes("measurements");
 
   // compact spacing when embed flag is set (no global CSS)
   const shell = compact ? "mx-auto max-w-[1100px] px-3 pb-8" : "px-4 pb-14";
   const controlsGap = "mb-4 grid grid-cols-3 gap-2";
   const card =
-    "rounded-lg border border-zinc-800 bg-zinc-900 " +
-    (compact ? "p-3 mb-6" : "p-4 mb-8");
+    "rounded-lg border border-zinc-800 bg-zinc-900 " + (compact ? "p-3 mb-6" : "p-4 mb-8");
   const sectionTitle = "text-xl font-semibold text-orange-400 text-center";
   const hint = "text-xs text-zinc-400" + (compact ? " mt-1 block text-center" : "");
 
   return (
     <div className={shell}>
+      {/* Title only (Customer/Vehicle removed) */}
       <div className={card}>
         <div className="text-center text-lg font-semibold text-orange-400">
-          {templateName}
+          {templateName === "maintenance50" ? "Maintenance 50" : templateName}
         </div>
-        <CustomerVehicleHeader
-          templateName=""
-          customer={toHeaderCustomer(session.customer ?? null)}
-          vehicle={toHeaderVehicle(session.vehicle ?? null)}
-        />
       </div>
 
       <div className={controlsGap}>
-        <StartListeningButton
-          isListening={isListening}
-          setIsListening={setIsListening}
-          onStart={startListening}
-        />
+        <StartListeningButton isListening={isListening} setIsListening={setIsListening} onStart={startListening} />
         <PauseResumeButton
           isPaused={isPaused}
           isListening={isListening}
@@ -651,8 +483,7 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
           recognitionInstance={recognitionRef.current as unknown as SpeechRecognition | null}
           onTranscript={handleTranscript}
           setRecognitionRef={(instance: SpeechRecognition | null): void => {
-            (recognitionRef as React.MutableRefObject<SpeechRecognition | null>).current =
-              instance ?? null;
+            (recognitionRef as React.MutableRefObject<SpeechRecognition | null>).current = instance ?? null;
           }}
         />
         <button
@@ -688,13 +519,9 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
                   title=""
                   section={section}
                   sectionIndex={sectionIndex}
-                  showNotes={true}
-                  showPhotos={true}
-                  onUpdateStatus={(
-                    secIdx: number,
-                    itemIdx: number,
-                    status: InspectionItemStatus
-                  ): void => {
+                  showNotes
+                  showPhotos
+                  onUpdateStatus={(secIdx: number, itemIdx: number, status: InspectionItemStatus): void => {
                     updateItem(secIdx, itemIdx, { status });
                   }}
                   onUpdateNote={(secIdx: number, itemIdx: number, note: string): void => {
@@ -705,9 +532,7 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
                     updateItem(secIdx, itemIdx, { photoUrls: [...prev, photoUrl] });
                   }}
                   requireNoteForAI
-                  onSubmitAI={(secIdx, itemIdx) => {
-                    void submitAIForItem(secIdx, itemIdx);
-                  }}
+                  onSubmitAI={(secIdx, itemIdx) => void submitAIForItem(secIdx, itemIdx)}
                   isSubmittingAI={isSubmittingAI}
                 />
               )}
@@ -716,20 +541,10 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
         ))}
       </InspectionFormCtx.Provider>
 
-      <div
-        className={
-          "flex items-center justify-between gap-4 " + (compact ? "mt-6" : "mt-8")
-        }
-      >
+      <div className={"flex items-center justify-between gap-4 " + (compact ? "mt-6" : "mt-8")}>
         <div className="flex items-center gap-3">
-          <SaveInspectionButton
-            session={session}
-            workOrderLineId={workOrderLineId ?? ""}
-          />
-          <FinishInspectionButton
-            session={session}
-            workOrderLineId={workOrderLineId ?? ""}
-          />
+          <SaveInspectionButton session={session} workOrderLineId={workOrderLineId ?? ""} />
+          <FinishInspectionButton session={session} workOrderLineId={workOrderLineId ?? ""} />
         </div>
 
         {!workOrderLineId && (
@@ -738,9 +553,7 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
           </div>
         )}
 
-        <div className="ml-auto text-xs text-zinc-400">
-          P = PASS, F = FAIL, NA = Not Applicable
-        </div>
+        <div className="ml-auto text-xs text-zinc-400">P = PASS, F = FAIL, NA = Not Applicable</div>
       </div>
     </div>
   );
