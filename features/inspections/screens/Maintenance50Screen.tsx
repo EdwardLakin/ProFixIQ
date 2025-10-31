@@ -20,8 +20,6 @@ import type {
   InspectionStatus,
   InspectionSection,
   InspectionSession,
-  SessionCustomer,
-  SessionVehicle,
   QuoteLineItem,
 } from "@inspections/lib/inspection/types";
 
