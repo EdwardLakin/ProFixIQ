@@ -1,7 +1,7 @@
 // features/inspections/components/InspectionModal.tsx
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Dialog } from "@headlessui/react";
 import InspectionHost from "@/features/inspections/components/inspectionHost";
 
@@ -43,6 +43,61 @@ export default function InspectionModal({ open, src, title = "Inspection", onClo
       window.dispatchEvent(new CustomEvent("inspection:close"));
     }
   };
+
+    // DEBUG: watch for scroll lock problems
+useEffect(() => {
+  const log = (...a: any[]) => console.log("[scroll-debug]", ...a);
+
+  // 1️⃣ Log when overflow changes on html/body
+  const watchOverflow = (el: HTMLElement, label: string) => {
+    const obs = new MutationObserver(() => {
+      const s = getComputedStyle(el);
+      log(`${label} overflow`, { overflow: s.overflow, overflowY: s.overflowY });
+    });
+    obs.observe(el, { attributes: true, attributeFilter: ["style", "class"] });
+    return obs;
+  };
+
+  const html = document.documentElement;
+  const body = document.body;
+  const obs1 = watchOverflow(html, "html");
+  const obs2 = watchOverflow(body, "body");
+
+  // 2️⃣ Log any full-screen or overflow-hidden child added
+  const obs3 = new MutationObserver((muts) => {
+    for (const m of muts) {
+      if (
+        m.target instanceof HTMLElement &&
+        /(overflow-hidden|min-h-screen|h-screen)/.test(m.target.className)
+      ) {
+        log("child changed:", m.target, "class=", m.target.className);
+      }
+    }
+  });
+  obs3.observe(document.body, {
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["class", "style"],
+  });
+
+  // 3️⃣ Log scroll and wheel events to see when they stop firing
+  const handler = (e: Event) => {
+    log("event:", e.type, "target:", (e.target as HTMLElement)?.tagName);
+  };
+  window.addEventListener("scroll", handler, { passive: true });
+  window.addEventListener("wheel", handler, { passive: true });
+  window.addEventListener("touchstart", handler, { passive: true });
+
+  // cleanup
+  return () => {
+    obs1.disconnect();
+    obs2.disconnect();
+    obs3.disconnect();
+    window.removeEventListener("scroll", handler);
+    window.removeEventListener("wheel", handler);
+    window.removeEventListener("touchstart", handler);
+  };
+}, []);
 
   return (
     <Dialog
