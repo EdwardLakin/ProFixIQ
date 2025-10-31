@@ -16,9 +16,11 @@ interface Props {
   size?: Size;
   footerLeft?: ReactNode;
   children?: ReactNode;
+  /** NEW: classes applied to the scrollable body wrapper */
+  bodyClassName?: string;
 }
 
-export default function ModalShell(props: any) {
+export default function ModalShell(props: Props) {
   const {
     isOpen,
     onClose,
@@ -29,7 +31,8 @@ export default function ModalShell(props: any) {
     size = "md",
     footerLeft,
     children,
-  } = props as Props;
+    bodyClassName,
+  } = props;
 
   const maxW =
     size === "sm" ? "max-w-md" : size === "lg" ? "max-w-3xl" : "max-w-xl";
@@ -38,19 +41,14 @@ export default function ModalShell(props: any) {
     <Dialog
       open={isOpen}
       onClose={onClose}
-      // keep this WELL above the FocusedJobModal (which is z-[100]/[110])
       className="fixed inset-0 z-[300] flex items-center justify-center"
     >
-      {/* dark backdrop above everything behind it */}
-      <div
-        className="fixed inset-0 z-[300] bg-black/70 backdrop-blur-sm"
-        aria-hidden="true"
-      />
+      {/* Backdrop */}
+      <div className="fixed inset-0 z-[300] bg-black/70 backdrop-blur-sm" aria-hidden="true" />
 
-      {/* centered panel (even higher than its own backdrop) */}
+      {/* Panel */}
       <div className="relative z-[310] mx-4 my-6 w-full">
         <Dialog.Panel
-          // force dark theme inside; no light fallback
           className={`profix-modal w-full ${maxW} rounded-lg border border-orange-400 bg-neutral-950 p-6 text-white shadow-xl`}
         >
           {(title || subtitle) && (
@@ -66,7 +64,29 @@ export default function ModalShell(props: any) {
             </header>
           )}
 
-          <div>{children}</div>
+          {/* SCROLLABLE BODY */}
+          <div
+            className={
+              bodyClassName ??
+              // sensible default: 85vh cap, vertical scroll, iOS momentum, stable scrollbar gutter
+              "max-h-[85vh] overflow-y-auto overscroll-contain pr-1"
+            }
+            style={{
+              WebkitOverflowScrolling: "touch",
+              scrollbarGutter: "stable both-edges",
+            }}
+          >
+            {/* Neutralize any h-screen in children so they don't kill scroll */}
+            <style
+              dangerouslySetInnerHTML={{
+                __html: `
+                  .profix-modal :is(.h-screen, [class*="h-screen"]) { height: auto !important; }
+                  .profix-modal :is(.min-h-screen, [class*="min-h-screen"]) { min-height: 0 !important; }
+                `,
+              }}
+            />
+            {children}
+          </div>
 
           <footer className="mt-6 flex items-center justify-between gap-2">
             <div>{footerLeft}</div>

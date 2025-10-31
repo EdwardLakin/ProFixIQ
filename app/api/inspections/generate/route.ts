@@ -1,7 +1,6 @@
 import "server-only";
 import { NextResponse } from "next/server";
 
-/** Minimal shape your UI already understands */
 type InspectionItem = {
   item?: string;
   name?: string;
@@ -18,6 +17,8 @@ type InspectionSection = {
   items: InspectionItem[];
 };
 
+export const dynamic = "force-dynamic"; // no caching while you iterate
+
 export async function POST(req: Request) {
   try {
     const { prompt, vehicleType } = (await req.json()) as {
@@ -29,9 +30,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
     }
 
-    // ── Replace this stub with your model call (OpenAI, etc.)
-    // Parse prompt → generate section list the app already renders.
-    // Keep it deterministic for now:
+    // Stubbed output your UI already understands
     const sections: InspectionSection[] = [
       {
         title: "Lights & Safety (AI)",
@@ -53,7 +52,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ sections });
   } catch (e) {
-    // eslint-disable-next-line no-console
     console.error(e);
     return NextResponse.json({ error: "Generation failed" }, { status: 500 });
   }
