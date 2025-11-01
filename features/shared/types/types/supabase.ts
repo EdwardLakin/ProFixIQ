@@ -1092,6 +1092,123 @@ export type Database = {
         }
         Relationships: []
       }
+      inspection_result_items: {
+        Row: {
+          created_at: string
+          item_label: string | null
+          notes: string | null
+          photo_urls: Json | null
+          result_id: string
+          section_title: string | null
+          status: Database["public"]["Enums"]["inspection_item_status"] | null
+          unit: string | null
+          value: string | null
+        }
+        Insert: {
+          created_at?: string
+          item_label?: string | null
+          notes?: string | null
+          photo_urls?: Json | null
+          result_id: string
+          section_title?: string | null
+          status?: Database["public"]["Enums"]["inspection_item_status"] | null
+          unit?: string | null
+          value?: string | null
+        }
+        Update: {
+          created_at?: string
+          item_label?: string | null
+          notes?: string | null
+          photo_urls?: Json | null
+          result_id?: string
+          section_title?: string | null
+          status?: Database["public"]["Enums"]["inspection_item_status"] | null
+          unit?: string | null
+          value?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inspection_result_items_result_id_fkey"
+            columns: ["result_id"]
+            isOneToOne: false
+            referencedRelation: "inspection_results"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inspection_results: {
+        Row: {
+          created_at: string
+          customer: Json | null
+          finished_at: string
+          id: string
+          quote: Json | null
+          sections: Json
+          session_id: string
+          template_name: string | null
+          vehicle: Json | null
+          work_order_line_id: string
+        }
+        Insert: {
+          created_at?: string
+          customer?: Json | null
+          finished_at?: string
+          id?: string
+          quote?: Json | null
+          sections: Json
+          session_id: string
+          template_name?: string | null
+          vehicle?: Json | null
+          work_order_line_id: string
+        }
+        Update: {
+          created_at?: string
+          customer?: Json | null
+          finished_at?: string
+          id?: string
+          quote?: Json | null
+          sections?: Json
+          session_id?: string
+          template_name?: string | null
+          vehicle?: Json | null
+          work_order_line_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inspection_results_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "inspection_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inspection_session_payloads: {
+        Row: {
+          payload: Json
+          session_id: string
+          updated_at: string
+        }
+        Insert: {
+          payload: Json
+          session_id: string
+          updated_at?: string
+        }
+        Update: {
+          payload?: Json
+          session_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inspection_session_payloads_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: true
+            referencedRelation: "inspection_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inspection_sessions: {
         Row: {
           completed_at: string | null
@@ -4408,6 +4525,7 @@ export type Database = {
           hold_reason: string | null
           id: string
           inspection_session_id: string | null
+          inspection_template_id: string | null
           job_type: string | null
           labor_time: number | null
           line_no: number | null
@@ -4449,6 +4567,7 @@ export type Database = {
           hold_reason?: string | null
           id?: string
           inspection_session_id?: string | null
+          inspection_template_id?: string | null
           job_type?: string | null
           labor_time?: number | null
           line_no?: number | null
@@ -4490,6 +4609,7 @@ export type Database = {
           hold_reason?: string | null
           id?: string
           inspection_session_id?: string | null
+          inspection_template_id?: string | null
           job_type?: string | null
           labor_time?: number | null
           line_no?: number | null
@@ -4536,6 +4656,13 @@ export type Database = {
             columns: ["inspection_session_id"]
             isOneToOne: false
             referencedRelation: "inspection_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_lines_inspection_template_id_fkey"
+            columns: ["inspection_template_id"]
+            isOneToOne: false
+            referencedRelation: "inspection_templates"
             referencedColumns: ["id"]
           },
           {
@@ -5253,7 +5380,7 @@ export type Database = {
       }
       current_shop_id: { Args: never; Returns: string }
       first_segment_uuid: { Args: { p: string }; Returns: string }
-      has_column: { Args: { _col: string; _table: unknown }; Returns: boolean }
+      has_column: { Args: { col: string; tab: unknown }; Returns: boolean }
       increment_user_limit: {
         Args: { increment_by?: number; input_shop_id: string }
         Returns: undefined
@@ -5295,6 +5422,13 @@ export type Database = {
       }
     }
     Enums: {
+      inspection_item_status: "ok" | "fail" | "na" | "recommend"
+      inspection_status:
+        | "new"
+        | "in_progress"
+        | "paused"
+        | "completed"
+        | "aborted"
       job_type_enum: "diagnosis" | "inspection" | "maintenance" | "repair"
       part_request_status:
         | "requested"
@@ -5458,6 +5592,14 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      inspection_item_status: ["ok", "fail", "na", "recommend"],
+      inspection_status: [
+        "new",
+        "in_progress",
+        "paused",
+        "completed",
+        "aborted",
+      ],
       job_type_enum: ["diagnosis", "inspection", "maintenance", "repair"],
       part_request_status: [
         "requested",

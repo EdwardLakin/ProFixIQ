@@ -1,4 +1,4 @@
-// app/api/inspections/generate/route.ts
+// app/api/inspections/build-from-prompt/route.ts
 import "server-only";
 import { NextResponse } from "next/server";
 

@@ -8,7 +8,7 @@ type Body = {
   workOrderLineId: string;
   vehicleId?: string | null;
   customerId?: string | null;
-  template: "maintenance50" | "maintenance50-air";
+  template?: string; // loosened: allow custom slugs like "custom:<sessionId>"
 };
 
 type JsonOk = { sessionId: string; reused: boolean };
@@ -32,14 +32,17 @@ export async function POST(req: Request) {
   const workOrderLineId = body.workOrderLineId?.trim();
   const vehicleId = body.vehicleId ?? null;
   const customerId = body.customerId ?? null;
-  const template: Body["template"] = body.template ?? "maintenance50";
+
+  // normalize template for storage; store stable value if custom
+  const rawTemplate = (body.template ?? "maintenance50").trim();
+  const template = rawTemplate.startsWith("custom:") ? "custom" : rawTemplate;
 
   if (!workOrderId || !workOrderLineId) {
     return NextResponse.json<JsonErr>(
       { error: "workOrderId and workOrderLineId are required" },
       { status: 400 }
     );
-  }
+    }
 
   try {
     // 1) If the line already has a session, reuse it
@@ -58,12 +61,11 @@ export async function POST(req: Request) {
       });
     }
 
-    // 2) Check for an existing session (safety)
+    // 2) Check for an existing session for this line (template-agnostic to avoid dupes)
     const { data: existingSession, error: findErr } = await supabase
       .from("inspection_sessions")
       .select("id")
       .eq("work_order_line_id", workOrderLineId)
-      .eq("template", template)
       .maybeSingle();
 
     if (findErr) throw new Error(findErr.message);
@@ -79,7 +81,7 @@ export async function POST(req: Request) {
           work_order_line_id: workOrderLineId,
           vehicle_id: vehicleId,
           customer_id: customerId,
-          template,
+          template, // normalized
           status: "new",
         })
         .select("id")

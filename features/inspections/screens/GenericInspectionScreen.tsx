@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, } from "react";
 import { useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 import toast from "react-hot-toast";
@@ -34,7 +34,7 @@ import FinishInspectionButton from "@inspections/components/inspection/FinishIns
 import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicleHeader";
 import { startVoiceRecognition } from "@inspections/lib/inspection/voiceControl";
 
-/* -------------------------- Generic helpers -------------------------- */
+/* -------------------------- helpers -------------------------- */
 
 function toHeaderCustomer(c?: SessionCustomer | null) {
   return {
@@ -88,11 +88,22 @@ function isMeasurementSection(title?: string) {
   );
 }
 
+/** Safe reader for sessionStorage JSON */
+function readStaged<T>(key: string): T | null {
+  try {
+    if (typeof window === "undefined") return null;
+    const raw = sessionStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+}
+
 /* -------------------------------------------------------------------- */
-/* Page                                                                 */
+/* Component                                                            */
 /* -------------------------------------------------------------------- */
 
-export default function GenericInspectionRunPage(): JSX.Element {
+export default function GenericInspectionScreen(): JSX.Element {
   const sp = useSearchParams();
 
   // Embed for iframe modal
@@ -107,7 +118,11 @@ export default function GenericInspectionRunPage(): JSX.Element {
   // IDs & context
   const workOrderId = sp.get("workOrderId") || null;
   const workOrderLineId = sp.get("workOrderLineId") || "";
-  const templateName = sp.get("template") || "Inspection";
+
+  // Header title: prefer the staged title from /inspection/run, else URL
+  const templateName =
+    (typeof window !== "undefined" ? sessionStorage.getItem("inspection:title") : null) ||
+    (sp.get("template") || "Inspection");
 
   // Header (optional via URL)
   const customer: SessionCustomer = {
@@ -132,18 +147,25 @@ export default function GenericInspectionRunPage(): JSX.Element {
     engine_hours: sp.get("engine_hours") || "",
   };
 
-  // Load from sessionStorage if built from Custom Builder
+  // Sections precedence:
+  // 1) inspection:sections (staged by /inspection/run)
+  // 2) customInspection:sections (staged by custom builder)
+  // 3) default
   const bootSections = useMemo<InspectionSection[]>(() => {
+    const staged = readStaged<InspectionSection[]>("inspection:sections");
+    if (Array.isArray(staged) && staged.length) return staged;
+
     try {
-      const stash =
+      const legacy =
         typeof window !== "undefined"
           ? sessionStorage.getItem("customInspection:sections")
           : null;
-      if (stash) {
-        const parsed = JSON.parse(stash) as InspectionSection[];
+      if (legacy) {
+        const parsed = JSON.parse(legacy) as InspectionSection[];
         if (Array.isArray(parsed) && parsed.length) return parsed;
       }
     } catch {}
+
     return [
       {
         title: "General",
@@ -204,14 +226,14 @@ export default function GenericInspectionRunPage(): JSX.Element {
     }
   }, [session, bootSections, updateInspection]);
 
-  // Persist
+  // Persist session (local)
   useEffect(() => {
     if (!session) return;
     const key = `inspection-${inspectionId}`;
     localStorage.setItem(key, JSON.stringify(session));
   }, [session, inspectionId]);
 
-  // Persist on unload
+  // Persist on unload/visibility
   useEffect(() => {
     const key = `inspection-${inspectionId}`;
     const persistNow = () => {

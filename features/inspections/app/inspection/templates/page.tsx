@@ -1,3 +1,4 @@
+// features/inspections/app/inspection/templates/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -21,12 +22,10 @@ export default function InspectionTemplatesPage() {
     (async () => {
       setLoading(true);
 
-      // who am I
       const {
         data: { user },
       } = await supabase.auth.getUser();
 
-      // parallel fetch
       const minePromise = user
         ? supabase
             .from("inspection_templates")
@@ -46,10 +45,8 @@ export default function InspectionTemplatesPage() {
         sharedPromise,
       ]);
 
-      // Guard against nulls coming from Supabase client
       setMine(Array.isArray(mineRaw) ? mineRaw : []);
       setShared(Array.isArray(sharedRaw) ? sharedRaw : []);
-
       setLoading(false);
     })();
   }, [supabase]);
@@ -120,9 +117,10 @@ export default function InspectionTemplatesPage() {
                   {t.is_public ? "Shared" : "Private"} ·{" "}
                   {new Date(t.created_at ?? Date.now()).toLocaleDateString()}
                 </span>
-                {/* Example: open a run page preloaded with this template */}
+
+                {/* UPDATED: go through the run loader */}
                 <a
-                  href={`/inspections/custom-inspection?templateId=${t.id}`}
+                  href={`/inspection/run?templateId=${t.id}`}
                   className="rounded border border-zinc-700 px-2 py-1 text-zinc-200 hover:bg-zinc-800"
                 >
                   Use Template
