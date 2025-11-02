@@ -40,7 +40,7 @@ export default function InspectionFillPage() {
 
     if (!nextTemplate) {
       // Nothing to render; bounce to a safe location
-      router.replace("/inspection");
+      router.replace("/inspections");
       return;
     }
 

@@ -54,7 +54,7 @@ export default function CustomBuilderPage() {
     const qs = new URLSearchParams(sp.toString());
     qs.set("vehicleType", vehicleType);
     qs.set("template", tplTitle);
-    router.push(`/inspection/custom-draft?${qs.toString()}`);
+    router.push(`/inspections/custom-draft?${qs.toString()}`);
   }
 
   /* ------------------------- Manual: Start Inspection ------------------------- */
