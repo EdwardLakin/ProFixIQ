@@ -17,7 +17,7 @@ export default function RunTemplateLoader() {
     (async () => {
       if (!templateId) {
         toast.error("Missing templateId");
-        router.replace("/inspection/templates");
+        router.replace("/inspections/templates"); // <-- plural
         return;
       }
 
@@ -29,7 +29,7 @@ export default function RunTemplateLoader() {
 
       if (error || !data) {
         toast.error("Template not found.");
-        router.replace("/inspection/templates");
+        router.replace("/inspections/templates"); // <-- plural
         return;
       }
 
@@ -37,14 +37,15 @@ export default function RunTemplateLoader() {
       sessionStorage.setItem("inspection:sections", JSON.stringify(data.sections ?? []));
       sessionStorage.setItem("inspection:title", data.template_name ?? "Inspection");
       sessionStorage.setItem("inspection:vehicleType", String(data.vehicle_type ?? ""));
-      // NEW: let the fill screen/host know we're using generic runtime + carry through URL params
+
+      // Let the fill screen/host know we're using the generic runtime
       sessionStorage.setItem("inspection:template", "generic");
       sessionStorage.setItem("inspection:params", JSON.stringify(Object.fromEntries(sp)));
 
       // Forward to fill, keeping any extra params (workOrderId, workOrderLineId, etc.)
       const next = new URLSearchParams(sp.toString());
       next.delete("templateId");
-      router.replace(`/inspection/fill?${next.toString()}`);
+      router.replace(`/inspections/fill?${next.toString()}`); // <-- plural
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templateId]);
