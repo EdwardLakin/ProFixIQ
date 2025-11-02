@@ -26,7 +26,9 @@ export default function CreatedTemplatesPage() {
   // auth + first load
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       setUserId(user?.id ?? null);
     })();
   }, [supabase]);
@@ -48,7 +50,9 @@ export default function CreatedTemplatesPage() {
         query.eq("is_public", true);
       }
 
-      const { data, error } = await query.order("updated_at", { ascending: false });
+      const { data, error } = await query.order("updated_at", {
+        ascending: false,
+      });
       if (error) {
         console.error("Load error:", error.message);
         setRows([]);
@@ -66,15 +70,20 @@ export default function CreatedTemplatesPage() {
       (r) =>
         (r.template_name || "").toLowerCase().includes(q) ||
         (r.description || "").toLowerCase().includes(q) ||
-        (Array.isArray(r.tags) ? r.tags.join(", ").toLowerCase().includes(q) : false) ||
-        (r.vehicle_type || "").toLowerCase().includes(q),
+        (Array.isArray(r.tags)
+          ? r.tags.join(", ").toLowerCase().includes(q)
+          : false) ||
+        (r.vehicle_type || "").toLowerCase().includes(q)
     );
   }, [rows, search]);
 
   async function deleteTemplate(id: string) {
     if (scope !== "mine") return; // only allow delete from 'mine'
     if (!confirm("Delete this template?")) return;
-    const { error } = await supabase.from("inspection_templates").delete().eq("id", id);
+    const { error } = await supabase
+      .from("inspection_templates")
+      .delete()
+      .eq("id", id);
     if (error) {
       console.error("Delete error:", error.message);
       return;
@@ -103,7 +112,7 @@ export default function CreatedTemplatesPage() {
 
           {scope === "mine" && (
             <Link
-              href="/dashboard/inspections/custom-inspection"
+              href="/inspections/custom-inspection"
               className="rounded-md bg-orange-500 px-4 py-2 font-semibold text-black transition hover:bg-orange-600"
             >
               + Create New
@@ -128,7 +137,10 @@ export default function CreatedTemplatesPage() {
       ) : (
         <ul className="space-y-3">
           {filtered.map((t) => (
-            <li key={t.id} className="rounded-lg border border-neutral-700 bg-neutral-900 p-4">
+            <li
+              key={t.id}
+              className="rounded-lg border border-neutral-700 bg-neutral-900 p-4"
+            >
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-orange-400">
@@ -154,7 +166,7 @@ export default function CreatedTemplatesPage() {
 
                 <div className="flex gap-2">
                   <Link
-                    href={`/dashboard/inspections/custom-inspection?id=${t.id}`}
+                    href={`/inspections/custom-inspection?id=${t.id}`}
                     className="rounded border border-neutral-600 px-3 py-2 text-sm hover:bg-neutral-700"
                   >
                     Load
@@ -163,12 +175,15 @@ export default function CreatedTemplatesPage() {
                   {scope === "mine" && (
                     <>
                       <Link
-                        href={`/dashboard/inspections/custom-inspection?id=${t.id}&edit=true`}
+                        href={`/inspections/custom-inspection?id=${t.id}&edit=true`}
                         className="rounded border border-neutral-600 px-3 py-2 text-sm hover:bg-neutral-700"
                       >
                         Edit
                       </Link>
-                      <Button variant="destructive" onClick={() => deleteTemplate(t.id)}>
+                      <Button
+                        variant="destructive"
+                        onClick={() => deleteTemplate(t.id)}
+                      >
                         Delete
                       </Button>
                     </>
