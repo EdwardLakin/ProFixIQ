@@ -7,251 +7,246 @@ export interface InspectionCategory {
   items: InspectionItem[];
 }
 
-export const masterInspectionList = [
+/**
+ * De-duplicated and grouped so air/hydraulic specific items live in their own sections.
+ * - “Brakes – Hydraulic (Light Duty)”
+ * - “Brakes – Air (Heavy Duty)”
+ * - “Steering – Light Duty”
+ * - “Steering – Heavy Duty”
+ * - “Suspension – Light Duty”
+ * - “Suspension – Heavy Duty”
+ * - Common systems remain single-source (Lighting, Electrical, Driveline, etc.)
+ */
+export const masterInspectionList: InspectionCategory[] = [
+  /* ----------------------------- BRAKES ----------------------------- */
   {
-    title: "Brakes",
+    title: "Brakes — Hydraulic (Light Duty)",
     items: [
       { item: "Front brake pads" },
       { item: "Rear brake pads" },
+      { item: "Brake rotors (condition/thickness)" },
+      { item: "Brake drums (if equipped)" },
+      { item: "Brake fluid level/condition" },
+      { item: "Brake lines/hoses (leaks/chafe)" },
+      { item: "ABS wiring/sensors (hydraulic)" },
       { item: "Park brake operation" },
-      { item: "Brake fluid level" },
-      { item: "Brake shoes" },
-      { item: "Brake drums" },
-      { item: "Push rod travel" },
-      { item: "Slack adjusters" },
-      { item: "S-cams" },
-      { item: "Clevis pins and cotters" },
-      { item: "Brake lines and hoses" },
-      { item: "ABS wiring/sensors" },
-      { item: "Brake chamber condition" },
       { item: "Brake pedal travel" },
       { item: "Brake warning lights" },
     ],
   },
   {
-    title: "Suspension",
+    title: "Brakes — Air (Heavy Duty)",
     items: [
-      { item: "Front coil springs / leaf springs" },
-      { item: "Rear coil springs / leaf springs" },
-      { item: "Shocks / struts" },
+      { item: "Brake shoes/linings" },
+      { item: "Brake drums" },
+      { item: "Push rod travel" },
+      { item: "Slack adjusters" },
+      { item: "S-cams" },
+      { item: "Clevis pins and cotters" },
+      { item: "Brake chambers (condition/mounts)" },
+      { item: "Brake lines/hoses (leaks/chafe)" },
+      { item: "ABS wiring/sensors (air)" },
+      { item: "Park brake (spring brake) function" },
+      { item: "Brake warning lights" },
+    ],
+  },
+
+  /* --------------------------- SUSPENSION --------------------------- */
+  {
+    title: "Suspension — Light Duty",
+    items: [
+      { item: "Front coil/leaf springs" },
+      { item: "Rear coil/leaf springs" },
+      { item: "Shocks/struts (leaks/bushings)" },
       { item: "Control arms (upper/lower)" },
       { item: "Ball joints" },
       { item: "Sway bar bushings" },
       { item: "Sway bar links" },
-      { item: "Torsion bars" },
-      { item: "Air suspension (bags/lines)" },
-      { item: "Torque rods / radius rods" },
-      { item: "Equalizer bushings" },
+      { item: "Torsion bars (if equipped)" },
     ],
   },
   {
-    title: "Steering",
+    title: "Suspension — Heavy Duty",
     items: [
-      { item: "Steering gear box" },
-      { item: "Pitman arm" },
-      { item: "Idler arm" },
-      { item: "Drag link" },
-      { item: "Tie rods (inner/outer)" },
-      { item: "Steering shaft and u-joints" },
-      { item: "Steering dampener" },
-      { item: "Frame-to-axle track rod (Panhard rod)" },
-      { item: "Axle-to-frame support links (radius rods)" },
+      { item: "Leaf springs (cracks/shackles/u-bolts)" },
+      { item: "Air suspension bags/lines (leaks/rub)" },
+      { item: "Torque rods / radius rods (bushings)" },
+      { item: "Equalizer bushings" },
+      { item: "Axle beams/mounts" },
+      { item: "Shock absorbers (leaks/bushings)" },
     ],
   },
+
+  /* ---------------------------- STEERING ---------------------------- */
+  {
+    title: "Steering — Light Duty",
+    items: [
+      { item: "Steering gear/rack (leaks/mounts)" },
+      { item: "Pitman arm (if equipped)" },
+      { item: "Idler arm (if equipped)" },
+      { item: "Drag link (if equipped)" },
+      { item: "Tie rod ends (inner/outer)" },
+      { item: "Steering shaft & u-joints" },
+      { item: "Steering dampener (if equipped)" },
+    ],
+  },
+  {
+    title: "Steering — Heavy Duty",
+    items: [
+      { item: "Steering gear box (leaks/mounts)" },
+      { item: "Kingpins (play/wear)" },
+      { item: "Drag link" },
+      { item: "Tie rod ends" },
+      { item: "Steering shaft & u-joints" },
+      { item: "Steering dampener (if equipped)" },
+      { item: "Panhard/track rod (if equipped)" },
+    ],
+  },
+
+  /* ----------------------- AIR SUPPLY (HD ONLY) ---------------------- */
+  {
+    title: "Air System — Supply & Control (HD)",
+    items: [
+      { item: "Air compressor operation" },
+      { item: "Air dryer/service status" },
+      { item: "Governor cut-in / cut-out pressure" },
+      { item: "Tank drain valves" },
+      { item: "Lines/fittings — leaks/rub points" },
+      { item: "Pressure build time" },
+    ],
+  },
+
+  /* -------------------------- TIRES & WHEELS ------------------------- */
+  {
+    title: "Tires & Wheels",
+    items: [
+      { item: "Tread depth" },
+      { item: "Sidewall damage/bulges" },
+      { item: "Valve stems/caps" },
+      { item: "Wheel lug torque" },
+      { item: "Rust trails/hub cracks" },
+      { item: "Wheel bearings/play" },
+    ],
+  },
+
+  /* ------------------------- POWERTRAIN / BAY ------------------------ */
+  {
+    title: "Powertrain / Engine Bay",
+    items: [
+      { item: "Engine oil level/condition" },
+      { item: "Coolant level/condition" },
+      { item: "Transmission fluid (level/condition)" },
+      { item: "Power steering fluid" },
+      { item: "Belts (condition/tension)" },
+      { item: "Hoses/clamps" },
+      { item: "Radiator/fan shroud" },
+      { item: "Oil leaks (engine/trans/axle)" },
+      { item: "Fuel leaks (lines/injectors)" },
+      { item: "Air filter condition" },
+      { item: "Washer fluid"},
+    ],
+  },
+
+  /* ----------------------------- DRIVELINE --------------------------- */
+  {
+    title: "Driveline",
+    items: [
+      { item: "Driveshaft / U-joints" },
+      { item: "Center support bearings" },
+      { item: "Slip yokes/seals" },
+      { item: "Axle seals/leaks" },
+      { item: "Differential leaks/play" },
+      { item: "Transmission mounts" },
+    ],
+  },
+
+  /* ------------------------- CHASSIS / FRAME ------------------------- */
+  {
+    title: "Chassis / Frame",
+    items: [
+      { item: "Frame rails/cracks" },
+      { item: "Crossmembers/rust" },
+      { item: "Underbody coating" },
+      { item: "Body/cab mounts" },
+      { item: "PTO mounting/condition (if equipped)" },
+      { item: "Mounted equipment/racks" },
+    ],
+  },
+
+  /* ------------------------ EXHAUST / EMISSIONS ---------------------- */
+  {
+    title: "Exhaust / Emissions",
+    items: [
+      { item: "Exhaust leaks/soot marks" },
+      { item: "DPF/DEF/SCR systems (visual)" },
+      { item: "Mounting brackets" },
+      { item: "Heat shields" },
+      { item: "Tailpipe condition" },
+    ],
+  },
+
+  /* --------------------- FIFTH WHEEL / TRAILERING -------------------- */
+  {
+    title: "Fifth Wheel / Hitch (HD)",
+    items: [
+      { item: "Fifth wheel locking jaws" },
+      { item: "Fifth wheel tilt & latch" },
+      { item: "Slider locking mechanism" },
+      { item: "Kingpin wear" },
+      { item: "Safety chains/hooks (if equipped)" },
+      { item: "Trailer plug"},
+    ],
+  },
+
+  /* ------------------- ELECTRICAL / LIGHTING / CAB ------------------- */
   {
     title: "Lighting & Reflectors",
     items: [
-      { item: "Headlights (high/low beam)" },
-      { item: "Turn signals / flashers" },
+      { item: "Headlights (high/low)" },
+      { item: "Turn signals/flashers" },
       { item: "Brake lights" },
-      { item: "Tail lights" },
+      { item: "Tail/marker/clearance lights" },
       { item: "Reverse lights" },
       { item: "License plate light" },
-      { item: "Clearance / marker lights" },
-      { item: "Reflective tape condition" },
-      { item: "Reflectors / lens condition" },
-      { item: "Work lights / auxiliary lights" },
-      { item: "Emergency lights / strobes" },
+      { item: "Reflective tape/reflectors" },
+      { item: "Work/auxiliary/emergency lights" },
       { item: "Hazard switch function" },
-    ],
-  },
-  {
-    title: "Safety Equipment",
-    items: [
-      { item: "Hazard triangle / warning kit" },
-      { item: "Fire extinguisher" },
-      { item: "First aid kit" },
-      { item: "Safety vests / cones" },
-    ],
-  },
-  {
-    title: "HVAC / Defrost / Wipers",
-    items: [
-      { item: "Windshield wiper operation" },
-      { item: "Washer fluid spray" },
-      { item: "Defrost function" },
-      { item: "Cabin air filter condition" },
-      { item: "AC compressor operation" },
-      { item: "Heater blower motor" },
-    ],
-  },
-  {
-    title: "Cab & Interior",
-    items: [
-      { item: "Driver seat & seat belt" },
-      { item: "Horn operation" },
-      { item: "Dash warning lights" },
-      { item: "Switches & controls" },
-      { item: "Cab mounts" },
-      { item: "Mirror condition / adjustment" },
-      { item: "Door latches & hinges" },
     ],
   },
   {
     title: "Electrical System",
     items: [
-      { item: "Battery terminals / hold-downs" },
-      { item: "Battery voltage and load test" },
-      { item: "Fuses and fuse block" },
+      { item: "Battery terminals/hold-downs" },
+      { item: "Battery voltage & load test" },
+      { item: "Fuses/fuse block" },
       { item: "Wiring harness condition" },
       { item: "Alternator operation" },
       { item: "Starter operation" },
     ],
   },
   {
-    title: "Driveline",
+    title: "Interior, HVAC & Wipers",
     items: [
-      { item: "Driveshaft / U-joints" },
-      { item: "Center support bearings" },
-      { item: "Slip yokes / seals" },
-      { item: "Axle seals / leaks" },
-      { item: "Differential leaks / play" },
-      { item: "Transmission mounts" },
-    ],
-  },
-  {
-    title: "Powertrain / Engine Bay",
-    items: [
-      { item: "Engine oil level / condition" },
-      { item: "Coolant level / condition" },
-      { item: "Transmission fluid level / condition" },
-      { item: "Power steering fluid" },
-      { item: "Belt condition / tension" },
-      { item: "Hoses / clamps" },
-      { item: "Radiator / fan shroud" },
-      { item: "Oil leaks (engine/trans/axle)" },
-      { item: "Fuel leaks (lines/injectors)" },
-      { item: "Air filter condition" },
-    ],
-  },
-  {
-    title: "Tires & Wheels",
-    items: [
-      { item: "Tread depth" },
-      { item: "Sidewall damage / bulges" },
-      { item: "Valve stems" },
-      { item: "Wheel lugs torque" },
-      { item: "Rust trails / hub cracks" },
-      { item: "Wheel bearings / play" },
-    ],
-  },
-  {
-    title: "Chassis / Frame",
-    items: [
-      { item: "Frame rails / cracks" },
-      { item: "Crossmembers / rust" },
-      { item: "Underbody coating" },
-      { item: "Body mounts" },
-      { item: "PTO mounting & condition" },
-      { item: "Mounted equipment / racks" },
-    ],
-  },
-  {
-    title: "Exhaust / Emissions",
-    items: [
-      { item: "Exhaust leaks / soot marks" },
-      { item: "DPF / DEF systems" },
-      { item: "Mounting brackets" },
-      { item: "Heat shields" },
-      { item: "Tailpipe condition" },
-    ],
-  },
-  {
-    title: "Air System (Heavy-Duty)",
-    items: [
-      { item: "Compressor operation" },
-      { item: "Air dryer condition" },
-      { item: "Governor function" },
-      { item: "Tank drain valves" },
-      { item: "Lines / fittings / leaks" },
-      { item: "Cut-in / cut-out pressure" },
-      { item: "Pressure build time" },
-    ],
-  },
-  {
-    title: "Fifth Wheel / Hitch",
-    items: [
-      { item: "Fifth wheel locking jaws" },
-      { item: "Fifth wheel tilt & latch" },
-      { item: "Slider locking mechanism" },
-      { item: "Kingpin wear" },
-      { item: "Safety chains / hooks" },
-    ],
-  },
-  {
-    title: "Safety Equipment",
-    items: [
-      { item: "Fire extinguisher (charged, mounted)" },
-      { item: "First aid kit (complete)" },
-      { item: "Emergency triangles / hazard kit" },
-      { item: "Reflective vests" },
-      { item: "Spare fuses & bulbs" },
-    ],
-  },
-  {
-    title: "Interior & Cab",
-    items: [
-      { item: "HVAC / defrost function" },
+      { item: "HVAC — heat/AC/defrost" },
       { item: "Windshield wipers & washers" },
       { item: "Horn operation" },
       { item: "Dash lights & gauges" },
       { item: "Seat belts & seats" },
-      { item: "Mirrors (condition & adjust)" },
+      { item: "Mirrors (condition/adjustment)" },
+      { item: "Door latches & hinges" },
+      { item: "Cab mounts" },
     ],
   },
+
+  /* -------------------------- SAFETY EQUIPMENT ----------------------- */
   {
-    title: "Suspension (Extended)",
+    title: "Safety Equipment",
     items: [
-      { item: "Control arms (upper & lower)" },
-      { item: "Ball joints" },
-      { item: "Struts / Shocks" },
-      { item: "Sway bar bushings / links" },
-      { item: "Leaf springs" },
-      { item: "Torsion bars" },
-      { item: "Axle beams (solid axle)" },
-      { item: "Radius rods / trailing arms" },
-    ],
-  },
-  {
-    title: "Steering (Extended)",
-    items: [
-      { item: "Steering gear box" },
-      { item: "Pitman arm" },
-      { item: "Idler arm" },
-      { item: "Drag link" },
-      { item: "Steering dampener" },
-      { item: "Steering shaft / u-joints" },
-    ],
-  },
-  {
-    title: "Brakes (Extended)",
-    items: [
-      { item: "Brake shoes (HD)" },
-      { item: "Brake drums (HD)" },
-      { item: "Slack adjusters" },
-      { item: "S-cams" },
-      { item: "Clevis pins" },
-      { item: "Push rod travel" },
+      { item: "Fire extinguisher (charged/mounted)" },
+      { item: "First aid kit (complete)" },
+      { item: "Emergency triangles/hazard kit" },
+      { item: "Reflective vests" },
+      { item: "Spare fuses & bulbs" },
     ],
   },
 ];
