@@ -77,7 +77,7 @@ function sanitizeSections(input: unknown): SectionOut[] {
   return clean;
 }
 
-export const runtime = "edge" as const; // optional
+export const runtime = "edge"; // optional
 
 export async function POST(req: Request) {
   try {
