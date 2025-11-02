@@ -18,19 +18,22 @@ export default function InspectionTemplatesPage() {
   const [mine, setMine] = useState<Template[]>([]);
   const [shared, setShared] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
       setLoading(true);
 
       const { data: auth } = await supabase.auth.getUser();
-      const userId = auth?.user?.id ?? null;
+      const uid = auth?.user?.id ?? null;
+      setUserId(uid);
 
-      const minePromise = userId
+      const minePromise = uid
         ? supabase
             .from("inspection_templates")
             .select("*")
-            .eq("user_id", userId)
+            .eq("user_id", uid)
             .order("created_at", { ascending: false })
         : Promise.resolve({ data: [] as Template[], error: null });
 
@@ -61,9 +64,37 @@ export default function InspectionTemplatesPage() {
     return pool.filter((t) => {
       const name = (t.template_name ?? "").toLowerCase();
       const desc = (t.description ?? "").toLowerCase();
-      return name.includes(q) || desc.includes(q);
+      const tags = Array.isArray(t.tags) ? t.tags.join(", ").toLowerCase() : "";
+      return name.includes(q) || desc.includes(q) || tags.includes(q);
     });
   }, [scope, mine, shared, search]);
+
+  const canEditOrDelete = (t: Template) => !!userId && t.user_id === userId;
+
+  async function handleDelete(id: string) {
+    if (!userId) return;
+    const ok = confirm("Delete this template? This cannot be undone.");
+    if (!ok) return;
+    try {
+      setDeletingId(id);
+      const { error } = await supabase
+        .from("inspection_templates")
+        .delete()
+        .eq("id", id)
+        .eq("user_id", userId); // guard: only delete if owner
+      if (error) throw error;
+
+      // Remove from both lists (it might appear in both if public + owned)
+      setMine((prev) => prev.filter((t) => t.id !== id));
+      setShared((prev) => prev.filter((t) => t.id !== id));
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("Delete failed:", e);
+      alert("Failed to delete template.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   return (
     <div className="mx-auto max-w-5xl p-4 text-white">
@@ -101,30 +132,60 @@ export default function InspectionTemplatesPage() {
         </div>
       ) : (
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {rows.map((t) => (
-            <li key={t.id} className="rounded border border-zinc-800 bg-zinc-900 p-4">
-              <div className="mb-1 text-lg font-semibold text-orange-400">
-                {t.template_name ?? "Untitled Template"}
-              </div>
-              <div className="mb-3 line-clamp-3 text-sm text-zinc-300">
-                {t.description || "—"}
-              </div>
-              <div className="flex items-center justify-between text-xs text-zinc-500">
-                <span>
-                  {t.is_public ? "Shared" : "Private"} ·{" "}
-                  {new Date(t.created_at ?? Date.now()).toLocaleDateString()}
-                </span>
+          {rows.map((t) => {
+            const mineOwned = canEditOrDelete(t);
+            return (
+              <li key={t.id} className="rounded border border-zinc-800 bg-zinc-900 p-4">
+                <div className="mb-1 text-lg font-semibold text-orange-400">
+                  {t.template_name ?? "Untitled Template"}
+                </div>
+                <div className="mb-3 line-clamp-3 text-sm text-zinc-300">
+                  {t.description || "—"}
+                </div>
 
-                {/* Route goes through the run loader (plural path). */}
-                <Link
-                  href={`/inspections/run?templateId=${t.id}`}
-                  className="rounded border border-zinc-700 px-2 py-1 text-zinc-200 hover:bg-zinc-800"
-                >
-                  Use Template
-                </Link>
-              </div>
-            </li>
-          ))}
+                <div className="flex items-center justify-between text-xs text-zinc-500">
+                  <span>
+                    {t.is_public ? "Shared" : "Private"} ·{" "}
+                    {new Date(t.created_at ?? Date.now()).toLocaleDateString()}
+                  </span>
+
+                  <div className="flex items-center gap-2">
+                    {/* Use Template (run loader) */}
+                    <Link
+                      href={`/inspections/run?templateId=${t.id}`}
+                      className="rounded border border-zinc-700 px-2 py-1 text-zinc-200 hover:bg-zinc-800"
+                    >
+                      Use
+                    </Link>
+
+                    {/* Edit (owner only) */}
+                    {mineOwned && (
+                      <Link
+                        href={`/inspections/custom-inspection?id=${t.id}&edit=true`}
+                        className="rounded border border-zinc-700 px-2 py-1 text-zinc-200 hover:bg-zinc-800"
+                      >
+                        Edit
+                      </Link>
+                    )}
+
+                    {/* Delete (owner only) */}
+                    {mineOwned && (
+                      <button
+                        onClick={() => handleDelete(t.id)}
+                        disabled={deletingId === t.id}
+                        className={
+                          "rounded border border-red-700 px-2 py-1 text-red-200 hover:bg-red-900/40 disabled:opacity-60"
+                        }
+                        title="Delete template"
+                      >
+                        {deletingId === t.id ? "Deleting…" : "Delete"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

@@ -1,3 +1,4 @@
+// features/inspections/app/inspection/custom-draft/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -5,6 +6,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import type { InspectionSection, InspectionItem } from "@inspections/lib/inspection/types";
+import { computeDefaultLaborHours } from "@inspections/lib/inspection/computeLabor";
 import toast from "react-hot-toast";
 
 /**
@@ -13,9 +15,73 @@ import toast from "react-hot-toast";
  * - Add / remove / reorder sections
  * - Add / edit / remove items
  * - Optional unit per item (mm, psi, kPa, in, ft·lb, blank)
+ * - Editable labor hours (defaulted via computeLaborHours)
  */
 
 const UNIT_OPTIONS = ["", "mm", "psi", "kPa", "in", "ft·lb"] as const;
+
+type VehicleType = "car" | "truck" | "bus" | "trailer";
+
+/** Narrow Insert type to include labor_hours until your generated types include it */
+type InsertTemplate =
+  Database["public"]["Tables"]["inspection_templates"]["Insert"] & {
+    labor_hours?: number | null;
+  };
+
+/* ---------------------------- safe type helpers ---------------------------- */
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null;
+}
+
+function asString(v: unknown): string {
+  return typeof v === "string" ? v : "";
+}
+
+function asNullableString(v: unknown): string | null {
+  return typeof v === "string" ? v : null;
+}
+
+function normalizeItemLike(i: unknown): {
+  item: string;
+  unit: InspectionItem["unit"];
+  status: InspectionItem["status"] | undefined;
+  notes: InspectionItem["notes"] | undefined;
+} {
+  if (!isRecord(i)) {
+    return { item: "", unit: null, status: "na", notes: "" };
+  }
+  // accept either `item` or `name` for label
+  const label = asString(i.item ?? i.name).trim();
+  const unit = (isRecord(i) ? (i.unit as InspectionItem["unit"]) : null) ?? null;
+
+  const rawStatus = isRecord(i) ? i.status : undefined;
+  const status: InspectionItem["status"] | undefined =
+    rawStatus === "ok" || rawStatus === "fail" || rawStatus === "na" || rawStatus === "recommend"
+      ? rawStatus
+      : "na";
+
+  const notes = asNullableString(isRecord(i) ? i.notes : null) ?? "";
+
+  return { item: label, unit, status, notes };
+}
+
+function normalizeSectionsInput(input: unknown): InspectionSection[] {
+  if (!Array.isArray(input)) return [];
+  return input
+    .map((s: unknown) => {
+      if (!isRecord(s)) return { title: "", items: [] };
+      const title = asString(s.title).trim();
+      const itemsRaw = Array.isArray(s.items) ? (s.items as unknown[]) : [];
+      const items = itemsRaw
+        .map((it) => normalizeItemLike(it))
+        .filter((it) => it.item.length > 0);
+      return { title, items };
+    })
+    .filter((s) => s.title.length > 0 && (s.items?.length ?? 0) > 0);
+}
+
+/* -------------------------------- component -------------------------------- */
 
 export default function CustomDraftPage() {
   const router = useRouter();
@@ -23,48 +89,62 @@ export default function CustomDraftPage() {
   const supabase = useMemo(() => createClientComponentClient<Database>(), []);
 
   const [title, setTitle] = useState(sp.get("template") || "Custom Inspection");
-  const [vehicleType] = useState(
-    (sp.get("vehicleType") as "car" | "truck" | "bus" | "trailer" | null) || null
+  const [vehicleType] = useState<VehicleType | null>(
+    (sp.get("vehicleType") as VehicleType | null) || null
   );
+
   const [sections, setSections] = useState<InspectionSection[]>([]);
+  const [laborHours, setLaborHours] = useState<number>(0);
   const [saving, setSaving] = useState(false);
 
   // Load what the builder wrote into sessionStorage
   useEffect(() => {
     try {
-      const raw = sessionStorage.getItem("customInspection:sections");
-      const t = sessionStorage.getItem("customInspection:title");
-      const includeOilRaw = sessionStorage.getItem("customInspection:includeOil");
+      const raw = typeof window !== "undefined" ? sessionStorage.getItem("customInspection:sections") : null;
+      const t = typeof window !== "undefined" ? sessionStorage.getItem("customInspection:title") : null;
+      const includeOilRaw =
+        typeof window !== "undefined" ? sessionStorage.getItem("customInspection:includeOil") : null;
       const includeOil = includeOilRaw ? JSON.parse(includeOilRaw) === true : false;
 
       if (t && t.trim()) setTitle(t.trim());
+
       if (raw) {
-        const parsed = JSON.parse(raw) as InspectionSection[];
+        const parsedUnknown = JSON.parse(raw) as unknown;
+        const parsed = normalizeSectionsInput(parsedUnknown);
         const withOil = includeOil ? [...parsed, buildOilChangeSection()] : parsed;
-        setSections(normalizeSections(withOil));
+        const normalized = normalizeSectionsInput(withOil);
+        setSections(normalized);
+
+        // seed labor hours (editable)
+        const initialHours = computeDefaultLaborHours({
+          vehicleType: vehicleType ?? "truck",
+          sections: normalized,
+        });
+        setLaborHours(initialHours);
       }
     } catch {
       /* ignore */
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Recompute a suggested default if sections change drastically (do not override user edits)
+  useEffect(() => {
+    // Only auto-seed when hours are zero (implies not yet edited), otherwise respect user edits
+    if (laborHours === 0 && sections.length > 0) {
+      const suggested = computeDefaultLaborHours({
+        vehicleType: vehicleType ?? "truck",
+        sections,
+      });
+      setLaborHours(suggested);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sections]);
 
   /* ----------------------------- editing helpers ----------------------------- */
 
   function normalizeSections(input: InspectionSection[]): InspectionSection[] {
-    // Ensure shape (title + items[item, unit?]) and strip empties
-    return (input ?? [])
-      .map((sec) => ({
-        title: String(sec?.title ?? "").trim(),
-        items: (sec?.items ?? [])
-          .map((it) => ({
-            item: String((it?.item ?? (it as any)?.name ?? "")).trim(),
-            unit: (it?.unit ?? null) as InspectionItem["unit"],
-            status: (it?.status ?? "na") as InspectionItem["status"] | undefined,
-            notes: (it?.notes ?? "") as InspectionItem["notes"] | undefined,
-          }))
-          .filter((it) => it.item.length > 0),
-      }))
-      .filter((s) => s.title.length > 0);
+    return normalizeSectionsInput(input);
   }
 
   function addSection() {
@@ -91,10 +171,10 @@ export default function CustomDraftPage() {
     });
   }
 
-  function updateSectionTitle(idx: number, title: string) {
+  function updateSectionTitle(idx: number, nextTitle: string) {
     setSections((prev) => {
       const next = [...prev];
-      next[idx] = { ...next[idx], title };
+      next[idx] = { ...next[idx], title: nextTitle };
       return next;
     });
   }
@@ -115,10 +195,7 @@ export default function CustomDraftPage() {
     setSections((prev) => {
       const next = [...prev];
       const s = next[secIdx];
-      next[secIdx] = {
-        ...s,
-        items: (s.items ?? []).filter((_, i) => i !== itemIdx),
-      };
+      next[secIdx] = { ...s, items: (s.items ?? []).filter((_, i) => i !== itemIdx) };
       return next;
     });
   }
@@ -175,14 +252,17 @@ export default function CustomDraftPage() {
         return;
       }
 
-      const payload: Database["public"]["Tables"]["inspection_templates"]["Insert"] = {
+      const payload: InsertTemplate = {
         user_id: u.user.id,
         template_name: (title || "").trim() || "Custom Template",
-        sections: cleaned as unknown as Database["public"]["Tables"]["inspection_templates"]["Insert"]["sections"],
+        // Using `unknown` to narrow without `any`
+        sections:
+          cleaned as unknown as Database["public"]["Tables"]["inspection_templates"]["Insert"]["sections"],
         description: "Created from Custom Draft",
         vehicle_type: vehicleType || undefined,
         tags: ["custom", "draft"],
         is_public: false,
+        labor_hours: Number.isFinite(laborHours) ? laborHours : null,
       };
 
       const { error, data } = await supabase
@@ -212,7 +292,7 @@ export default function CustomDraftPage() {
       <h1 className="mb-3 text-2xl font-bold">Template Draft (Editable)</h1>
 
       {/* Header controls */}
-      <div className="mb-4 grid gap-3 md:grid-cols-2">
+      <div className="mb-4 grid gap-3 md:grid-cols-[1fr,auto,auto] md:items-end">
         <label className="flex flex-col gap-1">
           <span className="text-sm text-neutral-300">Template name</span>
           <input
@@ -221,9 +301,26 @@ export default function CustomDraftPage() {
             onChange={(e) => setTitle(e.target.value)}
           />
         </label>
-        <div className="self-end text-sm text-neutral-400">
-          Vehicle type: {vehicleType ?? "—"}
+
+        <div className="flex flex-col gap-1">
+          <span className="text-sm text-neutral-300">Vehicle type</span>
+          <div className="rounded bg-neutral-800 px-3 py-2 text-sm text-neutral-200">
+            {vehicleType ?? "—"}
+          </div>
         </div>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-sm text-neutral-300">Labor hours (editable)</span>
+          <input
+            type="number"
+            min={0}
+            step={0.25}
+            inputMode="decimal"
+            className="w-40 rounded bg-neutral-800 px-3 py-2"
+            value={Number.isFinite(laborHours) ? laborHours : 0}
+            onChange={(e) => setLaborHours(Number(e.target.value))}
+          />
+        </label>
       </div>
 
       {/* Empty state */}
@@ -236,7 +333,10 @@ export default function CustomDraftPage() {
       {/* Sections editor */}
       <div className="space-y-4">
         {sections.map((sec, i) => (
-          <div key={`${sec.title}-${i}`} className="rounded-lg border border-neutral-800 bg-neutral-900 p-3">
+          <div
+            key={`${sec.title}-${i}`}
+            className="rounded-lg border border-neutral-800 bg-neutral-900 p-3"
+          >
             {/* Section header */}
             <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div className="flex items-center gap-2">
