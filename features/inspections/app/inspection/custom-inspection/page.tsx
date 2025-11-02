@@ -1,4 +1,3 @@
-// features/inspections/app/inspection/custom-inspection/page.tsx
 "use client";
 
 import { useState } from "react";
@@ -8,6 +7,12 @@ import { masterInspectionList } from "@inspections/lib/inspection/masterInspecti
 import { masterServicesList } from "@inspections/lib/inspection/masterServicesList";
 
 type VehicleType = "car" | "truck" | "bus" | "trailer";
+
+// Minimal shape we care about when merging
+type Section = {
+  title: string;
+  items: Array<{ item?: string; name?: string; unit?: string | null }>;
+};
 
 export default function CustomBuilderPage() {
   const router = useRouter();
@@ -42,13 +47,10 @@ export default function CustomBuilderPage() {
     );
 
   function goToRunWithSections(sections: unknown, tplTitle: string) {
-    // /inspection/custom-run reads these from sessionStorage
+    // /inspections/custom-draft reads these from sessionStorage
     sessionStorage.setItem("customInspection:sections", JSON.stringify(sections));
     sessionStorage.setItem("customInspection:title", tplTitle);
-    sessionStorage.setItem(
-      "customInspection:includeOil",
-      JSON.stringify(includeOil)
-    );
+    sessionStorage.setItem("customInspection:includeOil", JSON.stringify(includeOil));
 
     // Keep any existing URL params (e.g., customer/vehicle), and add vehicleType/template
     const qs = new URLSearchParams(sp.toString());
@@ -57,14 +59,75 @@ export default function CustomBuilderPage() {
     router.push(`/inspections/custom-draft?${qs.toString()}`);
   }
 
+  // Normalization + merge helpers
+  function normalizeTitle(t: string) {
+    return (t || "").trim().toLowerCase();
+  }
+  function normalizeItem(i: string) {
+    return (i || "").trim().toLowerCase();
+  }
+  function toLabel(raw: { item?: string; name?: string }) {
+    return (raw.item ?? raw.name ?? "").trim();
+  }
+
+  /** Merge two section lists, de-duping by title + item label */
+  function mergeSections(a: Section[], b: Section[]): Section[] {
+    const out: Record<string, { title: string; items: { item: string; unit?: string | null }[] }> =
+      {};
+
+    const addList = (list: Section[]) => {
+      for (const sec of list || []) {
+        const title = sec?.title ?? "";
+        const key = normalizeTitle(title);
+        if (!key) continue;
+        if (!out[key]) out[key] = { title, items: [] };
+        const seen = new Set(out[key].items.map((i) => normalizeItem(i.item)));
+        for (const raw of sec.items || []) {
+          const label = toLabel(raw);
+          if (!label) continue;
+          const lk = normalizeItem(label);
+          if (seen.has(lk)) continue;
+          out[key].items.push({ item: label, unit: raw.unit ?? null });
+          seen.add(lk);
+        }
+      }
+    };
+
+    addList(a);
+    addList(b);
+
+    // drop empty sections
+    return Object.values(out).filter((s) => (s.items?.length ?? 0) > 0);
+  }
+
+  /** Oil block used when the toggle is on (only added if not already present) */
+  function buildOilSection(): Section {
+    return {
+      title: "Oil Change",
+      items: [
+        { item: "Drain engine oil" },
+        { item: "Replace oil filter" },
+        { item: "Refill with correct viscosity" },
+        { item: "Reset maintenance reminder" },
+        { item: "Inspect for leaks after start" },
+      ],
+    };
+  }
+
   /* ------------------------- Manual: Start Inspection ------------------------- */
   function startManual() {
     const built = buildInspectionFromSelections({
       selections,
       axle: includeAxle ? { vehicleType } : null,
       extraServiceItems: services,
-    });
-    goToRunWithSections(built, title);
+    }) as unknown as Section[];
+
+    const withOil =
+      includeOil && !built.some((s) => normalizeTitle(s.title) === "oil change")
+        ? [...built, buildOilSection()]
+        : built;
+
+    goToRunWithSections(withOil, title);
   }
 
   /* --------------------------- AI: Build from prompt -------------------------- */
@@ -82,8 +145,27 @@ export default function CustomBuilderPage() {
         const j = await res.json().catch(() => ({}));
         throw new Error(j.error || `Generate failed (${res.status})`);
       }
-      const { sections } = (await res.json()) as { sections: unknown };
-      goToRunWithSections(sections, title || "AI Inspection");
+      const { sections: aiSections } = (await res.json()) as { sections: Section[] };
+
+      // Manual from current toggles
+      const manualBuilt = buildInspectionFromSelections({
+        selections,
+        axle: includeAxle ? { vehicleType } : null,
+        extraServiceItems: services,
+      }) as unknown as Section[];
+
+      // Ensure Oil section if toggle is on
+      const base =
+        includeOil &&
+        !aiSections.some((s) => normalizeTitle(s.title) === "oil change") &&
+        !manualBuilt.some((s) => normalizeTitle(s.title) === "oil change")
+          ? [...aiSections, buildOilSection()]
+          : aiSections;
+
+      // Merge AI + Manual selections
+      const merged = mergeSections(base, manualBuilt);
+
+      goToRunWithSections(merged, title || "AI Inspection");
     } catch (e: any) {
       setAiError(e?.message || "Failed to generate inspection.");
     } finally {
