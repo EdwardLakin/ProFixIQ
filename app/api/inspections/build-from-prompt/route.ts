@@ -1,8 +1,17 @@
 import "server-only";
 import { NextResponse } from "next/server";
 
-// Minimal schema your UI expects
-type SectionOut = { title: string; items: { item: string; unit?: string | null }[] };
+// --------- Types ---------
+type SectionItem = { item: string; unit?: string | null };
+type SectionOut = { title: string; items: SectionItem[] };
+
+// --------- Type guards ---------
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null;
+}
+function asString(v: unknown): string | null {
+  return typeof v === "string" ? v : null;
+}
 
 // (Optional) simple unit heuristics if model omits them
 function unitHint(label: string): string | null {
@@ -14,30 +23,36 @@ function unitHint(label: string): string | null {
 }
 
 // Defensive sanitizer in case the model returns prose or extra keys
-function sanitizeSections(input: any): SectionOut[] {
-  const sections = Array.isArray(input?.sections) ? input.sections : [];
+function sanitizeSections(input: unknown): SectionOut[] {
+  const sectionsIn: unknown[] =
+    isRecord(input) && Array.isArray((input as Record<string, unknown>).sections)
+      ? ((input as Record<string, unknown>).sections as unknown[])
+      : [];
+
   const clean: SectionOut[] = [];
 
-  for (const sec of sections) {
-    const title = typeof sec?.title === "string" ? sec.title.trim() : "";
+  for (const sec of sectionsIn) {
+    if (!isRecord(sec)) continue;
+
+    const title = asString(sec.title)?.trim() ?? "";
     if (!title) continue;
 
-    const itemsIn = Array.isArray(sec?.items) ? sec.items : [];
-    const itemsOut: { item: string; unit?: string | null }[] = [];
+    const itemsIn: unknown[] = Array.isArray(sec.items) ? (sec.items as unknown[]) : [];
+    const itemsOut: SectionItem[] = [];
 
     for (const raw of itemsIn) {
+      if (!isRecord(raw)) continue;
+
       const label =
-        typeof raw?.item === "string" ? raw.item.trim()
-        : typeof raw?.name === "string" ? raw.name.trim()
-        : "";
+        asString(raw.item)?.trim() ??
+        asString(raw.name)?.trim() ??
+        "";
+
       if (!label) continue;
 
-      let unit: string | null = null;
-      if (typeof raw?.unit === "string" && raw.unit.trim()) {
-        unit = raw.unit.trim();
-      } else {
-        unit = unitHint(label);
-      }
+      const providedUnit = asString(raw.unit)?.trim();
+      const unit = providedUnit && providedUnit.length > 0 ? providedUnit : unitHint(label);
+
       itemsOut.push({ item: label, unit: unit ?? null });
     }
 
@@ -62,25 +77,25 @@ function sanitizeSections(input: any): SectionOut[] {
   return clean;
 }
 
-export const runtime = "edge"; // optional
+export const runtime = "edge" as const; // optional
 
 export async function POST(req: Request) {
   try {
-    const { prompt, vehicleType } = (await req.json()) as {
-      prompt: string;
-      vehicleType?: "car" | "truck" | "bus" | "trailer";
-    };
+    const body: unknown = await req.json();
+    if (!isRecord(body)) {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
+    const prompt = asString(body.prompt);
+    const vehicleType = asString(body.vehicleType); // "car" | "truck" | "bus" | "trailer" (not enforced here)
 
     if (!prompt || typeof prompt !== "string") {
       return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
     }
 
-    // TODO: call your real LLM here.
-    // const ai = await callLLM({ prompt, vehicleType, systemPrompt: <the JSON-only instructions> })
-    // For now, we expect JSON in `ai`, but we sanitize regardless.
-
-    // ----- MOCK for now; replace with model output -----
-    const ai = {
+    // TODO: call your real LLM here and assign its output to `ai`.
+    // For now, mock output (still sanitized below).
+    const ai: unknown = {
       sections: [
         {
           title: "Exterior & Lighting",
@@ -100,11 +115,12 @@ export async function POST(req: Request) {
         },
       ],
     };
-    // -----------------------------------------------
 
     const sections = sanitizeSections(ai);
     return NextResponse.json({ sections }, { status: 200 });
   } catch (e) {
+    // e is unknown; just log as-is
+    // eslint-disable-next-line no-console
     console.error(e);
     return NextResponse.json({ error: "Generation failed" }, { status: 500 });
   }
