@@ -1,4 +1,3 @@
-// features/inspections/app/inspection/custom-inspection/page.tsx
 "use client";
 
 import { useState } from "react";
@@ -7,6 +6,10 @@ import { buildInspectionFromSelections } from "@inspections/lib/inspection/build
 import { masterInspectionList } from "@inspections/lib/inspection/masterInspectionList";
 import { masterServicesList } from "@inspections/lib/inspection/masterServicesList";
 
+// ⬇️ This is the SAME generator your Maintenance-50 uses.
+//    If your path/name differs, tweak this import only.
+import { generateAxleLayout } from "@inspections/lib/inspection/generateAxleLayout";
+
 type VehicleType = "car" | "truck" | "bus" | "trailer";
 
 // Minimal shape we care about when merging
@@ -14,6 +17,8 @@ type Section = {
   title: string;
   items: Array<{ item?: string; name?: string; unit?: string | null }>;
 };
+
+type CornerVariant = "hydraulic" | "air" | null;
 
 export default function CustomBuilderPage() {
   const router = useRouter();
@@ -28,6 +33,9 @@ export default function CustomBuilderPage() {
   const [services, setServices] = useState<string[]>([]);
   const [includeAxle, setIncludeAxle] = useState(true);
   const [includeOil, setIncludeOil] = useState(true);
+
+  // Corner grid to import from the standard generator
+  const [cornerVariant, setCornerVariant] = useState<CornerVariant>(null);
 
   // AI builder state
   const [aiPrompt, setAiPrompt] = useState("");
@@ -47,7 +55,7 @@ export default function CustomBuilderPage() {
       prev.includes(item) ? prev.filter((i) => i !== item) : [...prev, item]
     );
 
-  // ---- Select-all helpers (NEW) ----
+  // ---- Select-all helpers ----
   function selectAllInSection(sectionTitle: string, items: { item: string }[]) {
     setSelections((prev) => ({ ...prev, [sectionTitle]: items.map((i) => i.item) }));
   }
@@ -65,7 +73,7 @@ export default function CustomBuilderPage() {
     setSelections({});
   }
 
-  function goToRunWithSections(sections: unknown, tplTitle: string) {
+  function goToRunWithSections(sections: Section[] | unknown, tplTitle: string) {
     // /inspections/custom-draft reads these from sessionStorage
     sessionStorage.setItem("customInspection:sections", JSON.stringify(sections));
     sessionStorage.setItem("customInspection:title", tplTitle);
@@ -121,7 +129,75 @@ export default function CustomBuilderPage() {
     return Object.values(out).filter((s) => (s.items?.length ?? 0) > 0);
   }
 
-  /** Oil block used when the toggle is on (only added if not already present) */
+  /** Pull the *standard* Corner Grid section(s) from your generator */
+  function fetchCornerGridSections(): Section[] {
+    if (!cornerVariant) return [];
+    // `generateAxleLayout` should return the exact sections your Maintenance-50 uses.
+    // Common signatures we’ve seen:
+    //   generateAxleLayout({ variant: "air" | "hydraulic", vehicleType })
+    //   or generateAxleLayout(vehicleType, "air" | "hydraulic")
+    //
+    // We wrap this in a tiny adapter to keep TS happy without `any`.
+    try {
+      // Try object-arg form first:
+      const maybe = (generateAxleLayout as unknown as (
+        args:
+          | { variant: "air" | "hydraulic"; vehicleType: VehicleType }
+          | VehicleType
+          | [VehicleType, "air" | "hydraulic"]
+      ) => unknown)({ variant: cornerVariant, vehicleType });
+
+      if (Array.isArray(maybe)) {
+        return coerceSections(maybe as unknown[]);
+      }
+
+      // Fallbacks if your helper uses a different signature:
+      if (typeof maybe === "object" && maybe !== null && "sections" in (maybe as Record<string, unknown>)) {
+        const arr = (maybe as Record<string, unknown>).sections;
+        return Array.isArray(arr) ? coerceSections(arr as unknown[]) : [];
+      }
+
+      // Try tuple call
+      // @ts-expect-error – optional alternate signature
+      const maybeTuple = generateAxleLayout([vehicleType, cornerVariant]);
+      if (Array.isArray(maybeTuple)) {
+        return coerceSections(maybeTuple as unknown[]);
+      }
+    } catch {
+      // silence – we simply return an empty list if the signature didn’t match
+    }
+    return [];
+  }
+
+  function coerceSections(input: unknown[]): Section[] {
+    return (input ?? [])
+      .map((s) => {
+        const title = typeof (s as { title?: unknown })?.title === "string" ? (s as { title?: string }).title : "";
+        const itemsRaw = Array.isArray((s as { items?: unknown })?.items)
+          ? ((s as { items?: unknown }).items as unknown[])
+          : [];
+        const items = itemsRaw
+          .map((it) => {
+            const item =
+              typeof (it as { item?: unknown })?.item === "string"
+                ? ((it as { item?: string }).item as string)
+                : typeof (it as { name?: unknown })?.name === "string"
+                ? ((it as { name?: string }).name as string)
+                : "";
+            const unit =
+              typeof (it as { unit?: unknown })?.unit === "string" || (it as { unit?: unknown })?.unit === null
+                ? ((it as { unit?: string | null }).unit as string | null)
+                : null;
+            return item ? { item, unit } : null;
+          })
+          .filter(Boolean) as Array<{ item: string; unit: string | null }>;
+
+        return title && items.length > 0 ? ({ title, items } as Section) : null;
+      })
+      .filter(Boolean) as Section[];
+  }
+
+  /** Oil block (only added if toggle on and not already present) */
   function buildOilSection(): Section {
     return {
       title: "Oil Change",
@@ -148,7 +224,10 @@ export default function CustomBuilderPage() {
         ? [...built, buildOilSection()]
         : built;
 
-    goToRunWithSections(withOil, title);
+    const corner = fetchCornerGridSections();
+    const finalSections = corner.length ? mergeSections(corner, withOil) : withOil;
+
+    goToRunWithSections(finalSections, title);
   }
 
   /* --------------------------- AI: Build from prompt -------------------------- */
@@ -168,14 +247,12 @@ export default function CustomBuilderPage() {
       }
       const { sections: aiSections } = (await res.json()) as { sections: Section[] };
 
-      // Manual from current toggles
       const manualBuilt = buildInspectionFromSelections({
         selections,
         axle: includeAxle ? { vehicleType } : null,
         extraServiceItems: services,
       }) as unknown as Section[];
 
-      // Ensure Oil section if toggle is on
       const base =
         includeOil &&
         !aiSections.some((s) => normalizeTitle(s.title) === "oil change") &&
@@ -183,12 +260,15 @@ export default function CustomBuilderPage() {
           ? [...aiSections, buildOilSection()]
           : aiSections;
 
-      // Merge AI + Manual selections
       const merged = mergeSections(base, manualBuilt);
 
-      goToRunWithSections(merged, title || "AI Inspection");
-    } catch (e: any) {
-      setAiError(e?.message || "Failed to generate inspection.");
+      const corner = fetchCornerGridSections();
+      const finalSections = corner.length ? mergeSections(corner, merged) : merged;
+
+      goToRunWithSections(finalSections, title || "AI Inspection");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to generate inspection.";
+      setAiError(msg);
     } finally {
       setAiLoading(false);
     }
@@ -212,7 +292,7 @@ export default function CustomBuilderPage() {
 
         <label className="flex flex-col gap-1">
           <span className="text-sm text-neutral-300">Vehicle Type (axle layout)</span>
-          <select
+        <select
             className="rounded bg-neutral-800 px-3 py-2"
             value={vehicleType}
             onChange={(e) => setVehicleType(e.target.value as VehicleType)}
@@ -226,14 +306,14 @@ export default function CustomBuilderPage() {
       </div>
 
       {/* Toggles */}
-      <div className="mb-6 flex flex-wrap gap-4">
+      <div className="mb-4 flex flex-wrap gap-4">
         <label className="flex items-center gap-2">
           <input
             type="checkbox"
             checked={includeAxle}
             onChange={(e) => setIncludeAxle(e.target.checked)}
           />
-        <span>Include Axle Block</span>
+          <span>Include Axle Block</span>
         </label>
         <label className="flex items-center gap-2">
           <input
@@ -243,6 +323,53 @@ export default function CustomBuilderPage() {
           />
           <span>Append Oil Change Section</span>
         </label>
+      </div>
+
+      {/* Corner Grid import (reuses standard generator) */}
+      <div className="mb-8 rounded border border-neutral-800 bg-neutral-900 p-3">
+        <div className="mb-2 font-semibold text-orange-400">Corner Grid</div>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setCornerVariant("hydraulic")}
+            className={
+              "rounded px-3 py-1.5 font-semibold " +
+              (cornerVariant === "hydraulic"
+                ? "bg-orange-600 text-black"
+                : "bg-zinc-700 text-white hover:bg-zinc-600")
+            }
+            title="Use the standard LF/RF/LR/RR grid from Maintenance-50"
+          >
+            Include Hydraulic Corner Grid
+          </button>
+          <button
+            type="button"
+            onClick={() => setCornerVariant("air")}
+            className={
+              "rounded px-3 py-1.5 font-semibold " +
+              (cornerVariant === "air"
+                ? "bg-indigo-600 text-white"
+                : "bg-zinc-700 text-white hover:bg-zinc-600")
+            }
+            title="Use the standard Air Corner Grid (axle-based) from Maintenance-50"
+          >
+            Include Air Corner Grid
+          </button>
+
+          {cornerVariant && (
+            <button
+              type="button"
+              onClick={() => setCornerVariant(null)}
+              className="ml-2 rounded border border-red-500 px-2 py-1 text-sm text-red-300 hover:bg-red-900/40"
+              title="Remove selection"
+            >
+              Remove
+            </button>
+          )}
+        </div>
+        <p className="mt-2 text-xs text-neutral-400">
+          This imports the exact section(s) your Maintenance-50 flow uses, so the runtime renders your existing CornerGrid/AirCornerGrid components.
+        </p>
       </div>
 
       {/* ------------------------------- AI builder ------------------------------- */}
@@ -270,7 +397,7 @@ export default function CustomBuilderPage() {
         </div>
       </div>
 
-      {/* -------- Global bulk actions for manual pick list (NEW) -------- */}
+      {/* -------- Global bulk actions for manual pick list -------- */}
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <span className="text-sm text-neutral-400">Bulk actions:</span>
         <button
