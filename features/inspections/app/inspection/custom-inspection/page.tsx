@@ -1,3 +1,4 @@
+// features/inspections/app/inspection/custom-inspection/page.tsx
 "use client";
 
 import { useState } from "react";
@@ -46,6 +47,24 @@ export default function CustomBuilderPage() {
       prev.includes(item) ? prev.filter((i) => i !== item) : [...prev, item]
     );
 
+  // ---- Select-all helpers (NEW) ----
+  function selectAllInSection(sectionTitle: string, items: { item: string }[]) {
+    setSelections((prev) => ({ ...prev, [sectionTitle]: items.map((i) => i.item) }));
+  }
+  function clearSection(sectionTitle: string) {
+    setSelections((prev) => ({ ...prev, [sectionTitle]: [] }));
+  }
+  function selectAllEverywhere() {
+    const next: Record<string, string[]> = {};
+    for (const sec of masterInspectionList) {
+      next[sec.title] = sec.items.map((i) => i.item);
+    }
+    setSelections(next);
+  }
+  function clearAll() {
+    setSelections({});
+  }
+
   function goToRunWithSections(sections: unknown, tplTitle: string) {
     // /inspections/custom-draft reads these from sessionStorage
     sessionStorage.setItem("customInspection:sections", JSON.stringify(sections));
@@ -72,8 +91,10 @@ export default function CustomBuilderPage() {
 
   /** Merge two section lists, de-duping by title + item label */
   function mergeSections(a: Section[], b: Section[]): Section[] {
-    const out: Record<string, { title: string; items: { item: string; unit?: string | null }[] }> =
-      {};
+    const out: Record<
+      string,
+      { title: string; items: { item: string; unit?: string | null }[] }
+    > = {};
 
     const addList = (list: Section[]) => {
       for (const sec of list || []) {
@@ -212,7 +233,7 @@ export default function CustomBuilderPage() {
             checked={includeAxle}
             onChange={(e) => setIncludeAxle(e.target.checked)}
           />
-          <span>Include Axle Block</span>
+        <span>Include Axle Block</span>
         </label>
         <label className="flex items-center gap-2">
           <input
@@ -229,7 +250,7 @@ export default function CustomBuilderPage() {
         <div className="mb-2 font-semibold text-orange-400">Build with AI (optional)</div>
         <p className="mb-2 text-sm text-neutral-300">
           Describe what you want to inspect (vehicle system, depth, measurements, compliance, etc.).
-          We’ll generate sections & items you can run immediately.
+          We’ll generate sections &amp; items you can run immediately.
         </p>
         <textarea
           className="mb-3 min-h-[90px] w-full rounded bg-neutral-800 p-3"
@@ -249,31 +270,79 @@ export default function CustomBuilderPage() {
         </div>
       </div>
 
+      {/* -------- Global bulk actions for manual pick list (NEW) -------- */}
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <span className="text-sm text-neutral-400">Bulk actions:</span>
+        <button
+          type="button"
+          onClick={selectAllEverywhere}
+          className="rounded bg-zinc-700 px-3 py-1 text-xs text-white hover:bg-zinc-600"
+        >
+          Select all (all sections)
+        </button>
+        <button
+          type="button"
+          onClick={clearAll}
+          className="rounded bg-zinc-800 px-3 py-1 text-xs text-white hover:bg-zinc-700"
+        >
+          Clear all
+        </button>
+      </div>
+
       {/* ----------------------------- Manual pick list ----------------------------- */}
       <div className="mb-8 space-y-4">
-        {masterInspectionList.map((sec) => (
-          <div
-            key={sec.title}
-            className="rounded border border-neutral-800 bg-neutral-900 p-3"
-          >
-            <div className="mb-2 font-semibold text-orange-400">{sec.title}</div>
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {sec.items.map((i) => {
-                const checked = (selections[sec.title] ?? []).includes(i.item);
-                return (
-                  <label key={i.item} className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => toggle(sec.title, i.item)}
-                    />
-                    <span>{i.item}</span>
-                  </label>
-                );
-              })}
+        {masterInspectionList.map((sec) => {
+          const selectedCount = (selections[sec.title]?.length ?? 0);
+          return (
+            <div
+              key={sec.title}
+              className="rounded border border-neutral-800 bg-neutral-900 p-3"
+            >
+              <div className="mb-2 flex items-center justify-between">
+                <div className="font-semibold text-orange-400">
+                  {sec.title}
+                  <span className="ml-2 rounded bg-zinc-800 px-2 py-[2px] text-[11px] text-zinc-300">
+                    {selectedCount}/{sec.items.length}
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => selectAllInSection(sec.title, sec.items)}
+                    className="rounded bg-zinc-700 px-2 py-1 text-xs text-white hover:bg-zinc-600"
+                    title="Select all items in this section"
+                  >
+                    Select all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => clearSection(sec.title)}
+                    className="rounded bg-zinc-800 px-2 py-1 text-xs text-white hover:bg-zinc-700"
+                    title="Clear this section"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {sec.items.map((i) => {
+                  const checked = (selections[sec.title] ?? []).includes(i.item);
+                  return (
+                    <label key={i.item} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggle(sec.title, i.item)}
+                      />
+                      <span>{i.item}</span>
+                    </label>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Optional service add-ons */}
