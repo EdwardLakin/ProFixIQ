@@ -18,29 +18,69 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
   const labelRe = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
 
   type MetricCell = {
-    metric: string;
-    idx: number;
+    metric: string;             // (may include "(Inner)/(Outer)" if explicit or virtualized)
+    idx: number;                // original item index (note: for virtualized rows we still use the same idx)
     unit?: string | null;
     fullLabel: string;
     isPressure: boolean;
-    /** used to seed the hint without controlling the input */
-    initial: string;
+    initial: string;            // value seed for the input (uncontrolled)
   };
+
   type AxleGroup = { axle: string; left: MetricCell[]; right: MetricCell[] };
 
   const metricOrder = [
-    "Tire Pressure",
-    "Tread Depth",
+    "Tire Pressure (Outer)",
+    "Tire Pressure (Inner)",
+    "Tread Depth (Outer)",
+    "Tread Depth (Inner)",
     "Lining/Shoe",
     "Drum/Rotor",
     "Push Rod Travel",
     "Wheel Torque Inner",
     "Wheel Torque Outer",
+    // fallback ordering keys:
+    "Tire Pressure",
+    "Tread Depth",
   ];
   const orderIndex = (metric: string) => {
     const i = metricOrder.findIndex((m) => metric.toLowerCase().includes(m.toLowerCase()));
     return i === -1 ? Number.MAX_SAFE_INTEGER : i;
   };
+
+  /** Identify axles that typically have duals (so we should show Inner/Outer). */
+  const isDualAxle = (axleLabel: string) => {
+    const a = axleLabel.toLowerCase();
+    return (
+      a.startsWith("drive") ||
+      a.startsWith("trailer") ||
+      a.startsWith("tag") ||
+      a.includes("rear")
+    ) && !a.startsWith("steer");
+  };
+
+  /** True if the metric is a tire pressure or tread depth row. */
+  const isDualizableMetric = (metric: string) =>
+    /tire\s*pressure/i.test(metric) || /tread\s*depth/i.test(metric);
+
+  /** True if metric already specifies inner/outer. */
+  const hasInnerOuter = (metric: string) => /(inner|outer)/i.test(metric);
+
+  /** Expand a side’s cell list into Inner/Outer rows when needed (virtualization). */
+  function expandDuals(axle: string, cells: MetricCell[]): MetricCell[] {
+    if (!isDualAxle(axle)) return cells;
+
+    const out: MetricCell[] = [];
+    for (const c of cells) {
+      if (isDualizableMetric(c.metric) && !hasInnerOuter(c.metric)) {
+        // Virtualize two rows from a single metric; they both write to the same idx.
+        out.push({ ...c, metric: c.metric.replace(/\s*\((inner|outer)\)\s*/i, "").trim() + " (Outer)" });
+        out.push({ ...c, metric: c.metric.replace(/\s*\((inner|outer)\)\s*/i, "").trim() + " (Inner)" });
+      } else {
+        out.push(c);
+      }
+    }
+    return out;
+  }
 
   const groups: AxleGroup[] = useMemo(() => {
     const byAxle = new Map<string, { Left: MetricCell[]; Right: MetricCell[] }>();
@@ -55,21 +95,27 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
       const metric = m.groups.metric.trim();
 
       if (!byAxle.has(axle)) byAxle.set(axle, { Left: [], Right: [] });
-      byAxle.get(axle)![side].push({
+
+      const arr = byAxle.get(axle)!;
+      const unit = it.unit ?? (unitHint ? unitHint(label) : "");
+      const cell: MetricCell = {
         metric,
         idx,
-        unit: it.unit ?? (unitHint ? unitHint(label) : ""),
+        unit,
         fullLabel: label,
         isPressure: /pressure/i.test(metric),
         initial: String(it.value ?? ""),
-      });
+      };
+
+      arr[side].push(cell);
     });
 
-    return Array.from(byAxle.entries()).map(([axle, sides]) => ({
-      axle,
-      left: sides.Left.sort((a, b) => orderIndex(a.metric) - orderIndex(b.metric)),
-      right: sides.Right.sort((a, b) => orderIndex(a.metric) - orderIndex(b.metric)),
-    }));
+    // Expand duals for drive/rear/tag/trailer axles, then sort
+    return Array.from(byAxle.entries()).map(([axle, sides]) => {
+      const left = expandDuals(axle, sides.Left).sort((a, b) => orderIndex(a.metric) - orderIndex(b.metric));
+      const right = expandDuals(axle, sides.Right).sort((a, b) => orderIndex(a.metric) - orderIndex(b.metric));
+      return { axle, left, right };
+    });
   }, [items, unitHint]);
 
   // UI toggles
@@ -84,7 +130,7 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
   });
   const count = (cells: MetricCell[]) => cells.reduce((a, r) => a + (filledMap[r.idx] ? 1 : 0), 0);
 
-  // commit like CornerGrid
+  // commit like CornerGrid (note: virtual Inner/Outer rows share the same idx if the template had one field)
   const commit = (idx: number, el: HTMLInputElement | null) => {
     if (!el) return;
     const value = el.value;
@@ -103,14 +149,16 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
   type RowTriplet = { metric: string; left?: MetricCell; right?: MetricCell };
   const buildTriplets = (g: AxleGroup): RowTriplet[] => {
     const map = new Map<string, RowTriplet>();
-    for (const c of g.left) {
+
+    const add = (c: MetricCell, which: "left" | "right") => {
       const k = c.metric.toLowerCase();
-      map.set(k, { ...(map.get(k) || { metric: c.metric }), metric: c.metric, left: c, right: map.get(k)?.right });
-    }
-    for (const c of g.right) {
-      const k = c.metric.toLowerCase();
-      map.set(k, { ...(map.get(k) || { metric: c.metric }), metric: c.metric, right: c, left: map.get(k)?.left });
-    }
+      const existing = map.get(k) || { metric: c.metric };
+      map.set(k, { ...existing, metric: c.metric, [which]: c });
+    };
+
+    g.left.forEach((c) => add(c, "left"));
+    g.right.forEach((c) => add(c, "right"));
+
     const arr = Array.from(map.values());
     arr.sort((a, b) => orderIndex(a.metric) - orderIndex(b.metric));
     return arr;
