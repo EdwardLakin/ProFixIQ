@@ -1,4 +1,3 @@
-// features/inspections/app/inspection/run/page.tsx
 "use client";
 
 import { useEffect } from "react";
@@ -17,7 +16,7 @@ export default function RunTemplateLoader() {
     (async () => {
       if (!templateId) {
         toast.error("Missing templateId");
-        router.replace("/inspections/templates"); // <-- plural
+        router.replace("/inspections/templates");
         return;
       }
 
@@ -29,23 +28,31 @@ export default function RunTemplateLoader() {
 
       if (error || !data) {
         toast.error("Template not found.");
-        router.replace("/inspections/templates"); // <-- plural
+        router.replace("/inspections/templates");
         return;
       }
 
-      // Stage for the generic runtime renderer
-      sessionStorage.setItem("inspection:sections", JSON.stringify(data.sections ?? []));
-      sessionStorage.setItem("inspection:title", data.template_name ?? "Inspection");
-      sessionStorage.setItem("inspection:vehicleType", String(data.vehicle_type ?? ""));
+      const sections = data.sections ?? [];
+      const title = data.template_name ?? "Inspection";
+      const vehicleType = String(data.vehicle_type ?? "");
 
-      // Let the fill screen/host know we're using the generic runtime
+      // Write session keys (kept for compatibility)
+      sessionStorage.setItem("inspection:sections", JSON.stringify(sections));
+      sessionStorage.setItem("inspection:title", title);
+      sessionStorage.setItem("inspection:vehicleType", vehicleType);
       sessionStorage.setItem("inspection:template", "generic");
       sessionStorage.setItem("inspection:params", JSON.stringify(Object.fromEntries(sp)));
 
-      // Forward to fill, keeping any extra params (workOrderId, workOrderLineId, etc.)
+      // Also write legacy custom* keys so older flows don't bounce
+      sessionStorage.setItem("customInspection:sections", JSON.stringify(sections));
+      sessionStorage.setItem("customInspection:title", title);
+      sessionStorage.setItem("customInspection:includeOil", JSON.stringify(false));
+
+      // Forward to fill AND include template=generic in the URL
       const next = new URLSearchParams(sp.toString());
       next.delete("templateId");
-      router.replace(`/inspections/fill?${next.toString()}`); // <-- plural
+      next.set("template", "generic"); // <- critical so /inspections/fill never bounces
+      router.replace(`/inspections/fill?${next.toString()}`);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templateId]);
