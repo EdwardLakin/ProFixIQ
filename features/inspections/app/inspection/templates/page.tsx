@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -22,15 +23,14 @@ export default function InspectionTemplatesPage() {
     (async () => {
       setLoading(true);
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const { data: auth } = await supabase.auth.getUser();
+      const userId = auth?.user?.id ?? null;
 
-      const minePromise = user
+      const minePromise = userId
         ? supabase
             .from("inspection_templates")
             .select("*")
-            .eq("user_id", user.id)
+            .eq("user_id", userId)
             .order("created_at", { ascending: false })
         : Promise.resolve({ data: [] as Template[], error: null });
 
@@ -102,10 +102,7 @@ export default function InspectionTemplatesPage() {
       ) : (
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {rows.map((t) => (
-            <li
-              key={t.id}
-              className="rounded border border-zinc-800 bg-zinc-900 p-4"
-            >
+            <li key={t.id} className="rounded border border-zinc-800 bg-zinc-900 p-4">
               <div className="mb-1 text-lg font-semibold text-orange-400">
                 {t.template_name ?? "Untitled Template"}
               </div>
@@ -118,13 +115,13 @@ export default function InspectionTemplatesPage() {
                   {new Date(t.created_at ?? Date.now()).toLocaleDateString()}
                 </span>
 
-                {/* UPDATED: go through the run loader */}
-                <a
-                  href={`/inspection/run?templateId=${t.id}`}
+                {/* Route goes through the run loader (plural path). */}
+                <Link
+                  href={`/inspections/run?templateId=${t.id}`}
                   className="rounded border border-zinc-700 px-2 py-1 text-zinc-200 hover:bg-zinc-800"
                 >
                   Use Template
-                </a>
+                </Link>
               </div>
             </li>
           ))}

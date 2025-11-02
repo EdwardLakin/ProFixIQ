@@ -18,14 +18,13 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
   const labelRe = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
 
   type MetricCell = {
-    metric: string;             // (may include "(Inner)/(Outer)" if explicit or virtualized)
-    idx: number;                // original item index (note: for virtualized rows we still use the same idx)
+    metric: string;
+    idx: number;
     unit?: string | null;
     fullLabel: string;
     isPressure: boolean;
-    initial: string;            // value seed for the input (uncontrolled)
+    initial: string;
   };
-
   type AxleGroup = { axle: string; left: MetricCell[]; right: MetricCell[] };
 
   const metricOrder = [
@@ -38,7 +37,6 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
     "Push Rod Travel",
     "Wheel Torque Inner",
     "Wheel Torque Outer",
-    // fallback ordering keys:
     "Tire Pressure",
     "Tread Depth",
   ];
@@ -47,32 +45,27 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
     return i === -1 ? Number.MAX_SAFE_INTEGER : i;
   };
 
-  /** Identify axles that typically have duals (so we should show Inner/Outer). */
+  /** Identify which axles are dual-tire axles. Tag axles = steer type (single tires). */
   const isDualAxle = (axleLabel: string) => {
     const a = axleLabel.toLowerCase();
-    return (
-      a.startsWith("drive") ||
-      a.startsWith("trailer") ||
-      a.startsWith("tag") ||
-      a.includes("rear")
-    ) && !a.startsWith("steer");
+    // Drive, Trailer, and Rear are duals; Tag and Steer are not.
+    if (a.startsWith("drive") || a.startsWith("trailer") || a.includes("rear")) return true;
+    if (a.startsWith("tag") || a.startsWith("steer")) return false;
+    return false;
   };
 
-  /** True if the metric is a tire pressure or tread depth row. */
   const isDualizableMetric = (metric: string) =>
     /tire\s*pressure/i.test(metric) || /tread\s*depth/i.test(metric);
 
-  /** True if metric already specifies inner/outer. */
   const hasInnerOuter = (metric: string) => /(inner|outer)/i.test(metric);
 
-  /** Expand a side’s cell list into Inner/Outer rows when needed (virtualization). */
+  /** Expand dual-tire rows for drive/trailer/rear axles. */
   function expandDuals(axle: string, cells: MetricCell[]): MetricCell[] {
     if (!isDualAxle(axle)) return cells;
 
     const out: MetricCell[] = [];
     for (const c of cells) {
       if (isDualizableMetric(c.metric) && !hasInnerOuter(c.metric)) {
-        // Virtualize two rows from a single metric; they both write to the same idx.
         out.push({ ...c, metric: c.metric.replace(/\s*\((inner|outer)\)\s*/i, "").trim() + " (Outer)" });
         out.push({ ...c, metric: c.metric.replace(/\s*\((inner|outer)\)\s*/i, "").trim() + " (Inner)" });
       } else {
@@ -110,7 +103,6 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
       arr[side].push(cell);
     });
 
-    // Expand duals for drive/rear/tag/trailer axles, then sort
     return Array.from(byAxle.entries()).map(([axle, sides]) => {
       const left = expandDuals(axle, sides.Left).sort((a, b) => orderIndex(a.metric) - orderIndex(b.metric));
       const right = expandDuals(axle, sides.Right).sort((a, b) => orderIndex(a.metric) - orderIndex(b.metric));
@@ -122,7 +114,6 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
   const [open, setOpen] = useState(true);
   const [showKpa, setShowKpa] = useState(true);
 
-  // “filled” counter (updates only when committing)
   const [filledMap, setFilledMap] = useState<Record<number, boolean>>(() => {
     const m: Record<number, boolean> = {};
     items.forEach((it, i) => (m[i] = !!String(it.value ?? "").trim()));
@@ -130,7 +121,6 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
   });
   const count = (cells: MetricCell[]) => cells.reduce((a, r) => a + (filledMap[r.idx] ? 1 : 0), 0);
 
-  // commit like CornerGrid (note: virtual Inner/Outer rows share the same idx if the template had one field)
   const commit = (idx: number, el: HTMLInputElement | null) => {
     if (!el) return;
     const value = el.value;
@@ -139,32 +129,24 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
     setFilledMap((p) => (p[idx] === has ? p : { ...p, [idx]: has }));
   };
 
-  // helpers
   const kpaFromPsi = (psiStr: string) => {
     const n = Number(psiStr);
     return isFinite(n) ? Math.round(n * 6.894757) : null;
   };
 
-  // Row triplets to render center “Item”
   type RowTriplet = { metric: string; left?: MetricCell; right?: MetricCell };
   const buildTriplets = (g: AxleGroup): RowTriplet[] => {
     const map = new Map<string, RowTriplet>();
-
     const add = (c: MetricCell, which: "left" | "right") => {
       const k = c.metric.toLowerCase();
       const existing = map.get(k) || { metric: c.metric };
       map.set(k, { ...existing, metric: c.metric, [which]: c });
     };
-
     g.left.forEach((c) => add(c, "left"));
     g.right.forEach((c) => add(c, "right"));
-
-    const arr = Array.from(map.values());
-    arr.sort((a, b) => orderIndex(a.metric) - orderIndex(b.metric));
-    return arr;
+    return Array.from(map.values()).sort((a, b) => orderIndex(a.metric) - orderIndex(b.metric));
   };
 
-  // Uncontrolled input with unit INSIDE and live kPa hint via onInput (CornerGrid style)
   const InputWithInlineUnit = ({
     idx,
     isPressure,
@@ -200,15 +182,10 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
           className="w-full rounded border border-gray-600 bg-black px-2 py-1 pr-16 text-sm text-white outline-none placeholder:text-zinc-400"
           placeholder="Value"
           autoComplete="off"
-          autoCorrect="off"
-          autoCapitalize="off"
-          spellCheck={false}
           inputMode="decimal"
           onInput={onInput}
           onBlur={(e) => commit(idx, e.currentTarget)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
-          }}
+          onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
         />
         <span
           ref={spanRef}
@@ -295,7 +272,6 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
 
   return (
     <div className="grid gap-3">
-      {/* Toolbar */}
       <div className="flex items-center justify-between gap-3 px-1">
         <div
           className="hidden text-xs text-zinc-400 md:block"
@@ -327,8 +303,6 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
           <button
             onClick={() => setOpen((v) => !v)}
             className="rounded bg-zinc-700 px-2 py-1 text-xs text-white hover:bg-zinc-600"
-            aria-expanded={open}
-            title={open ? "Collapse" : "Expand"}
           >
             {open ? "Collapse" : "Expand"}
           </button>
