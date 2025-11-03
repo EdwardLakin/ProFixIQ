@@ -50,22 +50,21 @@ function sanitizeSections(input: unknown): SectionOut[] {
     const title = asString(sec.title)?.trim() ?? "";
     if (!title) continue;
 
-    const itemsIn: unknown[] = Array.isArray(sec.items)
-      ? (sec.items as unknown[])
-      : [];
+    const itemsIn: unknown[] = Array.isArray(sec.items) ? (sec.items as unknown[]) : [];
     const itemsOut: SectionItem[] = [];
 
     for (const raw of itemsIn) {
       if (!isRecord(raw)) continue;
 
       const label =
-        asString(raw.item)?.trim() ?? asString(raw.name)?.trim() ?? "";
+        asString(raw.item)?.trim() ??
+        asString(raw.name)?.trim() ??
+        "";
 
       if (!label) continue;
 
       const providedUnit = asString(raw.unit)?.trim();
-      const unit =
-        providedUnit && providedUnit.length > 0 ? providedUnit : unitHint(label);
+      const unit = providedUnit && providedUnit.length > 0 ? providedUnit : unitHint(label);
 
       itemsOut.push({ item: label, unit: unit ?? null });
     }
@@ -129,11 +128,11 @@ const SectionsSchema = {
   },
 } as const;
 
-/* ------------------------------------------------------------------ */
-/* Route                                                               */
-/* ------------------------------------------------------------------ */
-
 export const runtime = "edge";
+
+/* ------------------------------------------------------------------ */
+/* Route handler                                                      */
+/* ------------------------------------------------------------------ */
 
 export async function POST(req: Request) {
   try {
@@ -151,49 +150,52 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
     }
 
-    // infer vehicle type if caller didn’t pass it
+    // 1) figure out vehicle / brake
     const vehicleType: VehicleType =
       (vehicleTypeStr as VehicleType) ??
-      (prompt.toLowerCase().includes("truck") ||
-      prompt.toLowerCase().includes("bus")
+      (prompt.toLowerCase().includes("truck") || prompt.toLowerCase().includes("bus")
         ? "truck"
         : "car");
 
-    // infer brake system from vehicle type if not passed
     const brakeSystem: BrakeSystem =
       (brakeSystemStr as BrakeSystem) ??
       (vehicleType === "car" ? "hyd_brake" : "air_brake");
 
-    const targetCount =
-      typeof targetCountRaw === "number" && targetCountRaw > 0
-        ? targetCountRaw
-        : 60;
+    // 2) adaptive target:
+    // - explicit target wins
+    // - else try to read a number from the prompt ("60 point", "50pt")
+    // - else default to 20
+    let targetCount: number;
 
-    /* -------------------------------------------------------------- */
-    /* STEP 1 — deterministic seed from your master list               */
-    /* -------------------------------------------------------------- */
+    if (typeof targetCountRaw === "number" && targetCountRaw > 0) {
+      targetCount = targetCountRaw;
+    } else {
+      const m = prompt.match(/(\d{2,3})\s*(point|pt)?/i);
+      if (m) {
+        targetCount = parseInt(m[1]!, 10);
+      } else {
+        targetCount = 20;
+      }
+    }
+
+    // 3) deterministic seed
     const baseSections = buildFromMaster({
       vehicleType,
       brakeSystem,
       targetCount,
     });
 
-    /* -------------------------------------------------------------- */
-    /* STEP 2 — augment with OpenAI (Responses API + schema)           */
-    /* -------------------------------------------------------------- */
-    const openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY!,
-    });
+    // 4) call OpenAI
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
     const system = [
       "You are an AI assistant for generating vehicle inspection templates.",
       "Return ONLY JSON that follows the supplied schema.",
-      "Each section should have a concise title and a list of clear inspection items.",
-      "Include units when they are obvious (psi, kPa, mm, in, ft·lb).",
-      "Match tone to technician / shop inspection sheets.",
+      "Output several sections that match real shop inspections.",
+      "Include units when obvious (psi, kPa, mm, in, ft·lb).",
       `Vehicle type: ${vehicleType}.`,
       `Brake system: ${brakeSystem}.`,
-      `Approximate total items: ${targetCount}.`,
+      `Aim for about ${targetCount} inspection items.`,
     ].join(" ");
 
     const user = [
@@ -201,16 +203,14 @@ export async function POST(req: Request) {
       "Generate inspection sections and items suitable for a professional repair shop.",
     ].join("\n");
 
-    // this is the important part – responses.create with json_schema
     const resp = await openai.responses.create({
       model: "gpt-4o-mini",
       input: [
         { role: "system", content: system },
         { role: "user", content: user },
       ],
-      // SDK 5.18.1 doesn't have this typed yet, so tell TS to chill
       // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
+      // @ts-expect-error response_format not yet typed in 5.18.1
       response_format: {
         type: "json_schema",
         json_schema: SectionsSchema,
@@ -218,56 +218,54 @@ export async function POST(req: Request) {
       max_output_tokens: 4000,
     });
 
-    // ---------- Extract JSON safely ----------
-    type ResponseContent =
-      | { type: "output_json"; output_json?: unknown }
-      | { type: "text"; text?: string }
-      | { type: string };
-
-    type ResponseMessage = {
+    // 5) extract JSON safely
+    let aiRaw: unknown = {};
+    type ResponseOutput = {
       type?: string;
-      content?: ResponseContent[];
+      content?: Array<{ type?: string; output_json?: unknown; text?: string }>;
     };
 
-    const firstOut = (resp.output?.[0] ?? {}) as ResponseMessage;
-
-    let aiRaw: unknown = {};
+    const firstOut = (resp.output?.[0] ?? {}) as ResponseOutput;
     if (firstOut.type === "message" && Array.isArray(firstOut.content)) {
-  const firstContent = firstOut.content[0];
-  if (firstContent?.type === "output_json") {
-    // @ts-expect-error same reason
-    aiRaw = firstContent.output_json ?? {};
-  }
-  // @ts-expect-error same reason
-  else if (firstContent?.type === "text" && typeof firstContent.text === "string") {
-    try {
-      // @ts-expect-error same reason
-      aiRaw = JSON.parse(firstContent.text);
-    } catch {
-      aiRaw = {};
+      const c0 = firstOut.content[0];
+      if (c0?.type === "output_json") {
+        aiRaw = c0.output_json;
+      } else if (c0?.type === "text" && typeof c0.text === "string") {
+        try {
+          aiRaw = JSON.parse(c0.text);
+        } catch {
+          aiRaw = {};
+        }
+      }
     }
-  }
-}
 
     const aiSections = sanitizeSections(aiRaw);
 
-    /* -------------------------------------------------------------- */
-    /* STEP 3 — merge & dedupe                                         */
-    /* -------------------------------------------------------------- */
+    // 6) decide if AI is good enough to merge
+    const aiItemCount = aiSections.reduce(
+      (sum, s) => sum + (s.items?.length ?? 0),
+      0
+    );
+    const minItemsToMerge = Math.max(10, Math.floor(targetCount * 0.5)); // half of target, but at least 10
+    const useAI = aiSections.length >= 3 && aiItemCount >= minItemsToMerge;
+
+    // 7) merge & dedupe
     const merged = [...baseSections];
-    for (const aiSec of aiSections) {
-      const existing = merged.find(
-        (s) => s.title.toLowerCase() === aiSec.title.toLowerCase(),
-      );
-      if (existing) {
-        const seen = new Set(existing.items.map((i) => i.item.toLowerCase()));
-        for (const it of aiSec.items) {
-          if (!seen.has(it.item.toLowerCase())) {
-            existing.items.push(it);
+    if (useAI) {
+      for (const aiSec of aiSections) {
+        const existing = merged.find(
+          (s) => s.title.toLowerCase() === aiSec.title.toLowerCase()
+        );
+        if (existing) {
+          const seen = new Set(existing.items.map((i) => i.item.toLowerCase()));
+          for (const it of aiSec.items) {
+            if (!seen.has(it.item.toLowerCase())) {
+              existing.items.push(it);
+            }
           }
+        } else {
+          merged.push(aiSec);
         }
-      } else {
-        merged.push(aiSec);
       }
     }
 
@@ -276,12 +274,11 @@ export async function POST(req: Request) {
       prompt,
       vehicleType,
       brakeSystem,
+      targetCount,
       sectionCount: merged.length,
-      itemCount: merged.reduce(
-        (sum, s) => sum + (s.items?.length ?? 0),
-        0,
-      ),
+      itemCount: merged.reduce((sum, s) => sum + (s.items?.length ?? 0), 0),
       sections: merged,
+      usedAI: useAI,
     });
   } catch (e) {
     console.error("Build from prompt failed:", e);

@@ -129,16 +129,64 @@ function normalizeSections(input: unknown): InspectionSection[] {
   }
 }
 
-/** Decide grid only if labels actually look like corner/axle */
+/* -------- smarter corner-grid detector -------- */
+
+/**
+ * We only want to render the big axle/corner grid when:
+ *  - the title says it's a grid, OR
+ *  - we have enough items (>= 4), AND
+ *  - at least half of them are measurement-ish, OR
+ *  - the labels match our axle/corner patterns (LF/RF/... or Steer 1 Left ...)
+ */
 const AIR_RE = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
 const HYD_ABBR_RE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
 const HYD_FULL_RE = /^(?<corner>(Left|Right)\s+(Front|Rear))\s+(?<metric>.+)$/i;
 
-function looksLikeCornerOrAxle(items: { item?: string }[]): boolean {
-  return items.some(({ item }) => {
-    const label = item ?? "";
+function shouldRenderCornerGrid(
+  title: string | undefined,
+  items: { item?: string | null }[] = []
+): boolean {
+  const t = (title || "").toLowerCase();
+
+  // explicit grid / axle sections — always grid
+  if (
+    t.includes("corner grid") ||
+    t.includes("tires & brakes — truck") ||
+    t.includes("tires & brakes — air") ||
+    t.includes("axle grid")
+  ) {
+    return true;
+  }
+
+  // not enough items → don't bother with grid
+  if (!items || items.length < 4) return false;
+
+  // if ANY item matches the strong axle/corner patterns, that's a good signal
+  const hasStrongPattern = items.some((it) => {
+    const label = it.item ?? "";
     return AIR_RE.test(label) || HYD_ABBR_RE.test(label) || HYD_FULL_RE.test(label);
   });
+
+  // count measurement-y items
+  const measurementKeywords = ["tread", "pressure", "lining", "shoe", "drum", "rotor", "push rod", "pad", "torque"];
+  const measurementLikeCount = items.reduce((count, it) => {
+    const label = (it.item || "").toLowerCase();
+    const isMeasurement = measurementKeywords.some((kw) => label.includes(kw));
+    return count + (isMeasurement ? 1 : 0);
+  }, 0);
+
+  const enoughMeasurements = measurementLikeCount >= Math.floor(items.length / 2);
+
+  // title hints still help
+  const titleSuggestsMeasurement =
+    t.includes("tire") ||
+    t.includes("tires") ||
+    t.includes("brake") ||
+    t.includes("measurement") ||
+    t.includes("axle");
+
+  // final decision
+  return hasStrongPattern || (titleSuggestsMeasurement && enoughMeasurements);
 }
 
 /* -------------------------------------------------------------------- */
@@ -525,8 +573,8 @@ export default function GenericInspectionScreen(): JSX.Element {
             unit: it.unit || unitHintGeneric(it.item ?? "", unit),
           }));
 
-          // Use grid ONLY if labels match known patterns; otherwise list renderer
-          const useGrid = looksLikeCornerOrAxle(itemsWithHints);
+          // new smarter detector
+          const useGrid = shouldRenderCornerGrid(section.title, itemsWithHints);
 
           return (
             <div key={`${section.title}-${sectionIndex}`} className={card}>
@@ -567,6 +615,7 @@ export default function GenericInspectionScreen(): JSX.Element {
                         photoUrls: [...prev, photoUrl],
                       });
                     }}
+                    /* Explicit AI submit; requires a note */
                     requireNoteForAI
                     onSubmitAI={(secIdx, itemIdx) => {
                       void submitAIForItem(secIdx, itemIdx);
