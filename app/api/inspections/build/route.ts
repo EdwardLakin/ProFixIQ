@@ -1,59 +1,120 @@
-// @inspections/lib/inspection/builders/buildAirAxleSections.ts
-import { generateAxleLayout } from "@inspections/lib/inspection/generateAxleLayout";
-import type { InspectionItem, InspectionSection } from "@inspections/lib/inspection/types";
+// app/api/inspections/build/route.ts
+import "server-only";
+import { NextResponse } from "next/server";
 
-/**
- * Build a single section titled "Axles (Air)" populated with
- * all standard L/R measurement rows for each axle.
- *
- * Supports up to 5 axles (twin steer + tri drive) if you pass custom labels.
- */
-export function buildAirAxleSection(opts: {
-  vehicleType: "truck" | "bus" | "trailer";
-  labels?: string[];    // e.g. ["Steer 1","Steer 2","Drive 1","Drive 2","Drive 3"]
-  maxAxles?: number;    // hard cap (defaults to 5)
-}): InspectionSection {
-  const { vehicleType, labels, maxAxles = 5 } = opts;
+// --------- Types ---------
+type SectionItem = { item: string; unit?: string | null };
+type SectionOut = { title: string; items: SectionItem[] };
 
-  // If labels provided, use them; else fall back to generateAxleLayout’s defaults.
-  let axleLabels: string[] = [];
-  if (labels?.length) {
-    axleLabels = labels.slice(0, maxAxles);
-  } else {
-    const layout = generateAxleLayout(vehicleType);
-    axleLabels = layout.map((a) => a.axleLabel).slice(0, maxAxles);
+// --------- Helpers ---------
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null;
+}
+function asString(v: unknown): string | null {
+  return typeof v === "string" ? v : null;
+}
+function unitHint(label: string): string | null {
+  const l = label.toLowerCase();
+  if (/(tread|pad|lining|rotor|drum|push ?rod)/.test(l)) return "mm";
+  if (/(pressure|psi|kpa|leak rate|warning)/.test(l))
+    return l.includes("kpa") ? "kPa" : "psi";
+  if (/(torque|ft·lb|ft-lb|nm|n·m)/.test(l)) return l.includes("n") ? "N·m" : "ft·lb";
+  return null;
+}
+
+function sanitizeSections(input: unknown): SectionOut[] {
+  const sectionsIn: unknown[] =
+    isRecord(input) && Array.isArray((input as Record<string, unknown>).sections)
+      ? ((input as Record<string, unknown>).sections as unknown[])
+      : [];
+
+  const clean: SectionOut[] = [];
+
+  for (const sec of sectionsIn) {
+    if (!isRecord(sec)) continue;
+    const title = asString(sec.title)?.trim() ?? "";
+    if (!title) continue;
+
+    const rawItems: unknown[] = Array.isArray(sec.items) ? (sec.items as unknown[]) : [];
+    const items: SectionItem[] = [];
+
+    for (const ri of rawItems) {
+      if (!isRecord(ri)) continue;
+      const label =
+        asString(ri.item)?.trim() ??
+        asString(ri.name)?.trim() ??
+        "";
+      if (!label) continue;
+
+      const providedUnit = asString(ri.unit)?.trim();
+      const unit = providedUnit && providedUnit.length > 0 ? providedUnit : unitHint(label);
+
+      items.push({ item: label, unit: unit ?? null });
+    }
+
+    if (items.length) {
+      clean.push({ title, items });
+    }
   }
 
-  const items: InspectionItem[] = [];
-  for (const label of axleLabels) {
-    // Tire measurements
-    items.push(
-      { item: `${label} Left Tread Depth`,  unit: "", value: "" },
-      { item: `${label} Right Tread Depth`, unit: "", value: "" },
-      { item: `${label} Left Tire Pressure`,  unit: "", value: "" },
-      { item: `${label} Right Tire Pressure`, unit: "", value: "" },
-    );
-
-    // Brake hardware + linings
-    items.push(
-      { item: `${label} Left Drum/Rotor`, value: "", unit: "" },
-      { item: `${label} Right Drum/Rotor`, value: "", unit: "" },
-      { item: `${label} Left Lining/Shoe`,  unit: "", value: "" },
-      { item: `${label} Right Lining/Shoe`, unit: "", value: "" },
-    );
-
-    // Air-brake specifics
-    items.push(
-      { item: `${label} Left Push Rod Travel`,  unit: "", value: "" },
-      { item: `${label} Right Push Rod Travel`, unit: "", value: "" },
-    );
-
-    // Wheel torque
-    items.push(
-      { item: `${label} Wheel Torque Inner`, unit: "", value: "" },
-      { item: `${label} Wheel Torque Outer`, unit: "", value: "" },
-    );
+  // fallback
+  if (!clean.length) {
+    return [
+      {
+        title: "General",
+        items: [
+          { item: "Visual walkaround", unit: null },
+          { item: "Record warning lights", unit: null },
+        ],
+      },
+    ];
   }
 
-  return { title: "Axles (Air)", items };
+  return clean;
+}
+
+export const runtime = "edge";
+
+export async function POST(req: Request) {
+  try {
+    const body: unknown = await req.json();
+    if (!isRecord(body)) {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
+    const prompt = asString(body.prompt);
+    const vehicleType = asString(body.vehicleType);
+
+    if (!prompt) {
+      return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
+    }
+
+    // this is still the simple mocked shape — your UI just needs a predictable shape here
+    const mock: unknown = {
+      sections: [
+        {
+          title: "Exterior & Lighting",
+          items: [
+            { item: "Headlights" },
+            { item: "Turn Signals" },
+            { item: "Brake Lights" },
+          ],
+        },
+        {
+          title: `Tires & Suspension — ${vehicleType ?? "vehicle"}`,
+          items: [
+            { item: "LF Tire Tread", unit: "mm" },
+            { item: "RF Tire Tread", unit: "mm" },
+            { item: "Tire Pressure (Front)", unit: "psi" },
+          ],
+        },
+      ],
+    };
+
+    const sections = sanitizeSections(mock);
+    return NextResponse.json({ sections });
+  } catch (err) {
+    console.error("build route failed:", err);
+    return NextResponse.json({ error: "Generation failed" }, { status: 500 });
+  }
 }
