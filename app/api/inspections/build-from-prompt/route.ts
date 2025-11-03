@@ -1,3 +1,4 @@
+// app/api/inspections/build-from-prompt/route.ts
 import "server-only";
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
@@ -28,7 +29,8 @@ function asString(v: unknown): string | null {
 function unitHint(label: string): string | null {
   const l = label.toLowerCase();
   if (/(tread|pad|lining|rotor|drum|push ?rod)/.test(l)) return "mm";
-  if (/(pressure|psi|kpa|leak rate|warning)/.test(l)) return l.includes("kpa") ? "kPa" : "psi";
+  if (/(pressure|psi|kpa|leak rate|warning)/.test(l))
+    return l.includes("kpa") ? "kPa" : "psi";
   if (/(torque|ft·lb|ft-lb|nm|n·m)/.test(l)) return l.includes("n") ? "N·m" : "ft·lb";
   return null;
 }
@@ -48,21 +50,22 @@ function sanitizeSections(input: unknown): SectionOut[] {
     const title = asString(sec.title)?.trim() ?? "";
     if (!title) continue;
 
-    const itemsIn: unknown[] = Array.isArray(sec.items) ? (sec.items as unknown[]) : [];
+    const itemsIn: unknown[] = Array.isArray(sec.items)
+      ? (sec.items as unknown[])
+      : [];
     const itemsOut: SectionItem[] = [];
 
     for (const raw of itemsIn) {
       if (!isRecord(raw)) continue;
 
       const label =
-        asString(raw.item)?.trim() ??
-        asString(raw.name)?.trim() ??
-        "";
+        asString(raw.item)?.trim() ?? asString(raw.name)?.trim() ?? "";
 
       if (!label) continue;
 
       const providedUnit = asString(raw.unit)?.trim();
-      const unit = providedUnit && providedUnit.length > 0 ? providedUnit : unitHint(label);
+      const unit =
+        providedUnit && providedUnit.length > 0 ? providedUnit : unitHint(label);
 
       itemsOut.push({ item: label, unit: unit ?? null });
     }
@@ -151,7 +154,8 @@ export async function POST(req: Request) {
     // infer vehicle type if caller didn’t pass it
     const vehicleType: VehicleType =
       (vehicleTypeStr as VehicleType) ??
-      (prompt.toLowerCase().includes("truck") || prompt.toLowerCase().includes("bus")
+      (prompt.toLowerCase().includes("truck") ||
+      prompt.toLowerCase().includes("bus")
         ? "truck"
         : "car");
 
@@ -175,9 +179,8 @@ export async function POST(req: Request) {
     });
 
     /* -------------------------------------------------------------- */
-    /* STEP 2 — augment with OpenAI using Responses API + schema       */
+    /* STEP 2 — augment with OpenAI (Responses API + schema)           */
     /* -------------------------------------------------------------- */
-
     const openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY!,
     });
@@ -198,14 +201,16 @@ export async function POST(req: Request) {
       "Generate inspection sections and items suitable for a professional repair shop.",
     ].join("\n");
 
-    // ✅ Compatible with openai@5.18.1
+    // this is the important part – responses.create with json_schema
     const resp = await openai.responses.create({
       model: "gpt-4o-mini",
       input: [
         { role: "system", content: system },
         { role: "user", content: user },
       ],
-      // @ts-expect-error: response_format not yet typed in SDK (still supported)
+      // SDK 5.18.1 doesn't have this typed yet, so tell TS to chill
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
       response_format: {
         type: "json_schema",
         json_schema: SectionsSchema,
@@ -214,22 +219,30 @@ export async function POST(req: Request) {
     });
 
     // ---------- Extract JSON safely ----------
-    // ---------- Extract JSON safely ----------
-let aiRaw: unknown = {};
-type ResponseOutput = {
-  type?: string;
-  content?: Array<{ type?: string; output_json?: unknown; text?: string }>;
-};
+    type ResponseContent =
+      | { type: "output_json"; output_json?: unknown }
+      | { type: "text"; text?: string }
+      | { type: string };
 
-const firstOut = (resp.output?.[0] ?? {}) as ResponseOutput;
+    type ResponseMessage = {
+      type?: string;
+      content?: ResponseContent[];
+    };
 
-if (firstOut.type === "message" && Array.isArray(firstOut.content)) {
-  const content = firstOut.content[0];
-  if (content?.type === "output_json") {
-    aiRaw = content.output_json;
-  } else if (content?.type === "text" && typeof content.text === "string") {
+    const firstOut = (resp.output?.[0] ?? {}) as ResponseMessage;
+
+    let aiRaw: unknown = {};
+    if (firstOut.type === "message" && Array.isArray(firstOut.content)) {
+  const firstContent = firstOut.content[0];
+  if (firstContent?.type === "output_json") {
+    // @ts-expect-error same reason
+    aiRaw = firstContent.output_json ?? {};
+  }
+  // @ts-expect-error same reason
+  else if (firstContent?.type === "text" && typeof firstContent.text === "string") {
     try {
-      aiRaw = JSON.parse(content.text);
+      // @ts-expect-error same reason
+      aiRaw = JSON.parse(firstContent.text);
     } catch {
       aiRaw = {};
     }
@@ -242,10 +255,9 @@ if (firstOut.type === "message" && Array.isArray(firstOut.content)) {
     /* STEP 3 — merge & dedupe                                         */
     /* -------------------------------------------------------------- */
     const merged = [...baseSections];
-
     for (const aiSec of aiSections) {
       const existing = merged.find(
-        (s) => s.title.toLowerCase() === aiSec.title.toLowerCase()
+        (s) => s.title.toLowerCase() === aiSec.title.toLowerCase(),
       );
       if (existing) {
         const seen = new Set(existing.items.map((i) => i.item.toLowerCase()));
@@ -265,7 +277,10 @@ if (firstOut.type === "message" && Array.isArray(firstOut.content)) {
       vehicleType,
       brakeSystem,
       sectionCount: merged.length,
-      itemCount: merged.reduce((sum, s) => sum + (s.items?.length ?? 0), 0),
+      itemCount: merged.reduce(
+        (sum, s) => sum + (s.items?.length ?? 0),
+        0,
+      ),
       sections: merged,
     });
   } catch (e) {

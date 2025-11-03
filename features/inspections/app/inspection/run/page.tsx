@@ -24,9 +24,25 @@ const HYD_ITEM_RE = /^(LF|RF|LR|RR)\s+/i;
 const AIR_ITEM_RE =
   /^(Steer\s*\d*|Drive\s*\d+|Tag|Trailer\s*\d+)\s+(Left|Right)\s+/i;
 
+/** Also treat these titles as "this is already a corner grid" */
+function looksLikeCornerTitle(title: string | undefined | null): boolean {
+  if (!title) return false;
+  const t = title.toLowerCase();
+  return (
+    t.includes("corner grid") ||
+    t.includes("tires & brakes") ||
+    t.includes("tires and brakes") ||
+    t.includes("air brake") ||
+    t.includes("hydraulic brake")
+  );
+}
+
 /** Remove any section that appears to be a corner grid to prevent duplicates. */
 function stripExistingCornerGrids(sections: Section[]): Section[] {
   return sections.filter((s) => {
+    // if the title already says it's a corner / tires & brakes, we consider it a grid
+    if (looksLikeCornerTitle(s.title)) return false;
+
     const items = s.items ?? [];
     const looksHyd = items.some((it) => HYD_ITEM_RE.test(it.item || ""));
     const looksAir = items.some((it) => AIR_ITEM_RE.test(it.item || ""));
@@ -50,7 +66,11 @@ function buildHydraulicCornerSection(): Section {
   ];
   const corners = ["LF", "RF", "LR", "RR"];
   const items: SectionItem[] = [];
-  for (const c of corners) for (const m of metrics) items.push({ item: `${c} ${m.label}`, unit: m.unit });
+  for (const c of corners) {
+    for (const m of metrics) {
+      items.push({ item: `${c} ${m.label}`, unit: m.unit });
+    }
+  }
   return { title: "Corner Grid (Hydraulic)", items };
 }
 
@@ -92,23 +112,31 @@ function buildAirCornerSection(): Section {
 /* ------------------------------------------------------------------ */
 
 /**
- * Choose which grid to inject:
- *  - URL ?grid=air|hyd|none wins (for quick testing)
- *  - else vehicleType: truck/bus/trailer => air, otherwise hyd
- *  - If "none", we do not inject a grid, but we still strip duplicates if present.
+ * New behavior:
+ * 1. If template already has a "corner-y" title -> return sections untouched.
+ * 2. Else strip real corner-grid-looking sections, then inject based on:
+ *    - ?grid=air|hyd|none
+ *    - else vehicleType
  */
 function prepareSectionsWithCornerGrid(
   sections: Section[],
   vehicleType: string | null | undefined,
   gridParam: string | null,
 ): Section[] {
-  const s = Array.isArray(sections) ? (sections as Section[]) : [];
+  const s = Array.isArray(sections) ? sections : [];
 
-  // Remove any corner grids already present to avoid duplicates
+  // 1) If user already has a section whose TITLE looks like a corner grid, just return it as-is.
+  const hasCornerByTitle = s.some((sec) => looksLikeCornerTitle(sec.title));
+  if (hasCornerByTitle) {
+    return s;
+  }
+
+  // 2) Otherwise, remove item-pattern corner grids so we don't end up with 2
   const withoutGrids = stripExistingCornerGrids(s);
 
-  // Decide what to do
+  // 3) Decide what to inject
   const gridMode = (gridParam || "").toLowerCase(); // air | hyd | none | ""
+
   if (gridMode === "none") return withoutGrids;
 
   let injectAir: boolean;
@@ -119,8 +147,10 @@ function prepareSectionsWithCornerGrid(
     injectAir = vt === "truck" || vt === "bus" || vt === "trailer";
   }
 
-  const injected = injectAir ? buildAirCornerSection() : buildHydraulicCornerSection();
-  // Put the grid first so techs see it immediately
+  const injected = injectAir
+    ? buildAirCornerSection()
+    : buildHydraulicCornerSection();
+
   return [injected, ...withoutGrids];
 }
 
@@ -160,8 +190,11 @@ export default function RunTemplateLoader() {
       const title = data.template_name ?? "Inspection";
       const vehicleType = String(data.vehicle_type ?? "");
 
-      // Deterministic corner grid handling (strip existing, then inject based on override or vehicle type)
-      const sections = prepareSectionsWithCornerGrid(rawSections, vehicleType, gridOverride);
+      const sections = prepareSectionsWithCornerGrid(
+        rawSections,
+        vehicleType,
+        gridOverride,
+      );
 
       // Stage for the generic runtime
       sessionStorage.setItem("inspection:sections", JSON.stringify(sections));
@@ -173,12 +206,12 @@ export default function RunTemplateLoader() {
         JSON.stringify(Object.fromEntries(sp)),
       );
 
-      // Legacy keys (avoid older flows bouncing)
+      // Legacy keys
       sessionStorage.setItem("customInspection:sections", JSON.stringify(sections));
       sessionStorage.setItem("customInspection:title", title);
       sessionStorage.setItem("customInspection:includeOil", JSON.stringify(false));
 
-      // Forward to fill and *force* template=generic so fill never redirects away
+      // Forward to fill and *force* template=generic
       const next = new URLSearchParams(sp.toString());
       next.delete("templateId");
       next.set("template", "generic");
