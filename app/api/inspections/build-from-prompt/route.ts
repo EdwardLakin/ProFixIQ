@@ -8,9 +8,10 @@ import {
   type BrakeSystem,
 } from "@/features/inspections/lib/inspection/masterInspectionList";
 
-/* ------------------------------------------------------------- */
-/* small helpers                                                 */
-/* ------------------------------------------------------------- */
+/* ------------------------------------------------------------------ */
+/* Types & helpers                                                    */
+/* ------------------------------------------------------------------ */
+
 type SectionItem = { item: string; unit?: string | null };
 type SectionOut = { title: string; items: SectionItem[] };
 
@@ -29,7 +30,7 @@ function unitHint(label: string): string | null {
   return null;
 }
 
-/** normalize whatever the model gives us into SectionOut[] */
+/** model → safe SectionOut[] */
 function sanitizeSections(input: unknown): SectionOut[] {
   const sectionsIn: unknown[] =
     isRecord(input) && Array.isArray((input as Record<string, unknown>).sections)
@@ -48,7 +49,6 @@ function sanitizeSections(input: unknown): SectionOut[] {
 
     for (const raw of itemsIn) {
       if (!isRecord(raw)) continue;
-
       const label =
         asString(raw.item)?.trim() ??
         asString(raw.name)?.trim() ??
@@ -64,6 +64,7 @@ function sanitizeSections(input: unknown): SectionOut[] {
     if (itemsOut.length) clean.push({ title, items: itemsOut });
   }
 
+  // fallback
   if (!clean.length) {
     return [
       {
@@ -75,13 +76,44 @@ function sanitizeSections(input: unknown): SectionOut[] {
       },
     ];
   }
-
   return clean;
 }
 
-/* ------------------------------------------------------------- */
-/* schema we pass to Responses API                               */
-/* ------------------------------------------------------------- */
+/* ------------------------------------------------------------------ */
+/* Air/HD detectors so cars don't get truck stuff                     */
+/* ------------------------------------------------------------------ */
+
+function looksAirBrakeItem(label: string): boolean {
+  const l = label.toLowerCase();
+  // classic HD / air words
+  if (l.includes("push rod")) return true;
+  if (l.includes("pushrod")) return true;
+  if (l.includes("slack adjuster")) return true;
+  if (l.includes("air tank")) return true;
+  if (l.includes("air leak")) return true;
+  if (l.includes("governor")) return true;
+  // axle + side + metric pattern (Steer 1 Left ..., Drive 2 Right ...)
+  if (/^(steer|drive|tag|trailer)\s*\d*\s+(left|right)\s+/i.test(label)) return true;
+  return false;
+}
+
+function looksAirBrakeSection(title: string): boolean {
+  const t = title.toLowerCase();
+  return (
+    t.includes("air brake") ||
+    t.includes("axle") ||
+    t.includes("corner grid (air)") ||
+    t.includes("steer") ||
+    t.includes("drive 1") ||
+    t.includes("drive 2") ||
+    t.includes("trailer")
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* JSON schema for Responses API                                      */
+/* ------------------------------------------------------------------ */
+
 const SectionsSchema = {
   name: "SectionsOutput",
   schema: {
@@ -120,6 +152,10 @@ const SectionsSchema = {
 
 export const runtime = "edge";
 
+/* ------------------------------------------------------------------ */
+/* Route                                                              */
+/* ------------------------------------------------------------------ */
+
 export async function POST(req: Request) {
   try {
     const body: unknown = await req.json();
@@ -136,12 +172,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
     }
 
-    // --- figure out vehicle / brake first ----------------------------------
+    // 1) infer vehicle / brake
     const vehicleType: VehicleType =
       (vehicleTypeStr as VehicleType) ??
       (prompt.toLowerCase().includes("truck") ||
       prompt.toLowerCase().includes("bus") ||
-      prompt.toLowerCase().includes("trailer")
+      prompt.toLowerCase().includes("trailer") ||
+      prompt.toLowerCase().includes("hd") ||
+      prompt.toLowerCase().includes("heavy duty")
         ? "truck"
         : "car");
 
@@ -149,7 +187,7 @@ export async function POST(req: Request) {
       (brakeSystemStr as BrakeSystem) ??
       (vehicleType === "car" ? "hyd_brake" : "air_brake");
 
-    // --- adaptive target ----------------------------------------------------
+    // 2) target size
     let targetCount: number;
     if (typeof targetCountRaw === "number" && targetCountRaw > 0) {
       targetCount = targetCountRaw;
@@ -158,30 +196,29 @@ export async function POST(req: Request) {
       targetCount = m ? parseInt(m[1]!, 10) : 20;
     }
 
-    // --- deterministic base (never fails) ----------------------------------
+    // 3) deterministic base — always good
     const baseSections = buildFromMaster({
       vehicleType,
       brakeSystem,
       targetCount,
     });
 
-    // If there’s no OpenAI key in the environment, just return the base.
+    // If OpenAI not set, just return base
     if (!process.env.OPENAI_API_KEY) {
       return NextResponse.json({ sections: baseSections }, { status: 200 });
     }
 
-    // --- try to augment with OpenAI ----------------------------------------
+    // 4) try to augment with OpenAI
     let aiSections: SectionOut[] = [];
     try {
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
       const system = [
         "You are an AI assistant for generating vehicle inspection templates.",
+        brakeSystem === "hyd_brake"
+          ? "This is an automotive/light-duty inspection. Do NOT include heavy-duty truck or air-brake items such as push rod travel, slack adjusters, or axle-by-axle dual tire rows."
+          : "This inspection may include heavy-duty / air-brake content.",
         "Return ONLY JSON that follows the supplied schema.",
-        "Output several sections that match real shop inspections.",
-        "Include units when obvious (psi, kPa, mm, in, ft·lb).",
-        `Vehicle type: ${vehicleType}.`,
-        `Brake system: ${brakeSystem}.`,
         `Aim for about ${targetCount} inspection items.`,
       ].join(" ");
 
@@ -196,7 +233,7 @@ export async function POST(req: Request) {
           { role: "system", content: system },
           { role: "user", content: user },
         ],
-        // @ts-expect-error - not yet in SDK types
+        // @ts-expect-error - sdk typing lag
         response_format: {
           type: "json_schema",
           json_schema: SectionsSchema,
@@ -204,13 +241,12 @@ export async function POST(req: Request) {
         max_output_tokens: 4000,
       });
 
-      // pull the JSON out of Responses API safely
+      // extract JSON
       let aiRaw: unknown = {};
       type ResponseOutput = {
         type?: string;
         content?: Array<{ type?: string; output_json?: unknown; text?: string }>;
       };
-
       const firstOut = (resp.output?.[0] ?? {}) as ResponseOutput;
       if (firstOut.type === "message" && Array.isArray(firstOut.content)) {
         const c0 = firstOut.content[0];
@@ -227,15 +263,29 @@ export async function POST(req: Request) {
 
       aiSections = sanitizeSections(aiRaw);
     } catch (err) {
-      // don’t kill the whole route — we can still return the base sections
       console.error("OpenAI augmentation failed, returning base only:", err);
       return NextResponse.json({ sections: baseSections }, { status: 200 });
     }
 
-    // --- merge AI into base if it’s rich enough ----------------------------
+    // 5) if this is automotive/hydraulic, strip air/HD stuff from AI
+    if (brakeSystem === "hyd_brake") {
+      aiSections = aiSections
+        .map((sec) => {
+          // drop whole section if it's obviously HD/air
+          if (looksAirBrakeSection(sec.title)) return null;
+          const filteredItems = sec.items.filter(
+            (it) => !looksAirBrakeItem(it.item),
+          );
+          if (!filteredItems.length) return null;
+          return { ...sec, items: filteredItems };
+        })
+        .filter(Boolean) as SectionOut[];
+    }
+
+    // 6) merge if AI is good enough
     const aiItemCount = aiSections.reduce(
       (sum, s) => sum + (s.items?.length ?? 0),
-      0
+      0,
     );
     const minItemsToMerge = Math.max(10, Math.floor(targetCount * 0.5));
     const shouldMerge = aiSections.length >= 3 && aiItemCount >= minItemsToMerge;
@@ -244,7 +294,7 @@ export async function POST(req: Request) {
     if (shouldMerge) {
       for (const aiSec of aiSections) {
         const existing = merged.find(
-          (s) => s.title.toLowerCase() === aiSec.title.toLowerCase()
+          (s) => s.title.toLowerCase() === aiSec.title.toLowerCase(),
         );
         if (existing) {
           const seen = new Set(existing.items.map((i) => i.item.toLowerCase()));
@@ -263,7 +313,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ sections: merged }, { status: 200 });
   } catch (err) {
     console.error("build-from-prompt route failed:", err);
-    // final safety net: send a minimal section so UI never shows red
     return NextResponse.json(
       {
         sections: [
