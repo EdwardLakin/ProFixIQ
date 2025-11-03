@@ -214,20 +214,27 @@ export async function POST(req: Request) {
     });
 
     // ---------- Extract JSON safely ----------
-    let aiRaw: unknown = {};
-    const firstOut = (resp as any).output?.[0];
-    if (firstOut?.type === "message") {
-      const content = firstOut.content?.[0];
-      if (content?.type === "output_json") {
-        aiRaw = content.output_json;
-      } else if (content?.type === "text") {
-        try {
-          aiRaw = JSON.parse(content.text);
-        } catch {
-          aiRaw = {};
-        }
-      }
+    // ---------- Extract JSON safely ----------
+let aiRaw: unknown = {};
+type ResponseOutput = {
+  type?: string;
+  content?: Array<{ type?: string; output_json?: unknown; text?: string }>;
+};
+
+const firstOut = (resp.output?.[0] ?? {}) as ResponseOutput;
+
+if (firstOut.type === "message" && Array.isArray(firstOut.content)) {
+  const content = firstOut.content[0];
+  if (content?.type === "output_json") {
+    aiRaw = content.output_json;
+  } else if (content?.type === "text" && typeof content.text === "string") {
+    try {
+      aiRaw = JSON.parse(content.text);
+    } catch {
+      aiRaw = {};
     }
+  }
+}
 
     const aiSections = sanitizeSections(aiRaw);
 
