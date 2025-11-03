@@ -1,4 +1,3 @@
-// features/inspections/app/inspection/custom-draft/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -66,19 +65,51 @@ function normalizeItemLike(i: unknown): {
   return { item: label, unit, status, notes };
 }
 
-function normalizeSectionsInput(input: unknown): InspectionSection[] {
+/** Merge sections by title & dedupe items by label (case-insensitive) */
+function normalizeSections(input: unknown): InspectionSection[] {
   if (!Array.isArray(input)) return [];
-  return input
-    .map((s: unknown) => {
-      if (!isRecord(s)) return { title: "", items: [] };
-      const title = asString(s.title).trim();
-      const itemsRaw = Array.isArray(s.items) ? (s.items as unknown[]) : [];
-      const items = itemsRaw
-        .map((it) => normalizeItemLike(it))
-        .filter((it) => it.item.length > 0);
-      return { title, items };
-    })
-    .filter((s) => s.title.length > 0 && (s.items?.length ?? 0) > 0);
+  const byTitle = new Map<string, InspectionSection>();
+
+  for (const s of input) {
+    if (!isRecord(s)) continue;
+    const title = asString(s.title).trim();
+    if (!title) continue;
+
+    const itemsRaw = Array.isArray(s.items) ? (s.items as unknown[]) : [];
+    const items = itemsRaw
+      .map((it) => normalizeItemLike(it))
+      .filter((it) => it.item.length > 0);
+
+    if (!byTitle.has(title)) {
+      byTitle.set(title, { title, items: [] });
+    }
+    const bucket = byTitle.get(title)!;
+    const seen = new Set((bucket.items ?? []).map((x) => (x.item ?? "").toLowerCase()));
+
+    for (const it of items) {
+      const key = (it.item ?? "").toLowerCase();
+      if (!seen.has(key)) {
+        bucket.items = [...(bucket.items ?? []), it];
+        seen.add(key);
+      }
+    }
+  }
+
+  return Array.from(byTitle.values()).filter((s) => (s.items?.length ?? 0) > 0);
+}
+
+/* ——— helpers ——— */
+function buildOilChangeSection(): InspectionSection {
+  return {
+    title: "Oil Change",
+    items: [
+      { item: "Drain engine oil", status: "na" },
+      { item: "Replace oil filter", status: "na" },
+      { item: "Oil Capacity", status: "na" },
+      { item: "Reset maintenance reminder", status: "na" },
+      { item: "Inspect for leaks after start", status: "na" },
+    ],
+  };
 }
 
 /* -------------------------------- component -------------------------------- */
@@ -96,6 +127,7 @@ export default function CustomDraftPage() {
   const [sections, setSections] = useState<InspectionSection[]>([]);
   const [laborHours, setLaborHours] = useState<number>(0);
   const [saving, setSaving] = useState(false);
+  const [running, setRunning] = useState(false);
 
   // Load what the builder wrote into sessionStorage
   useEffect(() => {
@@ -110,15 +142,15 @@ export default function CustomDraftPage() {
 
       if (raw) {
         const parsedUnknown = JSON.parse(raw) as unknown;
-        const parsed = normalizeSectionsInput(parsedUnknown);
-        const withOil = includeOil ? [...parsed, buildOilChangeSection()] : parsed;
-        const normalized = normalizeSectionsInput(withOil);
-        setSections(normalized);
+        const parsed = normalizeSections(parsedUnknown);
+        const withOil = includeOil ? normalizeSections([...parsed, buildOilChangeSection()]) : parsed;
+
+        setSections(withOil);
 
         // seed labor hours (editable)
         const initialHours = computeDefaultLaborHours({
           vehicleType: vehicleType ?? "truck",
-          sections: normalized,
+          sections: withOil,
         });
         setLaborHours(initialHours);
       }
@@ -130,7 +162,6 @@ export default function CustomDraftPage() {
 
   // Recompute a suggested default if sections change drastically (do not override user edits)
   useEffect(() => {
-    // Only auto-seed when hours are zero (implies not yet edited), otherwise respect user edits
     if (laborHours === 0 && sections.length > 0) {
       const suggested = computeDefaultLaborHours({
         vehicleType: vehicleType ?? "truck",
@@ -142,10 +173,6 @@ export default function CustomDraftPage() {
   }, [sections]);
 
   /* ----------------------------- editing helpers ----------------------------- */
-
-  function normalizeSections(input: InspectionSection[]): InspectionSection[] {
-    return normalizeSectionsInput(input);
-  }
 
   function addSection() {
     setSections((prev) => [
@@ -235,8 +262,9 @@ export default function CustomDraftPage() {
     });
   }
 
-  /* --------------------------------- saving ---------------------------------- */
+  /* --------------------------------- actions --------------------------------- */
 
+  // Save into templates table (unchanged)
   const saveTemplate = async () => {
     try {
       setSaving(true);
@@ -255,7 +283,6 @@ export default function CustomDraftPage() {
       const payload: InsertTemplate = {
         user_id: u.user.id,
         template_name: (title || "").trim() || "Custom Template",
-        // Using `unknown` to narrow without `any`
         sections:
           cleaned as unknown as Database["public"]["Tables"]["inspection_templates"]["Insert"]["sections"],
         description: "Created from Custom Draft",
@@ -279,9 +306,28 @@ export default function CustomDraftPage() {
       }
 
       toast.success("Template saved.");
-      router.replace(`/inspections/templates`); // plural path
+      router.replace(`/inspections/templates`);
     } finally {
       setSaving(false);
+    }
+  };
+
+  // NEW: Stage to Run/Fill
+  const saveAndRun = () => {
+    try {
+      setRunning(true);
+      const cleaned = normalizeSections(sections);
+      if (cleaned.length === 0) {
+        toast.error("Add at least one section with items.");
+        return;
+      }
+      // stage canonical keys for the Run page
+      sessionStorage.setItem("inspection:sections", JSON.stringify(cleaned));
+      sessionStorage.setItem("inspection:title", (title || "").trim() || "Inspection");
+      // go to Run
+      router.push(`/inspections/run?template=${encodeURIComponent(title || "Inspection")}`);
+    } finally {
+      setRunning(false);
     }
   };
 
@@ -460,21 +506,16 @@ export default function CustomDraftPage() {
         >
           {saving ? "Saving…" : "Save as Template"}
         </button>
+
+        <button
+          onClick={saveAndRun}
+          disabled={running}
+          className="rounded bg-green-600 px-4 py-2 font-semibold text-black hover:bg-green-500 disabled:opacity-60"
+          title="Stage this draft and open the Run page"
+        >
+          {running ? "Opening…" : "Save & Run"}
+        </button>
       </div>
     </div>
   );
-}
-
-/* ——— helpers ——— */
-function buildOilChangeSection(): InspectionSection {
-  return {
-    title: "Oil Change",
-    items: [
-      { item: "Drain engine oil", status: "na" },
-      { item: "Replace oil filter", status: "na" },
-      { item: "Oil Capacity", status: "na" },
-      { item: "Reset maintenance reminder", status: "na" },
-      { item: "Inspect for leaks after start", status: "na" },
-    ],
-  };
 }

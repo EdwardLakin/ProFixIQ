@@ -27,7 +27,6 @@ import type {
 } from "@inspections/lib/inspection/types";
 
 import SectionDisplay from "@inspections/lib/inspection/SectionDisplay";
-// ⬇️ swap to the hybrid grid that supports BOTH air + hydraulic label styles
 import AxlesCornerGrid from "@inspections/lib/inspection/ui/AxlesCornerGrid";
 
 import { InspectionFormCtx } from "@inspections/lib/inspection/ui/InspectionFormContext";
@@ -78,18 +77,6 @@ function unitHintGeneric(label: string, mode: "metric" | "imperial"): string {
   return "";
 }
 
-/** Decide if a section should use a corner/axle grid (measurement-heavy) */
-function isMeasurementSection(title?: string) {
-  const t = (title || "").toLowerCase();
-  return (
-    t.includes("measurement") ||
-    t.includes("corner") ||
-    t.includes("tire") ||
-    t.includes("brake pad") ||
-    t.includes("tread")
-  );
-}
-
 /** Safe reader for sessionStorage JSON */
 function readStaged<T>(key: string): T | null {
   try {
@@ -99,6 +86,59 @@ function readStaged<T>(key: string): T | null {
   } catch {
     return null;
   }
+}
+
+/** Normalize + merge sections (copy name→item; merge same titles; dedupe items) */
+function normalizeSections(input: unknown): InspectionSection[] {
+  try {
+    const arr = Array.isArray(input) ? input : [];
+    const byTitle = new Map<string, InspectionSection>();
+
+    for (const s of arr as any[]) {
+      const title = String(s?.title ?? "").trim();
+      if (!title) continue;
+
+      const itemsRaw = Array.isArray(s?.items) ? s.items : [];
+      const items = itemsRaw
+        .map((it: any) => {
+          const label = String(it?.item ?? it?.name ?? "").trim();
+          if (!label) return null;
+          return {
+            ...it,
+            item: label,
+            unit: it?.unit ?? null,
+          };
+        })
+        .filter(Boolean);
+
+      if (!byTitle.has(title)) byTitle.set(title, { title, items: [] });
+      const bucket = byTitle.get(title)!;
+      const seen = new Set((bucket.items ?? []).map((x) => (x.item ?? "").toLowerCase()));
+      for (const it of items as any[]) {
+        const key = (it.item ?? "").toLowerCase();
+        if (!seen.has(key)) {
+          bucket.items = [...(bucket.items ?? []), it];
+          seen.add(key);
+        }
+      }
+    }
+
+    return Array.from(byTitle.values()).filter((s) => (s.items?.length ?? 0) > 0);
+  } catch {
+    return [];
+  }
+}
+
+/** Decide grid only if labels actually look like corner/axle */
+const AIR_RE = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
+const HYD_ABBR_RE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
+const HYD_FULL_RE = /^(?<corner>(Left|Right)\s+(Front|Rear))\s+(?<metric>.+)$/i;
+
+function looksLikeCornerOrAxle(items: { item?: string }[]): boolean {
+  return items.some(({ item }) => {
+    const label = item ?? "";
+    return AIR_RE.test(label) || HYD_ABBR_RE.test(label) || HYD_FULL_RE.test(label);
+  });
 }
 
 /* -------------------------------------------------------------------- */
@@ -149,13 +189,13 @@ export default function GenericInspectionScreen(): JSX.Element {
     engine_hours: sp.get("engine_hours") || "",
   };
 
-  // Sections precedence:
-  // 1) inspection:sections (staged by /inspection/run)
-  // 2) customInspection:sections (staged by custom builder)
+  // Sections precedence (normalized):
+  // 1) inspection:sections (staged by custom draft)
+  // 2) customInspection:sections (legacy)
   // 3) default
   const bootSections = useMemo<InspectionSection[]>(() => {
     const staged = readStaged<InspectionSection[]>("inspection:sections");
-    if (Array.isArray(staged) && staged.length) return staged;
+    if (Array.isArray(staged) && staged.length) return normalizeSections(staged);
 
     try {
       const legacy =
@@ -164,7 +204,8 @@ export default function GenericInspectionScreen(): JSX.Element {
           : null;
       if (legacy) {
         const parsed = JSON.parse(legacy) as InspectionSection[];
-        if (Array.isArray(parsed) && parsed.length) return parsed;
+        const norm = normalizeSections(parsed);
+        return norm;
       }
     } catch {}
 
@@ -293,7 +334,7 @@ export default function GenericInspectionScreen(): JSX.Element {
     };
   }, []);
 
-  // AI Submit Flow
+  // AI Submit Flow (unchanged)
   const inFlightRef = useRef<Set<string>>(new Set());
   const isSubmittingAI = (secIdx: number, itemIdx: number): boolean =>
     inFlightRef.current.has(`${secIdx}:${itemIdx}`);
@@ -479,7 +520,14 @@ export default function GenericInspectionScreen(): JSX.Element {
 
       <InspectionFormCtx.Provider value={{ updateItem }}>
         {session.sections.map((section: InspectionSection, sectionIndex: number) => {
-          const useGrid = isMeasurementSection(section.title);
+          const itemsWithHints = section.items.map((it) => ({
+            ...it,
+            unit: it.unit || unitHintGeneric(it.item ?? "", unit),
+          }));
+
+          // Use grid ONLY if labels match known patterns; otherwise list renderer
+          const useGrid = looksLikeCornerOrAxle(itemsWithHints);
+
           return (
             <div key={`${section.title}-${sectionIndex}`} className={card}>
               <h2 className={sectionTitle}>{section.title}</h2>
@@ -493,16 +541,12 @@ export default function GenericInspectionScreen(): JSX.Element {
                 {useGrid ? (
                   <AxlesCornerGrid
                     sectionIndex={sectionIndex}
-                    items={section.items.map((it) => ({
-                      ...it,
-                      unit: it.unit || unitHintGeneric(it.item ?? "", unit),
-                    }))}
-                    
+                    items={itemsWithHints}
                   />
                 ) : (
                   <SectionDisplay
                     title=""
-                    section={section}
+                    section={{ ...section, items: itemsWithHints }}
                     sectionIndex={sectionIndex}
                     showNotes
                     showPhotos
@@ -523,7 +567,6 @@ export default function GenericInspectionScreen(): JSX.Element {
                         photoUrls: [...prev, photoUrl],
                       });
                     }}
-                    /* Explicit AI submit; requires a note */
                     requireNoteForAI
                     onSubmitAI={(secIdx, itemIdx) => {
                       void submitAIForItem(secIdx, itemIdx);
