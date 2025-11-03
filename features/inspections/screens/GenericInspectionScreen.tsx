@@ -497,9 +497,7 @@ export default function GenericInspectionScreen(): JSX.Element {
                       ...it,
                       unit: it.unit || unitHintGeneric(it.item ?? "", unit),
                     }))}
-                    // Prefer kPa in Metric, psi in Imperial; still stores raw value
-                    pressurePrimary={unit === "metric" ? "kpa" : "psi"}
-                    showPressureSecondary
+                    
                   />
                 ) : (
                   <SectionDisplay

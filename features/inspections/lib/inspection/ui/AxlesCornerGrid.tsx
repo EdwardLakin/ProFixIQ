@@ -1,63 +1,35 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useInspectionForm } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import type { InspectionItem } from "@inspections/lib/inspection/types";
-
-type PressureUnit = "psi" | "kpa";
 
 type Props = {
   sectionIndex: number;
   items: InspectionItem[];
-
-  /** Optional hint used when a row/unit is blank */
+  /** Optional unit resolver when an item has no `unit` */
   unitHint?: (label: string) => string;
-
-  /** Optional: show Add Axle control and handle the selected axle */
+  /** Only shown (and used) for AIR mode */
   onAddAxle?: (axleLabel: string) => void;
-
-  /**
-   * Primary pressure unit in UI. Value is still stored in `item.value` as typed;
-   * we only decorate UI with units/mini conversion.
-   * Default: "psi"
-   */
-  pressurePrimary?: PressureUnit;
-
-  /**
-   * Show the tiny converted unit next to pressures. e.g. “(248 kPa)”
-   * Default: true
-   */
-  showPressureSecondary?: boolean;
-
-  /**
-   * Optional: Override metric ordering. Unknown metrics fall to the end.
-   * Defaults are sensible for both air & hydraulic.
-   */
-  metricOrder?: string[];
 };
 
-/** --- Helpers --- */
-const PSI_TO_KPA = 6.8947572932;
-const toKpa = (psiNum: number) => Math.round(psiNum * PSI_TO_KPA);
-const isPressureMetric = (name: string) => /pressure/i.test(name);
+/* ---------------------------- shared helpers ---------------------------- */
 
-/**
- * Detects style:
- *  - Air-style axle labels: "Steer 1 Left Tread Depth" / "Drive 2 Right Push Rod Travel"
- *  - Hydraulic-style corners: "LF Tire Pressure", "Left Front Rotor Thickness"
- */
 const AIR_RE = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
-const CORNER_ABBR_RE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
-const CORNER_FULL_RE = /^(?<corner>(Left|Right)\s+(Front|Rear))\s+(?<metric>.+)$/i;
+const HYD_ABBR_RE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
+const HYD_FULL_RE = /^(?<corner>(Left|Right)\s+(Front|Rear))\s+(?<metric>.+)$/i;
 
 type Side = "Left" | "Right";
+type Region = "Front" | "Rear";
 type CornerKey = "LF" | "RF" | "LR" | "RR";
-const CornerTitle: Record<CornerKey, string> = {
-  LF: "Left Front",
-  RF: "Right Front",
-  LR: "Left Rear",
-  RR: "Right Rear",
+
+const cornerToRegion: Record<CornerKey, { side: Side; region: Region }> = {
+  LF: { side: "Left", region: "Front" },
+  RF: { side: "Right", region: "Front" },
+  LR: { side: "Left", region: "Rear" },
+  RR: { side: "Right", region: "Rear" },
 };
+
 const normalizeCorner = (raw: string): CornerKey | null => {
   const s = raw.toLowerCase();
   if (s.startsWith("lf") || s === "left front") return "LF";
@@ -67,81 +39,172 @@ const normalizeCorner = (raw: string): CornerKey | null => {
   return null;
 };
 
-/** Default ordering covers both modes (air/hydraulic) */
-const DEFAULT_METRIC_ORDER = [
+const metricOrderHyd = [
   "Tire Pressure",
-  "Tread Depth",
   "Tire Tread",
-  "Pad Thickness",
-  "Lining/Shoe",
+  "Brake Pad",
   "Rotor",
-  "Drum/Rotor",
-  "Push Rod",
+  "Rotor Condition",
+  "Rotor Thickness",
   "Wheel Torque",
 ];
+const hydOrderIndex = (m: string) => {
+  const i = metricOrderHyd.findIndex((x) => m.toLowerCase().includes(x.toLowerCase()));
+  return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+};
 
-/** ------------------------------ Component ------------------------------ */
-export default function HybridCornerGrid({
-  sectionIndex,
-  items,
-  unitHint,
-  onAddAxle,
-  pressurePrimary = "psi",
-  showPressureSecondary = true,
-  metricOrder = DEFAULT_METRIC_ORDER,
-}: Props) {
+const metricOrderAir = [
+  "Tire Pressure (Outer)",
+  "Tire Pressure (Inner)",
+  "Tread Depth (Outer)",
+  "Tread Depth (Inner)",
+  "Tire Pressure",
+  "Tread Depth",
+  "Lining/Shoe",
+  "Drum/Rotor",
+  "Push Rod Travel",
+  "Wheel Torque Inner",
+  "Wheel Torque Outer",
+];
+const airOrderIndex = (m: string) => {
+  const i = metricOrderAir.findIndex((x) => m.toLowerCase().includes(x.toLowerCase()));
+  return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+};
+
+const isPressure = (label: string) => /pressure/i.test(label);
+const kpaFromPsi = (psiStr: string) => {
+  const n = Number(psiStr);
+  return isFinite(n) ? Math.round(n * 6.894757) : null;
+};
+
+/* ---------------------------- component ---------------------------- */
+
+export default function AxlesCornerGrid({ sectionIndex, items, unitHint, onAddAxle }: Props) {
   const { updateItem } = useInspectionForm();
 
-  /** Sort helper */
-  const orderIndex = (metric: string) => {
-    const i = metricOrder.findIndex((m) => metric.toLowerCase().includes(m.toLowerCase()));
-    return i === -1 ? Number.MAX_SAFE_INTEGER : i;
-  };
-
-  /** Decide rendering mode from items */
-  const mode: "air-axle" | "hydraulic-corner" = useMemo(() => {
+  // Detect mode from the item labels
+  const mode: "air" | "hyd" = useMemo(() => {
     for (const it of items) {
       const label = it.item ?? "";
-      if (AIR_RE.test(label)) return "air-axle";
-      if (CORNER_ABBR_RE.test(label) || CORNER_FULL_RE.test(label)) return "hydraulic-corner";
+      if (AIR_RE.test(label)) return "air";
+      if (HYD_ABBR_RE.test(label) || HYD_FULL_RE.test(label)) return "hyd";
     }
-    // Fallback: if nothing matches, default to hydraulic-corner so users at least see 4 boxes
-    return "hydraulic-corner";
+    // Default to HYD so techs at least get LF/RF/LR/RR slots
+    return "hyd";
   }, [items]);
 
-  /** ----------------- Local buffered values (debounced writes) ----------------- */
-  const [localVals, setLocalVals] = useState<Record<number, string>>({});
-  const timersRef = useRef<Record<number, number | NodeJS.Timeout>>({});
+  /* ------------------------------------------------------------------ */
+  /* HYDRAULIC (LF/RF/LR/RR) — match your CornerGrid layout             */
+  /* ------------------------------------------------------------------ */
 
-  useEffect(() => {
-    const seed: Record<number, string> = {};
-    items.forEach((it, idx) => (seed[idx] = String(it.value ?? "")));
-    setLocalVals(seed);
-  }, [items]);
-
-  const setBuffered = (idx: number, value: string) => {
-    setLocalVals((prev) => ({ ...prev, [idx]: value }));
-    const t = timersRef.current[idx];
-    if (t) clearTimeout(t as number);
-    timersRef.current[idx] = setTimeout(() => {
-      updateItem(sectionIndex, idx, { value });
-    }, 250);
-  };
-
-  /** ----------------- AIR (Axle) grouping ----------------- */
-  type MetricCell = {
+  type HydCell = {
+    idx: number;
     metric: string;
-    idx?: number;
-    val?: string | number | null;
-    unit?: string | null;
+    unit: string;
     fullLabel: string;
+    isPressure: boolean;
+    initial: string;
   };
-  type SideCard = { side: Side; rows: MetricCell[] };
-  type AxleGroup = { axle: string; left: SideCard; right: SideCard };
+  type HydRow = { metric: string; left?: HydCell; right?: HydCell };
+  const hydGroups = useMemo(() => {
+    if (mode !== "hyd") return [] as Array<{ region: Region; rows: HydRow[] }>;
 
-  const axleGroups: AxleGroup[] = useMemo(() => {
-    if (mode !== "air-axle") return [];
-    const map = new Map<string, { Left: Map<string, MetricCell>; Right: Map<string, MetricCell> }>();
+    const byRegion = new Map<Region, Map<string, HydRow>>();
+    const ensureRegion = (r: Region) => byRegion.get(r) ?? byRegion.set(r, new Map()).get(r)!;
+
+    items.forEach((it, idx) => {
+      const label = it.item ?? "";
+      let ck: CornerKey | null = null;
+      let metric = "";
+
+      const m1 = label.match(HYD_ABBR_RE);
+      if (m1?.groups) {
+        ck = normalizeCorner(m1.groups.corner);
+        metric = m1.groups.metric.trim();
+      } else {
+        const m2 = label.match(HYD_FULL_RE);
+        if (m2?.groups) {
+          ck = normalizeCorner(m2.groups.corner);
+          metric = m2.groups.metric.trim();
+        }
+      }
+      if (!ck) return;
+
+      const { side, region } = cornerToRegion[ck];
+      const reg = ensureRegion(region);
+
+      const key = metric.toLowerCase();
+      if (!reg.has(key)) reg.set(key, { metric });
+
+      const unit =
+        (it.unit ?? "") || (unitHint ? unitHint(label) : "") || "";
+      const cell: HydCell = {
+        idx,
+        metric,
+        unit,
+        fullLabel: label,
+        isPressure: isPressure(metric),
+        initial: String(it.value ?? ""),
+      };
+
+      const row = reg.get(key)!;
+      if (side === "Left") row.left = cell;
+      else row.right = cell;
+    });
+
+    const out: Array<{ region: Region; rows: HydRow[] }> = [];
+    (["Front", "Rear"] as Region[]).forEach((region) => {
+      const reg = byRegion.get(region);
+      if (!reg) return;
+      const rows = Array.from(reg.values()).sort((a, b) => hydOrderIndex(a.metric) - hydOrderIndex(b.metric));
+      out.push({ region, rows });
+    });
+    return out;
+  }, [items, unitHint, mode]);
+
+  /* ------------------------------------------------------------------ */
+  /* AIR (Steer / Drive / Trailer … Left | Item | Right)                */
+  /* ------------------------------------------------------------------ */
+
+  type AirCell = {
+    metric: string;
+    idx: number;
+    unit: string;
+    fullLabel: string;
+    isPressure: boolean;
+    initial: string;
+  };
+  type AirGroup = { axle: string; left: AirCell[]; right: AirCell[] };
+  type AirRow = { metric: string; left?: AirCell; right?: AirCell };
+
+  const isDualAxle = (axle: string) => {
+    const a = axle.toLowerCase();
+    if (a.startsWith("drive") || a.startsWith("trailer") || a.includes("rear")) return true;
+    if (a.startsWith("tag") || a.startsWith("steer")) return false;
+    return false;
+  };
+  const isDualizable = (metric: string) => /tire\s*pressure/i.test(metric) || /tread\s*depth/i.test(metric);
+  const hasInnerOuter = (m: string) => /(inner|outer)/i.test(m);
+
+  function expandDuals(axle: string, cells: AirCell[]): AirCell[] {
+    if (!isDualAxle(axle)) return cells;
+    const out: AirCell[] = [];
+    for (const c of cells) {
+      if (isDualizable(c.metric) && !hasInnerOuter(c.metric)) {
+        const base = c.metric.replace(/\s*\((inner|outer)\)\s*/i, "").trim();
+        out.push({ ...c, metric: `${base} (Outer)` });
+        out.push({ ...c, metric: `${base} (Inner)` });
+      } else {
+        out.push(c);
+      }
+    }
+    return out;
+  }
+
+  const airGroups = useMemo(() => {
+    if (mode !== "air") return [] as AirGroup[];
+
+    const byAxle = new Map<string, { Left: AirCell[]; Right: AirCell[] }>();
 
     items.forEach((it, idx) => {
       const label = it.item ?? "";
@@ -149,189 +212,345 @@ export default function HybridCornerGrid({
       if (!m?.groups) return;
 
       const axle = m.groups.axle.trim();
-      const side = m.groups.side as Side;
+      const side = (m.groups.side as Side) || "Left";
       const metric = m.groups.metric.trim();
 
-      const bucket = map.get(axle) ?? { Left: new Map(), Right: new Map() };
-      const sideMap = bucket[side];
-      const existing =
-        sideMap.get(metric) ??
-        ({
-          metric,
-          fullLabel: label,
-        } as MetricCell);
+      if (!byAxle.has(axle)) byAxle.set(axle, { Left: [], Right: [] });
 
-      existing.idx = idx;
-      existing.val = it.value ?? "";
-      existing.unit = it.unit ?? (unitHint ? unitHint(label) : "");
-
-      sideMap.set(metric, existing);
-      map.set(axle, bucket);
-    });
-
-    return Array.from(map.entries()).map(([axle, sides]) => {
-      const leftRows = Array.from(sides.Left.values()).sort((a, b) => orderIndex(a.metric) - orderIndex(b.metric));
-      const rightRows = Array.from(sides.Right.values()).sort((a, b) => orderIndex(a.metric) - orderIndex(b.metric));
-      return { axle, left: { side: "Left", rows: leftRows }, right: { side: "Right", rows: rightRows } };
-    });
-  }, [items, unitHint, mode]);
-
-  /** ----------------- HYDRAULIC (Corner) grouping ----------------- */
-  type CornerRow = {
-    idx: number;
-    metric: string;
-    unit?: string | null;
-    fullLabel: string;
-  };
-  type CornerGroup = { corner: CornerKey; rows: CornerRow[] };
-
-  const cornerGroups: CornerGroup[] = useMemo(() => {
-    if (mode !== "hydraulic-corner") return [];
-    const base: Record<CornerKey, CornerRow[]> = { LF: [], RF: [], LR: [], RR: [] };
-
-    items.forEach((it, idx) => {
-      const label = it.item ?? "";
-      let corner: CornerKey | null = null;
-      let metric = "";
-
-      const m1 = label.match(CORNER_ABBR_RE);
-      if (m1?.groups) {
-        corner = normalizeCorner(m1.groups.corner);
-        metric = m1.groups.metric.trim();
-      } else {
-        const m2 = label.match(CORNER_FULL_RE);
-        if (m2?.groups) {
-          corner = normalizeCorner(m2.groups.corner);
-          metric = m2.groups.metric.trim();
-        }
-      }
-      if (!corner) return;
-
-      base[corner].push({
-        idx,
+      const unit = (it.unit ?? "") || (unitHint ? unitHint(label) : "");
+      const cell: AirCell = {
         metric,
-        unit: it.unit ?? (unitHint ? unitHint(label) : ""),
+        idx,
+        unit,
         fullLabel: label,
-      });
+        isPressure: isPressure(metric),
+        initial: String(it.value ?? ""),
+      };
+
+      byAxle.get(axle)![side].push(cell);
     });
 
-    const build = (ck: CornerKey): CornerGroup => ({
-      corner: ck,
-      rows: base[ck].sort((a, b) => orderIndex(a.metric) - orderIndex(b.metric)),
+    return Array.from(byAxle.entries()).map(([axle, sides]) => {
+      const left = expandDuals(axle, sides.Left).sort((a, b) => airOrderIndex(a.metric) - airOrderIndex(b.metric));
+      const right = expandDuals(axle, sides.Right).sort((a, b) => airOrderIndex(a.metric) - airOrderIndex(b.metric));
+      return { axle, left, right };
     });
-
-    return [build("LF"), build("RF"), build("LR"), build("RR")];
   }, [items, unitHint, mode]);
 
-  /** ----------------- Shared UI bits ----------------- */
-  const PressureBadge = ({ val, unit }: { val: string; unit: PressureUnit }) => {
-    const num = Number(val);
-    if (!showPressureSecondary || Number.isNaN(num)) return null;
-    if (unit === "psi") {
-      const kpa = toKpa(num);
-      return <span className="ml-2 text-[10px] text-zinc-400">({kpa} kPa)</span>;
-    } else {
-      // primary kPa -> show tiny psi
-      const psi = Math.round((num / PSI_TO_KPA) * 10) / 10;
-      return <span className="ml-2 text-[10px] text-zinc-400">({psi} psi)</span>;
-    }
+  /* ---------------------------- UI Toggles ---------------------------- */
+
+  const [open, setOpen] = useState(true);
+  const [showKpa, setShowKpa] = useState(true);
+
+  // track “filled” state only on commit (matches your other grids)
+  const [filledMap, setFilledMap] = useState<Record<number, boolean>>(() => {
+    const m: Record<number, boolean> = {};
+    items.forEach((it, i) => (m[i] = !!String(it.value ?? "").trim()));
+    return m;
+  });
+  const commit = (idx: number, el: HTMLInputElement | null) => {
+    if (!el) return;
+    const value = el.value;
+    updateItem(sectionIndex, idx, { value });
+    setFilledMap((p) => (p[idx] === !!value.trim() ? p : { ...p, [idx]: !!value.trim() }));
   };
 
-  const renderValueRow = (
-    idx: number | undefined,
-    metric: string,
-    unitFromItemOrHint: string | null | undefined,
-    fullLabel: string,
-  ) => {
-    const value = idx != null ? localVals[idx] ?? "" : "";
-    const unit = unitFromItemOrHint ?? (unitHint ? unitHint(fullLabel) : "");
+  /* ------------------- small input used by both modes ------------------ */
 
+  const InputWithInlineUnit = ({
+    idx,
+    isPressureRow,
+    unit,
+    defaultValue,
+  }: {
+    idx: number;
+    isPressureRow: boolean;
+    unit: string;
+    defaultValue: string;
+  }) => {
+    const spanRef = useRef<HTMLSpanElement | null>(null);
+    const seedText = () => {
+      if (!isPressureRow) return unit;
+      const k = kpaFromPsi(defaultValue);
+      return showKpa ? `psi (${k ?? "—"} kPa)` : "psi";
+    };
+    const onInput = (e: React.FormEvent<HTMLInputElement>) => {
+      if (!isPressureRow || !spanRef.current) return;
+      const k = kpaFromPsi(e.currentTarget.value);
+      spanRef.current.textContent = showKpa ? `psi (${k ?? "—"} kPa)` : "psi";
+    };
     return (
-      <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-        <div className="flex items-center">
-          <input
-            className="w-full rounded border border-zinc-800 bg-zinc-800/60 px-2 py-1 text-white"
-            style={{ fontFamily: "Roboto, system-ui, sans-serif" }}
-            value={value}
-            onChange={(e) => {
-              if (idx != null) setBuffered(idx, e.target.value);
-            }}
-            placeholder="Value"
-            inputMode="decimal"
-          />
-          {isPressureMetric(metric) && (
-            <PressureBadge val={value} unit={pressurePrimary} />
-          )}
-        </div>
-        <div className="text-center text-xs text-zinc-400">
-          {/* Show primary unit label; leave item.unit untouched */}
-          {isPressureMetric(metric) ? (pressurePrimary === "psi" ? "psi" : "kPa") : unit}
-        </div>
+      <div className="relative w-40">
+        <input
+          defaultValue={defaultValue}
+          className="w-full rounded border border-gray-600 bg-black px-2 py-1 pr-16 text-sm text-white outline-none placeholder:text-zinc-400"
+          placeholder="Value"
+          autoComplete="off"
+          inputMode="decimal"
+          onInput={onInput}
+          onBlur={(e) => commit(idx, e.currentTarget)}
+          onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
+        />
+        <span
+          ref={spanRef}
+          className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-zinc-400"
+        >
+          {seedText()}
+        </span>
       </div>
     );
   };
 
-  const MetricCardShell = ({
-    title,
-    children,
-  }: {
-    title: string;
-    children: React.ReactNode;
-  }) => (
-    <div className="rounded bg-zinc-950/70 p-3">
-      <div
-        className="mb-2 text-sm font-semibold text-orange-300"
-        style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-      >
-        {title}
+  /* ---------------------------- HYD RENDER ---------------------------- */
+
+  const HydRegionCard = ({ region, rows }: { region: Region; rows: HydRow[] }) => {
+    // sequential tab order Left→Right, top→bottom like your CornerGrid
+    let nextTab = 1;
+
+    return (
+      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+        <div
+          className="mb-3 text-lg font-semibold text-orange-400"
+          style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+        >
+          {region}
+        </div>
+
+        <div className="mb-2 grid grid-cols-[1fr_auto_1fr] items-center gap-4 text-xs text-zinc-400">
+          <div>Left</div>
+          <div className="text-center">Item</div>
+          <div className="text-right">Right</div>
+        </div>
+
+        {open && (
+          <div className="space-y-3">
+            {rows.map((row, i) => (
+              <div
+                key={`${region}-${row.metric}-${i}`}
+                className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded bg-zinc-950/70 p-3"
+              >
+                <div>
+                  {row.left ? (
+                    <div tabIndex={nextTab++}>
+                      <InputWithInlineUnit
+                        idx={row.left.idx}
+                        isPressureRow={row.left.isPressure}
+                        unit={row.left.unit}
+                        defaultValue={row.left.initial}
+                      />
+                    </div>
+                  ) : (
+                    <div className="h-[30px]" />
+                  )}
+                </div>
+
+                <div
+                  className="min-w-0 truncate text-center text-sm font-semibold text-white"
+                  style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+                  title={row.metric}
+                >
+                  {row.metric}
+                </div>
+
+                <div className="justify-self-end">
+                  {row.right ? (
+                    <div tabIndex={nextTab++}>
+                      <InputWithInlineUnit
+                        idx={row.right.idx}
+                        isPressureRow={row.right.isPressure}
+                        unit={row.right.unit}
+                        defaultValue={row.right.initial}
+                      />
+                    </div>
+                  ) : (
+                    <div className="h-[30px]" />
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
-      {children}
+    );
+  };
+
+  /* ----------------------------- AIR RENDER --------------------------- */
+
+  const AirAxleCard = ({ axle, rows }: { axle: string; rows: AirRow[] }) => {
+    return (
+      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+        <div
+          className="mb-3 text-lg font-semibold text-orange-400"
+          style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+        >
+          {axle}
+        </div>
+
+        <div className="mb-2 grid grid-cols-[1fr_auto_1fr] items-center gap-4 text-xs text-zinc-400">
+          <div>Left</div>
+          <div className="text-center">Item</div>
+          <div className="text-right">Right</div>
+        </div>
+
+        {open && (
+          <div className="space-y-3">
+            {rows.map((row, i) => {
+              return (
+                <div
+                  key={`${axle}-${row.metric}-${i}`}
+                  className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded bg-zinc-950/70 p-3"
+                >
+                  <div>
+                    {row.left ? (
+                      <InputWithInlineUnit
+                        idx={row.left.idx}
+                        isPressureRow={row.left.isPressure}
+                        unit={row.left.unit}
+                        defaultValue={row.left.initial}
+                      />
+                    ) : (
+                      <div className="h-[30px]" />
+                    )}
+                  </div>
+
+                  <div
+                    className="min-w-0 truncate text-center text-sm font-semibold text-white"
+                    style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+                    title={row.metric}
+                  >
+                    {row.metric}
+                  </div>
+
+                  <div className="justify-self-end">
+                    {row.right ? (
+                      <InputWithInlineUnit
+                        idx={row.right.idx}
+                        isPressureRow={row.right.isPressure}
+                        unit={row.right.unit}
+                        defaultValue={row.right.initial}
+                      />
+                    ) : (
+                      <div className="h-[30px]" />
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // build rows for AIR like your AirCornerGrid
+  const airRowsPerAxle: Array<{ axle: string; rows: AirRow[] }> = useMemo(() => {
+    if (mode !== "air") return [];
+    const rows: Array<{ axle: string; rows: AirRow[] }> = [];
+
+    for (const g of airGroups) {
+      const map = new Map<string, AirRow>();
+      const add = (c: AirCell, which: "left" | "right") => {
+        const k = c.metric.toLowerCase();
+        const existing = map.get(k) || { metric: c.metric };
+        map.set(k, { ...existing, metric: c.metric, [which]: c } as AirRow);
+      };
+      g.left.forEach((c) => add(c, "left"));
+      g.right.forEach((c) => add(c, "right"));
+      const merged = Array.from(map.values()).sort((a, b) => airOrderIndex(a.metric) - airOrderIndex(b.metric));
+      rows.push({ axle: g.axle, rows: merged });
+    }
+    return rows;
+  }, [airGroups, mode]);
+
+  const countFilled = (cells: Array<{ idx: number }>) =>
+    cells.reduce((sum, c) => sum + (filledMap[c.idx] ? 1 : 0), 0);
+
+  /* ------------------------------- render ------------------------------ */
+
+  return (
+    <div className="grid gap-3">
+      {/* top toolbar matches your other grids */}
+      <div className="flex items-center justify-between gap-3 px-1">
+        {/* progress strip for AIR mode */}
+        {mode === "air" ? (
+          <div
+            className="hidden text-xs text-zinc-400 md:block"
+            style={{ fontFamily: "Roboto, system-ui, sans-serif" }}
+          >
+            {airGroups.map((g, i) => {
+              const filled =
+                countFilled(g.left) + countFilled(g.right);
+              const total = g.left.length + g.right.length;
+              return (
+                <span key={g.axle}>
+                  {g.axle} {filled}/{total}
+                  {i < airGroups.length - 1 ? "  |  " : ""}
+                </span>
+              );
+            })}
+          </div>
+        ) : (
+          <div />
+        )}
+
+        <div className="flex items-center gap-3">
+          <label className="flex select-none items-center gap-2 text-xs text-zinc-300">
+            <input
+              type="checkbox"
+              className="h-3 w-3 accent-orange-500"
+              checked={showKpa}
+              onChange={(e) => setShowKpa(e.target.checked)}
+            />
+            kPa hint
+          </label>
+
+          <button
+            onClick={() => setOpen((v) => !v)}
+            className="rounded bg-zinc-700 px-2 py-1 text-xs text-white hover:bg-zinc-600"
+            title={open ? "Collapse" : "Expand"}
+          >
+            {open ? "Collapse" : "Expand"}
+          </button>
+        </div>
+      </div>
+
+      {/* inline axle picker only for AIR and when provided */}
+      {mode === "air" && onAddAxle && (
+        <AddAxlePicker
+          existingAxles={airGroups.map((g) => g.axle)}
+          onAddAxle={onAddAxle}
+        />
+      )}
+
+      {mode === "hyd" ? (
+        <div className="grid gap-4">
+          {hydGroups.map((g) => (
+            <HydRegionCard key={g.region} region={g.region} rows={g.rows} />
+          ))}
+        </div>
+      ) : (
+        <>
+          {airRowsPerAxle.map(({ axle, rows }) => (
+            <AirAxleCard key={axle} axle={axle} rows={rows} />
+          ))}
+        </>
+      )}
     </div>
   );
+}
 
-  const SideCardView = ({ side, rows }: { side: Side; rows: MetricCell[] }) => (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
-      <div
-        className="mb-2 font-semibold text-orange-400"
-        style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-      >
-        {side}
-      </div>
+/* -------------------------- Add Axle (AIR only) -------------------------- */
 
-      <div className="space-y-3">
-        {rows.map((row) => (
-          <MetricCardShell key={row.metric} title={row.metric}>
-            {renderValueRow(row.idx, row.metric, row.unit, row.fullLabel)}
-          </MetricCardShell>
-        ))}
-      </div>
-    </div>
-  );
+function AddAxlePicker({
+  existingAxles,
+  onAddAxle,
+}: {
+  existingAxles: string[];
+  onAddAxle: (axleLabel: string) => void;
+}) {
+  const [pending, setPending] = useState<string>("");
 
-  const CornerCard = ({ group }: { group: CornerGroup }) => (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
-      <div
-        className="mb-2 font-semibold text-orange-400"
-        style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-      >
-        {CornerTitle[group.corner]}
-      </div>
-
-      <div className="space-y-3">
-        {group.rows.map((row) => (
-          <MetricCardShell key={`${group.corner}-${row.idx}-${row.metric}`} title={row.metric}>
-            {renderValueRow(row.idx, row.metric, row.unit, row.fullLabel)}
-          </MetricCardShell>
-        ))}
-      </div>
-    </div>
-  );
-
-  /** Add-axle picker (for air-style pages) */
-  const existingAxles = useMemo(() => axleGroups.map((g) => g.axle), [axleGroups]);
-  const [pendingAxle, setPendingAxle] = useState<string>("");
-
-  const candidateAxles = useMemo(() => {
+  const candidates = useMemo(() => {
     const wants: string[] = [];
     for (let i = 1; i <= 2; i++) wants.push(`Steer ${i}`);
     for (let i = 1; i <= 4; i++) wants.push(`Drive ${i}`);
@@ -339,61 +558,27 @@ export default function HybridCornerGrid({
     return wants.filter((l) => !existingAxles.includes(l));
   }, [existingAxles]);
 
-  /** ------------------------------ Render ------------------------------ */
   return (
-    <div className="grid gap-4">
-      {/* Add Axle control only shown when provided AND we’re in axle mode */}
-      {onAddAxle && mode === "air-axle" && (
-        <div className="flex items-center gap-2">
-          <select
-            className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-sm text-white"
-            value={pendingAxle}
-            onChange={(e) => setPendingAxle(e.target.value)}
-          >
-            <option value="">Add axle…</option>
-            {candidateAxles.map((l) => (
-              <option key={l} value={l}>
-                {l}
-              </option>
-            ))}
-          </select>
-          <button
-            className="rounded bg-orange-600 px-3 py-1 text-sm font-semibold text-black hover:bg-orange-500 disabled:opacity-40"
-            onClick={() => pendingAxle && onAddAxle(pendingAxle)}
-            disabled={!pendingAxle}
-          >
-            + Add
-          </button>
-        </div>
-      )}
-
-      {mode === "air-axle" ? (
-        axleGroups.map((group) => (
-          <div key={group.axle} className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
-            <div
-              className="mb-3 text-lg font-semibold text-orange-400"
-              style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-            >
-              {group.axle}
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <SideCardView side="Left" rows={group.left.rows} />
-              <SideCardView side="Right" rows={group.right.rows} />
-            </div>
-          </div>
-        ))
-      ) : (
-        <>
-          <div className="grid gap-4 md:grid-cols-2">
-            <CornerCard group={cornerGroups[0]} /> {/* LF */}
-            <CornerCard group={cornerGroups[1]} /> {/* RF */}
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <CornerCard group={cornerGroups[2]} /> {/* LR */}
-            <CornerCard group={cornerGroups[3]} /> {/* RR */}
-          </div>
-        </>
-      )}
+    <div className="flex items-center gap-2">
+      <select
+        className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-sm text-white"
+        value={pending}
+        onChange={(e) => setPending(e.target.value)}
+      >
+        <option value="">Add axle…</option>
+        {candidates.map((l) => (
+          <option key={l} value={l}>
+            {l}
+          </option>
+        ))}
+      </select>
+      <button
+        className="rounded bg-orange-600 px-3 py-1 text-sm font-semibold text-black hover:bg-orange-500 disabled:opacity-40"
+        onClick={() => pending && onAddAxle(pending)}
+        disabled={!pending}
+      >
+        + Add
+      </button>
     </div>
   );
 }
