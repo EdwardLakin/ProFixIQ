@@ -5,9 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { buildInspectionFromSelections } from "@inspections/lib/inspection/buildFromSelections";
 import { masterInspectionList } from "@inspections/lib/inspection/masterInspectionList";
 import { masterServicesList } from "@inspections/lib/inspection/masterServicesList";
-
-// ⬇️ This is the SAME generator your Maintenance-50 uses.
-//    If your path/name differs, tweak this import only.
 import { generateAxleLayout } from "@inspections/lib/inspection/generateAxleLayout";
 
 type VehicleType = "car" | "truck" | "bus" | "trailer";
@@ -74,12 +71,10 @@ export default function CustomBuilderPage() {
   }
 
   function goToRunWithSections(sections: Section[] | unknown, tplTitle: string) {
-    // /inspections/custom-draft reads these from sessionStorage
     sessionStorage.setItem("customInspection:sections", JSON.stringify(sections));
     sessionStorage.setItem("customInspection:title", tplTitle);
     sessionStorage.setItem("customInspection:includeOil", JSON.stringify(includeOil));
 
-    // Keep any existing URL params (e.g., customer/vehicle), and add vehicleType/template
     const qs = new URLSearchParams(sp.toString());
     qs.set("vehicleType", vehicleType);
     qs.set("template", tplTitle);
@@ -125,21 +120,13 @@ export default function CustomBuilderPage() {
     addList(a);
     addList(b);
 
-    // drop empty sections
     return Object.values(out).filter((s) => (s.items?.length ?? 0) > 0);
   }
 
   /** Pull the *standard* Corner Grid section(s) from your generator */
   function fetchCornerGridSections(): Section[] {
     if (!cornerVariant) return [];
-    // `generateAxleLayout` should return the exact sections your Maintenance-50 uses.
-    // Common signatures we’ve seen:
-    //   generateAxleLayout({ variant: "air" | "hydraulic", vehicleType })
-    //   or generateAxleLayout(vehicleType, "air" | "hydraulic")
-    //
-    // We wrap this in a tiny adapter to keep TS happy without `any`.
     try {
-      // Try object-arg form first:
       const maybe = (generateAxleLayout as unknown as (
         args:
           | { variant: "air" | "hydraulic"; vehicleType: VehicleType }
@@ -151,20 +138,22 @@ export default function CustomBuilderPage() {
         return coerceSections(maybe as unknown[]);
       }
 
-      // Fallbacks if your helper uses a different signature:
-      if (typeof maybe === "object" && maybe !== null && "sections" in (maybe as Record<string, unknown>)) {
+      if (
+        typeof maybe === "object" &&
+        maybe !== null &&
+        "sections" in (maybe as Record<string, unknown>)
+      ) {
         const arr = (maybe as Record<string, unknown>).sections;
         return Array.isArray(arr) ? coerceSections(arr as unknown[]) : [];
       }
 
-      // Try tuple call
-      // @ts-expect-error – optional alternate signature
+      // @ts-expect-error – alternate signature
       const maybeTuple = generateAxleLayout([vehicleType, cornerVariant]);
       if (Array.isArray(maybeTuple)) {
         return coerceSections(maybeTuple as unknown[]);
       }
     } catch {
-      // silence – we simply return an empty list if the signature didn’t match
+      /* ignore bad signatures */
     }
     return [];
   }
@@ -172,7 +161,10 @@ export default function CustomBuilderPage() {
   function coerceSections(input: unknown[]): Section[] {
     return (input ?? [])
       .map((s) => {
-        const title = typeof (s as { title?: unknown })?.title === "string" ? (s as { title?: string }).title : "";
+        const title =
+          typeof (s as { title?: unknown })?.title === "string"
+            ? ((s as { title?: string }).title as string)
+            : "";
         const itemsRaw = Array.isArray((s as { items?: unknown })?.items)
           ? ((s as { items?: unknown }).items as unknown[])
           : [];
@@ -185,7 +177,8 @@ export default function CustomBuilderPage() {
                 ? ((it as { name?: string }).name as string)
                 : "";
             const unit =
-              typeof (it as { unit?: unknown })?.unit === "string" || (it as { unit?: unknown })?.unit === null
+              typeof (it as { unit?: unknown })?.unit === "string" ||
+              (it as { unit?: unknown })?.unit === null
                 ? ((it as { unit?: string | null }).unit as string | null)
                 : null;
             return item ? { item, unit } : null;
@@ -236,23 +229,35 @@ export default function CustomBuilderPage() {
     setAiLoading(true);
     setAiError(null);
     try {
-      const res = await fetch("/api/inspections/generate", {
+      // 🔁 use the real route
+      const res = await fetch("/api/inspections/build-from-prompt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: aiPrompt, vehicleType }),
+        body: JSON.stringify({
+          prompt: aiPrompt,
+          vehicleType,
+          // optional: let the route guess size from "60 point"
+          // targetCount: 60,
+        }),
       });
+
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
         throw new Error(j.error || `Generate failed (${res.status})`);
       }
-      const { sections: aiSections } = (await res.json()) as { sections: Section[] };
 
+      const { sections: aiSections } = (await res.json()) as {
+        sections: Section[];
+      };
+
+      // also mix in anything the user manually ticked
       const manualBuilt = buildInspectionFromSelections({
         selections,
         axle: includeAxle ? { vehicleType } : null,
         extraServiceItems: services,
       }) as unknown as Section[];
 
+      // add oil if neither side has it
       const base =
         includeOil &&
         !aiSections.some((s) => normalizeTitle(s.title) === "oil change") &&
@@ -262,12 +267,14 @@ export default function CustomBuilderPage() {
 
       const merged = mergeSections(base, manualBuilt);
 
+      // optionally attach corner grid
       const corner = fetchCornerGridSections();
       const finalSections = corner.length ? mergeSections(corner, merged) : merged;
 
       goToRunWithSections(finalSections, title || "AI Inspection");
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Failed to generate inspection.";
+      const msg =
+        e instanceof Error ? e.message : "Failed to generate inspection.";
       setAiError(msg);
     } finally {
       setAiLoading(false);
@@ -292,7 +299,7 @@ export default function CustomBuilderPage() {
 
         <label className="flex flex-col gap-1">
           <span className="text-sm text-neutral-300">Vehicle Type (axle layout)</span>
-        <select
+          <select
             className="rounded bg-neutral-800 px-3 py-2"
             value={vehicleType}
             onChange={(e) => setVehicleType(e.target.value as VehicleType)}
@@ -325,7 +332,7 @@ export default function CustomBuilderPage() {
         </label>
       </div>
 
-      {/* Corner Grid import (reuses standard generator) */}
+      {/* Corner Grid import */}
       <div className="mb-8 rounded border border-neutral-800 bg-neutral-900 p-3">
         <div className="mb-2 font-semibold text-orange-400">Corner Grid</div>
         <div className="flex flex-wrap items-center gap-3">
@@ -338,7 +345,6 @@ export default function CustomBuilderPage() {
                 ? "bg-orange-600 text-black"
                 : "bg-zinc-700 text-white hover:bg-zinc-600")
             }
-            title="Use the standard LF/RF/LR/RR grid from Maintenance-50"
           >
             Include Hydraulic Corner Grid
           </button>
@@ -351,7 +357,6 @@ export default function CustomBuilderPage() {
                 ? "bg-indigo-600 text-white"
                 : "bg-zinc-700 text-white hover:bg-zinc-600")
             }
-            title="Use the standard Air Corner Grid (axle-based) from Maintenance-50"
           >
             Include Air Corner Grid
           </button>
@@ -361,27 +366,27 @@ export default function CustomBuilderPage() {
               type="button"
               onClick={() => setCornerVariant(null)}
               className="ml-2 rounded border border-red-500 px-2 py-1 text-sm text-red-300 hover:bg-red-900/40"
-              title="Remove selection"
             >
               Remove
             </button>
           )}
         </div>
         <p className="mt-2 text-xs text-neutral-400">
-          This imports the exact section(s) your Maintenance-50 flow uses, so the runtime renders your existing CornerGrid/AirCornerGrid components.
+          This imports the exact section(s) your maintenance flow uses, so the runtime
+          renders your existing CornerGrid/AirCornerGrid components.
         </p>
       </div>
 
-      {/* ------------------------------- AI builder ------------------------------- */}
+      {/* AI builder */}
       <div className="mb-8 rounded border border-neutral-800 bg-neutral-900 p-3">
         <div className="mb-2 font-semibold text-orange-400">Build with AI (optional)</div>
         <p className="mb-2 text-sm text-neutral-300">
-          Describe what you want to inspect (vehicle system, depth, measurements, compliance, etc.).
-          We’ll generate sections &amp; items you can run immediately.
+          Describe what you want to inspect. We’ll generate sections &amp; items and send
+          them to the editor.
         </p>
         <textarea
           className="mb-3 min-h-[90px] w-full rounded bg-neutral-800 p-3"
-          placeholder="e.g. CVIP pre-trip for 5-axle tractor with emphasis on air brakes, tread depth, lighting, and documentation checks."
+          placeholder="e.g. 60-point commercial truck inspection with air brakes, suspension, steering, lighting, and undercarriage."
           value={aiPrompt}
           onChange={(e) => setAiPrompt(e.target.value)}
         />
@@ -397,7 +402,7 @@ export default function CustomBuilderPage() {
         </div>
       </div>
 
-      {/* -------- Global bulk actions for manual pick list -------- */}
+      {/* Bulk actions */}
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <span className="text-sm text-neutral-400">Bulk actions:</span>
         <button
@@ -416,7 +421,7 @@ export default function CustomBuilderPage() {
         </button>
       </div>
 
-      {/* ----------------------------- Manual pick list ----------------------------- */}
+      {/* Manual pick list */}
       <div className="mb-8 space-y-4">
         {masterInspectionList.map((sec) => {
           const selectedCount = (selections[sec.title]?.length ?? 0);
@@ -437,7 +442,6 @@ export default function CustomBuilderPage() {
                     type="button"
                     onClick={() => selectAllInSection(sec.title, sec.items)}
                     className="rounded bg-zinc-700 px-2 py-1 text-xs text-white hover:bg-zinc-600"
-                    title="Select all items in this section"
                   >
                     Select all
                   </button>
@@ -445,7 +449,6 @@ export default function CustomBuilderPage() {
                     type="button"
                     onClick={() => clearSection(sec.title)}
                     className="rounded bg-zinc-800 px-2 py-1 text-xs text-white hover:bg-zinc-700"
-                    title="Clear this section"
                   >
                     Clear
                   </button>
@@ -472,7 +475,7 @@ export default function CustomBuilderPage() {
         })}
       </div>
 
-      {/* Optional service add-ons */}
+      {/* Service items */}
       <div className="mb-8 rounded border border-neutral-800 bg-neutral-900 p-3">
         <div className="mb-2 font-semibold text-orange-400">Service Items</div>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -503,7 +506,6 @@ export default function CustomBuilderPage() {
           onClick={buildFromPrompt}
           disabled={aiLoading || !aiPrompt.trim()}
           className="rounded bg-indigo-600 px-4 py-2 font-semibold text-white hover:bg-indigo-500 disabled:opacity-60"
-          title="Use AI prompt above"
         >
           {aiLoading ? "Generating…" : "Start with AI"}
         </button>
