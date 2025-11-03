@@ -1,4 +1,3 @@
-// app/api/inspections/build-from-prompt/route.ts
 import "server-only";
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
@@ -64,7 +63,6 @@ function sanitizeSections(input: unknown): SectionOut[] {
     if (itemsOut.length) clean.push({ title, items: itemsOut });
   }
 
-  // fallback
   if (!clean.length) {
     return [
       {
@@ -85,14 +83,12 @@ function sanitizeSections(input: unknown): SectionOut[] {
 
 function looksAirBrakeItem(label: string): boolean {
   const l = label.toLowerCase();
-  // classic HD / air words
   if (l.includes("push rod")) return true;
   if (l.includes("pushrod")) return true;
   if (l.includes("slack adjuster")) return true;
   if (l.includes("air tank")) return true;
   if (l.includes("air leak")) return true;
   if (l.includes("governor")) return true;
-  // axle + side + metric pattern (Steer 1 Left ..., Drive 2 Right ...)
   if (/^(steer|drive|tag|trailer)\s*\d*\s+(left|right)\s+/i.test(label)) return true;
   return false;
 }
@@ -106,7 +102,21 @@ function looksAirBrakeSection(title: string): boolean {
     t.includes("steer") ||
     t.includes("drive 1") ||
     t.includes("drive 2") ||
-    t.includes("trailer")
+    t.includes("trailer") ||
+    t.includes("fifth wheel")
+  );
+}
+
+/** does the prompt sound like light-duty/automotive? */
+function promptSaysAutomotive(p: string): boolean {
+  const l = p.toLowerCase();
+  return (
+    l.includes("automotive") ||
+    l.includes("car") ||
+    l.includes("passenger") ||
+    l.includes("light duty") ||
+    l.includes("suv") ||
+    l.includes("minivan")
   );
 }
 
@@ -172,20 +182,34 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
     }
 
-    // 1) infer vehicle / brake
-    const vehicleType: VehicleType =
-      (vehicleTypeStr as VehicleType) ??
-      (prompt.toLowerCase().includes("truck") ||
-      prompt.toLowerCase().includes("bus") ||
-      prompt.toLowerCase().includes("trailer") ||
-      prompt.toLowerCase().includes("hd") ||
-      prompt.toLowerCase().includes("heavy duty")
-        ? "truck"
-        : "car");
+    const promptIsAuto = promptSaysAutomotive(prompt);
 
-    const brakeSystem: BrakeSystem =
-      (brakeSystemStr as BrakeSystem) ??
-      (vehicleType === "car" ? "hyd_brake" : "air_brake");
+    // 1) infer vehicle / brake — **prompt wins if it says automotive**
+    let vehicleType: VehicleType;
+    if (promptIsAuto) {
+      vehicleType = "car";
+    } else if (vehicleTypeStr) {
+      // only trust client if prompt didn't say automotive
+      vehicleType = vehicleTypeStr as VehicleType;
+    } else {
+      vehicleType =
+        prompt.toLowerCase().includes("truck") ||
+        prompt.toLowerCase().includes("bus") ||
+        prompt.toLowerCase().includes("trailer") ||
+        prompt.toLowerCase().includes("hd") ||
+        prompt.toLowerCase().includes("heavy duty")
+          ? "truck"
+          : "car";
+    }
+
+    let brakeSystem: BrakeSystem;
+    if (promptIsAuto) {
+      brakeSystem = "hyd_brake";
+    } else if (brakeSystemStr) {
+      brakeSystem = brakeSystemStr as BrakeSystem;
+    } else {
+      brakeSystem = vehicleType === "car" ? "hyd_brake" : "air_brake";
+    }
 
     // 2) target size
     let targetCount: number;
@@ -196,14 +220,14 @@ export async function POST(req: Request) {
       targetCount = m ? parseInt(m[1]!, 10) : 20;
     }
 
-    // 3) deterministic base — always good
+    // 3) deterministic base — now correctly LD vs HD
     const baseSections = buildFromMaster({
       vehicleType,
       brakeSystem,
       targetCount,
     });
 
-    // If OpenAI not set, just return base
+    // If no OpenAI, return base
     if (!process.env.OPENAI_API_KEY) {
       return NextResponse.json({ sections: baseSections }, { status: 200 });
     }
@@ -216,7 +240,7 @@ export async function POST(req: Request) {
       const system = [
         "You are an AI assistant for generating vehicle inspection templates.",
         brakeSystem === "hyd_brake"
-          ? "This is an automotive/light-duty inspection. Do NOT include heavy-duty truck or air-brake items such as push rod travel, slack adjusters, or axle-by-axle dual tire rows."
+          ? "This is an automotive/light-duty inspection. Do NOT include heavy-duty truck or air-brake items such as push rod travel, slack adjusters, axle-by-axle dual tire rows, 5th wheel, or trailer air supply."
           : "This inspection may include heavy-duty / air-brake content.",
         "Return ONLY JSON that follows the supplied schema.",
         `Aim for about ${targetCount} inspection items.`,
@@ -271,7 +295,6 @@ export async function POST(req: Request) {
     if (brakeSystem === "hyd_brake") {
       aiSections = aiSections
         .map((sec) => {
-          // drop whole section if it's obviously HD/air
           if (looksAirBrakeSection(sec.title)) return null;
           const filteredItems = sec.items.filter(
             (it) => !looksAirBrakeItem(it.item),
