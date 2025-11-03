@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState, } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 import toast from "react-hot-toast";
@@ -27,7 +27,9 @@ import type {
 } from "@inspections/lib/inspection/types";
 
 import SectionDisplay from "@inspections/lib/inspection/SectionDisplay";
-import CornerGrid from "@inspections/lib/inspection/ui/CornerGrid";
+// ⬇️ swap to the hybrid grid that supports BOTH air + hydraulic label styles
+import AxlesCornerGrid from "@inspections/lib/inspection/ui/AxlesCornerGrid";
+
 import { InspectionFormCtx } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import { SaveInspectionButton } from "@inspections/components/inspection/SaveInspectionButton";
 import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
@@ -76,7 +78,7 @@ function unitHintGeneric(label: string, mode: "metric" | "imperial"): string {
   return "";
 }
 
-/** Decide if a section should use the CornerGrid (measurement-heavy) */
+/** Decide if a section should use a corner/axle grid (measurement-heavy) */
 function isMeasurementSection(title?: string) {
   const t = (title || "").toLowerCase();
   return (
@@ -489,12 +491,15 @@ export default function GenericInspectionScreen(): JSX.Element {
 
               <div className={isEmbed ? "mt-3" : "mt-4"}>
                 {useGrid ? (
-                  <CornerGrid
+                  <AxlesCornerGrid
                     sectionIndex={sectionIndex}
                     items={section.items.map((it) => ({
                       ...it,
                       unit: it.unit || unitHintGeneric(it.item ?? "", unit),
                     }))}
+                    // Prefer kPa in Metric, psi in Imperial; still stores raw value
+                    pressurePrimary={unit === "metric" ? "kpa" : "psi"}
+                    showPressureSecondary
                   />
                 ) : (
                   <SectionDisplay
