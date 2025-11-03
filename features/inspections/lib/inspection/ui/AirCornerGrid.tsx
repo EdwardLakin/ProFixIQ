@@ -20,29 +20,47 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
   type MetricCell = {
     metric: string;
     idx: number;
-    unit?: string | null;
+    unit: string;
     fullLabel: string;
     isPressure: boolean;
     initial: string;
   };
   type AxleGroup = { axle: string; left: MetricCell[]; right: MetricCell[] };
 
-  const metricOrder = [
-    "Tire Pressure (Outer)",
-    "Tire Pressure (Inner)",
-    "Tread Depth (Outer)",
-    "Tread Depth (Inner)",
-    "Lining/Shoe",
-    "Drum/Rotor",
-    "Push Rod Travel",
-    "Wheel Torque Inner",
-    "Wheel Torque Outer",
-    "Tire Pressure",
-    "Tread Depth",
-  ];
-  const orderIndex = (metric: string) => {
-    const i = metricOrder.findIndex((m) => metric.toLowerCase().includes(m.toLowerCase()));
-    return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+  /* --------------------- strict ordering for AIR --------------------- */
+  const airPriority = (metric: string): [number, number] => {
+    const m = metric.toLowerCase();
+
+    // 0: Tire Pressure (Outer before Inner)
+    if (/tire\s*pressure/i.test(m)) {
+      const second = /outer/i.test(m) ? 0 : /inner/i.test(m) ? 1 : 0;
+      return [0, second];
+    }
+
+    // 1: Tread Depth (Outer before Inner) + "Tire Tread"
+    if (/(tire\s*)?tread\s*depth|tire\s*tread/i.test(m)) {
+      const second = /outer/i.test(m) ? 0 : /inner/i.test(m) ? 1 : 0;
+      return [1, second];
+    }
+
+    // 2: Shoes/Pads (Lining/Shoe/Pad)
+    if (/(lining|shoe|pad)/i.test(m)) return [2, 0];
+
+    // 3: Drum/Rotor (Condition/Thickness)
+    if (/(drum|rotor)/i.test(m)) return [3, 0];
+
+    // 4: Push Rod Travel
+    if (/push\s*rod/i.test(m)) return [4, 0];
+
+    // 5: Wheel torque variants (Inner/Outer secondary key if present)
+    if (/wheel\s*torque/i.test(m)) return [5, /inner/i.test(m) ? 1 : 0];
+
+    return [99, 0];
+  };
+  const orderCompare = (a: string, b: string) => {
+    const [pa, sa] = airPriority(a);
+    const [pb, sb] = airPriority(b);
+    return pa !== pb ? pa - pb : sa - sb;
   };
 
   /** Identify which axles are dual-tire axles. Tag axles = steer type (single tires). */
@@ -54,9 +72,9 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
     return false;
   };
 
+  // Only duplicate Pressure/Tread, never Push Rod or other rows.
   const isDualizableMetric = (metric: string) =>
-    /tire\s*pressure/i.test(metric) || /tread\s*depth/i.test(metric);
-
+    /tire\s*pressure/i.test(metric) || /(tire\s*)?tread\s*depth|tire\s*tread/i.test(metric);
   const hasInnerOuter = (metric: string) => /(inner|outer)/i.test(metric);
 
   /** Expand dual-tire rows for drive/trailer/rear axles. */
@@ -66,8 +84,9 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
     const out: MetricCell[] = [];
     for (const c of cells) {
       if (isDualizableMetric(c.metric) && !hasInnerOuter(c.metric)) {
-        out.push({ ...c, metric: c.metric.replace(/\s*\((inner|outer)\)\s*/i, "").trim() + " (Outer)" });
-        out.push({ ...c, metric: c.metric.replace(/\s*\((inner|outer)\)\s*/i, "").trim() + " (Inner)" });
+        const base = c.metric.replace(/\s*\((inner|outer)\)\s*/i, "").trim();
+        out.push({ ...c, metric: `${base} (Outer)` });
+        out.push({ ...c, metric: `${base} (Inner)` });
       } else {
         out.push(c);
       }
@@ -89,8 +108,7 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
 
       if (!byAxle.has(axle)) byAxle.set(axle, { Left: [], Right: [] });
 
-      const arr = byAxle.get(axle)!;
-      const unit = it.unit ?? (unitHint ? unitHint(label) : "");
+      const unit = (it.unit ?? "") || (unitHint ? unitHint(label) : "") || "";
       const cell: MetricCell = {
         metric,
         idx,
@@ -100,12 +118,12 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
         initial: String(it.value ?? ""),
       };
 
-      arr[side].push(cell);
+      byAxle.get(axle)![side].push(cell);
     });
 
     return Array.from(byAxle.entries()).map(([axle, sides]) => {
-      const left = expandDuals(axle, sides.Left).sort((a, b) => orderIndex(a.metric) - orderIndex(b.metric));
-      const right = expandDuals(axle, sides.Right).sort((a, b) => orderIndex(a.metric) - orderIndex(b.metric));
+      const left = expandDuals(axle, sides.Left).sort((a, b) => orderCompare(a.metric, b.metric));
+      const right = expandDuals(axle, sides.Right).sort((a, b) => orderCompare(a.metric, b.metric));
       return { axle, left, right };
     });
   }, [items, unitHint]);
@@ -144,7 +162,7 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
     };
     g.left.forEach((c) => add(c, "left"));
     g.right.forEach((c) => add(c, "right"));
-    return Array.from(map.values()).sort((a, b) => orderIndex(a.metric) - orderIndex(b.metric));
+    return Array.from(map.values()).sort((a, b) => orderCompare(a.metric, b.metric));
   };
 
   const InputWithInlineUnit = ({
@@ -218,9 +236,9 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
           <div className="space-y-3">
             {rows.map((row, i) => {
               const leftUnit =
-                row.left?.unit ?? (unitHint ? unitHint(row.left?.fullLabel ?? "") : "");
+                row.left?.unit ?? (unitHint ? unitHint(row.left?.fullLabel ?? "") : "") ?? "";
               const rightUnit =
-                row.right?.unit ?? (unitHint ? unitHint(row.right?.fullLabel ?? "") : "");
+                row.right?.unit ?? (unitHint ? unitHint(row.right?.fullLabel ?? "") : "") ?? "";
               return (
                 <div
                   key={`${row.metric}-${i}`}
