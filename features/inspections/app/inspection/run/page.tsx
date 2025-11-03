@@ -1,4 +1,3 @@
-// features/inspections/app/inspection/run/page.tsx
 "use client";
 
 import { useEffect } from "react";
@@ -16,56 +15,57 @@ export default function RunTemplateLoader() {
   const supabase = createClientComponentClient<Database>();
   const templateId = sp.get("templateId");
 
-  // --- helpers ---------------------------------------------------------------
-
-  /** Does any item look like LF/RF/LR/RR ... (hydraulic corner grid)? */
+  /** Detect LF/RF/LR/RR labels (hydraulic corner grid) */
   const hasHydraulicCorners = (sections: Section[]) =>
     sections.some((s) =>
-      (s.items ?? []).some((it) => /^(LF|RF|LR|RR)\s+/i.test(it.item || ""))
+      (s.items ?? []).some((it) => /^(LF|RF|LR|RR)\s+/i.test(it.item || "")),
     );
 
-  /** Does any item look like Steer/Drive/Tag/Trailer N Left/Right ... (air corner grid)? */
+  /** Detect Steer/Drive/Tag/Trailer N Left/Right ... (air corner grid) */
   const hasAirCorners = (sections: Section[]) =>
     sections.some((s) =>
       (s.items ?? []).some((it) =>
-        /^(Steer\s*\d*|Drive\s*\d*|Tag|Trailer\s*\d*)\s+(Left|Right)\s+/i.test(
-          it.item || ""
-        )
-      )
+        /^(Steer\s*\d*|Drive\s*\d+|Tag|Trailer\s*\d+)\s+(Left|Right)\s+/i.test(
+          it.item || "",
+        ),
+      ),
     );
 
   /** Default hydraulic corner grid (LF/RF & LR/RR) */
   function buildHydraulicCornerSection(): Section {
-    const metrics = [
+    const metrics: Array<{ label: string; unit: string | null }> = [
       { label: "Tire Pressure", unit: "psi" },
       { label: "Tire Tread", unit: "mm" },
-      { label: "Brake Pad Thickness", unit: "mm" },
-      { label: "Rotor Condition / Thickness", unit: "mm" },
+      { label: "Brake Pad", unit: "mm" },
+      { label: "Rotor", unit: "mm" },
+      { label: "Rotor Condition", unit: null },
+      { label: "Rotor Thickness", unit: "mm" },
+      { label: "Wheel Torque", unit: "ft·lb" },
     ];
     const corners = ["LF", "RF", "LR", "RR"];
     const items: SectionItem[] = [];
     for (const c of corners) {
       for (const m of metrics) items.push({ item: `${c} ${m.label}`, unit: m.unit });
     }
-    return { title: "Corner Measurements", items };
+    return { title: "Corner Grid (Hydraulic)", items };
   }
 
-  /** Default air corner grid: Steer 1 + Drive 1 (left/right); drive rows include inner/outer tread */
+  /** Default air corner grid: Steer 1 + Drive 1 */
   function buildAirCornerSection(): Section {
     const steerItems: SectionItem[] = [
       { item: "Steer 1 Left Tire Pressure", unit: "psi" },
       { item: "Steer 1 Right Tire Pressure", unit: "psi" },
       { item: "Steer 1 Left Tread Depth", unit: "mm" },
       { item: "Steer 1 Right Tread Depth", unit: "mm" },
-      { item: "Steer 1 Left Lining/Shoe Thickness", unit: "mm" },
-      { item: "Steer 1 Right Lining/Shoe Thickness", unit: "mm" },
-      { item: "Steer 1 Left Drum/Rotor Condition", unit: "mm" },
-      { item: "Steer 1 Right Drum/Rotor Condition", unit: "mm" },
-      { item: "Steer 1 Left Push Rod Travel", unit: "mm" },
-      { item: "Steer 1 Right Push Rod Travel", unit: "mm" },
+      { item: "Steer 1 Left Lining/Shoe", unit: "mm" },
+      { item: "Steer 1 Right Lining/Shoe", unit: "mm" },
+      { item: "Steer 1 Left Drum/Rotor", unit: "mm" },
+      { item: "Steer 1 Right Drum/Rotor", unit: "mm" },
+      { item: "Steer 1 Left Push Rod Travel", unit: "in" },
+      { item: "Steer 1 Right Push Rod Travel", unit: "in" },
     ];
 
-    // Drive axle: add Inner/Outer tread explicitly so your UI shows both
+    // Drive axle: include explicit Inner/Outer tread; AirCornerGrid will not double-expand.
     const driveItems: SectionItem[] = [
       { item: "Drive 1 Left Tire Pressure", unit: "psi" },
       { item: "Drive 1 Right Tire Pressure", unit: "psi" },
@@ -73,15 +73,15 @@ export default function RunTemplateLoader() {
       { item: "Drive 1 Left Tread Depth (Inner)", unit: "mm" },
       { item: "Drive 1 Right Tread Depth (Outer)", unit: "mm" },
       { item: "Drive 1 Right Tread Depth (Inner)", unit: "mm" },
-      { item: "Drive 1 Left Lining/Shoe Thickness", unit: "mm" },
-      { item: "Drive 1 Right Lining/Shoe Thickness", unit: "mm" },
-      { item: "Drive 1 Left Drum/Rotor Condition", unit: "mm" },
-      { item: "Drive 1 Right Drum/Rotor Condition", unit: "mm" },
-      { item: "Drive 1 Left Push Rod Travel", unit: "mm" },
-      { item: "Drive 1 Right Push Rod Travel", unit: "mm" },
+      { item: "Drive 1 Left Lining/Shoe", unit: "mm" },
+      { item: "Drive 1 Right Lining/Shoe", unit: "mm" },
+      { item: "Drive 1 Left Drum/Rotor", unit: "mm" },
+      { item: "Drive 1 Right Drum/Rotor", unit: "mm" },
+      { item: "Drive 1 Left Push Rod Travel", unit: "in" },
+      { item: "Drive 1 Right Push Rod Travel", unit: "in" },
     ];
 
-    return { title: "Axle Measurements (Air)", items: [...steerItems, ...driveItems] };
+    return { title: "Corner Grid (Air)", items: [...steerItems, ...driveItems] };
   }
 
   /** Ensure at least one corner grid exists; append a default if missing */
@@ -96,8 +96,6 @@ export default function RunTemplateLoader() {
     // Place the grid first so techs see it immediately
     return [injected, ...s];
   }
-
-  // --- effect ----------------------------------------------------------------
 
   useEffect(() => {
     (async () => {
@@ -133,7 +131,7 @@ export default function RunTemplateLoader() {
       sessionStorage.setItem("inspection:template", "generic");
       sessionStorage.setItem(
         "inspection:params",
-        JSON.stringify(Object.fromEntries(sp))
+        JSON.stringify(Object.fromEntries(sp)),
       );
 
       // Legacy keys (avoid older flows bouncing)

@@ -143,7 +143,7 @@ export const masterInspectionList: InspectionCategory[] = [
       { item: "Oil leaks (engine/trans/axle)" },
       { item: "Fuel leaks (lines/injectors)" },
       { item: "Air filter condition" },
-      { item: "Washer fluid"},
+      { item: "Washer fluid" },
     ],
   },
 
@@ -194,7 +194,7 @@ export const masterInspectionList: InspectionCategory[] = [
       { item: "Slider locking mechanism" },
       { item: "Kingpin wear" },
       { item: "Safety chains/hooks (if equipped)" },
-      { item: "Trailer plug"},
+      { item: "Trailer plug" },
     ],
   },
 
