@@ -120,13 +120,15 @@ export default function CustomDraftPage() {
   const sp = useSearchParams();
   const supabase = useMemo(() => createClientComponentClient<Database>(), []);
 
-  const [title, setTitle] = useState(
-    sp.get("template") || "Custom Inspection"
-  );
-  const [vehicleType] = useState<VehicleType | null>(
+  // if the user clicked "Edit" from the template list we expect ?templateId=...
+  const templateId = sp.get("templateId");
+
+  const [title, setTitle] = useState(sp.get("template") || "Custom Inspection");
+  const [vehicleType, setVehicleType] = useState<VehicleType | null>(
     (sp.get("vehicleType") as VehicleType | null) || null
   );
-  const [dutyClass] = useState<DutyClass | null>(
+  // keep both value and setter to satisfy TS AND to react to session/template loads
+  const [dutyClass, setDutyClass] = useState<DutyClass | null>(
     (sp.get("dutyClass") as DutyClass | null) || null
   );
 
@@ -136,12 +138,9 @@ export default function CustomDraftPage() {
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
 
-  // build a quick lookup: normalized title -> master items
+  // build a quick lookup: normalized title -> master items (used for the add-item dropdown)
   const masterByTitle = useMemo(() => {
-    const out = new Map<
-      string,
-      { item: string; unit?: string | null }[]
-    >();
+    const out = new Map<string, { item: string; unit?: string | null }[]>();
     for (const sec of masterInspectionList) {
       out.set(sec.title.trim().toLowerCase(), sec.items);
     }
@@ -153,7 +152,7 @@ export default function CustomDraftPage() {
     return masterByTitle.get(key) ?? [];
   }
 
-  // Load what the builder wrote into sessionStorage
+  // 1) try to load from sessionStorage (what custom builder wrote)
   useEffect(() => {
     try {
       const raw =
@@ -168,11 +167,20 @@ export default function CustomDraftPage() {
         typeof window !== "undefined"
           ? sessionStorage.getItem("customInspection:includeOil")
           : null;
+      const storedDuty =
+        typeof window !== "undefined"
+          ? sessionStorage.getItem("customInspection:dutyClass")
+          : null;
+
       const includeOil = includeOilRaw
         ? JSON.parse(includeOilRaw) === true
         : false;
 
       if (t && t.trim()) setTitle(t.trim());
+      if (storedDuty) {
+        // ✅ use the setter so TS sees it being used
+        setDutyClass(storedDuty as DutyClass);
+      }
 
       if (raw) {
         const parsedUnknown = JSON.parse(raw) as unknown;
@@ -183,7 +191,6 @@ export default function CustomDraftPage() {
 
         setSections(withOil);
 
-        // only guess labor hours once here
         const initialHours = computeDefaultLaborHours({
           vehicleType: vehicleType ?? "truck",
           sections: withOil,
@@ -191,10 +198,51 @@ export default function CustomDraftPage() {
         setLaborHours(initialHours);
       }
     } catch {
-      /* ignore */
+      /* ignore bad session data */
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 2) if we came from "Edit template", pull it from Supabase and override
+  useEffect(() => {
+    if (!templateId) return;
+
+    (async () => {
+      const { data, error } = await supabase
+        .from("inspection_templates")
+        .select("template_name, sections, vehicle_type, labor_hours")
+        .eq("id", templateId)
+        .maybeSingle();
+
+      if (error || !data) {
+        console.error(error);
+        toast.error("Could not load template.");
+        return;
+      }
+
+      const normalized = normalizeSections(data.sections as unknown);
+      setSections(normalized);
+      setTitle(data.template_name || "Custom Inspection");
+
+      // update vehicle/duty from template if present
+      if (data.vehicle_type) {
+        setVehicleType(data.vehicle_type as VehicleType);
+      }
+      // if you add a duty_class column later, set it here
+      // setDutyClass(data.duty_class as DutyClass | null ?? null);
+
+      if (typeof data.labor_hours === "number") {
+        setLaborHours(data.labor_hours);
+      } else {
+        // recompute if not in DB
+        const hours = computeDefaultLaborHours({
+          vehicleType: (data.vehicle_type as VehicleType) ?? "truck",
+          sections: normalized,
+        });
+        setLaborHours(hours);
+      }
+    })();
+  }, [templateId, supabase]);
 
   /* ----------------------------- editing helpers ----------------------------- */
 
@@ -230,7 +278,6 @@ export default function CustomDraftPage() {
     });
   }
 
-  // when we add an item, create a placeholder "New Item" – the row will render a dropdown if we have master items
   function addItem(secIdx: number) {
     setSections((prev) => {
       const next = [...prev];
@@ -354,11 +401,11 @@ export default function CustomDraftPage() {
         "inspection:title",
         (title || "").trim() || "Inspection"
       );
+
       const qs = new URLSearchParams();
       qs.set("template", title || "Inspection");
       if (vehicleType) qs.set("vehicleType", vehicleType);
       if (dutyClass) qs.set("dutyClass", dutyClass);
-
       router.push(`/inspections/run?${qs.toString()}`);
     } finally {
       setRunning(false);

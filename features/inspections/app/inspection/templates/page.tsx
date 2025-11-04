@@ -81,10 +81,9 @@ export default function InspectionTemplatesPage() {
         .from("inspection_templates")
         .delete()
         .eq("id", id)
-        .eq("user_id", userId); // guard: only delete if owner
+        .eq("user_id", userId);
       if (error) throw error;
 
-      // Remove from both lists (it might appear in both if public + owned)
       setMine((prev) => prev.filter((t) => t.id !== id));
       setShared((prev) => prev.filter((t) => t.id !== id));
     } catch (e) {
@@ -134,6 +133,7 @@ export default function InspectionTemplatesPage() {
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {rows.map((t) => {
             const mineOwned = canEditOrDelete(t);
+            const encodedName = encodeURIComponent(t.template_name ?? "Custom Inspection");
             return (
               <li key={t.id} className="rounded border border-zinc-800 bg-zinc-900 p-4">
                 <div className="mb-1 text-lg font-semibold text-orange-400">
@@ -150,7 +150,7 @@ export default function InspectionTemplatesPage() {
                   </span>
 
                   <div className="flex items-center gap-2">
-                    {/* Use Template (run loader) */}
+                    {/* Use Template / run */}
                     <Link
                       href={`/inspections/run?templateId=${t.id}`}
                       className="rounded border border-zinc-700 px-2 py-1 text-zinc-200 hover:bg-zinc-800"
@@ -158,24 +158,22 @@ export default function InspectionTemplatesPage() {
                       Use
                     </Link>
 
-                    {/* Edit (owner only) */}
+                    {/* Edit -> go to custom draft, pass templateId + template name so header fills */}
                     {mineOwned && (
                       <Link
-                        href={`/inspections/custom-inspection?id=${t.id}&edit=true`}
+                        href={`/inspections/custom-draft?templateId=${t.id}&template=${encodedName}`}
                         className="rounded border border-zinc-700 px-2 py-1 text-zinc-200 hover:bg-zinc-800"
                       >
                         Edit
                       </Link>
                     )}
 
-                    {/* Delete (owner only) */}
+                    {/* Delete */}
                     {mineOwned && (
                       <button
                         onClick={() => handleDelete(t.id)}
                         disabled={deletingId === t.id}
-                        className={
-                          "rounded border border-red-700 px-2 py-1 text-red-200 hover:bg-red-900/40 disabled:opacity-60"
-                        }
+                        className="rounded border border-red-700 px-2 py-1 text-red-200 hover:bg-red-900/40 disabled:opacity-60"
                         title="Delete template"
                       >
                         {deletingId === t.id ? "Deleting…" : "Delete"}

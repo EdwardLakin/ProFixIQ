@@ -27,8 +27,12 @@ type PackageDef = {
   items: PackageItem[];
 };
 
-/** Menu items saved by the user (from /app/menu/page). */
 type MenuItemRow = DB["public"]["Tables"]["menu_items"]["Row"];
+
+// DB table has labor_hours, so add it if your generated type is missing it
+type TemplateRow = DB["public"]["Tables"]["inspection_templates"]["Row"] & {
+  labor_hours?: number | null;
+};
 
 type VehicleLite = {
   id?: string | null;
@@ -47,28 +51,35 @@ type CustomerLite = {
   email?: string | null;
 };
 
-/** Minimal structure for allocating parts alongside a new line (future-proof for AI). */
 type PartToAllocate = {
   sku?: string | null;
   name?: string | null;
   qty: number;
 };
 
-type AddMenuParams = {
-  name: string;
-  jobType: JobType;
-  laborHours?: number | null;
-  notes?: string | null;
-  source?: "single" | "package" | "menu_item" | "ai" | "inspection";
-  returnLineId?: boolean;
-  partsToAllocate?: PartToAllocate[];
-};
+type AddMenuParams =
+  | {
+      kind?: "normal";
+      name: string;
+      jobType: JobType;
+      laborHours?: number | null;
+      notes?: string | null;
+      source?: "single" | "package" | "menu_item" | "ai" | "inspection";
+      returnLineId?: boolean;
+      partsToAllocate?: PartToAllocate[];
+    }
+  | {
+      kind: "template";
+      template: TemplateRow;
+      name?: string;
+      laborHours?: number | null;
+    };
 
 export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const router = useRouter();
 
-  // -------------------- curated Packages only --------------------
+  // curated packages
   const packages: PackageDef[] = [
     {
       id: "oil-gas",
@@ -104,17 +115,20 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     },
   ];
 
-  // -------------------- UI / data state --------------------
   const [addingId, setAddingId] = useState<string | null>(null);
   const [vehicle, setVehicle] = useState<VehicleLite | null>(null);
   const [, setCustomer] = useState<CustomerLite | null>(null);
   const [woLineCount, setWoLineCount] = useState<number | null>(null);
 
-  // Saved Menu Items integration
+  // saved menu items
   const [menuItems, setMenuItems] = useState<MenuItemRow[]>([]);
   const [menuLoading, setMenuLoading] = useState(false);
 
-  // Shop context (RLS)
+  // inspection templates
+  const [templates, setTemplates] = useState<TemplateRow[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+
+  // shop context
   const [shopId, setShopId] = useState<string | null>(null);
   const shopReady = !!shopId;
   const vehicleId = vehicle?.id ?? null;
@@ -124,17 +138,19 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
 
-  // Avoid redundant RPC calls in this component
   const lastSetShopId = useRef<string | null>(null);
   async function ensureShopContext(id: string | null) {
     if (!id) return;
     if (lastSetShopId.current === id) return;
     const { error } = await supabase.rpc("set_current_shop_id", { p_shop_id: id });
-    if (!error) lastSetShopId.current = id;
-    else throw error;
+    if (!error) {
+      lastSetShopId.current = id;
+    } else {
+      throw error;
+    }
   }
 
-  // -------------------- bootstrap --------------------
+  // bootstrap WO + related
   useEffect(() => {
     (async () => {
       const { data: wo } = await supabase
@@ -175,6 +191,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     })();
   }, [supabase, workOrderId]);
 
+  // load saved menu items
   const loadMenuItems = useCallback(async () => {
     setMenuLoading(true);
     try {
@@ -186,27 +203,99 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       if (error) throw error;
       setMenuItems(data ?? []);
     } catch {
-      // noop
+      // ignore
     } finally {
       setMenuLoading(false);
     }
   }, [supabase]);
 
+  // load inspection templates (mine + public)
+  const loadTemplates = useCallback(async () => {
+    setTemplatesLoading(true);
+    try {
+      const { data: me } = await supabase.auth.getUser();
+      const uid = me?.user?.id ?? null;
+
+      const minePromise = uid
+        ? supabase
+            .from("inspection_templates")
+            .select("*")
+            .eq("user_id", uid)
+            .order("created_at", { ascending: false })
+        : Promise.resolve({ data: [] as TemplateRow[], error: null });
+
+      const sharedPromise = supabase
+        .from("inspection_templates")
+        .select("*")
+        .eq("is_public", true)
+        .order("created_at", { ascending: false });
+
+      const [{ data: mineRaw }, { data: sharedRaw }] = await Promise.all([
+        minePromise,
+        sharedPromise,
+      ]);
+
+      setTemplates([
+        ...(Array.isArray(mineRaw) ? mineRaw : []),
+        ...(Array.isArray(sharedRaw) ? sharedRaw : []),
+      ]);
+    } catch {
+      // ignore
+    } finally {
+      setTemplatesLoading(false);
+    }
+  }, [supabase]);
+
+  // initial loads
   useEffect(() => {
     void loadMenuItems();
-  }, [loadMenuItems]);
+    void loadTemplates();
+  }, [loadMenuItems, loadTemplates]);
 
   // ============================================================
-  //                    SHARED ADD + AUTO-ALLOC
+  // add line (menu or template)
   // ============================================================
-
   async function addMenuItem(params: AddMenuParams): Promise<string | null> {
     if (!shopReady) return null;
 
-    setAddingId(params.name);
+    setAddingId(params.kind === "template" ? params.template.id : params.name);
     try {
       await ensureShopContext(shopId);
 
+      // template-backed line
+      if (params.kind === "template") {
+        const line: WorkOrderLineInsert & { inspection_template_id?: string | null } = {
+          work_order_id: workOrderId,
+          vehicle_id: vehicleId,
+          description:
+            params.name ?? params.template.template_name ?? "Inspection",
+          job_type: "inspection",
+          labor_time:
+            params.laborHours ??
+            (typeof params.template.labor_hours === "number"
+              ? params.template.labor_hours
+              : null),
+          status: "awaiting",
+          priority: 3,
+          notes: params.template.description ?? null,
+          shop_id: shopId!,
+          inspection_template_id: params.template.id,
+        };
+
+        const { data, error } = await supabase
+          .from("work_order_lines")
+          .insert(line)
+          .select("id")
+          .single();
+
+        if (error) throw error;
+
+        window.dispatchEvent(new CustomEvent("wo:line-added"));
+        toast.success("Inspection added");
+        return data?.id ?? null;
+      }
+
+      // normal branch
       const line: WorkOrderLineInsert = {
         work_order_id: workOrderId,
         vehicle_id: vehicleId,
@@ -232,7 +321,13 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       }
 
       window.dispatchEvent(new CustomEvent("wo:line-added"));
-      toast.success(params.source === "ai" ? "AI suggestion added" : params.source === "menu_item" ? "Menu item added" : "Job added");
+      toast.success(
+        params.source === "ai"
+          ? "AI suggestion added"
+          : params.source === "menu_item"
+          ? "Menu item added"
+          : "Job added",
+      );
 
       return params.returnLineId ? (data?.id ?? null) : null;
     } catch (e: unknown) {
@@ -245,7 +340,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     }
   }
 
-  // --------- allocation helpers (menu items + explicit parts) ----------
+  // ---------- allocation helpers ----------
   type MenuItemPartRow = {
     id: string;
     name: string | null;
@@ -286,7 +381,10 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     return null;
   }
 
-  async function pickDefaultLocationId(partId: string, shop: string): Promise<string | null> {
+  async function pickDefaultLocationId(
+    partId: string,
+    shop: string,
+  ): Promise<string | null> {
     const withStock = await supabase
       .from("part_stock")
       .select("location_id, qty")
@@ -309,7 +407,10 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     return anyLoc.data?.id ?? null;
   }
 
-  async function autoAllocateMenuParts(menuItemId: string, workOrderLineId: string) {
+  async function autoAllocateMenuParts(
+    menuItemId: string,
+    workOrderLineId: string,
+  ) {
     if (!shopId) return;
 
     const { data: rows, error } = await supabase
@@ -331,34 +432,57 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     }[] = [];
 
     for (const p of mParts) {
-      const qty = typeof p.quantity === "number" && p.quantity > 0 ? p.quantity : 0;
+      const qty =
+        typeof p.quantity === "number" && p.quantity > 0 ? p.quantity : 0;
       if (!qty) continue;
 
-      const partId = await findPartIdForShop({ sku: p.sku ?? undefined, name: p.name ?? undefined, shop: shopId });
+      const partId = await findPartIdForShop({
+        sku: p.sku ?? undefined,
+        name: p.name ?? undefined,
+        shop: shopId,
+      });
       if (!partId) {
-        toast.message(`Skipped "${p.name ?? p.sku ?? "part"}" (not in Parts).`);
+        toast.message(
+          `Skipped "${p.name ?? p.sku ?? "part"}" (not in Parts).`,
+        );
         continue;
       }
       const locId = await pickDefaultLocationId(partId, shopId);
       if (!locId) {
-        toast.message(`Skipped "${p.name ?? p.sku ?? "part"}" (no stock location).`);
+        toast.message(
+          `Skipped "${p.name ?? p.sku ?? "part"}" (no stock location).`,
+        );
         continue;
       }
-      allocations.push({ work_order_line_id: workOrderLineId, part_id: partId, location_id: locId, qty });
+      allocations.push({
+        work_order_line_id: workOrderLineId,
+        part_id: partId,
+        location_id: locId,
+        qty,
+      });
     }
 
     if (!allocations.length) return;
 
-    const { error: allocErr } = await supabase.from("work_order_part_allocations").insert(allocations);
+    const { error: allocErr } = await supabase
+      .from("work_order_part_allocations")
+      .insert(allocations);
     if (allocErr) {
       toast.warning("Job added, but parts couldn't be allocated.");
     } else {
       window.dispatchEvent(new CustomEvent("wo:parts-used"));
-      toast.success(`Allocated ${allocations.length} part${allocations.length > 1 ? "s" : ""}`);
+      toast.success(
+        `Allocated ${allocations.length} part${
+          allocations.length > 1 ? "s" : ""
+        }`,
+      );
     }
   }
 
-  async function autoAllocateExplicitParts(list: PartToAllocate[], workOrderLineId: string) {
+  async function autoAllocateExplicitParts(
+    list: PartToAllocate[],
+    workOrderLineId: string,
+  ) {
     if (!shopId || !list.length) return;
 
     const allocations: {
@@ -372,35 +496,37 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       const qty = typeof raw.qty === "number" && raw.qty > 0 ? raw.qty : 0;
       if (!qty) continue;
 
-      const partId = await findPartIdForShop({ sku: raw.sku ?? undefined, name: raw.name ?? undefined, shop: shopId });
+      const partId = await findPartIdForShop({
+        sku: raw.sku ?? undefined,
+        name: raw.name ?? undefined,
+        shop: shopId,
+      });
       if (!partId) continue;
 
       const locId = await pickDefaultLocationId(partId, shopId);
       if (!locId) continue;
 
-      allocations.push({ work_order_line_id: workOrderLineId, part_id: partId, location_id: locId, qty });
+      allocations.push({
+        work_order_line_id: workOrderLineId,
+        part_id: partId,
+        location_id: locId,
+        qty,
+      });
     }
 
     if (!allocations.length) return;
-    const { error } = await supabase.from("work_order_part_allocations").insert(allocations);
+    const { error } = await supabase
+      .from("work_order_part_allocations")
+      .insert(allocations);
     if (!error) window.dispatchEvent(new CustomEvent("wo:parts-used"));
   }
 
-  // -------------------- tiny wrappers --------------------
+  // tiny wrappers
   async function addPackage(pkg: PackageDef) {
-    if (pkg.jobType === "inspection") {
-      await addMenuItem({
-        name: pkg.name,
-        jobType: "inspection",
-        laborHours: pkg.estLaborHours ?? null,
-        notes: pkg.summary,
-        source: "package",
-      });
-      return;
-    }
     await addMenuItem({
+      kind: "normal",
       name: pkg.name,
-      jobType: "maintenance",
+      jobType: pkg.jobType === "inspection" ? "inspection" : "maintenance",
       laborHours: pkg.estLaborHours ?? null,
       notes: pkg.summary,
       source: "package",
@@ -409,9 +535,14 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
   async function addSavedMenuItem(mi: MenuItemRow) {
     const lineId = await addMenuItem({
+      kind: "normal",
       name: mi.name ?? "Service",
       jobType: "maintenance",
-      laborHours: typeof mi.labor_time === "number" ? mi.labor_time : null,
+      laborHours:
+        typeof mi.labor_time === "number"
+          ? mi.labor_time
+          : // fallback in case you add labor_hours to menu_items later
+            null,
       notes: mi.description ?? null,
       source: "menu_item",
       returnLineId: true,
@@ -421,7 +552,14 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     }
   }
 
-  // -------------------- AI modal flow --------------------
+  async function addTemplateAsLine(t: TemplateRow) {
+    await addMenuItem({
+      kind: "template",
+      template: t,
+    });
+  }
+
+  // AI
   async function runAiSuggest() {
     if (!aiPrompt.trim()) return;
     setAiBusy(true);
@@ -431,11 +569,23 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           prompt: aiPrompt,
-          vehicle: vehicle ? { year: vehicle.year, make: vehicle.make, model: vehicle.model } : null,
+          vehicle: vehicle
+            ? {
+                year: vehicle.year,
+                make: vehicle.make,
+                model: vehicle.model,
+              }
+            : null,
         }),
       });
       const j = (await res.json()) as {
-        items?: { name: string; jobType: JobType; laborHours?: number | null; notes?: string | null; parts?: PartToAllocate[] }[];
+        items?: {
+          name: string;
+          jobType: JobType;
+          laborHours?: number | null;
+          notes?: string | null;
+          parts?: PartToAllocate[];
+        }[];
         error?: string;
       };
       if (!res.ok || j.error) throw new Error(j.error || "AI suggestion failed");
@@ -448,6 +598,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
       for (const it of items) {
         await addMenuItem({
+          kind: "normal",
           name: it.name,
           jobType: it.jobType,
           laborHours: it.laborHours ?? null,
@@ -459,27 +610,33 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       setAiOpen(false);
       setAiPrompt("");
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Could not get suggestions.";
+      const msg =
+        e instanceof Error ? e.message : "Could not get suggestions.";
       toast.error(msg);
     } finally {
       setAiBusy(false);
     }
   }
 
-  // -------------------- render --------------------
-
   return (
     <div className="space-y-6">
-      {/* Quick actions / Quote */}
+      {/* Quick header */}
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-orange-400 text-center w-full">Quick Add</h3>
+        <h3 className="w-full text-center font-semibold text-orange-400">
+          Quick Add
+        </h3>
         <div className="absolute right-0 flex items-center gap-2 pr-0 sm:pr-0">
           <button
             type="button"
-            onClick={() => router.push(`/work-orders/quote-review?woId=${workOrderId}`)}
+            onClick={() =>
+              router.push(`/work-orders/quote-review?woId=${workOrderId}`)
+            }
             className="rounded border border-neutral-800 bg-neutral-950 px-3 py-1.5 text-sm hover:bg-neutral-900"
           >
-            Review Quote{typeof woLineCount === "number" && woLineCount > 0 ? ` (${woLineCount})` : ""}
+            Review Quote
+            {typeof woLineCount === "number" && woLineCount > 0
+              ? ` (${woLineCount})`
+              : ""}
           </button>
           <button
             type="button"
@@ -495,7 +652,9 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       {/* Packages */}
       <div>
         <div className="mb-2 flex items-center justify-center">
-          <h4 className="font-semibold text-neutral-200 text-center">Packages</h4>
+          <h4 className="text-center font-semibold text-neutral-200">
+            Packages
+          </h4>
         </div>
         <div className="grid gap-2 sm:grid-cols-2">
           {packages.map((p) => (
@@ -509,21 +668,75 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
             >
               <div className="font-medium">{p.name}</div>
               <div className="text-xs text-neutral-400">
-                {p.jobType} • {p.estLaborHours != null ? `~${p.estLaborHours.toFixed(1)}h` : "—"}
+                {p.jobType} •{" "}
+                {p.estLaborHours != null
+                  ? `~${p.estLaborHours.toFixed(1)}h`
+                  : "—"}
               </div>
-              <div className="mt-1 line-clamp-2 text-xs text-neutral-500">{p.summary}</div>
+              <div className="mt-1 line-clamp-2 text-xs text-neutral-500">
+                {p.summary}
+              </div>
             </button>
           ))}
         </div>
       </div>
 
-      {/* Your saved Menu Items */}
+      {/* Inspection templates */}
       <div>
         <div className="mb-2 flex items-center justify-center">
-          <h4 className="font-semibold text-neutral-200 text-center">From My Menu</h4>
+          <h4 className="text-center font-semibold text-neutral-200">
+            Inspection Templates
+          </h4>
         </div>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {menuLoading && <div className="text-sm text-neutral-400 text-center w-full">Loading…</div>}
+          {templatesLoading && (
+            <div className="w-full text-center text-sm text-neutral-400">
+              Loading…
+            </div>
+          )}
+          {!templatesLoading &&
+            (templates.length ? (
+              templates.slice(0, 9).map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => addTemplateAsLine(t)}
+                  disabled={addingId === t.id || !shopReady}
+                  className="rounded border border-neutral-800 bg-neutral-950 p-3 text-left hover:bg-neutral-900 disabled:opacity-60"
+                  title={t.description ?? undefined}
+                >
+                  <div className="font-medium">
+                    {t.template_name ?? "Inspection"}
+                  </div>
+                  <div className="text-xs text-neutral-400">
+                    inspection •{" "}
+                    {typeof t.labor_hours === "number"
+                      ? `${t.labor_hours.toFixed(1)}h`
+                      : "—"}
+                  </div>
+                </button>
+              ))
+            ) : (
+              <div className="w-full text-center text-sm text-neutral-400">
+                No templates yet.
+              </div>
+            ))}
+        </div>
+      </div>
+
+      {/* From My Menu */}
+      <div>
+        <div className="mb-2 flex items-center justify-center">
+          <h4 className="text-center font-semibold text-neutral-200">
+            From My Menu
+          </h4>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {menuLoading && (
+            <div className="w-full text-center text-sm text-neutral-400">
+              Loading…
+            </div>
+          )}
           {!menuLoading &&
             (menuItems.length ? (
               menuItems.slice(0, 9).map((mi) => (
@@ -537,13 +750,21 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
                 >
                   <div className="font-medium">{mi.name}</div>
                   <div className="text-xs text-neutral-400">
-                    {typeof mi.labor_time === "number" ? `${mi.labor_time.toFixed(1)}h` : "—"} •{" "}
-                    {typeof mi.total_price === "number" ? `$${mi.total_price.toFixed(0)}` : "—"}
+                    {/* prefer labor_time, but fall back if you later add labor_hours to this table */}
+                    {typeof mi.labor_time === "number"
+                      ? `${mi.labor_time.toFixed(1)}h`
+                      : "—"}{" "}
+                    •{" "}
+                    {typeof mi.total_price === "number"
+                      ? `$${mi.total_price.toFixed(0)}`
+                      : "—"}
                   </div>
                 </button>
               ))
             ) : (
-              <div className="text-sm text-neutral-400 text-center w-full">No saved menu items yet.</div>
+              <div className="w-full text-center text-sm text-neutral-400">
+                No saved menu items yet.
+              </div>
             ))}
         </div>
       </div>
@@ -551,7 +772,10 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       {/* AI modal */}
       {aiOpen && (
         <div className="fixed inset-0 z-[300] grid place-items-center">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setAiOpen(false)} />
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setAiOpen(false)}
+          />
           <div
             className="relative z-[310] w-full max-w-xl rounded border border-orange-400 bg-neutral-950 p-4 text-white"
             onClick={(e) => e.stopPropagation()}
@@ -569,7 +793,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
             <textarea
               rows={4}
               className="w-full rounded border border-neutral-700 bg-neutral-900 p-2"
-              placeholder="Describe the issue or request… e.g., 'Customer reports vibration at 60 mph and squeal when braking'"
+              placeholder="Describe the issue or request…"
               value={aiPrompt}
               onChange={(e) => setAiPrompt(e.target.value)}
             />

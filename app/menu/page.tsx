@@ -5,30 +5,36 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { useUser } from "@auth/hooks/useUser";
 import { toast } from "sonner";
-
-// Reuse your PartPicker component
 import { PartPicker, type PickedPart } from "@parts/components/PartPicker";
+import { masterServicesList } from "@inspections/lib/inspection/masterServicesList";
 
 type DB = Database;
 
-// Rows / inserts we use
+// rows
 type MenuItemRow = DB["public"]["Tables"]["menu_items"]["Row"];
-type InsertMenuItem = DB["public"]["Tables"]["menu_items"]["Insert"];
+type BaseInsertMenuItem = DB["public"]["Tables"]["menu_items"]["Insert"];
 type InsertMenuItemPart = DB["public"]["Tables"]["menu_item_parts"]["Insert"];
+type TemplateRow = DB["public"]["Tables"]["inspection_templates"]["Row"];
 
-// Local form types (edit as strings to avoid “01.5” visual issue)
+// 👇 extend what Supabase generated, because TS doesn’t know about the new column yet
+type InsertMenuItemExt = BaseInsertMenuItem & {
+  inspection_template_id?: string | null;
+  labor_hours?: number | null; // safe to keep here even if the column exists with a different name
+};
+
 type PartFormRow = {
-  name: string;         // label shown to user (from parts.name or manual)
-  quantityStr: string;  // edited as string
-  unitCostStr: string;  // edited as string
-  part_id?: string | null; // optional link to an actual part (not required by DB)
+  name: string;
+  quantityStr: string;
+  unitCostStr: string;
+  part_id?: string | null;
 };
 
 type FormState = {
   name: string;
   description: string;
-  laborTimeStr: string; // edited as string
-  laborRateStr: string; // edited as string
+  laborTimeStr: string;
+  laborRateStr: string;
+  inspectionTemplateId: string | null;
 };
 
 export default function MenuItemsPage() {
@@ -38,7 +44,6 @@ export default function MenuItemsPage() {
   const [menuItems, setMenuItems] = useState<MenuItemRow[]>([]);
   const [saving, setSaving] = useState(false);
 
-  // PartPicker UI state
   const [pickerOpenForRow, setPickerOpenForRow] = useState<number | null>(null);
 
   const [parts, setParts] = useState<PartFormRow[]>([
@@ -48,17 +53,20 @@ export default function MenuItemsPage() {
   const [form, setForm] = useState<FormState>({
     name: "",
     description: "",
-    laborTimeStr: "", // visually empty, not "0"
+    laborTimeStr: "",
     laborRateStr: "",
+    inspectionTemplateId: null,
   });
 
-  // parse helpers (robust)
+  // templates for “attach inspection”
+  const [templates, setTemplates] = useState<TemplateRow[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+
   const toNum = (s: string) => {
     const n = parseFloat(s);
     return Number.isFinite(n) ? n : 0;
   };
 
-  // derive totals
   const partsTotal = useMemo(
     () =>
       parts.reduce((sum, p) => {
@@ -76,7 +84,6 @@ export default function MenuItemsPage() {
 
   const grandTotal = useMemo(() => partsTotal + laborTotal, [partsTotal, laborTotal]);
 
-  // Load existing items
   const fetchItems = useCallback(async () => {
     if (!user?.id) return;
 
@@ -94,11 +101,50 @@ export default function MenuItemsPage() {
     setMenuItems(data ?? []);
   }, [supabase, user?.id]);
 
-  // bootstrap + realtime
+  const fetchTemplates = useCallback(async () => {
+    setTemplatesLoading(true);
+    try {
+      const { data: me } = await supabase.auth.getUser();
+      const uid = me?.user?.id ?? null;
+
+      const minePromise = uid
+        ? supabase
+            .from("inspection_templates")
+            .select("*")
+            .eq("user_id", uid)
+            .order("created_at", { ascending: false })
+        : Promise.resolve({ data: [] as TemplateRow[] });
+
+      const sharedPromise = supabase
+        .from("inspection_templates")
+        .select("*")
+        .eq("is_public", true)
+        .order("created_at", { ascending: false });
+
+      const [{ data: mineRaw }, { data: sharedRaw }] = await Promise.all([
+        minePromise,
+        sharedPromise,
+      ]);
+
+      const pool = [
+        ...(Array.isArray(mineRaw) ? mineRaw : []),
+        ...(Array.isArray(sharedRaw) ? sharedRaw : []),
+      ];
+
+      setTemplates(pool);
+    } catch (e) {
+      console.warn("Failed to fetch templates", e);
+    } finally {
+      setTemplatesLoading(false);
+    }
+  }, [supabase]);
+
+  // bootstrap
   useEffect(() => {
     if (!user?.id) return;
 
     void fetchItems();
+    void fetchTemplates();
 
     const channel = supabase
       .channel("menu-items-sync")
@@ -112,13 +158,13 @@ export default function MenuItemsPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [supabase, user?.id, fetchItems]);
+  }, [supabase, user?.id, fetchItems, fetchTemplates]);
 
-  // parts row helpers
+  // parts helpers
   const setPartField = (idx: number, field: "name" | "quantityStr" | "unitCostStr", value: string) => {
     const cleanNumeric = (v: string) => {
       if (v === "") return "";
-      if (/^\d/.test(v)) v = v.replace(/^0+(?=\d)/, ""); // 00012 -> 12, 01.5 -> 1.5
+      if (/^\d/.test(v)) v = v.replace(/^0+(?=\d)/, "");
       return v;
     };
 
@@ -130,7 +176,7 @@ export default function MenuItemsPage() {
               [field]:
                 field === "name"
                   ? value
-                  : cleanNumeric(value.replace(/[^\d.]/g, "")), // only digits + dot
+                  : cleanNumeric(value.replace(/[^\d.]/g, "")),
             }
           : r,
       ),
@@ -144,12 +190,9 @@ export default function MenuItemsPage() {
     setParts((rows) => rows.filter((_, i) => i !== idx));
   };
 
-  // When a part is picked via PartPicker: fill name (and optionally unit cost if you want to default)
   const handlePickPart = (rowIdx: number) => (sel: PickedPart) => {
-    // We only get: part_id, qty, location_id (optional)
-    // Hydrate name from parts table
     (async () => {
-      const { data, } = await supabase
+      const { data } = await supabase
         .from("parts")
         .select("name, sku")
         .eq("id", sel.part_id)
@@ -164,7 +207,6 @@ export default function MenuItemsPage() {
                 part_id: sel.part_id,
                 name: label,
                 quantityStr: r.quantityStr || (sel.qty ? String(sel.qty) : ""),
-                // unitCostStr: r.unitCostStr || "0", // leave to user; uncomment to default 0
               }
             : r,
         ),
@@ -172,16 +214,12 @@ export default function MenuItemsPage() {
 
       toast.success(`Added ${label} to row`);
     })().catch(() => {
-      // fallback: still set part_id
       setParts((rows) =>
-        rows.map((r, i) =>
-          i === rowIdx ? { ...r, part_id: sel.part_id } : r,
-        ),
+        rows.map((r, i) => (i === rowIdx ? { ...r, part_id: sel.part_id } : r)),
       );
     });
   };
 
-  // submit
   const handleSubmit = useCallback(async () => {
     if (!user?.id) return;
 
@@ -192,16 +230,18 @@ export default function MenuItemsPage() {
 
     setSaving(true);
     try {
-      // Build the menu_items insert
-      const itemInsert: InsertMenuItem = {
+      const itemInsert: InsertMenuItemExt = {
         name: form.name.trim(),
         description: form.description.trim() || null,
-        labor_time: toNum(form.laborTimeStr), // number
-        labor_hours: null,                    // not used here
+        labor_time: toNum(form.laborTimeStr),
+        // this field may or may not exist in your DB; keeping it optional here
+        labor_hours: null,
         part_cost: partsTotal,
         total_price: grandTotal,
         user_id: user.id,
         shop_id: (user as unknown as { shop_id?: string | null })?.shop_id ?? null,
+        // 👇 our new column
+        inspection_template_id: form.inspectionTemplateId,
       };
 
       const { data: created, error: createErr } = await supabase
@@ -216,7 +256,6 @@ export default function MenuItemsPage() {
         return;
       }
 
-      // Insert parts if provided (skip empty rows)
       const cleanedParts: InsertMenuItemPart[] = parts
         .filter((p) => p.name.trim().length > 0 && toNum(p.quantityStr) > 0)
         .map<InsertMenuItemPart>((p) => ({
@@ -225,8 +264,6 @@ export default function MenuItemsPage() {
           quantity: toNum(p.quantityStr),
           unit_cost: toNum(p.unitCostStr),
           user_id: user.id,
-          // NOTE: if you later add part_id column to menu_item_parts, include it here:
-          // part_id: p.part_id ?? null,
         }));
 
       if (cleanedParts.length > 0) {
@@ -239,38 +276,81 @@ export default function MenuItemsPage() {
 
       toast.success("Menu item created");
 
-      // Clear form + rows
-      setForm({
+      setForm((f) => ({
+        ...f,
         name: "",
         description: "",
         laborTimeStr: "",
-        laborRateStr: form.laborRateStr, // keep rate sticky; or set "" if you prefer
-      });
+        // keep rate sticky
+      }));
       setParts([{ name: "", quantityStr: "", unitCostStr: "", part_id: null }]);
 
-      // Refresh list (MenuQuickAdd listens realtime and will update, too)
       await fetchItems();
     } finally {
       setSaving(false);
     }
   }, [form, parts, supabase, user?.id, partsTotal, grandTotal, fetchItems]);
 
-  if (isLoading) return <div className="p-4">Loading...</div>;
+  if (isLoading) return <div className="p-4 text-white">Loading...</div>;
+
+  // flatten service names for the dropdown
+  const masterServiceNames = masterServicesList.flatMap((cat) =>
+    cat.items.map((i) => i.item),
+  );
 
   return (
     <div className="p-6 text-white">
-      <h1 className="text-2xl font-blackops text-orange-400 mb-4">Menu Items</h1>
+      <h1 className="mb-4 text-2xl font-blackops text-orange-400">Menu Items</h1>
 
       {/* Form */}
-      <div className="grid gap-3 mb-8 max-w-2xl">
+      <div className="mb-8 grid max-w-2xl gap-3">
+        {/* service name + master picker */}
         <div className="grid gap-2">
           <label className="text-sm text-neutral-300">Service name</label>
-          <input
-            placeholder="e.g. Front brake pads & rotors"
-            value={form.name}
-            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-            className="border border-neutral-700 bg-neutral-900 px-3 py-2 rounded"
-          />
+          <div className="flex gap-2">
+            <select
+              className="w-1/3 rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
+              value=""
+              onChange={(e) => {
+                const val = e.target.value;
+                if (!val) return;
+                setForm((f) => ({ ...f, name: val }));
+              }}
+            >
+              <option value="">— from master —</option>
+              {masterServiceNames.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+            <input
+              placeholder="e.g. Front brake pads & rotors"
+              value={form.name}
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+              className="flex-1 rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
+            />
+          </div>
+        </div>
+
+        {/* optional inspection template */}
+        <div className="grid gap-2">
+          <label className="text-sm text-neutral-300">Inspection template (optional)</label>
+          <select
+            className="rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
+            value={form.inspectionTemplateId ?? ""}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, inspectionTemplateId: e.target.value || null }))
+            }
+            disabled={templatesLoading}
+          >
+            <option value="">— none —</option>
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.template_name ?? "Untitled"}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="grid gap-2">
@@ -278,10 +358,8 @@ export default function MenuItemsPage() {
           <textarea
             placeholder="Optional details visible to customer"
             value={form.description}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, description: e.target.value }))
-            }
-            className="border border-neutral-700 bg-neutral-900 px-3 py-2 rounded min-h-[80px]"
+            onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+            className="min-h-[80px] rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
           />
         </div>
 
@@ -299,7 +377,7 @@ export default function MenuItemsPage() {
                 const cleaned = v === "" ? "" : v.replace(/^0+(?=\d)/, "");
                 setForm((f) => ({ ...f, laborTimeStr: cleaned }));
               }}
-              className="border border-neutral-700 bg-neutral-900 px-3 py-2 rounded"
+              className="rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
             />
           </div>
           <div className="grid gap-2">
@@ -314,27 +392,27 @@ export default function MenuItemsPage() {
                 const cleaned = v === "" ? "" : v.replace(/^0+(?=\d)/, "");
                 setForm((f) => ({ ...f, laborRateStr: cleaned }));
               }}
-              className="border border-neutral-700 bg-neutral-900 px-3 py-2 rounded"
+              className="rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
             />
           </div>
         </div>
 
         {/* Parts */}
-        <div className="border border-neutral-800 rounded">
-          <div className="px-3 py-2 border-b border-neutral-800 bg-neutral-950/60 text-sm text-neutral-300">
+        <div className="rounded border border-neutral-800">
+          <div className="border-b border-neutral-800 bg-neutral-950/60 px-3 py-2 text-sm text-neutral-300">
             Parts
           </div>
-          <div className="p-3 space-y-2">
+          <div className="space-y-2 p-3">
             {parts.map((p, idx) => (
               <div
                 key={idx}
-                className="grid grid-cols-[2fr_1fr_1fr_auto_auto] gap-2 items-center"
+                className="grid grid-cols-[2fr_1fr_1fr_auto_auto] items-center gap-2"
               >
                 <input
                   placeholder="Part name (or pick)"
                   value={p.name}
                   onChange={(e) => setPartField(idx, "name", e.target.value)}
-                  className="border border-neutral-700 bg-neutral-900 px-3 py-2 rounded"
+                  className="rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
                 />
 
                 <input
@@ -343,7 +421,7 @@ export default function MenuItemsPage() {
                   inputMode="numeric"
                   value={p.quantityStr}
                   onChange={(e) => setPartField(idx, "quantityStr", e.target.value)}
-                  className="border border-neutral-700 bg-neutral-900 px-3 py-2 rounded"
+                  className="rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
                 />
 
                 <input
@@ -352,7 +430,7 @@ export default function MenuItemsPage() {
                   inputMode="decimal"
                   value={p.unitCostStr}
                   onChange={(e) => setPartField(idx, "unitCostStr", e.target.value)}
-                  className="border border-neutral-700 bg-neutral-900 px-3 py-2 rounded"
+                  className="rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
                 />
 
                 <button
@@ -366,7 +444,7 @@ export default function MenuItemsPage() {
 
                 <button
                   onClick={() => removePartRow(idx)}
-                  className="text-red-400 hover:text-red-300 px-2 py-2"
+                  className="px-2 py-2 text-red-400 hover:text-red-300"
                   aria-label="Remove part"
                 >
                   ✕
@@ -393,7 +471,7 @@ export default function MenuItemsPage() {
             Labor: <span className="text-white">${laborTotal.toFixed(2)}</span>
           </div>
           <div className="text-neutral-300">
-            Total: <span className="text-orange-400 font-semibold">${grandTotal.toFixed(2)}</span>
+            Total: <span className="font-semibold text-orange-400">${grandTotal.toFixed(2)}</span>
           </div>
         </div>
 
@@ -401,7 +479,7 @@ export default function MenuItemsPage() {
           <button
             onClick={handleSubmit}
             disabled={saving}
-            className="bg-orange-600 hover:bg-orange-700 disabled:opacity-60 text-black font-semibold px-4 py-2 rounded"
+            className="rounded bg-orange-600 px-4 py-2 font-semibold text-black hover:bg-orange-700 disabled:opacity-60"
           >
             {saving ? "Saving…" : "Save Menu Item"}
           </button>
@@ -409,11 +487,11 @@ export default function MenuItemsPage() {
       </div>
 
       {/* Existing items */}
-      <ul className="space-y-2 max-w-3xl">
+      <ul className="max-w-3xl space-y-2">
         {menuItems.map((item) => (
           <li
             key={item.id}
-            className="border border-neutral-800 bg-neutral-950 p-3 rounded"
+            className="rounded border border-neutral-800 bg-neutral-950 p-3"
           >
             <div className="flex items-center justify-between">
               <div>
@@ -437,7 +515,7 @@ export default function MenuItemsPage() {
         )}
       </ul>
 
-      {/* Inline PartPicker – only one open at a time */}
+      {/* inline PartPicker */}
       {pickerOpenForRow !== null && (
         <PartPicker
           open={true}
