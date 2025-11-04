@@ -9,18 +9,12 @@ import type {
   InspectionItem,
 } from "@inspections/lib/inspection/types";
 import { computeDefaultLaborHours } from "@inspections/lib/inspection/computeLabor";
+import { masterInspectionList } from "@inspections/lib/inspection/masterInspectionList";
 import toast from "react-hot-toast";
-
-/**
- * Editable Draft Screen (streamlined)
- * - edit sections & items
- * - optional unit per item
- * - labor hours
- * We no longer show vehicle-type selectors here because the work order already has that.
- */
 
 const UNIT_OPTIONS = ["", "mm", "psi", "kPa", "in", "ft·lb"] as const;
 
+type VehicleType = "car" | "truck" | "bus" | "trailer";
 type DutyClass = "light" | "medium" | "heavy";
 
 /** Narrow Insert type to include labor_hours until your generated types include it */
@@ -89,7 +83,7 @@ function normalizeSections(input: unknown): InspectionSection[] {
     }
     const bucket = byTitle.get(title)!;
     const seen = new Set(
-      (bucket.items ?? []).map((x) => (x.item ?? "").toLowerCase()),
+      (bucket.items ?? []).map((x) => (x.item ?? "").toLowerCase())
     );
 
     for (const it of items) {
@@ -102,11 +96,10 @@ function normalizeSections(input: unknown): InspectionSection[] {
   }
 
   return Array.from(byTitle.values()).filter(
-    (s) => (s.items?.length ?? 0) > 0,
+    (s) => (s.items?.length ?? 0) > 0
   );
 }
 
-/* ——— helpers ——— */
 function buildOilChangeSection(): InspectionSection {
   return {
     title: "Oil Change",
@@ -128,17 +121,37 @@ export default function CustomDraftPage() {
   const supabase = useMemo(() => createClientComponentClient<Database>(), []);
 
   const [title, setTitle] = useState(
-    sp.get("template") || "Custom Inspection",
+    sp.get("template") || "Custom Inspection"
   );
-  // we still read dutyClass if builder sent it, but we don’t render a picker
+  const [vehicleType] = useState<VehicleType | null>(
+    (sp.get("vehicleType") as VehicleType | null) || null
+  );
   const [dutyClass] = useState<DutyClass | null>(
-    (sp.get("dutyClass") as DutyClass | null) || null,
+    (sp.get("dutyClass") as DutyClass | null) || null
   );
 
   const [sections, setSections] = useState<InspectionSection[]>([]);
   const [laborHours, setLaborHours] = useState<number>(0);
+  const [, setUserEditedLabor] = useState(false);
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
+
+  // build a quick lookup: normalized title -> master items
+  const masterByTitle = useMemo(() => {
+    const out = new Map<
+      string,
+      { item: string; unit?: string | null }[]
+    >();
+    for (const sec of masterInspectionList) {
+      out.set(sec.title.trim().toLowerCase(), sec.items);
+    }
+    return out;
+  }, []);
+
+  function getMasterItemsForSection(title: string) {
+    const key = (title || "").trim().toLowerCase();
+    return masterByTitle.get(key) ?? [];
+  }
 
   // Load what the builder wrote into sessionStorage
   useEffect(() => {
@@ -170,10 +183,9 @@ export default function CustomDraftPage() {
 
         setSections(withOil);
 
-        // seed labor hours (editable)
+        // only guess labor hours once here
         const initialHours = computeDefaultLaborHours({
-          // we don't have a vehicle type here, so default to truck/HD
-          vehicleType: "truck",
+          vehicleType: vehicleType ?? "truck",
           sections: withOil,
         });
         setLaborHours(initialHours);
@@ -181,18 +193,8 @@ export default function CustomDraftPage() {
     } catch {
       /* ignore */
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Recompute a suggested default if sections change drastically (do not override user edits)
-  useEffect(() => {
-    if (laborHours === 0 && sections.length > 0) {
-      const suggested = computeDefaultLaborHours({
-        vehicleType: "truck",
-        sections,
-      });
-      setLaborHours(suggested);
-    }
-  }, [sections, laborHours]);
 
   /* ----------------------------- editing helpers ----------------------------- */
 
@@ -228,6 +230,7 @@ export default function CustomDraftPage() {
     });
   }
 
+  // when we add an item, create a placeholder "New Item" – the row will render a dropdown if we have master items
   function addItem(secIdx: number) {
     setSections((prev) => {
       const next = [...prev];
@@ -313,11 +316,10 @@ export default function CustomDraftPage() {
         sections:
           cleaned as unknown as Database["public"]["Tables"]["inspection_templates"]["Insert"]["sections"],
         description: "Created from Custom Draft",
+        vehicle_type: vehicleType || undefined,
         tags: ["custom", "draft"],
         is_public: false,
         labor_hours: Number.isFinite(laborHours) ? laborHours : null,
-        // if you add duty_class column later:
-        // duty_class: dutyClass || undefined,
       };
 
       const { error, data } = await supabase
@@ -327,7 +329,6 @@ export default function CustomDraftPage() {
         .maybeSingle();
 
       if (error || !data?.id) {
-        // eslint-disable-next-line no-console
         console.error(error);
         toast.error("Failed to save template.");
         return;
@@ -348,21 +349,14 @@ export default function CustomDraftPage() {
         toast.error("Add at least one section with items.");
         return;
       }
-
       sessionStorage.setItem("inspection:sections", JSON.stringify(cleaned));
       sessionStorage.setItem(
         "inspection:title",
-        (title || "").trim() || "Inspection",
+        (title || "").trim() || "Inspection"
       );
-      if (dutyClass) {
-        sessionStorage.setItem(
-          "inspection:params",
-          JSON.stringify({ dutyClass }),
-        );
-      }
-
       const qs = new URLSearchParams();
       qs.set("template", title || "Inspection");
+      if (vehicleType) qs.set("vehicleType", vehicleType);
       if (dutyClass) qs.set("dutyClass", dutyClass);
 
       router.push(`/inspections/run?${qs.toString()}`);
@@ -375,49 +369,57 @@ export default function CustomDraftPage() {
 
   return (
     <div className="px-4 py-6 text-white">
-      <div className="mx-auto w-full max-w-6xl">
-        <h1 className="mb-3 text-center text-2xl font-bold">
-          Template Draft (Editable)
-        </h1>
+      <h1 className="mb-3 text-center text-2xl font-bold">
+        Template Draft (Editable)
+      </h1>
 
-        {/* Header controls */}
-        <div className="mb-4 flex flex-wrap items-end justify-center gap-4">
-          <label className="flex flex-col gap-1">
-            <span className="text-sm text-neutral-300">Template name</span>
-            <input
-              className="w-64 rounded bg-neutral-800 px-3 py-2"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-            />
-          </label>
+      {/* Header controls */}
+      <div className="mb-4 grid gap-3 md:grid-cols-[1fr,auto,auto,auto] md:items-end">
+        <label className="flex flex-col gap-1">
+          <span className="text-sm text-neutral-300">Template name</span>
+          <input
+            className="rounded bg-neutral-800 px-3 py-2"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+        </label>
 
-          <label className="flex flex-col gap-1">
-            <span className="text-sm text-neutral-300">
-              Labor hours (editable)
-            </span>
-            <input
-              type="number"
-              min={0}
-              step={0.25}
-              inputMode="decimal"
-              className="w-40 rounded bg-neutral-800 px-3 py-2"
-              value={Number.isFinite(laborHours) ? laborHours : 0}
-              onChange={(e) => setLaborHours(Number(e.target.value))}
-            />
-          </label>
+        <div className="flex flex-col gap-1">
+          <span className="text-sm text-neutral-300">Vehicle type</span>
+          <div className="rounded bg-neutral-800 px-3 py-2 text-sm text-neutral-200">
+            {vehicleType ?? "—"}
+          </div>
         </div>
 
-        {/* Empty state */}
-        {sections.length === 0 ? (
-          <div className="rounded border border-neutral-800 bg-neutral-900 p-4 text-center text-neutral-400">
-            No sections loaded. Use the button below to add a section or go back
-            to the builder.
+        <div className="flex flex-col gap-1">
+          <span className="text-sm text-neutral-300">Duty class</span>
+          <div className="rounded bg-neutral-800 px-3 py-2 text-sm text-neutral-200">
+            {dutyClass ?? "—"}
           </div>
-        ) : null}
+        </div>
 
-        {/* Sections editor */}
-        <div className="space-y-4">
-          {sections.map((sec, i) => (
+        <label className="flex flex-col gap-1">
+          <span className="text-sm text-neutral-300">Labor hours (editable)</span>
+          <input
+            type="number"
+            min={0}
+            step={0.25}
+            inputMode="decimal"
+            className="w-40 rounded bg-neutral-800 px-3 py-2"
+            value={Number.isFinite(laborHours) ? laborHours : 0}
+            onChange={(e) => {
+              setLaborHours(Number(e.target.value));
+              setUserEditedLabor(true);
+            }}
+          />
+        </label>
+      </div>
+
+      {/* Sections editor */}
+      <div className="space-y-4">
+        {sections.map((sec, i) => {
+          const masterItemsForThisSection = getMasterItemsForSection(sec.title);
+          return (
             <div
               key={`${sec.title}-${i}`}
               className="rounded-lg border border-neutral-800 bg-neutral-900 p-3"
@@ -462,59 +464,85 @@ export default function CustomDraftPage() {
 
               {/* Items list */}
               <div className="space-y-2">
-                {(sec.items ?? []).map((it, j) => (
-                  <div
-                    key={`${i}-${j}-${it.item}`}
-                    className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr,140px,auto,auto] sm:items-center"
-                  >
-                    <input
-                      className="rounded bg-neutral-800 px-3 py-1.5 text-sm"
-                      value={it.item}
-                      onChange={(e) => updateItemLabel(i, j, e.target.value)}
-                      placeholder="Item label"
-                    />
-
-                    <select
-                      className="rounded bg-neutral-800 px-2 py-1.5 text-sm"
-                      value={it.unit ?? ""}
-                      onChange={(e) => updateItemUnit(i, j, e.target.value)}
-                      title="Measurement unit"
+                {(sec.items ?? []).map((it, j) => {
+                  const isPlaceholder = it.item === "New Item";
+                  const hasMaster = masterItemsForThisSection.length > 0;
+                  return (
+                    <div
+                      key={`${i}-${j}-${it.item}-${j}`}
+                      className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr,140px,auto,auto] sm:items-center"
                     >
-                      {UNIT_OPTIONS.map((u) => (
-                        <option key={u || "blank"} value={u}>
-                          {u || "— unit —"}
-                        </option>
-                      ))}
-                    </select>
+                      {/* label or dropdown */}
+                      {isPlaceholder && hasMaster ? (
+                        <select
+                          className="rounded bg-neutral-800 px-3 py-1.5 text-sm"
+                          value=""
+                          onChange={(e) =>
+                            updateItemLabel(i, j, e.target.value || "New Item")
+                          }
+                        >
+                          <option value="">— pick an item —</option>
+                          {masterItemsForThisSection.map((mi) => (
+                            <option key={mi.item} value={mi.item}>
+                              {mi.item}
+                            </option>
+                          ))}
+                          <option value="Custom item…">Custom item…</option>
+                        </select>
+                      ) : (
+                        <input
+                          className="rounded bg-neutral-800 px-3 py-1.5 text-sm"
+                          value={it.item}
+                          onChange={(e) => updateItemLabel(i, j, e.target.value)}
+                          placeholder="Item label"
+                        />
+                      )}
 
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => moveItem(i, j, -1)}
-                        className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800 disabled:opacity-50"
-                        disabled={j === 0}
-                        title="Move up"
+                      {/* unit */}
+                      <select
+                        className="rounded bg-neutral-800 px-2 py-1.5 text-sm"
+                        value={it.unit ?? ""}
+                        onChange={(e) => updateItemUnit(i, j, e.target.value)}
+                        title="Measurement unit"
                       >
-                        ↑
-                      </button>
+                        {UNIT_OPTIONS.map((u) => (
+                          <option key={u || "blank"} value={u}>
+                            {u || "— unit —"}
+                          </option>
+                        ))}
+                      </select>
+
+                      {/* reorder */}
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => moveItem(i, j, -1)}
+                          className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800 disabled:opacity-50"
+                          disabled={j === 0}
+                          title="Move up"
+                        >
+                          ↑
+                        </button>
+                        <button
+                          onClick={() => moveItem(i, j, +1)}
+                          className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800 disabled:opacity-50"
+                          disabled={j === (sec.items?.length ?? 0) - 1}
+                          title="Move down"
+                        >
+                          ↓
+                        </button>
+                      </div>
+
+                      {/* remove */}
                       <button
-                        onClick={() => moveItem(i, j, +1)}
-                        className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800 disabled:opacity-50"
-                        disabled={j === (sec.items?.length ?? 0) - 1}
-                        title="Move down"
+                        onClick={() => removeItem(i, j)}
+                        className="justify-self-start rounded border border-red-600 px-2 py-1 text-xs text-red-300 hover:bg-red-900/40 sm:justify-self-end"
+                        title="Remove item"
                       >
-                        ↓
+                        Remove
                       </button>
                     </div>
-
-                    <button
-                      onClick={() => removeItem(i, j)}
-                      className="justify-self-start rounded border border-red-600 px-2 py-1 text-xs text-red-300 hover:bg-red-900/40 sm:justify-self-end"
-                      title="Remove item"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
+                  );
+                })}
 
                 <div>
                   <button
@@ -526,35 +554,35 @@ export default function CustomDraftPage() {
                 </div>
               </div>
             </div>
-          ))}
-        </div>
+          );
+        })}
+      </div>
 
-        {/* Footer actions */}
-        <div className="mt-6 flex flex-wrap justify-center gap-3">
-          <button
-            onClick={addSection}
-            className="rounded bg-neutral-700 px-4 py-2 text-sm hover:bg-neutral-600"
-          >
-            + Add Section
-          </button>
+      {/* Footer actions */}
+      <div className="mt-6 flex flex-wrap gap-3">
+        <button
+          onClick={addSection}
+          className="rounded bg-neutral-700 px-4 py-2 text-sm hover:bg-neutral-600"
+        >
+          + Add Section
+        </button>
 
-          <button
-            onClick={saveTemplate}
-            disabled={saving}
-            className="rounded bg-amber-600 px-4 py-2 font-semibold text-black hover:bg-amber-500 disabled:opacity-60"
-          >
-            {saving ? "Saving…" : "Save as Template"}
-          </button>
+        <button
+          onClick={saveTemplate}
+          disabled={saving}
+          className="rounded bg-amber-600 px-4 py-2 font-semibold text-black hover:bg-amber-500 disabled:opacity-60"
+        >
+          {saving ? "Saving…" : "Save as Template"}
+        </button>
 
-          <button
-            onClick={saveAndRun}
-            disabled={running}
-            className="rounded bg-green-600 px-4 py-2 font-semibold text-black hover:bg-green-500 disabled:opacity-60"
-            title="Stage this draft and open the Run page"
-          >
-            {running ? "Opening…" : "Save & Run"}
-          </button>
-        </div>
+        <button
+          onClick={saveAndRun}
+          disabled={running}
+          className="rounded bg-green-600 px-4 py-2 font-semibold text-black hover:bg-green-500 disabled:opacity-60"
+          title="Stage this draft and open the Run page"
+        >
+          {running ? "Opening…" : "Save & Run"}
+        </button>
       </div>
     </div>
   );
