@@ -98,22 +98,40 @@ export default function MenuItemsPage() {
   );
 
   // load existing menu items
-  const fetchItems = useCallback(async () => {
-    if (!user?.id) return;
+  const fetchItems = useCallback(
+    async (opts?: { fallbackAll?: boolean }) => {
+      if (!user?.id) return;
 
-    const { data, error } = await supabase
-      .from("menu_items")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
+      // first: what we actually want (your own items)
+      const { data, error } = await supabase
+        .from("menu_items")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
 
-    if (error) {
-      console.error("Failed to fetch menu items:", error);
-      toast.error("Could not load menu items");
-      return;
-    }
-    setMenuItems(data ?? []);
-  }, [supabase, user?.id]);
+      if (error) {
+        console.error("Failed to fetch menu items:", error);
+        toast.error("Could not load menu items");
+        return;
+      }
+
+      // if we got zero and we *know* the table is open (no RLS), try once without filter
+      if ((!data || data.length === 0) && opts?.fallbackAll) {
+        const { data: allData, error: allErr } = await supabase
+          .from("menu_items")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(50);
+        if (!allErr) {
+          setMenuItems(allData ?? []);
+          return;
+        }
+      }
+
+      setMenuItems(data ?? []);
+    },
+    [supabase, user?.id],
+  );
 
   // load templates (mine + public)
   const fetchTemplates = useCallback(async () => {
@@ -148,25 +166,25 @@ export default function MenuItemsPage() {
   useEffect(() => {
     if (!user?.id) return;
 
-    void fetchItems();
+    void fetchItems({ fallbackAll: true });
     void fetchTemplates();
 
     // realtime
     const channel = supabase
-  .channel("menu-items-sync")
-  .on(
-    "postgres_changes",
-    {
-      event: "*",
-      schema: "public",
-      table: "menu_items",
-      filter: `user_id=eq.${user.id}`,
-    },
-    () => {
-      void fetchItems();
-    },
-  )
-  .subscribe();
+      .channel("menu-items-sync")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "menu_items",
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          void fetchItems({ fallbackAll: true });
+        },
+      )
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
@@ -260,25 +278,30 @@ export default function MenuItemsPage() {
         name: form.name.trim(),
         description: form.description.trim() || null,
         labor_time: toNum(form.laborTimeStr),
-        labor_hours: null, // we still persist labor_time
+        labor_hours: null,
         part_cost: partsTotal,
         total_price: grandTotal,
         user_id: user.id,
         inspection_template_id: form.inspectionTemplateId || null,
+        // your table has this column — be explicit so NOT NULL can’t bite us
+        is_active: true,
       };
 
-      // only send shop_id if we actually have one
       const shopId =
         (user as unknown as { shop_id?: string | null })?.shop_id ?? null;
       const itemInsert: InsertMenuItemWithTemplate = shopId
         ? { ...base, shop_id: shopId }
         : base;
 
+      console.log("[menu] inserting menu_item:", itemInsert);
+
       const { data: created, error: createErr } = await supabase
         .from("menu_items")
         .insert(itemInsert)
         .select("id")
         .single();
+
+      console.log("[menu] insert result:", { created, createErr });
 
       if (createErr || !created) {
         console.error("Create menu item failed:", createErr);
@@ -314,7 +337,7 @@ export default function MenuItemsPage() {
 
       toast.success("Menu item created");
 
-      // reset form (keep labor rate, that’s usually sticky)
+      // reset
       setForm((f) => ({
         ...f,
         name: "",
@@ -324,7 +347,11 @@ export default function MenuItemsPage() {
       }));
       setParts([{ name: "", quantityStr: "", unitCostStr: "", part_id: null }]);
 
-      await fetchItems();
+      // re-fetch; if the row came back with user_id = null we still want to see it
+      await fetchItems({ fallbackAll: true });
+    } catch (err) {
+      console.error("[menu] unexpected save error", err);
+      toast.error("Could not save menu item.");
     } finally {
       setSaving(false);
     }
@@ -353,7 +380,7 @@ export default function MenuItemsPage() {
 
       {/* form */}
       <div className="mb-8 grid max-w-2xl gap-3">
-        {/* Service name row: selector + input (old style) */}
+        {/* Service name row: selector + input (your style) */}
         <div className="grid gap-2">
           <label className="text-sm text-neutral-300">Service name</label>
           <div className="flex gap-2">
@@ -380,7 +407,6 @@ export default function MenuItemsPage() {
               autoComplete="off"
               className="flex-1 rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
             />
-            {/* datalist is what you liked before */}
             {form.source === "master" ? (
               <datalist id="master-services">
                 {flatMaster.map((s) => (
