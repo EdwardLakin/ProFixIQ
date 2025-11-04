@@ -17,15 +17,8 @@ import { masterServicesList } from "@inspections/lib/inspection/masterServicesLi
 type DB = Database;
 
 type MenuItemRow = DB["public"]["Tables"]["menu_items"]["Row"];
-type InsertMenuItem = DB["public"]["Tables"]["menu_items"]["Insert"];
-type InsertMenuItemPart = DB["public"]["Tables"]["menu_item_parts"]["Insert"];
 type TemplateRow = DB["public"]["Tables"]["inspection_templates"]["Row"] & {
   labor_hours?: number | null;
-};
-
-// we add inspection_template_id, which exists in DB
-type InsertMenuItemWithTemplate = InsertMenuItem & {
-  inspection_template_id?: string | null;
 };
 
 type PartFormRow = {
@@ -97,7 +90,7 @@ export default function MenuItemsPage() {
   // ---------- fetchers ----------
   const fetchItems = useCallback(
     async (opts?: { all?: boolean }) => {
-      // if we have a logged-in user, try their items first
+      // try by user first
       if (!opts?.all && user?.id) {
         const { data, error } = await supabase
           .from("menu_items")
@@ -105,16 +98,13 @@ export default function MenuItemsPage() {
           .eq("user_id", user.id)
           .order("created_at", { ascending: false });
 
-        if (!error && data) {
-          // if we actually got some, great
-          if (data.length > 0) {
-            setMenuItems(data);
-            return;
-          }
+        if (!error && data && data.length > 0) {
+          setMenuItems(data);
+          return;
         }
       }
 
-      // fallback: fetch *all* — table has no RLS
+      // fallback to all (no RLS on table)
       const { data: allData, error: allErr } = await supabase
         .from("menu_items")
         .select("*")
@@ -164,7 +154,7 @@ export default function MenuItemsPage() {
     void fetchItems();
     void fetchTemplates();
 
-    // realtime — filter on user if we have one, otherwise listen to all
+    // realtime
     const channel = supabase
       .channel("menu-items-sync")
       .on(
@@ -173,9 +163,7 @@ export default function MenuItemsPage() {
           event: "*",
           schema: "public",
           table: "menu_items",
-          ...(user?.id
-            ? { filter: `user_id=eq.${user.id}` }
-            : {}), // if no user, we listen to all rows
+          ...(user?.id ? { filter: `user_id=eq.${user.id}` } : {}),
         },
         () => void fetchItems(),
       )
@@ -256,7 +244,7 @@ export default function MenuItemsPage() {
     });
   };
 
-  // ---------- SAVE ----------
+  // ---------- SAVE (now calls /api/menu/save) ----------
   const handleSubmit = useCallback(async () => {
     if (!form.name.trim()) {
       toast.error("Service name is required");
@@ -265,71 +253,45 @@ export default function MenuItemsPage() {
 
     setSaving(true);
     try {
-      // build base insert
-      const base: InsertMenuItemWithTemplate = {
-        name: form.name.trim(),
-        description: form.description.trim() || null,
-        labor_time: toNum(form.laborTimeStr),
-        labor_hours: null,
-        part_cost: partsTotal,
-        total_price: grandTotal,
-        // DB lets user_id be null, so only set if we have it
-        user_id: user?.id ?? null,
-        inspection_template_id: form.inspectionTemplateId || null,
-        is_active: true,
+      // build payload for route
+      const payload = {
+        item: {
+          name: form.name.trim(),
+          description: form.description.trim() || null,
+          labor_time: toNum(form.laborTimeStr),
+          // we’re still calculating totals on client
+          part_cost: partsTotal,
+          total_price: grandTotal,
+          inspection_template_id: form.inspectionTemplateId || null,
+        },
+        parts: parts
+          .filter(
+            (p) => p.name.trim().length > 0 && toNum(p.quantityStr) > 0,
+          )
+          .map((p) => ({
+            name: p.name.trim(),
+            quantity: toNum(p.quantityStr),
+            unit_cost: toNum(p.unitCostStr),
+          })),
       };
 
-      const shopId =
-        (user as unknown as { shop_id?: string | null })?.shop_id ?? null;
-      const itemInsert: InsertMenuItemWithTemplate = shopId
-        ? { ...base, shop_id: shopId }
-        : base;
+      const res = await fetch("/api/menu/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-      console.log("[menu] inserting:", itemInsert);
+      const data = (await res.json()) as { ok?: boolean; error?: string };
 
-      const { data: created, error: createErr } = await supabase
-        .from("menu_items")
-        .insert(itemInsert)
-        .select("id")
-        .single();
-
-      console.log("[menu] insert result:", created, createErr);
-
-      if (createErr || !created) {
-        console.error("Create menu item failed:", createErr);
-        toast.error(
-          createErr?.message ??
-            "Failed to create menu item. Check required fields.",
-        );
+      if (!res.ok || data.error) {
+        console.error("[menu] save failed:", data.error);
+        toast.error(data.error ?? "Failed to save menu item.");
         return;
-      }
-
-      // insert parts
-      const cleanedParts: InsertMenuItemPart[] = parts
-        .filter(
-          (p) => p.name.trim().length > 0 && toNum(p.quantityStr) > 0,
-        )
-        .map<InsertMenuItemPart>((p) => ({
-          menu_item_id: created.id,
-          name: p.name.trim(),
-          quantity: toNum(p.quantityStr),
-          unit_cost: toNum(p.unitCostStr),
-          user_id: user?.id ?? null, // matches RLS on menu_item_parts
-        }));
-
-      if (cleanedParts.length) {
-        const { error: partsErr } = await supabase
-          .from("menu_item_parts")
-          .insert(cleanedParts);
-        if (partsErr) {
-          console.warn("Parts not saved:", partsErr);
-          toast.warning("Menu item saved, but parts weren’t stored.");
-        }
       }
 
       toast.success("Menu item created");
 
-      // reset (keep labor rate sticky)
+      // reset (keep laborRate sticky)
       setForm((f) => ({
         ...f,
         name: "",
@@ -339,7 +301,7 @@ export default function MenuItemsPage() {
       }));
       setParts([{ name: "", quantityStr: "", unitCostStr: "", part_id: null }]);
 
-      // show it regardless of user_id
+      // refresh list from DB
       await fetchItems({ all: true });
     } catch (err) {
       console.error("[menu] unexpected save error", err);
@@ -352,8 +314,6 @@ export default function MenuItemsPage() {
     parts,
     partsTotal,
     grandTotal,
-    user,
-    supabase,
     fetchItems,
   ]);
 
@@ -371,7 +331,7 @@ export default function MenuItemsPage() {
 
       {/* form */}
       <div className="mb-8 grid max-w-2xl gap-3">
-        {/* Service name (old style) */}
+        {/* Service name (old style you liked) */}
         <div className="grid gap-2">
           <label className="text-sm text-neutral-300">Service name</label>
           <div className="flex gap-2">

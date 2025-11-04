@@ -1324,6 +1324,7 @@ export type Database = {
           description: string | null
           id: string
           is_public: boolean | null
+          labor_hours: number | null
           sections: Json
           tags: string[] | null
           template_name: string
@@ -1336,6 +1337,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_public?: boolean | null
+          labor_hours?: number | null
           sections: Json
           tags?: string[] | null
           template_name: string
@@ -1348,6 +1350,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_public?: boolean | null
+          labor_hours?: number | null
           sections?: Json
           tags?: string[] | null
           template_name?: string
@@ -1553,6 +1556,7 @@ export type Database = {
           created_at: string | null
           description: string | null
           id: string
+          inspection_template_id: string | null
           is_active: boolean | null
           labor_hours: number | null
           labor_time: number | null
@@ -1571,6 +1575,7 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           id?: string
+          inspection_template_id?: string | null
           is_active?: boolean | null
           labor_hours?: number | null
           labor_time?: number | null
@@ -1589,6 +1594,7 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           id?: string
+          inspection_template_id?: string | null
           is_active?: boolean | null
           labor_hours?: number | null
           labor_time?: number | null
@@ -1600,6 +1606,13 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "menu_items_inspection_template_id_fkey"
+            columns: ["inspection_template_id"]
+            isOneToOne: false
+            referencedRelation: "inspection_templates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "menu_items_shop_id_fkey"
             columns: ["shop_id"]
