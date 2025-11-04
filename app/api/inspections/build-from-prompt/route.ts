@@ -228,9 +228,7 @@ export async function POST(req: Request) {
       if (fromPrompt) {
         dutyClass = fromPrompt;
       } else {
-        // fallback by vehicle
-        if (vehicleType === "car") dutyClass = "light";
-        else dutyClass = "heavy";
+        dutyClass = vehicleType === "car" ? "light" : "heavy";
       }
     }
 
@@ -241,7 +239,6 @@ export async function POST(req: Request) {
     } else if (brakeSystemStr) {
       brakeSystem = brakeSystemStr as BrakeSystem;
     } else {
-      // if user explicitly asked for light but truck vehicleType, keep hyd
       if (dutyClass === "light") {
         brakeSystem = "hyd_brake";
       } else {
@@ -263,9 +260,8 @@ export async function POST(req: Request) {
       vehicleType,
       brakeSystem,
       targetCount,
-      // ⬇️ this is the new field you added in masterInspectionList.ts
       dutyClass,
-    } as any);
+    });
 
     // If no OpenAI, return base
     if (!process.env.OPENAI_API_KEY) {
