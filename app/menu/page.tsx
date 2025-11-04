@@ -24,7 +24,7 @@ type TemplateRow = DB["public"]["Tables"]["inspection_templates"]["Row"] & {
   labor_hours?: number | null;
 };
 
-// widen to include the column you added in DB
+// widen to include the column you added
 type InsertMenuItemWithTemplate = InsertMenuItem & {
   inspection_template_id?: string | null;
 };
@@ -37,6 +37,7 @@ type PartFormRow = {
 };
 
 type FormState = {
+  source: "master" | "manual";
   name: string;
   description: string;
   laborTimeStr: string;
@@ -60,7 +61,9 @@ export default function MenuItemsPage() {
   // inspection templates to attach
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
 
+  // the form
   const [form, setForm] = useState<FormState>({
+    source: "master",
     name: "",
     description: "",
     laborTimeStr: "",
@@ -68,6 +71,7 @@ export default function MenuItemsPage() {
     inspectionTemplateId: "",
   });
 
+  // numeric helper
   const toNum = (s: string) => {
     const n = parseFloat(s);
     return Number.isFinite(n) ? n : 0;
@@ -93,7 +97,7 @@ export default function MenuItemsPage() {
     [partsTotal, laborTotal],
   );
 
-  // load existing items
+  // load existing menu items
   const fetchItems = useCallback(async () => {
     if (!user?.id) return;
 
@@ -147,19 +151,22 @@ export default function MenuItemsPage() {
     void fetchItems();
     void fetchTemplates();
 
+    // realtime
     const channel = supabase
-      .channel("menu-items-sync")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "menu_items",
-          filter: `user_id=eq.${user.id}`,
-        },
-        () => void fetchItems(),
-      )
-      .subscribe();
+  .channel("menu-items-sync")
+  .on(
+    "postgres_changes",
+    {
+      event: "*",
+      schema: "public",
+      table: "menu_items",
+      filter: `user_id=eq.${user.id}`,
+    },
+    () => {
+      void fetchItems();
+    },
+  )
+  .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
@@ -199,7 +206,6 @@ export default function MenuItemsPage() {
       { name: "", quantityStr: "", unitCostStr: "", part_id: null },
     ]);
   };
-
   const removePartRow = (idx: number) => {
     setParts((rows) => rows.filter((_, i) => i !== idx));
   };
@@ -238,7 +244,10 @@ export default function MenuItemsPage() {
 
   // SAVE
   const handleSubmit = useCallback(async () => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      toast.error("You must be signed in to save menu items.");
+      return;
+    }
 
     if (!form.name.trim()) {
       toast.error("Service name is required");
@@ -247,18 +256,23 @@ export default function MenuItemsPage() {
 
     setSaving(true);
     try {
-      const itemInsert: InsertMenuItemWithTemplate = {
+      const base: InsertMenuItemWithTemplate = {
         name: form.name.trim(),
         description: form.description.trim() || null,
         labor_time: toNum(form.laborTimeStr),
-        labor_hours: null,
+        labor_hours: null, // we still persist labor_time
         part_cost: partsTotal,
         total_price: grandTotal,
         user_id: user.id,
-        shop_id:
-          (user as unknown as { shop_id?: string | null })?.shop_id ?? null,
         inspection_template_id: form.inspectionTemplateId || null,
       };
+
+      // only send shop_id if we actually have one
+      const shopId =
+        (user as unknown as { shop_id?: string | null })?.shop_id ?? null;
+      const itemInsert: InsertMenuItemWithTemplate = shopId
+        ? { ...base, shop_id: shopId }
+        : base;
 
       const { data: created, error: createErr } = await supabase
         .from("menu_items")
@@ -270,11 +284,12 @@ export default function MenuItemsPage() {
         console.error("Create menu item failed:", createErr);
         toast.error(
           createErr?.message ??
-            "Failed to create menu item (check shop / RLS).",
+            "Failed to create menu item. Check required fields.",
         );
         return;
       }
 
+      // insert parts if any
       const cleanedParts: InsertMenuItemPart[] = parts
         .filter(
           (p) => p.name.trim().length > 0 && toNum(p.quantityStr) > 0,
@@ -299,7 +314,7 @@ export default function MenuItemsPage() {
 
       toast.success("Menu item created");
 
-      // reset mostly, keep labor rate sticky
+      // reset form (keep labor rate, that’s usually sticky)
       setForm((f) => ({
         ...f,
         name: "",
@@ -325,7 +340,7 @@ export default function MenuItemsPage() {
 
   if (isLoading) return <div className="p-4 text-white">Loading…</div>;
 
-  // flatten master services to simple list
+  // flatten master services
   const flatMaster = masterServicesList.flatMap((cat) =>
     cat.items.map((i) => i.item),
   );
@@ -338,32 +353,42 @@ export default function MenuItemsPage() {
 
       {/* form */}
       <div className="mb-8 grid max-w-2xl gap-3">
-        {/* service name */}
+        {/* Service name row: selector + input (old style) */}
         <div className="grid gap-2">
           <label className="text-sm text-neutral-300">Service name</label>
-          <input
-            placeholder="e.g. Front brake pads & rotors"
-            value={form.name}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, name: e.target.value }))
-            }
-            className="rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
-          />
-          <select
-            className="w-fit rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm"
-            onChange={(e) => {
-              if (!e.target.value) return;
-              setForm((f) => ({ ...f, name: e.target.value }));
-              e.target.selectedIndex = 0;
-            }}
-          >
-            <option value="">Fill from master…</option>
-            {flatMaster.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
+          <div className="flex gap-2">
+            <select
+              value={form.source}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  source: e.target.value as "master" | "manual",
+                }))
+              }
+              className="rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
+            >
+              <option value="master">— from master —</option>
+              <option value="manual">Manual</option>
+            </select>
+            <input
+              placeholder="e.g. Front brake pads & rotors"
+              value={form.name}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, name: e.target.value }))
+              }
+              list={form.source === "master" ? "master-services" : undefined}
+              autoComplete="off"
+              className="flex-1 rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
+            />
+            {/* datalist is what you liked before */}
+            {form.source === "master" ? (
+              <datalist id="master-services">
+                {flatMaster.map((s) => (
+                  <option key={s} value={s} />
+                ))}
+              </datalist>
+            ) : null}
+          </div>
         </div>
 
         {/* inspection template pick */}
@@ -565,7 +590,7 @@ export default function MenuItemsPage() {
         )}
       </ul>
 
-      {/* Part picker */}
+      {/* Part picker modal */}
       {pickerOpenForRow !== null && (
         <PartPicker
           open={true}
