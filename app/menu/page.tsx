@@ -16,7 +16,6 @@ import { masterServicesList } from "@inspections/lib/inspection/masterServicesLi
 
 type DB = Database;
 
-// DB rows
 type MenuItemRow = DB["public"]["Tables"]["menu_items"]["Row"];
 type InsertMenuItem = DB["public"]["Tables"]["menu_items"]["Insert"];
 type InsertMenuItemPart = DB["public"]["Tables"]["menu_item_parts"]["Insert"];
@@ -24,7 +23,7 @@ type TemplateRow = DB["public"]["Tables"]["inspection_templates"]["Row"] & {
   labor_hours?: number | null;
 };
 
-// widen to include the column you added
+// we add inspection_template_id, which exists in DB
 type InsertMenuItemWithTemplate = InsertMenuItem & {
   inspection_template_id?: string | null;
 };
@@ -58,10 +57,8 @@ export default function MenuItemsPage() {
     { name: "", quantityStr: "", unitCostStr: "", part_id: null },
   ]);
 
-  // inspection templates to attach
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
 
-  // the form
   const [form, setForm] = useState<FormState>({
     source: "master",
     name: "",
@@ -71,7 +68,7 @@ export default function MenuItemsPage() {
     inspectionTemplateId: "",
   });
 
-  // numeric helper
+  // ---------- helpers ----------
   const toNum = (s: string) => {
     const n = parseFloat(s);
     return Number.isFinite(n) ? n : 0;
@@ -97,43 +94,43 @@ export default function MenuItemsPage() {
     [partsTotal, laborTotal],
   );
 
-  // load existing menu items
+  // ---------- fetchers ----------
   const fetchItems = useCallback(
-    async (opts?: { fallbackAll?: boolean }) => {
-      if (!user?.id) return;
-
-      // first: what we actually want (your own items)
-      const { data, error } = await supabase
-        .from("menu_items")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        console.error("Failed to fetch menu items:", error);
-        toast.error("Could not load menu items");
-        return;
-      }
-
-      // if we got zero and we *know* the table is open (no RLS), try once without filter
-      if ((!data || data.length === 0) && opts?.fallbackAll) {
-        const { data: allData, error: allErr } = await supabase
+    async (opts?: { all?: boolean }) => {
+      // if we have a logged-in user, try their items first
+      if (!opts?.all && user?.id) {
+        const { data, error } = await supabase
           .from("menu_items")
           .select("*")
-          .order("created_at", { ascending: false })
-          .limit(50);
-        if (!allErr) {
-          setMenuItems(allData ?? []);
-          return;
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false });
+
+        if (!error && data) {
+          // if we actually got some, great
+          if (data.length > 0) {
+            setMenuItems(data);
+            return;
+          }
         }
       }
 
-      setMenuItems(data ?? []);
+      // fallback: fetch *all* — table has no RLS
+      const { data: allData, error: allErr } = await supabase
+        .from("menu_items")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      if (allErr) {
+        console.error("Failed to fetch menu items:", allErr);
+        toast.error("Could not load menu items");
+        return;
+      }
+      setMenuItems(allData ?? []);
     },
     [supabase, user?.id],
   );
 
-  // load templates (mine + public)
   const fetchTemplates = useCallback(async () => {
     const { data: me } = await supabase.auth.getUser();
     const uid = me?.user?.id ?? null;
@@ -164,12 +161,10 @@ export default function MenuItemsPage() {
   }, [supabase]);
 
   useEffect(() => {
-    if (!user?.id) return;
-
-    void fetchItems({ fallbackAll: true });
+    void fetchItems();
     void fetchTemplates();
 
-    // realtime
+    // realtime — filter on user if we have one, otherwise listen to all
     const channel = supabase
       .channel("menu-items-sync")
       .on(
@@ -178,11 +173,11 @@ export default function MenuItemsPage() {
           event: "*",
           schema: "public",
           table: "menu_items",
-          filter: `user_id=eq.${user.id}`,
+          ...(user?.id
+            ? { filter: `user_id=eq.${user.id}` }
+            : {}), // if no user, we listen to all rows
         },
-        () => {
-          void fetchItems({ fallbackAll: true });
-        },
+        () => void fetchItems(),
       )
       .subscribe();
 
@@ -191,7 +186,7 @@ export default function MenuItemsPage() {
     };
   }, [supabase, user?.id, fetchItems, fetchTemplates]);
 
-  // parts helpers
+  // ---------- parts helpers ----------
   const setPartField = (
     idx: number,
     field: "name" | "quantityStr" | "unitCostStr",
@@ -224,6 +219,7 @@ export default function MenuItemsPage() {
       { name: "", quantityStr: "", unitCostStr: "", part_id: null },
     ]);
   };
+
   const removePartRow = (idx: number) => {
     setParts((rows) => rows.filter((_, i) => i !== idx));
   };
@@ -260,13 +256,8 @@ export default function MenuItemsPage() {
     });
   };
 
-  // SAVE
+  // ---------- SAVE ----------
   const handleSubmit = useCallback(async () => {
-    if (!user?.id) {
-      toast.error("You must be signed in to save menu items.");
-      return;
-    }
-
     if (!form.name.trim()) {
       toast.error("Service name is required");
       return;
@@ -274,6 +265,7 @@ export default function MenuItemsPage() {
 
     setSaving(true);
     try {
+      // build base insert
       const base: InsertMenuItemWithTemplate = {
         name: form.name.trim(),
         description: form.description.trim() || null,
@@ -281,9 +273,9 @@ export default function MenuItemsPage() {
         labor_hours: null,
         part_cost: partsTotal,
         total_price: grandTotal,
-        user_id: user.id,
+        // DB lets user_id be null, so only set if we have it
+        user_id: user?.id ?? null,
         inspection_template_id: form.inspectionTemplateId || null,
-        // your table has this column — be explicit so NOT NULL can’t bite us
         is_active: true,
       };
 
@@ -293,7 +285,7 @@ export default function MenuItemsPage() {
         ? { ...base, shop_id: shopId }
         : base;
 
-      console.log("[menu] inserting menu_item:", itemInsert);
+      console.log("[menu] inserting:", itemInsert);
 
       const { data: created, error: createErr } = await supabase
         .from("menu_items")
@@ -301,7 +293,7 @@ export default function MenuItemsPage() {
         .select("id")
         .single();
 
-      console.log("[menu] insert result:", { created, createErr });
+      console.log("[menu] insert result:", created, createErr);
 
       if (createErr || !created) {
         console.error("Create menu item failed:", createErr);
@@ -312,7 +304,7 @@ export default function MenuItemsPage() {
         return;
       }
 
-      // insert parts if any
+      // insert parts
       const cleanedParts: InsertMenuItemPart[] = parts
         .filter(
           (p) => p.name.trim().length > 0 && toNum(p.quantityStr) > 0,
@@ -322,7 +314,7 @@ export default function MenuItemsPage() {
           name: p.name.trim(),
           quantity: toNum(p.quantityStr),
           unit_cost: toNum(p.unitCostStr),
-          user_id: user.id,
+          user_id: user?.id ?? null, // matches RLS on menu_item_parts
         }));
 
       if (cleanedParts.length) {
@@ -337,7 +329,7 @@ export default function MenuItemsPage() {
 
       toast.success("Menu item created");
 
-      // reset
+      // reset (keep labor rate sticky)
       setForm((f) => ({
         ...f,
         name: "",
@@ -347,8 +339,8 @@ export default function MenuItemsPage() {
       }));
       setParts([{ name: "", quantityStr: "", unitCostStr: "", part_id: null }]);
 
-      // re-fetch; if the row came back with user_id = null we still want to see it
-      await fetchItems({ fallbackAll: true });
+      // show it regardless of user_id
+      await fetchItems({ all: true });
     } catch (err) {
       console.error("[menu] unexpected save error", err);
       toast.error("Could not save menu item.");
@@ -356,18 +348,17 @@ export default function MenuItemsPage() {
       setSaving(false);
     }
   }, [
-    user,
     form,
     parts,
     partsTotal,
     grandTotal,
+    user,
     supabase,
     fetchItems,
   ]);
 
   if (isLoading) return <div className="p-4 text-white">Loading…</div>;
 
-  // flatten master services
   const flatMaster = masterServicesList.flatMap((cat) =>
     cat.items.map((i) => i.item),
   );
@@ -380,7 +371,7 @@ export default function MenuItemsPage() {
 
       {/* form */}
       <div className="mb-8 grid max-w-2xl gap-3">
-        {/* Service name row: selector + input (your style) */}
+        {/* Service name (old style) */}
         <div className="grid gap-2">
           <label className="text-sm text-neutral-300">Service name</label>
           <div className="flex gap-2">
@@ -417,7 +408,7 @@ export default function MenuItemsPage() {
           </div>
         </div>
 
-        {/* inspection template pick */}
+        {/* inspection template optional */}
         <div className="grid gap-2">
           <label className="text-sm text-neutral-300">
             Inspection template (optional)
