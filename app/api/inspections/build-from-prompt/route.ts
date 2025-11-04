@@ -7,6 +7,8 @@ import {
   type BrakeSystem,
 } from "@/features/inspections/lib/inspection/masterInspectionList";
 
+type DutyClass = "light" | "medium" | "heavy";
+
 /* ------------------------------------------------------------------ */
 /* Types & helpers                                                    */
 /* ------------------------------------------------------------------ */
@@ -120,6 +122,21 @@ function promptSaysAutomotive(p: string): boolean {
   );
 }
 
+/** try to infer duty class from prompt text */
+function inferDutyFromPrompt(p: string): DutyClass | null {
+  const l = p.toLowerCase();
+  if (l.includes("light duty") || l.includes("automotive") || l.includes("passenger")) {
+    return "light";
+  }
+  if (l.includes("medium duty") || l.includes("class 5") || l.includes("class 6")) {
+    return "medium";
+  }
+  if (l.includes("heavy duty") || l.includes("class 7") || l.includes("class 8")) {
+    return "heavy";
+  }
+  return null;
+}
+
 /* ------------------------------------------------------------------ */
 /* JSON schema for Responses API                                      */
 /* ------------------------------------------------------------------ */
@@ -176,6 +193,7 @@ export async function POST(req: Request) {
     const prompt = asString(body.prompt);
     const vehicleTypeStr = asString(body.vehicleType);
     const brakeSystemStr = asString(body.brakeSystem);
+    const dutyClassStr = asString((body as Record<string, unknown>).dutyClass);
     const targetCountRaw = (body as Record<string, unknown>).targetCount;
 
     if (!prompt) {
@@ -184,12 +202,11 @@ export async function POST(req: Request) {
 
     const promptIsAuto = promptSaysAutomotive(prompt);
 
-    // 1) infer vehicle / brake — **prompt wins if it says automotive**
+    // 1) infer vehicle / brake — prompt wins if it says automotive
     let vehicleType: VehicleType;
     if (promptIsAuto) {
       vehicleType = "car";
     } else if (vehicleTypeStr) {
-      // only trust client if prompt didn't say automotive
       vehicleType = vehicleTypeStr as VehicleType;
     } else {
       vehicleType =
@@ -202,16 +219,37 @@ export async function POST(req: Request) {
           : "car";
     }
 
+    // 2) infer duty class (body > prompt > vehicle fallback)
+    let dutyClass: DutyClass;
+    if (dutyClassStr === "light" || dutyClassStr === "medium" || dutyClassStr === "heavy") {
+      dutyClass = dutyClassStr;
+    } else {
+      const fromPrompt = inferDutyFromPrompt(prompt);
+      if (fromPrompt) {
+        dutyClass = fromPrompt;
+      } else {
+        // fallback by vehicle
+        if (vehicleType === "car") dutyClass = "light";
+        else dutyClass = "heavy";
+      }
+    }
+
+    // 3) infer brake system (hyd = light/auto, air = HD)
     let brakeSystem: BrakeSystem;
     if (promptIsAuto) {
       brakeSystem = "hyd_brake";
     } else if (brakeSystemStr) {
       brakeSystem = brakeSystemStr as BrakeSystem;
     } else {
-      brakeSystem = vehicleType === "car" ? "hyd_brake" : "air_brake";
+      // if user explicitly asked for light but truck vehicleType, keep hyd
+      if (dutyClass === "light") {
+        brakeSystem = "hyd_brake";
+      } else {
+        brakeSystem = vehicleType === "car" ? "hyd_brake" : "air_brake";
+      }
     }
 
-    // 2) target size
+    // 4) target size
     let targetCount: number;
     if (typeof targetCountRaw === "number" && targetCountRaw > 0) {
       targetCount = targetCountRaw;
@@ -220,27 +258,31 @@ export async function POST(req: Request) {
       targetCount = m ? parseInt(m[1]!, 10) : 20;
     }
 
-    // 3) deterministic base — now correctly LD vs HD
+    // 5) deterministic base — now aware of duty class
     const baseSections = buildFromMaster({
       vehicleType,
       brakeSystem,
       targetCount,
-    });
+      // ⬇️ this is the new field you added in masterInspectionList.ts
+      dutyClass,
+    } as any);
 
     // If no OpenAI, return base
     if (!process.env.OPENAI_API_KEY) {
       return NextResponse.json({ sections: baseSections }, { status: 200 });
     }
 
-    // 4) try to augment with OpenAI
+    // 6) try to augment with OpenAI
     let aiSections: SectionOut[] = [];
     try {
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
       const system = [
         "You are an AI assistant for generating vehicle inspection templates.",
-        brakeSystem === "hyd_brake"
-          ? "This is an automotive/light-duty inspection. Do NOT include heavy-duty truck or air-brake items such as push rod travel, slack adjusters, axle-by-axle dual tire rows, 5th wheel, or trailer air supply."
+        dutyClass === "light" || brakeSystem === "hyd_brake"
+          ? "This is a light-duty / automotive inspection. Do NOT include heavy-duty truck or air-brake items such as push rod travel, slack adjusters, axle-by-axle dual tire rows, 5th wheel, or trailer air supply."
+          : dutyClass === "medium"
+          ? "This is a medium-duty inspection. Prefer hydraulic/light-truck items, but medium truck chassis/suspension/steering items are OK. Avoid HD tractor-only items like fifth wheel unless the prompt explicitly asks."
           : "This inspection may include heavy-duty / air-brake content.",
         "Return ONLY JSON that follows the supplied schema.",
         `Aim for about ${targetCount} inspection items.`,
@@ -248,6 +290,8 @@ export async function POST(req: Request) {
 
       const user = [
         `Prompt: ${prompt}`,
+        `Vehicle type: ${vehicleType}`,
+        `Duty class: ${dutyClass}`,
         "Generate inspection sections and items suitable for a professional repair shop.",
       ].join("\n");
 
@@ -291,8 +335,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ sections: baseSections }, { status: 200 });
     }
 
-    // 5) if this is automotive/hydraulic, strip air/HD stuff from AI
-    if (brakeSystem === "hyd_brake") {
+    // 7) if this is light-duty, strip HD/air stuff from AI
+    if (dutyClass === "light" || brakeSystem === "hyd_brake") {
       aiSections = aiSections
         .map((sec) => {
           if (looksAirBrakeSection(sec.title)) return null;
@@ -305,7 +349,7 @@ export async function POST(req: Request) {
         .filter(Boolean) as SectionOut[];
     }
 
-    // 6) merge if AI is good enough
+    // 8) merge if AI is good enough
     const aiItemCount = aiSections.reduce(
       (sum, s) => sum + (s.items?.length ?? 0),
       0,
