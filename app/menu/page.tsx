@@ -24,7 +24,7 @@ type TemplateRow = DB["public"]["Tables"]["inspection_templates"]["Row"] & {
   labor_hours?: number | null;
 };
 
-// our local widened type to match the actual table
+// widen to include the column you added in DB
 type InsertMenuItemWithTemplate = InsertMenuItem & {
   inspection_template_id?: string | null;
 };
@@ -37,7 +37,6 @@ type PartFormRow = {
 };
 
 type FormState = {
-  source: "manual" | "master";
   name: string;
   description: string;
   laborTimeStr: string;
@@ -58,11 +57,10 @@ export default function MenuItemsPage() {
     { name: "", quantityStr: "", unitCostStr: "", part_id: null },
   ]);
 
-  // templates to attach
+  // inspection templates to attach
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
 
   const [form, setForm] = useState<FormState>({
-    source: "master",
     name: "",
     description: "",
     laborTimeStr: "",
@@ -95,7 +93,7 @@ export default function MenuItemsPage() {
     [partsTotal, laborTotal],
   );
 
-  // load existing
+  // load existing items
   const fetchItems = useCallback(async () => {
     if (!user?.id) return;
 
@@ -149,7 +147,6 @@ export default function MenuItemsPage() {
     void fetchItems();
     void fetchTemplates();
 
-    // realtime
     const channel = supabase
       .channel("menu-items-sync")
       .on(
@@ -202,6 +199,7 @@ export default function MenuItemsPage() {
       { name: "", quantityStr: "", unitCostStr: "", part_id: null },
     ]);
   };
+
   const removePartRow = (idx: number) => {
     setParts((rows) => rows.filter((_, i) => i !== idx));
   };
@@ -238,7 +236,7 @@ export default function MenuItemsPage() {
     });
   };
 
-  // submit
+  // SAVE
   const handleSubmit = useCallback(async () => {
     if (!user?.id) return;
 
@@ -259,10 +257,7 @@ export default function MenuItemsPage() {
         user_id: user.id,
         shop_id:
           (user as unknown as { shop_id?: string | null })?.shop_id ?? null,
-        // IMPORTANT: send null, not ""
-        inspection_template_id: form.inspectionTemplateId
-          ? form.inspectionTemplateId
-          : null,
+        inspection_template_id: form.inspectionTemplateId || null,
       };
 
       const { data: created, error: createErr } = await supabase
@@ -273,11 +268,13 @@ export default function MenuItemsPage() {
 
       if (createErr || !created) {
         console.error("Create menu item failed:", createErr);
-        toast.error(createErr?.message ?? "Failed to create menu item");
+        toast.error(
+          createErr?.message ??
+            "Failed to create menu item (check shop / RLS).",
+        );
         return;
       }
 
-      // insert parts
       const cleanedParts: InsertMenuItemPart[] = parts
         .filter(
           (p) => p.name.trim().length > 0 && toNum(p.quantityStr) > 0,
@@ -301,13 +298,14 @@ export default function MenuItemsPage() {
       }
 
       toast.success("Menu item created");
-      // reset
+
+      // reset mostly, keep labor rate sticky
       setForm((f) => ({
         ...f,
         name: "",
         description: "",
         laborTimeStr: "",
-        // keep rate sticky
+        inspectionTemplateId: "",
       }));
       setParts([{ name: "", quantityStr: "", unitCostStr: "", part_id: null }]);
 
@@ -325,8 +323,9 @@ export default function MenuItemsPage() {
     fetchItems,
   ]);
 
-  if (isLoading) return <div className="p-4">Loading…</div>;
+  if (isLoading) return <div className="p-4 text-white">Loading…</div>;
 
+  // flatten master services to simple list
   const flatMaster = masterServicesList.flatMap((cat) =>
     cat.items.map((i) => i.item),
   );
@@ -337,45 +336,37 @@ export default function MenuItemsPage() {
         Menu Items
       </h1>
 
-      {/* Form */}
+      {/* form */}
       <div className="mb-8 grid max-w-2xl gap-3">
-        {/* Service name */}
+        {/* service name */}
         <div className="grid gap-2">
           <label className="text-sm text-neutral-300">Service name</label>
-          <div className="flex gap-2">
-            <select
-              value={form.source}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  source: e.target.value as "manual" | "master",
-                }))
-              }
-              className="rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
-            >
-              <option value="master">— from master —</option>
-              <option value="manual">Manual</option>
-            </select>
-            <input
-              placeholder="e.g. Front brake pads & rotors"
-              value={form.name}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, name: e.target.value }))
-              }
-              list={form.source === "master" ? "master-services" : undefined}
-              className="flex-1 rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
-            />
-            {form.source === "master" ? (
-              <datalist id="master-services">
-                {flatMaster.map((s) => (
-                  <option key={s} value={s} />
-                ))}
-              </datalist>
-            ) : null}
-          </div>
+          <input
+            placeholder="e.g. Front brake pads & rotors"
+            value={form.name}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, name: e.target.value }))
+            }
+            className="rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
+          />
+          <select
+            className="w-fit rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm"
+            onChange={(e) => {
+              if (!e.target.value) return;
+              setForm((f) => ({ ...f, name: e.target.value }));
+              e.target.selectedIndex = 0;
+            }}
+          >
+            <option value="">Fill from master…</option>
+            {flatMaster.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
         </div>
 
-        {/* inspection template */}
+        {/* inspection template pick */}
         <div className="grid gap-2">
           <label className="text-sm text-neutral-300">
             Inspection template (optional)
@@ -402,6 +393,7 @@ export default function MenuItemsPage() {
           </select>
         </div>
 
+        {/* description */}
         <div className="grid gap-2">
           <label className="text-sm text-neutral-300">Description</label>
           <textarea
@@ -417,7 +409,9 @@ export default function MenuItemsPage() {
         {/* labor */}
         <div className="grid grid-cols-2 gap-3">
           <div className="grid gap-2">
-            <label className="text-sm text-neutral-300">Labor time (hrs)</label>
+            <label className="text-sm text-neutral-300">
+              Labor time (hrs)
+            </label>
             <input
               type="text"
               inputMode="decimal"
@@ -432,7 +426,9 @@ export default function MenuItemsPage() {
             />
           </div>
           <div className="grid gap-2">
-            <label className="text-sm text-neutral-300">Labor rate ($/hr)</label>
+            <label className="text-sm text-neutral-300">
+              Labor rate ($/hr)
+            </label>
             <input
               type="text"
               inputMode="decimal"
@@ -569,7 +565,7 @@ export default function MenuItemsPage() {
         )}
       </ul>
 
-      {/* picker */}
+      {/* Part picker */}
       {pickerOpenForRow !== null && (
         <PartPicker
           open={true}
