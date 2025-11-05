@@ -1,10 +1,9 @@
-// features/inspections/components/GlobalInspectionPortal.tsx
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import InspectionModal from "@/features/inspections/components/InspectionModal";
+import InspectionModal from "./InspectionModal";
 
-type OpenPayload = {
+type OpenEventDetail = {
   src: string;
   title?: string;
 };
@@ -16,38 +15,38 @@ export default function GlobalInspectionPortal() {
 
   const handleClose = useCallback(() => {
     setOpen(false);
-    setSrc(null);
+    // keep src so if they reopen fast, we have a value — or clear if you prefer
+    // setSrc(null);
   }, []);
 
   useEffect(() => {
-    const onOpen = (e: Event) => {
-      const detail = (e as CustomEvent<OpenPayload>).detail;
+    const handleOpen = (evt: Event) => {
+      const detail = (evt as CustomEvent<OpenEventDetail>).detail;
       if (!detail?.src) return;
       setSrc(detail.src);
-      setTitle(detail.title ?? "Inspection");
+      setTitle(detail.title || "Inspection");
       setOpen(true);
     };
 
-    const onClose = () => {
-      setOpen(false);
-      setSrc(null);
+    const handleCloseEvent = () => {
+      handleClose();
     };
 
-    window.addEventListener("inspection:open", onOpen);
-    window.addEventListener("inspection:close", onClose);
+    window.addEventListener("inspection:open", handleOpen);
+    window.addEventListener("inspection:close", handleCloseEvent);
 
     return () => {
-      window.removeEventListener("inspection:open", onOpen);
-      window.removeEventListener("inspection:close", onClose);
+      window.removeEventListener("inspection:open", handleOpen);
+      window.removeEventListener("inspection:close", handleCloseEvent);
     };
-  }, []);
+  }, [handleClose]);
 
   return (
     <InspectionModal
       open={open}
+      onClose={handleClose}
       src={src}
       title={title}
-      onClose={handleClose}
     />
   );
 }
