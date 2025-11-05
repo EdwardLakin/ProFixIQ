@@ -15,13 +15,6 @@ import VoiceButton from "@/features/shared/voice/VoiceButton";
 // 🆕 Toasts
 import { Toaster } from "react-hot-toast";
 
-// 🆕 mount global inspection modal (client-only)
-import dynamic from "next/dynamic";
-const GlobalInspectionPortal = dynamic(
-  () => import("@/features/inspections/components/GlobalInspectionPortal"),
-  { ssr: false }
-);
-
 const roboto = Roboto({
   subsets: ["latin"],
   weight: ["400", "500", "700"],
@@ -64,9 +57,6 @@ export default async function RootLayout({
               ) : (
                 <main>{children}</main>
               )}
-
-              {/* 🆕 global inspection modal lives here, NOT inside other modals */}
-              <GlobalInspectionPortal />
             </AppShell>
 
             {/* 🆕 Floating push-to-talk button visible on all pages */}
