@@ -6,7 +6,6 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import { v4 as uuidv4 } from "uuid";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
-import dynamic from "next/dynamic";
 
 // existing modals
 import CauseCorrectionModal from "@work-orders/components/workorders/CauseCorrectionModal";
@@ -20,14 +19,6 @@ import TimeAdjustModal from "@/features/work-orders/components/workorders/extras
 import PhotoCaptureModal from "@/features/work-orders/components/workorders/extras/PhotoCaptureModal";
 import AddJobModal from "@work-orders/components/workorders/AddJobModal";
 
-// removed: AssignTechModal, CostEstimateModal, CustomerContactModal
-
-// inspection viewer (client-only)
-const InspectionModal = dynamic(
-  () => import("@/features/inspections/components/InspectionModal"),
-  { ssr: false }
-);
-
 // voice control
 import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
 import VoiceButton from "@/features/shared/voice/VoiceButton";
@@ -38,8 +29,6 @@ import SuggestedQuickAdd from "@work-orders/components/SuggestedQuickAdd";
 
 // Punch
 import JobPunchButton from "@/features/work-orders/components/JobPunchButton";
-
-// removed: UsePartButton
 
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
@@ -134,10 +123,6 @@ export default function FocusedJobModal(props: {
   const [openPhoto, setOpenPhoto] = useState(false);
   const [openChat, setOpenChat] = useState(false);
   const [openAddJob, setOpenAddJob] = useState(false);
-
-  // inspection modal
-  const [inspectionOpen, setInspectionOpen] = useState(false);
-  const [inspectionSrc, setInspectionSrc] = useState<string | null>(null);
 
   // parts used
   const [allocs, setAllocs] = useState<AllocationRow[]>([]);
@@ -402,75 +387,80 @@ export default function FocusedJobModal(props: {
     await refresh();
   };
 
-  // ---------- inspection (open inside modal) ----------
-  // ---------- inspection (open inside modal) ----------
-const openInspection = async (): Promise<void> => {
-  if (!line) return;
+  // ---------- inspection (open via GLOBAL portal) ----------
+  const openInspection = async (): Promise<void> => {
+    if (!line) return;
 
-  // Decide template (now includes custom builder)
-  const desc = String(line.description ?? "").toLowerCase();
+    // Decide template (now includes custom builder)
+    const desc = String(line.description ?? "").toLowerCase();
 
-  const isAir = /\bair\b|cvip|push\s*rod|air\s*brake/.test(desc);
-  const isCustom = /\bcustom\b|\bbuilder\b|\bprompt\b|\bad[-\s]?hoc\b/.test(desc);
+    const isAir = /\bair\b|cvip|push\s*rod|air\s*brake/.test(desc);
+    const isCustom = /\bcustom\b|\bbuilder\b|\bprompt\b|\bad[-\s]?hoc\b/.test(desc);
 
-  // Temporary slug; finalized after we get a sessionId
-  let templateSlug = isAir ? "maintenance50-air" : "maintenance50";
-  if (isCustom) {
-    // We'll turn this into "custom:<sessionId>" once we have it
-    templateSlug = "custom:pending";
-  }
-
-  try {
-    const res = await fetch("/api/inspections/session/create", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        workOrderId: workOrder?.id ?? null,
-        workOrderLineId: line.id,
-        vehicleId: vehicle?.id ?? null,
-        customerId: customer?.id ?? null,
-        template: templateSlug, // server can ignore the pending slug
-      }),
-    });
-
-    const j = (await res.json().catch(() => null)) as
-      | { sessionId?: string; error?: string }
-      | null;
-
-    if (!res.ok || !j?.sessionId) {
-      throw new Error(j?.error || "Failed to create inspection session");
-    }
-
-    // Finalize template for custom builder: "custom:<sessionId>"
+    // Temporary slug; finalized after we get a sessionId
+    let templateSlug = isAir ? "maintenance50-air" : "maintenance50";
     if (isCustom) {
-      templateSlug = `custom:${j.sessionId}`;
+      templateSlug = "custom:pending";
     }
 
-    const sp = new URLSearchParams();
-    if (workOrder?.id) sp.set("workOrderId", workOrder.id);
-    sp.set("workOrderLineId", line.id);
-    sp.set("inspectionId", j.sessionId);
-    sp.set("template", templateSlug);
-    sp.set("embed", "1"); // compact UI (no global CSS)
-    // Optional: prefill the custom builder with the job description as a seed prompt
-    if (isCustom && line.description) sp.set("seed", String(line.description));
+    try {
+      const res = await fetch("/api/inspections/session/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workOrderId: workOrder?.id ?? null,
+          workOrderLineId: line.id,
+          vehicleId: vehicle?.id ?? null,
+          customerId: customer?.id ?? null,
+          template: templateSlug,
+        }),
+      });
 
-    // Use /inspection/<template> so InspectionModal resolves correctly.
-    // For custom this becomes /inspection/custom:<sessionId>
-    setInspectionSrc(`/inspection/${templateSlug}?${sp.toString()}`);
-    setInspectionOpen(true);
-    toast.success("Inspection opened");
-  } catch (e) {
-    showErr("Unable to open inspection", e as { message?: string });
-  }
-};
+      const j = (await res.json().catch(() => null)) as
+        | { sessionId?: string; error?: string }
+        | null;
+
+      if (!res.ok || !j?.sessionId) {
+        throw new Error(j?.error || "Failed to create inspection session");
+      }
+
+      // Finalize template for custom builder: "custom:<sessionId>"
+      if (isCustom) {
+        templateSlug = `custom:${j.sessionId}`;
+      }
+
+      const sp = new URLSearchParams();
+      if (workOrder?.id) sp.set("workOrderId", workOrder.id);
+      sp.set("workOrderLineId", line.id);
+      sp.set("inspectionId", j.sessionId);
+      sp.set("template", templateSlug);
+      sp.set("embed", "1");
+      if (isCustom && line.description) sp.set("seed", String(line.description));
+
+      const url = `/inspection/${templateSlug}?${sp.toString()}`;
+
+      // 🔴 IMPORTANT: dispatch global open event
+      window.dispatchEvent(
+        new CustomEvent("inspection:open", {
+          detail: {
+            src: url,
+            title: "Inspection",
+          },
+        })
+      );
+
+      toast.success("Inspection opened");
+    } catch (e) {
+      showErr("Unable to open inspection", e as { message?: string });
+    }
+  };
 
   // ---------- derived UI ----------
   const startAt = line?.punched_in_at ?? null;
   const finishAt = line?.punched_out_at ?? null;
 
   const titleText =
-    `${line?.line_no ? `#${line.line_no} ` : ""}` + // show line number if present
+    `${line?.line_no ? `#${line.line_no} ` : ""}` +
     (line?.description || line?.complaint || "Focused Job") +
     (line?.job_type ? ` — ${String(line.job_type).replaceAll("_", " ")}` : "");
 
@@ -516,7 +506,6 @@ const openInspection = async (): Promise<void> => {
                     WO #{workOrder.custom_id || workOrder.id?.slice(0, 8)}
                   </span>
                 ) : null}
-                {/* Small status chip for awaiting_approval / declined */}
                 {line?.status === "awaiting_approval" && (
                   <span className="ml-2 rounded border border-blue-500 px-2 py-0.5 text-xs text-blue-300">
                     Awaiting approval
@@ -631,7 +620,6 @@ const openInspection = async (): Promise<void> => {
                       status={line.status as WorkflowStatus}
                       onFinishRequested={() => setOpenComplete(true)}
                       onUpdated={refresh}
-                      // not punchable until approved AND not awaiting_approval/declined
                       disabled={
                         busy ||
                         line.status === "awaiting_approval" ||
@@ -768,7 +756,7 @@ const openInspection = async (): Promise<void> => {
                   )}
                 </div>
 
-                {/* Parts used (itemized list; no Use Part button) */}
+                {/* Parts used */}
                 <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
                   <div className="mb-2 text-sm font-header">Parts used</div>
 
@@ -895,7 +883,6 @@ const openInspection = async (): Promise<void> => {
           workOrderId={workOrder.id}
           jobId={line.id}
           requestNote={line.description ?? ""}
-          // default event names: parts-request:close / parts-request:submitted
         />
       )}
 
@@ -909,8 +896,6 @@ const openInspection = async (): Promise<void> => {
           defaultReason={line.hold_reason || "Awaiting parts"}
         />
       )}
-
-      {/* Removed AssignTechModal */}
 
       {openStatus && line && (
         <StatusPickerModal
@@ -943,8 +928,6 @@ const openInspection = async (): Promise<void> => {
         />
       )}
 
-      {/* Removed CostEstimateModal & CustomerContactModal */}
-
       {openChat && (
         <NewChatModal
           isOpen={openChat}
@@ -968,16 +951,6 @@ const openInspection = async (): Promise<void> => {
             await refresh();
             setOpenAddJob(false);
           }}
-        />
-      )}
-
-      {/* Inspection viewer (modal within modal stack) */}
-      {inspectionOpen && inspectionSrc && (
-        <InspectionModal
-          open={inspectionOpen}
-          src={inspectionSrc}
-          title="Inspection"
-          onClose={() => setInspectionOpen(false)}
         />
       )}
     </>
