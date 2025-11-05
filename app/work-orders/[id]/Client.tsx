@@ -20,7 +20,7 @@ import VoiceButton from "@/features/shared/voice/VoiceButton";
 import { useTabState } from "@/features/shared/hooks/useTabState";
 import PartsDrawer from "@/features/parts/components/PartsDrawer";
 
-// ⬇️ assign-tech modal you already have
+// ⬇️ assign-mechanic modal (reuses existing AssignTechModal)
 import AssignTechModal from "@/features/work-orders/components/workorders/extras/AssignTechModal";
 
 // ⬇️ same inspection modal used elsewhere (client-only)
@@ -105,6 +105,7 @@ const statusRowTint: Record<string, string> = {
   new: "bg-neutral-950",
 };
 
+// roles allowed to assign
 const ASSIGN_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
 
 /* ------------------------------------------------------------------------- */
@@ -142,11 +143,11 @@ export default function WorkOrderIdClient(): JSX.Element {
   const [bulkQueue, setBulkQueue] = useState<string[]>([]);
   const [bulkActive, setBulkActive] = useState<boolean>(false);
 
-  // ⬇️ local inspection state (same idea as on the other page)
+  // inspection state
   const [inspectionOpen, setInspectionOpen] = useState(false);
   const [inspectionSrc, setInspectionSrc] = useState<string | null>(null);
 
-  // ⬇️ assign-tech modal state
+  // assign-mechanic modal state
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignLineId, setAssignLineId] = useState<string | null>(null);
 
@@ -205,8 +206,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       mounted = false;
       sub?.subscription?.unsubscribe?.();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supabase, routeId]);
+  }, [supabase, routeId, setCurrentUserId, setUserId]);
 
   /* ---------------------- FETCH ---------------------- */
   const fetchAll = useCallback(
@@ -322,7 +322,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         if (custRes?.error) throw custRes.error;
         setCustomer((custRes?.data as Customer | null) ?? null);
 
-        // allocations (nicety)
+        // allocations
         if (lineRows.length) {
           const { data: allocs } = await supabase
             .from("work_order_part_allocations")
@@ -345,7 +345,6 @@ export default function WorkOrderIdClient(): JSX.Element {
         const msg =
           e instanceof Error ? e.message : "Failed to load work order.";
         setViewError(msg);
-        // eslint-disable-next-line no-console
         console.error("[WO id page] load error:", e);
       } finally {
         setLoading(false);
@@ -445,9 +444,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       ? format(createdAt, "PPpp")
       : "—";
 
-  const canAssign = currentUserRole
-    ? ASSIGN_ROLES.has(currentUserRole)
-    : false;
+  const canAssign = currentUserRole ? ASSIGN_ROLES.has(currentUserRole) : false;
 
   /* ----------------------- Actions ----------------------- */
 
@@ -522,7 +519,7 @@ export default function WorkOrderIdClient(): JSX.Element {
     toast.success("Queued all pending lines for parts quoting");
   }, [approvalPending, supabase]);
 
-  // ⬇️ open inspection from this page (line-level button)
+  // open inspection
   const openInspectionForLine = useCallback(
     async (ln: WorkOrderLine) => {
       if (!ln?.id) return;
@@ -901,7 +898,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                                 <button
                                   type="button"
                                   onClick={(e) => {
-                                    e.stopPropagation(); // don't open focused job
+                                    e.stopPropagation();
                                     void openInspectionForLine(ln);
                                   }}
                                   className="rounded border border-orange-400 px-2 py-0.5 text-xs text-orange-200 hover:bg-orange-500/10"
@@ -918,9 +915,9 @@ export default function WorkOrderIdClient(): JSX.Element {
                                     setAssignOpen(true);
                                   }}
                                   className="rounded border border-sky-500/70 px-2 py-0.5 text-xs text-sky-200 hover:bg-sky-900/20"
-                                  title="Assign technician to this line"
+                                  title="Assign mechanic to this line"
                                 >
-                                  Assign tech
+                                  Assign mechanic
                                 </button>
                               )}
                             </div>
@@ -954,7 +951,6 @@ export default function WorkOrderIdClient(): JSX.Element {
                                   Parts used
                                 </div>
                                 <div className="shrink-0">
-                                  {/* assuming UsePartButton supports label – if not, update component to accept it */}
                                   <UsePartButton
                                     workOrderLineId={ln.id}
                                     onApplied={() =>
@@ -1069,7 +1065,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         />
       )}
 
-      {/* Local inspection modal (same component as elsewhere) */}
+      {/* Local inspection modal */}
       {inspectionOpen && inspectionSrc && (
         <InspectionModal
           open={inspectionOpen}
@@ -1079,7 +1075,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         />
       )}
 
-      {/* Assign Tech modal */}
+      {/* Assign mechanic modal (reuses AssignTechModal) */}
       {assignOpen && assignLineId && (
         <AssignTechModal
           isOpen={assignOpen}

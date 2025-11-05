@@ -81,12 +81,13 @@ export default function WorkOrdersView(): JSX.Element {
 
   const [currentRole, setCurrentRole] = useState<string | null>(null);
 
-  // load current user role + tech list once
+  // load current user role + mechanic list once
   useEffect(() => {
     (async () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
+
       if (user?.id) {
         const { data: prof } = await supabase
           .from("profiles")
@@ -96,13 +97,14 @@ export default function WorkOrdersView(): JSX.Element {
         setCurrentRole(prof?.role ?? null);
       }
 
-      // load tech-ish users (you can trim this list)
-      const { data: techRows } = await supabase
+      // 👇 strictly pull mechanics (your enum has "mechanic")
+      const { data: mechRows } = await supabase
         .from("profiles")
         .select("id, full_name, role")
-        .in("role", ["tech", "mechanic", "advisor", "foreman", "lead_hand"])
+        .in("role", ["mechanic"])
         .order("full_name", { ascending: true });
-      setTechs(techRows ?? []);
+
+      setTechs(mechRows ?? []);
     })();
   }, [supabase]);
 
@@ -124,9 +126,6 @@ export default function WorkOrdersView(): JSX.Element {
       .order("created_at", { ascending: false })
       .limit(100);
 
-    // Dropdown behavior:
-    // - ""  -> only "normal flow" statuses
-    // - any -> exactly that status
     if (status === "") {
       query = query.in("status", NORMAL_FLOW_STATUSES as unknown as string[]);
     } else {
@@ -172,7 +171,7 @@ export default function WorkOrdersView(): JSX.Element {
     void load();
   }, [load]);
 
-  /* Realtime: refresh when any WO changes (status, etc.) */
+  // realtime refresh
   useEffect(() => {
     const ch = supabase
       .channel("work_orders:list")
@@ -216,7 +215,7 @@ export default function WorkOrdersView(): JSX.Element {
   const handleAssignAll = useCallback(
     async (woId: string) => {
       if (!selectedTechId) {
-        alert("Choose a technician first.");
+        alert("Choose a mechanic first.");
         return;
       }
 
@@ -235,7 +234,6 @@ export default function WorkOrdersView(): JSX.Element {
           alert(json.error || "Failed to assign.");
           return;
         }
-        // close picker and refresh
         setAssigningFor(null);
         await load();
       } catch (e) {
@@ -279,7 +277,6 @@ export default function WorkOrdersView(): JSX.Element {
             <option value="planned">Planned</option>
             <option value="new">New</option>
             <option value="completed">Completed</option>
-            {/* Billing lifecycle */}
             <option value="ready_to_invoice">Ready to invoice</option>
             <option value="invoiced">Invoiced</option>
           </select>
@@ -359,7 +356,6 @@ export default function WorkOrdersView(): JSX.Element {
                         <button
                           onClick={() => {
                             setAssigningFor(r.id);
-                            // keep whatever tech was last selected
                           }}
                           className="rounded border border-sky-600/60 px-2 py-1 text-sm text-sky-200 hover:bg-sky-900/10"
                         >
@@ -372,7 +368,7 @@ export default function WorkOrdersView(): JSX.Element {
                             onChange={(e) => setSelectedTechId(e.target.value)}
                             className="rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs text-white"
                           >
-                            <option value="">Pick tech…</option>
+                            <option value="">Pick mechanic…</option>
                             {techs.map((t) => (
                               <option key={t.id} value={t.id}>
                                 {t.full_name ?? "(no name)"} {t.role ? `(${t.role})` : ""}
