@@ -81,9 +81,10 @@ export default function WorkOrdersView(): JSX.Element {
 
   const [currentRole, setCurrentRole] = useState<string | null>(null);
 
-  // load current user role + mechanic list once
+  // load current user role (from profiles) + mechanics (from API) once
   useEffect(() => {
     (async () => {
+      // get my role (this is still fine through RLS)
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -97,14 +98,19 @@ export default function WorkOrdersView(): JSX.Element {
         setCurrentRole(prof?.role ?? null);
       }
 
-      // 👇 strictly pull mechanics (your enum has "mechanic")
-      const { data: mechRows } = await supabase
-        .from("profiles")
-        .select("id, full_name, role")
-        .in("role", ["mechanic"])
-        .order("full_name", { ascending: true });
-
-      setTechs(mechRows ?? []);
+      // mechanics / assignables come from server route so RLS doesn't block us
+      try {
+        const res = await fetch("/api/assignables");
+        const json = await res.json();
+        if (res.ok) {
+          setTechs(json.data ?? []);
+        } else {
+          // keep it quiet in UI
+          console.warn("Failed to load mechanics:", json.error);
+        }
+      } catch (e) {
+        console.warn("Failed to load mechanics:", e);
+      }
     })();
   }, [supabase]);
 

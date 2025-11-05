@@ -20,10 +20,10 @@ import VoiceButton from "@/features/shared/voice/VoiceButton";
 import { useTabState } from "@/features/shared/hooks/useTabState";
 import PartsDrawer from "@/features/parts/components/PartsDrawer";
 
-// ⬇️ assign-mechanic modal (reuses existing AssignTechModal)
+// reuses existing modal
 import AssignTechModal from "@/features/work-orders/components/workorders/extras/AssignTechModal";
 
-// ⬇️ same inspection modal used elsewhere (client-only)
+// same inspection modal
 const InspectionModal = dynamic(
   () => import("@/features/inspections/components/InspectionModal"),
   { ssr: false }
@@ -34,6 +34,7 @@ type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
+type Profile = DB["public"]["Tables"]["profiles"]["Row"];
 type AllocationRow =
   DB["public"]["Tables"]["work_order_part_allocations"]["Row"] & {
     parts?: { name: string | null } | null;
@@ -138,24 +139,28 @@ export default function WorkOrderIdClient(): JSX.Element {
   const [focusedOpen, setFocusedOpen] = useState(false);
   const [warnedMissing, setWarnedMissing] = useState(false);
 
-  // Parts Drawer controls (per-line) + bulk queue
+  // parts
   const [partsLineId, setPartsLineId] = useState<string | null>(null);
   const [bulkQueue, setBulkQueue] = useState<string[]>([]);
   const [bulkActive, setBulkActive] = useState<boolean>(false);
 
-  // inspection state
+  // inspection
   const [inspectionOpen, setInspectionOpen] = useState(false);
   const [inspectionSrc, setInspectionSrc] = useState<string | null>(null);
 
-  // assign-mechanic modal state
+  // assign mechanic
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignLineId, setAssignLineId] = useState<string | null>(null);
+  const [assignables, setAssignables] = useState<
+    Array<Pick<Profile, "id" | "full_name" | "role">>
+  >([]);
 
-  /* ---------------------- AUTH wait ---------------------- */
+  /* ---------------------- AUTH + assignables ---------------------- */
   useEffect(() => {
     let mounted = true;
 
     const waitForSession = async () => {
+      // 1) make sure we know who we are
       let {
         data: { session },
       } = await supabase.auth.getSession();
@@ -178,7 +183,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       setCurrentUserId(uid);
       setUserId(uid);
 
-      // get role so we can gate assign-button
+      // 2) get my role (still from profiles — allowed)
       if (uid) {
         const { data: prof } = await supabase
           .from("profiles")
@@ -186,6 +191,19 @@ export default function WorkOrderIdClient(): JSX.Element {
           .eq("id", uid)
           .maybeSingle();
         setCurrentUserRole(prof?.role ?? null);
+      }
+
+      // 3) get assignable mechanics from server route (no RLS issue)
+      try {
+        const res = await fetch("/api/assignables");
+        const json = await res.json();
+        if (res.ok && Array.isArray(json.data)) {
+          setAssignables(json.data);
+        } else {
+          console.warn("assignables error:", json.error);
+        }
+      } catch (e) {
+        console.warn("assignables fetch failed:", e);
       }
 
       if (!uid) setLoading(false);
@@ -218,7 +236,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       try {
         let woRow: WorkOrder | null = null;
 
-        // 1) UUID
+        // try by uuid
         if (looksLikeUuid(routeId)) {
           const { data, error } = await supabase
             .from("work_orders")
@@ -228,7 +246,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           if (!error) woRow = (data as WorkOrder | null) ?? null;
         }
 
-        // 2) custom_id
+        // try by custom_id
         if (!woRow) {
           const eqRes = await supabase
             .from("work_orders")
@@ -582,7 +600,7 @@ export default function WorkOrderIdClient(): JSX.Element {
     [wo?.id, vehicle?.id, customer?.id]
   );
 
-  // When a PartsDrawer closes, open the next one in bulk queue
+  // parts drawer close / bulk
   useEffect(() => {
     if (!partsLineId) return;
 
@@ -633,7 +651,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           <Link href="/sign-in" className="underline hover:text-white">
             Sign In
           </Link>{" "}
-          and reauthenticate, then return here.
+          and return here.
         </div>
       )}
 
@@ -847,7 +865,7 @@ export default function WorkOrderIdClient(): JSX.Element {
               )}
             </div>
 
-            {/* Jobs list (excludes approval-pending) */}
+            {/* Jobs list */}
             <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <h2 className="text-lg font-semibold">
@@ -958,6 +976,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                                         new CustomEvent("wo:parts-used")
                                       )
                                     }
+                                    // you said "Change the use part to say add part"
                                     label="Add part"
                                   />
                                 </div>
@@ -1036,7 +1055,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         />
       )}
 
-      {/* Parts Drawer (single) */}
+      {/* Parts Drawer */}
       {partsLineId && wo?.id && (
         <PartsDrawer
           open={!!partsLineId}
@@ -1065,7 +1084,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         />
       )}
 
-      {/* Local inspection modal */}
+      {/* Inspection modal */}
       {inspectionOpen && inspectionSrc && (
         <InspectionModal
           open={inspectionOpen}
@@ -1075,12 +1094,13 @@ export default function WorkOrderIdClient(): JSX.Element {
         />
       )}
 
-      {/* Assign mechanic modal (reuses AssignTechModal) */}
+      {/* Assign mechanic modal — now with initialMechanics from /api/assignables */}
       {assignOpen && assignLineId && (
         <AssignTechModal
           isOpen={assignOpen}
           onClose={() => setAssignOpen(false)}
           workOrderLineId={assignLineId}
+          initialMechanics={assignables}
           onAssigned={async () => {
             await fetchAll();
           }}
