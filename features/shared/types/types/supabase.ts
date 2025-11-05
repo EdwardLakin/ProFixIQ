@@ -2555,6 +2555,7 @@ export type Database = {
           full_name: string | null
           id: string
           last_active_at: string | null
+          must_change_password: boolean
           phone: string | null
           plan: Database["public"]["Enums"]["plan_t"] | null
           postal_code: string | null
@@ -2565,6 +2566,7 @@ export type Database = {
           street: string | null
           updated_at: string | null
           user_id: string | null
+          username: string | null
         }
         Insert: {
           business_name?: string | null
@@ -2576,6 +2578,7 @@ export type Database = {
           full_name?: string | null
           id: string
           last_active_at?: string | null
+          must_change_password?: boolean
           phone?: string | null
           plan?: Database["public"]["Enums"]["plan_t"] | null
           postal_code?: string | null
@@ -2586,6 +2589,7 @@ export type Database = {
           street?: string | null
           updated_at?: string | null
           user_id?: string | null
+          username?: string | null
         }
         Update: {
           business_name?: string | null
@@ -2597,6 +2601,7 @@ export type Database = {
           full_name?: string | null
           id?: string
           last_active_at?: string | null
+          must_change_password?: boolean
           phone?: string | null
           plan?: Database["public"]["Enums"]["plan_t"] | null
           postal_code?: string | null
@@ -2607,6 +2612,7 @@ export type Database = {
           street?: string | null
           updated_at?: string | null
           user_id?: string | null
+          username?: string | null
         }
         Relationships: [
           {
