@@ -2,18 +2,12 @@
 
 /**
  * Work Order — ID Page (Tech/View)
- * - Robust session wait (iPad/Safari).
- * - UUID or custom_id resolution.
- * - Realtime updates for WO & lines.
- * - Voice context + FocusedJob modal.
- * - WORK ORDER STATUS: header badge & details cell reflect wo.status exactly.
+ * - Shows work order, lines, vehicle, customer
+ * - Clicking a line still opens FocusedJobModal
  *
- * Updates:
- * - New "Awaiting Customer Approval" section (approval_state = 'pending')
- * - Approve/Decline actions per line
- * - Per-line "Send to Parts" (opens Parts Drawer; marks hold/status)
- * - Bulk "Quote all pending lines" (queues Parts Drawer across all pending)
- * - Job numbering in lists
+ * Change in this version:
+ * - For lines with job_type === "inspection", render a small "Inspection" button
+ *   on the line card that opens the existing InspectionModal (no global portal).
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -21,6 +15,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import dynamic from "next/dynamic";
 
 import { supabaseBrowser as supabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
@@ -34,6 +29,12 @@ import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
 import VoiceButton from "@/features/shared/voice/VoiceButton";
 import { useTabState } from "@/features/shared/hooks/useTabState";
 import PartsDrawer from "@/features/parts/components/PartsDrawer";
+
+// ⬇️ same inspection modal used elsewhere (client-only)
+const InspectionModal = dynamic(
+  () => import("@/features/inspections/components/InspectionModal"),
+  { ssr: false }
+);
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -72,15 +73,15 @@ const BASE_BADGE =
 
 const BADGE: Record<KnownStatus, string> = {
   awaiting_approval: "bg-blue-900/20 border-blue-500/40 text-blue-300",
-  awaiting:          "bg-sky-900/20  border-sky-500/40  text-sky-300",
-  queued:            "bg-indigo-900/20 border-indigo-500/40 text-indigo-300",
-  in_progress:       "bg-orange-900/20 border-orange-500/40 text-orange-300",
-  on_hold:           "bg-amber-900/20  border-amber-500/40  text-amber-300",
-  planned:           "bg-purple-900/20 border-purple-500/40 text-purple-300",
-  new:               "bg-neutral-800   border-neutral-600   text-neutral-200",
-  completed:         "bg-green-900/20  border-green-500/40 text-green-300",
-  ready_to_invoice:  "bg-emerald-900/20 border-emerald-500/40 text-emerald-300",
-  invoiced:          "bg-teal-900/20    border-teal-500/40    text-teal-300",
+  awaiting: "bg-sky-900/20  border-sky-500/40  text-sky-300",
+  queued: "bg-indigo-900/20 border-indigo-500/40 text-indigo-300",
+  in_progress: "bg-orange-900/20 border-orange-500/40 text-orange-300",
+  on_hold: "bg-amber-900/20  border-amber-500/40  text-amber-300",
+  planned: "bg-purple-900/20 border-purple-500/40 text-purple-300",
+  new: "bg-neutral-800   border-neutral-600   text-neutral-200",
+  completed: "bg-green-900/20  border-green-500/40 text-green-300",
+  ready_to_invoice: "bg-emerald-900/20 border-emerald-500/40 text-emerald-300",
+  invoiced: "bg-teal-900/20    border-teal-500/40    text-teal-300",
 };
 
 const chip = (s: string | null | undefined): string => {
@@ -137,6 +138,10 @@ export default function WorkOrderIdClient(): JSX.Element {
   const [partsLineId, setPartsLineId] = useState<string | null>(null);
   const [bulkQueue, setBulkQueue] = useState<string[]>([]);
   const [bulkActive, setBulkActive] = useState<boolean>(false);
+
+  // ⬇️ local inspection state (same idea as on the other page)
+  const [inspectionOpen, setInspectionOpen] = useState(false);
+  const [inspectionSrc, setInspectionSrc] = useState<string | null>(null);
 
   /* ---------------------- AUTH wait ---------------------- */
   useEffect(() => {
@@ -350,15 +355,13 @@ export default function WorkOrderIdClient(): JSX.Element {
     };
   }, [supabase, wo?.id, fetchAll]);
 
-  /* ----------------------- Helpers ----------------------- */
+  /* ----------------------- Derived data ----------------------- */
 
-  // Separate approval-pending lines
   const approvalPending = useMemo(
     () => lines.filter((l) => (l.approval_state ?? null) === "pending"),
     [lines],
   );
 
-  // Active job lines (exclude approval pending)
   const activeJobLines = useMemo(
     () => lines.filter((l) => (l.approval_state ?? null) !== "pending"),
     [lines],
@@ -379,7 +382,8 @@ export default function WorkOrderIdClient(): JSX.Element {
   const createdAt = wo?.created_at ? new Date(wo.created_at) : null;
   const createdAtText = createdAt && !isNaN(createdAt.getTime()) ? format(createdAt, "PPpp") : "—";
 
-  // Actions: approve/decline/parts
+  /* ----------------------- Actions ----------------------- */
+
   const approveLine = useCallback(
     async (lineId: string) => {
       if (!lineId) return;
@@ -417,7 +421,6 @@ export default function WorkOrderIdClient(): JSX.Element {
   const sendToParts = useCallback(
     async (lineId: string) => {
       if (!lineId) return;
-      // Mark line for parts quote and open drawer
       const { error } = await supabase
         .from("work_order_lines")
         .update({
@@ -434,7 +437,6 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   const sendAllPendingToParts = useCallback(async () => {
     if (!approvalPending.length) return;
-    // Build queue, mark each on_hold + reason
     const ids = approvalPending.map((l) => l.id);
     const { error } = await supabase
       .from("work_order_lines")
@@ -453,32 +455,90 @@ export default function WorkOrderIdClient(): JSX.Element {
     toast.success("Queued all pending lines for parts quoting");
   }, [approvalPending, supabase]);
 
+  // ⬇️ open inspection from this page (line-level button)
+  const openInspectionForLine = useCallback(
+    async (ln: WorkOrderLine) => {
+      if (!ln?.id) return;
+
+      const desc = String(ln.description ?? "").toLowerCase();
+      const isAir = /\bair\b|cvip|push\s*rod|air\s*brake/.test(desc);
+      const isCustom = /\bcustom\b|\bbuilder\b|\bprompt\b|\bad[-\s]?hoc\b/.test(desc);
+
+      let templateSlug = isAir ? "maintenance50-air" : "maintenance50";
+      if (isCustom) {
+        templateSlug = "custom:pending";
+      }
+
+      try {
+        const res = await fetch("/api/inspections/session/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            workOrderId: wo?.id ?? null,
+            workOrderLineId: ln.id,
+            vehicleId: vehicle?.id ?? null,
+            customerId: customer?.id ?? null,
+            template: templateSlug,
+          }),
+        });
+
+        const j = (await res.json().catch(() => null)) as
+          | { sessionId?: string; error?: string }
+          | null;
+
+        if (!res.ok || !j?.sessionId) {
+          throw new Error(j?.error || "Failed to create inspection session");
+        }
+
+        if (isCustom) {
+          templateSlug = `custom:${j.sessionId}`;
+        }
+
+        const sp = new URLSearchParams();
+        if (wo?.id) sp.set("workOrderId", wo.id);
+        sp.set("workOrderLineId", ln.id);
+        sp.set("inspectionId", j.sessionId);
+        sp.set("template", templateSlug);
+        sp.set("embed", "1");
+        if (isCustom && ln.description) sp.set("seed", String(ln.description));
+
+        const url = `/inspection/${templateSlug}?${sp.toString()}`;
+
+        setInspectionSrc(url);
+        setInspectionOpen(true);
+        toast.success("Inspection opened");
+      } catch (e) {
+        const err = e as { message?: string };
+        toast.error(err?.message ?? "Unable to open inspection");
+      }
+    },
+    [wo?.id, vehicle?.id, customer?.id],
+  );
+
   // When a PartsDrawer closes, open the next one in bulk queue
   useEffect(() => {
-  if (!partsLineId) return;
+    if (!partsLineId) return;
 
-  const evtName = `parts-drawer:closed:${partsLineId}`;
+    const evtName = `parts-drawer:closed:${partsLineId}`;
 
-  const handler = () => {
-    if (bulkActive && bulkQueue.length > 0) {
-      // open the next queued line
-      const [, ...rest] = bulkQueue;
-      setBulkQueue(rest);
-      setPartsLineId(rest[0] ?? null);
-      if (rest.length === 0) {
-        setBulkActive(false);
+    const handler = () => {
+      if (bulkActive && bulkQueue.length > 0) {
+        const [, ...rest] = bulkQueue;
+        setBulkQueue(rest);
+        setPartsLineId(rest[0] ?? null);
+        if (rest.length === 0) {
+          setBulkActive(false);
+          void fetchAll();
+        }
+      } else {
+        setPartsLineId(null);
         void fetchAll();
       }
-    } else {
-      // single-drawer case: just clear and refresh
-      setPartsLineId(null);
-      void fetchAll();
-    }
-  };
+    };
 
-  window.addEventListener(evtName, handler as EventListener);
-  return () => window.removeEventListener(evtName, handler as EventListener);
-}, [partsLineId, bulkActive, bulkQueue, fetchAll]);
+    window.addEventListener(evtName, handler as EventListener);
+    return () => window.removeEventListener(evtName, handler as EventListener);
+  }, [partsLineId, bulkActive, bulkQueue, fetchAll]);
 
   /* -------------------------- UI -------------------------- */
   if (!routeId) return <div className="p-6 text-red-500">Missing work order id.</div>;
@@ -534,7 +594,6 @@ export default function WorkOrderIdClient(): JSX.Element {
                   <h1 className="text-2xl font-semibold">
                     Work Order {wo.custom_id || `#${wo.id.slice(0, 8)}`}
                   </h1>
-                  {/* Authoritative work order status */}
                   <span className={chip(wo.status)}>
                     {(wo.status ?? "awaiting").replaceAll("_", " ")}
                   </span>
@@ -729,8 +788,22 @@ export default function WorkOrderIdClient(): JSX.Element {
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <div className="truncate font-medium">
-                              {idx + 1}. {ln.description || ln.complaint || "Untitled job"}
+                            <div className="flex items-center gap-2">
+                              <div className="truncate font-medium">
+                                {idx + 1}. {ln.description || ln.complaint || "Untitled job"}
+                              </div>
+                              {ln.job_type === "inspection" && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation(); // don't open focused job
+                                    void openInspectionForLine(ln);
+                                  }}
+                                  className="rounded border border-orange-400 px-2 py-0.5 text-xs text-orange-200 hover:bg-orange-500/10"
+                                >
+                                  Inspection
+                                </button>
+                              )}
                             </div>
                             <div className="text-xs text-neutral-400">
                               {String(ln.job_type ?? "job").replaceAll("_", " ")} •{" "}
@@ -839,6 +912,16 @@ export default function WorkOrderIdClient(): JSX.Element {
           }
           jobNotes={lines.find((l) => l.id === partsLineId)?.notes ?? null}
           closeEventName={`parts-drawer:closed:${partsLineId}`}
+        />
+      )}
+
+      {/* Local inspection modal (same component as elsewhere) */}
+      {inspectionOpen && inspectionSrc && (
+        <InspectionModal
+          open={inspectionOpen}
+          src={inspectionSrc}
+          title="Inspection"
+          onClose={() => setInspectionOpen(false)}
         />
       )}
 
