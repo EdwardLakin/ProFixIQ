@@ -131,13 +131,6 @@ function normalizeSections(input: unknown): InspectionSection[] {
 
 /* -------- smarter corner-grid detector -------- */
 
-/**
- * We only want to render the big axle/corner grid when:
- *  - the title says it's a grid, OR
- *  - we have enough items (>= 4), AND
- *  - at least half of them are measurement-ish, OR
- *  - the labels match our axle/corner patterns (LF/RF/... or Steer 1 Left ...)
- */
 const AIR_RE = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
 const HYD_ABBR_RE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
 const HYD_FULL_RE = /^(?<corner>(Left|Right)\s+(Front|Rear))\s+(?<metric>.+)$/i;
@@ -148,7 +141,6 @@ function shouldRenderCornerGrid(
 ): boolean {
   const t = (title || "").toLowerCase();
 
-  // explicit grid / axle sections — always grid
   if (
     t.includes("corner grid") ||
     t.includes("tires & brakes — truck") ||
@@ -158,16 +150,13 @@ function shouldRenderCornerGrid(
     return true;
   }
 
-  // not enough items → don't bother with grid
   if (!items || items.length < 4) return false;
 
-  // if ANY item matches the strong axle/corner patterns, that's a good signal
   const hasStrongPattern = items.some((it) => {
     const label = it.item ?? "";
     return AIR_RE.test(label) || HYD_ABBR_RE.test(label) || HYD_FULL_RE.test(label);
   });
 
-  // count measurement-y items
   const measurementKeywords = ["tread", "pressure", "lining", "shoe", "drum", "rotor", "push rod", "pad", "torque"];
   const measurementLikeCount = items.reduce((count, it) => {
     const label = (it.item || "").toLowerCase();
@@ -177,7 +166,6 @@ function shouldRenderCornerGrid(
 
   const enoughMeasurements = measurementLikeCount >= Math.floor(items.length / 2);
 
-  // title hints still help
   const titleSuggestsMeasurement =
     t.includes("tire") ||
     t.includes("tires") ||
@@ -185,7 +173,6 @@ function shouldRenderCornerGrid(
     t.includes("measurement") ||
     t.includes("axle");
 
-  // final decision
   return hasStrongPattern || (titleSuggestsMeasurement && enoughMeasurements);
 }
 
@@ -195,8 +182,9 @@ function shouldRenderCornerGrid(
 
 export default function GenericInspectionScreen(): JSX.Element {
   const sp = useSearchParams();
+  const rootRef = useRef<HTMLDivElement | null>(null);
 
-  // Embed for iframe modal
+  // Embed for iframe/modal
   const isEmbed = useMemo(
     () =>
       ["1", "true", "yes"].includes(
@@ -205,16 +193,12 @@ export default function GenericInspectionScreen(): JSX.Element {
     [sp]
   );
 
-  // IDs & context
   const workOrderId = sp.get("workOrderId") || null;
   const workOrderLineId = sp.get("workOrderLineId") || "";
-
-  // Header title: prefer the staged title from /inspection/run, else URL
   const templateName =
     (typeof window !== "undefined" ? sessionStorage.getItem("inspection:title") : null) ||
     (sp.get("template") || "Inspection");
 
-  // Header (optional via URL)
   const customer: SessionCustomer = {
     first_name: sp.get("first_name") || "",
     last_name: sp.get("last_name") || "",
@@ -237,10 +221,6 @@ export default function GenericInspectionScreen(): JSX.Element {
     engine_hours: sp.get("engine_hours") || "",
   };
 
-  // Sections precedence (normalized):
-  // 1) inspection:sections (staged by custom draft)
-  // 2) customInspection:sections (legacy)
-  // 3) default
   const bootSections = useMemo<InspectionSection[]>(() => {
     const staged = readStaged<InspectionSection[]>("inspection:sections");
     if (Array.isArray(staged) && staged.length) return normalizeSections(staged);
@@ -270,13 +250,11 @@ export default function GenericInspectionScreen(): JSX.Element {
     [sp]
   );
 
-  // UI state
   const [unit, setUnit] = useState<"metric" | "imperial">("metric");
   const [isListening, setIsListening] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
-  // Session
   const initialSession = useMemo<Partial<InspectionSession>>(
     () => ({
       id: inspectionId,
@@ -306,7 +284,7 @@ export default function GenericInspectionScreen(): JSX.Element {
     updateQuoteLine,
   } = useInspectionSession(initialSession);
 
-  // Start session & inject sections
+  // start
   useEffect(() => {
     startSession(initialSession);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -317,14 +295,14 @@ export default function GenericInspectionScreen(): JSX.Element {
     }
   }, [session, bootSections, updateInspection]);
 
-  // Persist session (local)
+  // persist
   useEffect(() => {
     if (!session) return;
     const key = `inspection-${inspectionId}`;
     localStorage.setItem(key, JSON.stringify(session));
   }, [session, inspectionId]);
 
-  // Persist on unload/visibility
+  // persist on unload
   useEffect(() => {
     const key = `inspection-${inspectionId}`;
     const persistNow = () => {
@@ -346,7 +324,7 @@ export default function GenericInspectionScreen(): JSX.Element {
     };
   }, [session, inspectionId, initialSession]);
 
-  // Voice commands
+  // voice commands
   const handleTranscript = async (text: string): Promise<void> => {
     const commands: ParsedCommand[] = await interpretCommand(text);
     const sess = session;
@@ -382,7 +360,7 @@ export default function GenericInspectionScreen(): JSX.Element {
     };
   }, []);
 
-  // AI Submit Flow (unchanged)
+  // AI submit flow
   const inFlightRef = useRef<Set<string>>(new Set());
   const isSubmittingAI = (secIdx: number, itemIdx: number): boolean =>
     inFlightRef.current.has(`${secIdx}:${itemIdx}`);
@@ -480,11 +458,71 @@ export default function GenericInspectionScreen(): JSX.Element {
     }
   };
 
+  // 🧹 embed-safe scrubber: remove h-screen/overflow-hidden/etc under this screen
+  useEffect(() => {
+    if (!isEmbed) return;
+    const root = rootRef.current;
+    if (!root) return;
+
+    const BAD = [
+      "h-screen",
+      "min-h-screen",
+      "max-h-screen",
+      "overflow-hidden",
+      "fixed",
+      "inset-0",
+      "w-screen",
+      "overscroll-contain",
+      "touch-pan-y",
+    ];
+
+    const scrub = (el: HTMLElement) => {
+      if (!el.className) return;
+      const classes = el.className.split(" ");
+      const filtered = classes.filter((c) => c && !BAD.includes(c));
+      if (filtered.length !== classes.length) {
+        el.className = filtered.join(" ");
+      }
+      if (el.style?.overflow === "hidden") {
+        el.style.overflow = "visible";
+      }
+    };
+
+    // scrub existing
+    root.querySelectorAll<HTMLElement>("*").forEach(scrub);
+
+    const obs = new MutationObserver((muts) => {
+      for (const m of muts) {
+        if (m.type === "attributes" && m.target instanceof HTMLElement) {
+          scrub(m.target);
+        }
+        if (m.type === "childList") {
+          m.addedNodes.forEach((n) => {
+            if (n instanceof HTMLElement) {
+              scrub(n);
+              n.querySelectorAll?.("*")?.forEach((child) => {
+                if (child instanceof HTMLElement) scrub(child);
+              });
+            }
+          });
+        }
+      }
+    });
+
+    obs.observe(root, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ["class", "style"],
+    });
+
+    return () => obs.disconnect();
+  }, [isEmbed]);
+
   if (!session || !session.sections || session.sections.length === 0) {
     return <div className="p-4 text-white">Loading inspection…</div>;
   }
 
-  // Layout
   const shell = isEmbed ? "mx-auto max-w-[1100px] px-3 pb-8" : "px-4 pb-14";
   const controlsGap = "mb-4 grid grid-cols-3 gap-2";
   const card =
@@ -494,16 +532,12 @@ export default function GenericInspectionScreen(): JSX.Element {
   const hint = "text-xs text-zinc-400" + (isEmbed ? " mt-1 block text-center" : "");
 
   const Body = (
-    <div className={shell}>
+    <div ref={rootRef} className={shell + (isEmbed ? " inspection-embed" : "")}>
       {isEmbed && (
         <style jsx global>{`
-          header[data-app-header],
-          nav[data-app-nav],
-          aside[data-app-sidebar],
-          footer[data-app-footer],
-          .app-shell-nav,
-          .app-sidebar {
-            display: none !important;
+          .inspection-embed,
+          .inspection-embed * {
+            overscroll-behavior: auto !important;
           }
         `}</style>
       )}
@@ -573,7 +607,6 @@ export default function GenericInspectionScreen(): JSX.Element {
             unit: it.unit || unitHintGeneric(it.item ?? "", unit),
           }));
 
-          // new smarter detector
           const useGrid = shouldRenderCornerGrid(section.title, itemsWithHints);
 
           return (
@@ -587,10 +620,7 @@ export default function GenericInspectionScreen(): JSX.Element {
 
               <div className={isEmbed ? "mt-3" : "mt-4"}>
                 {useGrid ? (
-                  <AxlesCornerGrid
-                    sectionIndex={sectionIndex}
-                    items={itemsWithHints}
-                  />
+                  <AxlesCornerGrid sectionIndex={sectionIndex} items={itemsWithHints} />
                 ) : (
                   <SectionDisplay
                     title=""
@@ -615,7 +645,6 @@ export default function GenericInspectionScreen(): JSX.Element {
                         photoUrls: [...prev, photoUrl],
                       });
                     }}
-                    /* Explicit AI submit; requires a note */
                     requireNoteForAI
                     onSubmitAI={(secIdx, itemIdx) => {
                       void submitAIForItem(secIdx, itemIdx);
