@@ -10,6 +10,7 @@ type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
+type Profile = DB["public"]["Tables"]["profiles"]["Row"];
 
 type Row = WorkOrder & {
   customers: Pick<Customer, "first_name" | "last_name" | "phone" | "email"> | null;
@@ -34,15 +35,15 @@ const BADGE_BASE =
 
 const STATUS_BADGE: Record<StatusKey, string> = {
   awaiting_approval: "bg-blue-900/20 border-blue-500/40 text-blue-300",
-  awaiting:          "bg-sky-900/20  border-sky-500/40  text-sky-300",
-  queued:            "bg-indigo-900/20 border-indigo-500/40 text-indigo-300",
-  in_progress:       "bg-orange-900/20 border-orange-500/40 text-orange-300",
-  on_hold:           "bg-amber-900/20  border-amber-500/40  text-amber-300",
-  planned:           "bg-purple-900/20 border-purple-500/40 text-purple-300",
-  new:               "bg-neutral-800   border-neutral-600   text-neutral-200",
-  completed:         "bg-green-900/20  border-green-500/40  text-green-300",
-  ready_to_invoice:  "bg-emerald-900/20 border-emerald-500/40 text-emerald-300",
-  invoiced:          "bg-teal-900/20    border-teal-500/40    text-teal-300",
+  awaiting: "bg-sky-900/20  border-sky-500/40  text-sky-300",
+  queued: "bg-indigo-900/20 border-indigo-500/40 text-indigo-300",
+  in_progress: "bg-orange-900/20 border-orange-500/40 text-orange-300",
+  on_hold: "bg-amber-900/20  border-amber-500/40  text-amber-300",
+  planned: "bg-purple-900/20 border-purple-500/40 text-purple-300",
+  new: "bg-neutral-800   border-neutral-600   text-neutral-200",
+  completed: "bg-green-900/20  border-green-500/40 text-green-300",
+  ready_to_invoice: "bg-emerald-900/20 border-emerald-500/40 text-emerald-300",
+  invoiced: "bg-teal-900/20    border-teal-500/40    text-teal-300",
 };
 
 const chip = (s: string | null | undefined) => {
@@ -61,13 +62,51 @@ const NORMAL_FLOW_STATUSES: StatusKey[] = [
   "new",
 ];
 
+// roles that can assign techs from this view
+const ASSIGN_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
+
 export default function WorkOrdersView(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<string>(""); // "" = normal flow
   const [err, setErr] = useState<string | null>(null);
+
+  // assigning
+  const [assigningFor, setAssigningFor] = useState<string | null>(null);
+  const [techs, setTechs] = useState<Array<Pick<Profile, "id" | "full_name" | "role">>>([]);
+  const [selectedTechId, setSelectedTechId] = useState<string>("");
+
+  const [currentRole, setCurrentRole] = useState<string | null>(null);
+
+  // load current user role + tech list once
+  useEffect(() => {
+    (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user?.id) {
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", user.id)
+          .maybeSingle();
+        setCurrentRole(prof?.role ?? null);
+      }
+
+      // load tech-ish users (you can trim this list)
+      const { data: techRows } = await supabase
+        .from("profiles")
+        .select("id, full_name, role")
+        .in("role", ["tech", "mechanic", "advisor", "foreman", "lead_hand"])
+        .order("full_name", { ascending: true });
+      setTechs(techRows ?? []);
+    })();
+  }, [supabase]);
+
+  const canAssign = currentRole ? ASSIGN_ROLES.has(currentRole) : false;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -174,6 +213,39 @@ export default function WorkOrdersView(): JSX.Element {
     [rows, supabase],
   );
 
+  const handleAssignAll = useCallback(
+    async (woId: string) => {
+      if (!selectedTechId) {
+        alert("Choose a technician first.");
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/work-orders/assign-all", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            work_order_id: woId,
+            tech_id: selectedTechId,
+            only_unassigned: true,
+          }),
+        });
+        const json = await res.json();
+        if (!res.ok) {
+          alert(json.error || "Failed to assign.");
+          return;
+        }
+        // close picker and refresh
+        setAssigningFor(null);
+        await load();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Failed to assign.";
+        alert(msg);
+      }
+    },
+    [selectedTechId, load],
+  );
+
   return (
     <div className="mx-auto max-w-6xl p-6 text-white">
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -230,13 +302,15 @@ export default function WorkOrdersView(): JSX.Element {
         <div className="divide-y divide-neutral-800 rounded border border-neutral-800 bg-neutral-900">
           {rows.map((r) => {
             const href = `/work-orders/${r.custom_id ?? r.id}?mode=view`;
+            const isAssigning = assigningFor === r.id;
+
             return (
-              <div key={r.id} className="flex items-center gap-3 p-3">
+              <div key={r.id} className="flex flex-wrap items-center gap-3 p-3">
                 <div className="w-28 text-xs text-neutral-400">
                   {r.created_at ? format(new Date(r.created_at), "PP") : "—"}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Link
                       href={href}
                       className="font-medium underline decoration-neutral-600 underline-offset-2 hover:decoration-orange-500"
@@ -267,7 +341,10 @@ export default function WorkOrdersView(): JSX.Element {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Link href={href} className="rounded border border-neutral-700 px-2 py-1 text-sm hover:bg-neutral-800">
+                  <Link
+                    href={href}
+                    className="rounded border border-neutral-700 px-2 py-1 text-sm hover:bg-neutral-800"
+                  >
                     Open
                   </Link>
                   <button
@@ -276,6 +353,48 @@ export default function WorkOrdersView(): JSX.Element {
                   >
                     Delete
                   </button>
+                  {canAssign && (
+                    <>
+                      {!isAssigning ? (
+                        <button
+                          onClick={() => {
+                            setAssigningFor(r.id);
+                            // keep whatever tech was last selected
+                          }}
+                          className="rounded border border-sky-600/60 px-2 py-1 text-sm text-sky-200 hover:bg-sky-900/10"
+                        >
+                          Assign
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-1">
+                          <select
+                            value={selectedTechId}
+                            onChange={(e) => setSelectedTechId(e.target.value)}
+                            className="rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs text-white"
+                          >
+                            <option value="">Pick tech…</option>
+                            {techs.map((t) => (
+                              <option key={t.id} value={t.id}>
+                                {t.full_name ?? "(no name)"} {t.role ? `(${t.role})` : ""}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={() => void handleAssignAll(r.id)}
+                            className="rounded bg-orange-500 px-2 py-1 text-xs font-semibold text-black hover:bg-orange-400"
+                          >
+                            Apply
+                          </button>
+                          <button
+                            onClick={() => setAssigningFor(null)}
+                            className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
             );

@@ -7,9 +7,11 @@ import { PartPicker, type PickedPart } from "@parts/components/PartPicker";
 export function UsePartButton({
   workOrderLineId,
   onApplied,
+  label = "Use Part", // 👈 new
 }: {
   workOrderLineId: string;
   onApplied?: () => void;
+  label?: string; // 👈 new
 }) {
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
@@ -28,7 +30,6 @@ export function UsePartButton({
         onApplied?.();
       } catch (e: any) {
         const m = e?.message || String(e) || "Failed to use part";
-        // surface a short error
         setErr(m.replace(/^.*error:\s*/i, ""));
       }
     });
@@ -42,7 +43,7 @@ export function UsePartButton({
         disabled={pending}
         title="Use/consume a part on this job line"
       >
-        {pending ? "Applying…" : "Use Part"}
+        {pending ? "Applying…" : label}
       </button>
       {err && <span className="ml-2 text-xs text-red-500">{err}</span>}
       <PartPicker open={open} onClose={() => setOpen(false)} onPick={handlePick} />
