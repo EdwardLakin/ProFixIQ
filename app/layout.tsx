@@ -15,8 +15,12 @@ import VoiceButton from "@/features/shared/voice/VoiceButton";
 // 🆕 Toasts
 import { Toaster } from "react-hot-toast";
 
-// 🆕 GLOBAL inspection portal (client component, safe to render here)
-import GlobalInspectionPortal from "@/features/inspections/components/GlobalInspectionPortal";
+// 🆕 mount global inspection modal (client-only)
+import dynamic from "next/dynamic";
+const GlobalInspectionPortal = dynamic(
+  () => import("@/features/inspections/components/GlobalInspectionPortal"),
+  { ssr: false }
+);
 
 const roboto = Roboto({
   subsets: ["latin"],
@@ -50,7 +54,7 @@ export default async function RootLayout({
     <html lang="en" className={`${roboto.variable} ${blackOps.variable}`}>
       <body className="bg-black text-white">
         <Providers initialSession={session ?? null}>
-          {/* Everything below is client land */}
+          {/* 🆕 Wrap everything in the VoiceProvider so it's available globally */}
           <VoiceProvider>
             <AppShell>
               {session?.user ? (
@@ -60,16 +64,16 @@ export default async function RootLayout({
               ) : (
                 <main>{children}</main>
               )}
+
+              {/* 🆕 global inspection modal lives here, NOT inside other modals */}
+              <GlobalInspectionPortal />
             </AppShell>
 
-            {/* global inspection modal lives once, here */}
-            <GlobalInspectionPortal />
-
-            {/* floating voice button */}
+            {/* 🆕 Floating push-to-talk button visible on all pages */}
             <VoiceButton />
           </VoiceProvider>
 
-          {/* global toast container */}
+          {/* 🆕 Global toast container for AI suggestion notifications */}
           <Toaster position="bottom-center" />
         </Providers>
       </body>
