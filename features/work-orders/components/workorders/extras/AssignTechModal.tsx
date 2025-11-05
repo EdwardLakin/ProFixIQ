@@ -29,7 +29,8 @@ export default function AssignTechModal(props: any) {
       const { data } = await supabase
         .from("profiles")
         .select("id, full_name, role")
-        .in("role", ["tech", "foreman", "lead_hand"])
+        // 👇 include mechanic here
+        .in("role", ["tech", "mechanic", "foreman", "lead_hand"])
         .order("full_name", { ascending: true });
       setUsers((data as Profile[]) ?? []);
     })();
@@ -59,7 +60,7 @@ export default function AssignTechModal(props: any) {
         value={techId}
         onChange={(e) => setTechId(e.target.value)}
       >
-        <option value="">Choose a tech…</option>
+        <option value="">Choose a mechanic…</option>
         {users.map((u) => (
           <option key={u.id} value={u.id}>
             {u.full_name ?? "(no name)"} {u.role ? `(${u.role})` : ""}
