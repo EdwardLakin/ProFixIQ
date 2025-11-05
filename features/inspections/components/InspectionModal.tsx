@@ -44,7 +44,7 @@ export default function InspectionModal({ open, src, title = "Inspection", onClo
     }
   };
 
-  // (you can keep or delete this debug block – leaving it since you had it)
+  // you can keep/remove this; keeping since you had it
   useEffect(() => {
     const log = (...a: any[]) => console.log("[scroll-debug]", ...a);
     const html = document.documentElement;
@@ -78,20 +78,10 @@ export default function InspectionModal({ open, src, title = "Inspection", onClo
       attributeFilter: ["class", "style"],
     });
 
-    const handler = (e: Event) => {
-      log("event:", e.type, "target:", (e.target as HTMLElement)?.tagName);
-    };
-    window.addEventListener("scroll", handler, { passive: true });
-    window.addEventListener("wheel", handler, { passive: true });
-    window.addEventListener("touchstart", handler, { passive: true });
-
     return () => {
       obs1.disconnect();
       obs2.disconnect();
       obs3.disconnect();
-      window.removeEventListener("scroll", handler);
-      window.removeEventListener("wheel", handler);
-      window.removeEventListener("touchstart", handler);
     };
   }, []);
 
@@ -99,21 +89,22 @@ export default function InspectionModal({ open, src, title = "Inspection", onClo
     <Dialog
       open={open}
       onClose={close}
-      // IMPORTANT: let the whole overlay scroll and start items at the top
+      // one scroll container for the whole overlay
       className="fixed inset-0 z-[300] overflow-y-auto"
     >
-      {/* Backdrop */}
+      {/* backdrop */}
       <div className="fixed inset-0 z-[300] bg-black/70 backdrop-blur-sm" aria-hidden="true" />
 
-      {/* The container that centers horizontally but not vertically */}
+      {/* panel wrapper */}
       <div className="relative z-[310] min-h-screen px-4 py-6 flex justify-center">
         <Dialog.Panel
-          // make the panel itself flex/column so inner content can shrink and scroll
-          className="relative w-full max-w-5xl flex flex-col gap-2"
+          // panel itself scrolls (max height) – single scroll area
+          className="relative w-full max-w-5xl rounded-lg border border-orange-400 bg-neutral-950 px-4 py-4 text-white shadow-xl max-h-[90vh] overflow-y-auto"
           onClick={(e) => e.stopPropagation()}
+          style={{ WebkitOverflowScrolling: "touch" }}
         >
-          {/* Title row */}
-          <div className="flex items-start justify-between gap-3">
+          {/* header */}
+          <div className="mb-3 flex items-start justify-between gap-3">
             <Dialog.Title className="text-lg font-header font-semibold tracking-wide text-white">
               {title}
             </Dialog.Title>
@@ -122,7 +113,6 @@ export default function InspectionModal({ open, src, title = "Inspection", onClo
                 type="button"
                 onClick={() => setCompact((v) => !v)}
                 className="rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs text-white hover:bg-neutral-800"
-                title={compact ? "Maximize" : "Minimize"}
               >
                 {compact ? "Maximize" : "Minimize"}
               </button>
@@ -130,70 +120,54 @@ export default function InspectionModal({ open, src, title = "Inspection", onClo
                 type="button"
                 onClick={close}
                 className="rounded border border-neutral-700 px-2 py-1 text-sm text-neutral-200 hover:bg-neutral-800"
-                title="Close"
               >
                 ✕
               </button>
             </div>
           </div>
 
-          {/* Scrollable body */}
-          <div
-            className="
-              flex-1
-              min-h-0
-              max-h-[85vh]
-              overflow-y-auto
-              overscroll-contain touch-pan-y
-              rounded-lg border border-orange-400 bg-neutral-950 p-4 text-white shadow-xl
-            "
-            style={{
-              WebkitOverflowScrolling: "touch",
-              scrollbarGutter: "stable both-edges",
-            }}
-          >
-            {derived.missingWOLine && (
-              <div className="mb-3 rounded border border-yellow-700 bg-yellow-900/30 px-3 py-2 text-xs text-yellow-200">
-                <strong>Heads up:</strong> <code>workOrderLineId</code> is missing; Save/Finish may be blocked.
-              </div>
-            )}
+          {/* content */}
+          {derived.missingWOLine && (
+            <div className="mb-3 rounded border border-yellow-700 bg-yellow-900/30 px-3 py-2 text-xs text-yellow-200">
+              <strong>Heads up:</strong> <code>workOrderLineId</code> is missing; Save/Finish may be blocked.
+            </div>
+          )}
 
-            {!derived.template ? (
-              <div className="rounded border border-neutral-800 bg-neutral-900 p-4 text-center text-neutral-400">
-                No inspection selected.
-              </div>
-            ) : (
-              // 👇 this wrapper makes an h-screen/min-h-screen child behave in a scrollbox
-              <div className="mx-auto w-full max-w-5xl min-h-0">
-                <InspectionHost template={derived.template} embed params={derived.params} />
-              </div>
-            )}
+          {!derived.template ? (
+            <div className="rounded border border-neutral-800 bg-neutral-900 p-4 text-center text-neutral-400">
+              No inspection selected.
+            </div>
+          ) : (
+            // let inspection render; if it has big internal sections, we still only have one scroll
+            <div className="mx-auto w-full max-w-5xl">
+              <InspectionHost template={derived.template} embed params={derived.params} />
+            </div>
+          )}
 
-            {/* footer inside scroll so it's reachable on short screens */}
-            <div className="mt-4 flex items-center justify-between gap-2">
+          {/* footer */}
+          <div className="mt-4 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => setCompact((v) => !v)}
+              className="rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs hover:bg-neutral-800"
+            >
+              {compact ? "Maximize" : "Minimize"}
+            </button>
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setCompact((v) => !v)}
-                className="rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs hover:bg-neutral-800"
+                onClick={close}
+                className="rounded border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm hover:bg-neutral-800"
               >
-                {compact ? "Maximize" : "Minimize"}
+                Close
               </button>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={close}
-                  className="rounded border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm hover:bg-neutral-800"
-                >
-                  Close
-                </button>
-                <button
-                  type="button"
-                  onClick={close}
-                  className="rounded border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm hover:bg-neutral-800"
-                >
-                  Cancel
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={close}
+                className="rounded border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm hover:bg-neutral-800"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </Dialog.Panel>
