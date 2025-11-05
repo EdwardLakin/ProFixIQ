@@ -20,10 +20,10 @@ import VoiceButton from "@/features/shared/voice/VoiceButton";
 import { useTabState } from "@/features/shared/hooks/useTabState";
 import PartsDrawer from "@/features/parts/components/PartsDrawer";
 
-// reuses existing modal
+// assign-mechanic modal
 import AssignTechModal from "@/features/work-orders/components/workorders/extras/AssignTechModal";
 
-// same inspection modal
+// inspection modal
 const InspectionModal = dynamic(
   () => import("@/features/inspections/components/InspectionModal"),
   { ssr: false }
@@ -124,17 +124,11 @@ export default function WorkOrderIdClient(): JSX.Element {
   const [loading, setLoading] = useState<boolean>(false);
   const [viewError, setViewError] = useState<string | null>(null);
 
-  const [currentUserId, setCurrentUserId] = useTabState<string | null>(
-    "wo:id:uid",
-    null
-  );
+  const [currentUserId, setCurrentUserId] = useTabState<string | null>("wo:id:uid", null);
   const [, setUserId] = useTabState<string | null>("wo:id:effectiveUid", null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
 
-  const [showDetails, setShowDetails] = useTabState<boolean>(
-    "wo:showDetails",
-    true
-  );
+  const [showDetails, setShowDetails] = useTabState<boolean>("wo:showDetails", true);
   const [focusedJobId, setFocusedJobId] = useState<string | null>(null);
   const [focusedOpen, setFocusedOpen] = useState(false);
   const [warnedMissing, setWarnedMissing] = useState(false);
@@ -160,7 +154,7 @@ export default function WorkOrderIdClient(): JSX.Element {
     let mounted = true;
 
     const waitForSession = async () => {
-      // 1) make sure we know who we are
+      // 1) ensure session
       let {
         data: { session },
       } = await supabase.auth.getSession();
@@ -174,6 +168,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         }
       }
 
+      // 2) who am I
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -183,7 +178,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       setCurrentUserId(uid);
       setUserId(uid);
 
-      // 2) get my role (still from profiles — allowed)
+      // 3) my role (still from profiles; you have policy for self)
       if (uid) {
         const { data: prof } = await supabase
           .from("profiles")
@@ -193,17 +188,15 @@ export default function WorkOrderIdClient(): JSX.Element {
         setCurrentUserRole(prof?.role ?? null);
       }
 
-      // 3) get assignable mechanics from server route (no RLS issue)
+      // 4) fetch assignable mechanics from server route (bypasses profiles RLS)
       try {
         const res = await fetch("/api/assignables");
         const json = await res.json();
         if (res.ok && Array.isArray(json.data)) {
           setAssignables(json.data);
-        } else {
-          console.warn("assignables error:", json.error);
         }
-      } catch (e) {
-        console.warn("assignables fetch failed:", e);
+      } catch {
+        // ignore, modal will try to self-load
       }
 
       if (!uid) setLoading(false);
@@ -236,7 +229,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       try {
         let woRow: WorkOrder | null = null;
 
-        // try by uuid
+        // by UUID
         if (looksLikeUuid(routeId)) {
           const { data, error } = await supabase
             .from("work_orders")
@@ -246,7 +239,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           if (!error) woRow = (data as WorkOrder | null) ?? null;
         }
 
-        // try by custom_id
+        // by custom_id
         if (!woRow) {
           const eqRes = await supabase
             .from("work_orders")
@@ -428,7 +421,6 @@ export default function WorkOrderIdClient(): JSX.Element {
   }, [supabase, wo?.id, fetchAll]);
 
   /* ----------------------- Derived data ----------------------- */
-
   const approvalPending = useMemo(
     () => lines.filter((l) => (l.approval_state ?? null) === "pending"),
     [lines]
@@ -976,7 +968,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                                         new CustomEvent("wo:parts-used")
                                       )
                                     }
-                                    // you said "Change the use part to say add part"
+                                    // renamed per your earlier request
                                     label="Add part"
                                   />
                                 </div>
@@ -1094,13 +1086,13 @@ export default function WorkOrderIdClient(): JSX.Element {
         />
       )}
 
-      {/* Assign mechanic modal — now with initialMechanics from /api/assignables */}
+      {/* Assign mechanic modal — now with mechanics passed in */}
       {assignOpen && assignLineId && (
         <AssignTechModal
           isOpen={assignOpen}
           onClose={() => setAssignOpen(false)}
           workOrderLineId={assignLineId}
-          initialMechanics={assignables}
+          mechanics={assignables}
           onAssigned={async () => {
             await fetchAll();
           }}
