@@ -8,15 +8,27 @@ type JobLine = Database["public"]["Tables"]["work_order_lines"]["Row"];
  * Fetch queue for a tech as raw DB rows (JobLine[]).
  * - Filters to visible queue statuses
  * - If techId provided: include jobs assigned to that tech OR unassigned
- * - Ordered oldest → newest
+ * - Ordered by parent work order priority first, then oldest → newest
  */
 export async function getQueuedJobsForTech(techId?: string): Promise<JobLine[]> {
   const supabase = createClientComponentClient<Database>();
 
+  // join work_orders so we can sort by work order priority
   let query = supabase
     .from("work_order_lines")
-    .select("*")
+    .select(
+      `
+        *,
+        work_orders!inner (
+          id,
+          priority
+        )
+      `
+    )
     .in("status", ["queued", "awaiting", "in_progress", "on_hold"])
+    // highest priority WOs first (1 = highest)
+    .order("work_orders(priority)", { ascending: true, nullsFirst: false })
+    // then oldest job within that
     .order("created_at", { ascending: true });
 
   if (techId) {
@@ -30,5 +42,7 @@ export async function getQueuedJobsForTech(techId?: string): Promise<JobLine[]> 
     return [];
   }
 
+  // we only declared JobLine, so just return the line shape — the extra joined
+  // work_orders data will be ignored by the caller
   return data as JobLine[];
 }

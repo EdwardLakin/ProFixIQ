@@ -212,6 +212,8 @@ export default function CreateWorkOrderPage() {
   // Defaults / notes
   const [type, setType] = useTabState<WOType>("type", "maintenance");
   const [notes, setNotes] = useTabState("notes", "");
+  // 👇 new: work order priority (1 urgent → 4 low). default 3 = normal
+  const [priority, setPriority] = useTabState<number>("priority", 3);
 
   // Uploads
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
@@ -348,41 +350,41 @@ export default function CreateWorkOrderPage() {
   }
 
   async function getOrLinkShopId(userId: string): Promise<string | null> {
-  // 1) try to read the profile we actually have (id = auth user id)
-  const { data: profileById, error: profErr } = await supabase
-    .from("profiles")
-    .select("shop_id")
-    .eq("id", userId)
-    .maybeSingle();
+    // 1) try to read the profile we actually have (id = auth user id)
+    const { data: profileById, error: profErr } = await supabase
+      .from("profiles")
+      .select("shop_id")
+      .eq("id", userId)
+      .maybeSingle();
 
-  if (profErr) throw profErr;
-  if (profileById?.shop_id) {
-    return profileById.shop_id;
+    if (profErr) throw profErr;
+    if (profileById?.shop_id) {
+      return profileById.shop_id;
+    }
+
+    // 2) no shop on profile → see if this user owns a shop
+    const { data: ownedShop, error: shopErr } = await supabase
+      .from("shops")
+      .select("id")
+      .eq("owner_id", userId)
+      .maybeSingle();
+
+    if (shopErr) throw shopErr;
+    if (!ownedShop?.id) {
+      // nothing to link
+      return null;
+    }
+
+    // 3) write it back to profile so future calls are fast
+    const { error: updErr } = await supabase
+      .from("profiles")
+      .update({ shop_id: ownedShop.id })
+      .eq("id", userId);
+
+    if (updErr) throw updErr;
+
+    return ownedShop.id;
   }
-
-  // 2) no shop on profile → see if this user owns a shop
-  const { data: ownedShop, error: shopErr } = await supabase
-    .from("shops")
-    .select("id")
-    .eq("owner_id", userId)
-    .maybeSingle();
-
-  if (shopErr) throw shopErr;
-  if (!ownedShop?.id) {
-    // nothing to link
-    return null;
-  }
-
-  // 3) write it back to profile so future calls are fast
-  const { error: updErr } = await supabase
-    .from("profiles")
-    .update({ shop_id: ownedShop.id })
-    .eq("id", userId);
-
-  if (updErr) throw updErr;
-
-  return ownedShop.id;
-}
 
   const buildCustomerInsert = (c: SessionCustomer, shopId: string | null) => ({
     first_name: strOrNull(c.first_name),
@@ -676,6 +678,7 @@ export default function CreateWorkOrderPage() {
         user_id: user.id,
         shop_id: shopId,
         status: "awaiting_approval",
+        priority: priority,
       };
 
       const { data: inserted, error: insertWOError } = await supabase
@@ -707,6 +710,7 @@ export default function CreateWorkOrderPage() {
     fetchLines,
     cvDraft,
     vehicle,
+    priority,
   ]);
 
   // Clear form
@@ -1074,6 +1078,7 @@ export default function CreateWorkOrderPage() {
           customer_id: placeholderCustomer.id,
           vehicle_id: placeholderVehicle.id,
           status: "awaiting_approval",
+          priority: 3,
         })
         .select("*")
         .single();
@@ -1352,6 +1357,20 @@ export default function CreateWorkOrderPage() {
                   <option value="maintenance">Maintenance</option>
                   <option value="diagnosis">Diagnosis</option>
                   <option value="inspection">Inspection</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm mb-1 text-center">Priority</label>
+                <select
+                  value={priority}
+                  onChange={(e) => setPriority(Number(e.target.value))}
+                  className="input"
+                  disabled={loading}
+                >
+                  <option value={1}>Urgent</option>
+                  <option value={2}>High</option>
+                  <option value={3}>Normal</option>
+                  <option value={4}>Low</option>
                 </select>
               </div>
               <div>

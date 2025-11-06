@@ -4972,6 +4972,7 @@ export type Database = {
           labor_total: number | null
           notes: string | null
           parts_total: number | null
+          priority: number | null
           quote: Json | null
           quote_url: string | null
           shop_id: string | null
@@ -5007,6 +5008,7 @@ export type Database = {
           labor_total?: number | null
           notes?: string | null
           parts_total?: number | null
+          priority?: number | null
           quote?: Json | null
           quote_url?: string | null
           shop_id?: string | null
@@ -5042,6 +5044,7 @@ export type Database = {
           labor_total?: number | null
           notes?: string | null
           parts_total?: number | null
+          priority?: number | null
           quote?: Json | null
           quote_url?: string | null
           shop_id?: string | null
