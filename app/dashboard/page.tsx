@@ -8,7 +8,6 @@ import TechPanel from "@/features/dashboard/components/role-panels/TechPanel";
 import OwnerPanel from "@/features/dashboard/components/role-panels/OwnerPanel";
 import PartsPanel from "@/features/dashboard/components/role-panels/PartsPanel";
 import AdminPanel from "@/features/dashboard/components/role-panels/AdminPanel";
-import SignOutButton from "@/features/auth/components/SignOutButton"; // 👈 add this
 
 export default function DashboardHome() {
   const { role, loading } = useUserRole();
@@ -22,9 +21,6 @@ export default function DashboardHome() {
           heading="Dashboard"
           description="Quick actions matched to your role. Use the tabs bar to hop between recently opened pages."
         />
-        <div className="pt-1">
-          <SignOutButton />
-        </div>
       </div>
 
       {!loading && role === "advisor" && <AdvisorPanel />}
