@@ -1,19 +1,17 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-);
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
 
 export default function SignOutButton() {
   const router = useRouter();
+  const supabase = createClientComponentClient<Database>();
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    router.push("/");
+    // force UI back to unauth side
+    router.push("/sign-in");
   };
 
   return (

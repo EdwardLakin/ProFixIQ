@@ -1,9 +1,11 @@
 // features/landing/ProFixIQLanding.tsx
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Toaster } from "sonner";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
 
 import LandingHero from "@shared/components/ui/LandingHero";
 import FeaturesSection from "@shared/components/ui/FeaturesSection";
@@ -16,22 +18,83 @@ import LandingChatbot from "@/features/landing/LandingChatbot"; // ✅ use wrapp
 type Interval = "monthly" | "yearly";
 
 export default function ProFixIQLanding() {
-  useEffect(() => {}, []);
+  const supabase = createClientComponentClient<Database>();
+  const [sessionExists, setSessionExists] = useState(false);
+
+  // detect logged-in user
+  useEffect(() => {
+    (async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      setSessionExists(!!session);
+
+      const {
+        data: { subscription },
+      } = supabase.auth.onAuthStateChange((_event, sess) => {
+        setSessionExists(!!sess);
+      });
+
+      return () => {
+        subscription.unsubscribe();
+      };
+    })();
+  }, [supabase]);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setSessionExists(false);
+    // optional: send them to landing root
+    window.location.href = "/";
+  };
 
   return (
     <div className="bg-black text-white">
       <Toaster position="top-center" />
 
-      {/* Quick access to the Customer Portal */}
+      {/* Top bar */}
       <div className="w-full bg-neutral-950/60 border-b border-white/10">
         <Container>
-          <div className="flex items-center justify-end py-3">
+          <div className="flex items-center justify-between py-3 gap-3">
             <Link
-              href="/portal"
-              className="inline-flex items-center gap-2 rounded-lg border border-orange-500/70 bg-black/30 px-3 py-1.5 text-sm font-semibold text-orange-400 hover:bg-orange-500 hover:text-black transition"
+              href="/"
+              className="text-orange-400 font-semibold tracking-wide"
             >
-              Customer Portal
+              ProFixIQ
             </Link>
+
+            <div className="flex items-center gap-2">
+              <Link
+                href="/portal"
+                className="inline-flex items-center gap-2 rounded-lg border border-orange-500/70 bg-black/30 px-3 py-1.5 text-sm font-semibold text-orange-400 hover:bg-orange-500 hover:text-black transition"
+              >
+                Customer Portal
+              </Link>
+
+              {sessionExists ? (
+                <>
+                  <Link
+                    href="/dashboard"
+                    className="hidden sm:inline-flex rounded-lg border border-white/10 px-3 py-1.5 text-sm text-neutral-200 hover:border-orange-400"
+                  >
+                    Dashboard
+                  </Link>
+                  <button
+                    onClick={handleSignOut}
+                    className="inline-flex rounded-lg bg-orange-500 px-3 py-1.5 text-sm font-semibold text-black hover:bg-orange-600 transition"
+                  >
+                    Sign Out
+                  </button>
+                </>
+              ) : (
+                <Link
+                  href="/sign-in"
+                  className="inline-flex rounded-lg border border-white/10 px-3 py-1.5 text-sm text-neutral-200 hover:border-orange-400"
+                >
+                  Sign In
+                </Link>
+              )}
+            </div>
           </div>
         </Container>
       </div>
@@ -39,7 +102,7 @@ export default function ProFixIQLanding() {
       {/* 1) HERO */}
       <LandingHero />
 
-      {/* 2) FEATURES (single heading here) */}
+      {/* 2) FEATURES */}
       <section id="features" className="py-20">
         <Container>
           <h2
@@ -68,7 +131,13 @@ export default function ProFixIQLanding() {
       <section id="plans" className="bg-neutral-900 py-20">
         <Container>
           <PricingSection
-            onCheckout={async ({ priceId, interval }: { priceId: string; interval: Interval }) => {
+            onCheckout={async ({
+              priceId,
+              interval,
+            }: {
+              priceId: string;
+              interval: Interval;
+            }) => {
               const res = await fetch("/api/stripe/checkout", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -96,7 +165,7 @@ export default function ProFixIQLanding() {
         </Container>
       </section>
 
-      {/* 5) Chatbot (marketing wrapper) */}
+      {/* 5) Chatbot */}
       <LandingChatbot />
 
       {/* 6) Footer */}
