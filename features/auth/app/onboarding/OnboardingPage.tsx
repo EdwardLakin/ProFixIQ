@@ -14,6 +14,7 @@ const staffRedirect: Record<Role, string> = {
   advisor: "/dashboard/advisor",
   mechanic: "/dashboard/tech",
 };
+
 const isStaffRole = (r: string | null | undefined): r is Role =>
   r === "owner" || r === "admin" || r === "manager" || r === "advisor" || r === "mechanic";
 
@@ -22,11 +23,9 @@ export default function OnboardingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // Session gate
   const [sessionChecked, setSessionChecked] = useState(false);
   const [hasSession, setHasSession] = useState(false);
 
-  // Personal
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [role, setRole] = useState<Role>("owner");
@@ -35,57 +34,46 @@ export default function OnboardingPage() {
   const [userProvince, setUserProvince] = useState("");
   const [userPostal, setUserPostal] = useState("");
 
-  // Shop
   const [businessName, setBusinessName] = useState("");
   const [shopName, setShopName] = useState("");
   const [shopStreet, setShopStreet] = useState("");
   const [shopCity, setShopCity] = useState("");
   const [shopProvince, setShopProvince] = useState("");
   const [shopPostal, setShopPostal] = useState("");
-  const [ownerPin, setOwnerPin] = useState(""); // REQUIRED by API
+  const [ownerPin, setOwnerPin] = useState("");
 
-  // Flags
   const [asOwner, setAsOwner] = useState(true);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  /**
-   * 1) If we arrived from a Supabase magic link (?code=...), exchange it for a session
-   *    and strip the query so we don't re-exchange on refresh.
-   */
+  // --- 1) Handle Supabase magic link exchange ---
   useEffect(() => {
     const code = searchParams.get("code");
     if (!code) return;
-
     (async () => {
       try {
         await supabase.auth.exchangeCodeForSession(code);
       } finally {
         const keepSid = searchParams.get("session_id");
-        const clean = keepSid ? `/onboarding?session_id=${encodeURIComponent(keepSid)}` : "/onboarding";
+        const clean = keepSid
+          ? `/onboarding?session_id=${encodeURIComponent(keepSid)}`
+          : "/onboarding";
         router.replace(clean);
         setTimeout(() => router.refresh(), 0);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // run once on mount
+  }, []);
 
-  /**
-   * 2) Check session; if a complete staff profile already exists, route to dashboard.
-   *    Otherwise allow the onboarding form to render.
-   */
+  // --- 2) Check if user already belongs to a shop ---
   useEffect(() => {
     (async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const { data: { user } } = await supabase.auth.getUser();
       const has = !!user;
       setHasSession(has);
       setSessionChecked(true);
-
       if (!has || !user) return;
 
-      // Optional: link Stripe session to the user if present (safe no-op if route doesn't exist)
       const sid = searchParams.get("session_id");
       if (sid) {
         try {
@@ -99,7 +87,6 @@ export default function OnboardingPage() {
         }
       }
 
-      // See if a staff profile is already complete → skip onboarding
       const { data: prof } = await supabase
         .from("profiles")
         .select("role, full_name, phone, shop_id")
@@ -107,6 +94,18 @@ export default function OnboardingPage() {
         .maybeSingle();
 
       const r = prof?.role ?? null;
+
+      // ✅ NEW: Skip onboarding if user already linked to a shop
+      if (prof?.shop_id) {
+        if (isStaffRole(r)) {
+          router.replace(staffRedirect[r]);
+        } else {
+          router.replace("/dashboard");
+        }
+        return;
+      }
+
+      // Legacy: otherwise check if their profile looks “complete”
       const complete =
         isStaffRole(r) &&
         !!prof?.full_name &&
@@ -119,7 +118,6 @@ export default function OnboardingPage() {
     })();
   }, [router, searchParams, supabase]);
 
-  // Sync toggle with role (UI nicety)
   useEffect(() => {
     setAsOwner(role === "owner");
   }, [role]);
@@ -129,16 +127,14 @@ export default function OnboardingPage() {
     setError("");
     setLoading(true);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       setError("User not found.");
       setLoading(false);
       return;
     }
 
-    // 1) Update base profile info
+    // Update profile
     const { error: updateErr } = await supabase
       .from("profiles")
       .update({
@@ -159,7 +155,7 @@ export default function OnboardingPage() {
       return;
     }
 
-    // 2) Owner bootstrap
+    // Owner bootstrap if needed
     if (asOwner) {
       if (!ownerPin || ownerPin.length < 4) {
         setError("Please provide an Owner PIN (min 4 characters).");
@@ -194,13 +190,12 @@ export default function OnboardingPage() {
       }
     }
 
-    // 3) Redirect
     const finalRole: Role = asOwner ? "owner" : role;
     router.replace(staffRedirect[finalRole] || "/dashboard");
     setLoading(false);
   };
 
-  // ---------- RENDER ----------
+  // --- Render ---
   if (!sessionChecked) {
     return (
       <div className="min-h-screen grid place-items-center bg-black text-white">
@@ -228,9 +223,9 @@ export default function OnboardingPage() {
     );
   }
 
+  // --- UI ---
   return (
     <div className="min-h-screen bg-black text-white">
-      {/* top bar */}
       <div className="border-b border-neutral-900 bg-neutral-950/60 px-6 py-4">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
           <div>
@@ -246,18 +241,10 @@ export default function OnboardingPage() {
       </div>
 
       <div className="mx-auto flex max-w-6xl gap-6 px-6 py-6 flex-col lg:flex-row">
-        {/* LEFT COLUMN */}
         <div className="flex-1 space-y-6">
-          {/* Your Info card */}
-          <form
-            onSubmit={handleSubmit}
-            className="space-y-6"
-          >
+          <form onSubmit={handleSubmit} className="space-y-6">
             <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-5">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <h2 className="text-sm font-semibold text-neutral-100">Your info</h2>
-                <span className="text-[10px] text-neutral-500">Required</span>
-              </div>
+              <h2 className="text-sm font-semibold text-neutral-100 mb-4">Your info</h2>
 
               <div className="space-y-3">
                 <input
@@ -338,14 +325,8 @@ export default function OnboardingPage() {
               </div>
             </div>
 
-            {/* Shop Info card */}
             <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-5">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <h2 className="text-sm font-semibold text-neutral-100">Shop info</h2>
-                <span className="text-[10px] text-neutral-500">
-                  {asOwner ? "Required for owner" : "Optional"}
-                </span>
-              </div>
+              <h2 className="text-sm font-semibold text-neutral-100 mb-4">Shop info</h2>
 
               <div className="space-y-3">
                 <input
@@ -429,17 +410,17 @@ export default function OnboardingPage() {
           </form>
         </div>
 
-        {/* RIGHT COLUMN (summary) */}
         <div className="w-full lg:w-72 space-y-6">
           <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4">
             <h3 className="text-sm font-semibold text-neutral-100 mb-2">
               What happens next
             </h3>
             <p className="text-xs text-neutral-400">
-              We’ll create or update your profile, and if you’re the owner, we’ll bootstrap
-              your shop record. After that you’ll land on your dashboard.
+              We’ll create or update your profile, and if you’re the owner, we’ll bootstrap your shop record.
+              After that you’ll land on your dashboard.
             </p>
           </div>
+
           <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4">
             <h3 className="text-sm font-semibold text-neutral-100 mb-2">
               Current mode
