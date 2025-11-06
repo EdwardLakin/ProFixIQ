@@ -13,14 +13,9 @@ type Customer = DB["public"]["Tables"]["customers"]["Row"];
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Profile = DB["public"]["Tables"]["profiles"]["Row"];
 
-type WorkOrderTechnician = {
-  technician_id: string;
-};
-
 type Row = WorkOrder & {
   customers: Pick<Customer, "first_name" | "last_name" | "phone" | "email"> | null;
   vehicles: Pick<Vehicle, "year" | "make" | "model" | "license_plate"> | null;
-  work_order_technicians: WorkOrderTechnician[] | null;
 };
 
 /* --------------------------- Status badges (dark) --------------------------- */
@@ -80,15 +75,21 @@ export default function WorkOrdersView(): JSX.Element {
   const [status, setStatus] = useState<string>("");
   const [err, setErr] = useState<string | null>(null);
 
+  // assigning
   const [assigningFor, setAssigningFor] = useState<string | null>(null);
   const [techs, setTechs] = useState<Array<Pick<Profile, "id" | "full_name" | "role">>>([]);
   const [selectedTechId, setSelectedTechId] = useState<string>("");
 
   const [currentRole, setCurrentRole] = useState<string | null>(null);
 
-  // load current user role + mechanics once
+  // NEW: we keep assignments separate since Supabase couldn't join them
+  // key = work_order_id, value = array of technician_ids (usually 1)
+  const [woAssignments, setWoAssignments] = useState<Record<string, string[]>>({});
+
+  // load current user role (from profiles) + mechanics (from API) once
   useEffect(() => {
     (async () => {
+      // get my role
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -102,6 +103,7 @@ export default function WorkOrdersView(): JSX.Element {
         setCurrentRole(prof?.role ?? null);
       }
 
+      // mechanics / assignables come from server route
       try {
         const res = await fetch("/api/assignables");
         const json = await res.json();
@@ -122,14 +124,14 @@ export default function WorkOrdersView(): JSX.Element {
     setLoading(true);
     setErr(null);
 
+    // 1) get work orders
     let query = supabase
       .from("work_orders")
       .select(
         `
         *,
         customers:customers(first_name,last_name,phone,email),
-        vehicles:vehicles(year,make,model,license_plate),
-        work_order_technicians:work_order_technicians(technician_id)
+        vehicles:vehicles(year,make,model,license_plate)
       `
       )
       .order("created_at", { ascending: false })
@@ -145,15 +147,19 @@ export default function WorkOrdersView(): JSX.Element {
     if (error) {
       setErr(error.message);
       setRows([]);
+      setWoAssignments({});
       setLoading(false);
       return;
     }
 
+    const workOrders = data as Row[];
+
+    // 2) client-side filter by search
     const qlc = q.trim().toLowerCase();
     const filtered =
       qlc.length === 0
-        ? (data as Row[])
-        : (data as Row[]).filter((r) => {
+        ? workOrders
+        : workOrders.filter((r) => {
             const name = [r.customers?.first_name ?? "", r.customers?.last_name ?? ""]
               .filter(Boolean)
               .join(" ")
@@ -173,6 +179,31 @@ export default function WorkOrdersView(): JSX.Element {
           });
 
     setRows(filtered);
+
+    // 3) separate fetch for assignments, since the schema doesn't have a relationship
+    const ids = filtered.map((r) => r.id);
+    if (ids.length > 0) {
+      const { data: assigns, error: assignsErr } = await supabase
+        .from("work_order_technicians")
+        .select("work_order_id, technician_id")
+        .in("work_order_id", ids);
+
+      if (!assignsErr && assigns) {
+        const map: Record<string, string[]> = {};
+        assigns.forEach((a) => {
+          const woId = a.work_order_id as string;
+          const techId = a.technician_id as string;
+          if (!map[woId]) map[woId] = [];
+          map[woId].push(techId);
+        });
+        setWoAssignments(map);
+      } else {
+        setWoAssignments({});
+      }
+    } else {
+      setWoAssignments({});
+    }
+
     setLoading(false);
   }, [q, status, supabase]);
 
@@ -327,11 +358,9 @@ export default function WorkOrdersView(): JSX.Element {
             const href = `/work-orders/${r.custom_id ?? r.id}?mode=view`;
             const isAssigning = assigningFor === r.id;
 
-            // first assigned tech, if any
-            const firstTechId =
-              r.work_order_technicians && r.work_order_technicians.length > 0
-                ? r.work_order_technicians[0].technician_id
-                : null;
+            // find first assigned tech id for this WO (from separate fetch)
+            const assignedIds = woAssignments[r.id] ?? [];
+            const firstTechId = assignedIds.length > 0 ? assignedIds[0] : null;
             const firstTechName =
               firstTechId && techsById[firstTechId]
                 ? techsById[firstTechId].full_name ?? "Mechanic"
@@ -367,9 +396,9 @@ export default function WorkOrdersView(): JSX.Element {
                       : "—"}{" "}
                     •{" "}
                     {r.vehicles
-                      ? `${r.vehicles.year ?? ""} ${r.vehicles.make ?? ""} ${
-                          r.vehicles.model ?? ""
-                        } ${r.vehicles.license_plate ? `(${r.vehicles.license_plate})` : ""}`
+                      ? `${r.vehicles.year ?? ""} ${r.vehicles.make ?? ""} ${r.vehicles.model ?? ""} ${
+                          r.vehicles.license_plate ? `(${r.vehicles.license_plate})` : ""
+                        }`
                       : "—"}
                   </div>
                   {firstTechName ? (
