@@ -39,6 +39,9 @@ type AllocationRow =
   DB["public"]["Tables"]["work_order_part_allocations"]["Row"] & {
     parts?: { name: string | null } | null;
   };
+// new table you added
+type LineTechRow =
+  DB["public"]["Tables"]["work_order_line_technicians"]["Row"];
 
 const looksLikeUuid = (s: string) => s.includes("-") && s.length >= 36;
 
@@ -149,11 +152,15 @@ export default function WorkOrderIdClient(): JSX.Element {
     Array<Pick<Profile, "id" | "full_name" | "role">>
   >([]);
 
+  // NEW: per-line technicians (from work_order_line_technicians)
+  const [lineTechsByLine, setLineTechsByLine] = useState<Record<string, string[]>>({});
+
   /* ---------------------- AUTH + assignables ---------------------- */
   useEffect(() => {
     let mounted = true;
 
     const waitForSession = async () => {
+      // 1) ensure session
       let {
         data: { session },
       } = await supabase.auth.getSession();
@@ -167,6 +174,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         }
       }
 
+      // 2) who am I
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -176,6 +184,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       setCurrentUserId(uid);
       setUserId(uid);
 
+      // 3) my role
       if (uid) {
         const { data: prof } = await supabase
           .from("profiles")
@@ -185,6 +194,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         setCurrentUserRole(prof?.role ?? null);
       }
 
+      // 4) fetch assignable mechanics from server route (bypasses profiles RLS)
       try {
         const res = await fetch("/api/assignables");
         const json = await res.json();
@@ -192,7 +202,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           setAssignables(json.data);
         }
       } catch {
-        // ignore
+        // ignore, modal will try to self-load
       }
 
       if (!uid) setLoading(false);
@@ -225,6 +235,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       try {
         let woRow: WorkOrder | null = null;
 
+        // by UUID
         if (looksLikeUuid(routeId)) {
           const { data, error } = await supabase
             .from("work_orders")
@@ -234,6 +245,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           if (!error) woRow = (data as WorkOrder | null) ?? null;
         }
 
+        // by custom_id
         if (!woRow) {
           const eqRes = await supabase
             .from("work_orders")
@@ -282,6 +294,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           setVehicle(null);
           setCustomer(null);
           setAllocsByLine({});
+          setLineTechsByLine({});
           setLoading(false);
           return;
         }
@@ -327,23 +340,45 @@ export default function WorkOrderIdClient(): JSX.Element {
         if (custRes?.error) throw custRes.error;
         setCustomer((custRes?.data as Customer | null) ?? null);
 
+        // allocations
         if (lineRows.length) {
-          const { data: allocs } = await supabase
-            .from("work_order_part_allocations")
-            .select("*, parts(name)")
-            .in(
-              "work_order_line_id",
-              lineRows.map((l) => l.id)
-            );
+          const [allocsQuery, lineTechsQuery] = await Promise.all([
+            supabase
+              .from("work_order_part_allocations")
+              .select("*, parts(name)")
+              .in(
+                "work_order_line_id",
+                lineRows.map((l) => l.id)
+              ),
+            // NEW: fetch technicians per line
+            supabase
+              .from("work_order_line_technicians")
+              .select("work_order_line_id, technician_id")
+              .in(
+                "work_order_line_id",
+                lineRows.map((l) => l.id)
+              ),
+          ]);
+
           const byLine: Record<string, AllocationRow[]> = {};
-          (allocs ?? []).forEach((a) => {
+          (allocsQuery.data ?? []).forEach((a) => {
             const key = (a as AllocationRow).work_order_line_id;
             if (!byLine[key]) byLine[key] = [];
             byLine[key].push(a as AllocationRow);
           });
           setAllocsByLine(byLine);
+
+          const techMap: Record<string, string[]> = {};
+          (lineTechsQuery.data as LineTechRow[] | null)?.forEach((lt) => {
+            const lnId = lt.work_order_line_id;
+            const techId = lt.technician_id;
+            if (!techMap[lnId]) techMap[lnId] = [];
+            if (!techMap[lnId].includes(techId)) techMap[lnId].push(techId);
+          });
+          setLineTechsByLine(techMap);
         } else {
           setAllocsByLine({});
+          setLineTechsByLine({});
         }
       } catch (e: unknown) {
         const msg =
@@ -400,6 +435,16 @@ export default function WorkOrderIdClient(): JSX.Element {
         },
         () => fetchAll()
       )
+      // also listen for technicians table if you want live updates
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "work_order_line_technicians",
+        },
+        () => fetchAll()
+      )
       .subscribe();
 
     const local = () => fetchAll();
@@ -441,22 +486,6 @@ export default function WorkOrderIdClient(): JSX.Element {
     });
   }, [activeJobLines]);
 
-  // NEW: map mechanics by id so we can show names on lines
-  const assignablesById = useMemo(() => {
-    const map: Record<
-      string,
-      { id: string; full_name: string | null; role: string | null }
-    > = {};
-    assignables.forEach((a) => {
-      map[a.id] = {
-        id: a.id,
-        full_name: a.full_name,
-        role: a.role,
-      };
-    });
-    return map;
-  }, [assignables]);
-
   const createdAt = wo?.created_at ? new Date(wo.created_at) : null;
   const createdAtText =
     createdAt && !isNaN(createdAt.getTime())
@@ -464,6 +493,15 @@ export default function WorkOrderIdClient(): JSX.Element {
       : "—";
 
   const canAssign = currentUserRole ? ASSIGN_ROLES.has(currentUserRole) : false;
+
+  // quick lookup for tech names
+  const assignablesById = useMemo(() => {
+    const m: Record<string, { full_name: string | null; role: string | null }> = {};
+    assignables.forEach((a) => {
+      m[a.id] = { full_name: a.full_name, role: a.role };
+    });
+    return m;
+  }, [assignables]);
 
   /* ----------------------- Actions ----------------------- */
 
@@ -538,6 +576,7 @@ export default function WorkOrderIdClient(): JSX.Element {
     toast.success("Queued all pending lines for parts quoting");
   }, [approvalPending, supabase]);
 
+  // open inspection
   const openInspectionForLine = useCallback(
     async (ln: WorkOrderLine) => {
       if (!ln?.id) return;
@@ -600,6 +639,7 @@ export default function WorkOrderIdClient(): JSX.Element {
     [wo?.id, vehicle?.id, customer?.id]
   );
 
+  // parts drawer close / bulk
   useEffect(() => {
     if (!partsLineId) return;
 
@@ -890,6 +930,24 @@ export default function WorkOrderIdClient(): JSX.Element {
 
                     const partsForLine = allocsByLine[ln.id] ?? [];
 
+                    // line-level techs from the join table
+                    const lineTechIds = lineTechsByLine[ln.id] ?? [];
+
+                    // optional: include the single-column assignment first if present
+                    const primaryId =
+                      typeof ln.assigned_to === "string"
+                        ? (ln.assigned_to as string)
+                        : null;
+
+                    // build ordered, unique list: primary first, then others
+                    const orderedTechIds: string[] = [];
+                    if (primaryId) orderedTechIds.push(primaryId);
+                    lineTechIds.forEach((tid) => {
+                      if (!orderedTechIds.includes(tid)) {
+                        orderedTechIds.push(tid);
+                      }
+                    });
+
                     return (
                       <div
                         key={ln.id}
@@ -947,6 +1005,26 @@ export default function WorkOrderIdClient(): JSX.Element {
                               • Status:{" "}
                               {(ln.status ?? "awaiting").replaceAll("_", " ")}
                             </div>
+
+                            {/* NEW: show all techs for this line */}
+                            {orderedTechIds.length > 0 && (
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                {orderedTechIds.map((tid) => {
+                                  const info = assignablesById[tid];
+                                  const label = info?.full_name ?? "Mechanic";
+                                  return (
+                                    <span
+                                      key={tid}
+                                      className="inline-flex items-center gap-1 rounded bg-sky-900/30 px-2 py-0.5 text-[10px] text-sky-100"
+                                    >
+                                      <span className="h-1.5 w-1.5 rounded-full bg-sky-300" />
+                                      {label}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            )}
+
                             {(ln.complaint || ln.cause || ln.correction) && (
                               <div className="text-xs text-neutral-400 mt-1 flex flex-wrap items-center gap-2">
                                 {ln.complaint ? (
@@ -960,16 +1038,6 @@ export default function WorkOrderIdClient(): JSX.Element {
                                 ) : null}
                               </div>
                             )}
-
-                            {/* NEW: Assigned mechanic */}
-                            {ln.assigned_to && assignablesById[ln.assigned_to] ? (
-                              <div className="mt-1 inline-flex items-center gap-1 rounded bg-sky-900/30 px-2 py-0.5 text-[11px] text-sky-100">
-                                <span className="inline-block h-1.5 w-1.5 rounded-full bg-sky-300" />
-                                Assigned to{" "}
-                                {assignablesById[ln.assigned_to].full_name ??
-                                  "Mechanic"}
-                              </div>
-                            ) : null}
 
                             {/* Parts used */}
                             <div className="mt-2 rounded border border-neutral-800 bg-neutral-950 p-2">
@@ -985,6 +1053,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                                         new CustomEvent("wo:parts-used")
                                       )
                                     }
+                                    // renamed per your earlier request
                                     label="Add part"
                                   />
                                 </div>
@@ -1102,7 +1171,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         />
       )}
 
-      {/* Assign mechanic modal */}
+      {/* Assign mechanic modal — now with mechanics passed in */}
       {assignOpen && assignLineId && (
         <AssignTechModal
           isOpen={assignOpen}

@@ -4528,6 +4528,59 @@ export type Database = {
           },
         ]
       }
+      work_order_line_technicians: {
+        Row: {
+          assigned_at: string
+          assigned_by: string | null
+          id: string
+          technician_id: string
+          work_order_line_id: string
+        }
+        Insert: {
+          assigned_at?: string
+          assigned_by?: string | null
+          id?: string
+          technician_id: string
+          work_order_line_id: string
+        }
+        Update: {
+          assigned_at?: string
+          assigned_by?: string | null
+          id?: string
+          technician_id?: string
+          work_order_line_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_order_line_technicians_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_line_technicians_technician_id_fkey"
+            columns: ["technician_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_line_technicians_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_quote_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_line_technicians_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_lines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       work_order_lines: {
         Row: {
           approval_at: string | null
@@ -5377,6 +5430,10 @@ export type Database = {
           _declined_ids?: string[]
           _wo: string
         }
+        Returns: undefined
+      }
+      assign_unassigned_lines: {
+        Args: { tech_id: string; wo_id: string }
         Returns: undefined
       }
       can_manage_profile: {

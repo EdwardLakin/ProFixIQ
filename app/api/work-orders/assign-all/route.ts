@@ -11,6 +11,14 @@ type Body = {
   tech_id: string;
   // optional, defaults to true → only update rows where assigned_to is null
   only_unassigned?: boolean;
+  // optional: who is doing the assignment (profiles.id)
+  assigned_by?: string | null;
+};
+
+type LineTechInsert = {
+  work_order_line_id: string;
+  technician_id: string;
+  assigned_by?: string | null;
 };
 
 function mustEnv(name: string): string {
@@ -21,8 +29,12 @@ function mustEnv(name: string): string {
 
 export async function POST(req: Request) {
   try {
-    const { work_order_id, tech_id, only_unassigned = true } =
-      (await req.json()) as Partial<Body>;
+    const {
+      work_order_id,
+      tech_id,
+      only_unassigned = true,
+      assigned_by = null,
+    } = (await req.json()) as Partial<Body>;
 
     if (!work_order_id) {
       return NextResponse.json(
@@ -31,7 +43,10 @@ export async function POST(req: Request) {
       );
     }
     if (!tech_id) {
-      return NextResponse.json({ error: "tech_id is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "tech_id is required" },
+        { status: 400 }
+      );
     }
 
     const url = mustEnv("NEXT_PUBLIC_SUPABASE_URL");
@@ -68,6 +83,7 @@ export async function POST(req: Request) {
       query = query.is("assigned_to", null);
     }
 
+    // we SELECT ids so we know which lines were actually changed
     const { data: updatedRows, error: updErr } = await query.select("id");
 
     if (updErr) {
@@ -75,6 +91,30 @@ export async function POST(req: Request) {
         { error: `Update failed: ${updErr.message}` },
         { status: 400 }
       );
+    }
+
+    // NEW: also reflect this in work_order_line_technicians (many-to-many)
+    if (updatedRows && updatedRows.length > 0) {
+      const linkRows: LineTechInsert[] = updatedRows.map((row) => ({
+        work_order_line_id: row.id,
+        technician_id: tech_id,
+        assigned_by,
+      }));
+
+      const { error: linkErr } = await supabase
+        .from("work_order_line_technicians")
+        .upsert(linkRows, {
+          onConflict: "work_order_line_id,technician_id",
+        });
+
+      // not fatal — we still assigned the lines
+      if (linkErr) {
+        // you can log this to your logs if you want
+        console.warn(
+          "assign-all: failed to upsert work_order_line_technicians:",
+          linkErr.message
+        );
+      }
     }
 
     return NextResponse.json({
