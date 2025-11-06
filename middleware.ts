@@ -40,17 +40,23 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/sign-in") ||
     pathname.startsWith("/portal");
 
-  // Only the onboarding flag matters for routing decisions
+  // we will treat EITHER completed_onboarding = true OR shop_id IS NOT NULL
+  // as "this user is allowed into the app"
   let completed = false;
   if (session?.user) {
     try {
       const { data: profile } = await supabase
         .from("profiles")
-        .select("completed_onboarding")
+        .select("completed_onboarding, shop_id")
         .eq("id", session.user.id)
         .limit(1)
         .maybeSingle();
-      completed = !!profile?.completed_onboarding;
+
+      const hasShop = !!profile?.shop_id;
+      const didOnboarding = !!profile?.completed_onboarding;
+
+      // 👇 THIS is the key change
+      completed = didOnboarding || hasShop;
     } catch {
       completed = false;
     }
@@ -60,20 +66,35 @@ export async function middleware(req: NextRequest) {
   if (pathname === "/" && session?.user) {
     return withSupabaseCookies(
       res,
-      NextResponse.redirect(new URL(completed ? "/dashboard" : "/onboarding", req.url))
+      NextResponse.redirect(
+        new URL(completed ? "/dashboard" : "/onboarding", req.url),
+      ),
     );
   }
 
   // Public routes
   if (isPublic) {
-    if (session?.user && (pathname.startsWith("/sign-in") || pathname.startsWith("/signup"))) {
+    // if you're signed in and try to hit /sign-in, bump to dashboard/onboarding
+    if (
+      session?.user &&
+      (pathname.startsWith("/sign-in") || pathname.startsWith("/signup"))
+    ) {
       const redirectParam = req.nextUrl.searchParams.get("redirect");
       const to = redirectParam || (completed ? "/dashboard" : "/onboarding");
-      return withSupabaseCookies(res, NextResponse.redirect(new URL(to, req.url)));
+      return withSupabaseCookies(
+        res,
+        NextResponse.redirect(new URL(to, req.url)),
+      );
     }
+
+    // don't let already-complete users sit on /onboarding
     if (pathname.startsWith("/onboarding") && session?.user && completed) {
-      return withSupabaseCookies(res, NextResponse.redirect(new URL("/dashboard", req.url)));
+      return withSupabaseCookies(
+        res,
+        NextResponse.redirect(new URL("/dashboard", req.url)),
+      );
     }
+
     return res;
   }
 
@@ -84,9 +105,12 @@ export async function middleware(req: NextRequest) {
     return withSupabaseCookies(res, NextResponse.redirect(login));
   }
 
-  // Only force onboarding if we explicitly know it's not completed
+  // force onboarding ONLY if we know they are NOT completed and they have no shop_id
   if (completed === false && !pathname.startsWith("/onboarding")) {
-    return withSupabaseCookies(res, NextResponse.redirect(new URL("/onboarding", req.url)));
+    return withSupabaseCookies(
+      res,
+      NextResponse.redirect(new URL("/onboarding", req.url)),
+    );
   }
 
   return res;
