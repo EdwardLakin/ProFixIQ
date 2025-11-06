@@ -19,15 +19,16 @@ const STATUS_LABELS: Record<RollupStatus, string> = {
 };
 
 // slightly different accents so you can tell they’re clickable
+// Slightly different accents so you can tell they’re clickable
 const STATUS_STYLES: Record<RollupStatus, string> = {
   awaiting:
-    "border-slate-700 bg-neutral-900/80 hover:border-orange-400 data-[active=true]:border-orange-400 data-[active=true]:bg-orange-500/10",
+    "border-slate-700 bg-neutral-900/80 hover:border-orange-400 data-[active=true]:border-green-500 data-[active=true]:bg-green-500/10",
   in_progress:
-    "border-amber-700 bg-neutral-900/80 hover:border-orange-400 data-[active=true]:border-orange-400 data-[active=true]:bg-orange-500/10",
+    "border-amber-700 bg-neutral-900/80 hover:border-orange-400 data-[active=true]:border-green-500 data-[active=true]:bg-green-500/10",
   on_hold:
-    "border-purple-700 bg-neutral-900/80 hover:border-orange-400 data-[active=true]:border-orange-400 data-[active=true]:bg-orange-500/10",
+    "border-purple-700 bg-neutral-900/80 hover:border-orange-400 data-[active=true]:border-green-500 data-[active=true]:bg-green-500/10",
   completed:
-    "border-emerald-700 bg-neutral-900/80 hover:border-orange-400 data-[active=true]:border-orange-400 data-[active=true]:bg-orange-500/10",
+    "border-emerald-700 bg-neutral-900/80 hover:border-orange-400 data-[active=true]:border-green-500 data-[active=true]:bg-green-500/10",
 };
 
 function rollupStatus(lines: Line[]): RollupStatus {
