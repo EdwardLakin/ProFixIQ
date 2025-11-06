@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { toast } from "sonner";
+
 import { Input } from "@shared/components/ui/input";
 import { Button } from "@shared/components/ui/Button";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-
-import { toast } from "sonner";
 import type { Database } from "@shared/types/types/supabase";
 import OwnerPinModal from "@shared/components/OwnerPinModal";
 import OwnerPinBadge from "@shared/components/OwnerPinBadge";
@@ -13,21 +13,25 @@ import ShopPublicProfileSection from "@/features/shops/components/ShopPublicProf
 import ReviewsList from "@shared/components/reviews/ReviewsList";
 
 type HourRow = { weekday: number; open_time: string; close_time: string };
-type TimeOffRow = { id: string; starts_at: string; ends_at: string; reason: string | null };
-
-  const supabase = createClientComponentClient<Database>();
-
+type TimeOffRow = {
+  id: string;
+  starts_at: string;
+  ends_at: string;
+  reason: string | null;
+};
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export default function OwnerSettingsPage() {
+  const supabase = createClientComponentClient<Database>();
+
   const [loading, setLoading] = useState(true);
   const [shopId, setShopId] = useState<string | null>(null);
 
   // PIN modal + timer
   const [pinModalOpen, setPinModalOpen] = useState(false);
-  const [pinExpiresAt, setPinExpiresAt] = useState<string | undefined>(undefined);
-  const [now, setNow] = useState<number>(() => Date.now()); // heartbeat for expiry re-check
+  const [pinExpiresAt, setPinExpiresAt] = useState<string | undefined>();
+  const [now, setNow] = useState<number>(() => Date.now());
 
   // Shop fields
   const [shopName, setShopName] = useState("");
@@ -39,32 +43,40 @@ export default function OwnerSettingsPage() {
   const [email, setEmail] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
 
+  // Money / defaults
   const [laborRate, setLaborRate] = useState("");
   const [suppliesPercent, setSuppliesPercent] = useState("");
   const [diagnosticFee, setDiagnosticFee] = useState("");
   const [taxRate, setTaxRate] = useState("");
 
+  // Workflow flags
   const [useAi, setUseAi] = useState(false);
   const [requireCauseCorrection, setRequireCauseCorrection] = useState(false);
   const [requireAuthorization, setRequireAuthorization] = useState(false);
 
+  // Communication
   const [invoiceTerms, setInvoiceTerms] = useState("");
   const [invoiceFooter, setInvoiceFooter] = useState("");
   const [emailOnComplete, setEmailOnComplete] = useState(false);
 
+  // Automation
   const [autoGeneratePdf, setAutoGeneratePdf] = useState(false);
   const [autoSendQuoteEmail, setAutoSendQuoteEmail] = useState(false);
 
-  // Hours + Time off
+  // Hours + time off
   const [hours, setHours] = useState<HourRow[]>(
-    Array.from({ length: 7 }, (_, i) => ({ weekday: i, open_time: "08:00", close_time: "17:00" })),
+    Array.from({ length: 7 }, (_, i) => ({
+      weekday: i,
+      open_time: "08:00",
+      close_time: "17:00",
+    })),
   );
   const [timeOff, setTimeOff] = useState<TimeOffRow[]>([]);
   const [newOffStart, setNewOffStart] = useState("");
   const [newOffEnd, setNewOffEnd] = useState("");
   const [newOffReason, setNewOffReason] = useState("");
 
-  // Heartbeat so the unlock state re-evaluates as time passes
+  // heartbeat to re-evaluate unlock
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
@@ -75,6 +87,7 @@ export default function OwnerSettingsPage() {
     return new Date(pinExpiresAt).getTime() > now;
   }, [pinExpiresAt, now]);
 
+  // initial load
   useEffect(() => {
     const fetchSettings = async () => {
       const {
@@ -85,11 +98,12 @@ export default function OwnerSettingsPage() {
         return;
       }
 
+      // get profile for shop id
       const { data: profile, error: profErr } = await supabase
         .from("profiles")
         .select("shop_id")
         .eq("id", user.id)
-        .single();
+        .maybeSingle();
 
       if (profErr) {
         toast.error(profErr.message);
@@ -98,18 +112,20 @@ export default function OwnerSettingsPage() {
       }
 
       if (!profile?.shop_id) {
+        // owner with no shop yet
         setLoading(false);
         return;
       }
 
-      setShopId(profile.shop_id);
+      const sid = profile.shop_id;
+      setShopId(sid);
 
-      // Load shop core settings
+      // core shop
       const { data: shop, error } = await supabase
         .from("shops")
         .select("*")
-        .eq("id", profile.shop_id)
-        .single();
+        .eq("id", sid)
+        .maybeSingle();
 
       if (error) {
         toast.error(error.message);
@@ -142,47 +158,54 @@ export default function OwnerSettingsPage() {
         setAutoSendQuoteEmail(!!shop.auto_send_quote_email);
       }
 
-      // Load hours
+      // hours
       try {
-        const res = await fetch(`/api/settings/hours?shopId=${profile.shop_id}`, { cache: "no-store" });
+        const res = await fetch(`/api/settings/hours?shopId=${sid}`, {
+          cache: "no-store",
+        });
         if (res.ok) {
           const j = await res.json();
           if (Array.isArray(j?.hours) && j.hours.length) {
-            // ensure all 7 days appear in order; fallback defaults for missing ones
             const byDay = new Map<number, HourRow>();
             j.hours.forEach((h: HourRow) => byDay.set(h.weekday, h));
             const normalized = Array.from({ length: 7 }, (_, i) =>
-              byDay.get(i) || { weekday: i, open_time: "08:00", close_time: "17:00" },
+              byDay.get(i) || {
+                weekday: i,
+                open_time: "08:00",
+                close_time: "17:00",
+              },
             );
             setHours(normalized);
           }
         }
-      } catch (e) {
-        // non-fatal
+      } catch {
+        /* ignore */
       }
 
-      // Load time-off
+      // time off
       try {
-        const res = await fetch(`/api/settings/time-off?shopId=${profile.shop_id}`, { cache: "no-store" });
+        const res = await fetch(`/api/settings/time-off?shopId=${sid}`, {
+          cache: "no-store",
+        });
         if (res.ok) {
           const j = await res.json();
           if (Array.isArray(j?.items)) setTimeOff(j.items);
         }
-      } catch (e) {
-        // non-fatal
+      } catch {
+        /* ignore */
       }
 
       setLoading(false);
     };
 
-    fetchSettings();
-  }, []);
+    void fetchSettings();
+  }, [supabase]);
 
-  // Save shop settings via secure API (server enforces PIN cookie + role + shop scope)
+  // save core shop
   const handleSave = async () => {
     if (!shopId) return;
     if (!isUnlocked) {
-      toast.warning("Unlock settings with your Owner PIN first.");
+      toast.warning("Unlock with Owner PIN first.");
       setPinModalOpen(true);
       return;
     }
@@ -245,19 +268,19 @@ export default function OwnerSettingsPage() {
     } else {
       const { data } = supabase.storage.from("logos").getPublicUrl(filePath);
       setLogoUrl(data.publicUrl);
-      toast.success("Logo uploaded!");
+      toast.success("Logo uploaded.");
     }
   };
 
   const handleGenerateLogo = () => {
-    toast.info("AI Logo generation coming soon...");
+    toast.info("AI Logo generation coming soon…");
   };
 
-  // Save weekly hours
+  // save hours
   const saveHours = async () => {
     if (!shopId) return;
     if (!isUnlocked) {
-      toast.warning("Unlock settings with your Owner PIN first.");
+      toast.warning("Unlock with Owner PIN first.");
       setPinModalOpen(true);
       return;
     }
@@ -275,16 +298,16 @@ export default function OwnerSettingsPage() {
     toast.success("Hours updated.");
   };
 
-  // Add time off
+  // add time off
   const addTimeOff = async () => {
     if (!shopId) return;
     if (!isUnlocked) {
-      toast.warning("Unlock settings with your Owner PIN first.");
+      toast.warning("Unlock with Owner PIN first.");
       setPinModalOpen(true);
       return;
     }
     if (!newOffStart || !newOffEnd) {
-      toast.warning("Select a start and end time.");
+      toast.warning("Select start and end time.");
       return;
     }
     const res = await fetch("/api/settings/time-off", {
@@ -292,7 +315,11 @@ export default function OwnerSettingsPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         shopId,
-        range: { starts_at: newOffStart, ends_at: newOffEnd, reason: newOffReason || null },
+        range: {
+          starts_at: newOffStart,
+          ends_at: newOffEnd,
+          reason: newOffReason || null,
+        },
       }),
     });
     const j = await res.json().catch(() => ({}));
@@ -305,19 +332,23 @@ export default function OwnerSettingsPage() {
     setNewOffEnd("");
     setNewOffReason("");
     try {
-      const r = await fetch(`/api/settings/time-off?shopId=${shopId}`, { cache: "no-store" });
+      const r = await fetch(`/api/settings/time-off?shopId=${shopId}`, {
+        cache: "no-store",
+      });
       if (r.ok) {
         const jj = await r.json();
         setTimeOff(jj.items || []);
       }
-    } catch {}
+    } catch {
+      /* ignore */
+    }
     toast.success("Time off added.");
   };
 
   const deleteTimeOff = async (id: string) => {
     if (!shopId) return;
     if (!isUnlocked) {
-      toast.warning("Unlock settings with your Owner PIN first.");
+      toast.warning("Unlock with Owner PIN first.");
       setPinModalOpen(true);
       return;
     }
@@ -335,284 +366,406 @@ export default function OwnerSettingsPage() {
     toast.success("Removed.");
   };
 
-  if (loading) return <div className="p-4">Loading shop settings...</div>;
+  if (loading) {
+    return (
+      <div className="p-6 text-white">Loading shop settings…</div>
+    );
+  }
 
   return (
-    <div className="max-w-5xl mx-auto p-6 space-y-10 text-white">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-orange-400">Shop Settings</h1>
-
-        {/* Unlock controls */}
+    <div className="mx-auto flex max-w-6xl flex-col gap-6 p-6 text-white">
+      {/* top header */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-neutral-800 bg-neutral-950/70 px-4 py-3">
+        <div>
+          <h1 className="text-2xl font-blackops text-orange-400">
+            Shop Settings
+          </h1>
+          <p className="text-xs text-neutral-400">
+            Manage your shop profile, billing defaults, and scheduling.
+          </p>
+        </div>
         <div className="flex items-center gap-2">
           <OwnerPinBadge expiresAt={pinExpiresAt} />
           <Button onClick={() => setPinModalOpen(true)}>
             {isUnlocked ? "Re-unlock" : "Unlock"}
           </Button>
+          <Button onClick={handleSave} disabled={!isUnlocked}>
+            {isUnlocked ? "Save All" : "Unlock to Save"}
+          </Button>
         </div>
       </div>
 
-      {/* Shop Info */}
-      <section className="space-y-2 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-        <h2 className="text-xl font-semibold">Shop Info</h2>
-        <Input value={shopName} onChange={(e) => setShopName(e.target.value)} placeholder="Shop Name" />
-        <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Address" />
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-          <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="City" />
-          <Input value={province} onChange={(e) => setProvince(e.target.value)} placeholder="Province/State" />
-          <Input value={postalCode} onChange={(e) => setPostalCode(e.target.value)} placeholder="Postal Code" />
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-          <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone Number" />
-          <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" />
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-          <Input value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} placeholder="Logo URL" />
-          <Input type="file" accept="image/*" onChange={handleLogoUpload} />
-        </div>
-        <Button onClick={handleGenerateLogo} variant="secondary">
-          Generate Logo with AI
-        </Button>
-        {logoUrl && (
-          <img src={logoUrl} alt="Logo" className="w-32 h-32 object-contain border mt-2 bg-white p-1" />
-        )}
-      </section>
+      {/* main layout: left (settings) + right (extras) */}
+      <div className="flex flex-col gap-6 lg:flex-row">
+        {/* LEFT COLUMN */}
+        <div className="flex-1 space-y-6">
+          {/* Shop info card */}
+          <section className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+            <h2 className="text-sm font-semibold text-neutral-50">
+              Shop info
+            </h2>
+            <div className="space-y-2">
+              <Input
+                value={shopName}
+                onChange={(e) => setShopName(e.target.value)}
+                placeholder="Shop name"
+              />
+              <Input
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="Street address"
+              />
+              <div className="grid gap-2 md:grid-cols-3">
+                <Input
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    placeholder="City"
+                  />
+                <Input
+                    value={province}
+                    onChange={(e) => setProvince(e.target.value)}
+                    placeholder="Province / State"
+                  />
+                <Input
+                    value={postalCode}
+                    onChange={(e) => setPostalCode(e.target.value)}
+                    placeholder="Postal code"
+                  />
+              </div>
+              <div className="grid gap-2 md:grid-cols-2">
+                <Input
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="Phone number"
+                />
+                <Input
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Email"
+                />
+              </div>
+              <div className="grid gap-2 md:grid-cols-2">
+                <Input
+                  value={logoUrl}
+                  onChange={(e) => setLogoUrl(e.target.value)}
+                  placeholder="Logo URL"
+                />
+                <Input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoUpload}
+                />
+              </div>
+              <Button
+                onClick={handleGenerateLogo}
+                variant="secondary"
+                className="mt-1"
+              >
+                Generate Logo with AI
+              </Button>
+              {logoUrl ? (
+                <img
+                  src={logoUrl}
+                  alt="Logo"
+                  className="mt-2 h-20 w-32 rounded bg-white p-1 object-contain"
+                />
+              ) : null}
+            </div>
+          </section>
 
-        {shopId ? (
-          <ShopPublicProfileSection shopId={shopId} isUnlocked={isUnlocked} />
+          {/* Billing + workflow side-by-side on desktop */}
+          <div className="grid gap-6 md:grid-cols-2">
+            <section className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+              <h2 className="text-sm font-semibold text-neutral-50">
+                Billing defaults
+              </h2>
+              <div className="grid gap-2 md:grid-cols-2">
+                <Input
+                  value={laborRate}
+                  onChange={(e) => setLaborRate(e.target.value)}
+                  placeholder="Labor rate ($/hr)"
+                />
+                <Input
+                  value={suppliesPercent}
+                  onChange={(e) => setSuppliesPercent(e.target.value)}
+                  placeholder="Shop supplies (%)"
+                />
+                <Input
+                  value={diagnosticFee}
+                  onChange={(e) => setDiagnosticFee(e.target.value)}
+                  placeholder="Diagnostic fee ($)"
+                />
+                <Input
+                  value={taxRate}
+                  onChange={(e) => setTaxRate(e.target.value)}
+                  placeholder="Tax rate (%)"
+                />
+              </div>
+            </section>
+
+            <section className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+              <h2 className="text-sm font-semibold text-neutral-50">
+                Workflow
+              </h2>
+              <label className="flex items-center gap-2 text-sm text-neutral-200">
+                <input
+                  type="checkbox"
+                  checked={useAi}
+                  onChange={(e) => setUseAi(e.target.checked)}
+                />
+                Use AI features
+              </label>
+              <label className="flex items-center gap-2 text-sm text-neutral-200">
+                <input
+                  type="checkbox"
+                  checked={requireCauseCorrection}
+                  onChange={(e) =>
+                    setRequireCauseCorrection(e.target.checked)
+                  }
+                />
+                Require cause / correction on lines
+              </label>
+              <label className="flex items-center gap-2 text-sm text-neutral-200">
+                <input
+                  type="checkbox"
+                  checked={requireAuthorization}
+                  onChange={(e) => setRequireAuthorization(e.target.checked)}
+                />
+                Require customer authorization
+              </label>
+            </section>
+          </div>
+
+          {/* Communication */}
+          <section className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+            <h2 className="text-sm font-semibold text-neutral-50">
+              Communication & branding
+            </h2>
+            <Input
+              value={invoiceTerms}
+              onChange={(e) => setInvoiceTerms(e.target.value)}
+              placeholder="Invoice terms"
+            />
+            <Input
+              value={invoiceFooter}
+              onChange={(e) => setInvoiceFooter(e.target.value)}
+              placeholder="Invoice footer note"
+            />
+            <label className="flex items-center gap-2 text-sm text-neutral-200">
+              <input
+                type="checkbox"
+                checked={emailOnComplete}
+                onChange={(e) => setEmailOnComplete(e.target.checked)}
+              />
+              Email customer when job is complete
+            </label>
+          </section>
+
+          {/* Automation */}
+          <section className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+            <h2 className="text-sm font-semibold text-neutral-50">
+              Automation
+            </h2>
+            <label className="flex items-center gap-2 text-sm text-neutral-200">
+              <input
+                type="checkbox"
+                checked={autoGeneratePdf}
+                onChange={(e) => setAutoGeneratePdf(e.target.checked)}
+              />
+              Auto-generate quote PDF
+            </label>
+            <label className="flex items-center gap-2 text-sm text-neutral-200">
+              <input
+                type="checkbox"
+                checked={autoSendQuoteEmail}
+                onChange={(e) => setAutoSendQuoteEmail(e.target.checked)}
+              />
+              Auto-send quote email
+            </label>
+          </section>
+
+          {/* Hours */}
+          <section className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold text-neutral-50">Hours</h2>
+              <Button onClick={saveHours} disabled={!isUnlocked}>
+                Save hours
+              </Button>
+            </div>
+
+            <div className="grid gap-2 md:grid-cols-7">
+              {hours.map((row, idx) => (
+                <div
+                  key={row.weekday}
+                  className="rounded border border-neutral-800 bg-neutral-900 p-2 text-xs"
+                >
+                  <div className="mb-1 text-center text-[11px] font-semibold text-orange-300">
+                    {WEEKDAYS[row.weekday]}
+                  </div>
+                  <label className="mb-1 block text-[10px] text-neutral-400">
+                    Open
+                  </label>
+                  <input
+                    type="time"
+                    className="mb-2 w-full rounded bg-neutral-950 px-2 py-1 text-xs"
+                    value={row.open_time}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setHours((prev) => {
+                        const copy = [...prev];
+                        copy[idx] = { ...copy[idx], open_time: v };
+                        return copy;
+                      });
+                    }}
+                    disabled={!isUnlocked}
+                  />
+                  <label className="mb-1 block text-[10px] text-neutral-400">
+                    Close
+                  </label>
+                  <input
+                    type="time"
+                    className="w-full rounded bg-neutral-950 px-2 py-1 text-xs"
+                    value={row.close_time}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setHours((prev) => {
+                        const copy = [...prev];
+                        copy[idx] = { ...copy[idx], close_time: v };
+                        return copy;
+                      });
+                    }}
+                    disabled={!isUnlocked}
+                  />
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* Time off */}
+          <section className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+            <h2 className="text-sm font-semibold text-neutral-50">
+              Time off / blackouts
+            </h2>
+
+            <div className="grid gap-2 md:grid-cols-4">
+              <input
+                type="datetime-local"
+                className="rounded bg-neutral-900 px-3 py-2 text-sm"
+                value={newOffStart}
+                onChange={(e) => setNewOffStart(e.target.value)}
+                disabled={!isUnlocked}
+              />
+              <input
+                type="datetime-local"
+                className="rounded bg-neutral-900 px-3 py-2 text-sm"
+                value={newOffEnd}
+                onChange={(e) => setNewOffEnd(e.target.value)}
+                disabled={!isUnlocked}
+              />
+              <Input
+                placeholder="Reason (optional)"
+                value={newOffReason}
+                onChange={(e) => setNewOffReason(e.target.value)}
+                disabled={!isUnlocked}
+              />
+              <Button onClick={addTimeOff} disabled={!isUnlocked}>
+                Add
+              </Button>
+            </div>
+
+            {timeOff.length === 0 ? (
+              <p className="text-xs text-neutral-500">
+                No time-off entries.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {timeOff.map((t) => {
+                  const start = new Date(t.starts_at);
+                  const end = new Date(t.ends_at);
+                  return (
+                    <li
+                      key={t.id}
+                      className="flex items-center justify-between rounded border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm"
+                    >
+                      <div>
+                        <div className="text-neutral-100">
+                          {start.toLocaleString()} → {end.toLocaleString()}
+                        </div>
+                        {t.reason ? (
+                          <div className="text-xs text-neutral-400">
+                            Reason: {t.reason}
+                          </div>
+                        ) : null}
+                      </div>
+                      <Button
+                        variant="secondary"
+                        onClick={() => void deleteTimeOff(t.id)}
+                        disabled={!isUnlocked}
+                      >
+                        Remove
+                      </Button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        </div>
+
+        {/* RIGHT COLUMN (aux: public profile, invoice preview, reviews) */}
+        <div className="w-full space-y-6 lg:w-80">
+          {shopId ? (
+            <ShopPublicProfileSection
+              shopId={shopId}
+              isUnlocked={isUnlocked}
+            />
           ) : null}
 
-      {/* Billing Defaults */}
-      <section className="space-y-2 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-        <h2 className="text-xl font-semibold">Billing Defaults</h2>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-          <Input value={laborRate} onChange={(e) => setLaborRate(e.target.value)} placeholder="Labor Rate ($/hr)" />
-          <Input value={suppliesPercent} onChange={(e) => setSuppliesPercent(e.target.value)} placeholder="Shop Supplies (%)" />
-          <Input value={diagnosticFee} onChange={(e) => setDiagnosticFee(e.target.value)} placeholder="Diagnostic Fee ($)" />
-          <Input value={taxRate} onChange={(e) => setTaxRate(e.target.value)} placeholder="Tax Rate (%)" />
-        </div>
-      </section>
-
-      {/* Workflow Settings */}
-      <section className="space-y-2 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-        <h2 className="text-xl font-semibold">Workflow Settings</h2>
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={useAi} onChange={(e) => setUseAi(e.target.checked)} />
-          Use AI features
-        </label>
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={requireCauseCorrection}
-            onChange={(e) => setRequireCauseCorrection(e.target.checked)}
-          />
-          Require cause/correction
-        </label>
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={requireAuthorization}
-            onChange={(e) => setRequireAuthorization(e.target.checked)}
-          />
-          Require customer authorization
-        </label>
-      </section>
-
-          {/* Public Reviews (view + owner reply) */}
-      {shopId ? (
-        <section className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-          <h2 className="text-xl font-semibold">Customer Reviews</h2>
-           <p className="text-sm text-neutral-400">
-          Recent reviews for your shop. Owners/admins/managers can reply directly below each review.
-          </p>
-           <ReviewsList shopId={shopId} />
-          </section>
-        ) : null}
-
-      {/* Communication & Branding */}
-      <section className="space-y-2 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-        <h2 className="text-xl font-semibold">Communication & Branding</h2>
-        <Input value={invoiceTerms} onChange={(e) => setInvoiceTerms(e.target.value)} placeholder="Invoice Terms" />
-        <Input value={invoiceFooter} onChange={(e) => setInvoiceFooter(e.target.value)} placeholder="Invoice Footer Note" />
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={emailOnComplete}
-            onChange={(e) => setEmailOnComplete(e.target.checked)}
-          />
-          Email customer when job is complete
-        </label>
-      </section>
-
-      {/* Live Invoice Preview */}
-      <section className="space-y-2 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-        <h2 className="text-xl font-semibold text-white">Live Invoice Preview</h2>
-        <div className="bg-white text-black p-4 rounded shadow space-y-2">
-          {logoUrl && <img src={logoUrl} alt="Logo" className="h-16" />}
-          <div className="text-sm text-gray-700">{shopName}</div>
-          <div className="text-xs">
-            {address}, {city}, {province}, {postalCode}
-          </div>
-          <div className="text-xs">
-            {phone} • {email}
-          </div>
-          <hr />
-          <div className="text-sm font-bold">Invoice Terms:</div>
-          <p className="text-xs">{invoiceTerms}</p>
-          <div className="text-sm font-bold">Footer:</div>
-          <p className="text-xs">{invoiceFooter}</p>
-        </div>
-      </section>
-
-      {/* Hours */}
-      <section className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold">Hours</h2>
-          <Button onClick={saveHours} disabled={!isUnlocked}>
-            Save Hours
-          </Button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-7 gap-2 text-sm text-neutral-300">
-          {hours.map((row, idx) => (
-            <div key={row.weekday} className="rounded border border-neutral-800 p-2">
-              <div className="font-semibold text-orange-400 mb-2 text-center">
-                {WEEKDAYS[row.weekday]}
+          {/* invoice preview */}
+          <section className="space-y-2 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+            <h2 className="text-sm font-semibold text-neutral-50">
+              Invoice preview
+            </h2>
+            <div className="space-y-2 rounded bg-white p-3 text-xs text-black shadow">
+              {logoUrl ? (
+                <img src={logoUrl} alt="Logo" className="h-12 object-contain" />
+              ) : null}
+              <div className="font-semibold">{shopName}</div>
+              <div>
+                {address}, {city}, {province} {postalCode}
               </div>
-              <div className="space-y-1">
-                <label className="block text-xs text-neutral-400">Open</label>
-                <input
-                  type="time"
-                  className="w-full rounded bg-neutral-900 border border-neutral-700 px-2 py-1"
-                  value={row.open_time}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setHours((prev) => {
-                      const copy = [...prev];
-                      copy[idx] = { ...copy[idx], open_time: v };
-                      return copy;
-                    });
-                  }}
-                  disabled={!isUnlocked}
-                />
-                <label className="block text-xs text-neutral-400">Close</label>
-                <input
-                  type="time"
-                  className="w-full rounded bg-neutral-900 border border-neutral-700 px-2 py-1"
-                  value={row.close_time}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setHours((prev) => {
-                      const copy = [...prev];
-                      copy[idx] = { ...copy[idx], close_time: v };
-                      return copy;
-                    });
-                  }}
-                  disabled={!isUnlocked}
-                />
+              <div>
+                {phone} • {email}
               </div>
+              <hr className="my-2" />
+              <div className="font-semibold text-black">Invoice terms</div>
+              <p>{invoiceTerms || "—"}</p>
+              <div className="font-semibold text-black">Footer</div>
+              <p>{invoiceFooter || "—"}</p>
             </div>
-          ))}
+          </section>
+
+          {shopId ? (
+            <section className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+              <h2 className="text-sm font-semibold text-neutral-50">
+                Customer reviews
+              </h2>
+              <p className="text-[11px] text-neutral-400">
+                Recent reviews for your shop. Owners/admins/managers can reply
+                directly.
+              </p>
+              <ReviewsList shopId={shopId} />
+            </section>
+          ) : null}
         </div>
-      </section>
-
-      {/* Time Off */}
-      <section className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold">Time Off / Blackouts</h2>
-        </div>
-
-        {/* Add new */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-          <input
-            type="datetime-local"
-            className="rounded bg-neutral-900 border border-neutral-700 px-3 py-2"
-            value={newOffStart}
-            onChange={(e) => setNewOffStart(e.target.value)}
-            disabled={!isUnlocked}
-          />
-          <input
-            type="datetime-local"
-            className="rounded bg-neutral-900 border border-neutral-700 px-3 py-2"
-            value={newOffEnd}
-            onChange={(e) => setNewOffEnd(e.target.value)}
-            disabled={!isUnlocked}
-          />
-          <Input
-            placeholder="Reason (optional)"
-            value={newOffReason}
-            onChange={(e) => setNewOffReason(e.target.value)}
-            disabled={!isUnlocked}
-          />
-          <Button onClick={addTimeOff} disabled={!isUnlocked}>
-            Add
-          </Button>
-        </div>
-
-        {/* List */}
-        {timeOff.length === 0 ? (
-          <p className="text-sm text-neutral-400">No time-off entries.</p>
-        ) : (
-          <ul className="space-y-2">
-            {timeOff.map((t) => {
-              const start = new Date(t.starts_at);
-              const end = new Date(t.ends_at);
-              return (
-                <li
-                  key={t.id}
-                  className="flex items-center justify-between rounded border border-neutral-800 bg-neutral-900 px-3 py-2"
-                >
-                  <div className="text-sm">
-                    <div className="text-white">
-                      {start.toLocaleString()} → {end.toLocaleString()}
-                    </div>
-                    {t.reason && (
-                      <div className="text-xs text-neutral-400">Reason: {t.reason}</div>
-                    )}
-                  </div>
-                  <Button variant="secondary" onClick={() => deleteTimeOff(t.id)} disabled={!isUnlocked}>
-                    Remove
-                  </Button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
-
-      {/* Automation */}
-      <section className="space-y-2 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-        <h2 className="text-xl font-semibold">Automation</h2>
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={autoGeneratePdf}
-            onChange={(e) => setAutoGeneratePdf(e.target.checked)}
-          />
-          Auto-generate quote PDF
-        </label>
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={autoSendQuoteEmail}
-            onChange={(e) => setAutoSendQuoteEmail(e.target.checked)}
-          />
-          Auto-send quote email
-        </label>
-      </section>
-
-      <div className="flex items-center justify-end">
-        <Button onClick={handleSave} className="mt-2" disabled={!isUnlocked}>
-          {isUnlocked ? "Save Settings" : "Unlock to Save"}
-        </Button>
       </div>
 
-      <OwnerPinModal
+     <OwnerPinModal
   shopId={shopId}
   open={pinModalOpen}
   onClose={() => setPinModalOpen(false)}
   onVerified={(iso: string | undefined) => setPinExpiresAt(iso)}
-/>
-      )
+/> 
     </div>
   );
 }
