@@ -21,8 +21,8 @@ export default function AuthPage() {
 
   const origin = useMemo(() => {
     if (typeof window !== "undefined") return window.location.origin;
-    if (process.env.NEXT_PUBLIC_SITE_URL)
-      return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "");
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL)
+      return process.env.NEXT_PUBLIC_SUPABASE_URL.replace(/\/$/, "");
     if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
     return "http://localhost:3000";
   }, []);
@@ -33,7 +33,7 @@ export default function AuthPage() {
     return `${origin}/auth/callback${tail}`;
   }, [origin, sp]);
 
-  // ⬇️ on load: if already signed in, send to the right place
+  // on load: if already signed in, send to right place
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getSession();
@@ -47,8 +47,6 @@ export default function AuthPage() {
         .maybeSingle();
 
       const redirect = sp.get("redirect");
-
-      // 👇 Option 1 logic
       const hasShop = !!profile?.shop_id;
       const isOnboarded = !!profile?.completed_onboarding || hasShop;
 
@@ -84,9 +82,10 @@ export default function AuthPage() {
     const raw = identifier.trim();
     let emailToUse = raw;
 
-    // allow username sign-in for admin-created users
+    // IMPORTANT: match the domain used in /api/admin/create-user
+    // create-user used: `${username}@local.profix-internal`
     if (!raw.includes("@")) {
-      emailToUse = `${raw.toLowerCase()}@noemail.local`;
+      emailToUse = `${raw.toLowerCase()}@local.profix-internal`;
     }
 
     const { error: signInErr } = await supabase.auth.signInWithPassword({
@@ -100,7 +99,6 @@ export default function AuthPage() {
       return;
     }
 
-    // now route based on profile
     const { data: u } = await supabase.auth.getUser();
     if (!u.user) {
       setError("Signed in, but no session is visible yet. Try again.");
@@ -115,8 +113,6 @@ export default function AuthPage() {
       .maybeSingle();
 
     const redirect = sp.get("redirect");
-
-    // 👇 Option 1 logic again
     const hasShop = !!profile?.shop_id;
     const isOnboarded = !!profile?.completed_onboarding || hasShop;
 
@@ -148,9 +144,7 @@ export default function AuthPage() {
     }
 
     if (!data.session) {
-      setNotice(
-        "Check your inbox to confirm your email. We’ll continue after that."
-      );
+      setNotice("Check your inbox to confirm your email. We’ll continue after that.");
       setLoading(false);
       return;
     }
@@ -171,9 +165,7 @@ export default function AuthPage() {
         <div className="flex justify-center gap-4 text-sm">
           <button
             className={`px-3 py-1 rounded ${
-              isSignIn
-                ? "bg-orange-500 text-black"
-                : "bg-neutral-800 text-neutral-300"
+              isSignIn ? "bg-orange-500 text-black" : "bg-neutral-800 text-neutral-300"
             }`}
             onClick={() => setMode("sign-in")}
             disabled={loading}
@@ -182,9 +174,7 @@ export default function AuthPage() {
           </button>
           <button
             className={`px-3 py-1 rounded ${
-              !isSignIn
-                ? "bg-orange-500 text-black"
-                : "bg-neutral-800 text-neutral-300"
+              !isSignIn ? "bg-orange-500 text-black" : "bg-neutral-800 text-neutral-300"
             }`}
             onClick={() => setMode("sign-up")}
             disabled={loading}
@@ -193,10 +183,7 @@ export default function AuthPage() {
           </button>
         </div>
 
-        <form
-          onSubmit={isSignIn ? handleSignIn : handleSignUp}
-          className="space-y-4"
-        >
+        <form onSubmit={isSignIn ? handleSignIn : handleSignUp} className="space-y-4">
           <input
             type={isSignIn ? "text" : "email"}
             placeholder={isSignIn ? "Email or Username" : "Email"}
@@ -218,9 +205,7 @@ export default function AuthPage() {
           />
 
           {error && <p className="text-red-500 text-sm text-center">{error}</p>}
-          {notice && (
-            <p className="text-green-400 text-sm text-center">{notice}</p>
-          )}
+          {notice && <p className="text-green-400 text-sm text-center">{notice}</p>}
 
           <button
             type="submit"
