@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import ModalShell from "@/features/shared/components/ModalShell";
+import { toast } from "sonner";
 
 interface Assignable {
   id: string;
@@ -31,7 +32,6 @@ export default function AssignTechModal({
 }: Props) {
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const [users, setUsers] = useState<Assignable[]>(() => {
-    // prefer the prop the page is actually sending
     return mechanics ?? initialMechanics ?? [];
   });
   const [techId, setTechId] = useState<string>("");
@@ -39,14 +39,12 @@ export default function AssignTechModal({
   useEffect(() => {
     if (!isOpen) return;
 
-    // highest priority: whatever the parent gave us
     const pref = mechanics ?? initialMechanics;
     if (pref && pref.length) {
       setUsers(pref);
       return;
     }
 
-    // otherwise go through the server route
     (async () => {
       try {
         const res = await fetch("/api/assignables");
@@ -54,7 +52,6 @@ export default function AssignTechModal({
         if (res.ok && Array.isArray(json.data)) {
           setUsers(json.data);
         } else {
-          // fallback to supabase direct
           const { data } = await supabase
             .from("profiles")
             .select("id, full_name, role")
@@ -85,14 +82,15 @@ export default function AssignTechModal({
       });
 
       if (!res.ok) {
-        // fallback to simple column update if the api route is not ready
         await supabase
           .from("work_order_lines")
           .update({ assigned_to: techId })
           .eq("id", workOrderLineId);
       }
+
+      toast.success("Mechanic assigned.");
     } catch {
-      // ignore, we tried
+      toast.error("Failed to assign mechanic.");
     }
 
     await onAssigned?.(techId);

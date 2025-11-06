@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
+import { toast } from "sonner";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -12,9 +13,14 @@ type Customer = DB["public"]["Tables"]["customers"]["Row"];
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Profile = DB["public"]["Tables"]["profiles"]["Row"];
 
+type WorkOrderTechnician = {
+  technician_id: string;
+};
+
 type Row = WorkOrder & {
   customers: Pick<Customer, "first_name" | "last_name" | "phone" | "email"> | null;
   vehicles: Pick<Vehicle, "year" | "make" | "model" | "license_plate"> | null;
+  work_order_technicians: WorkOrderTechnician[] | null;
 };
 
 /* --------------------------- Status badges (dark) --------------------------- */
@@ -71,20 +77,18 @@ export default function WorkOrdersView(): JSX.Element {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
-  const [status, setStatus] = useState<string>(""); // "" = normal flow
+  const [status, setStatus] = useState<string>("");
   const [err, setErr] = useState<string | null>(null);
 
-  // assigning
   const [assigningFor, setAssigningFor] = useState<string | null>(null);
   const [techs, setTechs] = useState<Array<Pick<Profile, "id" | "full_name" | "role">>>([]);
   const [selectedTechId, setSelectedTechId] = useState<string>("");
 
   const [currentRole, setCurrentRole] = useState<string | null>(null);
 
-  // load current user role (from profiles) + mechanics (from API) once
+  // load current user role + mechanics once
   useEffect(() => {
     (async () => {
-      // get my role (this is still fine through RLS)
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -98,14 +102,12 @@ export default function WorkOrdersView(): JSX.Element {
         setCurrentRole(prof?.role ?? null);
       }
 
-      // mechanics / assignables come from server route so RLS doesn't block us
       try {
         const res = await fetch("/api/assignables");
         const json = await res.json();
         if (res.ok) {
           setTechs(json.data ?? []);
         } else {
-          // keep it quiet in UI
           console.warn("Failed to load mechanics:", json.error);
         }
       } catch (e) {
@@ -126,7 +128,8 @@ export default function WorkOrdersView(): JSX.Element {
         `
         *,
         customers:customers(first_name,last_name,phone,email),
-        vehicles:vehicles(year,make,model,license_plate)
+        vehicles:vehicles(year,make,model,license_plate),
+        work_order_technicians:work_order_technicians(technician_id)
       `
       )
       .order("created_at", { ascending: false })
@@ -202,7 +205,10 @@ export default function WorkOrdersView(): JSX.Element {
       const prev = rows;
       setRows((r) => r.filter((x) => x.id !== id));
 
-      const { error: lineErr } = await supabase.from("work_order_lines").delete().eq("work_order_id", id);
+      const { error: lineErr } = await supabase
+        .from("work_order_lines")
+        .delete()
+        .eq("work_order_id", id);
       if (lineErr) {
         alert("Failed to delete job lines: " + lineErr.message);
         setRows(prev);
@@ -215,7 +221,7 @@ export default function WorkOrdersView(): JSX.Element {
         setRows(prev);
       }
     },
-    [rows, supabase],
+    [rows, supabase]
   );
 
   const handleAssignAll = useCallback(
@@ -242,13 +248,27 @@ export default function WorkOrdersView(): JSX.Element {
         }
         setAssigningFor(null);
         await load();
+        toast.success("Work order assigned to mechanic.");
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Failed to assign.";
         alert(msg);
       }
     },
-    [selectedTechId, load],
+    [selectedTechId, load]
   );
+
+  // make a fast lookup for tech names
+  const techsById = useMemo(() => {
+    const m: Record<string, { id: string; full_name: string | null; role: string | null }> = {};
+    techs.forEach((t) => {
+      m[t.id] = {
+        id: t.id,
+        full_name: t.full_name,
+        role: t.role,
+      };
+    });
+    return m;
+  }, [techs]);
 
   return (
     <div className="mx-auto max-w-6xl p-6 text-white">
@@ -307,6 +327,16 @@ export default function WorkOrdersView(): JSX.Element {
             const href = `/work-orders/${r.custom_id ?? r.id}?mode=view`;
             const isAssigning = assigningFor === r.id;
 
+            // first assigned tech, if any
+            const firstTechId =
+              r.work_order_technicians && r.work_order_technicians.length > 0
+                ? r.work_order_technicians[0].technician_id
+                : null;
+            const firstTechName =
+              firstTechId && techsById[firstTechId]
+                ? techsById[firstTechId].full_name ?? "Mechanic"
+                : null;
+
             return (
               <div key={r.id} className="flex flex-wrap items-center gap-3 p-3">
                 <div className="w-28 text-xs text-neutral-400">
@@ -337,11 +367,17 @@ export default function WorkOrdersView(): JSX.Element {
                       : "—"}{" "}
                     •{" "}
                     {r.vehicles
-                      ? `${r.vehicles.year ?? ""} ${r.vehicles.make ?? ""} ${r.vehicles.model ?? ""} ${
-                          r.vehicles.license_plate ? `(${r.vehicles.license_plate})` : ""
-                        }`
+                      ? `${r.vehicles.year ?? ""} ${r.vehicles.make ?? ""} ${
+                          r.vehicles.model ?? ""
+                        } ${r.vehicles.license_plate ? `(${r.vehicles.license_plate})` : ""}`
                       : "—"}
                   </div>
+                  {firstTechName ? (
+                    <div className="mt-0.5 inline-flex items-center gap-1 rounded bg-sky-900/30 px-2 py-0.5 text-[10px] text-sky-100">
+                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-sky-300" />
+                      Assigned to {firstTechName}
+                    </div>
+                  ) : null}
                 </div>
                 <div className="flex items-center gap-2">
                   <Link
