@@ -7,7 +7,13 @@ import QueuePage from "@/features/work-orders/app/work-orders/queue/page";
 export default function Page({
   searchParams,
 }: {
-  searchParams?: { status?: string };
+  // match what Next expects: any keys, string or string[] or undefined
+  searchParams: Record<string, string | string[] | undefined>;
 }) {
-  return <QueuePage searchParams={searchParams ?? {}} />;
+  // pull out just the `status` we care about
+  const statusValue = searchParams?.status;
+  const status =
+    typeof statusValue === "string" ? statusValue : undefined;
+
+  return <QueuePage searchParams={{ status }} />;
 }
