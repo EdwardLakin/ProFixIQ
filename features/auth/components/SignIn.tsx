@@ -7,6 +7,9 @@ import type { Database } from "@shared/types/types/supabase";
 
 type Mode = "sign-in" | "sign-up";
 
+// domain used by /api/admin/create-user
+const SHOP_USER_DOMAIN = "local.profix-internal";
+
 export default function AuthPage() {
   const router = useRouter();
   const sp = useSearchParams();
@@ -21,8 +24,8 @@ export default function AuthPage() {
 
   const origin = useMemo(() => {
     if (typeof window !== "undefined") return window.location.origin;
-    if (process.env.NEXT_PUBLIC_SUPABASE_URL)
-      return process.env.NEXT_PUBLIC_SUPABASE_URL.replace(/\/$/, "");
+    if (process.env.NEXT_PUBLIC_SITE_URL)
+      return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "");
     if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
     return "http://localhost:3000";
   }, []);
@@ -33,7 +36,29 @@ export default function AuthPage() {
     return `${origin}/auth/callback${tail}`;
   }, [origin, sp]);
 
-  // on load: if already signed in, send to right place
+  // helper: decide where to go based on profile
+  const routeAfterAuth = async (
+    profile: { completed_onboarding?: boolean | null; shop_id?: string | null } | null,
+  ) => {
+    const redirect = sp.get("redirect");
+    const hasShop = !!profile?.shop_id;
+    const isOnboarded = !!profile?.completed_onboarding || hasShop;
+
+    // if a redirect was requested and user is "good enough", honor it
+    if (redirect && isOnboarded) {
+      router.replace(redirect);
+      return;
+    }
+
+    // shop-aware skip
+    if (isOnboarded) {
+      router.replace("/dashboard");
+    } else {
+      router.replace("/onboarding");
+    }
+  };
+
+  // If user is already signed in and visits /sign-in, kick them out
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getSession();
@@ -46,15 +71,7 @@ export default function AuthPage() {
         .eq("id", session.user.id)
         .maybeSingle();
 
-      const redirect = sp.get("redirect");
-      const hasShop = !!profile?.shop_id;
-      const isOnboarded = !!profile?.completed_onboarding || hasShop;
-
-      if (redirect && isOnboarded) {
-        router.replace(redirect);
-      } else {
-        router.replace(isOnboarded ? "/dashboard" : "/onboarding");
-      }
+      await routeAfterAuth(profile ?? null);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -82,10 +99,10 @@ export default function AuthPage() {
     const raw = identifier.trim();
     let emailToUse = raw;
 
-    // IMPORTANT: match the domain used in /api/admin/create-user
-    // create-user used: `${username}@local.profix-internal`
+    // 👇 username path (shop-created users)
+    // your admin route created emails like `${username}@local.profix-internal`
     if (!raw.includes("@")) {
-      emailToUse = `${raw.toLowerCase()}@local.profix-internal`;
+      emailToUse = `${raw.toLowerCase()}@${SHOP_USER_DOMAIN}`;
     }
 
     const { error: signInErr } = await supabase.auth.signInWithPassword({
@@ -99,6 +116,7 @@ export default function AuthPage() {
       return;
     }
 
+    // fetch profile to decide where to go
     const { data: u } = await supabase.auth.getUser();
     if (!u.user) {
       setError("Signed in, but no session is visible yet. Try again.");
@@ -112,14 +130,17 @@ export default function AuthPage() {
       .eq("id", u.user.id)
       .maybeSingle();
 
+    // shop-aware routing:
     const redirect = sp.get("redirect");
     const hasShop = !!profile?.shop_id;
     const isOnboarded = !!profile?.completed_onboarding || hasShop;
 
     if (redirect && isOnboarded) {
       await go(redirect);
+    } else if (isOnboarded) {
+      await go("/dashboard");
     } else {
-      await go(isOnboarded ? "/dashboard" : "/onboarding");
+      await go("/onboarding");
     }
 
     setLoading(false);
@@ -131,6 +152,7 @@ export default function AuthPage() {
     setError("");
     setNotice("");
 
+    // normal email-based self-signup
     const { data, error: signUpErr } = await supabase.auth.signUp({
       email: identifier,
       password,
