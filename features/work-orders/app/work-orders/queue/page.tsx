@@ -44,11 +44,13 @@ const STATUS_STYLES: Record<RollupStatus, string> = {
     "border-emerald-700 bg-neutral-900/80 hover:border-orange-400 data-[active=true]:border-orange-400 data-[active=true]:bg-orange-500/10",
 };
 
-export default async function QueuePage({
-  searchParams,
-}: {
-  searchParams: { status?: string };
-}) {
+export default async function QueuePage(
+  {
+    searchParams,
+  }: {
+    searchParams?: { status?: string };
+  } = {}
+) {
   const supabase = createServerComponentClient<DB>({ cookies });
 
   const {
