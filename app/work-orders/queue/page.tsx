@@ -4,15 +4,15 @@ export const revalidate = 0;
 
 import QueuePage from "@/features/work-orders/app/work-orders/queue/page";
 
-export default function Page({
+// Next is giving us *async* searchParams, so the wrapper must be async too.
+export default async function Page({
   searchParams,
 }: {
-  searchParams?: Record<string, string | string[] | undefined>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  // normalize to what QueuePage expects: { status?: string }
-  const statusParam = Array.isArray(searchParams?.status)
-    ? searchParams?.status[0]
-    : searchParams?.status;
+  const sp = await searchParams;
+
+  const statusParam = Array.isArray(sp.status) ? sp.status[0] : sp.status;
 
   return <QueuePage searchParams={{ status: statusParam }} />;
 }
