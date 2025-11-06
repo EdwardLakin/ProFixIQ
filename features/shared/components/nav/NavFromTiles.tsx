@@ -1,4 +1,4 @@
-// features/shared/components/nav/NavFromTiles.tsx
+//shared/components/nav/NavFromTiles.tsx
 "use client";
 
 import { useEffect, useState } from "react";

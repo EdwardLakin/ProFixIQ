@@ -32,18 +32,18 @@ export default function CreateUserPage(): JSX.Element {
   // force UsersList to re-run its effect
   const [listRefreshKey, setListRefreshKey] = useState(0);
 
-  // keep a tiny local list of the last few created users
+  // tiny local list of the last few created users
   const [recentUsers, setRecentUsers] = useState<
     { username: string; full_name?: string | null; role?: string | null }[]
   >([]);
 
-  // password reset small form
+  // password reset mini-form
   const [resetUsername, setResetUsername] = useState("");
   const [resetPass, setResetPass] = useState("");
   const [resetBusy, setResetBusy] = useState(false);
   const [resetMsg, setResetMsg] = useState<string | null>(null);
 
-  // we’ll keep the creator’s shop_id here
+  // creator’s shop id
   const [creatorShopId, setCreatorShopId] = useState<string | null>(null);
 
   // load current user's shop_id once
@@ -63,7 +63,6 @@ export default function CreateUserPage(): JSX.Element {
       const shopId = profile?.shop_id ?? null;
       setCreatorShopId(shopId);
 
-      // prefill the form so the admin can see it / override
       if (shopId) {
         setForm((prev) => ({
           ...prev,
@@ -85,7 +84,6 @@ export default function CreateUserPage(): JSX.Element {
         password: form.password.trim(),
         full_name: (form.full_name ?? "").trim() || null,
         role: form.role ?? null,
-        // if the form's shop_id is empty, fall back to the creator's shop_id
         shop_id:
           (form.shop_id ?? "")?.trim() || creatorShopId || null,
         phone: (form.phone ?? "")?.trim() || null,
@@ -122,18 +120,17 @@ export default function CreateUserPage(): JSX.Element {
         ].slice(0, 5)
       );
 
-      // Clear sensitive fields
+      // clear sensitive fields
       setForm((f) => ({
         ...f,
         username: "",
         password: "",
         full_name: "",
         phone: "",
-        // keep shop_id prefilled so the admin can create multiple in same shop
         shop_id: body.shop_id ?? creatorShopId ?? null,
       }));
 
-      // bump list
+      // refresh list below
       setListRefreshKey((k) => k + 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unexpected error");
@@ -173,13 +170,17 @@ export default function CreateUserPage(): JSX.Element {
 
   return (
     <div className="p-4 sm:p-6 text-white space-y-6">
+      {/* header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-header text-2xl">Create User</h1>
-        <p className="text-sm text-neutral-400">
-          Add shop staff with a username + temporary password.
-        </p>
+        <div>
+          <h1 className="text-2xl font-blackops text-orange-400">Create User</h1>
+          <p className="text-sm text-neutral-400">
+            Add shop staff with a username + temporary password.
+          </p>
+        </div>
       </div>
 
+      {/* top 2-column content */}
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         {/* LEFT: create user */}
         <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4 sm:p-6 space-y-4">
@@ -208,9 +209,7 @@ export default function CreateUserPage(): JSX.Element {
                 className="input text-white"
                 placeholder="Phone"
                 value={form.phone ?? ""}
-                onChange={(e) =>
-                  setForm({ ...form, phone: e.target.value })
-                }
+                onChange={(e) => setForm({ ...form, phone: e.target.value })}
               />
             </div>
             <div className="space-y-1">
@@ -219,9 +218,7 @@ export default function CreateUserPage(): JSX.Element {
                 className="input text-white"
                 placeholder="e.g. jsmith"
                 value={form.username}
-                onChange={(e) =>
-                  setForm({ ...form, username: e.target.value })
-                }
+                onChange={(e) => setForm({ ...form, username: e.target.value })}
               />
             </div>
             <div className="space-y-1">
@@ -233,9 +230,7 @@ export default function CreateUserPage(): JSX.Element {
                 placeholder="Temporary Password"
                 type="password"
                 value={form.password}
-                onChange={(e) =>
-                  setForm({ ...form, password: e.target.value })
-                }
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
               />
             </div>
             <div className="space-y-1">
@@ -287,6 +282,7 @@ export default function CreateUserPage(): JSX.Element {
 
         {/* RIGHT: recents + internal reset */}
         <div className="space-y-6">
+          {/* recently created */}
           <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4 sm:p-6">
             <h2 className="text-lg font-semibold mb-2">Recently created</h2>
             {recentUsers.length === 0 ? (
@@ -317,6 +313,7 @@ export default function CreateUserPage(): JSX.Element {
             )}
           </div>
 
+          {/* reset */}
           <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4 sm:p-6">
             <h2 className="text-lg font-semibold mb-2">
               Reset password (internal)
@@ -356,7 +353,8 @@ export default function CreateUserPage(): JSX.Element {
         </div>
       </div>
 
-      <div className="pt-2">
+      {/* USERS LIST (full width, own card) */}
+      <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4 sm:p-6">
         <UsersList key={listRefreshKey} />
       </div>
     </div>
