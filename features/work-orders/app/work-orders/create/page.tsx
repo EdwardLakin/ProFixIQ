@@ -348,30 +348,41 @@ export default function CreateWorkOrderPage() {
   }
 
   async function getOrLinkShopId(userId: string): Promise<string | null> {
-    const { data: profile, error: profErr } = await supabase
-      .from("profiles")
-      .select("user_id, shop_id")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (profErr) throw profErr;
-    if (profile?.shop_id) return profile.shop_id;
+  // 1) try to read the profile we actually have (id = auth user id)
+  const { data: profileById, error: profErr } = await supabase
+    .from("profiles")
+    .select("shop_id")
+    .eq("id", userId)
+    .maybeSingle();
 
-    const { data: ownedShop, error: shopErr } = await supabase
-      .from("shops")
-      .select("id")
-      .eq("owner_id", userId)
-      .maybeSingle();
-    if (shopErr) throw shopErr;
-    if (!ownedShop?.id) return null;
-
-    const { error: updErr } = await supabase
-      .from("profiles")
-      .update({ shop_id: ownedShop.id })
-      .eq("user_id", userId);
-    if (updErr) throw updErr;
-
-    return ownedShop.id;
+  if (profErr) throw profErr;
+  if (profileById?.shop_id) {
+    return profileById.shop_id;
   }
+
+  // 2) no shop on profile → see if this user owns a shop
+  const { data: ownedShop, error: shopErr } = await supabase
+    .from("shops")
+    .select("id")
+    .eq("owner_id", userId)
+    .maybeSingle();
+
+  if (shopErr) throw shopErr;
+  if (!ownedShop?.id) {
+    // nothing to link
+    return null;
+  }
+
+  // 3) write it back to profile so future calls are fast
+  const { error: updErr } = await supabase
+    .from("profiles")
+    .update({ shop_id: ownedShop.id })
+    .eq("id", userId);
+
+  if (updErr) throw updErr;
+
+  return ownedShop.id;
+}
 
   const buildCustomerInsert = (c: SessionCustomer, shopId: string | null) => ({
     first_name: strOrNull(c.first_name),
