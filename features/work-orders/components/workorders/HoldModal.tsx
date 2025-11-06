@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import ModalShell from "@/features/shared/components/ModalShell";
 
 const HOLD_REASONS = [
@@ -17,10 +17,16 @@ type HoldReason = (typeof HOLD_REASONS)[number];
 interface HoldModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onApply: (reason: string, notes?: string, holdUntil?: string | null) => Promise<void> | void;
+  // keep this wide, because we may send a custom/backwards-compatible reason
+  onApply: (
+    reason: string,
+    notes?: string,
+    holdUntil?: string | null
+  ) => Promise<void> | void;
   onRelease?: () => Promise<void> | void;
   canRelease?: boolean;
-  defaultReason?: HoldReason;
+  // 👇 make this a plain string, not the narrow union
+  defaultReason?: string;
   defaultNotes?: string;
   defaultHoldUntil?: string | null;
 }
@@ -35,7 +41,8 @@ export default function HoldModal({
   defaultNotes = "",
   defaultHoldUntil = null,
 }: HoldModalProps) {
-  const [reason, setReason] = useState<HoldReason>(defaultReason);
+  // allow any string here (so DB values work)
+  const [reason, setReason] = useState<string>(defaultReason);
   const [notes, setNotes] = useState<string>(defaultNotes);
 
   // auto-release controls
@@ -43,11 +50,15 @@ export default function HoldModal({
   const [releaseAfterMinutes, setReleaseAfterMinutes] = useState<number>(60);
   const [releaseAt, setReleaseAt] = useState<string>("");
 
+  // display-only time of placing hold
+  const [holdPlacedAt, setHoldPlacedAt] = useState<string>("");
+
   // re-hydrate when opening
   useEffect(() => {
     if (!isOpen) return;
     setReason(defaultReason);
     setNotes(defaultNotes);
+    setHoldPlacedAt(new Date().toLocaleString());
 
     if (defaultHoldUntil) {
       setAutoRelease(true);
@@ -63,11 +74,6 @@ export default function HoldModal({
       setReleaseAt("");
     }
   }, [isOpen, defaultReason, defaultNotes, defaultHoldUntil]);
-
-  // display-only time of placing hold
-  const holdPlacedAt = useMemo(() => {
-    return new Date().toLocaleString();
-  }, [isOpen]);
 
   return (
     <ModalShell
@@ -87,7 +93,6 @@ export default function HoldModal({
         ) : null
       }
       onSubmit={async () => {
-        // figure out holdUntil
         let holdUntil: string | null = null;
 
         if (autoRelease) {
@@ -116,13 +121,17 @@ export default function HoldModal({
       <select
         className="mb-3 w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-sm text-white"
         value={reason}
-        onChange={(e) => setReason(e.target.value as HoldReason)}
+        onChange={(e) => setReason(e.target.value)}
       >
         {HOLD_REASONS.map((r) => (
           <option key={r} value={r}>
             {r}
           </option>
         ))}
+        {/* if the DB gave us something older/custom, keep it visible */}
+        {!HOLD_REASONS.includes(reason as HoldReason) && (
+          <option value={reason}>{reason}</option>
+        )}
       </select>
 
       <label className="mb-1 block text-xs text-neutral-400">Notes</label>
@@ -137,7 +146,8 @@ export default function HoldModal({
       {/* extra box for timing */}
       <div className="mt-4 rounded border border-neutral-800 bg-neutral-950 p-3">
         <div className="mb-2 text-xs text-neutral-400">
-          Hold placed at: <span className="text-neutral-200">{holdPlacedAt}</span>
+          Hold placed at:{" "}
+          <span className="text-neutral-200">{holdPlacedAt || "—"}</span>
         </div>
         <label className="inline-flex items-center gap-2 text-xs text-neutral-200">
           <input
@@ -158,9 +168,7 @@ export default function HoldModal({
                 min={5}
                 step={5}
                 value={releaseAfterMinutes}
-                onChange={(e) =>
-                  setReleaseAfterMinutes(Number(e.target.value) || 0)
-                }
+                onChange={(e) => setReleaseAfterMinutes(Number(e.target.value) || 0)}
                 className="w-24 rounded border border-neutral-700 bg-neutral-900 p-1 text-sm text-white"
                 disabled={releaseAt !== ""}
               />
