@@ -44,13 +44,11 @@ export default function AuthPage() {
     const hasShop = !!profile?.shop_id;
     const isOnboarded = !!profile?.completed_onboarding || hasShop;
 
-    // if a redirect was requested and user is "good enough", honor it
     if (redirect && isOnboarded) {
       router.replace(redirect);
       return;
     }
 
-    // shop-aware skip
     if (isOnboarded) {
       router.replace("/dashboard");
     } else {
@@ -99,8 +97,7 @@ export default function AuthPage() {
     const raw = identifier.trim();
     let emailToUse = raw;
 
-    // 👇 username path (shop-created users)
-    // your admin route created emails like `${username}@local.profix-internal`
+    // shop-created username → synthetic email
     if (!raw.includes("@")) {
       emailToUse = `${raw.toLowerCase()}@${SHOP_USER_DOMAIN}`;
     }
@@ -116,6 +113,9 @@ export default function AuthPage() {
       return;
     }
 
+    // 🔴 important: refresh session so next profile read is up to date
+    await supabase.auth.refreshSession();
+
     // fetch profile to decide where to go
     const { data: u } = await supabase.auth.getUser();
     if (!u.user) {
@@ -130,7 +130,6 @@ export default function AuthPage() {
       .eq("id", u.user.id)
       .maybeSingle();
 
-    // shop-aware routing:
     const redirect = sp.get("redirect");
     const hasShop = !!profile?.shop_id;
     const isOnboarded = !!profile?.completed_onboarding || hasShop;
