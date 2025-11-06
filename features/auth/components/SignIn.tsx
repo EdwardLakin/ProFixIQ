@@ -13,14 +13,11 @@ export default function AuthPage() {
   const supabase = createClientComponentClient<Database>();
 
   const [mode, setMode] = useState<Mode>("sign-in");
-  const [identifier, setIdentifier] = useState(""); // email OR username
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string>("");
   const [notice, setNotice] = useState<string>("");
   const [loading, setLoading] = useState(false);
-
-  // domains we might have used for username-based accounts
-  const USERNAME_DOMAINS = ["local.profix-internal", "noemail.local"];
 
   const origin = useMemo(() => {
     if (typeof window !== "undefined") return window.location.origin;
@@ -36,7 +33,7 @@ export default function AuthPage() {
     return `${origin}/auth/callback${tail}`;
   }, [origin, sp]);
 
-  // if already signed in, go away
+  // ⬇️ on load: if already signed in, send to the right place
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getSession();
@@ -45,17 +42,20 @@ export default function AuthPage() {
 
       const { data: profile } = await supabase
         .from("profiles")
-        .select("completed_onboarding")
+        .select("completed_onboarding, shop_id")
         .eq("id", session.user.id)
         .maybeSingle();
 
       const redirect = sp.get("redirect");
-      if (redirect && profile?.completed_onboarding) {
+
+      // 👇 Option 1 logic
+      const hasShop = !!profile?.shop_id;
+      const isOnboarded = !!profile?.completed_onboarding || hasShop;
+
+      if (redirect && isOnboarded) {
         router.replace(redirect);
       } else {
-        router.replace(
-          profile?.completed_onboarding ? "/dashboard" : "/onboarding"
-        );
+        router.replace(isOnboarded ? "/dashboard" : "/onboarding");
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -82,47 +82,25 @@ export default function AuthPage() {
     setNotice("");
 
     const raw = identifier.trim();
-    const isEmail = raw.includes("@");
+    let emailToUse = raw;
 
-    // we'll try to sign in once (email) or multiple (username → synthetic)
-    let lastError: string | null = null;
-    let success = false;
-
-    if (isEmail) {
-      // normal email sign-in
-      const { error: signInErr } = await supabase.auth.signInWithPassword({
-        email: raw,
-        password,
-      });
-      if (signInErr) {
-        lastError = signInErr.message || "Sign in failed.";
-      } else {
-        success = true;
-      }
-    } else {
-      // username sign-in: try the domains in order
-      for (const domain of USERNAME_DOMAINS) {
-        const emailCandidate = `${raw.toLowerCase()}@${domain}`;
-        const { error: signInErr } = await supabase.auth.signInWithPassword({
-          email: emailCandidate,
-          password,
-        });
-        if (!signInErr) {
-          success = true;
-          break;
-        } else {
-          lastError = signInErr.message || "Sign in failed.";
-        }
-      }
+    // allow username sign-in for admin-created users
+    if (!raw.includes("@")) {
+      emailToUse = `${raw.toLowerCase()}@noemail.local`;
     }
 
-    if (!success) {
-      setError(lastError || "Sign in failed.");
+    const { error: signInErr } = await supabase.auth.signInWithPassword({
+      email: emailToUse,
+      password,
+    });
+
+    if (signInErr) {
+      setError(signInErr.message || "Sign in failed.");
       setLoading(false);
       return;
     }
 
-    // signed in → get profile and route
+    // now route based on profile
     const { data: u } = await supabase.auth.getUser();
     if (!u.user) {
       setError("Signed in, but no session is visible yet. Try again.");
@@ -132,15 +110,20 @@ export default function AuthPage() {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("completed_onboarding")
+      .select("completed_onboarding, shop_id")
       .eq("id", u.user.id)
       .maybeSingle();
 
     const redirect = sp.get("redirect");
-    if (redirect && profile?.completed_onboarding) {
+
+    // 👇 Option 1 logic again
+    const hasShop = !!profile?.shop_id;
+    const isOnboarded = !!profile?.completed_onboarding || hasShop;
+
+    if (redirect && isOnboarded) {
       await go(redirect);
     } else {
-      await go(profile?.completed_onboarding ? "/dashboard" : "/onboarding");
+      await go(isOnboarded ? "/dashboard" : "/onboarding");
     }
 
     setLoading(false);
@@ -152,7 +135,6 @@ export default function AuthPage() {
     setError("");
     setNotice("");
 
-    // sign-up = real email path
     const { data, error: signUpErr } = await supabase.auth.signUp({
       email: identifier,
       password,
@@ -166,7 +148,9 @@ export default function AuthPage() {
     }
 
     if (!data.session) {
-      setNotice("Check your inbox to confirm your email. We’ll continue after that.");
+      setNotice(
+        "Check your inbox to confirm your email. We’ll continue after that."
+      );
       setLoading(false);
       return;
     }
@@ -209,7 +193,10 @@ export default function AuthPage() {
           </button>
         </div>
 
-        <form onSubmit={isSignIn ? handleSignIn : handleSignUp} className="space-y-4">
+        <form
+          onSubmit={isSignIn ? handleSignIn : handleSignUp}
+          className="space-y-4"
+        >
           <input
             type={isSignIn ? "text" : "email"}
             placeholder={isSignIn ? "Email or Username" : "Email"}
@@ -231,7 +218,9 @@ export default function AuthPage() {
           />
 
           {error && <p className="text-red-500 text-sm text-center">{error}</p>}
-          {notice && <p className="text-green-400 text-sm text-center">{notice}</p>}
+          {notice && (
+            <p className="text-green-400 text-sm text-center">{notice}</p>
+          )}
 
           <button
             type="submit"
