@@ -3,15 +3,21 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 
+// ⬇️ If you ALREADY have a helper like this somewhere else, import that instead:
+// import { createRouteHandlerClient } from "@/features/shared/lib/supabase/server";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"; // <-- this is the common one
+
 type Body = {
-  username: string; // primary identifier now
-  email?: string | null; // optional, owner can still give one
-  password: string; // temp password
+  username: string;
+  email?: string | null;
+  password: string;
   full_name?: string | null;
   role?: Database["public"]["Enums"]["user_role_enum"] | null;
+  // client can send it but we will ignore unless allowed
   shop_id?: string | null;
   phone?: string | null;
 };
@@ -26,12 +32,10 @@ export async function POST(req: Request) {
   try {
     const raw = (await req.json()) as Partial<Body>;
 
-    // 1) basic normalization
     const username = (raw.username ?? "").trim().toLowerCase();
     const password = (raw.password ?? "").trim();
     const full_name = (raw.full_name ?? null) || null;
-    const role = (raw.role ?? null) || null;
-    const shop_id = (raw.shop_id ?? null) || null;
+    const requestedRole = (raw.role ?? null) || null;
     const phone = (raw.phone ?? null) || null;
     const inputEmail = (raw.email ?? "").trim().toLowerCase();
 
@@ -42,14 +46,62 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Temporary password is required." }, { status: 400 });
     }
 
-    // 2) build auth client
+    // 1) get the caller (the shop admin creating the user)
+    const cookieStore = cookies();
+    const userScopedSupabase = createRouteHandlerClient<Database>({ cookies: () => cookieStore });
+
+    const {
+      data: { user: caller },
+    } = await userScopedSupabase.auth.getUser();
+
+    if (!caller) {
+      return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
+    }
+
+    // 2) get caller's profile to know their shop + role
+    const { data: callerProfile, error: callerProfileErr } = await userScopedSupabase
+      .from("profiles")
+      .select("shop_id, role")
+      .eq("id", caller.id)
+      .maybeSingle();
+
+    if (callerProfileErr) {
+      return NextResponse.json(
+        { error: `Failed to load caller profile: ${callerProfileErr.message}` },
+        { status: 500 }
+      );
+    }
+
+    if (!callerProfile?.shop_id) {
+      // tenant-safe: you can't create users if you're not in a shop
+      return NextResponse.json(
+        { error: "Your profile has no shop_id. Cannot create user for a shop." },
+        { status: 403 }
+      );
+    }
+
+    const callerShopId = callerProfile.shop_id;
+    const callerRole = callerProfile.role ?? "mechanic";
+
+    // optionally: only allow certain roles to create users
+    const ALLOWED_CREATORS = new Set(["owner", "admin", "manager"]);
+    if (!ALLOWED_CREATORS.has(callerRole)) {
+      return NextResponse.json(
+        { error: "You do not have permission to create users." },
+        { status: 403 }
+      );
+    }
+
+    // 3) we now have the shop_id we MUST use
+    const effectiveShopId = callerShopId;
+
+    // 4) build service client to actually create auth user
     const url = mustEnv("NEXT_PUBLIC_SUPABASE_URL");
     const service = mustEnv("SUPABASE_SERVICE_ROLE_KEY");
-    const supabase = createClient<Database>(url, service);
+    const serviceSupabase = createClient<Database>(url, service);
 
-    // 3) check if that username already exists in profiles
-    //    (you said you only have the owner now, but let's make it future-safe)
-    const { data: existingProfile, error: existingErr } = await supabase
+    // 5) ensure username is unique
+    const { data: existingProfile, error: existingErr } = await serviceSupabase
       .from("profiles")
       .select("id, username")
       .eq("username", username)
@@ -69,21 +121,19 @@ export async function POST(req: Request) {
       );
     }
 
-    // 4) Supabase Auth still requires an email. If owner didn't give one,
-    //    we make a stable synthetic email based on the username.
-    //    Using a domain that won't collide with real emails:
+    // 6) real email or synthetic
     const syntheticEmail = `${username}@local.profix-internal`;
     const email = inputEmail || syntheticEmail;
 
-    // 5) create auth user (no email flow — we mark as confirmed)
-    const { data: created, error: createErr } = await supabase.auth.admin.createUser({
+    // 7) create auth user with service client
+    const { data: created, error: createErr } = await serviceSupabase.auth.admin.createUser({
       email,
       password,
       email_confirm: true,
       user_metadata: {
         full_name,
-        role,
-        shop_id,
+        role: requestedRole,
+        shop_id: effectiveShopId, // force caller's shop
         phone,
         username,
       },
@@ -96,22 +146,22 @@ export async function POST(req: Request) {
       );
     }
 
-    const userId = created.user.id;
+    const newUserId = created.user.id;
 
-    // 6) upsert profile so the app can see the user
-    const { error: profileErr } = await supabase
+    // 8) upsert profile for the new user
+    const { error: profileErr } = await serviceSupabase
       .from("profiles")
       .upsert(
         {
-          id: userId, // keep profiles.id = auth.user.id
-          email, // maybe synthetic
+          id: newUserId,
+          email,
           full_name,
           phone,
-          role,
-          shop_id,
+          role: requestedRole,
+          shop_id: effectiveShopId, // force caller's shop
           shop_name: null,
           username,
-          must_change_password: true, // ✅ force change on first sign-in
+          must_change_password: true,
           updated_at: new Date().toISOString(),
         } as Database["public"]["Tables"]["profiles"]["Insert"],
         {
@@ -128,10 +178,11 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       ok: true,
-      user_id: userId,
+      user_id: newUserId,
       username,
       email,
       must_change_password: true,
+      shop_id: effectiveShopId,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unexpected error.";
