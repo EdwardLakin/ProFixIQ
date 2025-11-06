@@ -13,11 +13,14 @@ export default function AuthPage() {
   const supabase = createClientComponentClient<Database>();
 
   const [mode, setMode] = useState<Mode>("sign-in");
-  const [identifier, setIdentifier] = useState(""); // 👈 email OR username
+  const [identifier, setIdentifier] = useState(""); // email OR username
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string>("");
   const [notice, setNotice] = useState<string>("");
   const [loading, setLoading] = useState(false);
+
+  // domains we might have used for username-based accounts
+  const USERNAME_DOMAINS = ["local.profix-internal", "noemail.local"];
 
   const origin = useMemo(() => {
     if (typeof window !== "undefined") return window.location.origin;
@@ -33,6 +36,7 @@ export default function AuthPage() {
     return `${origin}/auth/callback${tail}`;
   }, [origin, sp]);
 
+  // if already signed in, go away
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getSession();
@@ -78,24 +82,47 @@ export default function AuthPage() {
     setNotice("");
 
     const raw = identifier.trim();
-    let emailToUse = raw;
+    const isEmail = raw.includes("@");
 
-    // 👇 if admin-created user typed just username, convert to synthetic email
-    if (!raw.includes("@")) {
-      emailToUse = `${raw.toLowerCase()}@noemail.local`;
+    // we'll try to sign in once (email) or multiple (username → synthetic)
+    let lastError: string | null = null;
+    let success = false;
+
+    if (isEmail) {
+      // normal email sign-in
+      const { error: signInErr } = await supabase.auth.signInWithPassword({
+        email: raw,
+        password,
+      });
+      if (signInErr) {
+        lastError = signInErr.message || "Sign in failed.";
+      } else {
+        success = true;
+      }
+    } else {
+      // username sign-in: try the domains in order
+      for (const domain of USERNAME_DOMAINS) {
+        const emailCandidate = `${raw.toLowerCase()}@${domain}`;
+        const { error: signInErr } = await supabase.auth.signInWithPassword({
+          email: emailCandidate,
+          password,
+        });
+        if (!signInErr) {
+          success = true;
+          break;
+        } else {
+          lastError = signInErr.message || "Sign in failed.";
+        }
+      }
     }
 
-    const { error: signInErr } = await supabase.auth.signInWithPassword({
-      email: emailToUse,
-      password,
-    });
-
-    if (signInErr) {
-      setError(signInErr.message || "Sign in failed.");
+    if (!success) {
+      setError(lastError || "Sign in failed.");
       setLoading(false);
       return;
     }
 
+    // signed in → get profile and route
     const { data: u } = await supabase.auth.getUser();
     if (!u.user) {
       setError("Signed in, but no session is visible yet. Try again.");
@@ -125,9 +152,9 @@ export default function AuthPage() {
     setError("");
     setNotice("");
 
-    // 👇 sign-up stays EMAIL-based like you wanted
+    // sign-up = real email path
     const { data, error: signUpErr } = await supabase.auth.signUp({
-      email: identifier, // here identifier IS an email because we're in sign-up mode
+      email: identifier,
       password,
       options: { emailRedirectTo },
     });
@@ -184,7 +211,6 @@ export default function AuthPage() {
 
         <form onSubmit={isSignIn ? handleSignIn : handleSignUp} className="space-y-4">
           <input
-            // 👇 sign-in: email or username, sign-up: still email
             type={isSignIn ? "text" : "email"}
             placeholder={isSignIn ? "Email or Username" : "Email"}
             autoComplete={isSignIn ? "username" : "email"}
