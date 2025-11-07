@@ -10,7 +10,7 @@ type Item = { id: string; description: string; qty: number; notes?: string };
 type Props = {
   isOpen: boolean;
   workOrderId: string;
-  jobId: string; // <- this is the workOrderLineId we must pass per item
+  jobId: string; // work_order_line_id
   requestNote?: string | null;
   closeEventName?: string;      // default: "parts-request:close"
   submittedEventName?: string;  // default: "parts-request:submitted"
@@ -45,7 +45,6 @@ export default function PartsRequestModal({
   const setCell = (id: string, patch: Partial<Item>) =>
     setRows((r) => r.map((x) => (x.id === id ? { ...x, ...patch } : x)));
 
-  // base validation (no line id yet)
   const validItems = rows
     .map((r) => ({
       description: r.description.trim(),
@@ -65,13 +64,13 @@ export default function PartsRequestModal({
     }
     setSubmitting(true);
     try {
-      // ✅ 1) correct route path
+      // ✅ use the route you showed in your code
       const res = await fetch("/api/parts/requests/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // ✅ 2) backend wants every item to carry workOrderLineId
         body: JSON.stringify({
           workOrderId,
+          // backend requires workOrderLineId on EACH item
           items: validItems.map((i) => ({
             ...i,
             workOrderLineId: jobId,
@@ -84,7 +83,6 @@ export default function PartsRequestModal({
         | { requestId?: string; error?: string }
         | null;
 
-      // ✅ 3) backend returns { requestId }, not { id }
       if (!res.ok || !j?.requestId) {
         throw new Error(j?.error || "Failed to create parts request");
       }
@@ -105,14 +103,20 @@ export default function PartsRequestModal({
     <Dialog
       open={isOpen}
       onClose={() => emit(closeEventName)}
-      className="fixed inset-0 z-[330] flex items-center justify-center"
+      // ⬇️ put this ABOVE the parts drawer (drawer was ~510/520)
+      className="fixed inset-0 z-[600] flex items-center justify-center"
     >
+      {/* Backdrop above drawer */}
       <div
         className="fixed inset-0 bg-black/70 backdrop-blur-sm"
         aria-hidden="true"
       />
       <div className="relative mx-4 my-6 w-full max-w-2xl">
-        <Dialog.Panel className="rounded border border-orange-400 bg-neutral-950 p-5 text-white shadow-xl">
+        <Dialog.Panel
+          // ⬇️ also high, and stop click bubbling to anything behind
+          className="relative z-[610] rounded border border-orange-400 bg-neutral-950 p-5 text-white shadow-xl"
+          onClick={(e) => e.stopPropagation()}
+        >
           <Dialog.Title className="mb-3 font-header text-lg font-semibold">
             Request Parts
           </Dialog.Title>
@@ -146,7 +150,7 @@ export default function PartsRequestModal({
                 >
                   <input
                     className="col-span-7 rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm"
-                    placeholder="e.g., 5W30 oil filter, rear pads, serpentine belt…"
+                    placeholder="e.g., 5W30 oil filter, rear pads…"
                     value={r.description}
                     onChange={(e) =>
                       setCell(r.id, { description: e.target.value })
