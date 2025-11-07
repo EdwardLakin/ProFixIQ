@@ -1,12 +1,14 @@
 // app/api/parts/requests/create/route.ts
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 
-// make sure these env vars exist in Vercel
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
+// admin client (bypasses RLS)
 const admin = createClient<Database>(supabaseUrl, serviceKey, {
   auth: { persistSession: false },
 });
@@ -24,6 +26,9 @@ type Body = {
 };
 
 export async function POST(req: Request) {
+  // this client sees the user from cookies
+  const userClient = createRouteHandlerClient<Database>({ cookies });
+
   let body: Body | null = null;
   try {
     body = (await req.json()) as Body;
@@ -39,19 +44,23 @@ export async function POST(req: Request) {
   ) {
     return NextResponse.json(
       { error: "Invalid body. Expect { workOrderId, items[] }." },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
   const { workOrderId, jobId, items, notes } = body;
 
-  // 1) get WO to grab shop_id
+  // real user (for requested_by)
+  const {
+    data: { user },
+  } = await userClient.auth.getUser();
+
+  // load WO with admin
   const { data: wo, error: woErr } = await admin
     .from("work_orders")
     .select("id, shop_id")
     .eq("id", workOrderId)
     .maybeSingle();
-
   if (woErr) {
     return NextResponse.json({ error: woErr.message }, { status: 400 });
   }
@@ -59,24 +68,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Work order not found" }, { status: 404 });
   }
 
-  // 2) we still want to know who requested it, so try to read the real user
-  // but if cookie auth fails, we can fall back to 'system'
-  let requestedBy: string | null = null;
-  try {
-    // if you want, you can also forward the user id from the client in the body
-    // but we can leave it null here and RLS won't matter because we're service-role
-    requestedBy = null;
-  } catch {
-    requestedBy = null;
-  }
-
-  // 3) insert header (service role skips RLS)
+  // insert header with admin
   const { data: pr, error: prErr } = await admin
     .from("part_requests")
     .insert({
       work_order_id: workOrderId,
       shop_id: wo.shop_id,
-      requested_by: requestedBy,
+      requested_by: user?.id ?? null,
       status: "requested",
       notes: notes ?? null,
     })
@@ -86,11 +84,11 @@ export async function POST(req: Request) {
   if (prErr || !pr?.id) {
     return NextResponse.json(
       { error: prErr?.message ?? "Failed to create part request" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 
-  // 4) insert items
+  // insert items with admin
   const itemRows = items.map((it) => ({
     request_id: pr.id,
     description: it.description.trim(),
@@ -104,17 +102,15 @@ export async function POST(req: Request) {
   const { error: itemsErr } = await admin
     .from("part_request_items")
     .insert(itemRows);
-
   if (itemsErr) {
-    // best effort cleanup
     await admin.from("part_requests").delete().eq("id", pr.id);
     return NextResponse.json(
       { error: itemsErr.message ?? "Failed to insert items" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 
-  // 5) optionally put the line on hold
+  // optionally put the line on hold
   if (jobId) {
     await admin
       .from("work_order_lines")
