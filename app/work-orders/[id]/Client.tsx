@@ -367,7 +367,9 @@ export default function WorkOrderIdClient(): JSX.Element {
             const lnId = lt.work_order_line_id;
             const techId = lt.technician_id;
             if (!techMap[lnId]) techMap[lnId] = [];
-            if (!techMap[lnId].includes(techId)) techMap[lnId].push(techId);
+            if (!techMap[lnId].includes(techId)) {
+              techMap[lnId].push(techId);
+            }
           });
           setLineTechsByLine(techMap);
         } else {
@@ -452,41 +454,46 @@ export default function WorkOrderIdClient(): JSX.Element {
   }, [supabase, wo?.id, fetchAll]);
 
   // ---------- listen for inspection finish ----------
-useEffect(() => {
-  // Define event payload type
-  interface InspectionCompletedEventDetail {
-    workOrderLineId?: string;
-    cause?: string;
-    correction?: string;
-  }
+  useEffect(() => {
+    interface InspectionCompletedEventDetail {
+      workOrderLineId?: string;
+      cause?: string;
+      correction?: string;
+    }
 
-  const handler = (ev: CustomEvent<InspectionCompletedEventDetail>) => {
-    const d = ev.detail || {};
-    const lineId = d.workOrderLineId;
-    if (!lineId) return;
+    const handler = (ev: CustomEvent<InspectionCompletedEventDetail>) => {
+      const d = ev.detail || {};
+      const lineId = d.workOrderLineId;
+      if (!lineId) return;
 
-    // open that line
-    setFocusedJobId(lineId);
-    setFocusedOpen(true);
+      setFocusedJobId(lineId);
+      setFocusedOpen(true);
 
-    // forward data to focused modal
-    window.dispatchEvent(
-      new CustomEvent("wo:prefill-cause-correction", {
-        detail: {
-          lineId,
-          cause: d.cause ?? "",
-          correction: d.correction ?? "",
-        },
-      })
-    );
-  };
+      window.dispatchEvent(
+        new CustomEvent("wo:prefill-cause-correction", {
+          detail: {
+            lineId,
+            cause: d.cause ?? "",
+            correction: d.correction ?? "",
+          },
+        })
+      );
+    };
 
-  window.addEventListener("inspection:completed", handler as EventListener);
+    window.addEventListener("inspection:completed", handler as EventListener);
+    return () => {
+      window.removeEventListener("inspection:completed", handler as EventListener);
+    };
+  }, []);
 
-  return () => {
-    window.removeEventListener("inspection:completed", handler as EventListener);
-  };
-}, []);
+  // 🔁 refresh this page when a parts request is submitted from the focused modal
+  useEffect(() => {
+    const handler = () => {
+      void fetchAll();
+    };
+    window.addEventListener("parts-request:submitted", handler);
+    return () => window.removeEventListener("parts-request:submitted", handler);
+  }, [fetchAll]);
 
   /* ----------------------- Derived data ----------------------- */
   const approvalPending = useMemo(
@@ -870,65 +877,87 @@ useEffect(() => {
                 </p>
               ) : (
                 <div className="space-y-2">
-                  {approvalPending.map((ln, idx) => (
-                    <div
-                      key={ln.id}
-                      className="rounded border border-neutral-800 bg-neutral-900 p-3"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="truncate font-medium">
-                            {idx + 1}.{" "}
-                            {ln.description || ln.complaint || "Untitled job"}
-                          </div>
-                          <div className="text-xs text-neutral-400">
-                            {String(ln.job_type ?? "job").replaceAll("_", " ")}{" "}
-                            •{" "}
-                            {typeof ln.labor_time === "number"
-                              ? `${ln.labor_time}h`
-                              : "—"}{" "}
-                            • Status:{" "}
-                            {(ln.status ?? "awaiting").replaceAll("_", " ")} •
-                            Approval:{" "}
-                            {(ln.approval_state ?? "pending").replaceAll(
-                              "_",
-                              " "
+                  {approvalPending.map((ln, idx) => {
+                    const isAwaitingParts =
+                      (ln.status === "on_hold" &&
+                        (ln.hold_reason ?? "")
+                          .toLowerCase()
+                          .includes("part")) ||
+                      (ln.hold_reason ?? "")
+                        .toLowerCase()
+                        .includes("quote");
+
+                    return (
+                      <div
+                        key={ln.id}
+                        className="rounded border border-neutral-800 bg-neutral-900 p-3"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="truncate font-medium">
+                              {idx + 1}.{" "}
+                              {ln.description || ln.complaint || "Untitled job"}
+                            </div>
+                            <div className="text-xs text-neutral-400">
+                              {String(ln.job_type ?? "job").replaceAll("_", " ")}{" "}
+                              •{" "}
+                              {typeof ln.labor_time === "number"
+                                ? `${ln.labor_time}h`
+                                : "—"}{" "}
+                              • Status:{" "}
+                              {(ln.status ?? "awaiting").replaceAll("_", " ")} •
+                              Approval:{" "}
+                              {(ln.approval_state ?? "pending").replaceAll(
+                                "_",
+                                " "
+                              )}
+                            </div>
+                            {ln.notes && (
+                              <div className="mt-1 text-xs text-neutral-400">
+                                Notes: {ln.notes}
+                              </div>
                             )}
                           </div>
-                          {ln.notes && (
-                            <div className="mt-1 text-xs text-neutral-400">
-                              Notes: {ln.notes}
-                            </div>
-                          )}
-                        </div>
 
-                        <div className="flex shrink-0 flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            className="rounded border border-green-700 px-2 py-1 text-xs text-green-300 hover:bg-green-900/20"
-                            onClick={() => approveLine(ln.id)}
-                          >
-                            Approve
-                          </button>
-                          <button
-                            type="button"
-                            className="rounded border border-red-700 px-2 py-1 text-xs text-red-300 hover:bg-red-900/20"
-                            onClick={() => declineLine(ln.id)}
-                          >
-                            Decline
-                          </button>
-                          <button
-                            type="button"
-                            className="rounded border border-blue-700 px-2 py-1 text-xs text-blue-300 hover:bg-blue-900/20"
-                            onClick={() => sendToParts(ln.id)}
-                            title="Send to parts for quoting"
-                          >
-                            Send to Parts
-                          </button>
+                          <div className="flex shrink-0 flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              className="rounded border border-green-700 px-2 py-1 text-xs text-green-300 hover:bg-green-900/20"
+                              onClick={() => approveLine(ln.id)}
+                            >
+                              Approve
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded border border-red-700 px-2 py-1 text-xs text-red-300 hover:bg-red-900/20"
+                              onClick={() => declineLine(ln.id)}
+                            >
+                              Decline
+                            </button>
+
+                            {isAwaitingParts ? (
+                              <button
+                                type="button"
+                                disabled
+                                className="rounded border border-neutral-700 px-2 py-1 text-xs text-neutral-400 cursor-not-allowed"
+                              >
+                                Sent to parts
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                className="rounded border border-blue-700 px-2 py-1 text-xs text-blue-300 hover:bg-blue-900/20"
+                                onClick={() => sendToParts(ln.id)}
+                                title="Send to parts for quoting"
+                              >
+                                Send to Parts
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

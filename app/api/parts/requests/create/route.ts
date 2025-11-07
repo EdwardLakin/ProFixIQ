@@ -2,16 +2,15 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+type DB = Database;
+type PRInsert = DB["public"]["Tables"]["part_requests"]["Insert"];
+type PRIInsert = DB["public"]["Tables"]["part_request_items"]["Insert"];
+type WORow = DB["public"]["Tables"]["work_orders"]["Row"];
+type WOLUpdate = DB["public"]["Tables"]["work_order_lines"]["Update"];
 
-// admin client (bypasses RLS)
-const admin = createClient<Database>(supabaseUrl, serviceKey, {
-  auth: { persistSession: false },
-});
+const DEFAULT_MARKUP = 30; // % ← you said default 30%
 
 type BodyItem = {
   description: string;
@@ -20,22 +19,16 @@ type BodyItem = {
 
 type Body = {
   workOrderId: string;
-  jobId?: string | null;
+  jobId?: string | null;   // the WO line the tech was on
   items: BodyItem[];
   notes?: string | null;
 };
 
 export async function POST(req: Request) {
-  // this client sees the user from cookies
-  const userClient = createRouteHandlerClient<Database>({ cookies });
+  const supabase = createRouteHandlerClient<DB>({ cookies });
 
-  let body: Body | null = null;
-  try {
-    body = (await req.json()) as Body;
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-  }
-
+  // 1) parse + validate
+  const body = (await req.json().catch(() => null)) as Body | null;
   if (
     !body ||
     typeof body.workOrderId !== "string" ||
@@ -50,17 +43,25 @@ export async function POST(req: Request) {
 
   const { workOrderId, jobId, items, notes } = body;
 
-  // real user (for requested_by)
+  // 2) auth
   const {
     data: { user },
-  } = await userClient.auth.getUser();
+    error: userErr,
+  } = await supabase.auth.getUser();
+  if (userErr) {
+    return NextResponse.json({ error: userErr.message }, { status: 401 });
+  }
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
 
-  // load WO with admin
-  const { data: wo, error: woErr } = await admin
+  // 3) load WO for shop_id
+  const { data: wo, error: woErr } = await supabase
     .from("work_orders")
     .select("id, shop_id")
     .eq("id", workOrderId)
-    .maybeSingle();
+    .maybeSingle<WORow>();
+
   if (woErr) {
     return NextResponse.json({ error: woErr.message }, { status: 400 });
   }
@@ -68,16 +69,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Work order not found" }, { status: 404 });
   }
 
-  // insert header with admin
-  const { data: pr, error: prErr } = await admin
+  // 4) insert header
+  const header: PRInsert = {
+    work_order_id: workOrderId,
+    shop_id: wo.shop_id,
+    requested_by: user.id,
+    status: "requested",
+    notes: notes ?? null,
+  };
+
+  const { data: pr, error: prErr } = await supabase
     .from("part_requests")
-    .insert({
-      work_order_id: workOrderId,
-      shop_id: wo.shop_id,
-      requested_by: user?.id ?? null,
-      status: "requested",
-      notes: notes ?? null,
-    })
+    .insert(header)
     .select("id")
     .single();
 
@@ -88,36 +91,45 @@ export async function POST(req: Request) {
     );
   }
 
-  // insert items with admin
-  const itemRows = items.map((it) => ({
+  // 5) insert item rows — now with markup_pct + work_order_line_id
+  const itemRows: PRIInsert[] = items.map((it) => ({
     request_id: pr.id,
     description: it.description.trim(),
     qty: Number(it.qty),
-    approved: false,
+    approved: false,            // your table says NOT NULL
     part_id: null,
     quoted_price: null,
     vendor: null,
+    // 🆕 columns you just added:
+    // name it exactly how you added it in Supabase, I’m using markup_pct
+    // if you picked a different name, change it here
+    markup_pct: DEFAULT_MARKUP as any,
+    // and tie it back to the line so the detail page can update the WO line later
+    work_order_line_id: jobId ?? null,
   }));
 
-  const { error: itemsErr } = await admin
+  const { error: itemsErr } = await supabase
     .from("part_request_items")
     .insert(itemRows);
+
   if (itemsErr) {
-    await admin.from("part_requests").delete().eq("id", pr.id);
+    // best-effort rollback if items fail
+    await supabase.from("part_requests").delete().eq("id", pr.id);
     return NextResponse.json(
-      { error: itemsErr.message ?? "Failed to insert items" },
+      { error: itemsErr.message ?? "Failed to insert request items" },
       { status: 500 },
     );
   }
 
-  // optionally put the line on hold
+  // 6) optionally put the line on hold / approval pending
   if (jobId) {
-    await admin
+    const updatePayload: WOLUpdate = {
+      status: "on_hold",
+      approval_state: "pending",
+    };
+    await supabase
       .from("work_order_lines")
-      .update({
-        status: "on_hold",
-        approval_state: "pending",
-      })
+      .update(updatePayload)
       .eq("id", jobId);
   }
 
