@@ -1,3 +1,4 @@
+// features/work-orders/components/workorders/PartsRequestModal.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -9,7 +10,7 @@ type Item = { id: string; description: string; qty: number; notes?: string };
 type Props = {
   isOpen: boolean;
   workOrderId: string;
-  jobId: string;
+  jobId: string; // <- this is the workOrderLineId we must pass per item
   requestNote?: string | null;
   closeEventName?: string;      // default: "parts-request:close"
   submittedEventName?: string;  // default: "parts-request:submitted"
@@ -44,6 +45,7 @@ export default function PartsRequestModal({
   const setCell = (id: string, patch: Partial<Item>) =>
     setRows((r) => r.map((x) => (x.id === id ? { ...x, ...patch } : x)));
 
+  // base validation (no line id yet)
   const validItems = rows
     .map((r) => ({
       description: r.description.trim(),
@@ -56,25 +58,36 @@ export default function PartsRequestModal({
 
   async function submit() {
     if (validItems.length === 0) {
-      toast.error("Add at least one line with a description and a positive quantity.");
+      toast.error(
+        "Add at least one line with a description and a positive quantity."
+      );
       return;
     }
     setSubmitting(true);
     try {
-      // 🔧 align with your new route: /api/parts/create/request
-      const res = await fetch("/api/parts/create/request", {
+      // ✅ 1) correct route path
+      const res = await fetch("/api/parts/requests/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        // ✅ 2) backend wants every item to carry workOrderLineId
         body: JSON.stringify({
           workOrderId,
-          workOrderLineId: jobId,
-          items: validItems,
+          items: validItems.map((i) => ({
+            ...i,
+            workOrderLineId: jobId,
+          })),
           notes: headerNotes || undefined,
         }),
       });
 
-      const j = (await res.json().catch(() => null)) as { id?: string; error?: string } | null;
-      if (!res.ok || !j?.id) throw new Error(j?.error || "Failed to create parts request");
+      const j = (await res.json().catch(() => null)) as
+        | { requestId?: string; error?: string }
+        | null;
+
+      // ✅ 3) backend returns { requestId }, not { id }
+      if (!res.ok || !j?.requestId) {
+        throw new Error(j?.error || "Failed to create parts request");
+      }
 
       toast.success("Parts request sent to Parts.");
       emit(submittedEventName);
@@ -89,14 +102,25 @@ export default function PartsRequestModal({
   if (!isOpen) return null;
 
   return (
-    <Dialog open={isOpen} onClose={() => emit(closeEventName)} className="fixed inset-0 z-[330] flex items-center justify-center">
-      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" aria-hidden="true" />
+    <Dialog
+      open={isOpen}
+      onClose={() => emit(closeEventName)}
+      className="fixed inset-0 z-[330] flex items-center justify-center"
+    >
+      <div
+        className="fixed inset-0 bg-black/70 backdrop-blur-sm"
+        aria-hidden="true"
+      />
       <div className="relative mx-4 my-6 w-full max-w-2xl">
         <Dialog.Panel className="rounded border border-orange-400 bg-neutral-950 p-5 text-white shadow-xl">
-          <Dialog.Title className="mb-3 font-header text-lg font-semibold">Request Parts</Dialog.Title>
+          <Dialog.Title className="mb-3 font-header text-lg font-semibold">
+            Request Parts
+          </Dialog.Title>
 
           <div className="mb-4">
-            <label className="mb-1 block text-sm text-neutral-300">Note to Parts (optional)</label>
+            <label className="mb-1 block text-sm text-neutral-300">
+              Note to Parts (optional)
+            </label>
             <textarea
               rows={2}
               className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
@@ -116,12 +140,17 @@ export default function PartsRequestModal({
 
             <div className="max-h-64 overflow-auto">
               {rows.map((r) => (
-                <div key={r.id} className="grid grid-cols-12 gap-2 border-t border-neutral-800 p-2">
+                <div
+                  key={r.id}
+                  className="grid grid-cols-12 gap-2 border-t border-neutral-800 p-2"
+                >
                   <input
                     className="col-span-7 rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm"
                     placeholder="e.g., 5W30 oil filter, rear pads, serpentine belt…"
                     value={r.description}
-                    onChange={(e) => setCell(r.id, { description: e.target.value })}
+                    onChange={(e) =>
+                      setCell(r.id, { description: e.target.value })
+                    }
                   />
                   <input
                     type="number"
@@ -129,7 +158,11 @@ export default function PartsRequestModal({
                     step="0.01"
                     className="col-span-2 rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-right text-sm"
                     value={r.qty}
-                    onChange={(e) => setCell(r.id, { qty: Math.max(0.01, Number(e.target.value || 0)) })}
+                    onChange={(e) =>
+                      setCell(r.id, {
+                        qty: Math.max(0.01, Number(e.target.value || 0)),
+                      })
+                    }
                   />
                   <input
                     className="col-span-2 rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm"
