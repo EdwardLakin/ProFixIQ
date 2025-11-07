@@ -120,7 +120,7 @@ export default function FinishInspectionButton({ session, workOrderLineId }: Pro
         router.push(`/app/work-orders/${workOrderId}`);
       } else {
         // Fallback to your prior summary view
-        router.push("/app/inspection/summary");
+        router.push("/inspection/summary");
       }
     } catch (error: any) {
       // eslint-disable-next-line no-console
