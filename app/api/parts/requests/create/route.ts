@@ -1,4 +1,6 @@
 // app/api/parts/requests/create/route.ts
+export const runtime = "nodejs";
+
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
@@ -89,13 +91,13 @@ export async function POST(req: Request) {
     );
   }
 
-  // 5) insert item rows — match table exactly
+  // 5) insert item rows — match your current table
   const itemRows: PRIInsert[] = items.map((it) => ({
     request_id: pr.id,
     description: it.description.trim(),
     qty: Number(it.qty),
-    approved: false,       // NOT NULL column
-    part_id: null,         // we don't know the exact part yet
+    approved: false,       // NOT NULL in your table
+    part_id: null,
     quoted_price: null,
     vendor: null,
   }));

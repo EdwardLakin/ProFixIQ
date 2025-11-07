@@ -15,6 +15,13 @@ type Props = {
   submittedEventName?: string;
 };
 
+function makeId() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return Math.random().toString(36).slice(2);
+}
+
 export default function PartsRequestModal({
   isOpen,
   workOrderId,
@@ -25,18 +32,18 @@ export default function PartsRequestModal({
 }: Props) {
   const [headerNotes, setHeaderNotes] = useState(requestNote ?? "");
   const [rows, setRows] = useState<Item[]>([
-    { id: crypto.randomUUID(), description: "", qty: 1 },
+    { id: makeId(), description: "", qty: 1 },
   ]);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
     setHeaderNotes(requestNote ?? "");
-    setRows([{ id: crypto.randomUUID(), description: "", qty: 1 }]);
+    setRows([{ id: makeId(), description: "", qty: 1 }]);
   }, [isOpen, requestNote]);
 
   const addRow = () =>
-    setRows((r) => [...r, { id: crypto.randomUUID(), description: "", qty: 1 }]);
+    setRows((r) => [...r, { id: makeId(), description: "", qty: 1 }]);
 
   const removeRow = (id: string) =>
     setRows((r) => (r.length > 1 ? r.filter((x) => x.id !== id) : r));
@@ -44,6 +51,7 @@ export default function PartsRequestModal({
   const setCell = (id: string, patch: Partial<Item>) =>
     setRows((r) => r.map((x) => (x.id === id ? { ...x, ...patch } : x)));
 
+  // matches route: /api/parts/requests/create  -> items: [{ description, qty }]
   const validItems = rows
     .map((r) => ({
       description: r.description.trim(),
@@ -51,7 +59,9 @@ export default function PartsRequestModal({
     }))
     .filter((i) => i.description && i.qty > 0);
 
-  const emit = (name: string) => window.dispatchEvent(new CustomEvent(name));
+  const emit = (name: string) =>
+    typeof window !== "undefined" &&
+    window.dispatchEvent(new CustomEvent(name));
 
   async function submit() {
     if (validItems.length === 0) {
@@ -60,7 +70,6 @@ export default function PartsRequestModal({
     }
     setSubmitting(true);
     try {
-      // 👇 match your actual route
       const res = await fetch("/api/parts/requests/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -77,13 +86,17 @@ export default function PartsRequestModal({
         | null;
 
       if (!res.ok || !j?.requestId) {
-        throw new Error(j?.error || "Failed to create parts request");
+        const msg = j?.error || `Failed to create parts request (${res.status})`;
+        console.error("[PartsRequestModal] submit failed:", msg, j);
+        toast.error(msg);
+        return;
       }
 
       toast.success("Parts request sent.");
       emit(submittedEventName);
       emit(closeEventName);
     } catch (e) {
+      console.error("[PartsRequestModal] submit error:", e);
       toast.error((e as Error).message);
     } finally {
       setSubmitting(false);
