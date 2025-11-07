@@ -451,33 +451,42 @@ export default function WorkOrderIdClient(): JSX.Element {
     };
   }, [supabase, wo?.id, fetchAll]);
 
-  /* ---------------------- listen for inspection finish ---------------------- */
-  useEffect(() => {
-    const handler = (ev: any) => {
-      const d = ev.detail || {};
-      const lineId = d.workOrderLineId as string | undefined;
-      if (!lineId) return;
+  // ---------- listen for inspection finish ----------
+useEffect(() => {
+  // Define event payload type
+  interface InspectionCompletedEventDetail {
+    workOrderLineId?: string;
+    cause?: string;
+    correction?: string;
+  }
 
-      // open that line
-      setFocusedJobId(lineId);
-      setFocusedOpen(true);
+  const handler = (ev: CustomEvent<InspectionCompletedEventDetail>) => {
+    const d = ev.detail || {};
+    const lineId = d.workOrderLineId;
+    if (!lineId) return;
 
-      // forward data to focused modal
-      window.dispatchEvent(
-        new CustomEvent("wol:prefill-cause-correction", {
-          detail: {
-            lineId,
-            cause: d.cause ?? "",
-            correction: d.correction ?? "",
-          },
-        })
-      );
-    };
+    // open that line
+    setFocusedJobId(lineId);
+    setFocusedOpen(true);
 
-    window.addEventListener("inspection:finished", handler as EventListener);
-    return () =>
-      window.removeEventListener("inspection:finished", handler as EventListener);
-  }, []);
+    // forward data to focused modal
+    window.dispatchEvent(
+      new CustomEvent("wo:prefill-cause-correction", {
+        detail: {
+          lineId,
+          cause: d.cause ?? "",
+          correction: d.correction ?? "",
+        },
+      })
+    );
+  };
+
+  window.addEventListener("inspection:completed", handler as EventListener);
+
+  return () => {
+    window.removeEventListener("inspection:completed", handler as EventListener);
+  };
+}, []);
 
   /* ----------------------- Derived data ----------------------- */
   const approvalPending = useMemo(
