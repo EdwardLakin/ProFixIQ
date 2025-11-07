@@ -246,9 +246,21 @@ export default function GenericInspectionScreen(): JSX.Element {
   }, [sp]);
 
   const inspectionId = useMemo(
-    () => sp.get("inspectionId") || uuidv4(),
-    [sp]
-  );
+  () => sp.get("inspectionId") || uuidv4(),
+  [sp]
+);
+
+// 🔸 try to hydrate from localStorage
+const persistedSession = useMemo(() => {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem(`inspection-${inspectionId}`);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as InspectionSession;
+  } catch {
+    return null;
+  }
+}, [inspectionId]);
 
   const [unit, setUnit] = useState<"metric" | "imperial">("metric");
   const [isListening, setIsListening] = useState(false);
@@ -272,23 +284,28 @@ export default function GenericInspectionScreen(): JSX.Element {
   );
 
   const {
-    session,
-    updateInspection,
-    updateItem,
-    updateSection,
-    startSession,
-    finishSession,
-    resumeSession,
-    pauseSession,
-    addQuoteLine,
-    updateQuoteLine,
-  } = useInspectionSession(initialSession);
+  session,
+  updateInspection,
+  updateItem,
+  updateSection,
+  startSession,
+  finishSession,
+  resumeSession,
+  pauseSession,
+  addQuoteLine,
+  updateQuoteLine,
+} = useInspectionSession(persistedSession ?? initialSession);
 
   // start
   useEffect(() => {
+  // if we had a saved session, don’t blow it away
+  if (persistedSession) {
+    startSession(persistedSession);
+  } else {
     startSession(initialSession);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [persistedSession]);
   useEffect(() => {
     if (session && (session.sections?.length ?? 0) === 0) {
       updateInspection({ sections: bootSections });

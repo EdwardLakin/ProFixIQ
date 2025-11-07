@@ -8,24 +8,32 @@ interface CauseCorrectionModalProps {
   onClose: () => void;
   jobId: string;
   onSubmit: (cause: string, correction: string) => Promise<void>;
+  initialCause?: string;
+  initialCorrection?: string;
 }
 
-export default function CauseCorrectionModal(props: any) {
-  const { isOpen, onClose, jobId, onSubmit } =
-    props as CauseCorrectionModalProps;
+export default function CauseCorrectionModal(props: CauseCorrectionModalProps) {
+  const {
+    isOpen,
+    onClose,
+    jobId,
+    onSubmit,
+    initialCause = "",
+    initialCorrection = "",
+  } = props;
 
-  const [cause, setCause] = useState("");
-  const [correction, setCorrection] = useState("");
+  const [cause, setCause] = useState(initialCause);
+  const [correction, setCorrection] = useState(initialCorrection);
   const [submitting, setSubmitting] = useState(false);
   const causeRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     if (isOpen) {
-      setCause("");
-      setCorrection("");
+      setCause(initialCause);
+      setCorrection(initialCorrection);
       setTimeout(() => causeRef.current?.focus(), 50);
     }
-  }, [isOpen]);
+  }, [isOpen, initialCause, initialCorrection]);
 
   const handleSubmit = async () => {
     if (submitting) return;
@@ -44,14 +52,17 @@ export default function CauseCorrectionModal(props: any) {
       onClose={onClose}
       className="fixed inset-0 z-[320] flex items-center justify-center"
     >
-      {/* Backdrop (above FocusedJobModal, below panel) */}
+      {/* Backdrop */}
       <div
         className="fixed inset-0 z-[320] bg-black/70 backdrop-blur-sm"
         aria-hidden="true"
       />
 
       {/* Panel */}
-      <div className="relative z-[330] mx-4 w-full max-w-md rounded-lg border border-orange-400 bg-neutral-950 p-5 text-white shadow-xl">
+      <div
+        className="relative z-[330] mx-4 w-full max-w-md rounded-lg border border-orange-400 bg-neutral-950 p-5 text-white shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         <Dialog.Title className="mb-4 text-lg font-header font-semibold tracking-wide">
           Complete Job
         </Dialog.Title>

@@ -23,17 +23,13 @@ export type PickedPart = { part_id: UUID; location_id?: UUID; qty: number };
 
 type Props = {
   open: boolean;
-  /** Optional window event channel (legacy nicety) */
   channel?: string;
-  /** Prefill search text */
   initialSearch?: string;
-  /** Work-order context (for AI + RLS) */
   workOrderId?: string;
   workOrderLineId?: string | null;
   vehicleSummary?: { year?: number | string | null; make?: string | null; model?: string | null } | null;
   jobDescription?: string | null;
   jobNotes?: string | null;
-  /** Callbacks */
   onClose?: () => void;
   onPick?: (sel: PickedPart) => void;
 };
@@ -59,21 +55,17 @@ export function PartPicker({
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // selection state
   const [selectedPartId, setSelectedPartId] = useState<UUID | null>(null);
   const [selectedLocId, setSelectedLocId] = useState<UUID | null>(null);
   const [qty, setQty] = useState<number>(1);
 
-  // AI suggestions
   const { loading: aiLoading, items: aiItems, error: aiErr, suggest } = useAiPartSuggestions();
 
-  // MAIN location if present
   const mainLocId = useMemo(() => {
     const m = locs.find((l) => (l.code ?? "").toUpperCase() === "MAIN");
     return (m?.id as UUID | undefined) ?? null;
   }, [locs]);
 
-  // fetch shop + locations
   useEffect(() => {
     if (!open) return;
     (async () => {
@@ -108,7 +100,6 @@ export function PartPicker({
     })();
   }, [open, supabase]);
 
-  // AI: fetch suggestions on first open (if context provided)
   useEffect(() => {
     if (!open || !workOrderId) return;
     void suggest({
@@ -121,7 +112,6 @@ export function PartPicker({
     });
   }, [open, workOrderId, workOrderLineId, vehicleSummary, jobDescription, jobNotes, suggest]);
 
-  // search parts + fetch stock for visible parts
   useEffect(() => {
     if (!open || !shopId) return;
     let cancelled = false;
@@ -148,7 +138,6 @@ export function PartPicker({
         const rowsSafe = (rows ?? []) as PartRow[];
         setParts(rowsSafe);
 
-        // fetch v_part_stock for these parts
         const ids = rowsSafe.map((r) => r.id as UUID);
         if (ids.length) {
           const { data: vs, error: ve } = await supabase
@@ -184,7 +173,6 @@ export function PartPicker({
     };
   }, [open, shopId, search, supabase]);
 
-  // reset when reopening
   useEffect(() => {
     if (!open) return;
     setSelectedPartId(null);
@@ -220,7 +208,6 @@ export function PartPicker({
     close();
   };
 
-  // Try to resolve an AI suggestion to a concrete part (SKU first, then name)
   async function resolveSuggestionToPartId(s: AiPartSuggestion): Promise<string | null> {
     if (!shopId) return null;
     if (s.sku) {
@@ -244,13 +231,30 @@ export function PartPicker({
     return null;
   }
 
-  return !open ? null : (
-    <div className="fixed inset-0 z-[500] flex items-center justify-center">
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[500] flex items-center justify-center"
+      onClick={(e) => {
+        // kill bubbling to job card
+        e.stopPropagation();
+      }}
+    >
       {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" aria-hidden="true" onClick={close} />
+      <div
+        className="fixed inset-0 bg-black/70 backdrop-blur-sm"
+        aria-hidden="true"
+        onClick={() => {
+          close();
+        }}
+      />
 
       {/* Panel */}
-      <div className="relative z-[510] w-full max-w-3xl rounded-lg border border-orange-400 bg-neutral-950 p-4 text-white shadow-xl">
+      <div
+        className="relative z-[510] w-full max-w-3xl rounded-lg border border-orange-400 bg-neutral-950 p-4 text-white shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="mb-3 flex items-center justify-between">
           <div>
             <div className="text-xs text-neutral-400">Select a part</div>
@@ -264,7 +268,7 @@ export function PartPicker({
           </button>
         </div>
 
-        {/* AI suggestions */}
+        {/* AI */}
         <div className="mb-3 rounded border border-neutral-800">
           <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-2">
             <div className="text-sm font-semibold">AI suggestions</div>
@@ -288,7 +292,6 @@ export function PartPicker({
                         setSelectedPartId(pid as UUID);
                         setQty(Math.max(1, Number(s.qty ?? 1)));
                       } else {
-                        // fallback: prime the search so the tech can pick manually
                         setSearch(s.sku || s.name || "");
                       }
                     }}
@@ -317,7 +320,7 @@ export function PartPicker({
           <div className="text-sm text-neutral-400">Searching…</div>
         ) : (
           <div className="grid gap-3 md:grid-cols-2">
-            {/* Left: results */}
+            {/* left */}
             <div className="rounded-xl border border-neutral-800">
               <div className="border-b border-neutral-800 p-2 text-sm font-semibold">Results</div>
               <div className="max-h-72 overflow-auto">
@@ -342,7 +345,7 @@ export function PartPicker({
               </div>
             </div>
 
-            {/* Right: stock + confirm */}
+            {/* right */}
             <div className="rounded-xl border border-neutral-800 p-3">
               <div className="mb-2 text-sm font-semibold">Stock by location</div>
               {!selectedPartId ? (
@@ -358,14 +361,19 @@ export function PartPicker({
                       const l = locMap.get(s.location_id as UUID);
                       const checked = (selectedLocId ?? defaultLocId) === s.location_id;
                       return (
-                        <label key={s.location_id} className="flex items-center justify-between rounded border border-neutral-800 p-2">
+                        <label
+                          key={s.location_id}
+                          className="flex items-center justify-between rounded border border-neutral-800 p-2"
+                        >
                           <div className="min-w-0">
                             <div className="font-medium">{l?.code ?? "LOC"}</div>
                             <div className="truncate text-xs text-neutral-500">
                               {l?.name ?? String(s.location_id).slice(0, 6) + "…"}
                             </div>
                           </div>
-                          <div className="tabular-nums text-sm font-semibold">{Number(s.qty_available)} avail</div>
+                          <div className="tabular-nums text-sm font-semibold">
+                            {Number(s.qty_available)} avail
+                          </div>
                           <input
                             type="radio"
                             name="loc"

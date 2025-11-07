@@ -7,11 +7,11 @@ import { PartPicker, type PickedPart } from "@parts/components/PartPicker";
 export function UsePartButton({
   workOrderLineId,
   onApplied,
-  label = "Use Part", // 👈 new
+  label = "Use Part",
 }: {
   workOrderLineId: string;
   onApplied?: () => void;
-  label?: string; // 👈 new
+  label?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
@@ -38,7 +38,10 @@ export function UsePartButton({
   return (
     <>
       <button
-        onClick={() => setOpen(true)}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen(true);
+        }}
         className="px-3 py-2 rounded-xl bg-neutral-900 text-white disabled:opacity-60"
         disabled={pending}
         title="Use/consume a part on this job line"
