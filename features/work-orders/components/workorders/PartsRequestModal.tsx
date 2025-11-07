@@ -11,16 +11,9 @@ type Props = {
   workOrderId: string;
   jobId: string;
   requestNote?: string | null;
-  closeEventName?: string;
-  submittedEventName?: string;
+  closeEventName?: string;      // default: "parts-request:close"
+  submittedEventName?: string;  // default: "parts-request:submitted"
 };
-
-function makeId() {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-  return Math.random().toString(36).slice(2);
-}
 
 export default function PartsRequestModal({
   isOpen,
@@ -32,18 +25,18 @@ export default function PartsRequestModal({
 }: Props) {
   const [headerNotes, setHeaderNotes] = useState(requestNote ?? "");
   const [rows, setRows] = useState<Item[]>([
-    { id: makeId(), description: "", qty: 1 },
+    { id: crypto.randomUUID(), description: "", qty: 1 },
   ]);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
     setHeaderNotes(requestNote ?? "");
-    setRows([{ id: makeId(), description: "", qty: 1 }]);
+    setRows([{ id: crypto.randomUUID(), description: "", qty: 1 }]);
   }, [isOpen, requestNote]);
 
   const addRow = () =>
-    setRows((r) => [...r, { id: makeId(), description: "", qty: 1 }]);
+    setRows((r) => [...r, { id: crypto.randomUUID(), description: "", qty: 1 }]);
 
   const removeRow = (id: string) =>
     setRows((r) => (r.length > 1 ? r.filter((x) => x.id !== id) : r));
@@ -51,7 +44,7 @@ export default function PartsRequestModal({
   const setCell = (id: string, patch: Partial<Item>) =>
     setRows((r) => r.map((x) => (x.id === id ? { ...x, ...patch } : x)));
 
-  // matches route: /api/parts/requests/create  -> items: [{ description, qty }]
+  // what we actually send
   const validItems = rows
     .map((r) => ({
       description: r.description.trim(),
@@ -59,9 +52,11 @@ export default function PartsRequestModal({
     }))
     .filter((i) => i.description && i.qty > 0);
 
-  const emit = (name: string) =>
-    typeof window !== "undefined" &&
-    window.dispatchEvent(new CustomEvent(name));
+  const emit = (name: string) => {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(name));
+    }
+  };
 
   async function submit() {
     if (validItems.length === 0) {
@@ -69,7 +64,9 @@ export default function PartsRequestModal({
       return;
     }
     setSubmitting(true);
+
     try {
+      // 👇 this MUST match your route: app/api/parts/requests/create/route.ts
       const res = await fetch("/api/parts/requests/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -81,23 +78,33 @@ export default function PartsRequestModal({
         }),
       });
 
-      const j = (await res.json().catch(() => null)) as
-        | { requestId?: string; error?: string }
-        | null;
+      // read raw text first so we can show *anything* the API returns
+      const raw = await res.text();
+      let json: { requestId?: string; error?: string } | null = null;
+      try {
+        json = raw ? (JSON.parse(raw) as any) : null;
+      } catch {
+        // not JSON, we'll surface raw below
+      }
 
-      if (!res.ok || !j?.requestId) {
-        const msg = j?.error || `Failed to create parts request (${res.status})`;
-        console.error("[PartsRequestModal] submit failed:", msg, j);
-        toast.error(msg);
+      if (!res.ok || !json?.requestId) {
+        // show the *actual* problem
+        const msg =
+          json?.error ||
+          raw ||
+          `Request failed with status ${res.status}`;
+        toast.error(`Parts request failed: ${msg}`);
         return;
       }
 
+      // success
       toast.success("Parts request sent.");
       emit(submittedEventName);
       emit(closeEventName);
-    } catch (e) {
-      console.error("[PartsRequestModal] submit error:", e);
-      toast.error((e as Error).message);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Unable to submit request"
+      );
     } finally {
       setSubmitting(false);
     }
