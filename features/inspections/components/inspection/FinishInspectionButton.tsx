@@ -4,20 +4,9 @@
 import React, { useState } from "react";
 import { toast } from "sonner";
 
-// we keep this loose so it works with your current session shape
-type AnySession = {
-  id?: string;
-  status?: string;
-  quote?: Array<{
-    id: string;
-    description?: string | null;
-    notes?: string | null;
-    status?: string | null; // "fail" | "recommend" | ...
-  }>;
-};
-
 type Props = {
-  session: AnySession;
+  // <- make it completely loose so pages can pass their InspectionSession
+  session: any;
   workOrderLineId?: string | null;
 };
 
@@ -28,38 +17,44 @@ export default function FinishInspectionButton({
   const [busy, setBusy] = useState(false);
 
   // build a reasonable correction text from the session
-  function buildCorrectionFromSession(s: AnySession): {
+  function buildCorrectionFromSession(s: any): {
     cause: string;
     correction: string;
   } {
-    const items = Array.isArray(s.quote) ? s.quote : [];
+    // your session sometimes has quote as a single object or an array,
+    // so normalize to an array here.
+    const raw = s?.quote;
+    const items: any[] = Array.isArray(raw) ? raw : raw ? [raw] : [];
 
     const failed = items.filter(
-      (i) => (i.status ?? "").toLowerCase() === "fail"
+      (i) => (i?.status ?? "").toLowerCase() === "fail"
     );
     const recommended = items.filter(
-      (i) => (i.status ?? "").toLowerCase() === "recommend"
+      (i) => (i?.status ?? "").toLowerCase() === "recommend"
     );
 
     if (failed.length === 0 && recommended.length === 0) {
       return {
         cause: "Inspection completed.",
-        correction: "Inspection completed. No failed or recommended items were recorded.",
+        correction:
+          "Inspection completed. No failed or recommended items were recorded.",
       };
     }
 
     const parts: string[] = [];
+
     if (failed.length) {
       parts.push(
         `Failed items: ${failed
-          .map((f) => f.description || f.notes || "Item")
+          .map((f) => f?.description || f?.notes || "Item")
           .join("; ")}.`
       );
     }
+
     if (recommended.length) {
       parts.push(
         `Recommended items: ${recommended
-          .map((r) => r.description || r.notes || "Item")
+          .map((r) => r?.description || r?.notes || "Item")
           .join("; ")}.`
       );
     }
@@ -91,12 +86,11 @@ export default function FinishInspectionButton({
       );
 
       const json = await res.json().catch(() => null);
-
       if (!res.ok) {
         throw new Error(json?.error || "Failed to finish inspection");
       }
 
-      // fire browser event so the focused job can pop its modal prefilled
+      // tell the WO page / focused-job modal to open & prefill
       if (typeof window !== "undefined") {
         window.dispatchEvent(
           new CustomEvent("inspection:completed", {
