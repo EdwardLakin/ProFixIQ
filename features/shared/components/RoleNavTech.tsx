@@ -7,7 +7,6 @@ import type { Database } from "@shared/types/types/supabase";
 import ShiftTracker from "@shared/components/ShiftTracker";
 import {
   FaCogs,
-  FaRegChartBar,
   FaClipboardList,
   FaCalendarAlt,
   FaUserCog,
