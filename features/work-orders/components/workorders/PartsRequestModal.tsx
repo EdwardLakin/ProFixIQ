@@ -1,19 +1,18 @@
-// features/work-orders/components/workorders/PartsRequestModal.tsx
 "use client";
 
 import { useEffect, useState } from "react";
 import { Dialog } from "@headlessui/react";
 import { toast } from "sonner";
 
-type Item = { id: string; description: string; qty: number; notes?: string };
+type Item = { id: string; description: string; qty: number };
 
 type Props = {
   isOpen: boolean;
   workOrderId: string;
-  jobId: string; // work_order_line_id
+  jobId: string;
   requestNote?: string | null;
-  closeEventName?: string;      // default: "parts-request:close"
-  submittedEventName?: string;  // default: "parts-request:submitted"
+  closeEventName?: string;
+  submittedEventName?: string;
 };
 
 export default function PartsRequestModal({
@@ -26,14 +25,14 @@ export default function PartsRequestModal({
 }: Props) {
   const [headerNotes, setHeaderNotes] = useState(requestNote ?? "");
   const [rows, setRows] = useState<Item[]>([
-    { id: crypto.randomUUID(), description: "", qty: 1, notes: "" },
+    { id: crypto.randomUUID(), description: "", qty: 1 },
   ]);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
     setHeaderNotes(requestNote ?? "");
-    setRows([{ id: crypto.randomUUID(), description: "", qty: 1, notes: "" }]);
+    setRows([{ id: crypto.randomUUID(), description: "", qty: 1 }]);
   }, [isOpen, requestNote]);
 
   const addRow = () =>
@@ -48,8 +47,7 @@ export default function PartsRequestModal({
   const validItems = rows
     .map((r) => ({
       description: r.description.trim(),
-      qty: Number(r.qty) || 0,
-      notes: (r.notes || "").trim() || undefined,
+      qty: Number(r.qty) || 1,
     }))
     .filter((i) => i.description && i.qty > 0);
 
@@ -57,25 +55,20 @@ export default function PartsRequestModal({
 
   async function submit() {
     if (validItems.length === 0) {
-      toast.error(
-        "Add at least one line with a description and a positive quantity."
-      );
+      toast.error("Add at least one line.");
       return;
     }
     setSubmitting(true);
     try {
-      // ✅ use the route you showed in your code
+      // 👇 match your actual route
       const res = await fetch("/api/parts/requests/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           workOrderId,
-          // backend requires workOrderLineId on EACH item
-          items: validItems.map((i) => ({
-            ...i,
-            workOrderLineId: jobId,
-          })),
+          jobId,
           notes: headerNotes || undefined,
+          items: validItems,
         }),
       });
 
@@ -87,7 +80,7 @@ export default function PartsRequestModal({
         throw new Error(j?.error || "Failed to create parts request");
       }
 
-      toast.success("Parts request sent to Parts.");
+      toast.success("Parts request sent.");
       emit(submittedEventName);
       emit(closeEventName);
     } catch (e) {
@@ -103,17 +96,11 @@ export default function PartsRequestModal({
     <Dialog
       open={isOpen}
       onClose={() => emit(closeEventName)}
-      // ⬇️ put this ABOVE the parts drawer (drawer was ~510/520)
       className="fixed inset-0 z-[600] flex items-center justify-center"
     >
-      {/* Backdrop above drawer */}
-      <div
-        className="fixed inset-0 bg-black/70 backdrop-blur-sm"
-        aria-hidden="true"
-      />
+      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" aria-hidden="true" />
       <div className="relative mx-4 my-6 w-full max-w-2xl">
         <Dialog.Panel
-          // ⬇️ also high, and stop click bubbling to anything behind
           className="relative z-[610] rounded border border-orange-400 bg-neutral-950 p-5 text-white shadow-xl"
           onClick={(e) => e.stopPropagation()}
         >
@@ -130,15 +117,13 @@ export default function PartsRequestModal({
               className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
               value={headerNotes}
               onChange={(e) => setHeaderNotes(e.target.value)}
-              placeholder="Any context, vendor prefs, deadlines…"
             />
           </div>
 
           <div className="overflow-hidden rounded border border-neutral-800">
             <div className="grid grid-cols-12 bg-neutral-900 px-3 py-2 text-xs text-neutral-400">
-              <div className="col-span-7">Description*</div>
-              <div className="col-span-2 text-right">Qty*</div>
-              <div className="col-span-2">Notes</div>
+              <div className="col-span-8">Description*</div>
+              <div className="col-span-3 text-right">Qty*</div>
               <div className="col-span-1 text-center">—</div>
             </div>
 
@@ -149,37 +134,26 @@ export default function PartsRequestModal({
                   className="grid grid-cols-12 gap-2 border-t border-neutral-800 p-2"
                 >
                   <input
-                    className="col-span-7 rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm"
-                    placeholder="e.g., 5W30 oil filter, rear pads…"
+                    className="col-span-8 rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm"
                     value={r.description}
-                    onChange={(e) =>
-                      setCell(r.id, { description: e.target.value })
-                    }
+                    onChange={(e) => setCell(r.id, { description: e.target.value })}
+                    placeholder="e.g. rear pads, serp belt…"
                   />
                   <input
                     type="number"
-                    min={0.01}
-                    step="0.01"
-                    className="col-span-2 rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-right text-sm"
+                    min={1}
+                    step={1}
+                    className="col-span-3 rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-right text-sm"
                     value={r.qty}
                     onChange={(e) =>
-                      setCell(r.id, {
-                        qty: Math.max(0.01, Number(e.target.value || 0)),
-                      })
+                      setCell(r.id, { qty: Math.max(1, Number(e.target.value) || 1) })
                     }
-                  />
-                  <input
-                    className="col-span-2 rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm"
-                    placeholder="optional"
-                    value={r.notes ?? ""}
-                    onChange={(e) => setCell(r.id, { notes: e.target.value })}
                   />
                   <div className="col-span-1 flex items-center justify-center">
                     <button
-                      className="rounded border border-neutral-700 px-2 py-1 text-xs text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
+                      className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800 disabled:opacity-40"
                       onClick={() => removeRow(r.id)}
                       disabled={rows.length <= 1}
-                      title="Remove row"
                     >
                       ✕
                     </button>
