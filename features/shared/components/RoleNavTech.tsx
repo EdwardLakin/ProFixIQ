@@ -2,132 +2,108 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import clsx from "clsx";
 import type { Database } from "@shared/types/types/supabase";
 import ShiftTracker from "@shared/components/ShiftTracker";
-
 import {
   FaCogs,
-  FaChevronDown,
-  FaChevronRight,
-  FaTachometerAlt,
+  FaRegChartBar,
   FaClipboardList,
   FaCalendarAlt,
   FaUserCog,
+  FaTachometerAlt,
 } from "react-icons/fa";
+import { HiMenuAlt2 } from "react-icons/hi";
+import ChatDock from "@/features/chat/components/ChatDock";
 
 export default function RoleNavTech() {
   const supabase = createClientComponentClient<Database>();
-  const pathname = usePathname();
-
   const [role, setRole] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
-  // fetch user + role once
   useEffect(() => {
     (async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      const { data: { session } } = await supabase.auth.getSession();
       const uid = session?.user?.id ?? null;
       if (!uid) return;
-
       setUserId(uid);
-
       const { data: profile } = await supabase
         .from("profiles")
         .select("role")
         .eq("id", uid)
-        .maybeSingle();
-
+        .single();
       setRole(profile?.role ?? null);
     })();
   }, [supabase]);
 
-  // only render for mechanics/techs
   if (role !== "mechanic") return null;
 
-  const linkClass = (href: string) =>
-    clsx(
-      "flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition",
-      pathname === href
-        ? "bg-orange-500 text-black"
-        : "text-neutral-200 hover:bg-neutral-800"
-    );
-
-  // small collapsible section
-  const Section = ({
-    title,
-    icon,
-    children,
-    defaultOpen = true,
-  }: {
-    title: string;
-    icon?: React.ReactNode;
-    children: React.ReactNode;
-    defaultOpen?: boolean;
-  }) => {
-    const [open, setOpen] = useState(defaultOpen);
-    return (
-      <div className="border border-neutral-900/60 rounded-lg bg-neutral-950/40">
-        <button
-          onClick={() => setOpen((v) => !v)}
-          className="flex w-full items-center justify-between px-3 py-2 text-xs font-semibold tracking-wide text-neutral-200"
-        >
-          <span className="flex items-center gap-2">
-            {icon}
-            {title}
-          </span>
-          {open ? <FaChevronDown /> : <FaChevronRight />}
-        </button>
-        {open ? <div className="px-2 pb-2 space-y-1">{children}</div> : null}
-      </div>
-    );
-  };
-
   return (
-    <nav className="w-full space-y-4">
-      {/* MAIN / QUICK */}
-      <Section title="Tech" icon={<FaTachometerAlt className="text-orange-400" />}>
-        <Link href="/dashboard" className={linkClass("/dashboard")}>
-          <FaTachometerAlt /> Dashboard
-        </Link>
-        <Link href="/tech/queue" className={linkClass("/tech/queue")}>
-          <FaClipboardList /> My Job Queue
-        </Link>
-        <Link href="/tech/calendar" className={linkClass("/tech/calendar")}>
-          <FaCalendarAlt /> Shop Calendar
-        </Link>
-        <Link
-          href="/dashboard/tech/settings"
-          className={linkClass("/dashboard/tech/settings")}
-        >
-          <FaUserCog /> My Settings
-        </Link>
-      </Section>
+    <>
+      {/* Mobile Toggle */}
+      <div className="flex items-center justify-between bg-neutral-900 p-4 text-white md:hidden">
+        <span className="text-lg font-bold text-orange-500">Menu</span>
+        <button onClick={() => setMobileOpen((v) => !v)}>
+          <HiMenuAlt2 size={28} />
+        </button>
+      </div>
 
-      {/* AI / HELPERS */}
-      <Section
-        title="AI & Tools"
-        icon={<FaCogs className="text-orange-400" />}
-        defaultOpen={false}
+      {/* Sidebar */}
+      <nav
+        className={`w-full space-y-6 bg-neutral-900 p-4 text-white md:block md:w-64 ${
+          mobileOpen ? "block" : "hidden"
+        }`}
       >
-        <Link href="/ai/assistant" className={linkClass("/ai/assistant")}>
-          <FaCogs /> Tech Assistant
-        </Link>
-      </Section>
-
-      {/* SHIFT TRACKER */}
-      {userId ? (
-        <div className="mt-4 rounded-lg border border-neutral-900 bg-neutral-950 p-3">
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-orange-400">
-            Shift Tracker
-          </h2>
-          <ShiftTracker userId={userId} />
+        {/* Desktop → link to full chat */}
+        <div className="hidden md:block">
+          <Link href="/chat" className="block hover:text-orange-400">
+            Open Messages
+          </Link>
         </div>
-      ) : null}
-    </nav>
+
+        {/* Mobile → chat drawer */}
+        <div className="md:hidden">
+          <ChatDock />
+        </div>
+
+        {/* ---- Tech Tools ---- */}
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-sm font-semibold text-neutral-300">
+            <FaTachometerAlt /> Tech
+          </div>
+          <Link href="/dashboard" className="block hover:text-orange-400">
+            Dashboard
+          </Link>
+          <Link href="/tech/queue" className="block hover:text-orange-400">
+            <FaClipboardList /> My Job Queue
+          </Link>
+          <Link href="/tech/calendar" className="block hover:text-orange-400">
+            <FaCalendarAlt /> Shop Calendar
+          </Link>
+          <Link href="/dashboard/tech/settings" className="block hover:text-orange-400">
+            <FaUserCog /> My Settings
+          </Link>
+        </div>
+
+        {/* ---- AI Tools ---- */}
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-sm font-semibold text-neutral-300">
+            <FaCogs /> AI Tools
+          </div>
+          <Link href="/ai/assistant" className="block hover:text-orange-400">
+            Tech Assistant
+          </Link>
+        </div>
+
+        {/* ---- Shift Tracker ---- */}
+        {userId && (
+          <div className="mt-6 border-t border-gray-800 pt-4">
+            <h2 className="mb-2 font-bold text-orange-500">Shift Tracker</h2>
+            <ShiftTracker userId={userId} />
+          </div>
+        )}
+      </nav>
+    </>
   );
 }

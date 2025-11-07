@@ -1,8 +1,8 @@
-// features/dashboard/app/dashboard/layout.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 import DynamicRoleSidebar from "@shared/components/DynamicRoleSidebar";
@@ -20,7 +20,6 @@ type Role = "owner" | "admin" | "manager" | "advisor" | "mechanic" | "parts";
 
 const CALENDAR_ROLES: Role[] = ["owner", "admin", "manager", "advisor"];
 
-// Narrow the raw DB role into our staff-only union
 function normalizeRole(raw: string | null | undefined): Role | null {
   if (!raw) return null;
   if (
@@ -41,6 +40,7 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }): JSX.Element {
+  const router = useRouter();
   const supabase = createClientComponentClient();
 
   // ---- Role state ----
@@ -61,7 +61,6 @@ export default function DashboardLayout({
     make?: string;
     model?: string;
   } | null>(null);
-
   const [currentWorkOrderLineId, setCurrentWorkOrderLineId] =
     useState<string | null>(null);
 
@@ -100,7 +99,7 @@ export default function DashboardLayout({
     };
   }, [supabase]);
 
-  // Demo context seed (replace with your own selection/route/DB logic)
+  // Demo context seed
   useEffect(() => {
     setCurrentVehicle({ year: "2016", make: "Ford", model: "F-150" });
     setCurrentWorkOrderLineId(null);
@@ -119,11 +118,15 @@ export default function DashboardLayout({
     [loadingRole, role],
   );
 
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    router.replace("/sign-in");
+  };
+
   return (
     <TabsProvider>
       <div className="min-h-screen bg-black text-white font-blackops">
-        {/* NOTE: Top navbar removed by request */}
-
+        {/* layout shell */}
         <div className="flex">
           {/* Desktop sidebar */}
           <aside className="hidden w-64 shrink-0 border-r border-neutral-800 bg-neutral-900 md:block">
@@ -147,70 +150,92 @@ export default function DashboardLayout({
             </div>
           </aside>
 
-          {/* Mobile drawer toggle (kept; the button is likely elsewhere in your app) */}
-          {sidebarOpen && (
-            <div className="fixed inset-0 z-40 md:hidden">
-              {/* backdrop */}
-              <button
-                type="button"
-                aria-label="Close sidebar"
-                className="absolute inset-0 bg-black/60"
-                onClick={() => setSidebarOpen(false)}
-              />
-              <aside
-                className="relative z-50 h-full w-72 border-r border-neutral-800 bg-neutral-900 p-3"
-                role="dialog"
-                aria-modal="true"
-              >
-                <div className="mb-3 flex items-center justify-between">
-                  <span className="text-sm text-neutral-300">Navigation</span>
-                  <button
-                    type="button"
-                    className="rounded border border-white/15 px-2 py-1 text-xs hover:border-orange-500"
-                    onClick={() => setSidebarOpen(false)}
-                  >
-                    Close
-                  </button>
-                </div>
-
-                <div className="h-[calc(100dvh-96px)] overflow-y-auto pr-1">
-                  <DynamicRoleSidebar role={role ?? undefined} />
-                  {showCalendar && (
-                    <div className="mt-4 rounded-xl border border-neutral-800 bg-neutral-950 p-3">
-                      <h3 className="mb-2 text-sm font-semibold text-neutral-300">
-                        Calendar
-                      </h3>
-                      <Calendar
-                        className="shadow-inner"
-                        month={month}
-                        onMonthChange={setMonth}
-                        value={selectedDate ?? undefined}
-                        onChange={setSelectedDate}
-                      />
-                    </div>
-                  )}
-                </div>
-              </aside>
-            </div>
-          )}
-
-          {/* Main content */}
-          <main className="flex-1 p-6">
-            {loadingRole ? (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="h-24 animate-pulse rounded-lg border border-neutral-800 bg-neutral-900"
-                  />
-                ))}
+          {/* Main content column */}
+          <div className="flex-1 flex flex-col">
+            {/* top bar inside dashboard */}
+            <div className="flex items-center justify-between border-b border-neutral-900 bg-black/60 px-6 py-3">
+              <div className="flex items-center gap-2 md:hidden">
+                <button
+                  type="button"
+                  onClick={() => setSidebarOpen(true)}
+                  className="rounded border border-white/15 px-2 py-1 text-xs"
+                >
+                  Menu
+                </button>
               </div>
-            ) : (
-              children
-            )}
-          </main>
+              <div className="flex-1" />
+              <button
+                onClick={handleSignOut}
+                className="rounded border border-orange-500/60 bg-orange-500/10 px-3 py-1 text-xs font-semibold text-orange-200 hover:bg-orange-500/20"
+              >
+                Sign out
+              </button>
+            </div>
+
+            <main className="flex-1 p-6">
+              {loadingRole ? (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="h-24 animate-pulse rounded-lg border border-neutral-800 bg-neutral-900"
+                    />
+                  ))}
+                </div>
+              ) : (
+                children
+              )}
+            </main>
+          </div>
         </div>
       </div>
+
+      {/* Mobile drawer */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-40 md:hidden">
+          {/* backdrop */}
+          <button
+            type="button"
+            aria-label="Close sidebar"
+            className="absolute inset-0 bg-black/60"
+            onClick={() => setSidebarOpen(false)}
+          />
+          <aside
+            className="relative z-50 h-full w-72 border-r border-neutral-800 bg-neutral-900 p-3"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-sm text-neutral-300">Navigation</span>
+              <button
+                type="button"
+                className="rounded border border-white/15 px-2 py-1 text-xs hover:border-orange-500"
+                onClick={() => setSidebarOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="h-[calc(100dvh-96px)] overflow-y-auto pr-1">
+              <DynamicRoleSidebar role={role ?? undefined} />
+              {showCalendar && (
+                <div className="mt-4 rounded-xl border border-neutral-800 bg-neutral-950 p-3">
+                  <h3 className="mb-2 text-sm font-semibold text-neutral-300">
+                    Calendar
+                  </h3>
+                  <Calendar
+                    className="shadow-inner"
+                    month={month}
+                    onMonthChange={setMonth}
+                    value={selectedDate ?? undefined}
+                    onChange={setSelectedDate}
+                  />
+                </div>
+              )}
+            </div>
+          </aside>
+        </div>
+      )}
 
       {/* Tech Assistant Drawer */}
       {assistantOpen && (
@@ -238,7 +263,6 @@ export default function DashboardLayout({
               </button>
             </div>
 
-            {/* Pass context here */}
             <TechAssistant
               defaultVehicle={currentVehicle ?? undefined}
               workOrderLineId={currentWorkOrderLineId ?? undefined}
