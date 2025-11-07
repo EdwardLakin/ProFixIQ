@@ -8,103 +8,78 @@ import type { InspectionSession } from "@/features/inspections/lib/inspection/ty
 
 type DB = Database;
 
-/**
- * Body shape we expect from the client.
- * You already send { workOrderLineId, session } from saveInspectionSession(...)
- */
-type SaveBody = {
-  workOrderLineId: string;
-  session: InspectionSession;
-};
-
-/**
- * Safely turn a typed object into a plain JSON object
- * so Supabase can store it in a jsonb column without TS complaining.
- */
-const serialize = <T extends object>(obj: T): Record<string, unknown> =>
-  JSON.parse(JSON.stringify(obj)) as Record<string, unknown>;
-
-/**
- * Very small helpers to read optional strings off the session
- * without introducing `any`.
- */
-const getString = (value: unknown): string | null => {
-  if (typeof value === "string" && value.trim().length > 0) {
-    return value;
-  }
-  return null;
-};
-
 export async function POST(req: NextRequest) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
   // 1) parse body
-  let parsed: unknown;
+  let body: {
+    workOrderLineId?: string;
+    session?: InspectionSession;
+  };
   try {
-    parsed = await req.json();
-  } catch {
+    body = await req.json();
+  } catch (err) {
+    console.error("[inspections/save] bad JSON", err);
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const body = parsed as Partial<SaveBody>;
-  if (!body.workOrderLineId || !body.session) {
+  const { workOrderLineId, session } = body;
+  if (!workOrderLineId || !session) {
     return NextResponse.json(
       { error: "Missing workOrderLineId or session" },
       { status: 400 },
     );
   }
 
-  // 2) make sure user is signed in
+  // 2) auth
   const {
     data: { user },
     error: userErr,
   } = await supabase.auth.getUser();
-
   if (userErr || !user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const workOrderLineId = body.workOrderLineId;
-  const session = body.session;
+  // 3) we must know the WO for this line so RLS can join to work_orders
+  const { data: line, error: lineErr } = await supabase
+    .from("work_order_lines")
+    .select("id, work_order_id")
+    .eq("id", workOrderLineId)
+    .maybeSingle();
 
-  // 3) pull a few optional fields off the session if they exist
-  // (these may or may not exist in your actual InspectionSession — we gate them)
-  const workOrderId = getString((session as unknown as Record<string, unknown>)["workOrderId"]);
-  const vehicleId = getString((session as unknown as Record<string, unknown>)["vehicleId"]);
-  const customerId = getString((session as unknown as Record<string, unknown>)["customerId"]);
-  const template = getString((session as unknown as Record<string, unknown>)["template"]);
-  const status = getString((session as unknown as Record<string, unknown>)["status"]);
-  const completedAtRaw = (session as unknown as Record<string, unknown>)["completedAt"];
-  const completed_at =
-    typeof completedAtRaw === "string" && completedAtRaw.trim().length > 0
-      ? completedAtRaw
-      : null;
+  if (lineErr) {
+    console.error("[inspections/save] line lookup failed", lineErr);
+    return NextResponse.json(
+      { error: "Failed to look up work order line" },
+      { status: 500 },
+    );
+  }
+  if (!line?.work_order_id) {
+    // this is the thing RLS wants
+    return NextResponse.json(
+      { error: "Work order line is missing work_order_id" },
+      { status: 400 },
+    );
+  }
 
-  // 4) upsert into your existing table structure
-  // table columns (from you):
-  // id | user_id | work_order_id | state (jsonb) | updated_at | work_order_line_id | vehicle_id | customer_id | template | created_by | completed_at | status
+  // 4) upsert with BOTH IDs so this RLS passes:
+  //    sessions_same_shop_write (… WHERE w.id = inspection_sessions.work_order_id …)
+  const payload = {
+    work_order_id: line.work_order_id,
+    work_order_line_id: workOrderLineId,
+    user_id: user.id,
+    state: session as unknown as Record<string, unknown>,
+    updated_at: new Date().toISOString(),
+  };
+
   const { error: upErr } = await supabase
     .from("inspection_sessions")
-    .upsert(
-      {
-        user_id: user.id,
-        created_by: user.id,
-        work_order_line_id: workOrderLineId,
-        work_order_id: workOrderId,
-        vehicle_id: vehicleId,
-        customer_id: customerId,
-        template,
-        status,
-        completed_at,
-        state: serialize(session), // 👈 the important part: jsonb = your session
-        updated_at: new Date().toISOString(),
-      },
-      {
-        onConflict: "work_order_line_id",
-      },
-    );
+    .upsert(payload, {
+      onConflict: "work_order_line_id",
+    });
 
   if (upErr) {
+    console.error("[inspections/save] upsert failed", upErr);
     return NextResponse.json({ error: upErr.message }, { status: 500 });
   }
 
