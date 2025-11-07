@@ -10,7 +10,7 @@ type PRIInsert = DB["public"]["Tables"]["part_request_items"]["Insert"];
 type WORow = DB["public"]["Tables"]["work_orders"]["Row"];
 type WOLUpdate = DB["public"]["Tables"]["work_order_lines"]["Update"];
 
-const DEFAULT_MARKUP = 30; // % ← you said default 30%
+const DEFAULT_MARKUP = 30; // %
 
 type BodyItem = {
   description: string;
@@ -19,9 +19,15 @@ type BodyItem = {
 
 type Body = {
   workOrderId: string;
-  jobId?: string | null;   // the WO line the tech was on
+  jobId?: string | null;
   items: BodyItem[];
   notes?: string | null;
+};
+
+// extend the generated insert type with the columns you just added in Supabase
+type PartRequestItemInsertWithExtras = PRIInsert & {
+  markup_pct: number;
+  work_order_line_id: string | null;
 };
 
 export async function POST(req: Request) {
@@ -92,19 +98,15 @@ export async function POST(req: Request) {
   }
 
   // 5) insert item rows — now with markup_pct + work_order_line_id
-  const itemRows: PRIInsert[] = items.map((it) => ({
+  const itemRows: PartRequestItemInsertWithExtras[] = items.map((it) => ({
     request_id: pr.id,
     description: it.description.trim(),
     qty: Number(it.qty),
-    approved: false,            // your table says NOT NULL
+    approved: false,
     part_id: null,
     quoted_price: null,
     vendor: null,
-    // 🆕 columns you just added:
-    // name it exactly how you added it in Supabase, I’m using markup_pct
-    // if you picked a different name, change it here
-    markup_pct: DEFAULT_MARKUP as any,
-    // and tie it back to the line so the detail page can update the WO line later
+    markup_pct: DEFAULT_MARKUP,
     work_order_line_id: jobId ?? null,
   }));
 
