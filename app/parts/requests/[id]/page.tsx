@@ -9,9 +9,10 @@ import type { Database } from "@shared/types/types/supabase";
 type DB = Database;
 type Request = DB["public"]["Tables"]["part_requests"]["Row"];
 type Item = DB["public"]["Tables"]["part_request_items"]["Row"] & {
-  // TS safety while schema propagates
+  // schema is catching up
   work_order_line_id?: string | null;
   markup_pct?: number | null;
+  qty?: number | null;
 };
 type Status = Request["status"];
 type Part = DB["public"]["Tables"]["parts"]["Row"];
@@ -28,33 +29,30 @@ export default function PartsRequestDetail() {
   const [loading, setLoading] = useState(true);
   const [parts, setParts] = useState<Part[]>([]);
   const [markupPct, setMarkupPct] = useState<Record<string, number>>({});
+  const [savedRows, setSavedRows] = useState<Record<string, boolean>>({});
 
   async function load() {
     setLoading(true);
 
-    // 1) header
+    // header
     const { data: r, error: rErr } = await supabase
       .from("part_requests")
       .select("*")
       .eq("id", id)
       .maybeSingle();
-    if (rErr) {
-      toast.error(rErr.message);
-    }
+    if (rErr) toast.error(rErr.message);
     setReq(r ?? null);
 
-    // 2) items
+    // items
     const { data: its, error: itErr } = await supabase
       .from("part_request_items")
       .select("*")
       .eq("request_id", id);
-    if (itErr) {
-      toast.error(itErr.message);
-    }
+    if (itErr) toast.error(itErr.message);
     const itemsList = (its ?? []) as Item[];
     setItems(itemsList);
 
-    // 3) inventory for this shop
+    // inventory
     if (r?.shop_id) {
       const { data: ps } = await supabase
         .from("parts")
@@ -67,7 +65,7 @@ export default function PartsRequestDetail() {
       setParts([]);
     }
 
-    // 4) init per-line markup from DB if present
+    // markup init
     const m: Record<string, number> = {};
     for (const it of itemsList) {
       m[it.id] =
@@ -77,6 +75,9 @@ export default function PartsRequestDetail() {
     }
     setMarkupPct(m);
 
+    // clear saved flags on fresh load
+    setSavedRows({});
+
     setLoading(false);
   }
 
@@ -85,7 +86,6 @@ export default function PartsRequestDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  // pull a line id from any of the items (they should all point to same line)
   function getLineIdFromItems(list: Item[]): string | null {
     for (const it of list) {
       if (it.work_order_line_id) return it.work_order_line_id;
@@ -94,7 +94,6 @@ export default function PartsRequestDetail() {
   }
 
   async function setStatus(s: Status) {
-    // 1) update request status
     const { error } = await supabase.rpc("set_part_request_status", {
       p_request: id,
       p_status: s,
@@ -104,20 +103,19 @@ export default function PartsRequestDetail() {
       return;
     }
 
-    // 2) if quoted, try to update WO line + save menu item
     if (s === "quoted") {
       const lineId = getLineIdFromItems(items);
       if (lineId) {
-        // mark the line quoted
+        // mark line quoted
         const { error: wolErr } = await supabase
           .from("work_order_lines")
           .update({ status: "quoted" } as DB["public"]["Tables"]["work_order_lines"]["Update"])
           .eq("id", lineId);
         if (wolErr) {
-          console.warn("[parts request detail] unable to mark line quoted:", wolErr.message);
+          console.warn("could not set line to quoted:", wolErr.message);
         }
 
-        // attempt to save to menu items
+        // save to menu items
         try {
           const res = await fetch("/api/menu-items/save-from-line", {
             method: "POST",
@@ -129,13 +127,13 @@ export default function PartsRequestDetail() {
             error?: string;
           } | null;
           if (!res.ok) {
-            console.warn("[parts request detail] menu save failed:", j?.error);
+            console.warn("menu save failed:", j?.error);
             toast.warning("Quoted, but couldn’t save to menu items.");
           } else {
             toast.success("Quoted and saved to menu items.");
           }
         } catch (e) {
-          console.warn("[parts request detail] menu save error:", e);
+          console.warn("menu save error:", e);
           toast.warning("Quoted, but couldn’t save to menu items.");
         }
       } else {
@@ -148,14 +146,19 @@ export default function PartsRequestDetail() {
     await load();
   }
 
-  // save vendor + cost + qty + markup directly on the table
   async function saveLine(it: Item) {
+    const qty =
+      typeof it.qty === "number" && !Number.isNaN(it.qty) ? it.qty : null;
+    if (!qty || qty <= 0) {
+      toast.error("Enter a quantity greater than 0 before saving.");
+      return;
+    }
+
     const cost =
       typeof it.quoted_price === "number" && !Number.isNaN(it.quoted_price)
         ? it.quoted_price
         : 0;
     const m = markupPct[it.id] ?? DEFAULT_MARKUP;
-    const qty = it.qty ?? 1;
 
     const { error } = await supabase
       .from("part_request_items")
@@ -172,11 +175,10 @@ export default function PartsRequestDetail() {
       return;
     }
 
+    setSavedRows((prev) => ({ ...prev, [it.id]: true }));
     toast.success("Line saved");
-    await load();
   }
 
-  // attach inventory part
   async function attachPartToItem(itemId: string, partId: string) {
     const p = parts.find((x) => x.id === partId);
     const desc = p?.name ?? "Part";
@@ -190,9 +192,11 @@ export default function PartsRequestDetail() {
       .eq("id", itemId);
 
     if (error) {
-      console.warn("attachPartToItem failed (likely RLS):", error.message);
+      console.warn("attachPartToItem failed:", error.message);
       toast.error("Cannot attach part — check RLS.");
     } else {
+      // change → unsave
+      setSavedRows((prev) => ({ ...prev, [itemId]: false }));
       await load();
     }
   }
@@ -205,8 +209,10 @@ export default function PartsRequestDetail() {
           ? it.quoted_price
           : 0;
       const m = markupPct[it.id] ?? DEFAULT_MARKUP;
-      const sell = cost * (1 + m / 100);
-      sum += sell * Number(it.qty || 0);
+      const unitSell = cost * (1 + m / 100);
+      const qty =
+        typeof it.qty === "number" && it.qty > 0 ? Number(it.qty) : 0;
+      sum += unitSell * qty;
     }
     return sum;
   })();
@@ -288,19 +294,31 @@ export default function PartsRequestDetail() {
                       ? it.quoted_price
                       : 0;
                   const m = markupPct[it.id] ?? DEFAULT_MARKUP;
-                  const qty = it.qty ?? 1;
-                  const sell = cost * (1 + m / 100);
-                  const lineTotal = sell * qty;
+                  const qty =
+                    typeof it.qty === "number" && it.qty > 0 ? it.qty : null;
+                  const unitSell = cost * (1 + m / 100);
+                  const lineTotal = unitSell * (qty ?? 0);
+                  const isSaved = savedRows[it.id] === true;
 
                   return (
-                    <tr key={it.id} className="border-t border-neutral-800">
+                    <tr
+                      key={it.id}
+                      className={`border-t border-neutral-800 ${
+                        isSaved ? "bg-neutral-900/50 text-neutral-400" : ""
+                      }`}
+                    >
                       <td className="p-2">
                         <select
-                          className="w-40 rounded border border-neutral-700 bg-neutral-900 p-1 text-xs"
+                          className="w-40 rounded border border-neutral-700 bg-neutral-900 p-1 text-xs disabled:opacity-50"
                           value={it.part_id ?? ""}
-                          onChange={(e) =>
-                            void attachPartToItem(it.id, e.target.value)
-                          }
+                          onChange={(e) => {
+                            setSavedRows((prev) => ({
+                              ...prev,
+                              [it.id]: false,
+                            }));
+                            void attachPartToItem(it.id, e.target.value);
+                          }}
+                          disabled={isSaved}
                         >
                           <option value="">— select —</option>
                           {parts.map((p) => (
@@ -316,81 +334,107 @@ export default function PartsRequestDetail() {
                           type="number"
                           min={1}
                           step={1}
-                          className="w-16 rounded border border-neutral-700 bg-neutral-900 p-1 text-right"
-                          value={qty}
+                          className="w-16 rounded border border-neutral-700 bg-neutral-900 p-1 text-right disabled:opacity-50"
+                          value={qty ?? ""} // allow empty
                           onChange={(e) => {
-                            const v = Math.max(1, Number(e.target.value) || 1);
-                            setItems((prev) =>
-                              prev.map((x) =>
-                                x.id === it.id ? { ...x, qty: v } : x
-                              )
-                            );
+                            const raw = e.target.value;
+                            setItems((prev) => {
+                              return prev.map((x) => {
+                                if (x.id !== it.id) return x;
+                                return {
+                                  ...x,
+                                  qty: raw === "" ? null : Number(raw),
+                                } as Item;
+                              });
+                            });
+                            setSavedRows((prev) => ({
+                              ...prev,
+                              [it.id]: false,
+                            }));
                           }}
+                          disabled={isSaved}
                         />
                       </td>
                       <td className="p-2">
                         <input
-                          className="w-32 rounded border border-neutral-700 bg-neutral-900 p-1"
+                          className="w-32 rounded border border-neutral-700 bg-neutral-900 p-1 disabled:opacity-50"
                           value={it.vendor ?? ""}
-                          onChange={(e) =>
+                          onChange={(e) => {
+                            const v = e.target.value;
                             setItems((prev) =>
                               prev.map((x) =>
-                                x.id === it.id
-                                  ? { ...x, vendor: e.target.value }
-                                  : x
+                                x.id === it.id ? { ...x, vendor: v } : x
                               )
-                            )
-                          }
+                            );
+                            setSavedRows((prev) => ({
+                              ...prev,
+                              [it.id]: false,
+                            }));
+                          }}
+                          disabled={isSaved}
                         />
                       </td>
                       <td className="p-2 text-right">
                         <input
                           type="number"
                           step={0.01}
-                          className="w-24 rounded border border-neutral-700 bg-neutral-900 p-1 text-right"
+                          className="w-24 rounded border border-neutral-700 bg-neutral-900 p-1 text-right disabled:opacity-50"
                           value={cost === 0 ? "" : cost}
                           onChange={(e) => {
                             const raw = e.target.value;
                             const v = raw === "" ? null : Number(raw);
                             setItems((prev) =>
                               prev.map((x) =>
-                                x.id === it.id
-                                  ? { ...x, quoted_price: v }
-                                  : x
+                                x.id === it.id ? { ...x, quoted_price: v } : x
                               )
                             );
+                            setSavedRows((prev) => ({
+                              ...prev,
+                              [it.id]: false,
+                            }));
                           }}
+                          disabled={isSaved}
                         />
                       </td>
                       <td className="p-2 text-right">
                         <input
                           type="number"
                           step={1}
-                          className="w-20 rounded border border-neutral-700 bg-neutral-900 p-1 text-right"
+                          className="w-20 rounded border border-neutral-700 bg-neutral-900 p-1 text-right disabled:opacity-50"
                           value={m}
-                          onChange={(e) =>
+                          onChange={(e) => {
                             setMarkupPct((prev) => ({
                               ...prev,
                               [it.id]: Math.max(
                                 0,
                                 Number(e.target.value || DEFAULT_MARKUP)
                               ),
-                            }))
-                          }
+                            }));
+                            setSavedRows((prev) => ({
+                              ...prev,
+                              [it.id]: false,
+                            }));
+                          }}
+                          disabled={isSaved}
                         />
                       </td>
                       <td className="p-2 text-right tabular-nums">
-                        {sell.toFixed(2)}
+                        {unitSell.toFixed(2)}
                       </td>
                       <td className="p-2 text-right tabular-nums">
                         {lineTotal.toFixed(2)}
                       </td>
                       <td className="p-2 text-right">
                         <button
-                          className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
-                          onClick={() => void saveLine(it)}
+                          className={`rounded border px-2 py-1 text-xs ${
+                            isSaved
+                              ? "border-neutral-700 bg-neutral-800/60 text-neutral-300 cursor-default"
+                              : "border-neutral-700 hover:bg-neutral-800"
+                          }`}
+                          onClick={() => !isSaved && void saveLine(it)}
+                          disabled={isSaved}
                         >
-                          Save
+                          {isSaved ? "Saved" : "Save"}
                         </button>
                       </td>
                     </tr>
@@ -407,7 +451,7 @@ export default function PartsRequestDetail() {
                   <td className="p-2 text-right tabular-nums font-semibold">
                     {grandTotals.toFixed(2)}
                   </td>
-                  <td></td>
+                  <td />
                 </tr>
               </tfoot>
             </table>
