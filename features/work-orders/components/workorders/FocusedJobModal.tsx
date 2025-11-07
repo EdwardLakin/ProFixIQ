@@ -120,7 +120,7 @@ export default function FocusedJobModal(props: {
   const [openChat, setOpenChat] = useState(false);
   const [openAddJob, setOpenAddJob] = useState(false);
 
-  // 🆕 prefill fields when we auto-open after inspection finishes
+  // prefill from inspection
   const [prefillCause, setPrefillCause] = useState("");
   const [prefillCorrection, setPrefillCorrection] = useState("");
 
@@ -186,7 +186,7 @@ export default function FocusedJobModal(props: {
     })();
   }, [isOpen, workOrderLineId, supabase]);
 
-  // realtime
+  // realtime for the line itself
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
     const ch = supabase
@@ -212,7 +212,7 @@ export default function FocusedJobModal(props: {
     };
   }, [isOpen, workOrderLineId, supabase]);
 
-  // parts used
+  // parts used loader
   const loadAllocations = useCallback(async () => {
     if (!workOrderLineId) return;
     setAllocsLoading(true);
@@ -230,6 +230,41 @@ export default function FocusedJobModal(props: {
       setAllocsLoading(false);
     }
   }, [supabase, workOrderLineId]);
+
+  // load allocations when modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+    void loadAllocations();
+  }, [isOpen, loadAllocations]);
+
+  // subscribe to allocations changes so "Parts used" auto-updates
+  useEffect(() => {
+    if (!isOpen || !workOrderLineId) return;
+
+    const ch = supabase
+      .channel(`wol-parts-${workOrderLineId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "work_order_part_allocations",
+          filter: `work_order_line_id=eq.${workOrderLineId}`,
+        },
+        () => {
+          void loadAllocations();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      try {
+        supabase.removeChannel(ch);
+      } catch {
+        // ignore
+      }
+    };
+  }, [isOpen, workOrderLineId, supabase, loadAllocations]);
 
   const refresh = useCallback(async () => {
     const { data: l } = await supabase
@@ -250,7 +285,7 @@ export default function FocusedJobModal(props: {
     return () => window.removeEventListener("wol:refresh", handler);
   }, [refresh]);
 
-  // parts request modal events
+  // parts request modal -> refresh
   useEffect(() => {
     const handleClose = () => setOpenParts(false);
     const handleSubmitted = async () => {
@@ -266,7 +301,7 @@ export default function FocusedJobModal(props: {
     };
   }, [refresh]);
 
-  // 🆕 listen for inspection -> completed → open cause/correction prefilled
+  // inspection → completed → open cause/correction
   useEffect(() => {
     const onInspectionDone = (evt: Event) => {
       const e = evt as CustomEvent<{
@@ -760,7 +795,7 @@ export default function FocusedJobModal(props: {
         </div>
       </Dialog>
 
-      {/* mic over everything */}
+      {/* mic */}
       {isOpen && <VoiceButton />}
 
       {/* sub-modals */}

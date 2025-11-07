@@ -9,8 +9,9 @@ import type { Database } from "@shared/types/types/supabase";
 type DB = Database;
 type Request = DB["public"]["Tables"]["part_requests"]["Row"];
 type Item = DB["public"]["Tables"]["part_request_items"]["Row"] & {
-  // in case TS doesn’t know about it yet
+  // TS safety while schema propagates
   work_order_line_id?: string | null;
+  markup_pct?: number | null;
 };
 type Status = Request["status"];
 type Part = DB["public"]["Tables"]["parts"]["Row"];
@@ -25,15 +26,12 @@ export default function PartsRequestDetail() {
   const [req, setReq] = useState<Request | null>(null);
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // inventory for this shop
   const [parts, setParts] = useState<Part[]>([]);
-
-  // local, UI-only markup per line (keyed by item id)
   const [markupPct, setMarkupPct] = useState<Record<string, number>>({});
 
   async function load() {
     setLoading(true);
+
     // 1) header
     const { data: r, error: rErr } = await supabase
       .from("part_requests")
@@ -53,9 +51,10 @@ export default function PartsRequestDetail() {
     if (itErr) {
       toast.error(itErr.message);
     }
-    setItems((its ?? []) as Item[]);
+    const itemsList = (its ?? []) as Item[];
+    setItems(itemsList);
 
-    // 3) inventory (based on header shop_id)
+    // 3) inventory for this shop
     if (r?.shop_id) {
       const { data: ps } = await supabase
         .from("parts")
@@ -68,10 +67,13 @@ export default function PartsRequestDetail() {
       setParts([]);
     }
 
-    // 4) init per-line markup
+    // 4) init per-line markup from DB if present
     const m: Record<string, number> = {};
-    for (const it of its ?? []) {
-      m[it.id] = DEFAULT_MARKUP;
+    for (const it of itemsList) {
+      m[it.id] =
+        typeof it.markup_pct === "number" && !Number.isNaN(it.markup_pct)
+          ? it.markup_pct
+          : DEFAULT_MARKUP;
     }
     setMarkupPct(m);
 
@@ -83,7 +85,7 @@ export default function PartsRequestDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  // try to pull the line id off any item (they should all be same line)
+  // pull a line id from any of the items (they should all point to same line)
   function getLineIdFromItems(list: Item[]): string | null {
     for (const it of list) {
       if (it.work_order_line_id) return it.work_order_line_id;
@@ -92,7 +94,7 @@ export default function PartsRequestDetail() {
   }
 
   async function setStatus(s: Status) {
-    // update request status
+    // 1) update request status
     const { error } = await supabase.rpc("set_part_request_status", {
       p_request: id,
       p_status: s,
@@ -102,28 +104,30 @@ export default function PartsRequestDetail() {
       return;
     }
 
-    // if marked quoted, also update the WO line + save to menu items
+    // 2) if quoted, try to update WO line + save menu item
     if (s === "quoted") {
       const lineId = getLineIdFromItems(items);
       if (lineId) {
-        // 1) mark the line as quoted
+        // mark the line quoted
         const { error: wolErr } = await supabase
           .from("work_order_lines")
           .update({ status: "quoted" } as DB["public"]["Tables"]["work_order_lines"]["Update"])
           .eq("id", lineId);
         if (wolErr) {
-          // not fatal
           console.warn("[parts request detail] unable to mark line quoted:", wolErr.message);
         }
 
-        // 2) tell the server to save this combo as a menu item
+        // attempt to save to menu items
         try {
           const res = await fetch("/api/menu-items/save-from-line", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ workOrderLineId: lineId }),
           });
-          const j = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+          const j = (await res.json().catch(() => null)) as {
+            ok?: boolean;
+            error?: string;
+          } | null;
           if (!res.ok) {
             console.warn("[parts request detail] menu save failed:", j?.error);
             toast.warning("Quoted, but couldn’t save to menu items.");
@@ -135,7 +139,6 @@ export default function PartsRequestDetail() {
           toast.warning("Quoted, but couldn’t save to menu items.");
         }
       } else {
-        // no line id — still tell user we quoted
         toast.success("Parts request marked as quoted.");
       }
     } else {
@@ -145,36 +148,39 @@ export default function PartsRequestDetail() {
     await load();
   }
 
-  // save vendor + cost via existing RPC
+  // save vendor + cost + qty + markup directly on the table
   async function saveLine(it: Item) {
     const cost =
       typeof it.quoted_price === "number" && !Number.isNaN(it.quoted_price)
         ? it.quoted_price
         : 0;
+    const m = markupPct[it.id] ?? DEFAULT_MARKUP;
+    const qty = it.qty ?? 1;
 
-    const { error } = await supabase.rpc("update_part_quote", {
-      p_request: id,
-      p_item: it.id,
-      p_vendor: it.vendor ?? "",
-      p_price: cost,
-    });
+    const { error } = await supabase
+      .from("part_request_items")
+      .update({
+        vendor: it.vendor ?? null,
+        quoted_price: cost,
+        qty,
+        markup_pct: m,
+      })
+      .eq("id", it.id);
 
     if (error) {
       toast.error(error.message);
       return;
     }
 
-    await load();
     toast.success("Line saved");
+    await load();
   }
 
-  // new: update part_id + description straight on the table
+  // attach inventory part
   async function attachPartToItem(itemId: string, partId: string) {
-    // find part
     const p = parts.find((x) => x.id === partId);
     const desc = p?.name ?? "Part";
 
-    // this requires an UPDATE policy on part_request_items
     const { error } = await supabase
       .from("part_request_items")
       .update({
@@ -220,6 +226,7 @@ export default function PartsRequestDetail() {
         </div>
       ) : (
         <>
+          {/* header */}
           <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
@@ -257,6 +264,7 @@ export default function PartsRequestDetail() {
             </div>
           </div>
 
+          {/* table */}
           <div className="rounded border border-neutral-800 overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-neutral-900 text-neutral-400">
@@ -280,8 +288,9 @@ export default function PartsRequestDetail() {
                       ? it.quoted_price
                       : 0;
                   const m = markupPct[it.id] ?? DEFAULT_MARKUP;
+                  const qty = it.qty ?? 1;
                   const sell = cost * (1 + m / 100);
-                  const lineTotal = sell * Number(it.qty || 0);
+                  const lineTotal = sell * qty;
 
                   return (
                     <tr key={it.id} className="border-t border-neutral-800">
@@ -302,7 +311,23 @@ export default function PartsRequestDetail() {
                         </select>
                       </td>
                       <td className="p-2">{it.description}</td>
-                      <td className="p-2 text-right">{Number(it.qty)}</td>
+                      <td className="p-2 text-right">
+                        <input
+                          type="number"
+                          min={1}
+                          step={1}
+                          className="w-16 rounded border border-neutral-700 bg-neutral-900 p-1 text-right"
+                          value={qty}
+                          onChange={(e) => {
+                            const v = Math.max(1, Number(e.target.value) || 1);
+                            setItems((prev) =>
+                              prev.map((x) =>
+                                x.id === it.id ? { ...x, qty: v } : x
+                              )
+                            );
+                          }}
+                        />
+                      </td>
                       <td className="p-2">
                         <input
                           className="w-32 rounded border border-neutral-700 bg-neutral-900 p-1"
@@ -387,8 +412,6 @@ export default function PartsRequestDetail() {
               </tfoot>
             </table>
           </div>
-
-          {/* FUTURE: button to push approved items to WO and create stock moves */}
         </>
       )}
     </div>
