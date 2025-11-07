@@ -8,14 +8,10 @@ import type { InspectionSession } from "@/features/inspections/lib/inspection/ty
 
 type DB = Database;
 
-/**
- * Upsert an inspection session payload by work_order_line_id.
- * Body: { workOrderLineId: string, session: InspectionSession }
- * Table: inspection_sessions(work_order_line_id uuid unique, payload jsonb, updated_at timestamptz)
- */
 export async function POST(req: NextRequest) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
+  // 1) parse body
   let body: unknown;
   try {
     body = await req.json();
@@ -33,24 +29,54 @@ export async function POST(req: NextRequest) {
       { error: "Missing workOrderLineId or session" },
       { status: 400 }
     );
-    }
+  }
 
-  // Require auth
-  const { data: { user }, error: userErr } = await supabase.auth.getUser();
+  // 2) require auth
+  const {
+    data: { user },
+    error: userErr,
+  } = await supabase.auth.getUser();
   if (userErr || !user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Upsert by unique line id
+  // 3) pull optional bits off the session so we can populate columns
+  const workOrderId =
+    (session as any).workOrderId ??
+    (session as any).work_order_id ??
+    null;
+  const vehicleId =
+    (session as any).vehicleId ??
+    (session as any).vehicle_id ??
+    null;
+  const customerId =
+    (session as any).customerId ??
+    (session as any).customer_id ??
+    null;
+  const template = (session as any).template ?? null;
+  const status =
+    (session as any).status ??
+    ((session as any).completed ? "completed" : "in_progress");
+
+  // 4) upsert into inspection_sessions
   const { error: upErr } = await supabase
     .from("inspection_sessions")
     .upsert(
       {
+        user_id: user.id,
+        created_by: user.id,
         work_order_line_id: workOrderLineId,
-        payload: session as unknown as Record<string, unknown>,
+        work_order_id: workOrderId,
+        vehicle_id: vehicleId,
+        customer_id: customerId,
+        template,
+        state: session as unknown as Record<string, unknown>, // 👈 use existing jsonb column
+        status,
         updated_at: new Date().toISOString(),
       },
-      { onConflict: "work_order_line_id" }
+      {
+        onConflict: "work_order_line_id", // unique per line
+      }
     );
 
   if (upErr) {

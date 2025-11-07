@@ -14,16 +14,15 @@ type CornerKey = "LF" | "RF" | "LR" | "RR";
 type Side = "Left" | "Right";
 type Region = "Front" | "Rear";
 
-/** LF/RF/LR/RR → (Left/Right, Front/Rear) */
 const cornerToRegion: Record<CornerKey, { side: Side; region: Region }> = {
-  LF: { side: "Left",  region: "Front" },
+  LF: { side: "Left", region: "Front" },
   RF: { side: "Right", region: "Front" },
-  LR: { side: "Left",  region: "Rear"  },
-  RR: { side: "Right", region: "Rear"  },
+  LR: { side: "Left", region: "Rear" },
+  RR: { side: "Right", region: "Rear" },
 };
 
 const abbrevRE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
-const fullRE   = /^(?<corner>(Left|Right)\s+(Front|Rear))\s+(?<metric>.+)$/i;
+const fullRE = /^(?<corner>(Left|Right)\s+(Front|Rear))\s+(?<metric>.+)$/i;
 
 const metricOrder = [
   "Tire Pressure",
@@ -42,7 +41,6 @@ const orderIndex = (m: string) => {
 export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
   const { updateItem } = useInspectionForm();
 
-  /** Parse an item label into corner + metric */
   const parseCorner = (label: string): { corner: CornerKey | null; metric: string } => {
     let corner: CornerKey | null = null;
     let metric = "";
@@ -57,10 +55,10 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
     const m2 = label.match(fullRE);
     if (m2?.groups) {
       const c = m2.groups.corner.toLowerCase();
-      if (c === "left front")  corner = "LF";
+      if (c === "left front") corner = "LF";
       if (c === "right front") corner = "RF";
-      if (c === "left rear")   corner = "LR";
-      if (c === "right rear")  corner = "RR";
+      if (c === "left rear") corner = "LR";
+      if (c === "right rear") corner = "RR";
       metric = m2.groups.metric.trim();
       return { corner, metric };
     }
@@ -68,7 +66,6 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
     return { corner: null, metric: "" };
   };
 
-  /** Row cell info for each side */
   type MetricCell = {
     idx: number;
     metric: string;
@@ -78,10 +75,8 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
     initial: string;
   };
 
-  /** A single row in the 3-column grid */
   type RowTriplet = { metric: string; left?: MetricCell; right?: MetricCell };
 
-  /** Group by region (Front/Rear), then merge Left+Right by metric */
   const groups = useMemo(() => {
     const byRegion = new Map<Region, Map<string, RowTriplet>>();
     const ensureRegion = (r: Region) => byRegion.get(r) ?? byRegion.set(r, new Map()).get(r)!;
@@ -97,8 +92,7 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
       const key = metric.toLowerCase();
       if (!reg.has(key)) reg.set(key, { metric });
 
-      const unit =
-        (it.unit ?? "") || (unitHint ? unitHint(label) : "") || "";
+      const unit = (it.unit ?? "") || (unitHint ? unitHint(label) : "") || "";
       const cell: MetricCell = {
         idx,
         metric,
@@ -113,13 +107,12 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
       else row.right = cell;
     });
 
-    // Sort rows inside each region by our metricOrder
     const sorted: Array<{ region: Region; rows: RowTriplet[] }> = [];
     (["Front", "Rear"] as Region[]).forEach((region) => {
       const reg = byRegion.get(region);
       if (!reg) return;
       const rows = Array.from(reg.values()).sort(
-        (a, b) => orderIndex(a.metric) - orderIndex(b.metric)
+        (a, b) => orderIndex(a.metric) - orderIndex(b.metric),
       );
       sorted.push({ region, rows });
     });
@@ -127,16 +120,15 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
     return sorted;
   }, [items, unitHint]);
 
-  /** Collapsible & hint toggle (kept behavior) */
   const [open, setOpen] = useState(true);
   const [showKpaHint, setShowKpaHint] = useState(true);
 
-  /** Track which inputs are “filled” only after commit */
   const [, setFilledMap] = useState<Record<number, boolean>>(() => {
     const m: Record<number, boolean> = {};
     items.forEach((it, i) => (m[i] = !!String(it.value ?? "").trim()));
     return m;
   });
+
   const commit = (idx: number, el: HTMLInputElement | null) => {
     if (!el) return;
     const value = el.value;
@@ -145,25 +137,21 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
     setFilledMap((p) => (p[idx] === has ? p : { ...p, [idx]: has }));
   };
 
-  /** kPa calc */
   const kpaFromPsi = (psiStr: string) => {
     const n = Number(psiStr);
     return isFinite(n) ? Math.round(n * 6.894757) : null;
   };
 
-  /** Single input cell, preserves your original text-entry behavior */
   const InputCell = ({
     idx,
     defaultValue,
     isPressure,
     unit,
-    tabIndex,
   }: {
     idx: number;
     defaultValue: string;
     isPressure: boolean;
     unit: string;
-    tabIndex: number;
   }) => {
     const kpaRef = useRef<HTMLSpanElement | null>(null);
     const onInput = (e: React.FormEvent<HTMLInputElement>) => {
@@ -176,7 +164,6 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
         <input
           name={`hyd-${idx}`}
           defaultValue={defaultValue}
-          tabIndex={tabIndex}
           className="w-40 rounded border border-gray-600 bg-black px-2 py-1 text-sm text-white outline-none placeholder:text-zinc-400"
           placeholder="Value"
           autoComplete="off"
@@ -190,10 +177,14 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
             if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
           }}
         />
-        <div className="text-right text-xs text-zinc-400 min-w-[64px]">
+        <div className="min-w-[64px] text-right text-xs text-zinc-400">
           {isPressure ? (
             <span>
-              psi <span ref={kpaRef} className={showKpaHint ? "text-zinc-500" : "hidden"} />
+              psi{" "}
+              <span
+                ref={kpaRef}
+                className={showKpaHint ? "text-zinc-500" : "hidden"}
+              />
             </span>
           ) : (
             <span>{unit}</span>
@@ -202,9 +193,6 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
       </div>
     );
   };
-
-  // Sequential tab index (Left → Right top to bottom)
-  let nextTab = 1;
 
   const RegionCard = ({ region, rows }: { region: Region; rows: RowTriplet[] }) => (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
@@ -228,7 +216,6 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
               key={`${region}-${row.metric}-${i}`}
               className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded bg-zinc-950/70 p-3"
             >
-              {/* Left input */}
               <div>
                 {row.left ? (
                   <InputCell
@@ -236,14 +223,12 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
                     defaultValue={row.left.initial}
                     isPressure={row.left.isPressure}
                     unit={row.left.unit}
-                    tabIndex={nextTab++}
                   />
                 ) : (
                   <div className="h-[30px]" />
                 )}
               </div>
 
-              {/* Center metric label */}
               <div
                 className="min-w-0 truncate text-center text-sm font-semibold text-white"
                 style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
@@ -252,7 +237,6 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
                 {row.metric}
               </div>
 
-              {/* Right input */}
               <div className="justify-self-end">
                 {row.right ? (
                   <InputCell
@@ -260,7 +244,6 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
                     defaultValue={row.right.initial}
                     isPressure={row.right.isPressure}
                     unit={row.right.unit}
-                    tabIndex={nextTab++}
                   />
                 ) : (
                   <div className="h-[30px]" />
@@ -275,9 +258,8 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
 
   return (
     <div className="grid gap-3">
-      {/* Toolbar */}
       <div className="flex items-center justify-end gap-3 px-1">
-        <label className="flex items-center gap-2 text-xs text-zinc-400 select-none">
+        <label className="flex items-center gap-2 select-none text-xs text-zinc-400">
           <input
             type="checkbox"
             className="h-3 w-3 accent-orange-500"
@@ -297,7 +279,6 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
         </button>
       </div>
 
-      {/* Two region cards: Front & Rear (each uses 3-column rows) */}
       <div className="grid gap-4">
         {groups.map((g) => (
           <RegionCard key={g.region} region={g.region} rows={g.rows} />
