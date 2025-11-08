@@ -1,73 +1,56 @@
+// features/shared/components/RoleNavTech.tsx
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import clsx from "clsx";
-import { FaCogs, FaChevronDown, FaChevronRight, FaTachometerAlt, FaWrench } from "react-icons/fa";
 import type { Database } from "@shared/types/types/supabase";
 import ShiftTracker from "@shared/components/ShiftTracker";
+import Link from "next/link";
 
-export default function RoleNavParts() {
+export default function RoleNavTech() {
   const supabase = createClientComponentClient<Database>();
-  const pathname = usePathname();
-
-  const [role, setRole] = useState<string | null>(null);
+  const [isTech, setIsTech] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       const uid = session?.user?.id ?? null;
       if (!uid) return;
       setUserId(uid);
-      const { data: profile } = await supabase.from("profiles").select("role").eq("id", uid).single();
-      setRole(profile?.role ?? null);
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", uid)
+        .single();
+      setIsTech(profile?.role === "mechanic");
     })();
   }, [supabase]);
 
-  if (role !== "parts") return null;
-
-  const linkClass = (href: string) =>
-    clsx("flex items-center gap-2 px-4 py-2 rounded hover:bg-orange-600", pathname === href && "bg-orange-700 text-black");
-
-  const Toggle = ({ title }: { id: string; title: React.ReactNode }) => {
-    const [open, setOpen] = useState(true);
-    return (
-      <div>
-        <button
-          onClick={() => setOpen(!open)}
-          className="w-full flex items-center justify-between px-2 py-2 text-orange-500 font-bold"
-          aria-expanded={open}
-        >
-          <span className="flex items-center gap-2">{title}</span>
-          {open ? <FaChevronDown /> : <FaChevronRight />}
-        </button>
-        {open && <div className="pl-2 space-y-1">
-          <Link href="/dashboard" className={linkClass("/dashboard")}>Overview</Link>
-          <Link href="/ai/assistant" className={linkClass("/ai/assistant")}><FaCogs /> AI Assistant</Link>
-          <Link href="/messages" className={linkClass("/messages")}>Team Messages</Link>
-        </div>}
-      </div>
-    );
-  };
+  if (!isTech) return null;
 
   return (
-    <nav className="w-full md:w-64 bg-neutral-900 p-4 text-white space-y-4">
-      <Toggle id="main" title={<><FaTachometerAlt /> Dashboard</>} />
-      <div className="border-t border-gray-800 pt-4">
-        <h2 className="text-orange-500 font-bold mb-2 flex items-center gap-2"><FaWrench /> Utilities</h2>
-        <div className="space-y-1">
-          {/* Add future parts-specific settings pages here */}
-        </div>
+    <div className="hidden md:flex md:w-64 flex-col gap-4 border-r border-white/5 bg-surface/80 backdrop-blur">
+      <div className="px-4 pt-4 space-y-3 border-t border-white/5">
+        <p className="text-xs font-medium text-neutral-400">Tech utilities</p>
+        <Link href="/tech/queue" className="block text-sm text-neutral-200 hover:text-white">
+          My job queue
+        </Link>
+        <Link href="/tech/calendar" className="block text-sm text-neutral-200 hover:text-white">
+          Shop calendar
+        </Link>
       </div>
-      {userId && (
-        <div className="mt-6 border-t border-gray-800 pt-4">
-          <h2 className="text-orange-500 font-bold mb-2">Shift Tracker</h2>
+
+      {userId ? (
+        <div className="px-4 pb-4 border-t border-white/5">
+          <p className="text-xs font-medium text-neutral-400 mb-2">
+            Shift tracker
+          </p>
           <ShiftTracker userId={userId} />
         </div>
-      )}
-    </nav>
+      ) : null}
+    </div>
   );
 }

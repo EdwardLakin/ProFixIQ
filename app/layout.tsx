@@ -1,5 +1,6 @@
+// app/layout.tsx
 import "./globals.css";
-import { Roboto, Black_Ops_One } from "next/font/google";
+import { Inter, Roboto, Black_Ops_One } from "next/font/google";
 import Providers from "./providers";
 import AppShell from "@/features/shared/components/AppShell";
 import TabsBridge from "@/features/shared/components/tabs/TabsBridge";
@@ -8,19 +9,27 @@ import { cookies } from "next/headers";
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
-// 🆕 Voice imports
+// voice
 import { VoiceProvider } from "@/features/shared/voice/VoiceProvider";
 import VoiceButton from "@/features/shared/voice/VoiceButton";
-
-// 🆕 Toasts
+// toast
 import { Toaster } from "react-hot-toast";
 
+// 🔹 new: main UI font
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+});
+
+// keep these for landing / hero
 const roboto = Roboto({
   subsets: ["latin"],
   weight: ["400", "500", "700"],
   variable: "--font-roboto",
   display: "swap",
 });
+
 const blackOps = Black_Ops_One({
   weight: "400",
   subsets: ["latin"],
@@ -44,10 +53,13 @@ export default async function RootLayout({
   } = await supabase.auth.getSession();
 
   return (
-    <html lang="en" className={`${roboto.variable} ${blackOps.variable}`}>
+    <html
+      lang="en"
+      // 🔹 order matters: UI = inter, but we still expose roboto + blackops vars
+      className={`${inter.variable} ${roboto.variable} ${blackOps.variable}`}
+    >
       <body className="bg-black text-white">
         <Providers initialSession={session ?? null}>
-          {/* 🆕 Wrap everything in the VoiceProvider so it's available globally */}
           <VoiceProvider>
             <AppShell>
               {session?.user ? (
@@ -58,12 +70,8 @@ export default async function RootLayout({
                 <main>{children}</main>
               )}
             </AppShell>
-
-            {/* 🆕 Floating push-to-talk button visible on all pages */}
             <VoiceButton />
           </VoiceProvider>
-
-          {/* 🆕 Global toast container for AI suggestion notifications */}
           <Toaster position="bottom-center" />
         </Providers>
       </body>

@@ -2,57 +2,112 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Global look */
+/* -------------------------------------------------------------------------- */
+/* 🧭 Global Base Look */
+/* -------------------------------------------------------------------------- */
 html {
   scroll-behavior: smooth;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* body font is Roboto via next/font variable in <html> */
-body { @apply bg-background text-white antialiased; }
+body {
+  @apply bg-background text-white antialiased;
+  /* Main app font (Inter via next/font variable) */
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
 
-/* Optional utility: force Black Ops anywhere */
-.font-blackops { font-family: var(--font-blackops), var(--font-roboto), ui-sans-serif, system-ui, sans-serif; }
+/* Optional: force Black Ops anywhere (landing/hero only) */
+.font-blackops,
+.landing-heading {
+  font-family: var(--font-blackops), var(--font-inter), system-ui, sans-serif;
+}
 
-/* Inputs + small UX bits */
+/* -------------------------------------------------------------------------- */
+/* 🧾 Inputs / Forms */
+/* -------------------------------------------------------------------------- */
 .input {
   @apply w-full px-3 py-2 rounded bg-neutral-900 border border-neutral-700
          text-white placeholder:text-neutral-400
          focus:outline-none focus:ring-2 focus:ring-orange-500;
 }
-/* Ensure all native fields are white text (even without .input) */
-input, textarea, select { color: white; }
-::placeholder { color: rgb(163 163 163); } /* neutral-400 */
 
-:focus-visible { @apply outline-none ring-2 ring-orange-500; }
+/* Ensure all native fields stay legible */
+input,
+textarea,
+select {
+  color: white;
+}
+::placeholder {
+  color: rgb(163 163 163); /* neutral-400 */
+}
 
+:focus-visible {
+  @apply outline-none ring-2 ring-orange-500;
+}
+
+/* -------------------------------------------------------------------------- */
+/* ✨ Animations */
+/* -------------------------------------------------------------------------- */
 @keyframes fade-in {
-  0% { opacity: 0; transform: translateY(10px); }
-  100% { opacity: 1; transform: translateY(0); }
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
-.fade-in { animation: fade-in 0.6s ease-out forwards; }
+.fade-in {
+  animation: fade-in 0.6s ease-out forwards;
+}
 
-/* Scrollbars */
-::-webkit-scrollbar { width: 8px; }
-::-webkit-scrollbar-thumb { background: #ff6a00; border-radius: 8px; }
-::-webkit-scrollbar-track { background: #1a1a1a; }
+/* -------------------------------------------------------------------------- */
+/* 🧱 UI Elements */
+/* -------------------------------------------------------------------------- */
+.btn {
+  @apply inline-flex items-center justify-center px-4 py-2 font-medium rounded transition-colors;
+}
+.btn-orange {
+  @apply bg-orange-500 hover:bg-orange-600 text-black;
+}
+.btn-outline {
+  @apply border border-white text-white hover:bg-white hover:text-black;
+}
 
-/* Buttons / cards */
-.btn { @apply inline-flex items-center justify-center px-4 py-2 font-semibold rounded transition-colors; }
-.btn-orange { @apply bg-orange-500 hover:bg-orange-600 text-black; }
-.btn-outline { @apply border border-white text-white hover:bg-white hover:text-black; }
-.card { @apply rounded-xl border border-white/10 bg-black/20 backdrop-blur-md shadow-md p-6; }
+.card {
+  @apply rounded-xl border border-white/10 bg-black/20 backdrop-blur-md shadow-md p-6;
+}
 
-/* Safe-area helpers (iOS) for sticky composer padding */
-:root { --safe-bottom: env(safe-area-inset-bottom, 0px); }
+/* -------------------------------------------------------------------------- */
+/* 🧭 Scrollbars */
+/* -------------------------------------------------------------------------- */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #ff6a00;
+  border-radius: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
 
-/* Better mobile tapping */
+/* -------------------------------------------------------------------------- */
+/* 📱 Mobile touch improvements */
+/* -------------------------------------------------------------------------- */
 @media (max-width: 767px) {
-  input, textarea, button { touch-action: manipulation; }
+  input,
+  textarea,
+  button {
+    touch-action: manipulation;
+  }
 }
 
-/* --- Work Order modal animations (no libs) --- */
+/* -------------------------------------------------------------------------- */
+/* 🎬 Work Order modal animations */
+/* -------------------------------------------------------------------------- */
 @media (prefers-reduced-motion: no-preference) {
   dialog.wo-modal {
     opacity: 0;
@@ -66,7 +121,6 @@ input, textarea, select { color: white; }
     transform: translateY(0) scale(1);
   }
 
-  /* Backdrop */
   dialog.wo-modal::backdrop {
     background: rgba(0, 0, 0, 0);
     backdrop-filter: blur(2px);
@@ -75,4 +129,11 @@ input, textarea, select { color: white; }
   dialog.wo-modal[open]::backdrop {
     background: rgba(0, 0, 0, 0.6);
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* 🧩 Safe-area helpers (iOS) */
+/* -------------------------------------------------------------------------- */
+:root {
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
