@@ -6,12 +6,12 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { toast, Toaster } from "sonner";
 
-import WeeklyCalendar from "app/portal/appointments/WeeklyCalendar";
+import WeeklyCalendar from "./WeeklyCalendar";
 import type { Database } from "@shared/types/types/supabase";
 
 type ShopRow = Database["public"]["Tables"]["shops"]["Row"];
 
-type Booking = {
+export type Booking = {
   id: string;
   shop_slug?: string | null;
   starts_at: string; // ISO
@@ -41,10 +41,7 @@ export default function PortalAppointmentsPage() {
   const [shopSlug, setShopSlug] = useState<string>(search.get("shop") || "");
 
   // week
-  const [weekStart, setWeekStart] = useState<Date>(() => {
-    const today = startOfToday();
-    return today;
-  });
+  const [weekStart, setWeekStart] = useState<Date>(() => startOfToday());
 
   // data
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -96,7 +93,6 @@ export default function PortalAppointmentsPage() {
       try {
         const start = isoDate(weekStart);
         const end = isoDate(weekEnd);
-        // assumes you have an API like /api/portal/bookings
         const res = await fetch(
           `/api/portal/bookings?shop=${encodeURIComponent(
             shopSlug
@@ -105,8 +101,8 @@ export default function PortalAppointmentsPage() {
         );
         const j = (await res.json().catch(() => [])) as Booking[];
         setBookings(j ?? []);
-      } catch (e) {
-        console.error(e);
+      } catch (err: unknown) {
+        console.error(err);
         toast.error("Failed to load appointments.");
       } finally {
         setLoadingBookings(false);
@@ -132,7 +128,6 @@ export default function PortalAppointmentsPage() {
     try {
       const startIso = new Date(`${form.date}T${form.startsAt}`).toISOString();
       const endIso = new Date(`${form.date}T${form.endsAt}`).toISOString();
-      // reuse existing booking endpoint so it's tied to portal
       const res = await fetch("/api/portal/book", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -146,24 +141,16 @@ export default function PortalAppointmentsPage() {
           customerPhone: form.customerPhone,
         }),
       });
-      const j = await res.json().catch(() => ({}));
+      const j = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(j?.error || "Unable to create appointment.");
 
       toast.success("Appointment created.");
       setCreatingDate(null);
-      // refresh list
-      const start = isoDate(weekStart);
-      const end = isoDate(weekEnd);
-      const refresh = await fetch(
-        `/api/portal/bookings?shop=${encodeURIComponent(
-          shopSlug
-        )}&start=${start}&end=${end}`,
-        { cache: "no-store" }
-      );
-      const refreshed = (await refresh.json().catch(() => [])) as Booking[];
-      setBookings(refreshed);
-    } catch (e: any) {
-      toast.error(e?.message || "Create failed");
+      await refreshBookings(shopSlug, weekStart, weekEnd, setBookings);
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Create failed";
+      toast.error(message);
     }
   }
 
@@ -174,24 +161,16 @@ export default function PortalAppointmentsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
       });
-      const j = await res.json().catch(() => ({}));
+      const j = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(j?.error || "Update failed");
 
       toast.success("Appointment updated.");
       setEditing(null);
-      // refresh
-      const start = isoDate(weekStart);
-      const end = isoDate(weekEnd);
-      const refresh = await fetch(
-        `/api/portal/bookings?shop=${encodeURIComponent(
-          shopSlug
-        )}&start=${start}&end=${end}`,
-        { cache: "no-store" }
-      );
-      const refreshed = (await refresh.json().catch(() => [])) as Booking[];
-      setBookings(refreshed);
-    } catch (e: any) {
-      toast.error(e?.message || "Update failed");
+      await refreshBookings(shopSlug, weekStart, weekEnd, setBookings);
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Update failed";
+      toast.error(message);
     }
   }
 
@@ -204,8 +183,10 @@ export default function PortalAppointmentsPage() {
       if (!res.ok) throw new Error("Delete failed.");
       toast.success("Appointment deleted.");
       setBookings((prev) => prev.filter((b) => b.id !== id));
-    } catch (e: any) {
-      toast.error(e?.message || "Delete failed");
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Delete failed";
+      toast.error(message);
     }
   }
 
@@ -215,9 +196,7 @@ export default function PortalAppointmentsPage() {
 
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-blackops text-orange-400">
-            Appointments
-          </h1>
+          <h1 className="text-2xl font-semibold text-white">Appointments</h1>
           <p className="text-xs text-neutral-400">
             Admin / manager / owner view of customer bookings for the week.
           </p>
@@ -378,6 +357,28 @@ export default function PortalAppointmentsPage() {
   );
 }
 
+async function refreshBookings(
+  shopSlug: string,
+  weekStart: Date,
+  weekEnd: Date,
+  setBookings: (b: Booking[]) => void
+) {
+  const start = isoDate(weekStart);
+  const end = isoDate(weekEnd);
+  const res = await fetch(
+    `/api/portal/bookings?shop=${encodeURIComponent(
+      shopSlug
+    )}&start=${start}&end=${end}`,
+    { cache: "no-store" }
+  );
+  const refreshed = (await res.json().catch(() => [])) as Booking[];
+  setBookings(refreshed);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Forms                                                                     */
+/* -------------------------------------------------------------------------- */
+
 function CreateForm({
   defaultDate,
   onSubmit,
@@ -515,9 +516,7 @@ function EditForm({
   const end = new Date(booking.ends_at);
 
   const [date, setDate] = useState(booking.starts_at.slice(0, 10));
-  const [startsAt, setStartsAt] = useState(
-    start.toISOString().slice(11, 16)
-  );
+  const [startsAt, setStartsAt] = useState(start.toISOString().slice(11, 16));
   const [endsAt, setEndsAt] = useState(end.toISOString().slice(11, 16));
   const [customerName, setCustomerName] = useState(
     booking.customer_name ?? ""

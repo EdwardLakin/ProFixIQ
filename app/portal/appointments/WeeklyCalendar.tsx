@@ -1,32 +1,26 @@
+// app/portal/appointments/WeeklyCalendar.tsx
 "use client";
 
-import React, { useMemo } from "react";
+import { useMemo } from "react";
+import type { Booking } from "./page";
 
-type Booking = {
-  id: string;
-  starts_at: string;
-  ends_at: string;
-  customer_name?: string | null;
-  status?: string | null;
+type Props = {
+  weekStart: Date;
+  bookings: Booking[];
+  onSelectDay: (iso: string) => void;
+  onSelectBooking: (b: Booking) => void;
+  loading?: boolean;
 };
 
-function dayKey(d: Date) {
-  return d.toISOString().slice(0, 10);
-}
+const dayKey = (d: Date) => d.toISOString().slice(0, 10);
 
 export default function WeeklyCalendar({
   weekStart,
   bookings,
   onSelectDay,
   onSelectBooking,
-  loading,
-}: {
-  weekStart: Date;
-  bookings: Booking[];
-  onSelectDay: (dayIso: string) => void;
-  onSelectBooking: (b: Booking) => void;
-  loading: boolean;
-}) {
+  loading = false,
+}: Props) {
   const days = useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => {
       const d = new Date(weekStart);
@@ -44,7 +38,7 @@ export default function WeeklyCalendar({
       map.set(k, arr);
     }
     // sort each bucket by time
-    map.forEach((arr, _k) => {
+    map.forEach((arr) => {
       arr.sort(
         (a, b) =>
           +new Date(a.starts_at) - +new Date(b.starts_at)
@@ -63,63 +57,57 @@ export default function WeeklyCalendar({
         return (
           <div
             key={k}
-            className={`flex min-h-[140px] flex-col rounded-lg border ${
-              isToday
-                ? "border-orange-500 bg-orange-500/5"
-                : "border-neutral-800 bg-neutral-900"
-            }`}
+            className="rounded-lg border border-neutral-800 bg-neutral-950/50 p-2 flex flex-col gap-2 min-h-[120px]"
           >
             <button
               type="button"
               onClick={() => onSelectDay(k)}
-              className="flex items-center justify-between px-2 py-1 text-left"
+              className="flex items-center justify-between text-xs text-neutral-200"
             >
-              <div>
-                <div className="text-xs text-neutral-300">
-                  {d.toLocaleDateString(undefined, {
-                    weekday: "short",
-                  })}
-                </div>
-                <div className="text-sm font-semibold text-white">
-                  {d.getDate()}
-                </div>
-              </div>
-              <span className="text-[10px] text-neutral-500">
-                {dayBookings.length} appt
-                {dayBookings.length === 1 ? "" : "s"}
+              <span>
+                {d.toLocaleDateString(undefined, {
+                  weekday: "short",
+                  month: "short",
+                  day: "numeric",
+                })}
               </span>
+              {isToday ? (
+                <span className="rounded bg-orange-500/90 px-1.5 py-0.5 text-[0.65rem] font-medium text-black">
+                  Today
+                </span>
+              ) : null}
             </button>
-            <div className="flex-1 space-y-1 overflow-y-auto px-2 pb-2">
-              {loading ? (
-                <div className="text-[10px] text-neutral-500">Loading…</div>
+            <div className="flex-1 space-y-1">
+              {loading && dayBookings.length === 0 ? (
+                <div className="text-[0.65rem] text-neutral-500">
+                  Loading…
+                </div>
               ) : dayBookings.length === 0 ? (
-                <div className="text-[10px] text-neutral-500">No appts</div>
+                <div className="text-[0.65rem] text-neutral-500">
+                  No appointments
+                </div>
               ) : (
                 dayBookings.map((b) => (
                   <button
                     key={b.id}
+                    type="button"
                     onClick={() => onSelectBooking(b)}
-                    className="w-full rounded border border-neutral-700 bg-neutral-950 px-1 py-1 text-left hover:border-orange-500"
+                    className="w-full rounded bg-orange-500/10 border border-orange-500/30 px-2 py-1 text-left text-[0.65rem] hover:bg-orange-500/20"
                   >
-                    <div className="text-[10px] text-neutral-400">
+                    <div className="font-medium text-white/90">
+                      {b.customer_name || "Customer"}
+                    </div>
+                    <div className="text-[0.6rem] text-neutral-300">
                       {new Date(b.starts_at).toLocaleTimeString([], {
                         hour: "2-digit",
                         minute: "2-digit",
-                      })}{" "}
-                      –{" "}
+                      })}
+                      {" – "}
                       {new Date(b.ends_at).toLocaleTimeString([], {
                         hour: "2-digit",
                         minute: "2-digit",
                       })}
                     </div>
-                    <div className="truncate text-[11px] text-white">
-                      {b.customer_name || "Customer"}
-                    </div>
-                    {b.status ? (
-                      <div className="text-[9px] text-neutral-500">
-                        {b.status}
-                      </div>
-                    ) : null}
                   </button>
                 ))
               )}
