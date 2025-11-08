@@ -12,7 +12,8 @@ html {
 }
 
 body {
-  @apply bg-background text-white antialiased;
+  /* use a built-in color so build never fails */
+  @apply bg-neutral-950 text-white antialiased;
   /* Main app font (Inter via next/font variable) */
   font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 }
