@@ -33,7 +33,6 @@ import { InspectionFormCtx } from "@inspections/lib/inspection/ui/InspectionForm
 import { SaveInspectionButton } from "@inspections/components/inspection/SaveInspectionButton";
 import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
 import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicleHeader";
-import { startVoiceRecognition } from "@inspections/lib/inspection/voiceControl";
 
 /* -------------------------- helpers -------------------------- */
 
@@ -68,7 +67,8 @@ function unitHintGeneric(label: string, mode: "metric" | "imperial"): string {
   const l = (label || "").toLowerCase();
   if (l.includes("pressure")) return mode === "imperial" ? "psi" : "kPa";
   if (l.includes("tread")) return mode === "metric" ? "mm" : "in";
-  if (l.includes("pad") || l.includes("lining") || l.includes("shoe")) return mode === "metric" ? "mm" : "in";
+  if (l.includes("pad") || l.includes("lining") || l.includes("shoe"))
+    return mode === "metric" ? "mm" : "in";
   if (l.includes("rotor") || l.includes("drum")) return mode === "metric" ? "mm" : "in";
   if (l.includes("push rod")) return mode === "metric" ? "mm" : "in";
   if (l.includes("torque")) return mode === "metric" ? "N·m" : "ft·lb";
@@ -246,26 +246,34 @@ export default function GenericInspectionScreen(): JSX.Element {
   }, [sp]);
 
   const inspectionId = useMemo(
-  () => sp.get("inspectionId") || uuidv4(),
-  [sp]
-);
+    () => sp.get("inspectionId") || uuidv4(),
+    [sp]
+  );
 
-// 🔸 try to hydrate from localStorage
-const persistedSession = useMemo(() => {
-  if (typeof window === "undefined") return null;
-  const raw = localStorage.getItem(`inspection-${inspectionId}`);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as InspectionSession;
-  } catch {
-    return null;
-  }
-}, [inspectionId]);
+  // 🔸 try to hydrate from localStorage
+  const persistedSession = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    const raw = localStorage.getItem(`inspection-${inspectionId}`);
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as InspectionSession;
+    } catch {
+      return null;
+    }
+  }, [inspectionId]);
 
   const [unit, setUnit] = useState<"metric" | "imperial">("metric");
   const [isListening, setIsListening] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+
+  // 🔴 wake-word state
+  const [wakeActive, setWakeActive] = useState(false);
+  const wakeTimeoutRef = useRef<number | null>(null);
+
+  // openai realtime refs
+  const wsRef = useRef<WebSocket | null>(null);
+  const mediaRef = useRef<MediaStream | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
 
   const initialSession = useMemo<Partial<InspectionSession>>(
     () => ({
@@ -284,28 +292,28 @@ const persistedSession = useMemo(() => {
   );
 
   const {
-  session,
-  updateInspection,
-  updateItem,
-  updateSection,
-  startSession,
-  finishSession,
-  resumeSession,
-  pauseSession,
-  addQuoteLine,
-  updateQuoteLine,
-} = useInspectionSession(persistedSession ?? initialSession);
+    session,
+    updateInspection,
+    updateItem,
+    updateSection,
+    startSession,
+    finishSession,
+    resumeSession,
+    pauseSession,
+    addQuoteLine,
+    updateQuoteLine,
+  } = useInspectionSession(persistedSession ?? initialSession);
 
   // start
   useEffect(() => {
-  // if we had a saved session, don’t blow it away
-  if (persistedSession) {
-    startSession(persistedSession);
-  } else {
-    startSession(initialSession);
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [persistedSession]);
+    // if we had a saved session, don’t blow it away
+    if (persistedSession) {
+      startSession(persistedSession);
+    } else {
+      startSession(initialSession);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [persistedSession]);
   useEffect(() => {
     if (session && (session.sections?.length ?? 0) === 0) {
       updateInspection({ sections: bootSections });
@@ -341,7 +349,7 @@ const persistedSession = useMemo(() => {
     };
   }, [session, inspectionId, initialSession]);
 
-  // voice commands
+  // 🔸 turn final text into inspection commands
   const handleTranscript = async (text: string): Promise<void> => {
     const commands: ParsedCommand[] = await interpretCommand(text);
     const sess = session;
@@ -358,23 +366,139 @@ const persistedSession = useMemo(() => {
     }
   };
 
-  const startListening = (): void => {
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch {}
+  // 🔔 wake-word helper
+  function maybeHandleWakeWord(raw: string): string | null {
+    const lower = raw.toLowerCase().trim();
+    const WAKE_WORDS = ["hey techy", "hey techie", "hey teki", "hey tekky"];
+
+    // if we’re not active yet, look for wake word
+    if (!wakeActive) {
+      const hit = WAKE_WORDS.find((w) => lower.startsWith(w));
+      if (hit) {
+        setWakeActive(true);
+        // auto-expire activation after 8s of silence / other speech
+        if (wakeTimeoutRef.current) window.clearTimeout(wakeTimeoutRef.current);
+        wakeTimeoutRef.current = window.setTimeout(() => {
+          setWakeActive(false);
+        }, 8000);
+        // return the rest after the wake word
+        return lower.slice(hit.length).trim();
+      }
+      // no wake → ignore
+      return null;
     }
-    recognitionRef.current = startVoiceRecognition(async (text) => {
-      await handleTranscript(text);
-    });
-    setIsListening(true);
+
+    // already active → keep extending the timer
+    if (wakeTimeoutRef.current) window.clearTimeout(wakeTimeoutRef.current);
+    wakeTimeoutRef.current = window.setTimeout(() => {
+      setWakeActive(false);
+    }, 8000);
+
+    return raw;
+  }
+
+  // 🔊 openai realtime start
+  const startListening = async (): Promise<void> => {
+    if (isListening) return;
+    try {
+      const res = await fetch("/api/openai/realtime-token");
+      const { apiKey } = (await res.json()) as { apiKey: string };
+      if (!apiKey) throw new Error("Missing OpenAI key");
+
+      const ws = new WebSocket("wss://api.openai.com/v1/realtime?intent=transcription");
+      wsRef.current = ws;
+
+      ws.onopen = async () => {
+        // auth message
+        ws.send(
+          JSON.stringify({
+            type: "authorization",
+            authorization: `Bearer ${apiKey}`,
+          })
+        );
+
+        // mic
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRef.current = stream;
+
+        const mr = new MediaRecorder(stream, { mimeType: "audio/webm" });
+        mediaRecorderRef.current = mr;
+        mr.ondataavailable = (evt) => {
+          if (evt.data.size > 0 && ws.readyState === WebSocket.OPEN) {
+            ws.send(evt.data);
+          }
+        };
+        mr.start(250);
+
+        setIsListening(true);
+      };
+
+      ws.onmessage = async (evt) => {
+        // some messages will be binary – ignore
+        if (typeof evt.data !== "string") return;
+        try {
+          const msg = JSON.parse(evt.data);
+          // the exact field name can differ; support a couple
+          const text: string =
+            msg.text || msg.transcript || msg.output || msg.content || "";
+          if (!text) return;
+
+          const maybeText = maybeHandleWakeWord(text);
+          if (!maybeText) return; // no wake, ignore
+
+          // optional: handle "stop listening" to drop out of wake mode
+          const lower = maybeText.toLowerCase();
+          if (lower === "stop listening" || lower === "go to sleep") {
+            setWakeActive(false);
+            return;
+          }
+
+          await handleTranscript(maybeText);
+        } catch (e) {
+          // ignore parse errors
+        }
+      };
+
+      ws.onerror = (err) => {
+        console.error("realtime ws error", err);
+        toast.error("Voice connection error");
+        stopListening();
+      };
+
+      ws.onclose = () => {
+        stopListening();
+      };
+    } catch (e: any) {
+      console.error(e);
+      toast.error(e?.message || "Unable to start voice");
+      stopListening();
+    }
   };
+
+  const stopListening = (): void => {
+    mediaRecorderRef.current?.stop();
+    mediaRecorderRef.current = null;
+
+    mediaRef.current?.getTracks().forEach((t) => t.stop());
+    mediaRef.current = null;
+
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.close();
+    }
+    wsRef.current = null;
+    setIsListening(false);
+    setWakeActive(false);
+    if (wakeTimeoutRef.current) {
+      window.clearTimeout(wakeTimeoutRef.current);
+      wakeTimeoutRef.current = null;
+    }
+  };
+
   useEffect(() => {
     return () => {
-      try {
-        recognitionRef.current?.stop();
-      } catch {}
+      stopListening();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // AI submit flow
@@ -583,23 +707,17 @@ const persistedSession = useMemo(() => {
           onPause={(): void => {
             setIsPaused(true);
             pauseSession();
-            try {
-              recognitionRef.current?.stop();
-            } catch {}
+            stopListening();
           }}
           onResume={(): void => {
             setIsPaused(false);
             resumeSession();
-            recognitionRef.current = startVoiceRecognition(handleTranscript);
+            void startListening();
           }}
-          recognitionInstance={
-            recognitionRef.current as unknown as SpeechRecognition | null
-          }
+          recognitionInstance={null}
           onTranscript={handleTranscript}
-          setRecognitionRef={(instance: SpeechRecognition | null): void => {
-            (
-              recognitionRef as React.MutableRefObject<SpeechRecognition | null>
-            ).current = instance ?? null;
+          setRecognitionRef={(): void => {
+            /* noop – using OpenAI now */
           }}
         />
         <button

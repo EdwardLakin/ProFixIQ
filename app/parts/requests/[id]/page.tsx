@@ -30,6 +30,10 @@ export default function PartsRequestDetail() {
   const [parts, setParts] = useState<Part[]>([]);
   const [markupPct, setMarkupPct] = useState<Record<string, number>>({});
   const [savedRows, setSavedRows] = useState<Record<string, boolean>>({});
+  // per-line manual part inputs
+  const [manualParts, setManualParts] = useState<
+    Record<string, { name: string; sku: string }>
+  >({});
 
   async function load() {
     setLoading(true);
@@ -109,7 +113,9 @@ export default function PartsRequestDetail() {
         // mark line quoted
         const { error: wolErr } = await supabase
           .from("work_order_lines")
-          .update({ status: "quoted" } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+          .update({
+            status: "quoted",
+          } as DB["public"]["Tables"]["work_order_lines"]["Update"])
           .eq("id", lineId);
         if (wolErr) {
           console.warn("could not set line to quoted:", wolErr.message);
@@ -199,6 +205,70 @@ export default function PartsRequestDetail() {
       setSavedRows((prev) => ({ ...prev, [itemId]: false }));
       await load();
     }
+  }
+
+  // manual: create part in inventory, then attach
+  async function createManualPartAndAttach(
+    itemId: string,
+    name: string,
+    sku: string
+  ) {
+    const item = items.find((x) => x.id === itemId);
+    if (!item) return;
+    if (!req?.shop_id) {
+      toast.error("Cannot create part — missing shop.");
+      return;
+    }
+    if (!name.trim()) {
+      toast.error("Enter a name for the part.");
+      return;
+    }
+
+    // create part in inventory
+    const { data: inserted, error } = await supabase
+      .from("parts")
+      .insert({
+        shop_id: req.shop_id,
+        name: name.trim(),
+        sku: sku.trim() || null,
+      })
+      .select("*")
+      .maybeSingle<Part>();
+
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
+    if (!inserted) {
+      toast.error("Unable to create part.");
+      return;
+    }
+
+    // attach to item
+    const { error: attachErr } = await supabase
+      .from("part_request_items")
+      .update({
+        part_id: inserted.id,
+        description: inserted.name ?? name.trim(),
+      })
+      .eq("id", itemId);
+
+    if (attachErr) {
+      toast.error(attachErr.message);
+      return;
+    }
+
+    toast.success("Part created and attached.");
+    // clear manual fields for that line
+    setManualParts((prev) => {
+      const copy = { ...prev };
+      delete copy[itemId];
+      return copy;
+    });
+
+    // reload so the new part shows up in the select too
+    await load();
   }
 
   const grandTotals = (() => {
@@ -300,6 +370,8 @@ export default function PartsRequestDetail() {
                   const lineTotal = unitSell * (qty ?? 0);
                   const isSaved = savedRows[it.id] === true;
 
+                  const manual = manualParts[it.id] || { name: "", sku: "" };
+
                   return (
                     <tr
                       key={it.id}
@@ -307,29 +379,78 @@ export default function PartsRequestDetail() {
                         isSaved ? "bg-neutral-900/50 text-neutral-400" : ""
                       }`}
                     >
-                      <td className="p-2">
-                        <select
-                          className="w-40 rounded border border-neutral-700 bg-neutral-900 p-1 text-xs disabled:opacity-50"
-                          value={it.part_id ?? ""}
-                          onChange={(e) => {
-                            setSavedRows((prev) => ({
-                              ...prev,
-                              [it.id]: false,
-                            }));
-                            void attachPartToItem(it.id, e.target.value);
-                          }}
-                          disabled={isSaved}
-                        >
-                          <option value="">— select —</option>
-                          {parts.map((p) => (
-                            <option key={p.id} value={p.id as string}>
-                              {p.sku ? `${p.sku} — ${p.name}` : p.name}
-                            </option>
-                          ))}
-                        </select>
+                      <td className="p-2 align-top">
+                        <div className="flex flex-col gap-1">
+                          <select
+                            className="w-40 rounded border border-neutral-700 bg-neutral-900 p-1 text-xs disabled:opacity-50"
+                            value={it.part_id ?? ""}
+                            onChange={(e) => {
+                              setSavedRows((prev) => ({
+                                ...prev,
+                                [it.id]: false,
+                              }));
+                              void attachPartToItem(it.id, e.target.value);
+                            }}
+                            disabled={isSaved}
+                          >
+                            <option value="">— select —</option>
+                            {parts.map((p) => (
+                              <option key={p.id} value={p.id as string}>
+                                {p.sku ? `${p.sku} — ${p.name}` : p.name}
+                              </option>
+                            ))}
+                          </select>
+
+                          {/* manual entry */}
+                          <div className="flex gap-1">
+                            <input
+                              className="flex-1 rounded border border-neutral-700 bg-neutral-900 p-1 text-xs disabled:opacity-50"
+                              placeholder="Manual part name"
+                              value={manual.name}
+                              onChange={(e) =>
+                                setManualParts((prev) => ({
+                                  ...prev,
+                                  [it.id]: {
+                                    name: e.target.value,
+                                    sku: prev[it.id]?.sku ?? "",
+                                  },
+                                }))
+                              }
+                              disabled={isSaved}
+                            />
+                            <input
+                              className="w-20 rounded border border-neutral-700 bg-neutral-900 p-1 text-xs disabled:opacity-50"
+                              placeholder="SKU"
+                              value={manual.sku}
+                              onChange={(e) =>
+                                setManualParts((prev) => ({
+                                  ...prev,
+                                  [it.id]: {
+                                    name: prev[it.id]?.name ?? "",
+                                    sku: e.target.value,
+                                  },
+                                }))
+                              }
+                              disabled={isSaved}
+                            />
+                          </div>
+                          <button
+                            className="rounded border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-xs hover:bg-neutral-800 disabled:opacity-50"
+                            onClick={() =>
+                              void createManualPartAndAttach(
+                                it.id,
+                                manual.name,
+                                manual.sku
+                              )
+                            }
+                            disabled={isSaved}
+                          >
+                            Add & attach
+                          </button>
+                        </div>
                       </td>
-                      <td className="p-2">{it.description}</td>
-                      <td className="p-2 text-right">
+                      <td className="p-2 align-top">{it.description}</td>
+                      <td className="p-2 text-right align-top">
                         <input
                           type="number"
                           min={1}
@@ -355,7 +476,7 @@ export default function PartsRequestDetail() {
                           disabled={isSaved}
                         />
                       </td>
-                      <td className="p-2">
+                      <td className="p-2 align-top">
                         <input
                           className="w-32 rounded border border-neutral-700 bg-neutral-900 p-1 disabled:opacity-50"
                           value={it.vendor ?? ""}
@@ -374,7 +495,7 @@ export default function PartsRequestDetail() {
                           disabled={isSaved}
                         />
                       </td>
-                      <td className="p-2 text-right">
+                      <td className="p-2 text-right align-top">
                         <input
                           type="number"
                           step={0.01}
@@ -396,7 +517,7 @@ export default function PartsRequestDetail() {
                           disabled={isSaved}
                         />
                       </td>
-                      <td className="p-2 text-right">
+                      <td className="p-2 text-right align-top">
                         <input
                           type="number"
                           step={1}
@@ -418,13 +539,13 @@ export default function PartsRequestDetail() {
                           disabled={isSaved}
                         />
                       </td>
-                      <td className="p-2 text-right tabular-nums">
+                      <td className="p-2 text-right tabular-nums align-top">
                         {unitSell.toFixed(2)}
                       </td>
-                      <td className="p-2 text-right tabular-nums">
+                      <td className="p-2 text-right tabular-nums align-top">
                         {lineTotal.toFixed(2)}
                       </td>
-                      <td className="p-2 text-right">
+                      <td className="p-2 text-right align-top">
                         <button
                           className={`rounded border px-2 py-1 text-xs ${
                             isSaved
