@@ -1,11 +1,10 @@
-// app/dashboard/owner/create-user/page.tsx (or your current path)
 "use client";
 
 import { useEffect, useState } from "react";
+import PageShell from "@/features/shared/components/PageShell";
 import UsersList from "@/features/admin/components/UsersList";
 import { supabaseBrowser as supabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
-import PageShell from "@/features/shared/components/PageShell";
 
 type UserRole = Database["public"]["Enums"]["user_role_enum"];
 
@@ -45,7 +44,7 @@ export default function CreateUserPage(): JSX.Element {
   const [resetBusy, setResetBusy] = useState(false);
   const [resetMsg, setResetMsg] = useState<string | null>(null);
 
-  // creator’s shop id
+  // creator’s shop id (for auto-fill)
   const [creatorShopId, setCreatorShopId] = useState<string | null>(null);
 
   // load current user's shop_id once
@@ -174,6 +173,7 @@ export default function CreateUserPage(): JSX.Element {
       title="Create User"
       description="Add shop staff with a username + temporary password."
     >
+      {/* top 2-column content */}
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         {/* LEFT: create user */}
         <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4 sm:p-6 space-y-4">
@@ -339,9 +339,7 @@ export default function CreateUserPage(): JSX.Element {
                 {resetBusy ? "Updating…" : "Reset Password"}
               </button>
               {resetMsg && (
-                <div className="text-xs mt-1 text-neutral-200">
-                  {resetMsg}
-                </div>
+                <div className="text-xs mt-1 text-neutral-200">{resetMsg}</div>
               )}
             </div>
           </div>
@@ -350,8 +348,7 @@ export default function CreateUserPage(): JSX.Element {
 
       {/* USERS LIST (full width, own card) */}
       <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4 sm:p-6">
-        {/* pass shop so UsersList can scope to this shop */}
-        <UsersList key={listRefreshKey} shopId={creatorShopId ?? undefined} />
+        <UsersList key={listRefreshKey} />
       </div>
     </PageShell>
   );
