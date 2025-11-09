@@ -1,3 +1,4 @@
+// features/work-orders/components/workorders/FocusedJobModal.tsx
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
@@ -11,14 +12,14 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import CauseCorrectionModal from "@work-orders/components/workorders/CauseCorrectionModal";
 import PartsRequestModal from "@/features/work-orders/components/workorders/PartsRequestModal";
 
-// extras (kept)
+// extras
 import HoldModal from "@/features/work-orders/components/workorders/HoldModal";
 import StatusPickerModal from "@/features/work-orders/components/workorders/extras/StatusPickerModal";
 import TimeAdjustModal from "@/features/work-orders/components/workorders/extras/TimeAdjustModal";
 import PhotoCaptureModal from "@/features/work-orders/components/workorders/extras/PhotoCaptureModal";
 import AddJobModal from "@work-orders/components/workorders/AddJobModal";
 
-// voice control
+// voice
 import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
 import VoiceButton from "@/features/shared/voice/VoiceButton";
 
@@ -35,29 +36,35 @@ import type { Database } from "@shared/types/types/supabase";
 type Mode = "tech" | "view";
 
 const statusTextColor: Record<string, string> = {
-  in_progress: "text-orange-300",
+  in_progress: "text-sky-200",
   awaiting: "text-slate-200",
-  queued: "text-indigo-300",
-  on_hold: "text-amber-300",
-  completed: "text-green-300",
-  paused: "text-amber-300",
-  assigned: "text-sky-300",
+  queued: "text-indigo-200",
+  on_hold: "text-amber-200",
+  completed: "text-emerald-200",
+  paused: "text-amber-200",
+  assigned: "text-sky-200",
   unassigned: "text-neutral-200",
-  awaiting_approval: "text-blue-300",
-  declined: "text-red-300",
+  awaiting_approval: "text-blue-200",
+  declined: "text-red-200",
 };
 
 const chip = (s: string | null) =>
   statusTextColor[(s ?? "awaiting").toLowerCase().replaceAll(" ", "_")] ??
   "text-neutral-200";
 
-const outlineBtn =
-  "font-header rounded border px-3 py-2 text-sm transition-colors";
-const outlineNeutral = `${outlineBtn} border-neutral-700 text-neutral-200 hover:bg-neutral-800`;
-const outlineWarn = `${outlineBtn} border-amber-600 text-amber-300 hover:bg-amber-900/20`;
-const outlineDanger = `${outlineBtn} border-red-600 text-red-300 hover:bg-red-900/20`;
-const outlineInfo = `${outlineBtn} border-blue-600 text-blue-300 hover:bg-blue-900/20`;
-const outlinePurple = `${outlineBtn} border-purple-600 text-purple-300 hover:bg-purple-900/20`;
+// common button styles (neutral, cohesive with app shell)
+const btnBase =
+  "rounded-md border text-sm px-3 py-2 transition-colors text-left";
+const btnNeutral =
+  btnBase + " border-neutral-700 text-neutral-100 hover:bg-neutral-800/80";
+const btnWarn =
+  btnBase + " border-amber-500/70 text-amber-100 hover:bg-amber-500/10";
+const btnDanger =
+  btnBase + " border-red-500/70 text-red-100 hover:bg-red-500/10";
+const btnInfo =
+  btnBase + " border-sky-500/70 text-sky-100 hover:bg-sky-500/10";
+const btnAccent =
+  btnBase + " border-accent/80 text-accent hover:bg-accent/10";
 
 type DB = Database;
 type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
@@ -119,8 +126,9 @@ export default function FocusedJobModal(props: {
   const [openPhoto, setOpenPhoto] = useState(false);
   const [openChat, setOpenChat] = useState(false);
   const [openAddJob, setOpenAddJob] = useState(false);
+  const [openAi, setOpenAi] = useState(false); // ← AI assistant inside modal
 
-  // prefill from inspection
+  // prefill
   const [prefillCause, setPrefillCause] = useState("");
   const [prefillCorrection, setPrefillCorrection] = useState("");
 
@@ -186,7 +194,7 @@ export default function FocusedJobModal(props: {
     })();
   }, [isOpen, workOrderLineId, supabase]);
 
-  // realtime for the line itself
+  // realtime line
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
     const ch = supabase
@@ -212,7 +220,6 @@ export default function FocusedJobModal(props: {
     };
   }, [isOpen, workOrderLineId, supabase]);
 
-  // parts used loader
   const loadAllocations = useCallback(async () => {
     if (!workOrderLineId) return;
     setAllocsLoading(true);
@@ -231,13 +238,11 @@ export default function FocusedJobModal(props: {
     }
   }, [supabase, workOrderLineId]);
 
-  // load allocations when modal opens
   useEffect(() => {
     if (!isOpen) return;
     void loadAllocations();
   }, [isOpen, loadAllocations]);
 
-  // subscribe to allocations changes so "Parts used" auto-updates
   useEffect(() => {
     if (!isOpen || !workOrderLineId) return;
 
@@ -251,9 +256,7 @@ export default function FocusedJobModal(props: {
           table: "work_order_part_allocations",
           filter: `work_order_line_id=eq.${workOrderLineId}`,
         },
-        () => {
-          void loadAllocations();
-        }
+        () => void loadAllocations()
       )
       .subscribe();
 
@@ -261,7 +264,7 @@ export default function FocusedJobModal(props: {
       try {
         supabase.removeChannel(ch);
       } catch {
-        // ignore
+        //
       }
     };
   }, [isOpen, workOrderLineId, supabase, loadAllocations]);
@@ -278,14 +281,13 @@ export default function FocusedJobModal(props: {
     await loadAllocations();
   }, [supabase, workOrderLineId, onChanged, loadAllocations]);
 
-  // local events
   useEffect(() => {
     const handler = () => void refresh();
     window.addEventListener("wol:refresh", handler);
     return () => window.removeEventListener("wol:refresh", handler);
   }, [refresh]);
 
-  // parts request modal -> refresh
+  // parts request events
   useEffect(() => {
     const handleClose = () => setOpenParts(false);
     const handleSubmitted = async () => {
@@ -301,7 +303,7 @@ export default function FocusedJobModal(props: {
     };
   }, [refresh]);
 
-  // inspection → completed → open cause/correction
+  // inspection completed
   useEffect(() => {
     const onInspectionDone = (evt: Event) => {
       const e = evt as CustomEvent<{
@@ -463,32 +465,29 @@ export default function FocusedJobModal(props: {
         onClose={onClose}
         className="fixed inset-0 z-[100] flex items-center justify-center"
       >
-        <div
-          className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm"
-          aria-hidden="true"
-        />
+        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm" aria-hidden="true" />
 
         <div
           className="relative z-[110] mx-4 my-6 w-full max-w-5xl"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="max-h-[75vh] overflow-y-auto rounded-lg border border-orange-400 bg-neutral-950 p-5 text-white shadow-xl">
+          <div className="max-h-[75vh] overflow-y-auto rounded-lg border border-white/10 bg-background/95 p-5 text-foreground shadow-xl">
             {/* header */}
-            <div className="mb-2 flex items-start justify-between gap-3">
-              <div className="text-lg font-header font-semibold tracking-wide">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div className="text-lg font-semibold tracking-tight">
                 <span className={chip(line?.status ?? null)}>{titleText}</span>
                 {workOrder ? (
-                  <span className="ml-2 text-sm font-normal text-neutral-400">
+                  <span className="ml-2 text-xs font-normal text-muted-foreground">
                     WO #{workOrder.custom_id || workOrder.id?.slice(0, 8)}
                   </span>
                 ) : null}
                 {line?.status === "awaiting_approval" && (
-                  <span className="ml-2 rounded border border-blue-500 px-2 py-0.5 text-xs text-blue-300">
+                  <span className="ml-2 rounded border border-blue-500/80 px-2 py-0.5 text-[0.65rem] text-blue-100">
                     Awaiting approval
                   </span>
                 )}
                 {line?.status === "declined" && (
-                  <span className="ml-2 rounded border border-red-500 px-2 py-0.5 text-xs text-red-300">
+                  <span className="ml-2 rounded border border-red-500/80 px-2 py-0.5 text-[0.65rem] text-red-100">
                     Declined
                   </span>
                 )}
@@ -498,7 +497,7 @@ export default function FocusedJobModal(props: {
                 {workOrder?.id && (
                   <button
                     type="button"
-                    className="rounded bg-orange-500 px-3 py-1.5 text-sm font-semibold text-black hover:bg-orange-400"
+                    className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-black hover:bg-accent/90"
                     onClick={() => setOpenAddJob(true)}
                     disabled={busy}
                   >
@@ -508,7 +507,7 @@ export default function FocusedJobModal(props: {
                 <button
                   type="button"
                   onClick={onClose}
-                  className="rounded border border-neutral-700 px-2 py-1 text-sm text-neutral-200 hover:bg-neutral-800"
+                  className="rounded-md border border-white/10 px-2 py-1 text-xs text-foreground/80 hover:bg-white/5"
                   title="Close"
                 >
                   ✕
@@ -523,52 +522,49 @@ export default function FocusedJobModal(props: {
                 <div className="h-24 animate-pulse rounded bg-neutral-800/60" />
               </div>
             ) : !line ? (
-              <div className="text-neutral-400">No job found.</div>
+              <div className="text-muted-foreground text-sm">No job found.</div>
             ) : (
               <div className="space-y-4">
-                {/* meta */}
+                {/* meta info */}
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
-                    <div className="text-xs text-neutral-400">Status</div>
+                  <div className="rounded border border-white/5 bg-surface/60 p-3">
+                    <div className="text-xs text-muted-foreground">Status</div>
                     <div className={`font-medium ${chip(line.status ?? null)}`}>
                       {String(line.status || "awaiting").replaceAll("_", " ")}
                     </div>
                   </div>
-                  <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
-                    <div className="text-xs text-neutral-400">Start</div>
+                  <div className="rounded border border-white/5 bg-surface/60 p-3">
+                    <div className="text-xs text-muted-foreground">Start</div>
                     <div className="font-medium">{createdStart}</div>
                   </div>
-                  <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
-                    <div className="text-xs text-neutral-400">Finish</div>
+                  <div className="rounded border border-white/5 bg-surface/60 p-3">
+                    <div className="text-xs text-muted-foreground">Finish</div>
                     <div className="font-medium">{createdFinish}</div>
                   </div>
-                  <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
-                    <div className="text-xs text-neutral-400">Hold Reason</div>
+                  <div className="rounded border border-white/5 bg-surface/60 p-3">
+                    <div className="text-xs text-muted-foreground">Hold Reason</div>
                     <div className="font-medium">{line.hold_reason ?? "—"}</div>
                   </div>
                 </div>
 
                 {/* vehicle & customer */}
-                <div className="rounded border border-neutral-800 bg-neutral-950 p-3 text-sm">
+                <div className="rounded border border-white/5 bg-surface/60 p-3 text-sm">
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div>
-                      <div className="text-neutral-400">Vehicle</div>
+                      <div className="text-muted-foreground text-xs">Vehicle</div>
                       <div className="truncate">
                         {vehicle
-                          ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${
-                              vehicle.model ?? ""
-                            }`
+                          ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`
                               .trim()
                               .replace(/\s+/g, " ") || "—"
                           : "—"}
                       </div>
-                      <div className="text-xs text-neutral-500">
-                        VIN: {vehicle?.vin ?? "—"} • Plate:{" "}
-                        {vehicle?.license_plate ?? "—"}
+                      <div className="text-xs text-muted-foreground/80">
+                        VIN: {vehicle?.vin ?? "—"} • Plate: {vehicle?.license_plate ?? "—"}
                       </div>
                     </div>
                     <div>
-                      <div className="text-neutral-400">Customer</div>
+                      <div className="text-muted-foreground text-xs">Customer</div>
                       <div className="truncate">
                         {customer
                           ? [customer.first_name ?? "", customer.last_name ?? ""]
@@ -576,7 +572,7 @@ export default function FocusedJobModal(props: {
                               .join(" ") || "—"
                           : "—"}
                       </div>
-                      <div className="text-xs text-neutral-500">
+                      <div className="text-xs text-muted-foreground/80">
                         {customer?.phone ?? "—"}{" "}
                         {customer?.email ? `• ${customer.email}` : ""}
                       </div>
@@ -627,7 +623,7 @@ export default function FocusedJobModal(props: {
                     <>
                       <button
                         type="button"
-                        className={outlinePurple}
+                        className={btnAccent}
                         onClick={() => {
                           setPrefillCause(line?.cause ?? "");
                           setPrefillCorrection(line?.correction ?? "");
@@ -635,12 +631,12 @@ export default function FocusedJobModal(props: {
                         }}
                         disabled={busy}
                       >
-                        Complete (Cause/Correction)
+                        Complete (Cause / Correction)
                       </button>
 
                       <button
                         type="button"
-                        className={outlineDanger}
+                        className={btnDanger}
                         onClick={() => setOpenParts(true)}
                         disabled={busy}
                       >
@@ -649,7 +645,7 @@ export default function FocusedJobModal(props: {
 
                       <button
                         type="button"
-                        className={outlineWarn}
+                        className={btnWarn}
                         onClick={() => setOpenHold(true)}
                         disabled={busy}
                       >
@@ -658,7 +654,7 @@ export default function FocusedJobModal(props: {
 
                       <button
                         type="button"
-                        className={outlineInfo}
+                        className={btnInfo}
                         onClick={() => setOpenStatus(true)}
                         disabled={busy}
                       >
@@ -667,7 +663,7 @@ export default function FocusedJobModal(props: {
 
                       <button
                         type="button"
-                        className={outlineNeutral}
+                        className={btnNeutral}
                         onClick={() => setOpenPhoto(true)}
                         disabled={busy}
                       >
@@ -676,50 +672,68 @@ export default function FocusedJobModal(props: {
 
                       <button
                         type="button"
-                        className={outlineInfo}
+                        className={btnNeutral}
                         onClick={() => setOpenChat(true)}
                       >
                         Chat
+                      </button>
+
+                      {/* new AI button */}
+                      <button
+                        type="button"
+                        className={btnInfo}
+                        onClick={() => setOpenAi(true)}
+                      >
+                        AI Assist
                       </button>
                     </>
                   ) : (
                     <>
                       <button
                         type="button"
-                        className={outlineInfo}
+                        className={btnInfo}
                         onClick={() => setOpenStatus(true)}
                       >
                         Change Status
                       </button>
                       <button
                         type="button"
-                        className={outlineInfo}
+                        className={btnNeutral}
                         onClick={() => setOpenChat(true)}
                       >
                         Chat
+                      </button>
+                      <button
+                        type="button"
+                        className={btnInfo}
+                        onClick={() => setOpenAi(true)}
+                      >
+                        AI Assist
                       </button>
                     </>
                   )}
                 </div>
 
                 {/* parts used */}
-                <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
-                  <div className="mb-2 text-sm font-header">Parts used</div>
+                <div className="rounded border border-white/5 bg-surface/60 p-3">
+                  <div className="mb-2 text-sm font-medium text-foreground/90">
+                    Parts used
+                  </div>
 
                   {allocsLoading ? (
-                    <div className="text-sm text-neutral-400">Loading…</div>
+                    <div className="text-sm text-muted-foreground">Loading…</div>
                   ) : allocs.length === 0 ? (
-                    <div className="text-sm text-neutral-400">
+                    <div className="text-sm text-muted-foreground">
                       No parts used yet.
                     </div>
                   ) : (
-                    <div className="overflow-hidden rounded border border-neutral-800">
-                      <div className="grid grid-cols-12 bg-neutral-900 px-3 py-2 text-xs text-neutral-400">
+                    <div className="overflow-hidden rounded border border-white/5">
+                      <div className="grid grid-cols-12 bg-background/60 px-3 py-2 text-xs text-muted-foreground">
                         <div className="col-span-7">Part</div>
                         <div className="col-span-3">Location</div>
                         <div className="col-span-2 text-right">Qty</div>
                       </div>
-                      <ul className="max-h-56 overflow-auto divide-y divide-neutral-800">
+                      <ul className="max-h-56 overflow-auto divide-y divide-white/5">
                         {allocs.map((a) => (
                           <li
                             key={a.id}
@@ -728,7 +742,7 @@ export default function FocusedJobModal(props: {
                             <div className="col-span-7 truncate">
                               {a.parts?.name ?? "Part"}
                             </div>
-                            <div className="col-span-3 truncate text-neutral-500">
+                            <div className="col-span-3 truncate text-muted-foreground">
                               {a.location_id
                                 ? `loc ${String(a.location_id).slice(0, 6)}…`
                                 : "—"}
@@ -745,7 +759,7 @@ export default function FocusedJobModal(props: {
 
                 {/* tech notes */}
                 <div>
-                  <label className="mb-1 block text-sm font-header">
+                  <label className="mb-1 block text-sm font-medium text-foreground/90">
                     Tech Notes
                   </label>
                   <textarea
@@ -754,14 +768,16 @@ export default function FocusedJobModal(props: {
                     onChange={(e) => setTechNotes(e.target.value)}
                     onBlur={saveNotes}
                     disabled={savingNotes}
-                    className="w-full rounded border border-orange-500 bg-neutral-900 p-2 text-white placeholder-neutral-400"
+                    className="w-full rounded border border-white/10 bg-background/60 p-2 text-sm text-foreground placeholder:text-muted-foreground"
                     placeholder="Add notes for this job…"
                   />
                 </div>
 
-                {/* AI suggestions */}
-                <div className="rounded border border-neutral-800 bg-neutral-900 p-3">
-                  <h3 className="mb-2 font-semibold">AI Suggested Repairs</h3>
+                {/* AI suggestions (unchanged logic) */}
+                <div className="rounded border border-white/5 bg-surface/60 p-3">
+                  <h3 className="mb-2 text-sm font-medium text-foreground/90">
+                    AI Suggested Repairs
+                  </h3>
                   {line && workOrder ? (
                     <SuggestedQuickAdd
                       jobId={line.id}
@@ -773,13 +789,13 @@ export default function FocusedJobModal(props: {
                       }}
                     />
                   ) : (
-                    <div className="text-sm text-neutral-400">
+                    <div className="text-sm text-muted-foreground">
                       Vehicle/work order details required.
                     </div>
                   )}
                 </div>
 
-                <div className="text-xs text-neutral-500">
+                <div className="text-xs text-muted-foreground">
                   Job ID: {line.id}
                   {typeof line.labor_time === "number"
                     ? ` • Labor: ${line.labor_time.toFixed(1)}h`
@@ -875,12 +891,25 @@ export default function FocusedJobModal(props: {
         />
       )}
 
+      {/* your existing chat */}
       {openChat && (
         <NewChatModal
           isOpen={openChat}
           onClose={() => setOpenChat(false)}
           created_by="system"
           onCreated={() => setOpenChat(false)}
+          context_type="work_order_line"
+          context_id={line?.id ?? null}
+        />
+      )}
+
+      {/* new AI modal — same component, just opened with explicit AI intent */}
+      {openAi && (
+        <NewChatModal
+          isOpen={openAi}
+          onClose={() => setOpenAi(false)}
+          created_by="system"
+          onCreated={() => setOpenAi(false)}
           context_type="work_order_line"
           context_id={line?.id ?? null}
         />

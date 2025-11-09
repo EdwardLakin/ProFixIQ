@@ -1,3 +1,4 @@
+// features/shared/components/RoleHubTiles/RoleHubTiles.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -18,7 +19,6 @@ const SCOPE_LABEL: Record<Scope | "other", string> = {
 };
 
 function useSectionOpenState(scopes: (Scope | "other")[]) {
-  // remember open/collapsed per user & route
   const key = useTabsScopedStorageKey("dashboard:section-open");
   const [open, setOpen] = useState<Record<string, boolean>>({});
 
@@ -35,12 +35,11 @@ function useSectionOpenState(scopes: (Scope | "other")[]) {
     } catch {}
   }, [key, open]);
 
-  // ensure every section key exists
   useEffect(() => {
     setOpen((prev) => {
       const next = { ...prev };
       scopes.forEach((s) => {
-        if (typeof next[s] === "undefined") next[s] = true; // default open
+        if (typeof next[s] === "undefined") next[s] = true;
       });
       return next;
     });
@@ -60,96 +59,83 @@ export default function RoleHubTiles({
   heading?: string;
   description?: string;
 }) {
-  // filter tiles by role + scope
   const visible = useMemo(() => {
     const roleSet = new Set(roles);
     return TILES.filter(
       (t) =>
         t.roles.some((r) => roleSet.has(r)) &&
-        (scope === "all" || t.scopes.includes(scope) || t.scopes.includes("all")),
+        (scope === "all" || t.scopes.includes(scope) || t.scopes.includes("all"))
     );
   }, [roles, scope]);
 
-  // group by primary scope bucket
   const grouped = useMemo(() => {
     const buckets: Record<string, typeof visible> = {};
     for (const t of visible) {
-      // choose the first non-"all" scope for the header bucket
       const primary = (t.scopes.find((s) => s !== "all") ?? "other") as Scope | "other";
       if (!buckets[primary]) buckets[primary] = [];
       buckets[primary].push(t);
     }
-    // Sort tiles alphabetically inside each bucket
     Object.values(buckets).forEach((arr) => arr.sort((a, b) => a.title.localeCompare(b.title)));
     return buckets;
   }, [visible]);
 
   const sections = useMemo<(Scope | "other")[]>(
     () =>
-      (["work_orders","inspections","parts","tech","management","settings","other"] as const)
-        .filter((s) => grouped[s]?.length),
-    [grouped],
+      (["work_orders", "inspections", "parts", "tech", "management", "settings", "other"] as const).filter(
+        (s) => grouped[s]?.length
+      ),
+    [grouped]
   );
 
   const { open, setOpen } = useSectionOpenState(sections);
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
-      <h1 className="mb-1 text-3xl font-bold text-orange-400">{heading}</h1>
-      {description ? (
-        <p className="mb-6 text-sm text-neutral-400">{description}</p>
-      ) : null}
-
-      <div className="space-y-4">
-        {sections.map((s) => {
-          const tiles = grouped[s]!;
-          const isOpen = !!open[s];
-          return (
-            <section key={s} className="rounded-lg border border-neutral-800 bg-neutral-950">
-              {/* Header row / toggle */}
-              <button
-                type="button"
-                onClick={() => setOpen((prev) => ({ ...prev, [s]: !prev[s] }))}
-                className="flex w-full items-center justify-between px-4 py-3 text-left"
-              >
-                <div className="text-lg font-semibold text-white">{SCOPE_LABEL[s]}</div>
-                <span className="text-sm text-neutral-400">{isOpen ? "Hide" : "Show"}</span>
-              </button>
-
-              {/* Tiles */}
-              {isOpen && (
-                <div className="grid gap-3 px-4 pb-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {tiles.map((t) => {
-                    const safeHref =
-                      t.href.startsWith("/work-orders/create") ? "/work-orders/create?autostart=1" : t.href;
-
-                    return (
-                      <Link
-                        prefetch={false}
-                        key={t.href}
-                        href={safeHref}
-                        className="rounded-lg border border-neutral-800 bg-neutral-900 p-4 hover:border-orange-500"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="font-medium text-white">{t.title}</div>
-                          {t.cta ? (
-                            <span className="rounded bg-orange-600 px-2 py-0.5 text-xs font-semibold text-white">
-                              {t.cta}
-                            </span>
-                          ) : null}
-                        </div>
-                        {t.subtitle ? (
-                          <div className="mt-1 text-xs text-neutral-400">{t.subtitle}</div>
-                        ) : null}
-                      </Link>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
-          );
-        })}
+    <div className="mx-auto max-w-6xl px-4 py-8 space-y-4">
+      <div>
+        <h1 className="text-2xl font-semibold text-foreground">{heading}</h1>
+        {description ? <p className="text-sm text-muted-foreground mt-1">{description}</p> : null}
       </div>
+
+      {sections.map((s) => {
+        const tiles = grouped[s]!;
+        const isOpen = !!open[s];
+        return (
+          <section key={s} className="rounded-lg border border-white/5 bg-background/40">
+            <button
+              type="button"
+              onClick={() => setOpen((prev) => ({ ...prev, [s]: !prev[s] }))}
+              className="flex w-full items-center justify-between px-4 py-3 text-left"
+            >
+              <div className="text-sm font-medium text-foreground">{SCOPE_LABEL[s]}</div>
+              <span className="text-xs text-muted-foreground">{isOpen ? "Hide" : "Show"}</span>
+            </button>
+
+            {isOpen && (
+              <div className="grid gap-3 px-4 pb-4 sm:grid-cols-2 lg:grid-cols-3">
+                {tiles.map((t) => (
+                  <Link
+                    key={t.href}
+                    href={t.href}
+                    className="rounded-md border border-white/5 bg-background/40 p-4 hover:border-white/15 transition"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-sm font-medium text-foreground">{t.title}</div>
+                      {t.cta ? (
+                        <span className="text-[0.65rem] text-muted-foreground">
+                          {t.cta}
+                        </span>
+                      ) : null}
+                    </div>
+                    {t.subtitle ? (
+                      <p className="mt-1 text-xs text-muted-foreground">{t.subtitle}</p>
+                    ) : null}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </section>
+        );
+      })}
     </div>
   );
 }
