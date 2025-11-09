@@ -11,9 +11,7 @@ type ModalShellProps = {
   onSubmit?: () => void | Promise<void>;
   submitText?: string;
   footerLeft?: React.ReactNode;
-  /**
-   * sm = 24rem, md = 32rem, lg = 48rem
-   */
+  /** sm = 24rem, md = 32rem, lg = 48rem */
   size?: "sm" | "md" | "lg";
 };
 
@@ -38,19 +36,19 @@ export default function ModalShell({
     <Dialog
       open={isOpen}
       onClose={onClose}
-      className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+      className="fixed inset-0 z-[500] flex items-center justify-center p-4 sm:p-6"
     >
-      {/* backdrop */}
+      {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/70 backdrop-blur-sm"
         aria-hidden="true"
       />
 
-      {/* panel */}
-      <div className={`relative z-[210] w-full ${width}`}>
+      {/* Modal content */}
+      <div className={`relative z-[510] w-full ${width}`}>
         <Dialog.Panel className="w-full rounded-lg border border-neutral-700 bg-neutral-950 text-white shadow-xl">
-          {/* header */}
-          {(title || onClose) && (
+          {/* Header */}
+          {title && (
             <div className="flex items-center justify-between border-b border-neutral-800 px-4 py-3">
               <Dialog.Title className="text-base font-semibold">
                 {title}
@@ -58,17 +56,17 @@ export default function ModalShell({
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-md border border-transparent px-2 py-1 text-sm text-neutral-200 hover:border-neutral-600"
+                className="rounded px-2 py-1 text-sm text-neutral-200 hover:bg-neutral-800"
               >
                 ✕
               </button>
             </div>
           )}
 
-          {/* body */}
+          {/* Body */}
           <div className="px-4 py-4 space-y-3">{children}</div>
 
-          {/* footer */}
+          {/* Footer */}
           {(onSubmit || footerLeft) && (
             <div className="flex items-center justify-between gap-3 border-t border-neutral-800 px-4 py-3">
               <div>{footerLeft}</div>
@@ -80,15 +78,15 @@ export default function ModalShell({
                 >
                   Cancel
                 </button>
-                {onSubmit ? (
+                {onSubmit && (
                   <button
                     type="button"
                     onClick={() => void onSubmit()}
-                    className="rounded bg-orange-500 px-3 py-1.5 text-sm font-medium text-black hover:bg-orange-400"
+                    className="rounded bg-orange-500 px-3 py-1.5 text-sm font-medium text-black hover:bg-orange-400 disabled:opacity-60"
                   >
                     {submitText}
                   </button>
-                ) : null}
+                )}
               </div>
             </div>
           )}
