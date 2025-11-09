@@ -15,7 +15,12 @@ type RowLite = Pick<
   "id" | "full_name" | "email" | "phone" | "role" | "created_at" | "shop_id"
 >;
 
-export default function UsersList(): JSX.Element {
+type UsersListProps = {
+  /** when provided, only show users from this shop */
+  shopId?: string;
+};
+
+export default function UsersList({ shopId }: UsersListProps): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const [search, setSearch] = useState<string>("");
   const [rows, setRows] = useState<RowLite[]>([]);
@@ -31,16 +36,25 @@ export default function UsersList(): JSX.Element {
   // -------- data load --------
   const load = useCallback(async () => {
     setLoading(true);
-    const q = supabase
+
+    // base query
+    let q = supabase
       .from("profiles")
       .select("id, full_name, email, phone, role, created_at, shop_id")
       .order("created_at", { ascending: false })
       .limit(100);
 
+    // scope to this shop if provided
+    if (shopId) {
+      q = q.eq("shop_id", shopId);
+    }
+
+    const trimmed = search.trim();
+
     const { data, error } =
-      search.trim().length > 0
+      trimmed.length > 0
         ? await q.or(
-            `full_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`,
+            `full_name.ilike.%${trimmed}%,email.ilike.%${trimmed}%,phone.ilike.%${trimmed}%`,
           )
         : await q;
 
@@ -48,17 +62,15 @@ export default function UsersList(): JSX.Element {
       setRows(data as RowLite[]);
     } else {
       setRows([]);
-      // (optional) toast/error UI
-      // console.error(error);
     }
     setLoading(false);
-  }, [supabase, search]);
+  }, [supabase, search, shopId]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  // -------- edit flow (no more casting to ProfileRow) --------
+  // -------- edit flow --------
   function openEdit(u: {
     id: string;
     full_name: string | null;
@@ -91,7 +103,6 @@ export default function UsersList(): JSX.Element {
     });
 
     if (res.ok) {
-      // optimistic refresh
       setRows((prev) =>
         prev.map((r) =>
           r.id === editId
@@ -249,7 +260,10 @@ export default function UsersList(): JSX.Element {
                 >
                   Cancel
                 </button>
-                <button className="btn btn-orange" onClick={() => void saveEdit()}>
+                <button
+                  className="btn btn-orange"
+                  onClick={() => void saveEdit()}
+                >
                   Save
                 </button>
               </div>
