@@ -6,11 +6,23 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import Link from "next/link";
 
+type CountState = {
+  appointments: number | null;
+  workOrders: number | null;
+  partsRequests: number | null;
+};
+
 export default function DashboardPage() {
   const supabase = createClientComponentClient<Database>();
   const [name, setName] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(null);
+  const [counts, setCounts] = useState<CountState>({
+    appointments: null,
+    workOrders: null,
+    partsRequests: null,
+  });
 
+  // fetch profile (what you already had)
   useEffect(() => {
     (async () => {
       const {
@@ -25,6 +37,30 @@ export default function DashboardPage() {
         .maybeSingle();
       setName(profile?.full_name ?? null);
       setRole(profile?.role ?? null);
+    })();
+  }, [supabase]);
+
+  // fetch the 3 counts that were showing "—"
+  useEffect(() => {
+    (async () => {
+      // run in parallel
+      const [appt, wo, parts] = await Promise.all([
+        supabase
+          .from("appointments")
+          .select("id", { count: "exact", head: true }),
+        supabase
+          .from("work_orders")
+          .select("id", { count: "exact", head: true }),
+        supabase
+          .from("parts_requests")
+          .select("id", { count: "exact", head: true }),
+      ]);
+
+      setCounts({
+        appointments: appt.error ? 0 : appt.count ?? 0,
+        workOrders: wo.error ? 0 : wo.count ?? 0,
+        partsRequests: parts.error ? 0 : parts.count ?? 0,
+      });
     })();
   }, [supabase]);
 
@@ -46,27 +82,27 @@ export default function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-4">
         <OverviewCard
           title="Today’s appointments"
-          value="—"
+          value={
+            counts.appointments === null ? "…" : String(counts.appointments)
+          }
           href="/portal/appointments"
         />
         <OverviewCard
           title="Open work orders"
-          value="—"
+          value={counts.workOrders === null ? "…" : String(counts.workOrders)}
           href="/work-orders/view"
         />
         <OverviewCard
           title="Parts requests"
-          value="—"
+          value={
+            counts.partsRequests === null ? "…" : String(counts.partsRequests)
+          }
           href="/parts/requests"
         />
-        <OverviewCard
-          title="Team chat"
-          value="Open"
-          href="/chat"
-        />
+        <OverviewCard title="Team chat" value="Open" href="/chat" />
       </div>
 
-      {/* role-based shortcuts but lighter */}
+      {/* quick actions */}
       <div className="space-y-3">
         <h2 className="text-sm font-medium text-muted-foreground">
           Quick actions
@@ -85,8 +121,6 @@ export default function DashboardPage() {
           ) : null}
         </div>
       </div>
-
-      {/* you can add a "recent activity" later */}
     </div>
   );
 }
