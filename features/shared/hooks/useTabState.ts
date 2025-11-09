@@ -14,15 +14,16 @@ export function useTabState<T>(subkey: string, initial: T) {
 
   // Lazy init → hydrate synchronously for first render (prevents flicker)
   const initialValue = useMemo<T>(() => {
+    if (typeof window === "undefined") return initial;
     try {
-      const raw = localStorage.getItem(scopedKey);
+      const raw = window.localStorage.getItem(scopedKey);
       if (raw != null) return JSON.parse(raw) as T;
     } catch {
       /* ignore */
     }
     return initial;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scopedKey]); // re-run when route changes to get the right saved state
+  }, [scopedKey]);
 
   const [state, setState] = useState<T>(initialValue);
 
@@ -31,8 +32,12 @@ export function useTabState<T>(subkey: string, initial: T) {
   useEffect(() => {
     if (prevKeyRef.current === scopedKey) return;
     prevKeyRef.current = scopedKey;
+    if (typeof window === "undefined") {
+      setState(initial);
+      return;
+    }
     try {
-      const raw = localStorage.getItem(scopedKey);
+      const raw = window.localStorage.getItem(scopedKey);
       setState(raw != null ? (JSON.parse(raw) as T) : initial);
     } catch {
       setState(initial);
@@ -41,8 +46,9 @@ export function useTabState<T>(subkey: string, initial: T) {
 
   // Persist on change
   useEffect(() => {
+    if (typeof window === "undefined") return;
     try {
-      localStorage.setItem(scopedKey, JSON.stringify(state));
+      window.localStorage.setItem(scopedKey, JSON.stringify(state));
     } catch {
       /* ignore */
     }
@@ -52,8 +58,8 @@ export function useTabState<T>(subkey: string, initial: T) {
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key !== scopedKey) return;
+      if (e.newValue == null) return;
       try {
-        if (e.newValue == null) return;
         setState(JSON.parse(e.newValue) as T);
       } catch {
         /* ignore */

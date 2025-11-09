@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import SignaturePad, { openSignaturePad } from "@/features/shared/signaturePad/controller";
+import SignaturePad, {
+  openSignaturePad,
+} from "@/features/shared/signaturePad/controller";
 import { formatCurrency } from "@/features/shared/lib/formatCurrency";
 
 type DB = Database;
@@ -67,7 +69,11 @@ function ApprovalsList() {
       const hoursByWO = new Map<string, number>();
       (lines ?? []).forEach((l) => {
         const cur = hoursByWO.get(l.work_order_id) ?? 0;
-        hoursByWO.set(l.work_order_id, cur + (typeof l.labor_time === "number" ? l.labor_time : 0));
+        hoursByWO.set(
+          l.work_order_id,
+          cur +
+            (typeof l.labor_time === "number" ? l.labor_time : 0)
+        );
       });
 
       withMeta = withMeta.map((w) => ({
@@ -102,38 +108,50 @@ function ApprovalsList() {
     };
   }, [supabase]);
 
-  if (loading) return <div className="mt-6 text-neutral-400">Loading…</div>;
+  if (loading)
+    return <div className="mt-6 text-muted-foreground">Loading…</div>;
   if (rows.length === 0)
-    return <div className="mt-6 text-neutral-400">No work orders waiting for approval.</div>;
+    return (
+      <div className="mt-6 text-muted-foreground">
+        No work orders waiting for approval.
+      </div>
+    );
 
   return (
-    <div className="mt-4 rounded border border-neutral-800 bg-neutral-900">
-      <div className="border-b border-neutral-800 px-4 py-2 font-semibold">Awaiting Approval</div>
+    <div className="mt-4 rounded-lg border border-border bg-card">
+      <div className="border-b border-border px-4 py-2 font-semibold">
+        Awaiting Approval
+      </div>
 
-      <div className="divide-y divide-neutral-800">
+      <div className="divide-y divide-border">
         {rows.map((w) => (
-          <div key={w.id} className="flex items-center justify-between gap-3 px-4 py-3">
+          <div
+            key={w.id}
+            className="flex items-center justify-between gap-3 px-4 py-3"
+          >
             <div className="min-w-0">
               <div className="truncate font-medium">
                 {w.custom_id ? `#${w.custom_id}` : `#${w.id.slice(0, 8)}`}
               </div>
-              <div className="text-xs text-neutral-400">
+              <div className="text-xs text-muted-foreground">
                 {w.shops?.name ? `${w.shops.name} • ` : ""}
                 {(w.status ?? "").replaceAll("_", " ")}
-                {typeof w.labor_hours === "number" ? ` • ${w.labor_hours.toFixed(1)}h` : ""}
+                {typeof w.labor_hours === "number"
+                  ? ` • ${w.labor_hours.toFixed(1)}h`
+                  : ""}
               </div>
             </div>
             <div className="flex shrink-0 gap-2">
               <a
                 href={`/work-orders/${w.id}/approve`}
-                className="rounded border border-orange-500 px-3 py-1 text-sm text-orange-400 hover:bg-orange-500/10"
+                className="rounded border border-orange-500 px-3 py-1 text-sm text-orange-500 hover:bg-orange-500/10"
                 title="Open customer-facing approval workflow"
               >
                 Review &amp; Sign
               </a>
               <a
                 href={`/work-orders/${w.id}`}
-                className="rounded border border-neutral-700 px-3 py-1 text-sm hover:bg-neutral-800"
+                className="rounded border border-border px-3 py-1 text-sm hover:bg-muted"
                 title="Open this work order"
               >
                 Open WO
@@ -224,7 +242,8 @@ function SingleQuoteReview({ woId }: { woId: string }) {
       alert("Work order approved and signed!");
       router.push("/work-orders/create?from=review&new=1");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to save signature";
+      const msg =
+        err instanceof Error ? err.message : "Failed to save signature";
       alert(msg);
     }
   }
@@ -263,22 +282,26 @@ function SingleQuoteReview({ woId }: { woId: string }) {
       .catch(() => alert(url));
   }
 
-  if (loading) return <div className="mt-6 text-neutral-400">Loading…</div>;
-  if (!wo) return <div className="mt-6 text-red-500">Work order not found.</div>;
+  if (loading) return <div className="mt-6 text-muted-foreground">Loading…</div>;
+  if (!wo) return <div className="mt-6 text-destructive">Work order not found.</div>;
 
   return (
     <>
-      <div className="mt-2 text-sm text-neutral-300">
+      <div className="mt-2 text-sm text-muted-foreground">
         <div>Work Order ID: {wo.id}</div>
         <div>Status: {(wo.status ?? "").replaceAll("_", " ") || "—"}</div>
         {shop?.name && <div>Shop: {shop.name}</div>}
       </div>
 
-      <div className="mt-6 rounded border border-neutral-800 bg-neutral-900">
-        <div className="border-b border-neutral-800 px-4 py-2 font-semibold">Line Items</div>
-        <div className="divide-y divide-neutral-800">
+      <div className="mt-6 rounded-lg border border-border bg-card">
+        <div className="border-b border-border px-4 py-2 font-semibold">
+          Line Items
+        </div>
+        <div className="divide-y divide-border">
           {lines.length === 0 ? (
-            <div className="px-4 py-3 text-neutral-400">No items yet.</div>
+            <div className="px-4 py-3 text-muted-foreground">
+              No items yet.
+            </div>
           ) : (
             lines.map((l) => (
               <div key={l.id} className="px-4 py-3">
@@ -287,14 +310,18 @@ function SingleQuoteReview({ woId }: { woId: string }) {
                     <div className="truncate font-medium">
                       {l.description || l.complaint || "Untitled job"}
                     </div>
-                    <div className="text-xs text-neutral-400">
+                    <div className="text-xs text-muted-foreground">
                       {String(l.job_type ?? "job").replaceAll("_", " ")} •{" "}
-                      {typeof l.labor_time === "number" ? `${l.labor_time}h` : "—"} •{" "}
-                      {(l.status ?? "awaiting").replaceAll("_", " ")}
+                      {typeof l.labor_time === "number"
+                        ? `${l.labor_time}h`
+                        : "—"}{" "}
+                      • {(l.status ?? "awaiting").replaceAll("_", " ")}
                     </div>
                   </div>
                   <div className="text-right text-sm">
-                    {typeof l.labor_time === "number" ? fmt(l.labor_time * 120) : "—"}
+                    {typeof l.labor_time === "number"
+                      ? fmt(l.labor_time * 120)
+                      : "—"}
                   </div>
                 </div>
               </div>
@@ -313,9 +340,9 @@ function SingleQuoteReview({ woId }: { woId: string }) {
             <span>Parts</span>
             <span className="font-medium">{fmt(0)}</span>
           </div>
-          <div className="mt-2 flex items-center justify-between border-t border-neutral-800 pt-2">
+          <div className="mt-2 flex items-center justify-between border-t border-border pt-2">
             <span className="font-semibold">Total</span>
-            <span className="font-bold text-orange-400">{fmt(grandTotal)}</span>
+            <span className="font-bold text-orange-500">{fmt(grandTotal)}</span>
           </div>
         </div>
       </div>
@@ -334,7 +361,7 @@ function SingleQuoteReview({ woId }: { woId: string }) {
 
         <button
           onClick={markAwaitingApproval}
-          className="rounded border border-neutral-700 px-4 py-2 hover:border-orange-500"
+          className="rounded border border-border px-4 py-2 hover:bg-muted"
           title="Save this work order as awaiting customer approval"
         >
           Save for Customer Approval
@@ -342,7 +369,7 @@ function SingleQuoteReview({ woId }: { woId: string }) {
 
         <button
           onClick={copyApprovalLink}
-          className="rounded border border-neutral-700 px-4 py-2 hover:border-orange-500"
+          className="rounded border border-border px-4 py-2 hover:bg-muted"
           title="Copy link to the customer-facing approval page"
         >
           Copy Approval Link
@@ -350,7 +377,7 @@ function SingleQuoteReview({ woId }: { woId: string }) {
 
         <a
           href={`/work-orders/${woId}`}
-          className="rounded border border-neutral-700 px-4 py-2 hover:border-orange-500"
+          className="rounded border border-border px-4 py-2 hover:bg-muted"
         >
           Back to Work Order
         </a>
@@ -366,27 +393,34 @@ export default function QuoteReviewPage() {
   const router = useRouter();
 
   return (
-    <div className="p-6 text-white">
-      <div className="mb-4">
-        <button onClick={() => router.back()} className="text-sm text-orange-400 hover:underline">
-          ← Back
-        </button>
+    <div className="min-h-screen bg-background px-4 py-6 text-foreground">
+      <div className="mx-auto max-w-5xl">
+        <div className="mb-4">
+          <button
+            onClick={() => router.back()}
+            className="text-sm text-orange-500 hover:underline"
+          >
+            ← Back
+          </button>
+        </div>
+
+        <h1 className="text-2xl font-semibold">Quote Review</h1>
+
+        {!woId ? (
+          <>
+            <p className="mt-1 text-muted-foreground">
+              Work orders waiting for customer approval
+            </p>
+            <ApprovalsList />
+            <SignaturePad />
+          </>
+        ) : (
+          <>
+            <SingleQuoteReview woId={woId!} />
+            <SignaturePad />
+          </>
+        )}
       </div>
-
-      <h1 className="text-2xl font-semibold">Quote Review</h1>
-
-      {!woId ? (
-        <>
-          <p className="mt-1 text-neutral-300">Work orders waiting for customer approval</p>
-          <ApprovalsList />
-          <SignaturePad />
-        </>
-      ) : (
-        <>
-          <SingleQuoteReview woId={woId!} />
-          <SignaturePad />
-        </>
-      )}
     </div>
   );
 }

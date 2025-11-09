@@ -1104,307 +1104,318 @@ export default function CreateWorkOrderPage() {
 
   /* UI */
   return (
-    <div className="mx-auto max-w-5xl p-6 text-white font-roboto">
-      <h1 className="mb-6 text-2xl text-orange-400 font-bold font-blackops text-center">
-        Create Work Order
-      </h1>
+    <div className="mx-auto max-w-6xl px-4 py-6 text-white">
+      {/* header row */}
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-blackops text-orange-400">
+            Create Work Order
+          </h1>
+          <p className="text-sm text-neutral-400">
+            Capture customer & vehicle, add jobs, then approve.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => router.push("/work-orders")}
+            className="rounded border border-neutral-700 px-3 py-1.5 text-sm text-neutral-200 hover:bg-neutral-800"
+          >
+            Back to list
+          </button>
+        </div>
+      </div>
 
       {error && (
-        <div className="mb-4 rounded border border-red-500/40 bg-red-500/10 px-4 py-2 text-red-300">
+        <div className="mb-4 rounded border border-red-500/40 bg-red-500/10 px-4 py-2 text-red-200 text-sm">
           {error}
         </div>
       )}
 
       {uploadSummary && (
-        <div className="mb-4 rounded border border-neutral-700 bg-neutral-900 px-4 py-2 text-neutral-200 text-sm">
+        <div className="mb-4 rounded border border-neutral-700 bg-neutral-950 px-4 py-2 text-neutral-200 text-sm">
           Uploaded {uploadSummary.uploaded} file(s)
           {uploadSummary.failed ? `, ${uploadSummary.failed} failed` : ""}.
         </div>
       )}
       {inviteNotice && (
-        <div className="mb-4 rounded border border-neutral-700 bg-neutral-900 px-4 py-2 text-neutral-200 text-sm">
+        <div className="mb-4 rounded border border-neutral-700 bg-neutral-950 px-4 py-2 text-neutral-200 text-sm">
           {inviteNotice}
         </div>
       )}
 
-      <form onSubmit={handleSubmit}>
-        <div className="grid grid-cols-1 gap-6">
-          {/* Customer & Vehicle */}
-          <section className="card">
-            <h2 className="font-header text-lg mb-3 text-center">
-              Customer &amp; Vehicle
-            </h2>
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Customer & Vehicle */}
+        <section className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 sm:p-5">
+          <h2 className="text-sm font-semibold text-white mb-3">
+            Customer &amp; Vehicle
+          </h2>
 
-            <CustomerVehicleForm
-              customer={customer}
-              vehicle={vehicle}
-              saving={savingCv}
-              workOrderExists={!!wo?.id}
-              shopId={wo?.shop_id ?? currentShopId}
-              handlers={{
-                onCustomerChange,
-                onVehicleChange,
-                onCustomerSelected: (id: string) => setCustomerId(id),
-                onVehicleSelected: (id: string) => setVehicleId(id),
-              }}
-            />
+          <CustomerVehicleForm
+            customer={customer}
+            vehicle={vehicle}
+            saving={savingCv}
+            workOrderExists={!!wo?.id}
+            shopId={wo?.shop_id ?? currentShopId}
+            handlers={{
+              onCustomerChange,
+              onVehicleChange,
+              onCustomerSelected: (id: string) => setCustomerId(id),
+              onVehicleSelected: (id: string) => setVehicleId(id),
+            }}
+          />
 
-            {/* Local buttons row */}
-            <div className="mt-3 flex flex-wrap items-center gap-2 justify-center">
-              <button
-                type="button"
-                onClick={handleSaveCustomerVehicle}
-                disabled={savingCv || loading}
-                className="rounded border border-neutral-700 px-3 py-1 text-sm hover:border-orange-500 disabled:opacity-60"
-                title="Create or link the Work Order to this Customer & Vehicle"
-              >
-                {savingCv ? "Saving…" : "Save & Continue"}
-              </button>
+          {/* Local buttons row */}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleSaveCustomerVehicle}
+              disabled={savingCv || loading}
+              className="rounded border border-neutral-700 px-3 py-1.5 text-xs sm:text-sm hover:border-orange-500 disabled:opacity-60"
+            >
+              {savingCv ? "Saving…" : "Save & Continue"}
+            </button>
 
-              <button
-                type="button"
-                onClick={handleClearForm}
-                className="rounded border border-neutral-700 px-3 py-1 text-sm hover:border-red-500"
-                title="Clear only the Customer & Vehicle inputs (keeps the current Work Order and lines)"
-              >
-                Clear form
-              </button>
+            <button
+              type="button"
+              onClick={handleClearForm}
+              className="rounded border border-neutral-700 px-3 py-1.5 text-xs sm:text-sm hover:border-red-500"
+            >
+              Clear form
+            </button>
 
-              <VinCaptureModal
-                userId={currentUserId ?? "anon"}
-                action="/api/vin"
-                onDecoded={(d) => {
-                  draft.setVehicle({
-                    vin: d.vin,
+            <VinCaptureModal
+              userId={currentUserId ?? "anon"}
+              action="/api/vin"
+              onDecoded={(d) => {
+                draft.setVehicle({
+                  vin: d.vin,
+                  year: d.year ?? null,
+                  make: d.make ?? null,
+                  model: d.model ?? null,
+                });
+                setVehicle((prev) => ({
+                  ...prev,
+                  vin: d.vin || prev.vin,
+                  year: d.year ?? prev.year,
+                  make: d.make ?? prev.make,
+                  model: d.model ?? prev.model,
+                }));
+                cvDraft.bulkSet({
+                  vehicle: {
+                    vin: d.vin ?? null,
                     year: d.year ?? null,
                     make: d.make ?? null,
                     model: d.model ?? null,
-                  });
-                  setVehicle((prev) => ({
-                    ...prev,
-                    vin: d.vin || prev.vin,
-                    year: d.year ?? prev.year,
-                    make: d.make ?? prev.make,
-                    model: d.model ?? prev.model,
-                  }));
-                  cvDraft.bulkSet({
-                    vehicle: {
-                      vin: d.vin ?? null,
-                      year: d.year ?? null,
-                      make: d.make ?? null,
-                      model: d.model ?? null,
-                    },
-                  });
-                }}
-              >
-                <span className="rounded border border-orange-500 px-3 py-1 text-sm text-orange-400 hover:bg-orange-500/10 cursor-pointer">
-                  Add by VIN / Scan
-                </span>
-              </VinCaptureModal>
-            </div>
+                  },
+                });
+              }}
+            >
+              <span className="rounded border border-orange-500/80 px-3 py-1.5 text-xs sm:text-sm text-orange-300 hover:bg-orange-500/10 cursor-pointer">
+                Add by VIN / Scan
+              </span>
+            </VinCaptureModal>
+          </div>
 
-            <div className="mt-2 flex items-center gap-2 text-xs text-neutral-300 justify-center">
+          <label className="mt-3 flex items-center gap-2 text-xs text-neutral-300">
+            <input
+              id="send-invite"
+              type="checkbox"
+              checked={sendInvite}
+              onChange={(e) => setSendInvite(e.target.checked)}
+              className="h-4 w-4 rounded border-neutral-700 bg-neutral-900"
+              disabled={loading}
+            />
+            Email a customer portal sign-up link
+          </label>
+        </section>
+
+        {/* Uploads */}
+        <section className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 sm:p-5">
+          <h2 className="text-sm font-semibold text-white mb-3">Uploads</h2>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <label className="block text-xs uppercase tracking-wide text-neutral-400 mb-1">
+                Vehicle Photos
+              </label>
               <input
-                id="send-invite"
-                type="checkbox"
-                checked={sendInvite}
-                onChange={(e) => setSendInvite(e.target.checked)}
-                className="h-4 w-4"
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(e) => setPhotoFiles(Array.from(e.target.files ?? []))}
+                className="input"
                 disabled={loading}
               />
-              <label htmlFor="send-invite">
-                Email a customer portal sign-up link
+            </div>
+            <div>
+              <label className="block text-xs uppercase tracking-wide text-neutral-400 mb-1">
+                Documents (PDF/JPG/PNG)
               </label>
-            </div>
-          </section>
-
-          {/* Uploads */}
-          <section className="card">
-            <h2 className="font-header text-lg mb-2 text-center">Uploads</h2>
-            <div className="grid grid-cols-1 gap-3">
-              <div>
-                <label className="block text-sm mb-1 text-center">
-                  Vehicle Photos
-                </label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={(e) =>
-                    setPhotoFiles(Array.from(e.target.files ?? []))
-                  }
-                  className="input"
-                  disabled={loading}
-                />
-              </div>
-              <div>
-                <label className="block text-sm mb-1 text-center">
-                  Documents (PDF/JPG/PNG)
-                </label>
-                <input
-                  type="file"
-                  accept="application/pdf,image/*"
-                  multiple
-                  onChange={(e) =>
-                    setDocFiles(Array.from(e.target.files ?? []))
-                  }
-                  className="input"
-                  disabled={loading}
-                />
-              </div>
-            </div>
-          </section>
-
-          {/* Quick add from menu */}
-          {wo?.id && (
-            <section className="card">
-              <h2 className="font-header text-lg mb-3 text-orange-400 text-center">
-                Quick add from menu
-              </h2>
-              <MenuQuickAdd workOrderId={wo.id} />
-            </section>
-          )}
-
-          {/* Manual add line */}
-          {wo?.id && (
-            <section className="card">
-              <h2 className="font-header text-lg mb-2 text-center">
-                Add Job Line
-              </h2>
-              <NewWorkOrderLineForm
-                workOrderId={wo.id}
-                vehicleId={vehicleId}
-                defaultJobType={type}
-                shopId={wo.shop_id ?? null}
-                onCreated={fetchLines}
+              <input
+                type="file"
+                accept="application/pdf,image/*"
+                multiple
+                onChange={(e) => setDocFiles(Array.from(e.target.files ?? []))}
+                className="input"
+                disabled={loading}
               />
-            </section>
-          )}
+            </div>
+          </div>
+        </section>
 
-          {/* Current Lines */}
-          <section className="card">
-            <h2 className="font-header text-lg mb-2 text-center">
-              Current Lines
+        {/* Quick add from menu */}
+        {wo?.id && (
+          <section className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 sm:p-5">
+            <h2 className="text-sm font-semibold text-orange-300 mb-3">
+              Quick add from menu
             </h2>
-            {!wo?.id || lines.length === 0 ? (
-              <p className="text-sm text-neutral-400 text-center">
-                No lines yet.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {lines.map((ln) => (
-                  <div
-                    key={ln.id}
-                    className="flex items-start justify-between gap-3 rounded border border-neutral-800 bg-neutral-950 p-3"
-                  >
-                    <div className="min-w-0">
-                      <div className="truncate font-medium">
-                        {ln.description || ln.complaint || "Untitled job"}
-                      </div>
-                      <div className="text-xs text-neutral-400">
-                        {String(ln.job_type ?? "job").replaceAll("_", " ")} •{" "}
-                        {typeof ln.labor_time === "number"
-                          ? `${ln.labor_time}h`
-                          : "—"}{" "}
-                        • {(ln.status ?? "awaiting").replaceAll("_", " ")}
-                      </div>
-                      {(ln.complaint || ln.cause || ln.correction) && (
-                        <div className="text-xs text-neutral-400 mt-1">
-                          {ln.complaint ? `Cmpl: ${ln.complaint}  ` : ""}
-                          {ln.cause ? `| Cause: ${ln.cause}  ` : ""}
-                          {ln.correction ? `| Corr: ${ln.correction}` : ""}
-                        </div>
-                      )}
+            <MenuQuickAdd workOrderId={wo.id} />
+          </section>
+        )}
+
+        {/* Manual add line */}
+        {wo?.id && (
+          <section className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 sm:p-5">
+            <h2 className="text-sm font-semibold text-white mb-3">
+              Add Job Line
+            </h2>
+            <NewWorkOrderLineForm
+              workOrderId={wo.id}
+              vehicleId={vehicleId}
+              defaultJobType={type}
+              shopId={wo.shop_id ?? null}
+              onCreated={fetchLines}
+            />
+          </section>
+        )}
+
+        {/* Current Lines */}
+        <section className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 sm:p-5">
+          <h2 className="text-sm font-semibold text-white mb-3">
+            Current Lines
+          </h2>
+          {!wo?.id || lines.length === 0 ? (
+            <p className="text-sm text-neutral-400">No lines yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {lines.map((ln) => (
+                <div
+                  key={ln.id}
+                  className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 rounded border border-neutral-800 bg-neutral-950 p-3"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate font-medium">
+                      {ln.description || ln.complaint || "Untitled job"}
                     </div>
-                    <div className="flex flex-col gap-2">
-                      {ln.job_type === "inspection" && (
-                        <button
-                          type="button"
-                          onClick={() => openInspectionForLine(ln)}
-                          className="rounded border border-orange-500 px-2 py-1 text-xs text-orange-200 hover:bg-orange-500/10"
-                        >
-                          Open Inspection
-                        </button>
-                      )}
+                    <div className="text-xs text-neutral-400">
+                      {String(ln.job_type ?? "job").replaceAll("_", " ")} •{" "}
+                      {typeof ln.labor_time === "number"
+                        ? `${ln.labor_time}h`
+                        : "—"}{" "}
+                      • {(ln.status ?? "awaiting").replaceAll("_", " ")}
+                    </div>
+                    {(ln.complaint || ln.cause || ln.correction) && (
+                      <div className="text-xs text-neutral-500 mt-1">
+                        {ln.complaint ? `Cmpl: ${ln.complaint}  ` : ""}
+                        {ln.cause ? `| Cause: ${ln.cause}  ` : ""}
+                        {ln.correction ? `| Corr: ${ln.correction}` : ""}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    {ln.job_type === "inspection" && (
                       <button
                         type="button"
-                        onClick={() => handleDeleteLine(ln.id)}
-                        className="rounded border border-red-600 px-2 py-1 text-xs text-red-300 hover:bg-red-900/20"
+                        onClick={() => openInspectionForLine(ln)}
+                        className="rounded border border-orange-500 px-2 py-1 text-xs text-orange-200 hover:bg-orange-500/10"
                       >
-                        Delete
+                        Open Inspection
                       </button>
-                    </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteLine(ln.id)}
+                      className="rounded border border-red-600 px-2 py-1 text-xs text-red-300 hover:bg-red-900/20"
+                    >
+                      Delete
+                    </button>
                   </div>
-                ))}
-              </div>
-            )}
-          </section>
-
-          {/* Work Order defaults */}
-          <section className="card">
-            <h2 className="font-header text-lg mb-2 text-center">Work Order</h2>
-            <div className="grid grid-cols-1 gap-3">
-              <div>
-                <label className="block text-sm mb-1 text-center">
-                  Default job type for added menu items
-                </label>
-                <select
-                  value={type}
-                  onChange={(e) => setType(e.target.value as WOType)}
-                  className="input"
-                  disabled={loading}
-                >
-                  <option value="maintenance">Maintenance</option>
-                  <option value="diagnosis">Diagnosis</option>
-                  <option value="inspection">Inspection</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm mb-1 text-center">Priority</label>
-                <select
-                  value={priority}
-                  onChange={(e) => setPriority(Number(e.target.value))}
-                  className="input"
-                  disabled={loading}
-                >
-                  <option value={1}>Urgent</option>
-                  <option value={2}>High</option>
-                  <option value={3}>Normal</option>
-                  <option value={4}>Low</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm mb-1 text-center">Notes</label>
-                <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="input"
-                  rows={3}
-                  placeholder="Optional notes for technician"
-                  disabled={loading}
-                />
-              </div>
+                </div>
+              ))}
             </div>
-          </section>
+          )}
+        </section>
 
-          {/* Submit → Review & Sign */}
-          <div className="flex items-center gap-4 pt-2 justify-center">
-            <button
-              type="submit"
-              disabled={loading}
-              className="btn btn-orange disabled:opacity-60"
-            >
-              {loading ? "Creating..." : "Approve & Sign"}
-            </button>
-            <button
-              type="button"
-              onClick={() => router.push("/work-orders")}
-              className="text-sm text-neutral-400 hover:underline"
-              disabled={loading}
-            >
-              Cancel
-            </button>
+        {/* Work Order defaults */}
+        <section className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 sm:p-5">
+          <h2 className="text-sm font-semibold text-white mb-3">
+            Work Order options
+          </h2>
+          <div className="grid gap-3 md:grid-cols-3">
+            <div>
+              <label className="block text-xs uppercase tracking-wide text-neutral-400 mb-1">
+                Default job type
+              </label>
+              <select
+                value={type}
+                onChange={(e) => setType(e.target.value as WOType)}
+                className="input"
+                disabled={loading}
+              >
+                <option value="maintenance">Maintenance</option>
+                <option value="diagnosis">Diagnosis</option>
+                <option value="inspection">Inspection</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs uppercase tracking-wide text-neutral-400 mb-1">
+                Priority
+              </label>
+              <select
+                value={priority}
+                onChange={(e) => setPriority(Number(e.target.value))}
+                className="input"
+                disabled={loading}
+              >
+                <option value={1}>Urgent</option>
+                <option value={2}>High</option>
+                <option value={3}>Normal</option>
+                <option value={4}>Low</option>
+              </select>
+            </div>
+            <div className="md:col-span-3">
+              <label className="block text-xs uppercase tracking-wide text-neutral-400 mb-1">
+                Notes
+              </label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                className="input"
+                rows={3}
+                placeholder="Optional notes for technician"
+                disabled={loading}
+              />
+            </div>
           </div>
+        </section>
+
+        {/* Submit */}
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="submit"
+            disabled={loading}
+            className="rounded bg-orange-500 px-4 py-2 text-sm font-semibold text-black hover:bg-orange-400 disabled:opacity-60"
+          >
+            {loading ? "Creating..." : "Approve & Sign"}
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push("/work-orders")}
+            className="text-sm text-neutral-400 hover:text-white"
+            disabled={loading}
+          >
+            Cancel
+          </button>
         </div>
       </form>
 

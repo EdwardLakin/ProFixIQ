@@ -18,7 +18,7 @@ type Row = WorkOrder & {
   vehicles: Pick<Vehicle, "year" | "make" | "model" | "license_plate"> | null;
 };
 
-/* --------------------------- Status badges (dark) --------------------------- */
+/* --------------------------- Status badges --------------------------- */
 type StatusKey =
   | "awaiting_approval"
   | "awaiting"
@@ -35,16 +35,16 @@ const BADGE_BASE =
   "inline-flex items-center whitespace-nowrap rounded border px-2 py-0.5 text-xs font-medium";
 
 const STATUS_BADGE: Record<StatusKey, string> = {
-  awaiting_approval: "bg-blue-900/20 border-blue-500/40 text-blue-300",
-  awaiting: "bg-sky-900/20  border-sky-500/40  text-sky-300",
-  queued: "bg-indigo-900/20 border-indigo-500/40 text-indigo-300",
-  in_progress: "bg-orange-900/20 border-orange-500/40 text-orange-300",
-  on_hold: "bg-amber-900/20  border-amber-500/40  text-amber-300",
-  planned: "bg-purple-900/20 border-purple-500/40 text-purple-300",
-  new: "bg-neutral-800   border-neutral-600   text-neutral-200",
-  completed: "bg-green-900/20  border-green-500/40 text-green-300",
-  ready_to_invoice: "bg-emerald-900/20 border-emerald-500/40 text-emerald-300",
-  invoiced: "bg-teal-900/20    border-teal-500/40    text-teal-300",
+  awaiting_approval: "bg-blue-200/20 border-blue-200/40 text-blue-800 dark:bg-blue-900/20 dark:border-blue-500/40 dark:text-blue-300",
+  awaiting: "bg-sky-200/20  border-sky-200/40  text-sky-800 dark:bg-sky-900/20  dark:border-sky-500/40  dark:text-sky-300",
+  queued: "bg-indigo-200/20 border-indigo-200/40 text-indigo-800 dark:bg-indigo-900/20 dark:border-indigo-500/40 dark:text-indigo-300",
+  in_progress: "bg-orange-200/20 border-orange-200/40 text-orange-800 dark:bg-orange-900/20 dark:border-orange-500/40 dark:text-orange-300",
+  on_hold: "bg-amber-200/20  border-amber-200/40  text-amber-800 dark:bg-amber-900/20  dark:border-amber-500/40  dark:text-amber-300",
+  planned: "bg-purple-200/20 border-purple-200/40 text-purple-800 dark:bg-purple-900/20 dark:border-purple-500/40 dark:text-purple-300",
+  new: "bg-muted border-border text-foreground",
+  completed: "bg-green-200/20  border-green-200/40 text-green-800 dark:bg-green-900/20  dark:border-green-500/40 dark:text-green-300",
+  ready_to_invoice: "bg-emerald-200/20 border-emerald-200/40 text-emerald-800 dark:bg-emerald-900/20 dark:border-emerald-500/40 dark:text-emerald-300",
+  invoiced: "bg-teal-200/20    border-teal-200/40    text-teal-800 dark:bg-teal-900/20    dark:border-teal-500/40    dark:text-teal-300",
 };
 
 const chip = (s: string | null | undefined) => {
@@ -77,19 +77,19 @@ export default function WorkOrdersView(): JSX.Element {
 
   // assigning
   const [assigningFor, setAssigningFor] = useState<string | null>(null);
-  const [techs, setTechs] = useState<Array<Pick<Profile, "id" | "full_name" | "role">>>([]);
+  const [techs, setTechs] = useState<
+    Array<Pick<Profile, "id" | "full_name" | "role">>
+  >([]);
   const [selectedTechId, setSelectedTechId] = useState<string>("");
 
   const [currentRole, setCurrentRole] = useState<string | null>(null);
 
   // NEW: we keep assignments separate since Supabase couldn't join them
-  // key = work_order_id, value = array of technician_ids (usually 1)
   const [woAssignments, setWoAssignments] = useState<Record<string, string[]>>({});
 
-  // load current user role (from profiles) + mechanics (from API) once
+  // load current user role + mechanics once
   useEffect(() => {
     (async () => {
-      // get my role
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -103,7 +103,6 @@ export default function WorkOrdersView(): JSX.Element {
         setCurrentRole(prof?.role ?? null);
       }
 
-      // mechanics / assignables come from server route
       try {
         const res = await fetch("/api/assignables");
         const json = await res.json();
@@ -180,7 +179,7 @@ export default function WorkOrdersView(): JSX.Element {
 
     setRows(filtered);
 
-    // 3) separate fetch for assignments, since the schema doesn't have a relationship
+    // 3) fetch assignments for visible rows
     const ids = filtered.map((r) => r.id);
     if (ids.length > 0) {
       const { data: assigns, error: assignsErr } = await supabase
@@ -290,7 +289,10 @@ export default function WorkOrdersView(): JSX.Element {
 
   // make a fast lookup for tech names
   const techsById = useMemo(() => {
-    const m: Record<string, { id: string; full_name: string | null; role: string | null }> = {};
+    const m: Record<
+      string,
+      { id: string; full_name: string | null; role: string | null }
+    > = {};
     techs.forEach((t) => {
       m[t.id] = {
         id: t.id,
@@ -302,9 +304,9 @@ export default function WorkOrdersView(): JSX.Element {
   }, [techs]);
 
   return (
-    <div className="mx-auto max-w-6xl p-6 text-white">
+    <div className="mx-auto max-w-6xl px-4 py-6 bg-background text-foreground">
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-bold text-orange-400">Work Orders</h1>
+        <h1 className="text-2xl font-bold text-orange-500">Work Orders</h1>
         <Link
           href="/work-orders/create"
           className="rounded bg-orange-500 px-3 py-1.5 font-semibold text-black hover:bg-orange-600"
@@ -317,12 +319,12 @@ export default function WorkOrdersView(): JSX.Element {
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && void load()}
             placeholder="Search id, custom id, name, plate, YMM…"
-            className="rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-sm"
+            className="rounded border border-border bg-background px-3 py-1.5 text-sm"
           />
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value)}
-            className="rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-sm"
+            className="rounded border border-border bg-background px-3 py-1.5 text-sm"
             aria-label="Filter by status"
           >
             <option value="">All (approved / normal flow)</option>
@@ -339,26 +341,29 @@ export default function WorkOrdersView(): JSX.Element {
           </select>
           <button
             onClick={() => void load()}
-            className="rounded border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800"
+            className="rounded border border-border px-3 py-1.5 text-sm hover:bg-muted"
           >
             Refresh
           </button>
         </div>
       </div>
 
-      {err && <div className="mb-3 rounded bg-red-500/10 p-2 text-sm text-red-300">{err}</div>}
+      {err && (
+        <div className="mb-3 rounded bg-destructive/10 p-2 text-sm text-destructive">
+          {err}
+        </div>
+      )}
 
       {loading ? (
-        <div className="text-neutral-300">Loading…</div>
+        <div className="text-muted-foreground">Loading…</div>
       ) : rows.length === 0 ? (
-        <div className="text-neutral-400">No work orders found.</div>
+        <div className="text-muted-foreground">No work orders found.</div>
       ) : (
-        <div className="divide-y divide-neutral-800 rounded border border-neutral-800 bg-neutral-900">
+        <div className="divide-y divide-border rounded-lg border border-border bg-card">
           {rows.map((r) => {
             const href = `/work-orders/${r.custom_id ?? r.id}?mode=view`;
             const isAssigning = assigningFor === r.id;
 
-            // find first assigned tech id for this WO (from separate fetch)
             const assignedIds = woAssignments[r.id] ?? [];
             const firstTechId = assignedIds.length > 0 ? assignedIds[0] : null;
             const firstTechName =
@@ -367,20 +372,25 @@ export default function WorkOrdersView(): JSX.Element {
                 : null;
 
             return (
-              <div key={r.id} className="flex flex-wrap items-center gap-3 p-3">
-                <div className="w-28 text-xs text-neutral-400">
-                  {r.created_at ? format(new Date(r.created_at), "PP") : "—"}
+              <div
+                key={r.id}
+                className="flex flex-wrap items-center gap-3 p-3"
+              >
+                <div className="w-28 text-xs text-muted-foreground">
+                  {r.created_at
+                    ? format(new Date(r.created_at), "PP")
+                    : "—"}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <Link
                       href={href}
-                      className="font-medium underline decoration-neutral-600 underline-offset-2 hover:decoration-orange-500"
+                      className="font-medium underline decoration-muted underline-offset-2 hover:decoration-orange-500"
                     >
                       {r.custom_id ? r.custom_id : `#${r.id.slice(0, 8)}`}
                     </Link>
                     {r.custom_id && (
-                      <span className="text-[10px] rounded border border-neutral-700 px-1 py-0.5 text-neutral-300">
+                      <span className="text-[10px] rounded border border-border px-1 py-0.5 text-muted-foreground">
                         #{r.id.slice(0, 6)}
                       </span>
                     )}
@@ -388,7 +398,7 @@ export default function WorkOrdersView(): JSX.Element {
                       {(r.status ?? "awaiting").replaceAll("_", " ")}
                     </span>
                   </div>
-                  <div className="truncate text-sm text-neutral-300">
+                  <div className="truncate text-sm text-muted-foreground">
                     {r.customers
                       ? `${[r.customers.first_name ?? "", r.customers.last_name ?? ""]
                           .filter(Boolean)
@@ -396,14 +406,18 @@ export default function WorkOrdersView(): JSX.Element {
                       : "—"}{" "}
                     •{" "}
                     {r.vehicles
-                      ? `${r.vehicles.year ?? ""} ${r.vehicles.make ?? ""} ${r.vehicles.model ?? ""} ${
-                          r.vehicles.license_plate ? `(${r.vehicles.license_plate})` : ""
+                      ? `${r.vehicles.year ?? ""} ${r.vehicles.make ?? ""} ${
+                          r.vehicles.model ?? ""
+                        }${
+                          r.vehicles.license_plate
+                            ? ` (${r.vehicles.license_plate})`
+                            : ""
                         }`
                       : "—"}
                   </div>
                   {firstTechName ? (
-                    <div className="mt-0.5 inline-flex items-center gap-1 rounded bg-sky-900/30 px-2 py-0.5 text-[10px] text-sky-100">
-                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-sky-300" />
+                    <div className="mt-0.5 inline-flex items-center gap-1 rounded bg-sky-200/30 px-2 py-0.5 text-[10px] text-sky-900 dark:bg-sky-900/30 dark:text-sky-100">
+                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-sky-400" />
                       Assigned to {firstTechName}
                     </div>
                   ) : null}
@@ -411,13 +425,13 @@ export default function WorkOrdersView(): JSX.Element {
                 <div className="flex items-center gap-2">
                   <Link
                     href={href}
-                    className="rounded border border-neutral-700 px-2 py-1 text-sm hover:bg-neutral-800"
+                    className="rounded border border-border px-2 py-1 text-sm hover:bg-muted"
                   >
                     Open
                   </Link>
                   <button
                     onClick={() => void handleDelete(r.id)}
-                    className="rounded border border-red-600/60 px-2 py-1 text-sm text-red-300 hover:bg-red-900/20"
+                    className="rounded border border-red-500/60 px-2 py-1 text-sm text-red-500 hover:bg-red-500/10"
                   >
                     Delete
                   </button>
@@ -428,7 +442,7 @@ export default function WorkOrdersView(): JSX.Element {
                           onClick={() => {
                             setAssigningFor(r.id);
                           }}
-                          className="rounded border border-sky-600/60 px-2 py-1 text-sm text-sky-200 hover:bg-sky-900/10"
+                          className="rounded border border-sky-500/60 px-2 py-1 text-sm text-sky-500 hover:bg-sky-500/10"
                         >
                           Assign
                         </button>
@@ -437,12 +451,13 @@ export default function WorkOrdersView(): JSX.Element {
                           <select
                             value={selectedTechId}
                             onChange={(e) => setSelectedTechId(e.target.value)}
-                            className="rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs text-white"
+                            className="rounded border border-border bg-background px-2 py-1 text-xs"
                           >
                             <option value="">Pick mechanic…</option>
                             {techs.map((t) => (
                               <option key={t.id} value={t.id}>
-                                {t.full_name ?? "(no name)"} {t.role ? `(${t.role})` : ""}
+                                {t.full_name ?? "(no name)"}{" "}
+                                {t.role ? `(${t.role})` : ""}
                               </option>
                             ))}
                           </select>
@@ -454,7 +469,7 @@ export default function WorkOrdersView(): JSX.Element {
                           </button>
                           <button
                             onClick={() => setAssigningFor(null)}
-                            className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
+                            className="rounded border border-border px-2 py-1 text-xs hover:bg-muted"
                           >
                             ✕
                           </button>

@@ -12,16 +12,14 @@ interface CauseCorrectionModalProps {
   initialCorrection?: string;
 }
 
-export default function CauseCorrectionModal(props: CauseCorrectionModalProps) {
-  const {
-    isOpen,
-    onClose,
-    jobId,
-    onSubmit,
-    initialCause = "",
-    initialCorrection = "",
-  } = props;
-
+export default function CauseCorrectionModal({
+  isOpen,
+  onClose,
+  jobId,
+  onSubmit,
+  initialCause = "",
+  initialCorrection = "",
+}: CauseCorrectionModalProps) {
   const [cause, setCause] = useState(initialCause);
   const [correction, setCorrection] = useState(initialCorrection);
   const [submitting, setSubmitting] = useState(false);
@@ -50,71 +48,72 @@ export default function CauseCorrectionModal(props: CauseCorrectionModalProps) {
     <Dialog
       open={isOpen}
       onClose={onClose}
-      className="fixed inset-0 z-[320] flex items-center justify-center"
+      className="fixed inset-0 z-[500] flex items-center justify-center p-4 sm:p-6"
     >
-      {/* Backdrop */}
       <div
-        className="fixed inset-0 z-[320] bg-black/70 backdrop-blur-sm"
+        className="fixed inset-0 z-[500] bg-black/60 backdrop-blur-sm"
         aria-hidden="true"
       />
 
-      {/* Panel */}
-      <div
-        className="relative z-[330] mx-4 w-full max-w-md rounded-lg border border-orange-400 bg-neutral-950 p-5 text-white shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <Dialog.Title className="mb-4 text-lg font-header font-semibold tracking-wide">
-          Complete Job
-        </Dialog.Title>
+      <div className="relative z-[510] w-full max-w-md">
+        <Dialog.Panel className="rounded-lg border border-border bg-background text-foreground shadow-xl dark:border-orange-400/90 dark:bg-neutral-950">
+          <Dialog.Title className="border-b border-border/60 px-6 py-4 text-lg font-header font-semibold tracking-wide dark:border-neutral-800">
+            Complete Job
+          </Dialog.Title>
 
-        <div className="mb-3">
-          <label className="mb-1 block text-sm font-sans text-neutral-300">
-            Cause
-          </label>
-          <textarea
-            ref={causeRef}
-            rows={3}
-            className="font-sans w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-sm text-white placeholder-neutral-400"
-            value={cause}
-            onChange={(e) => setCause(e.target.value)}
-            placeholder="What caused the issue?"
-          />
-        </div>
+          <div className="px-6 py-5">
+            <div className="mb-3">
+              <label className="mb-1 block text-sm text-foreground/80 dark:text-neutral-300">
+                Cause
+              </label>
+              <textarea
+                ref={causeRef}
+                rows={3}
+                className="w-full rounded border border-border/60 bg-background px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
+                value={cause}
+                onChange={(e) => setCause(e.target.value)}
+                placeholder="What caused the issue?"
+              />
+            </div>
 
-        <div className="mb-4">
-          <label className="mb-1 block text-sm font-sans text-neutral-300">
-            Correction
-          </label>
-          <textarea
-            rows={3}
-            className="font-sans w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-sm text-white placeholder-neutral-400"
-            value={correction}
-            onChange={(e) => setCorrection(e.target.value)}
-            placeholder="Describe what was done to correct the issue…"
-            onKeyDown={(e) => {
-              if ((e.metaKey || e.ctrlKey) && e.key === "Enter") handleSubmit();
-            }}
-          />
-        </div>
+            <div className="mb-4">
+              <label className="mb-1 block text-sm text-foreground/80 dark:text-neutral-300">
+                Correction
+              </label>
+              <textarea
+                rows={3}
+                className="w-full rounded border border-border/60 bg-background px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
+                value={correction}
+                onChange={(e) => setCorrection(e.target.value)}
+                placeholder="Describe what was done to correct the issue…"
+                onKeyDown={(e) => {
+                  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") handleSubmit();
+                }}
+              />
+            </div>
 
-        <div className="flex justify-end gap-2">
-          <button
-            className="font-header rounded border border-neutral-700 px-4 py-2 text-sm hover:bg-neutral-800"
-            onClick={onClose}
-            disabled={submitting}
-          >
-            Cancel
-          </button>
-          <button
-            className="font-header rounded border border-orange-500 px-4 py-2 text-sm hover:bg-orange-500/10 disabled:opacity-60"
-            onClick={handleSubmit}
-            disabled={submitting}
-          >
-            {submitting ? "Saving…" : "Submit"}
-          </button>
-        </div>
+            <div className="text-xs text-muted-foreground dark:text-neutral-500">
+              Job ID: {jobId}
+            </div>
+          </div>
 
-        <div className="mt-2 text-xs text-neutral-500">Job ID: {jobId}</div>
+          <div className="flex justify-end gap-2 border-t border-border/60 px-6 py-4 dark:border-neutral-800">
+            <button
+              className="font-header rounded border border-border/70 bg-background px-4 py-2 text-sm hover:bg-muted dark:border-neutral-700 dark:bg-neutral-900 dark:hover:bg-neutral-800"
+              onClick={onClose}
+              disabled={submitting}
+            >
+              Cancel
+            </button>
+            <button
+              className="font-header rounded bg-orange-500 px-4 py-2 text-sm font-semibold text-black hover:bg-orange-400 disabled:opacity-60"
+              onClick={handleSubmit}
+              disabled={submitting}
+            >
+              {submitting ? "Saving…" : "Submit"}
+            </button>
+          </div>
+        </Dialog.Panel>
       </div>
     </Dialog>
   );

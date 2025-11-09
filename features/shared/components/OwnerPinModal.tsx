@@ -13,9 +13,7 @@ type Props = {
 };
 
 export default function OwnerPinModal(rawProps: any) {
-  // Cast internally to avoid Next.js client-entry serializable props warning
   const { shopId, open, onClose, onVerified } = rawProps as Props;
-
   const [pin, setPin] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -48,17 +46,23 @@ export default function OwnerPinModal(rawProps: any) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="w-full max-w-sm rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-        <h2 className="mb-3 text-lg font-semibold text-white">Owner PIN Required</h2>
+    <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/60 p-4 sm:p-6">
+      <div className="w-full max-w-sm rounded-lg border border-border bg-background p-5 text-foreground shadow-xl dark:border-orange-400/90 dark:bg-neutral-950">
+        <h2 className="mb-3 text-lg font-semibold">Owner PIN Required</h2>
         <Input
           type="password"
           placeholder="Enter PIN"
           value={pin}
           onChange={(e) => setPin(e.target.value)}
+          className="bg-background dark:bg-neutral-900 dark:text-white"
         />
         <div className="mt-4 flex items-center justify-end gap-2">
-          <Button variant="secondary" onClick={onClose} disabled={loading}>
+          <Button
+            variant="secondary"
+            onClick={onClose}
+            disabled={loading}
+            className="dark:bg-neutral-900 dark:text-white dark:hover:bg-neutral-800"
+          >
             Cancel
           </Button>
           <Button onClick={verify} disabled={loading || !pin}>

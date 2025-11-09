@@ -16,7 +16,6 @@ type Props = {
 };
 
 export default function AddJobModal(props: any) {
-  // cast locally to keep IDE help, but avoid Next’s serializable-props rule
   const {
     isOpen,
     onClose,
@@ -47,7 +46,6 @@ export default function AddJobModal(props: any) {
     setErr(null);
 
     try {
-      // resolve shop_id
       let useShopId = shopId ?? null;
       if (!useShopId) {
         const { data: wo } = await supabase
@@ -59,7 +57,6 @@ export default function AddJobModal(props: any) {
       }
       if (!useShopId) throw new Error("Couldn’t resolve shop for this work order");
 
-      // build payload (use a status allowed by the DB constraint)
       const payload = {
         id: uuidv4(),
         work_order_id: workOrderId,
@@ -69,7 +66,7 @@ export default function AddJobModal(props: any) {
         correction: notes.trim() || null,
         labor_time: labor ? Number(labor) : null,
         parts: parts.trim() || null,
-        status: "awaiting" as const, // ✅ safe vs. constraint (was "queued")
+        status: "awaiting" as const,
         job_type: "repair" as const,
         shop_id: useShopId,
         ...(techId && techId !== "system" ? { assigned_to: techId } : {}),
@@ -97,23 +94,20 @@ export default function AddJobModal(props: any) {
     <Dialog
       open={isOpen}
       onClose={onClose}
-      /* above FocusedJobModal (100/110) and ModalShell (300/310) */
-      className="fixed inset-0 z-[330] flex items-center justify-center"
+      className="fixed inset-0 z-[400] flex items-center justify-center overflow-y-auto"
     >
-      {/* backdrop */}
-      <div className="fixed inset-0 z-[330] bg-black/70 backdrop-blur-sm" aria-hidden="true" />
+      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" aria-hidden="true" />
 
-      {/* centered panel */}
-      <div className="relative z-[340] mx-4 my-6 w-full max-w-md">
-        <Dialog.Panel className="w-full rounded-lg border border-orange-400 bg-neutral-950 p-6 text-white shadow-xl">
-          <Dialog.Title className="mb-3 text-lg font-header font-semibold tracking-wide">
+      <div className="relative z-[410] mx-4 my-6 w-full max-w-md">
+        <Dialog.Panel className="w-full rounded-lg border border-border bg-background p-6 text-foreground shadow-xl">
+          <Dialog.Title className="mb-3 text-lg font-semibold">
             Add New Job Line
           </Dialog.Title>
 
           <div className="space-y-3">
             <input
               type="text"
-              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
+              className="w-full rounded border border-border bg-background p-2 text-sm"
               placeholder="Job name (e.g. Replace serpentine belt)"
               value={jobName}
               onChange={(e) => setJobName(e.target.value)}
@@ -121,7 +115,7 @@ export default function AddJobModal(props: any) {
 
             <textarea
               rows={3}
-              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
+              className="w-full rounded border border-border bg-background p-2 text-sm"
               placeholder="Notes or correction"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
@@ -130,7 +124,7 @@ export default function AddJobModal(props: any) {
             <input
               type="number"
               step="0.1"
-              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
+              className="w-full rounded border border-border bg-background p-2 text-sm"
               placeholder="Labor hours"
               value={labor}
               onChange={(e) => setLabor(e.target.value)}
@@ -138,34 +132,36 @@ export default function AddJobModal(props: any) {
 
             <textarea
               rows={2}
-              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
+              className="w-full rounded border border-border bg-background p-2 text-sm"
               placeholder="Parts required (comma-separated or list)"
               value={parts}
               onChange={(e) => setParts(e.target.value)}
             />
 
             <select
-              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white"
+              className="w-full rounded border border-border bg-background p-2 text-sm"
               value={urgency}
-              onChange={(e) => setUrgency(e.target.value as "low" | "medium" | "high")}
+              onChange={(e) =>
+                setUrgency(e.target.value as "low" | "medium" | "high")
+              }
             >
               <option value="low">Low Urgency</option>
               <option value="medium">Medium Urgency</option>
               <option value="high">High Urgency</option>
             </select>
 
-            {err && <div className="text-sm text-red-400">{err}</div>}
+            {err && <div className="text-sm text-destructive">{err}</div>}
 
             <div className="flex justify-end gap-2 pt-3">
               <button
-                className="font-header rounded border border-neutral-700 px-4 py-2 text-sm hover:bg-neutral-800"
+                className="rounded border border-border px-4 py-2 text-sm hover:bg-muted"
                 onClick={onClose}
                 disabled={submitting}
               >
                 Cancel
               </button>
               <button
-                className="font-header rounded border border-orange-500 px-4 py-2 text-sm font-semibold text-orange-400 hover:bg-orange-500/10 disabled:opacity-60"
+                className="rounded border border-orange-500 px-4 py-2 text-sm font-semibold text-orange-500 hover:bg-orange-500/10 disabled:opacity-60"
                 onClick={handleSubmit}
                 disabled={submitting}
               >

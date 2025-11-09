@@ -19,16 +19,15 @@ const STATUS_LABELS: Record<RollupStatus, string> = {
 };
 
 // slightly different accents so you can tell they’re clickable
-// Slightly different accents so you can tell they’re clickable
 const STATUS_STYLES: Record<RollupStatus, string> = {
   awaiting:
-    "border-slate-700 bg-neutral-900/80 hover:border-orange-400 data-[active=true]:border-green-500 data-[active=true]:bg-green-500/10",
+    "border-border bg-card/70 hover:border-orange-400 data-[active=true]:border-green-500 data-[active=true]:bg-green-500/10",
   in_progress:
-    "border-amber-700 bg-neutral-900/80 hover:border-orange-400 data-[active=true]:border-green-500 data-[active=true]:bg-green-500/10",
+    "border-border bg-card/70 hover:border-orange-400 data-[active=true]:border-green-500 data-[active=true]:bg-green-500/10",
   on_hold:
-    "border-purple-700 bg-neutral-900/80 hover:border-orange-400 data-[active=true]:border-green-500 data-[active=true]:bg-green-500/10",
+    "border-border bg-card/70 hover:border-orange-400 data-[active=true]:border-green-500 data-[active=true]:bg-green-500/10",
   completed:
-    "border-emerald-700 bg-neutral-900/80 hover:border-orange-400 data-[active=true]:border-green-500 data-[active=true]:bg-green-500/10",
+    "border-border bg-card/70 hover:border-orange-400 data-[active=true]:border-green-500 data-[active=true]:bg-green-500/10",
 };
 
 function rollupStatus(lines: Line[]): RollupStatus {
@@ -193,42 +192,54 @@ export default function QueuePage() {
   }, [activeFilter, workOrders, linesByWo]);
 
   if (loading) {
-    return <div className="p-6 text-white">Loading queue…</div>;
+    return (
+      <div className="mx-auto max-w-6xl px-4 py-6 text-muted-foreground">
+        Loading queue…
+      </div>
+    );
   }
 
   if (err) {
-    return <div className="p-6 text-red-200">{err}</div>;
+    return (
+      <div className="mx-auto max-w-6xl px-4 py-6 text-destructive">
+        {err}
+      </div>
+    );
   }
 
   return (
-    <div className="p-6 text-white">
-      <h1 className="mb-4 text-2xl font-blackops text-orange-400">Job Queue</h1>
+    <div className="mx-auto max-w-6xl px-4 py-6 bg-background text-foreground">
+      <h1 className="mb-4 text-2xl font-blackops text-orange-500">
+        Job Queue
+      </h1>
 
-      {/* DEBUG (you can remove) */}
-      <div className="mb-4 rounded border border-neutral-800 bg-neutral-900 p-3 text-sm">
-        <div className="mb-1 font-semibold text-orange-400">Debug</div>
+      {/* DEBUG */}
+      <div className="mb-4 rounded-lg border border-border bg-card px-4 py-3 text-sm">
+        <div className="mb-1 font-semibold text-orange-500">Debug</div>
         <div className="grid gap-2 sm:grid-cols-2">
           <div className="space-y-1">
             <div>
-              <span className="text-neutral-400">User:</span> {userId}
+              <span className="text-muted-foreground">User:</span> {userId}
             </div>
             <div>
-              <span className="text-neutral-400">Role:</span> {role ?? "—"}
+              <span className="text-muted-foreground">Role:</span>{" "}
+              {role ?? "—"}
             </div>
             <div>
-              <span className="text-neutral-400">Shop:</span> {shopId ?? "—"}
+              <span className="text-muted-foreground">Shop:</span>{" "}
+              {shopId ?? "—"}
             </div>
           </div>
           <div className="space-y-1">
             <div>
-              <span className="text-neutral-400">Visible WOs:</span>{" "}
+              <span className="text-muted-foreground">Visible WOs:</span>{" "}
               {workOrders.length}
             </div>
           </div>
         </div>
       </div>
 
-      {/* FILTER BUTTONS (no routing) */}
+      {/* FILTER BUTTONS */}
       <div className="mb-6 grid gap-3 md:grid-cols-4">
         {statuses.map((s) => {
           const isActive = activeFilter === s;
@@ -237,15 +248,15 @@ export default function QueuePage() {
               key={s}
               type="button"
               onClick={() => setActiveFilter(isActive ? null : s)}
-              className={`rounded p-3 text-left transition ${STATUS_STYLES[s]}`}
+              className={`rounded-lg p-3 text-left transition ${STATUS_STYLES[s]}`}
               data-active={isActive ? "true" : "false"}
             >
-              <div className="text-xs uppercase tracking-wide text-neutral-400">
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">
                 {STATUS_LABELS[s]}
               </div>
               <div className="mt-1 text-2xl font-semibold">{counts[s]}</div>
               {isActive && (
-                <div className="mt-1 text-[10px] text-orange-200">
+                <div className="mt-1 text-[10px] text-orange-500">
                   Showing {STATUS_LABELS[s].toLowerCase()}
                 </div>
               )}
@@ -274,7 +285,7 @@ export default function QueuePage() {
             <Link
               key={wo.id}
               href={`/work-orders/${slug}?mode=tech`}
-              className="block rounded border border-neutral-800 bg-neutral-900 p-3 transition hover:border-orange-500"
+              className="block rounded-lg border border-border bg-card px-3 py-3 transition hover:border-orange-500"
             >
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
@@ -282,16 +293,16 @@ export default function QueuePage() {
                     {wo.custom_id ? wo.custom_id : `#${wo.id.slice(0, 8)}`}
                   </div>
                   {wo.custom_id && (
-                    <div className="text-[10px] text-neutral-400">
+                    <div className="text-[10px] text-muted-foreground">
                       #{wo.id.slice(0, 8)}
                     </div>
                   )}
-                  <div className="text-xs text-neutral-400">
+                  <div className="text-xs text-muted-foreground">
                     {awaiting} awaiting · {inProg} in progress · {onHold} on hold
                     · {done} completed
                   </div>
                 </div>
-                <span className="rounded border border-neutral-700 px-2 py-1 text-xs capitalize">
+                <span className="rounded border border-border px-2 py-1 text-xs capitalize text-muted-foreground">
                   {status.replace("_", " ")}
                 </span>
               </div>
@@ -300,7 +311,7 @@ export default function QueuePage() {
         })}
 
         {filteredWos.length === 0 && (
-          <div className="rounded border border-neutral-800 bg-neutral-900 p-4 text-sm text-neutral-400">
+          <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
             No work orders in this bucket.
           </div>
         )}
