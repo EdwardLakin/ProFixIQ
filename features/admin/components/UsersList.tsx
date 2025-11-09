@@ -1,148 +1,84 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { useCallback, useEffect, useState } from "react";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
-type ProfileRow = DB["public"]["Tables"]["profiles"]["Row"];
 type UserRole = DB["public"]["Enums"]["user_role_enum"];
 
-const ROLES: UserRole[] = ["owner", "admin", "manager", "advisor", "mechanic"];
-
-type RowLite = Pick<
-  ProfileRow,
-  "id" | "full_name" | "email" | "phone" | "role" | "created_at" | "shop_id"
->;
+type UserRow = {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
+  role: UserRole | null;
+  created_at: string | null;
+  shop_id: string | null;
+};
 
 export default function UsersList(): JSX.Element {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const [search, setSearch] = useState("");
-  const [rows, setRows] = useState<RowLite[]>([]);
+  const [rows, setRows] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const [shopId, setShopId] = useState<string | null>(null);
-
-  // edit dialog state
   const [editOpen, setEditOpen] = useState(false);
   const [editId, setEditId] = useState("");
   const [editFullName, setEditFullName] = useState("");
   const [editPhone, setEditPhone] = useState("");
   const [editRole, setEditRole] = useState<UserRole | "">("");
 
-  // 1) load current user's shop_id first
-  useEffect(() => {
-    (async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("shop_id")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      if (profile?.shop_id) {
-        setShopId(profile.shop_id);
-      } else {
-        // fallback: still set to empty string to avoid re-fetch loops
-        setShopId("");
-      }
-    })();
-  }, [supabase]);
-
-  // 2) load users for this shop
+  // ✅ Load users from API route instead of Supabase client
   const load = useCallback(async () => {
-    if (shopId === null) return; // still loading shop id
-
     setLoading(true);
-
-    let q = supabase
-      .from("profiles")
-      .select("id, full_name, email, phone, role, created_at, shop_id")
-      .eq("shop_id", shopId) // 👈 explicit same-shop filter
-      .order("created_at", { ascending: false })
-      .limit(100);
-
-    if (search.trim().length > 0) {
-      q = q.or(
-        `full_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`,
-      );
-    }
-
-    const { data, error } = await q;
-    if (!error && data) {
-      setRows(data as RowLite[]);
-    } else {
+    setError(null);
+    try {
+      const q = search.trim() ? `?q=${encodeURIComponent(search.trim())}` : "";
+      const res = await fetch(`/api/admin/users${q}`);
+      if (!res.ok) throw new Error(`Failed to load users (${res.status})`);
+      const data = await res.json();
+      setRows(data.users ?? []);
+    } catch (e) {
+      setError((e as Error).message);
       setRows([]);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-  }, [supabase, shopId, search]);
+  }, [search]);
 
-  // load once shopId is known
   useEffect(() => {
     void load();
   }, [load]);
 
-  function openEdit(u: {
-    id: string;
-    full_name: string | null;
-    phone: string | null;
-    role: UserRole | null;
-  }): void {
-    setEditId(u.id);
-    setEditFullName(u.full_name ?? "");
-    setEditPhone(u.phone ?? "");
-    setEditRole(u.role ?? "");
-    setEditOpen(true);
-  }
-
   async function saveEdit(): Promise<void> {
     if (!editId) return;
-    const payload = {
+    const body = {
       full_name: editFullName.trim(),
       phone: editPhone.trim() || null,
       role: (editRole as UserRole) || null,
     };
-
-    const res = await fetch(`/api/admin/users/${encodeURIComponent(editId)}`, {
+    const res = await fetch(`/api/admin/users/${editId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(body),
     });
-
     if (res.ok) {
       setRows((prev) =>
         prev.map((r) =>
           r.id === editId
-            ? {
-                ...r,
-                full_name: payload.full_name,
-                phone: payload.phone,
-                role: payload.role,
-              }
+            ? { ...r, full_name: body.full_name, phone: body.phone, role: body.role }
             : r,
         ),
       );
       setEditOpen(false);
-    } else {
-      const msg = await res.text().catch(() => "");
-      alert(msg || "Update failed");
     }
   }
 
   async function deleteUser(id: string): Promise<void> {
     if (!confirm("Delete this user?")) return;
-    const res = await fetch(`/api/admin/users/${encodeURIComponent(id)}`, {
-      method: "DELETE",
-    });
+    const res = await fetch(`/api/admin/users/${id}`, { method: "DELETE" });
     if (res.ok) {
       setRows((prev) => prev.filter((r) => r.id !== id));
-    } else {
-      const msg = await res.text().catch(() => "");
-      alert(msg || "Delete failed");
     }
   }
 
@@ -156,11 +92,7 @@ export default function UsersList(): JSX.Element {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <button
-          className="btn btn-orange"
-          onClick={() => void load()}
-          disabled={loading || shopId === null}
-        >
+        <button className="btn btn-orange" onClick={() => void load()} disabled={loading}>
           {loading ? "Loading…" : "Search"}
         </button>
       </div>
@@ -184,14 +116,13 @@ export default function UsersList(): JSX.Element {
               <div className="col-span-2 flex justify-end gap-2">
                 <button
                   className="btn btn-outline px-3 py-1 text-sm"
-                  onClick={() =>
-                    openEdit({
-                      id: u.id,
-                      full_name: u.full_name,
-                      phone: u.phone,
-                      role: u.role as UserRole | null,
-                    })
-                  }
+                  onClick={() => {
+                    setEditId(u.id);
+                    setEditFullName(u.full_name ?? "");
+                    setEditPhone(u.phone ?? "");
+                    setEditRole(u.role ?? "");
+                    setEditOpen(true);
+                  }}
                 >
                   Edit
                 </button>
@@ -204,19 +135,23 @@ export default function UsersList(): JSX.Element {
               </div>
             </li>
           ))}
-
-          {rows.length === 0 && !loading && shopId !== null && (
+          {rows.length === 0 && !loading && (
             <li className="px-3 py-6 text-sm text-neutral-400">
-              No users found for this shop.
+              No users found.
             </li>
           )}
           {loading && (
             <li className="px-3 py-6 text-sm text-neutral-400">Loading…</li>
           )}
+          {error && (
+            <li className="px-3 py-6 text-sm text-red-400">
+              Error: {error}
+            </li>
+          )}
         </ul>
       </div>
 
-      {/* Edit dialog */}
+      {/* Edit Modal */}
       {editOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="w-full max-w-md rounded border border-neutral-700 bg-neutral-900 p-4 shadow-card">
@@ -224,9 +159,7 @@ export default function UsersList(): JSX.Element {
 
             <div className="space-y-3">
               <div>
-                <label className="mb-1 block text-xs text-neutral-400">
-                  Full name
-                </label>
+                <label className="mb-1 block text-xs text-neutral-400">Full name</label>
                 <input
                   className="input text-white"
                   value={editFullName}
@@ -235,9 +168,7 @@ export default function UsersList(): JSX.Element {
               </div>
 
               <div>
-                <label className="mb-1 block text-xs text-neutral-400">
-                  Phone
-                </label>
+                <label className="mb-1 block text-xs text-neutral-400">Phone</label>
                 <input
                   className="input text-white"
                   value={editPhone}
@@ -246,28 +177,23 @@ export default function UsersList(): JSX.Element {
               </div>
 
               <div>
-                <label className="mb-1 block text-xs text-neutral-400">
-                  Role
-                </label>
+                <label className="mb-1 block text-xs text-neutral-400">Role</label>
                 <select
                   className="input text-white"
                   value={editRole}
                   onChange={(e) => setEditRole(e.target.value as UserRole | "")}
                 >
                   <option value="">—</option>
-                  {ROLES.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
+                  <option value="owner">Owner</option>
+                  <option value="admin">Admin</option>
+                  <option value="manager">Manager</option>
+                  <option value="advisor">Advisor</option>
+                  <option value="mechanic">Mechanic</option>
                 </select>
               </div>
 
               <div className="mt-4 flex justify-end gap-2">
-                <button
-                  className="btn btn-outline"
-                  onClick={() => setEditOpen(false)}
-                >
+                <button className="btn btn-outline" onClick={() => setEditOpen(false)}>
                   Cancel
                 </button>
                 <button className="btn btn-orange" onClick={() => void saveEdit()}>
