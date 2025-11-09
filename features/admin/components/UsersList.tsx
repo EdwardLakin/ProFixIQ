@@ -15,62 +15,77 @@ type RowLite = Pick<
   "id" | "full_name" | "email" | "phone" | "role" | "created_at" | "shop_id"
 >;
 
-type UsersListProps = {
-  /** when provided, only show users from this shop */
-  shopId?: string;
-};
-
-export default function UsersList({ shopId }: UsersListProps): JSX.Element {
+export default function UsersList(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
-  const [search, setSearch] = useState<string>("");
+  const [search, setSearch] = useState("");
   const [rows, setRows] = useState<RowLite[]>([]);
-  const [loading, setLoading] = useState<boolean>(false);
+  const [loading, setLoading] = useState(false);
+
+  const [shopId, setShopId] = useState<string | null>(null);
 
   // edit dialog state
-  const [editOpen, setEditOpen] = useState<boolean>(false);
-  const [editId, setEditId] = useState<string>("");
-  const [editFullName, setEditFullName] = useState<string>("");
-  const [editPhone, setEditPhone] = useState<string>("");
+  const [editOpen, setEditOpen] = useState(false);
+  const [editId, setEditId] = useState("");
+  const [editFullName, setEditFullName] = useState("");
+  const [editPhone, setEditPhone] = useState("");
   const [editRole, setEditRole] = useState<UserRole | "">("");
 
-  // -------- data load --------
+  // 1) load current user's shop_id first
+  useEffect(() => {
+    (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("shop_id")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (profile?.shop_id) {
+        setShopId(profile.shop_id);
+      } else {
+        // fallback: still set to empty string to avoid re-fetch loops
+        setShopId("");
+      }
+    })();
+  }, [supabase]);
+
+  // 2) load users for this shop
   const load = useCallback(async () => {
+    if (shopId === null) return; // still loading shop id
+
     setLoading(true);
 
-    // base query
     let q = supabase
       .from("profiles")
       .select("id, full_name, email, phone, role, created_at, shop_id")
+      .eq("shop_id", shopId) // 👈 explicit same-shop filter
       .order("created_at", { ascending: false })
       .limit(100);
 
-    // scope to this shop if provided
-    if (shopId) {
-      q = q.eq("shop_id", shopId);
+    if (search.trim().length > 0) {
+      q = q.or(
+        `full_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`,
+      );
     }
 
-    const trimmed = search.trim();
-
-    const { data, error } =
-      trimmed.length > 0
-        ? await q.or(
-            `full_name.ilike.%${trimmed}%,email.ilike.%${trimmed}%,phone.ilike.%${trimmed}%`,
-          )
-        : await q;
-
+    const { data, error } = await q;
     if (!error && data) {
       setRows(data as RowLite[]);
     } else {
       setRows([]);
     }
     setLoading(false);
-  }, [supabase, search, shopId]);
+  }, [supabase, shopId, search]);
 
+  // load once shopId is known
   useEffect(() => {
     void load();
   }, [load]);
 
-  // -------- edit flow --------
   function openEdit(u: {
     id: string;
     full_name: string | null;
@@ -86,11 +101,7 @@ export default function UsersList({ shopId }: UsersListProps): JSX.Element {
 
   async function saveEdit(): Promise<void> {
     if (!editId) return;
-    const payload: {
-      full_name: string;
-      phone: string | null;
-      role: UserRole | null;
-    } = {
+    const payload = {
       full_name: editFullName.trim(),
       phone: editPhone.trim() || null,
       role: (editRole as UserRole) || null,
@@ -135,7 +146,6 @@ export default function UsersList({ shopId }: UsersListProps): JSX.Element {
     }
   }
 
-  // -------- render --------
   return (
     <div className="space-y-3">
       {/* Search */}
@@ -149,7 +159,7 @@ export default function UsersList({ shopId }: UsersListProps): JSX.Element {
         <button
           className="btn btn-orange"
           onClick={() => void load()}
-          disabled={loading}
+          disabled={loading || shopId === null}
         >
           {loading ? "Loading…" : "Search"}
         </button>
@@ -195,9 +205,9 @@ export default function UsersList({ shopId }: UsersListProps): JSX.Element {
             </li>
           ))}
 
-          {rows.length === 0 && !loading && (
+          {rows.length === 0 && !loading && shopId !== null && (
             <li className="px-3 py-6 text-sm text-neutral-400">
-              No users found.
+              No users found for this shop.
             </li>
           )}
           {loading && (
@@ -260,10 +270,7 @@ export default function UsersList({ shopId }: UsersListProps): JSX.Element {
                 >
                   Cancel
                 </button>
-                <button
-                  className="btn btn-orange"
-                  onClick={() => void saveEdit()}
-                >
+                <button className="btn btn-orange" onClick={() => void saveEdit()}>
                   Save
                 </button>
               </div>
