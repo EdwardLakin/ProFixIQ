@@ -46,9 +46,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [punchOpen, setPunchOpen] = useState(false);
   const punchRef = useRef<HTMLDivElement | null>(null);
 
-  // figure out if we should even render the app chrome
-  const isAppRoute = !NON_APP_ROUTES.some((p) =>
-    pathname === p || pathname.startsWith(p + "/"),
+  // should we render full chrome?
+  const isAppRoute = !NON_APP_ROUTES.some(
+    (p) => pathname === p || pathname.startsWith(p + "/"),
   );
 
   useEffect(() => {
@@ -60,7 +60,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     })();
   }, [supabase]);
 
-  // close shift tracker when clicking outside
+  // click-away for shift tracker
   useEffect(() => {
     if (!punchOpen) return;
     const onClick = (e: MouseEvent) => {
@@ -90,21 +90,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     );
   };
 
-  // ---------------------------------------------------------------------------
-  // Landing / auth pages → just render children, no sidebar / topbar
-  // ---------------------------------------------------------------------------
+  // unauth / marketing routes
   if (!isAppRoute) {
     return (
       <div className="min-h-screen bg-background text-foreground">
-        {/* you CAN keep a tiny top bar here if you want */}
         {children}
       </div>
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // App pages layout
-  // ---------------------------------------------------------------------------
   return (
     <div className="min-h-screen flex bg-background text-foreground">
       {/* ---------- Desktop Sidebar ---------- */}
@@ -165,14 +159,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               📅 <span className="hidden lg:inline">Planner</span>
             </ActionButton>
 
+            {/* 🔶 changed from /ai/assistant → /agent/planner */}
             <ActionButton
-              onClick={() => router.push("/ai/assistant")}
-              title="AI Assistant"
+              onClick={() => router.push("/agent/planner")}
+              title="AI Planner"
             >
-              ⚡ <span className="hidden lg:inline">AI</span>
+              ⚡ <span className="hidden lg:inline">AI Planner</span>
             </ActionButton>
 
-            {/* sign out here if you want it always visible */}
             <ActionButton
               onClick={async () => {
                 await supabase.auth.signOut();
@@ -185,7 +179,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        {/* floating shift panel (click-away enabled) */}
+        {/* floating shift panel */}
         {punchOpen && userId ? (
           <div
             ref={punchRef}

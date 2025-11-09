@@ -1,4 +1,3 @@
-// features/inspections/app/inspection/air/page.tsx
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -36,6 +35,7 @@ import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicl
 
 import { buildAirAxleItems } from "@inspections/lib/inspection/builders/addAxleHelpers";
 import { startVoiceRecognition } from "@inspections/lib/inspection/voiceControl";
+import PageShell from "@/features/shared/components/PageShell";
 
 /* ------------------------------ Header adapters ------------------------------ */
 type HeaderCustomer = {
@@ -629,7 +629,7 @@ export default function Maintenance50AirPage(): JSX.Element {
   const sectionTitle = "text-xl font-semibold text-orange-400 text-center";
   const hint = "text-xs text-zinc-400" + (isEmbed ? " mt-1 block text-center" : "");
 
-  return (
+  const Body = (
     <div className={shell}>
       <div className={card}>
         <div className="text-center text-lg font-semibold text-orange-400">
@@ -779,5 +779,18 @@ export default function Maintenance50AirPage(): JSX.Element {
         </div>
       </div>
     </div>
+  );
+
+  // embed → raw
+  if (isEmbed) return Body;
+
+  // normal page → shell
+  return (
+    <PageShell
+      title={templateName || "Maintenance 50 – Air Brake CVIP"}
+      description="Air-brake CVIP multi-axle inspection."
+    >
+      {Body}
+    </PageShell>
   );
 }

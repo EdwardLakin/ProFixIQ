@@ -33,6 +33,7 @@ import { InspectionFormCtx } from "@inspections/lib/inspection/ui/InspectionForm
 import { SaveInspectionButton } from "@inspections/components/inspection/SaveInspectionButton";
 import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
 import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicleHeader";
+import PageShell from "@/features/shared/components/PageShell";
 
 /* -------------------------- helpers -------------------------- */
 
@@ -599,7 +600,7 @@ export default function GenericInspectionScreen(): JSX.Element {
     }
   };
 
-  // 🧹 embed-safe scrubber: remove h-screen/overflow-hidden/etc under this screen
+  // 🧹 embed-safe scrubber
   useEffect(() => {
     if (!isEmbed) return;
     const root = rootRef.current;
@@ -629,7 +630,6 @@ export default function GenericInspectionScreen(): JSX.Element {
       }
     };
 
-    // scrub existing
     root.querySelectorAll<HTMLElement>("*").forEach(scrub);
 
     const obs = new MutationObserver((muts) => {
@@ -816,6 +816,16 @@ export default function GenericInspectionScreen(): JSX.Element {
     </div>
   );
 
+  // embed → do NOT wrap
   if (isEmbed) return Body;
-  return Body;
+
+  // normal page → wrap in shell
+  return (
+    <PageShell
+      title={templateName || "Inspection"}
+      description="Start or resume an inspection and stream findings into a work order."
+    >
+      {Body}
+    </PageShell>
+  );
 }

@@ -30,6 +30,7 @@ import { SaveInspectionButton } from "@inspections/components/inspection/SaveIns
 import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
 import { startVoiceRecognition } from "@inspections/lib/inspection/voiceControl";
 import toast from "react-hot-toast";
+import PageShell from "@/features/shared/components/PageShell";
 
 /* ---------- Props for screen usage (modal + page) ---------- */
 type ScreenProps = {
@@ -161,7 +162,8 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
   };
 
   // detect true iframe usage only
-  const inIframe = typeof window !== "undefined" && window.self !== window.top;
+  const inIframe =
+    typeof window !== "undefined" && window.self !== window.top;
 
   // compact spacing when embedded from modal
   const compact =
@@ -179,7 +181,7 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
 
   const templateName: string = props.template || get("template") || "maintenance50";
 
-  // minimal session (customer/vehicle omitted – they’re tied to the WO)
+  // minimal session
   const initialSession = useMemo<Partial<InspectionSession>>(
     () => ({
       id: inspectionId,
@@ -451,7 +453,7 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
   const sectionTitle = "text-xl font-semibold text-orange-400 text-center";
   const hint = "text-xs text-zinc-400" + (compact ? " mt-1 block text-center" : "");
 
-  return (
+  const Body = (
     <div className={shell}>
       {/* Title only (Customer/Vehicle removed) */}
       <div className={card}>
@@ -554,5 +556,15 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
         <div className="ml-auto text-xs text-zinc-400">P = PASS, F = FAIL, NA = Not Applicable</div>
       </div>
     </div>
+  );
+
+  // embed/compact → no shell
+  if (compact) return Body;
+
+  // normal page → shell
+  return (
+    <PageShell title="Maintenance 50" description="Quick 50-point maintenance inspection.">
+      {Body}
+    </PageShell>
   );
 }

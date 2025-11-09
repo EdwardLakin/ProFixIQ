@@ -15,7 +15,7 @@ type Props = {
   shopId?: string | null;
 };
 
-export default function AddJobModal(props: any) {
+export default function AddJobModal(rawProps: any) {
   const {
     isOpen,
     onClose,
@@ -24,7 +24,7 @@ export default function AddJobModal(props: any) {
     techId,
     onJobAdded,
     shopId,
-  } = props as Props;
+  } = rawProps as Props;
 
   const supabase = useMemo(() => createBrowserSupabase(), []);
 
@@ -46,6 +46,7 @@ export default function AddJobModal(props: any) {
     setErr(null);
 
     try {
+      // resolve shop_id
       let useShopId = shopId ?? null;
       if (!useShopId) {
         const { data: wo } = await supabase
@@ -94,20 +95,26 @@ export default function AddJobModal(props: any) {
     <Dialog
       open={isOpen}
       onClose={onClose}
-      className="fixed inset-0 z-[400] flex items-center justify-center overflow-y-auto"
+      /* 🔽 match other modals so they can stack properly over focused job */
+      className="fixed inset-0 z-[305] flex items-center justify-center"
     >
-      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" aria-hidden="true" />
+      {/* backdrop */}
+      <div
+        className="fixed inset-0 z-[305] bg-black/70 backdrop-blur-sm"
+        aria-hidden="true"
+      />
 
-      <div className="relative z-[410] mx-4 my-6 w-full max-w-md">
-        <Dialog.Panel className="w-full rounded-lg border border-border bg-background p-6 text-foreground shadow-xl">
-          <Dialog.Title className="mb-3 text-lg font-semibold">
+      {/* panel */}
+      <div className="relative z-[310] mx-4 my-6 w-full max-w-md">
+        <Dialog.Panel className="w-full rounded-lg border border-orange-400 bg-neutral-950 p-6 text-white shadow-xl">
+          <Dialog.Title className="mb-3 text-lg font-header font-semibold tracking-wide">
             Add New Job Line
           </Dialog.Title>
 
           <div className="space-y-3">
             <input
               type="text"
-              className="w-full rounded border border-border bg-background p-2 text-sm"
+              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
               placeholder="Job name (e.g. Replace serpentine belt)"
               value={jobName}
               onChange={(e) => setJobName(e.target.value)}
@@ -115,7 +122,7 @@ export default function AddJobModal(props: any) {
 
             <textarea
               rows={3}
-              className="w-full rounded border border-border bg-background p-2 text-sm"
+              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
               placeholder="Notes or correction"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
@@ -124,7 +131,7 @@ export default function AddJobModal(props: any) {
             <input
               type="number"
               step="0.1"
-              className="w-full rounded border border-border bg-background p-2 text-sm"
+              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
               placeholder="Labor hours"
               value={labor}
               onChange={(e) => setLabor(e.target.value)}
@@ -132,36 +139,34 @@ export default function AddJobModal(props: any) {
 
             <textarea
               rows={2}
-              className="w-full rounded border border-border bg-background p-2 text-sm"
+              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
               placeholder="Parts required (comma-separated or list)"
               value={parts}
               onChange={(e) => setParts(e.target.value)}
             />
 
             <select
-              className="w-full rounded border border-border bg-background p-2 text-sm"
+              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white"
               value={urgency}
-              onChange={(e) =>
-                setUrgency(e.target.value as "low" | "medium" | "high")
-              }
+              onChange={(e) => setUrgency(e.target.value as "low" | "medium" | "high")}
             >
               <option value="low">Low Urgency</option>
               <option value="medium">Medium Urgency</option>
               <option value="high">High Urgency</option>
             </select>
 
-            {err && <div className="text-sm text-destructive">{err}</div>}
+            {err && <div className="text-sm text-red-400">{err}</div>}
 
             <div className="flex justify-end gap-2 pt-3">
               <button
-                className="rounded border border-border px-4 py-2 text-sm hover:bg-muted"
+                className="font-header rounded border border-neutral-700 px-4 py-2 text-sm hover:bg-neutral-800"
                 onClick={onClose}
                 disabled={submitting}
               >
                 Cancel
               </button>
               <button
-                className="rounded border border-orange-500 px-4 py-2 text-sm font-semibold text-orange-500 hover:bg-orange-500/10 disabled:opacity-60"
+                className="font-header rounded border border-orange-500 px-4 py-2 text-sm font-semibold text-orange-400 hover:bg-orange-500/10 disabled:opacity-60"
                 onClick={handleSubmit}
                 disabled={submitting}
               >

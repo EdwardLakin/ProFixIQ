@@ -1,14 +1,13 @@
-// app/agent/planner/page.tsx (or your current path)
-// "use client" page component
-
+// app/agent/planner/page.tsx
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Button } from "@shared/components/ui/Button";
+import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import { useRouter } from "next/navigation";
 
+import PageShell from "@/features/shared/components/PageShell"; // ✅ use your shared shell
+import { Button } from "@shared/components/ui/Button";
 import { useWorkOrderDraft } from "app/work-orders/state/useWorkOrderDraft";
 import { WorkOrderPreviewTrigger } from "app/work-orders/components/WorkOrderPreviewTrigger";
 import { WorkOrderPreview } from "app/work-orders/components/WorkOrderPreview";
@@ -46,8 +45,6 @@ function extractWorkOrderId(evt: AgentEvent): string | null {
 }
 function toMsg(e: unknown): string {
   if (typeof e === "string") return e;
-
-  // type guard for objects that have a string "message" property
   if (
     e !== null &&
     typeof e === "object" &&
@@ -56,7 +53,6 @@ function toMsg(e: unknown): string {
   ) {
     return (e as { message: string }).message;
   }
-
   try {
     return JSON.stringify(e);
   } catch {
@@ -84,7 +80,9 @@ function labelFor(evt: AgentEvent): string | null {
       return `Created work order${woId ? ` (${woId.slice(0, 8)})` : ""}`;
     case "wo.line.created":
     case "work_order_line.created":
-      return `Added job line${evt.description ? ` — ${String(evt.description).slice(0, 80)}` : ""}`;
+      return `Added job line${
+        evt.description ? ` — ${String(evt.description).slice(0, 80)}` : ""
+      }`;
     case "email.sent":
     case "invoice.emailed":
       return "Emailed invoice";
@@ -95,7 +93,6 @@ function labelFor(evt: AgentEvent): string | null {
     case "run.error":
       return `Error: ${evt.message ?? "unknown"}`;
     default:
-      // ignore heartbeat/chatter if no kind
       if (!k) return null;
       return k.replaceAll("_", " ");
   }
@@ -125,7 +122,7 @@ export default function PlannerPage() {
   const [vinOpen, setVinOpen] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
 
-  // ✅ Simple toast/banner for VIN success
+  // toast for VIN
   const [toast, setToast] = useState<string | null>(null);
 
   const supabase = createClientComponentClient<Database>();
@@ -233,7 +230,7 @@ export default function PlannerPage() {
         setPhotoPreview(null);
       }
 
-      // OCR (short, bullet-y)
+      // OCR
       let ocrFields: OcrFields | null = null;
       if (imageUrl) {
         appendStep("Uploading photo…");
@@ -305,8 +302,6 @@ export default function PlannerPage() {
         vin: vinFromDraft || (plateOrVin?.length === 17 ? plateOrVin : undefined),
         decodedVehicle,
         ocr: ocrFields || undefined,
-
-        // ensure a line gets created
         lineDescription: goal?.trim() || undefined,
         jobType: "repair" as const,
         laborHours: 1,
@@ -332,13 +327,11 @@ export default function PlannerPage() {
       setRunId(out.runId);
       appendStep(out.alreadyExists ? "Resumed previous run…" : "Started plan…");
 
-      // SSE
       const url = `/api/agent/events?runId=${encodeURIComponent(out.runId)}`;
       const es = new EventSource(url);
       esRef.current = es;
 
       es.onmessage = (ev) => {
-        // Some servers send keepalives; ignore empties/heartbeats
         if (!ev.data || ev.data === ":ok" || ev.data === "[DONE]") return;
 
         try {
@@ -362,14 +355,11 @@ export default function PlannerPage() {
             setRunning(false);
           }
         } catch {
-          // Non-JSON line; keep in raw log but don't pollute steps
           appendLog(ev.data);
         }
       };
 
       es.onerror = () => {
-        // If the run ended properly, onmessage already closed it.
-        // Otherwise, mark as finished gracefully.
         if (esRef.current) {
           appendStep("Stream ended");
           es.close();
@@ -384,15 +374,11 @@ export default function PlannerPage() {
   }
 
   return (
-    <div className="p-6">
+    <PageShell
+      title="AI Planner"
+      description="Describe what you want done — we'll create the work order, add lines, attach photos, and optionally email the invoice."
+    >
       <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-5 space-y-4">
-        <h1
-          className="text-2xl font-black text-orange-400"
-          style={{ fontFamily: "'Black Ops One', system-ui, sans-serif" }}
-        >
-          AI Planner
-        </h1>
-
         <div className="grid gap-3 md:grid-cols-2">
           <label className="block">
             <div className="text-sm text-neutral-400 mb-1">Goal</div>
@@ -518,7 +504,6 @@ export default function PlannerPage() {
           </div>
         )}
 
-        {/* ✔️ Clean step list instead of raw text */}
         <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
           <div className="text-sm text-neutral-300 mb-2">Stream</div>
           {steps.length === 0 ? (
@@ -544,7 +529,6 @@ export default function PlannerPage() {
         </div>
       )}
 
-      {/* VIN Capture Modal */}
       {userId ? (
         <VinCaptureModal
           userId={userId}
@@ -582,7 +566,6 @@ export default function PlannerPage() {
         />
       ) : null}
 
-      {/* Toast */}
       {toast && (
         <div
           className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 rounded border px-4 py-2 shadow-xl"
@@ -594,6 +577,6 @@ export default function PlannerPage() {
           </div>
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

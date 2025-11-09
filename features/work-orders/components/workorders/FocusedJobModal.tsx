@@ -527,28 +527,28 @@ export default function FocusedJobModal(props: {
               <div className="space-y-4">
                 {/* meta info */}
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <div className="rounded border border-white/5 bg-surface/60 p-3">
+                  <div className="rounded border border-white/5 bg-background/60 p-3">
                     <div className="text-xs text-muted-foreground">Status</div>
                     <div className={`font-medium ${chip(line.status ?? null)}`}>
                       {String(line.status || "awaiting").replaceAll("_", " ")}
                     </div>
                   </div>
-                  <div className="rounded border border-white/5 bg-surface/60 p-3">
+                  <div className="rounded border border-white/5 bg-background/60 p-3">
                     <div className="text-xs text-muted-foreground">Start</div>
                     <div className="font-medium">{createdStart}</div>
                   </div>
-                  <div className="rounded border border-white/5 bg-surface/60 p-3">
+                  <div className="rounded border border-white/5 bg-background/60 p-3">
                     <div className="text-xs text-muted-foreground">Finish</div>
                     <div className="font-medium">{createdFinish}</div>
                   </div>
-                  <div className="rounded border border-white/5 bg-surface/60 p-3">
+                  <div className="rounded border border-white/5 bg-background/60 p-3">
                     <div className="text-xs text-muted-foreground">Hold Reason</div>
                     <div className="font-medium">{line.hold_reason ?? "—"}</div>
                   </div>
                 </div>
 
                 {/* vehicle & customer */}
-                <div className="rounded border border-white/5 bg-surface/60 p-3 text-sm">
+                <div className="rounded border border-white/5 bg-background/60 p-3 text-sm">
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div>
                       <div className="text-muted-foreground text-xs">Vehicle</div>
@@ -715,7 +715,7 @@ export default function FocusedJobModal(props: {
                 </div>
 
                 {/* parts used */}
-                <div className="rounded border border-white/5 bg-surface/60 p-3">
+                <div className="rounded border border-white/5 bg-background/60 p-3">
                   <div className="mb-2 text-sm font-medium text-foreground/90">
                     Parts used
                   </div>
@@ -768,13 +768,13 @@ export default function FocusedJobModal(props: {
                     onChange={(e) => setTechNotes(e.target.value)}
                     onBlur={saveNotes}
                     disabled={savingNotes}
-                    className="w-full rounded border border-white/10 bg-background/60 p-2 text-sm text-foreground placeholder:text-muted-foreground"
+                    className="w-full rounded-md border border-white/10 bg-background/60 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-orange-400 focus:ring-2 focus:ring-orange-400 focus:outline-none"
                     placeholder="Add notes for this job…"
                   />
                 </div>
 
-                {/* AI suggestions (unchanged logic) */}
-                <div className="rounded border border-white/5 bg-surface/60 p-3">
+                {/* AI suggestions */}
+                <div className="rounded border border-white/5 bg-background/60 p-3">
                   <h3 className="mb-2 text-sm font-medium text-foreground/90">
                     AI Suggested Repairs
                   </h3>
@@ -801,9 +801,7 @@ export default function FocusedJobModal(props: {
                     ? ` • Labor: ${line.labor_time.toFixed(1)}h`
                     : ""}
                   {line.hold_reason ? ` • Hold: ${line.hold_reason}` : ""}
-                  {line.approval_state
-                    ? ` • Approval: ${line.approval_state}`
-                    : ""}
+                  {line.approval_state ? ` • Approval: ${line.approval_state}` : ""}
                 </div>
               </div>
             )}
@@ -891,7 +889,6 @@ export default function FocusedJobModal(props: {
         />
       )}
 
-      {/* your existing chat */}
       {openChat && (
         <NewChatModal
           isOpen={openChat}
@@ -903,7 +900,6 @@ export default function FocusedJobModal(props: {
         />
       )}
 
-      {/* new AI modal — same component, just opened with explicit AI intent */}
       {openAi && (
         <NewChatModal
           isOpen={openAi}
