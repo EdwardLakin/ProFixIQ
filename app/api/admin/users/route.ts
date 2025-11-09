@@ -1,70 +1,71 @@
+// app/api/admin/users/route.ts
 import { NextResponse } from "next/server";
-import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import {
+  createServerSupabaseRoute,
+  createAdminSupabase,
+} from "@/features/shared/lib/supabase/server";
 
 const MAX_ROWS = 200;
 
 export async function GET(req: Request) {
-  try {
-    const supabase = createAdminSupabase();
-    const { searchParams } = new URL(req.url);
-    const q = searchParams.get("q")?.trim() ?? "";
+  // 1) use route-scoped client (has cookies) to know WHO is calling
+  const supabaseUser = createServerSupabaseRoute();
+  const { searchParams } = new URL(req.url);
+  const q = searchParams.get("q")?.trim() ?? "";
 
-    // Identify current user
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabase.auth.getUser();
+  // who is authenticated?
+  const {
+    data: { user },
+    error: userErr,
+  } = await supabaseUser.auth.getUser();
 
-    if (userErr || !user) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
+  if (userErr || !user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
 
-    // Load their profile to get role + shop_id
-    const { data: me, error: meErr } = await supabase
-      .from("profiles")
-      .select("id, role, shop_id")
-      .eq("id", user.id)
-      .maybeSingle();
+  // load THEIR profile (this works with RLS because it's their own row)
+  const { data: me, error: meErr } = await supabaseUser
+    .from("profiles")
+    .select("id, role, shop_id")
+    .eq("id", user.id)
+    .maybeSingle();
 
-    if (meErr || !me) {
-      return NextResponse.json(
-        { error: "Profile for current user not found" },
-        { status: 403 },
-      );
-    }
-
-    // Query all users in the same shop
-    let query = supabase
-      .from("profiles")
-      .select("id, full_name, email, phone, role, created_at, shop_id")
-      .order("created_at", { ascending: false })
-      .limit(MAX_ROWS);
-
-    if (me.shop_id) {
-      query = query.eq("shop_id", me.shop_id);
-    }
-
-    // Optional search filter
-    if (q) {
-      query = query.or(
-        `full_name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%`,
-      );
-    }
-
-    const { data: users, error: usersErr } = await query;
-
-    if (usersErr) {
-      return NextResponse.json(
-        { error: usersErr.message || "Failed to load users" },
-        { status: 500 },
-      );
-    }
-
-    return NextResponse.json({ users: users ?? [] });
-  } catch (e) {
+  if (meErr || !me) {
     return NextResponse.json(
-      { error: (e as Error).message || "Unknown error" },
+      { error: "Profile for current user not found" },
+      { status: 403 },
+    );
+  }
+
+  // 2) now use ADMIN client to actually read other profiles in the same shop
+  const adminSupabase = createAdminSupabase();
+
+  let query = adminSupabase
+    .from("profiles")
+    .select("id, full_name, email, phone, role, created_at, shop_id")
+    .order("created_at", { ascending: false })
+    .limit(MAX_ROWS);
+
+  // everyone is scoped to their shop
+  if (me.shop_id) {
+    query = query.eq("shop_id", me.shop_id);
+  }
+
+  // optional search
+  if (q) {
+    query = query.or(
+      `full_name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%`,
+    );
+  }
+
+  const { data: users, error: usersErr } = await query;
+
+  if (usersErr) {
+    return NextResponse.json(
+      { error: usersErr.message || "Failed to load users" },
       { status: 500 },
     );
   }
+
+  return NextResponse.json({ users: users ?? [] });
 }
