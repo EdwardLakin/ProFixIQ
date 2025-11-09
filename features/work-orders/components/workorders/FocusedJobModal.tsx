@@ -1,4 +1,3 @@
-// features/work-orders/components/workorders/FocusedJobModal.tsx
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
@@ -52,7 +51,7 @@ const chip = (s: string | null) =>
   statusTextColor[(s ?? "awaiting").toLowerCase().replaceAll(" ", "_")] ??
   "text-neutral-200";
 
-// common button styles (neutral, cohesive with app shell)
+// button styles
 const btnBase =
   "rounded-md border text-sm px-3 py-2 transition-colors text-left";
 const btnNeutral =
@@ -126,7 +125,7 @@ export default function FocusedJobModal(props: {
   const [openPhoto, setOpenPhoto] = useState(false);
   const [openChat, setOpenChat] = useState(false);
   const [openAddJob, setOpenAddJob] = useState(false);
-  const [openAi, setOpenAi] = useState(false); // ← AI assistant inside modal
+  const [openAi, setOpenAi] = useState(false);
 
   // prefill
   const [prefillCause, setPrefillCause] = useState("");
@@ -140,6 +139,26 @@ export default function FocusedJobModal(props: {
     toast.error(`${prefix}: ${err?.message ?? "Something went wrong."}`);
     console.error(prefix, err);
   };
+
+  // 🟠 helper: close every sub modal
+  const closeAllSubModals = () => {
+    setOpenComplete(false);
+    setOpenParts(false);
+    setOpenHold(false);
+    setOpenStatus(false);
+    setOpenTime(false);
+    setOpenPhoto(false);
+    setOpenChat(false);
+    setOpenAddJob(false);
+    setOpenAi(false);
+  };
+
+  // reset sub-modals whenever the main modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      closeAllSubModals();
+    }
+  }, [isOpen]);
 
   // initial load
   useEffect(() => {
@@ -303,7 +322,7 @@ export default function FocusedJobModal(props: {
     };
   }, [refresh]);
 
-  // inspection completed
+  // inspection done → open complete
   useEffect(() => {
     const onInspectionDone = (evt: Event) => {
       const e = evt as CustomEvent<{
@@ -315,6 +334,7 @@ export default function FocusedJobModal(props: {
       if (!detail.workOrderLineId) return;
       if (detail.workOrderLineId !== workOrderLineId) return;
 
+      closeAllSubModals();
       setPrefillCause(detail.cause ?? "");
       setPrefillCorrection(detail.correction ?? "");
       setOpenComplete(true);
@@ -462,7 +482,10 @@ export default function FocusedJobModal(props: {
 
       <Dialog
         open={isOpen}
-        onClose={onClose}
+        onClose={() => {
+          closeAllSubModals();
+          onClose();
+        }}
         className="fixed inset-0 z-[100] flex items-center justify-center"
       >
         <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm" aria-hidden="true" />
@@ -471,7 +494,7 @@ export default function FocusedJobModal(props: {
           className="relative z-[110] mx-4 my-6 w-full max-w-5xl"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="max-h-[75vh] overflow-y-auto rounded-lg border border-white/10 bg-background/95 p-5 text-foreground shadow-xl">
+          <div className="max-h-[75vh] overflow-y-auto rounded-lg border border-white/10 bg-neutral-950/95 p-5 text-foreground shadow-xl">
             {/* header */}
             <div className="mb-3 flex items-start justify-between gap-3">
               <div className="text-lg font-semibold tracking-tight">
@@ -498,7 +521,10 @@ export default function FocusedJobModal(props: {
                   <button
                     type="button"
                     className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-black hover:bg-accent/90"
-                    onClick={() => setOpenAddJob(true)}
+                    onClick={() => {
+                      closeAllSubModals();
+                      setOpenAddJob(true);
+                    }}
                     disabled={busy}
                   >
                     Add Job
@@ -506,7 +532,10 @@ export default function FocusedJobModal(props: {
                 )}
                 <button
                   type="button"
-                  onClick={onClose}
+                  onClick={() => {
+                    closeAllSubModals();
+                    onClose();
+                  }}
                   className="rounded-md border border-white/10 px-2 py-1 text-xs text-foreground/80 hover:bg-white/5"
                   title="Close"
                 >
@@ -527,28 +556,28 @@ export default function FocusedJobModal(props: {
               <div className="space-y-4">
                 {/* meta info */}
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <div className="rounded border border-white/5 bg-background/60 p-3">
+                  <div className="rounded border border-white/5 bg-neutral-900/70 p-3">
                     <div className="text-xs text-muted-foreground">Status</div>
                     <div className={`font-medium ${chip(line.status ?? null)}`}>
                       {String(line.status || "awaiting").replaceAll("_", " ")}
                     </div>
                   </div>
-                  <div className="rounded border border-white/5 bg-background/60 p-3">
+                  <div className="rounded border border-white/5 bg-neutral-900/70 p-3">
                     <div className="text-xs text-muted-foreground">Start</div>
                     <div className="font-medium">{createdStart}</div>
                   </div>
-                  <div className="rounded border border-white/5 bg-background/60 p-3">
+                  <div className="rounded border border-white/5 bg-neutral-900/70 p-3">
                     <div className="text-xs text-muted-foreground">Finish</div>
                     <div className="font-medium">{createdFinish}</div>
                   </div>
-                  <div className="rounded border border-white/5 bg-background/60 p-3">
+                  <div className="rounded border border-white/5 bg-neutral-900/70 p-3">
                     <div className="text-xs text-muted-foreground">Hold Reason</div>
                     <div className="font-medium">{line.hold_reason ?? "—"}</div>
                   </div>
                 </div>
 
                 {/* vehicle & customer */}
-                <div className="rounded border border-white/5 bg-background/60 p-3 text-sm">
+                <div className="rounded border border-white/5 bg-neutral-900/70 p-3 text-sm">
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div>
                       <div className="text-muted-foreground text-xs">Vehicle</div>
@@ -589,6 +618,7 @@ export default function FocusedJobModal(props: {
                       punchedOutAt={line.punched_out_at}
                       status={line.status as WorkflowStatus}
                       onFinishRequested={() => {
+                        closeAllSubModals();
                         setPrefillCause(line.cause ?? "");
                         setPrefillCorrection(line.correction ?? "");
                         setOpenComplete(true);
@@ -625,6 +655,7 @@ export default function FocusedJobModal(props: {
                         type="button"
                         className={btnAccent}
                         onClick={() => {
+                          closeAllSubModals();
                           setPrefillCause(line?.cause ?? "");
                           setPrefillCorrection(line?.correction ?? "");
                           setOpenComplete(true);
@@ -637,7 +668,10 @@ export default function FocusedJobModal(props: {
                       <button
                         type="button"
                         className={btnDanger}
-                        onClick={() => setOpenParts(true)}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenParts(true);
+                        }}
                         disabled={busy}
                       >
                         Request Parts
@@ -646,7 +680,10 @@ export default function FocusedJobModal(props: {
                       <button
                         type="button"
                         className={btnWarn}
-                        onClick={() => setOpenHold(true)}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenHold(true);
+                        }}
                         disabled={busy}
                       >
                         {line.status === "on_hold" ? "On Hold" : "Hold"}
@@ -655,7 +692,10 @@ export default function FocusedJobModal(props: {
                       <button
                         type="button"
                         className={btnInfo}
-                        onClick={() => setOpenStatus(true)}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenStatus(true);
+                        }}
                         disabled={busy}
                       >
                         Change Status
@@ -664,7 +704,10 @@ export default function FocusedJobModal(props: {
                       <button
                         type="button"
                         className={btnNeutral}
-                        onClick={() => setOpenPhoto(true)}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenPhoto(true);
+                        }}
                         disabled={busy}
                       >
                         Add Photo
@@ -673,16 +716,21 @@ export default function FocusedJobModal(props: {
                       <button
                         type="button"
                         className={btnNeutral}
-                        onClick={() => setOpenChat(true)}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenChat(true);
+                        }}
                       >
                         Chat
                       </button>
 
-                      {/* new AI button */}
                       <button
                         type="button"
                         className={btnInfo}
-                        onClick={() => setOpenAi(true)}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenAi(true);
+                        }}
                       >
                         AI Assist
                       </button>
@@ -692,21 +740,30 @@ export default function FocusedJobModal(props: {
                       <button
                         type="button"
                         className={btnInfo}
-                        onClick={() => setOpenStatus(true)}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenStatus(true);
+                        }}
                       >
                         Change Status
                       </button>
                       <button
                         type="button"
                         className={btnNeutral}
-                        onClick={() => setOpenChat(true)}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenChat(true);
+                        }}
                       >
                         Chat
                       </button>
                       <button
                         type="button"
                         className={btnInfo}
-                        onClick={() => setOpenAi(true)}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenAi(true);
+                        }}
                       >
                         AI Assist
                       </button>
@@ -715,7 +772,7 @@ export default function FocusedJobModal(props: {
                 </div>
 
                 {/* parts used */}
-                <div className="rounded border border-white/5 bg-background/60 p-3">
+                <div className="rounded border border-white/5 bg-neutral-900/70 p-3">
                   <div className="mb-2 text-sm font-medium text-foreground/90">
                     Parts used
                   </div>
@@ -728,7 +785,7 @@ export default function FocusedJobModal(props: {
                     </div>
                   ) : (
                     <div className="overflow-hidden rounded border border-white/5">
-                      <div className="grid grid-cols-12 bg-background/60 px-3 py-2 text-xs text-muted-foreground">
+                      <div className="grid grid-cols-12 bg-neutral-900/80 px-3 py-2 text-xs text-muted-foreground">
                         <div className="col-span-7">Part</div>
                         <div className="col-span-3">Location</div>
                         <div className="col-span-2 text-right">Qty</div>
@@ -757,7 +814,7 @@ export default function FocusedJobModal(props: {
                   )}
                 </div>
 
-                {/* tech notes */}
+                {/* tech notes — dark */}
                 <div>
                   <label className="mb-1 block text-sm font-medium text-foreground/90">
                     Tech Notes
@@ -768,13 +825,13 @@ export default function FocusedJobModal(props: {
                     onChange={(e) => setTechNotes(e.target.value)}
                     onBlur={saveNotes}
                     disabled={savingNotes}
-                    className="w-full rounded-md border border-white/10 bg-background/60 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-orange-400 focus:ring-2 focus:ring-orange-400 focus:outline-none"
+                    className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-400 focus:border-orange-400 focus:ring-2 focus:ring-orange-400 focus:outline-none"
                     placeholder="Add notes for this job…"
                   />
                 </div>
 
                 {/* AI suggestions */}
-                <div className="rounded border border-white/5 bg-background/60 p-3">
+                <div className="rounded border border-white/5 bg-neutral-900/70 p-3">
                   <h3 className="mb-2 text-sm font-medium text-foreground/90">
                     AI Suggested Repairs
                   </h3>
@@ -812,7 +869,7 @@ export default function FocusedJobModal(props: {
       {/* mic */}
       {isOpen && <VoiceButton />}
 
-      {/* sub-modals */}
+      {/* sub-modals (no z change needed now, but keep fixed if you want) */}
       {openComplete && line && (
         <CauseCorrectionModal
           isOpen={openComplete}
