@@ -1,9 +1,11 @@
+// app/dashboard/owner/create-user/page.tsx (or your current path)
 "use client";
 
 import { useEffect, useState } from "react";
 import UsersList from "@/features/admin/components/UsersList";
 import { supabaseBrowser as supabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
+import PageShell from "@/features/shared/components/PageShell";
 
 type UserRole = Database["public"]["Enums"]["user_role_enum"];
 
@@ -84,8 +86,7 @@ export default function CreateUserPage(): JSX.Element {
         password: form.password.trim(),
         full_name: (form.full_name ?? "").trim() || null,
         role: form.role ?? null,
-        shop_id:
-          (form.shop_id ?? "")?.trim() || creatorShopId || null,
+        shop_id: (form.shop_id ?? "")?.trim() || creatorShopId || null,
         phone: (form.phone ?? "")?.trim() || null,
       };
 
@@ -169,22 +170,14 @@ export default function CreateUserPage(): JSX.Element {
   }
 
   return (
-    <div className="p-4 sm:p-6 text-white space-y-6">
-      {/* header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-blackops text-orange-400">Create User</h1>
-          <p className="text-sm text-neutral-400">
-            Add shop staff with a username + temporary password.
-          </p>
-        </div>
-      </div>
-
-      {/* top 2-column content */}
+    <PageShell
+      title="Create User"
+      description="Add shop staff with a username + temporary password."
+    >
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         {/* LEFT: create user */}
         <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4 sm:p-6 space-y-4">
-          <h2 className="text-lg font-semibold">New user</h2>
+          <h2 className="text-lg font-semibold text-white">New user</h2>
           <p className="text-sm text-neutral-400">
             The user will sign in with{" "}
             <span className="text-orange-300">their username</span> and this
@@ -284,7 +277,9 @@ export default function CreateUserPage(): JSX.Element {
         <div className="space-y-6">
           {/* recently created */}
           <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4 sm:p-6">
-            <h2 className="text-lg font-semibold mb-2">Recently created</h2>
+            <h2 className="text-lg font-semibold mb-2 text-white">
+              Recently created
+            </h2>
             {recentUsers.length === 0 ? (
               <p className="text-sm text-neutral-500">
                 Create a user to see it here.
@@ -297,7 +292,7 @@ export default function CreateUserPage(): JSX.Element {
                     className="flex items-center justify-between gap-2 rounded bg-neutral-800/40 px-3 py-2"
                   >
                     <div>
-                      <div className="text-sm font-medium">
+                      <div className="text-sm font-medium text-white">
                         {u.full_name || u.username}
                       </div>
                       <div className="text-xs text-neutral-400">
@@ -315,7 +310,7 @@ export default function CreateUserPage(): JSX.Element {
 
           {/* reset */}
           <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4 sm:p-6">
-            <h2 className="text-lg font-semibold mb-2">
+            <h2 className="text-lg font-semibold mb-2 text-white">
               Reset password (internal)
             </h2>
             <p className="text-xs text-neutral-500 mb-3">
@@ -355,8 +350,9 @@ export default function CreateUserPage(): JSX.Element {
 
       {/* USERS LIST (full width, own card) */}
       <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4 sm:p-6">
-        <UsersList key={listRefreshKey} />
+        {/* pass shop so UsersList can scope to this shop */}
+        <UsersList key={listRefreshKey} shopId={creatorShopId ?? undefined} />
       </div>
-    </div>
+    </PageShell>
   );
 }
