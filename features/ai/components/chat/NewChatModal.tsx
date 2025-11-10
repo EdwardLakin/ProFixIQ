@@ -54,10 +54,20 @@ export default function NewChatModal({
       setLoadingUsers(true);
       try {
         const res = await fetch("/api/chat/users");
-        if (!res.ok) throw new Error();
-        const { users } = (await res.json()) as { users: UserRow[] };
-        setUsers(users ?? []);
-      } catch {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+
+        // accept either { users: [...] } or just [...]
+        const list: UserRow[] = Array.isArray(json)
+          ? json
+          : Array.isArray(json.users)
+          ? json.users
+          : Array.isArray(json.data)
+          ? json.data
+          : [];
+
+        setUsers(list ?? []);
+      } catch (err) {
         // fallback to RLS-limited
         const { data } = await supabase
           .from("profiles")
@@ -145,7 +155,7 @@ export default function NewChatModal({
         setRole={setRole}
       />
 
-      <div className="text-xs text-neutral-400 mb-1">
+      <div className="mb-1 text-xs text-neutral-400">
         {selectedIds.length} selected
       </div>
 
@@ -171,7 +181,7 @@ function HeaderBar({
   setRole: (s: string) => void;
 }) {
   return (
-    <div className="flex gap-2 mb-2">
+    <div className="mb-2 flex gap-2">
       <input
         value={search}
         onChange={(e) => setSearch(e.target.value)}
@@ -227,7 +237,7 @@ function UserList({
           const checked = selectedIds.includes(u.id);
           return (
             <li key={u.id}>
-              <label className="flex items-center gap-3 px-3 py-2 text-sm text-white hover:bg-neutral-800/70 cursor-pointer">
+              <label className="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm text-white hover:bg-neutral-800/70">
                 <input
                   type="checkbox"
                   className="h-4 w-4 accent-orange-500"
@@ -235,8 +245,10 @@ function UserList({
                   onChange={() => onToggle(u.id)}
                 />
                 <div className="min-w-0">
-                  <div className="truncate">{u.full_name ?? "(no name)"}</div>
-                  <div className="text-xs text-neutral-400 truncate">
+                  <div className="truncate">
+                    {u.full_name ?? "(no name)"}
+                  </div>
+                  <div className="truncate text-xs text-neutral-400">
                     {u.role ?? "—"}
                     {u.email ? ` • ${u.email}` : ""}
                   </div>
