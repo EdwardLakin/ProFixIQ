@@ -78,7 +78,7 @@ export default function HoldModal({
       footerLeft={
         canRelease ? (
           <button
-            className="rounded border border-red-500 px-3 py-2 text-sm hover:border-orange-400"
+            className="rounded border border-red-500 px-3 py-2 text-sm text-white hover:border-orange-400"
             onClick={() => Promise.resolve(onRelease?.()).then(onClose)}
             type="button"
           >
@@ -107,15 +107,13 @@ export default function HoldModal({
       }}
       submitText="Apply Hold"
     >
-      <p className="mb-3 text-sm text-muted-foreground">
+      <p className="mb-3 text-sm text-neutral-300">
         Choose a reason and add optional notes
       </p>
 
-      <label className="mb-1 block text-xs text-muted-foreground">
-        Reason
-      </label>
+      <label className="mb-1 block text-xs text-neutral-400">Reason</label>
       <select
-        className="mb-3 w-full rounded border border-border bg-background p-2 text-sm"
+        className="mb-3 w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-sm text-white focus:border-orange-400 focus:outline-none"
         value={reason}
         onChange={(e) => setReason(e.target.value)}
       >
@@ -129,26 +127,26 @@ export default function HoldModal({
         )}
       </select>
 
-      <label className="mb-1 block text-xs text-muted-foreground">Notes</label>
+      <label className="mb-1 block text-xs text-neutral-400">Notes</label>
       <textarea
         rows={3}
-        className="w-full rounded border border-border bg-background p-2 text-sm"
+        className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-400 focus:outline-none"
         value={notes}
         onChange={(e) => setNotes(e.target.value)}
         placeholder="Optional notes for the hold…"
       />
 
-      <div className="mt-4 rounded border border-border bg-muted/20 p-3">
-        <div className="mb-2 text-xs text-muted-foreground">
+      <div className="mt-4 rounded border border-neutral-700 bg-neutral-900/50 p-3">
+        <div className="mb-2 text-xs text-neutral-400">
           Hold placed at:{" "}
-          <span className="text-foreground">{holdPlacedAt || "—"}</span>
+          <span className="text-white">{holdPlacedAt || "—"}</span>
         </div>
-        <label className="inline-flex items-center gap-2 text-xs text-foreground">
+        <label className="inline-flex items-center gap-2 text-xs text-white">
           <input
             type="checkbox"
             checked={autoRelease}
             onChange={(e) => setAutoRelease(e.target.checked)}
-            className="h-4 w-4"
+            className="h-4 w-4 rounded border-neutral-700 bg-neutral-900 text-orange-400"
           />
           Auto-release this hold
         </label>
@@ -156,7 +154,7 @@ export default function HoldModal({
         {autoRelease && (
           <div className="mt-3 space-y-2">
             <div className="flex items-center gap-2">
-              <label className="text-xs text-muted-foreground">
+              <label className="text-xs text-neutral-400">
                 After (minutes)
               </label>
               <input
@@ -167,22 +165,22 @@ export default function HoldModal({
                 onChange={(e) =>
                   setReleaseAfterMinutes(Number(e.target.value) || 0)
                 }
-                className="w-24 rounded border border-border bg-background p-1 text-sm"
+                className="w-24 rounded border border-neutral-700 bg-neutral-900 p-1 text-sm text-white focus:border-orange-400 focus:outline-none"
                 disabled={releaseAt !== ""}
               />
-              <span className="text-[10px] text-muted-foreground">
+              <span className="text-[10px] text-neutral-500">
                 leave empty if using date/time
               </span>
             </div>
             <div>
-              <label className="mb-1 block text-xs text-muted-foreground">
+              <label className="mb-1 block text-xs text-neutral-400">
                 Or release at date/time
               </label>
               <input
                 type="datetime-local"
                 value={releaseAt}
                 onChange={(e) => setReleaseAt(e.target.value)}
-                className="w-full rounded border border-border bg-background p-1 text-sm"
+                className="w-full rounded border border-neutral-700 bg-neutral-900 p-1 text-sm text-white focus:border-orange-400 focus:outline-none"
               />
             </div>
           </div>

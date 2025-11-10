@@ -18,15 +18,18 @@ import TimeAdjustModal from "@/features/work-orders/components/workorders/extras
 import PhotoCaptureModal from "@/features/work-orders/components/workorders/extras/PhotoCaptureModal";
 import AddJobModal from "@work-orders/components/workorders/AddJobModal";
 
+// 🔸 AI assistant modal (the one we just made to look like other modals)
+import AIAssistantModal from "@work-orders/components/workorders/AiAssistantModal";
+
 // voice
 import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
 import VoiceButton from "@/features/shared/voice/VoiceButton";
 
-// chat + AI
+// chat
 import NewChatModal from "@/features/ai/components/chat/NewChatModal";
 import SuggestedQuickAdd from "@work-orders/components/SuggestedQuickAdd";
 
-// Punch
+// punch
 import JobPunchButton from "@/features/work-orders/components/JobPunchButton";
 
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
@@ -51,7 +54,6 @@ const chip = (s: string | null) =>
   statusTextColor[(s ?? "awaiting").toLowerCase().replaceAll(" ", "_")] ??
   "text-neutral-200";
 
-// button styles
 const btnBase =
   "rounded-md border text-sm px-3 py-2 transition-colors text-left";
 const btnNeutral =
@@ -140,7 +142,6 @@ export default function FocusedJobModal(props: {
     console.error(prefix, err);
   };
 
-  // 🟠 helper: close every sub modal
   const closeAllSubModals = () => {
     setOpenComplete(false);
     setOpenParts(false);
@@ -153,7 +154,6 @@ export default function FocusedJobModal(props: {
     setOpenAi(false);
   };
 
-  // reset sub-modals whenever the main modal closes
   useEffect(() => {
     if (!isOpen) {
       closeAllSubModals();
@@ -192,7 +192,9 @@ export default function FocusedJobModal(props: {
               .maybeSingle<Vehicle>();
             if (ve) throw ve;
             setVehicle(v ?? null);
-          } else setVehicle(null);
+          } else {
+            setVehicle(null);
+          }
 
           if (wo?.customer_id) {
             const { data: c, error: ce } = await supabase
@@ -202,7 +204,9 @@ export default function FocusedJobModal(props: {
               .maybeSingle<Customer>();
             if (ce) throw ce;
             setCustomer(c ?? null);
-          } else setCustomer(null);
+          } else {
+            setCustomer(null);
+          }
         }
       } catch (e) {
         const err = e as { message?: string };
@@ -814,7 +818,7 @@ export default function FocusedJobModal(props: {
                   )}
                 </div>
 
-                {/* tech notes — dark */}
+                {/* tech notes */}
                 <div>
                   <label className="mb-1 block text-sm font-medium text-foreground/90">
                     Tech Notes
@@ -869,7 +873,7 @@ export default function FocusedJobModal(props: {
       {/* mic */}
       {isOpen && <VoiceButton />}
 
-      {/* sub-modals (no z change needed now, but keep fixed if you want) */}
+      {/* sub-modals */}
       {openComplete && line && (
         <CauseCorrectionModal
           isOpen={openComplete}
@@ -957,15 +961,22 @@ export default function FocusedJobModal(props: {
         />
       )}
 
+      {/* 🔸 AI assistant wired in here */}
       {openAi && (
-        <NewChatModal
+        <AIAssistantModal
           isOpen={openAi}
           onClose={() => setOpenAi(false)}
-          created_by="system"
-          onCreated={() => setOpenAi(false)}
-          context_type="work_order_line"
-          context_id={line?.id ?? null}
-        />
+          workOrderLineId={line?.id ?? undefined}
+          defaultVehicle={
+            vehicle
+              ? {
+                  year: vehicle.year ? String(vehicle.year) : undefined,
+                  make: vehicle.make ?? undefined,
+                  model: vehicle.model ?? undefined,
+                }
+              : undefined
+            }
+          />
       )}
 
       {openAddJob && workOrder?.id && (

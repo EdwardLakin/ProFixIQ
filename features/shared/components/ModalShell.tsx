@@ -13,6 +13,8 @@ type ModalShellProps = {
   footerLeft?: React.ReactNode;
   /** sm = 24rem, md = 32rem, lg = 48rem */
   size?: "sm" | "md" | "lg";
+  /** hide the footer completely (for interactive panels like AI) */
+  hideFooter?: boolean;
 };
 
 export default function ModalShell({
@@ -24,6 +26,7 @@ export default function ModalShell({
   submitText = "Save",
   footerLeft,
   size = "md",
+  hideFooter = false,
 }: ModalShellProps) {
   const width =
     size === "sm"
@@ -48,11 +51,15 @@ export default function ModalShell({
       <div className={`relative z-[510] w-full ${width}`}>
         <Dialog.Panel className="w-full rounded-lg border border-neutral-700 bg-neutral-950 text-white shadow-xl">
           {/* Header */}
-          {title && (
+          {(title ) && (
             <div className="flex items-center justify-between border-b border-neutral-800 px-4 py-3">
-              <Dialog.Title className="text-base font-semibold">
-                {title}
-              </Dialog.Title>
+              {title ? (
+                <Dialog.Title className="text-base font-semibold">
+                  {title}
+                </Dialog.Title>
+              ) : (
+                <div />
+              )}
               <button
                 type="button"
                 onClick={onClose}
@@ -67,7 +74,7 @@ export default function ModalShell({
           <div className="px-4 py-4 space-y-3">{children}</div>
 
           {/* Footer */}
-          {(onSubmit || footerLeft) && (
+          {!hideFooter && (onSubmit || footerLeft) && (
             <div className="flex items-center justify-between gap-3 border-t border-neutral-800 px-4 py-3">
               <div>{footerLeft}</div>
               <div className="flex gap-2">
