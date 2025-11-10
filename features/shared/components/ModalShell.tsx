@@ -35,7 +35,7 @@ export default function ModalShell({
       ? "max-w-lg"
       : size === "lg"
       ? "max-w-4xl"
-      : "max-w-6xl"; // 👈 xl finally handled
+      : "max-w-6xl"; // xl
 
   return (
     <Dialog
@@ -43,39 +43,37 @@ export default function ModalShell({
       onClose={onClose}
       className="fixed inset-0 z-[500] flex items-center justify-center p-4 sm:p-6"
     >
-      {/* Backdrop */}
+      {/* backdrop */}
       <div
         className="fixed inset-0 bg-black/70 backdrop-blur-sm"
         aria-hidden="true"
       />
 
-      {/* Modal content */}
+      {/* panel wrapper */}
       <div className={`relative z-[510] w-full ${width}`}>
         <Dialog.Panel className="w-full rounded-lg border border-border bg-background text-foreground shadow-xl">
-          {/* Header */}
-          {(title || onClose) && (
-            <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
-              {title ? (
-                <Dialog.Title className="text-base font-semibold">
-                  {title}
-                </Dialog.Title>
-              ) : (
-                <div />
-              )}
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded px-2 py-1 text-sm text-muted-foreground hover:bg-muted/60"
-              >
-                ✕
-              </button>
-            </div>
-          )}
+          {/* header */}
+          <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
+            {title ? (
+              <Dialog.Title className="text-base font-semibold">
+                {title}
+              </Dialog.Title>
+            ) : (
+              <div />
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded px-2 py-1 text-sm text-muted-foreground hover:bg-muted/60"
+            >
+              ✕
+            </button>
+          </div>
 
-          {/* Body — let children decide layout */}
+          {/* body */}
           <div className="px-4 py-4">{children}</div>
 
-          {/* Footer */}
+          {/* footer */}
           {!hideFooter && (onSubmit || footerLeft) && (
             <div className="flex items-center justify-between gap-3 border-t border-border/60 px-4 py-3">
               <div>{footerLeft}</div>
