@@ -3,10 +3,17 @@
 import React from "react";
 import clsx from "clsx";
 
-type Variant = "default" | "secondary" | "destructive" | "ghost" | "outline" | "orange";
+type Variant =
+  | "default"
+  | "secondary"
+  | "destructive"
+  | "ghost"
+  | "outline"
+  | "orange";
 type Size = "sm" | "md" | "lg";
 
-interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+interface ButtonProps
+  extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   children: React.ReactNode;
   className?: string;
   variant?: Variant;
@@ -19,16 +26,21 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 const base =
   "inline-flex items-center justify-center rounded font-semibold transition duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500";
 
-const variantClasses: Record<Exclude<Variant, "orange">, string> = {
-  default: "bg-orange-600 hover:bg-orange-700 text-white",
+const variantClasses: Record<
+  Exclude<Variant, "orange">,
+  string
+> = {
+  // calmer default
+  default: "bg-zinc-800 hover:bg-zinc-700 text-white",
   secondary: "bg-zinc-700 hover:bg-zinc-600 text-white",
   destructive: "bg-red-600 hover:bg-red-700 text-white",
   ghost: "bg-transparent hover:bg-zinc-800 text-white border border-zinc-600",
+  // your “not so bright” orange
   outline:
-    "bg-transparent border border-orange-500 text-orange-400 hover:bg-orange-500 hover:text-white",
+    "bg-transparent border border-orange-500/80 text-orange-300 hover:bg-orange-500/10",
 };
 
-// small helper so we can reuse the exact same styling on <Link> buttons
+// small helper so we can reuse on <Link> etc.
 export function buttonClasses({
   variant = "default",
   size = "md",
@@ -42,18 +54,24 @@ export function buttonClasses({
   disabled?: boolean;
   isLoading?: boolean;
 }) {
-  const _variant =
-    variant === "orange" ? "default" : (variant as Exclude<Variant, "orange">);
-
   const sizeClasses: Record<Size, string> = {
     sm: "text-sm px-3 py-1.5",
-    md: "text-base px-4 py-2",
-    lg: "text-lg px-5 py-3",
+    md: "text-sm px-4 py-2",
+    lg: "text-base px-5 py-3",
   };
+
+  // light orange fill version (optional)
+  const orangeClass =
+    "bg-orange-500/90 hover:bg-orange-500 text-black border border-orange-400/80";
+
+  const applied =
+    variant === "orange"
+      ? orangeClass
+      : variantClasses[variant as Exclude<Variant, "orange">];
 
   return clsx(
     base,
-    variantClasses[_variant],
+    applied,
     sizeClasses[size],
     disabled || isLoading ? "opacity-50 cursor-not-allowed" : "",
     className
@@ -73,7 +91,13 @@ export const Button = ({
 }: ButtonProps) => {
   return (
     <button
-      className={buttonClasses({ variant, size, className, disabled, isLoading })}
+      className={buttonClasses({
+        variant,
+        size,
+        className,
+        disabled,
+        isLoading,
+      })}
       disabled={disabled || isLoading}
       {...props}
     >

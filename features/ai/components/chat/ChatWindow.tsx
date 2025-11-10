@@ -9,9 +9,7 @@ import {
   useState,
 } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type {
-  RealtimePostgresInsertPayload,
-} from "@supabase/supabase-js";
+import type { RealtimePostgresInsertPayload } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 
 type Message = Database["public"]["Tables"]["messages"]["Row"];
@@ -19,11 +17,14 @@ type Message = Database["public"]["Tables"]["messages"]["Row"];
 type ChatWindowProps = {
   conversationId: string;
   userId: string;
+  /** optional: show a small header title */
+  title?: string;
 };
 
 export default function ChatWindow({
   conversationId,
   userId,
+  title = "Conversation",
 }: ChatWindowProps) {
   const supabase = useMemo(
     () => createClientComponentClient<Database>(),
@@ -113,7 +114,8 @@ export default function ChatWindow({
       sender_id: userId,
       content,
       sent_at: new Date().toISOString(),
-      // other columns can be null
+      // recipients array is optional – we include empty for consistency
+      recipients: [],
     } as unknown as Message;
 
     setMessages((prev) => [...prev, optimistic]);
@@ -129,6 +131,7 @@ export default function ChatWindow({
           conversationId,
           senderId: userId,
           content,
+          recipients: [], // will work once column exists
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -152,7 +155,7 @@ export default function ChatWindow({
     }
   };
 
-  // group messages by day + sender
+  // group messages by day + sender (like before)
   const grouped = useMemo(() => {
     const byDay: Array<
       | { type: "day"; label: string }
@@ -184,9 +187,14 @@ export default function ChatWindow({
 
   return (
     <div className="flex h-full flex-col rounded border border-neutral-800 bg-neutral-950 text-white">
-      {/* header (optional: could show participants here) */}
-      <div className="border-b border-neutral-800 px-4 py-3 text-sm font-medium text-neutral-200">
-        Conversation
+      {/* header */}
+      <div className="border-b border-neutral-800 px-4 py-3 flex items-center justify-between">
+        <div className="text-sm font-medium text-neutral-200">{title}</div>
+        {error ? (
+          <div className="text-[10px] text-red-200/80">
+            {error}
+          </div>
+        ) : null}
       </div>
 
       {/* messages */}
@@ -228,7 +236,6 @@ export default function ChatWindow({
               >
                 {!isMine && showAvatar ? (
                   <div className="mt-6 h-7 w-7 rounded-full bg-neutral-700 flex items-center justify-center text-[10px] text-white/80">
-                    {/* could show initials if you have them */}
                     U
                   </div>
                 ) : (
@@ -261,13 +268,6 @@ export default function ChatWindow({
         <div ref={bottomRef} />
       </div>
 
-      {/* error bar */}
-      {error ? (
-        <div className="bg-red-600/10 text-red-200 text-xs px-4 py-2 border-t border-red-600/30">
-          {error}
-        </div>
-      ) : null}
-
       {/* composer */}
       <div className="border-t border-neutral-800 p-3 flex gap-2 items-end">
         <textarea
@@ -282,7 +282,7 @@ export default function ChatWindow({
         <button
           onClick={() => void sendMessage()}
           disabled={sending || !newMessage.trim()}
-          className="rounded bg-orange-500 px-4 py-2 text-sm font-semibold text-black hover:bg-orange-400 disabled:opacity-50"
+          className="rounded border border-orange-500/70 text-orange-300 px-4 py-2 text-sm font-semibold hover:bg-orange-500/10 disabled:opacity-50"
         >
           {sending ? "Sending…" : "Send"}
         </button>
