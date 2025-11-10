@@ -20,45 +20,25 @@ type ConversationPayload = {
   unread_count: number;
 };
 
-// helper: some projects still have messages.chat_id
-function getMessageConversationId(
-  msg: MessageRow,
-): string | null {
-  // widen the type just enough to check for both
-  const maybeConversation = (msg as MessageRow & {
-    conversation_id?: string | null;
-    chat_id?: string | null;
-  });
-
-  if (maybeConversation.conversation_id) {
-    return maybeConversation.conversation_id;
-  }
-  if (maybeConversation.chat_id) {
-    return maybeConversation.chat_id;
-  }
-  return null;
-}
-
 export async function GET(): Promise<NextResponse> {
-  const supabase = createServerSupabaseRoute();
-
+  // 1. who is calling?
+  const userClient = createServerSupabaseRoute();
   const {
     data: { user },
     error: authErr,
-  } = await supabase.auth.getUser();
+  } = await userClient.auth.getUser();
 
   if (authErr || !user) {
-    return NextResponse.json(
-      { error: "Not authenticated" },
-      { status: 401 },
-    );
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  // 1) conversations where I am a participant
+  const admin = createAdminSupabase();
+
+  // 2. conversations where I'm a participant
   const {
     data: participantRows,
     error: participantErr,
-  } = await supabase
+  } = await admin
     .from("conversation_participants")
     .select("conversation_id")
     .eq("user_id", user.id);
@@ -70,11 +50,11 @@ export async function GET(): Promise<NextResponse> {
     );
   }
 
-  // 2) conversations I created
+  // 3. conversations I created
   const {
     data: createdRows,
     error: createdErr,
-  } = await supabase
+  } = await admin
     .from("conversations")
     .select("id")
     .eq("created_by", user.id);
@@ -94,7 +74,7 @@ export async function GET(): Promise<NextResponse> {
     },
   );
 
-  (createdRows ?? []).forEach((row: Pick<ConversationRow, "id">) => {
+  (createdRows ?? []).forEach((row: { id: string }) => {
     if (row.id) idSet.add(row.id);
   });
 
@@ -104,10 +84,7 @@ export async function GET(): Promise<NextResponse> {
     return NextResponse.json<ConversationPayload[]>([]);
   }
 
-  // admin client to dodge RLS 500s
-  const admin = createAdminSupabase();
-
-  // 3) fetch those conversations
+  // 4. fetch all those conversations
   const {
     data: conversations,
     error: convErr,
@@ -117,51 +94,77 @@ export async function GET(): Promise<NextResponse> {
     .in("id", conversationIds);
 
   if (convErr) {
-    return NextResponse.json(
-      { error: convErr.message },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: convErr.message }, { status: 500 });
   }
 
   const safeConversations: ConversationRow[] = conversations ?? [];
 
-  // 4) fetch messages that belong to those conversations
+  // 5. fetch messages for those conversations
+  //    we pull by conversation_id and also by chat_id (legacy)
   const {
-    data: allMessages,
-    error: msgErr,
+    data: messagesByConversation,
+    error: messagesConvErr,
   } = await admin
     .from("messages")
     .select("*")
-    // we can’t `.in()` on conversation_id AND chat_id at once,
-    // so we’ll just pull a reasonably large slice and filter in JS
-    .order("created_at", { ascending: false })
-    .limit(500);
+    .in("conversation_id", conversationIds)
+    .order("created_at", { ascending: false });
 
-  if (msgErr) {
+  if (messagesConvErr) {
     return NextResponse.json(
-      { error: msgErr.message },
+      { error: messagesConvErr.message },
       { status: 500 },
     );
   }
 
-  const messagesByConvo = new Map<string, MessageRow>();
+  const {
+    data: messagesByChat,
+    error: messagesChatErr,
+  } = await admin
+    .from("messages")
+    .select("*")
+    .in("chat_id", conversationIds)
+    .order("created_at", { ascending: false });
 
-  (allMessages ?? []).forEach((m: MessageRow) => {
-    const convId = getMessageConversationId(m);
-    if (!convId) return;
-    if (!conversationIds.includes(convId)) return;
-    // first one we see is newest because of the order above
-    if (!messagesByConvo.has(convId)) {
-      messagesByConvo.set(convId, m);
+  if (messagesChatErr) {
+    return NextResponse.json(
+      { error: messagesChatErr.message },
+      { status: 500 },
+    );
+  }
+
+  // merge both arrays
+  const allMessages: MessageRow[] = [
+    ...(messagesByConversation ?? []),
+    ...(messagesByChat ?? []),
+  ];
+
+  // pick latest per conversation
+  const latestByConv = new Map<string, MessageRow>();
+
+  for (const msg of allMessages) {
+    const convId =
+      (msg.conversation_id && conversationIds.includes(msg.conversation_id)
+        ? msg.conversation_id
+        : null) ||
+      (msg.chat_id && conversationIds.includes(msg.chat_id)
+        ? msg.chat_id
+        : null);
+
+    if (!convId) continue;
+    if (!latestByConv.has(convId)) {
+      // arrays already ordered DESC
+      latestByConv.set(convId, msg);
     }
-  });
+  }
 
   const payload: ConversationPayload[] = safeConversations.map(
     (conv: ConversationRow): ConversationPayload => {
-      const latest = messagesByConvo.get(conv.id) ?? null;
+      const latest = latestByConv.get(conv.id) ?? null;
       return {
         conversation: conv,
         latest_message: latest,
+        // no read receipts yet
         unread_count: 0,
       };
     },
