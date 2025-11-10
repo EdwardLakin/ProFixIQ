@@ -11,7 +11,7 @@ type ModalShellProps = {
   onSubmit?: () => void | Promise<void>;
   submitText?: string;
   footerLeft?: React.ReactNode;
-  /** sm = 24rem, md = 32rem, lg = 48rem */
+  /** sm = 24rem, md = 32rem, lg = 48rem, xl = 64rem */
   size?: "sm" | "md" | "lg" | "xl";
   /** hide the footer completely (for interactive panels like AI) */
   hideFooter?: boolean;
@@ -31,9 +31,11 @@ export default function ModalShell({
   const width =
     size === "sm"
       ? "max-w-sm"
+      : size === "md"
+      ? "max-w-lg"
       : size === "lg"
       ? "max-w-4xl"
-      : "max-w-lg";
+      : "max-w-6xl"; // 👈 xl finally handled
 
   return (
     <Dialog
@@ -49,10 +51,10 @@ export default function ModalShell({
 
       {/* Modal content */}
       <div className={`relative z-[510] w-full ${width}`}>
-        <Dialog.Panel className="w-full rounded-lg border border-neutral-700 bg-neutral-950 text-white shadow-xl">
+        <Dialog.Panel className="w-full rounded-lg border border-border bg-background text-foreground shadow-xl">
           {/* Header */}
-          {(title ) && (
-            <div className="flex items-center justify-between border-b border-neutral-800 px-4 py-3">
+          {(title || onClose) && (
+            <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
               {title ? (
                 <Dialog.Title className="text-base font-semibold">
                   {title}
@@ -63,25 +65,25 @@ export default function ModalShell({
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded px-2 py-1 text-sm text-neutral-200 hover:bg-neutral-800"
+                className="rounded px-2 py-1 text-sm text-muted-foreground hover:bg-muted/60"
               >
                 ✕
               </button>
             </div>
           )}
 
-          {/* Body */}
-          <div className="px-4 py-4 space-y-3">{children}</div>
+          {/* Body — let children decide layout */}
+          <div className="px-4 py-4">{children}</div>
 
           {/* Footer */}
           {!hideFooter && (onSubmit || footerLeft) && (
-            <div className="flex items-center justify-between gap-3 border-t border-neutral-800 px-4 py-3">
+            <div className="flex items-center justify-between gap-3 border-t border-border/60 px-4 py-3">
               <div>{footerLeft}</div>
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={onClose}
-                  className="rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-sm hover:bg-neutral-800"
+                  className="rounded border border-border/60 bg-muted px-3 py-1.5 text-sm text-foreground hover:bg-muted/70"
                 >
                   Cancel
                 </button>

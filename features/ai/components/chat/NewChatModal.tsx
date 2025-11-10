@@ -36,7 +36,6 @@ type MessageRow = {
   sender_id: string | null;
   content: string | null;
   sent_at: string | null;
-  // optional recipients array – we send it, but if the column doesn’t exist, supabase will ignore
   recipients?: string[] | null;
 };
 
@@ -49,10 +48,6 @@ type Props = {
   created_by?: string;
   context_type?: string | null;
   context_id?: string | null;
-  /**
-   * When the app shell receives a new message, it can pass the convo id here
-   * so the modal jumps straight to it.
-   */
   activeConversationId?: string | null;
 };
 
@@ -69,11 +64,9 @@ export default function NewChatModal({
 }: Props) {
   const supabase = useMemo(() => createBrowserSupabase(), []);
 
-  // who am I
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
 
-  // left side
   const [users, setUsers] = useState<UserRow[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [search, setSearch] = useState("");
@@ -81,19 +74,17 @@ export default function NewChatModal({
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
 
-  // right side / chat
   const [activeConvoId, setActiveConvoId] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendText, setSendText] = useState("");
 
-  // small convo switcher list
   const [myConversations, setMyConversations] = useState<ConversationRow[]>([]);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  // load current user & profile once
+  // 1) load current user + role
   useEffect(() => {
     (async () => {
       const {
@@ -102,18 +93,18 @@ export default function NewChatModal({
       if (user) {
         setCurrentUserId(user.id);
 
-        // get profile to infer role
         const { data: profile } = await supabase
           .from("profiles")
           .select("role")
           .eq("id", user.id)
           .maybeSingle();
+
         setCurrentUserRole(profile?.role ?? null);
       }
     })();
   }, [supabase]);
 
-  // when modal opens → load users + try restore last convo + load my convos
+  // 2) on open → load users, restore last convo, load my convos
   useEffect(() => {
     if (!isOpen) return;
 
@@ -143,10 +134,9 @@ export default function NewChatModal({
       } catch (err) {
         console.warn("[NewChatModal] /api/chat/users failed:", err);
         setApiError(
-          err instanceof Error ? err.message : "Could not load /api/chat/users"
+          err instanceof Error ? err.message : "Could not load /api/chat/users",
         );
 
-        // fallback: show self
         const {
           data: { user },
         } = await supabase.auth.getUser();
@@ -160,13 +150,14 @@ export default function NewChatModal({
         } else {
           setUsers([]);
         }
+
         toast.error("Showing limited user list.");
       } finally {
         setLoadingUsers(false);
         setSearch("");
       }
 
-      // restore last convo OR use forced one from shell
+      // restore
       const stored =
         typeof window !== "undefined"
           ? window.localStorage.getItem(LOCAL_KEY)
@@ -180,18 +171,16 @@ export default function NewChatModal({
         setActiveConvoId(null);
       }
 
-      // load my conversations (for switcher)
       await loadMyConversations();
     })();
   }, [isOpen, supabase, forcedConversationId]);
 
-  // auto-role filter if opened in context (simple version)
+  // 3) auto-role filter in context
   useEffect(() => {
     if (!isOpen) return;
     if (!context_type) return;
     if (!currentUserRole) return;
 
-    // you can adjust these rules to your exact shop roles
     if (context_type === "work_order") {
       if (currentUserRole === "tech") {
         setRole("advisor");
@@ -203,7 +192,7 @@ export default function NewChatModal({
     }
   }, [isOpen, context_type, currentUserRole]);
 
-  // load messages when active convo changes
+  // 4) load messages for current convo
   useEffect(() => {
     if (!isOpen) return;
     if (!activeConvoId) {
@@ -212,6 +201,7 @@ export default function NewChatModal({
     }
 
     let cancelled = false;
+
     (async () => {
       setMessagesLoading(true);
       try {
@@ -241,7 +231,7 @@ export default function NewChatModal({
     };
   }, [activeConvoId, isOpen]);
 
-  // realtime for current conversation
+  // 5) realtime for that convo
   useEffect(() => {
     if (!activeConvoId) return;
     const channel = supabase
@@ -257,7 +247,7 @@ export default function NewChatModal({
         (payload) => {
           const newMsg = payload.new as MessageRow;
           setMessages((prev) => [...prev, newMsg]);
-        }
+        },
       )
       .subscribe();
 
@@ -266,12 +256,12 @@ export default function NewChatModal({
     };
   }, [supabase, activeConvoId]);
 
-  // scroll to bottom
+  // 6) scroll to bottom
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // filter users
+  // user filtering
   const filtered = useMemo(() => {
     const t = search.trim().toLowerCase();
     return users.filter((u) => {
@@ -287,10 +277,10 @@ export default function NewChatModal({
 
   const toggle = (id: string) =>
     setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
 
-  // fetch convo list for this user
+  // load user's conversations
   const loadMyConversations = useCallback(async () => {
     const {
       data: { user },
@@ -300,7 +290,6 @@ export default function NewChatModal({
       return;
     }
 
-    // first, get participant rows
     const { data: participants } = await supabase
       .from("conversation_participants")
       .select("conversation_id")
@@ -322,13 +311,11 @@ export default function NewChatModal({
     setMyConversations(convos ?? []);
   }, [supabase]);
 
-  // ensure a conversation exists
+  // ensure convo exists
   const ensureConversation = useCallback(
     async (participantIds: string[]): Promise<string | null> => {
-      // if one already active, we use it
       if (activeConvoId) return activeConvoId;
 
-      // get creator
       let creatorId = created_by ?? currentUserId;
       if (!creatorId) {
         const {
@@ -354,7 +341,6 @@ export default function NewChatModal({
         return null;
       }
 
-      // participants = creator + selected
       const setIds = new Set(participantIds);
       setIds.add(creatorId);
 
@@ -369,7 +355,6 @@ export default function NewChatModal({
         .insert(rows);
       if (partErr) {
         console.error("participants insert failed:", partErr);
-        // convo exists, we can still continue
       }
 
       setActiveConvoId(newId);
@@ -377,7 +362,6 @@ export default function NewChatModal({
         window.localStorage.setItem(LOCAL_KEY, newId);
       }
       onCreated?.(newId);
-      // also refresh list
       void loadMyConversations();
       return newId;
     },
@@ -390,7 +374,7 @@ export default function NewChatModal({
       context_id,
       loadMyConversations,
       onCreated,
-    ]
+    ],
   );
 
   // send
@@ -399,18 +383,13 @@ export default function NewChatModal({
     if (!text) return;
     if (sending) return;
 
-    // at least 1 recipient other than me
-    const uniqueTargetIds = selectedIds.length
-      ? selectedIds
-      : // if none selected, this will just create a conversation with self
-        [];
+    const uniqueTargetIds = selectedIds.length ? selectedIds : [];
 
     const convoId = await ensureConversation(uniqueTargetIds);
     if (!convoId || !currentUserId) return;
 
     setSending(true);
 
-    // optimistic
     const tempId = `temp-${Date.now()}`;
     const optimistic: MessageRow = {
       id: tempId,
@@ -431,14 +410,12 @@ export default function NewChatModal({
           conversationId: convoId,
           senderId: currentUserId,
           content: text,
-          // 👇 if your messages table has this column, it will be stored
           recipients: optimistic.recipients ?? [],
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
     } catch (e) {
       console.error("send failed:", e);
-      // rollback optimistic
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
       setSendText(text);
       toast.error("Message failed to send.");
@@ -460,8 +437,8 @@ export default function NewChatModal({
       title="Team chat"
       size="xl"
       onSubmit={undefined}
+      hideFooter
     >
-      {/* top helper row */}
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="text-xs text-neutral-400">
           Pick recipients → type → send. Conversation is created automatically.
@@ -475,7 +452,7 @@ export default function NewChatModal({
       </div>
 
       <div className="flex gap-3 min-h-[360px]">
-        {/* LEFT: people & filters */}
+        {/* LEFT */}
         <div className="w-60 shrink-0 flex flex-col gap-2">
           {apiError ? (
             <div className="rounded border border-red-500/40 bg-red-950/30 px-3 py-2 text-xs text-red-100">
@@ -545,7 +522,7 @@ export default function NewChatModal({
           </div>
         </div>
 
-        {/* RIGHT: chat */}
+        {/* RIGHT */}
         <div className="flex-1 flex flex-col rounded border border-neutral-800 bg-neutral-950">
           <div className="border-b border-neutral-800 px-4 py-2 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
@@ -554,11 +531,12 @@ export default function NewChatModal({
                   ? "Conversation"
                   : "New conversation (not saved until you send)"}
               </div>
-              {/* convo switcher */}
               {myConversations.length > 0 ? (
                 <select
                   value={activeConvoId ?? ""}
-                  onChange={(e) => setActiveConvoId(e.target.value || null)}
+                  onChange={(e) =>
+                    setActiveConvoId(e.target.value || null)
+                  }
                   className="text-[10px] bg-neutral-900 border border-neutral-700 rounded px-1 py-1 text-neutral-200"
                 >
                   <option value="">Select conversation…</option>
@@ -629,7 +607,7 @@ export default function NewChatModal({
             <div ref={bottomRef} />
           </div>
 
-          {/* composer */}
+          {/* composer – outlined orange, like you wanted */}
           <div className="border-t border-neutral-800 p-3 flex gap-2 items-end">
             <textarea
               value={sendText}
@@ -647,7 +625,7 @@ export default function NewChatModal({
             <button
               onClick={() => void handleSend()}
               disabled={sending || !sendText.trim()}
-              className="rounded bg-orange-500 px-4 py-2 text-sm font-semibold text-black hover:bg-orange-400 disabled:opacity-50"
+              className="rounded border border-orange-500/70 text-orange-300 px-4 py-2 text-sm font-semibold hover:bg-orange-500/10 disabled:opacity-50"
             >
               {sending ? "Sending…" : "Send"}
             </button>

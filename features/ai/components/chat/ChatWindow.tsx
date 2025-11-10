@@ -106,7 +106,6 @@ export default function ChatWindow({
     const content = newMessage.trim();
     if (!content || sending) return;
 
-    // optimistic item
     const tempId = `temp-${Date.now()}`;
     const optimistic: Message = {
       id: tempId,
@@ -114,7 +113,7 @@ export default function ChatWindow({
       sender_id: userId,
       content,
       sent_at: new Date().toISOString(),
-      // recipients array is optional – we include empty for consistency
+      // keep this if/when you add recipients[]
       recipients: [],
     } as unknown as Message;
 
@@ -131,7 +130,7 @@ export default function ChatWindow({
           conversationId,
           senderId: userId,
           content,
-          recipients: [], // will work once column exists
+          recipients: [],
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -155,7 +154,7 @@ export default function ChatWindow({
     }
   };
 
-  // group messages by day + sender (like before)
+  // group messages by day + sender
   const grouped = useMemo(() => {
     const byDay: Array<
       | { type: "day"; label: string }
@@ -282,7 +281,7 @@ export default function ChatWindow({
         <button
           onClick={() => void sendMessage()}
           disabled={sending || !newMessage.trim()}
-          className="rounded border border-orange-500/70 text-orange-300 px-4 py-2 text-sm font-semibold hover:bg-orange-500/10 disabled:opacity-50"
+          className="rounded border border-orange-500/70 text-orange-200 px-4 py-2 text-sm font-semibold hover:bg-orange-500/10 disabled:opacity-50"
         >
           {sending ? "Sending…" : "Send"}
         </button>
