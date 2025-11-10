@@ -35,6 +35,7 @@ type MessageRow = {
   sender_id: string | null;
   content: string | null;
   sent_at: string | null;
+  // we can keep this on the client, but we WON'T send it to the API anymore
   recipients?: string[] | null;
 };
 
@@ -81,7 +82,7 @@ export default function NewChatModal({
   const [sending, setSending] = useState(false);
   const [sendText, setSendText] = useState("");
 
-  // client-side recent list
+  // client-side “recent” convos (storage only, not Supabase)
   const [recentConversationIds, setRecentConversationIds] = useState<string[]>([]);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -139,14 +140,14 @@ export default function NewChatModal({
     if (!isOpen) return;
 
     (async () => {
-      // load recent ids
+      // load recent convos from localStorage
       const recent = loadRecentFromStorage();
       setRecentConversationIds(recent);
 
       setLoadingUsers(true);
       setApiError(null);
 
-      // 1) try the Next.js route (best case, shop-scoped)
+      // 1) try server route
       let gotUsers = false;
       try {
         const res = await fetch("/api/chat/users", {
@@ -165,15 +166,13 @@ export default function NewChatModal({
           setUsers(list ?? []);
           gotUsers = true;
         } else if (res.status !== 401) {
-          // real error (500 etc.)
           setApiError(json?.error || `HTTP ${res.status}`);
         }
       } catch (err) {
-        // ignore here – we'll fall back
-        console.warn("[NewChatModal] /api/chat/users failed, trying client:", err);
+        console.warn("[NewChatModal] /api/chat/users failed, will fallback:", err);
       }
 
-      // 2) fallback: client-side Supabase
+      // 2) fallback: client-side profiles
       if (!gotUsers) {
         try {
           const { data: profiles, error } = await supabase
@@ -183,7 +182,6 @@ export default function NewChatModal({
             .limit(200);
 
           if (error) {
-            console.warn("[NewChatModal] client profiles failed:", error);
             setApiError("Could not load users.");
             setUsers([]);
           } else {
@@ -195,11 +193,9 @@ export default function NewChatModal({
                 email: p.email,
               })),
             );
-            // we managed to load users → clear banner
             setApiError(null);
           }
         } catch (err) {
-          console.warn("[NewChatModal] client profiles threw:", err);
           setApiError("Could not load users.");
           setUsers([]);
         }
@@ -226,7 +222,7 @@ export default function NewChatModal({
     })();
   }, [isOpen, supabase, forcedConversationId, loadRecentFromStorage, upsertRecent]);
 
-  // auto-role filter when opened in context
+  // auto-role filter
   useEffect(() => {
     if (!isOpen) return;
     if (!context_type) return;
@@ -243,7 +239,7 @@ export default function NewChatModal({
     }
   }, [isOpen, context_type, currentUserRole]);
 
-  // load messages
+  // load messages for active convo
   useEffect(() => {
     if (!isOpen) return;
     if (!activeConvoId) {
@@ -312,7 +308,7 @@ export default function NewChatModal({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // user filter
+  // filtered users
   const filtered = React.useMemo(() => {
     const t = search.trim().toLowerCase();
     return users.filter((u) => {
@@ -331,7 +327,7 @@ export default function NewChatModal({
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
 
-  // ensure convo
+  // create convo if needed
   const ensureConversation = useCallback(
     async (participantIds: string[]): Promise<string | null> => {
       if (activeConvoId) return activeConvoId;
@@ -404,6 +400,7 @@ export default function NewChatModal({
     if (!text) return;
     if (sending) return;
 
+    // recipients = selectedIds (we keep them locally only)
     const targetIds = selectedIds.length ? selectedIds : [];
 
     const convoId = await ensureConversation(targetIds);
@@ -411,6 +408,7 @@ export default function NewChatModal({
 
     setSending(true);
 
+    // optimistic message
     const tempId = `temp-${Date.now()}`;
     const optimistic: MessageRow = {
       id: tempId,
@@ -427,19 +425,23 @@ export default function NewChatModal({
       const res = await fetch("/api/chat/send-message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        // 👇 IMPORTANT: send only columns that actually exist in `messages`
         body: JSON.stringify({
           conversationId: convoId,
           senderId: currentUserId,
           content: text,
-          recipients: optimistic.recipients ?? [],
         }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        // don't delete the optimistic message — just complain
+        console.error("send-message failed:", await res.text());
+        toast.error("Message failed to send (server).");
+      }
+      // if it *did* succeed, realtime will deliver the real row
     } catch (e) {
       console.error("send failed:", e);
-      setMessages((prev) => prev.filter((m) => m.id !== tempId));
-      setSendText(text);
-      toast.error("Message failed to send.");
+      // DON'T remove the optimistic bubble anymore
+      toast.error("Message failed to send (network).");
     } finally {
       setSending(false);
     }
