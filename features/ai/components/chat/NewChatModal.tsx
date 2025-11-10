@@ -55,7 +55,7 @@ export default function NewChatModal({
     (async () => {
       setLoadingUsers(true);
       try {
-        const res = await fetch("/api/chat/users", { cache: "no-store" });
+        const res = await fetch("/api/admin/users", { cache: "no-store" });
         const json = await res.json();
         console.log("[ChatModal] fetched:", res.status, json);
 
