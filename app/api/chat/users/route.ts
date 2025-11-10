@@ -5,6 +5,8 @@ import {
   createAdminSupabase,
 } from "@/features/shared/lib/supabase/server";
 
+export const dynamic = "force-dynamic"; // ← make sure we don’t get a stale, unauth’d response
+
 const MAX_ROWS = 200;
 
 export async function GET(req: Request) {
@@ -12,7 +14,6 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q")?.trim() ?? "";
 
-  // 1) who is calling?
   const {
     data: { user },
     error: authErr,
@@ -22,7 +23,6 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  // 2) get THEIR profile (RLS-safe)
   const { data: me, error: meErr } = await supabaseUser
     .from("profiles")
     .select("id, shop_id")
@@ -36,7 +36,6 @@ export async function GET(req: Request) {
     );
   }
 
-  // 3) now use ADMIN client to pull everyone in same shop
   const admin = createAdminSupabase();
 
   let query = admin

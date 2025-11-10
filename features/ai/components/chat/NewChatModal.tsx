@@ -40,6 +40,7 @@ export default function NewChatModal({
   context_id = null,
 }: Props) {
   const supabase = useMemo(() => createBrowserSupabase(), []);
+
   const [users, setUsers] = useState<UserRow[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [search, setSearch] = useState("");
@@ -47,17 +48,19 @@ export default function NewChatModal({
   const [loading, setLoading] = useState(false);
   const [loadingUsers, setLoadingUsers] = useState(false);
 
-  // load users from API (shop-scoped) first
+  // 🔸 Load shop-scoped users via API route
   useEffect(() => {
     if (!isOpen) return;
+
     (async () => {
       setLoadingUsers(true);
       try {
-        const res = await fetch("/api/chat/users");
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const res = await fetch("/api/chat/users", { cache: "no-store" });
         const json = await res.json();
+        console.log("[ChatModal] fetched:", res.status, json);
 
-        // accept either { users: [...] } or just [...]
+        if (!res.ok || !json) throw new Error(json?.error || "Failed");
+
         const list: UserRow[] = Array.isArray(json)
           ? json
           : Array.isArray(json.users)
@@ -68,7 +71,7 @@ export default function NewChatModal({
 
         setUsers(list ?? []);
       } catch (err) {
-        // fallback to RLS-limited
+        console.error("[ChatModal] Fallback due to:", err);
         const { data } = await supabase
           .from("profiles")
           .select("id, full_name, role, email")
@@ -84,6 +87,7 @@ export default function NewChatModal({
     })();
   }, [isOpen, supabase]);
 
+  // 🔹 Filter logic
   const filtered = useMemo(() => {
     const t = search.trim().toLowerCase();
     return users.filter((u) => {
@@ -97,18 +101,22 @@ export default function NewChatModal({
     });
   }, [users, search, role]);
 
+  // 🔹 Select toggles
   const toggle = (id: string) =>
     setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
 
+  // 🔹 Create conversation
   const handleCreate = async () => {
     if (selectedIds.length === 0) {
       toast.error("Pick at least one person");
       return;
     }
+
     setLoading(true);
     const convoId = uuidv4();
+
     try {
       const { error: convErr } = await supabase.from("conversations").insert({
         id: convoId,
@@ -123,16 +131,18 @@ export default function NewChatModal({
         conversation_id: convoId,
         user_id,
       }));
+
       const { error: partErr } = await supabase
         .from("conversation_participants")
         .insert(rows);
+
       if (partErr) throw partErr;
 
       toast.success("Chat created");
       onCreated?.(convoId);
       onClose();
     } catch (e) {
-      console.error(e);
+      console.error("[ChatModal] create error:", e);
       toast.error("Could not create chat");
     } finally {
       setLoading(false);
@@ -169,6 +179,7 @@ export default function NewChatModal({
   );
 }
 
+// 🔸 HeaderBar component
 function HeaderBar({
   search,
   setSearch,
@@ -203,6 +214,7 @@ function HeaderBar({
   );
 }
 
+// 🔸 UserList component
 function UserList({
   loading,
   users,
