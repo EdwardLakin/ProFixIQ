@@ -1,4 +1,3 @@
-// features/ai/components/chat/NewChatModal.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -27,8 +26,7 @@ type Props = {
   isOpen: boolean;
   onClose: () => void;
   onCreated?: (id: string) => void;
-  /** may be empty if called from AppShell before session resolves */
-  created_by?: string;
+  created_by?: string; // optional, but we don’t rely on it
   context_type?: string | null;
   context_id?: string | null;
 };
@@ -51,7 +49,6 @@ export default function NewChatModal({
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
 
-  // load list of users
   useEffect(() => {
     if (!isOpen) return;
 
@@ -60,12 +57,10 @@ export default function NewChatModal({
       setApiError(null);
 
       try {
-        // try shop-scoped API first
         const res = await fetch("/api/chat/users", {
           method: "GET",
           credentials: "include",
         });
-
         const json = await res.json().catch(() => ({} as any));
         if (!res.ok) {
           throw new Error(json?.error || `HTTP ${res.status}`);
@@ -86,7 +81,7 @@ export default function NewChatModal({
           err instanceof Error ? err.message : "Could not load /api/chat/users",
         );
 
-        // fallback: at least show ME
+        // fallback: show self
         const {
           data: { user },
         } = await supabase.auth.getUser();
@@ -98,11 +93,7 @@ export default function NewChatModal({
             .eq("id", user.id)
             .maybeSingle();
 
-          if (me) {
-            setUsers([me as UserRow]);
-          } else {
-            setUsers([]);
-          }
+          setUsers(me ? [me as UserRow] : []);
         } else {
           setUsers([]);
         }
@@ -117,7 +108,6 @@ export default function NewChatModal({
     })();
   }, [isOpen, supabase]);
 
-  // filter
   const filtered = React.useMemo(() => {
     const t = search.trim().toLowerCase();
     return users.filter((u) => {
@@ -136,13 +126,8 @@ export default function NewChatModal({
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
 
-  // make sure we have a real user id before insert
   const getCreatorId = async (): Promise<string | null> => {
-    // if parent passed a uuid-looking value, use it
-    if (created_by && created_by.length > 20) {
-      return created_by;
-    }
-    // else ask supabase
+    if (created_by && created_by.length > 20) return created_by;
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -157,22 +142,29 @@ export default function NewChatModal({
 
     setLoading(true);
     const convoId = uuidv4();
+
     try {
       const creatorId = await getCreatorId();
       if (!creatorId) {
         toast.error("No authenticated user – please sign in again.");
+        setLoading(false);
         return;
       }
 
+      // conversations: created_by must equal auth.uid()
       const { error: convErr } = await supabase.from("conversations").insert({
         id: convoId,
-        created_by: creatorId, // ✅ always a real uuid now
+        created_by: creatorId,
         context_type,
         context_id,
       });
       if (convErr) throw convErr;
 
-      const rows = selectedIds.map((user_id) => ({
+      // participants: include selected + creator
+      const allIds = new Set(selectedIds);
+      allIds.add(creatorId);
+
+      const rows = Array.from(allIds).map((user_id) => ({
         id: uuidv4(),
         conversation_id: convoId,
         user_id,
@@ -230,17 +222,7 @@ export default function NewChatModal({
   );
 }
 
-function HeaderBar({
-  search,
-  setSearch,
-  role,
-  setRole,
-}: {
-  search: string;
-  setSearch: (s: string) => void;
-  role: string;
-  setRole: (s: string) => void;
-}) {
+function HeaderBar({ search, setSearch, role, setRole }: any) {
   return (
     <div className="mb-2 flex gap-2">
       <input
