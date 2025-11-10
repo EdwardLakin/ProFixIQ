@@ -29,43 +29,46 @@ export default function NewChatModal({
   context_type = null,
   context_id = null,
 }: Props) {
+  // still need supabase for creating the conversation itself
   const supabase = useMemo(() => createBrowserSupabase(), []);
+
   const [users, setUsers] = useState<UserRow[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [q, setQ] = useState("");
 
+  // 🚩 NEW: load users from our server route (bypasses RLS)
   useEffect(() => {
     if (!isOpen) return;
 
     (async () => {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, full_name, role")
-        .order("full_name", { ascending: true });
-
-      if (error) {
-        console.error(error);
+      try {
+        const res = await fetch("/api/chat/users");
+        if (!res.ok) {
+          toast.error("Failed to load users");
+          return;
+        }
+        const body = (await res.json()) as { users: UserRow[] };
+        setUsers(body.users ?? []);
+        setSelectedIds([]);
+        setSelectedRoles([]);
+        setQ("");
+      } catch (err) {
+        console.error(err);
         toast.error("Failed to load users");
-        return;
       }
-
-      setUsers(data ?? []);
-      setSelectedIds([]);
-      setSelectedRoles([]);
-      setQ("");
     })();
-  }, [isOpen, supabase]);
+  }, [isOpen]);
 
   const toggleUser = (id: string) =>
     setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id],
     );
 
   const toggleRole = (role: string) =>
     setSelectedRoles((prev) =>
-      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]
+      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role],
     );
 
   const ROLES = ["tech", "advisor", "parts", "foreman", "lead_hand"];
@@ -76,7 +79,7 @@ export default function NewChatModal({
     return users.filter(
       (u) =>
         (u.full_name ?? "").toLowerCase().includes(term) ||
-        (u.role ?? "").toLowerCase().includes(term)
+        (u.role ?? "").toLowerCase().includes(term),
     );
   }, [users, q]);
 
@@ -90,9 +93,12 @@ export default function NewChatModal({
   const handleCreate = async () => {
     if (loading) return;
 
+    // collect participants from user checkboxes + selected roles
     const participants = new Set<string>(selectedIds);
     for (const u of users) {
-      if (u.role && selectedRoles.includes(u.role)) participants.add(u.id);
+      if (u.role && selectedRoles.includes(u.role)) {
+        participants.add(u.id);
+      }
     }
 
     if (participants.size < 1) {
@@ -104,6 +110,7 @@ export default function NewChatModal({
     const conversationId = uuidv4();
 
     try {
+      // create the conversation
       const { error: convError } = await supabase.from("conversations").insert({
         id: conversationId,
         created_by,
@@ -112,6 +119,7 @@ export default function NewChatModal({
       });
       if (convError) throw convError;
 
+      // add participants
       const inserts = Array.from(participants).map((user_id) => ({
         id: uuidv4(),
         conversation_id: conversationId,
@@ -121,13 +129,12 @@ export default function NewChatModal({
       const { error: partErr } = await supabase
         .from("conversation_participants")
         .insert(inserts);
-
       if (partErr) throw partErr;
 
       toast.success("Chat created");
       onCreated?.(conversationId);
       onClose();
-    } catch (e: any) {
+    } catch (e) {
       console.error(e);
       toast.error("Failed to create chat");
     } finally {
@@ -142,7 +149,10 @@ export default function NewChatModal({
       className="fixed inset-0 z-[500] flex items-center justify-center p-4 sm:p-6"
     >
       {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" aria-hidden="true" />
+      <div
+        className="fixed inset-0 bg-black/70 backdrop-blur-sm"
+        aria-hidden="true"
+      />
 
       {/* Modal */}
       <div className="relative z-[510] w-full max-w-xl">
@@ -164,9 +174,7 @@ export default function NewChatModal({
           <div className="px-5 py-4">
             <div className="text-xs text-neutral-400">
               Select users and/or roles.{" "}
-              <span className="text-neutral-100">
-                Selected: {selectedCount}
-              </span>
+              <span className="text-neutral-100">Selected: {selectedCount}</span>
             </div>
 
             {/* Search */}
