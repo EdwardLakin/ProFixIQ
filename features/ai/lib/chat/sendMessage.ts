@@ -1,40 +1,40 @@
-// lib/chat/sendMessage.ts
-"use server";
+// app/api/chat/send-message/route.ts
+import { NextResponse } from "next/server";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
-import { cookies } from "next/headers";
-import { createServerActionClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+export const dynamic = "force-dynamic";
 
-export async function sendMessage({
-  conversation_id,
-  content,
-}: {
-  conversation_id: string;
-  content: string;
-}) {
-  // make the client INSIDE the action
-  const supabase = createServerActionClient<Database>({ cookies });
+export async function POST(req: Request) {
+  const { conversationId, senderId, content } = await req.json().catch(() => ({}));
 
-  // get current user so we don’t have to pass sender_id from client
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabase.auth.getUser();
-
-  if (authErr || !user) {
-    throw new Error("Not authenticated");
+  if (!conversationId || !senderId || !content?.trim()) {
+    return NextResponse.json(
+      { error: "conversationId, senderId, and content are required" },
+      { status: 400 }
+    );
   }
 
-  const { error } = await supabase.from("messages").insert({
-    conversation_id,
-    sender_id: user.id,
-    content,
-  });
+  const supabase = createAdminSupabase();
+
+  const { data, error } = await supabase
+    .from("messages")
+    .insert({
+      conversation_id: conversationId,
+      sender_id: senderId,
+      content: content.trim(),
+      // sent_at is good to set here so reads can sort on it
+      sent_at: new Date().toISOString(),
+    })
+    .select("id, conversation_id, sender_id, content, sent_at, created_at")
+    .maybeSingle();
 
   if (error) {
-    console.error("Failed to send message:", error.message);
-    throw new Error(error.message);
+    console.error("[send-message] supabase error:", error);
+    return NextResponse.json(
+      { error: error.message ?? "Failed to send message" },
+      { status: 500 }
+    );
   }
 
-  return { success: true };
+  return NextResponse.json(data, { status: 201 });
 }
