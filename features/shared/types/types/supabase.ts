@@ -1291,28 +1291,28 @@ export type Database = {
           {
             foreignKeyName: "inspection_sessions_work_order_line_fk"
             columns: ["work_order_line_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "v_quote_queue"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "inspection_sessions_work_order_line_fk"
             columns: ["work_order_line_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "work_order_lines"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "inspection_sessions_work_order_line_id_fkey"
             columns: ["work_order_line_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "v_quote_queue"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "inspection_sessions_work_order_line_id_fkey"
             columns: ["work_order_line_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "work_order_lines"
             referencedColumns: ["id"]
           },
@@ -1761,6 +1761,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "messages_reply_to_fkey"
+            columns: ["reply_to"]
+            isOneToOne: false
+            referencedRelation: "v_my_messages"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "messages_sender_id_fkey"
             columns: ["sender_id"]
             isOneToOne: false
@@ -1940,31 +1947,37 @@ export type Database = {
           approved: boolean
           description: string
           id: string
+          markup_pct: number | null
           part_id: string | null
           qty: number
           quoted_price: number | null
           request_id: string
           vendor: string | null
+          work_order_line_id: string | null
         }
         Insert: {
           approved?: boolean
           description: string
           id?: string
+          markup_pct?: number | null
           part_id?: string | null
           qty: number
           quoted_price?: number | null
           request_id: string
           vendor?: string | null
+          work_order_line_id?: string | null
         }
         Update: {
           approved?: boolean
           description?: string
           id?: string
+          markup_pct?: number | null
           part_id?: string | null
           qty?: number
           quoted_price?: number | null
           request_id?: string
           vendor?: string | null
+          work_order_line_id?: string | null
         }
         Relationships: [
           {
@@ -5212,6 +5225,54 @@ export type Database = {
             columns: ["part_id"]
             isOneToOne: false
             referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      v_my_conversation_ids: {
+        Row: {
+          conversation_id: string | null
+        }
+        Relationships: []
+      }
+      v_my_messages: {
+        Row: {
+          content: string | null
+          conversation_id: string | null
+          created_at: string | null
+          id: string | null
+          sender_id: string | null
+          sent_at: string | null
+        }
+        Insert: {
+          content?: string | null
+          conversation_id?: string | null
+          created_at?: string | null
+          id?: string | null
+          sender_id?: string | null
+          sent_at?: string | null
+        }
+        Update: {
+          content?: string | null
+          conversation_id?: string | null
+          created_at?: string | null
+          id?: string | null
+          sender_id?: string | null
+          sent_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_sender_id_fkey"
+            columns: ["sender_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
