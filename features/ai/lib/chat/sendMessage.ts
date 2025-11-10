@@ -1,40 +1,61 @@
 // app/api/chat/send-message/route.ts
 import { NextResponse } from "next/server";
-import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import type { Database } from "@shared/types/types/supabase";
+
+type DB = Database;
+type MessageInsert = DB["public"]["Tables"]["messages"]["Insert"];
 
 export const dynamic = "force-dynamic";
 
-export async function POST(req: Request) {
-  const { conversationId, senderId, content } = await req.json().catch(() => ({}));
+export async function POST(req: Request): Promise<NextResponse> {
+  const supabase = createServerSupabaseRoute();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (!conversationId || !senderId || !content?.trim()) {
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  const body = (await req.json()) as {
+    conversationId: string;
+    content: string;
+    senderId?: string;
+    recipients?: string[];
+  };
+
+  const conversationId = body.conversationId;
+  const content = body.content?.trim() ?? "";
+  const senderId = body.senderId ?? user.id;
+  const recipients = Array.isArray(body.recipients) ? body.recipients : [];
+
+  if (!conversationId || !content) {
     return NextResponse.json(
-      { error: "conversationId, senderId, and content are required" },
+      { error: "conversationId and content are required" },
       { status: 400 }
     );
   }
 
-  const supabase = createAdminSupabase();
+  const payload: MessageInsert = {
+    conversation_id: conversationId,
+    // keep this for the old pages until everything is migrated
+    chat_id: conversationId,
+    sender_id: senderId,
+    content,
+    recipients,
+    sent_at: new Date().toISOString(),
+  };
 
-  const { data, error } = await supabase
+  const { data: inserted, error } = await supabase
     .from("messages")
-    .insert({
-      conversation_id: conversationId,
-      sender_id: senderId,
-      content: content.trim(),
-      // sent_at is good to set here so reads can sort on it
-      sent_at: new Date().toISOString(),
-    })
-    .select("id, conversation_id, sender_id, content, sent_at, created_at")
+    .insert(payload)
+    .select()
     .maybeSingle();
 
   if (error) {
-    console.error("[send-message] supabase error:", error);
-    return NextResponse.json(
-      { error: error.message ?? "Failed to send message" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json(data, { status: 201 });
+  return NextResponse.json(inserted ?? { ok: true });
 }
