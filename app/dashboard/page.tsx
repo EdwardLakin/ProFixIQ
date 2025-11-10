@@ -22,7 +22,7 @@ export default function DashboardPage() {
     partsRequests: null,
   });
 
-  // fetch profile (what you already had)
+  // fetch profile
   useEffect(() => {
     (async () => {
       const {
@@ -40,10 +40,9 @@ export default function DashboardPage() {
     })();
   }, [supabase]);
 
-  // fetch the 3 counts that were showing "—"
+  // fetch the 3 counts
   useEffect(() => {
     (async () => {
-      // run in parallel
       const [appt, wo, parts] = await Promise.all([
         supabase
           .from("appointments")
@@ -78,7 +77,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* small overview cards */}
+      {/* overview cards */}
       <div className="grid gap-4 md:grid-cols-4">
         <OverviewCard
           title="Today’s appointments"
@@ -99,6 +98,7 @@ export default function DashboardPage() {
           }
           href="/parts/requests"
         />
+        {/* 👉 this is the one on the right – goes to chat/conversation list */}
         <OverviewCard title="Team chat" value="Open" href="/chat" />
       </div>
 
@@ -112,7 +112,7 @@ export default function DashboardPage() {
             New work order
           </QuickButton>
           <QuickButton href="/portal/appointments">Appointments</QuickButton>
-          <QuickButton href="/chat">Messages</QuickButton>
+          {/* 👇 removed the “Messages” button here */}
           <QuickButton href="/ai/assistant">AI assistant</QuickButton>
           {role === "owner" || role === "admin" ? (
             <QuickButton href="/dashboard/owner/reports">

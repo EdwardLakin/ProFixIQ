@@ -1,4 +1,4 @@
-// features/ai/components/ConversationList.tsx
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
@@ -32,7 +32,15 @@ export default function ConversationList({
     (async () => {
       try {
         const result = await getUserConversations(supabase);
-        if (!cancelled) setConversations(result);
+        if (!cancelled) {
+          // sort newest first
+          result.sort((a, b) => {
+            const at = a.latest_message?.sent_at || a.created_at || "";
+            const bt = b.latest_message?.sent_at || b.created_at || "";
+            return bt.localeCompare(at);
+          });
+          setConversations(result);
+        }
       } catch (e) {
         console.error("Failed to load conversations:", e);
       }
@@ -42,7 +50,7 @@ export default function ConversationList({
     };
   }, [supabase]);
 
-  // optional: keep list fresh on new messages/conversations
+  // live updates
   useEffect(() => {
     const channel = supabase
       .channel("ai-conversation-list")
@@ -50,18 +58,27 @@ export default function ConversationList({
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "messages" },
         async () => {
-          // lightweight refetch; you can optimize to patch local state if needed
           const result = await getUserConversations(supabase);
+          result.sort((a, b) => {
+            const at = a.latest_message?.sent_at || a.created_at || "";
+            const bt = b.latest_message?.sent_at || b.created_at || "";
+            return bt.localeCompare(at);
+          });
           setConversations(result);
-        }
+        },
       )
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "conversations" },
         async () => {
           const result = await getUserConversations(supabase);
+          result.sort((a, b) => {
+            const at = a.latest_message?.sent_at || a.created_at || "";
+            const bt = b.latest_message?.sent_at || b.created_at || "";
+            return bt.localeCompare(at);
+          });
           setConversations(result);
-        }
+        },
       )
       .subscribe();
 
@@ -79,15 +96,16 @@ export default function ConversationList({
           className={clsx(
             "px-3 py-2 cursor-pointer rounded",
             conv.id === activeConversationId
-              ? "bg-gray-200 font-bold"
-              : "hover:bg-neutral-800"
+              ? "bg-neutral-800 font-bold"
+              : "hover:bg-neutral-900",
           )}
           onClick={() => setActiveConversationId(conv.id)}
         >
-          <div className="flex justify-between items-center">
-            <div className="text-sm">
-              {conv.context_type ? `${conv.context_type}: ` : ""}
-              {conv.id.slice(0, 8)}
+          <div className="flex justify-between items-center gap-2">
+            <div className="text-sm truncate">
+              {conv.context_type
+                ? `${conv.context_type}: ${conv.id.slice(0, 6)}`
+                : `Conversation ${conv.id.slice(0, 6)}`}
               <div className="text-xs text-gray-400 truncate max-w-[180px]">
                 {conv.latest_message?.content || "No messages yet"}
               </div>
