@@ -5,7 +5,8 @@ import {
   createAdminSupabase,
 } from "@/features/shared/lib/supabase/server";
 
-export const dynamic = "force-dynamic"; // ← make sure we don’t get a stale, unauth’d response
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const MAX_ROWS = 200;
 
@@ -14,6 +15,7 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q")?.trim() ?? "";
 
+  // who is calling?
   const {
     data: { user },
     error: authErr,
@@ -23,6 +25,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
+  // their profile (RLS-safe)
   const { data: me, error: meErr } = await supabaseUser
     .from("profiles")
     .select("id, shop_id")
@@ -44,6 +47,7 @@ export async function GET(req: Request) {
     .order("full_name", { ascending: true })
     .limit(MAX_ROWS);
 
+  // only filter if user actually has a shop
   if (me.shop_id) {
     query = query.eq("shop_id", me.shop_id);
   }
