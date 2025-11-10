@@ -1,41 +1,68 @@
-//// app/api/chat/users/route.ts
+// app/api/chat/users/route.ts
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import {
+  createServerSupabaseRoute,
+  createAdminSupabase,
+} from "@/features/shared/lib/supabase/server";
 
-export async function GET() {
-  const supabase = createServerSupabaseRoute();
+const MAX_ROWS = 200;
 
-  // who is calling?
+export async function GET(req: Request) {
+  const supabaseUser = createServerSupabaseRoute();
+  const { searchParams } = new URL(req.url);
+  const q = searchParams.get("q")?.trim() ?? "";
+
+  // 1) who is calling?
   const {
     data: { user },
     error: authErr,
-  } = await supabase.auth.getUser();
+  } = await supabaseUser.auth.getUser();
 
   if (authErr || !user) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  // get their profile to know shop_id
-  const { data: me, error: meErr } = await supabase
+  // 2) get THEIR profile (RLS-safe)
+  const { data: me, error: meErr } = await supabaseUser
     .from("profiles")
     .select("id, shop_id")
     .eq("id", user.id)
     .maybeSingle();
 
   if (meErr || !me) {
-    return NextResponse.json({ error: "Profile not found" }, { status: 403 });
+    return NextResponse.json(
+      { error: "Profile not found for current user" },
+      { status: 403 },
+    );
   }
 
-  // list users in same shop
-  const { data: rows, error: listErr } = await supabase
+  // 3) now use ADMIN client to pull everyone in same shop
+  const admin = createAdminSupabase();
+
+  let query = admin
     .from("profiles")
-    .select("id, full_name, role, email") // 👈 include email for the modal
-    .eq("shop_id", me.shop_id)
-    .order("full_name", { ascending: true });
+    .select("id, full_name, role, email, shop_id")
+    .order("full_name", { ascending: true })
+    .limit(MAX_ROWS);
+
+  if (me.shop_id) {
+    query = query.eq("shop_id", me.shop_id);
+  }
+
+  if (q) {
+    query = query.or(
+      `full_name.ilike.%${q}%,email.ilike.%${q}%,role.ilike.%${q}%`,
+    );
+  }
+
+  const { data: users, error: listErr } = await query;
 
   if (listErr) {
-    return NextResponse.json({ error: listErr.message }, { status: 500 });
+    return NextResponse.json(
+      { error: listErr.message ?? "Failed to load users" },
+      { status: 500 },
+    );
   }
 
-  return NextResponse.json({ users: rows ?? [] });
+  return NextResponse.json({ users: users ?? [] });
 }
