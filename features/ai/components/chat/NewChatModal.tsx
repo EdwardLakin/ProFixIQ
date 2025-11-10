@@ -1,4 +1,4 @@
-// features/ai/components/chat/NewChatModal.tsx (or wherever you keep it)
+// features/ai/components/chat/NewChatModal.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -27,7 +27,8 @@ type Props = {
   isOpen: boolean;
   onClose: () => void;
   onCreated?: (id: string) => void;
-  created_by: string;
+  /** may be empty if called from AppShell before session resolves */
+  created_by?: string;
   context_type?: string | null;
   context_id?: string | null;
 };
@@ -50,6 +51,7 @@ export default function NewChatModal({
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
 
+  // load list of users
   useEffect(() => {
     if (!isOpen) return;
 
@@ -58,7 +60,7 @@ export default function NewChatModal({
       setApiError(null);
 
       try {
-        // IMPORTANT: send cookies
+        // try shop-scoped API first
         const res = await fetch("/api/chat/users", {
           method: "GET",
           credentials: "include",
@@ -66,7 +68,6 @@ export default function NewChatModal({
 
         const json = await res.json().catch(() => ({} as any));
         if (!res.ok) {
-          // e.g. { error: "Not authenticated" }
           throw new Error(json?.error || `HTTP ${res.status}`);
         }
 
@@ -80,11 +81,12 @@ export default function NewChatModal({
 
         setUsers(list ?? []);
       } catch (err) {
-        // server route failed → fall back to RLS-limited client query
-        console.warn("[NewChatModal] API users fallback:", err);
-        setApiError(err instanceof Error ? err.message : "Could not load from /api/chat/users");
+        console.warn("[NewChatModal] /api/chat/users failed:", err);
+        setApiError(
+          err instanceof Error ? err.message : "Could not load /api/chat/users",
+        );
 
-        // first, try to at least fetch *your* profile
+        // fallback: at least show ME
         const {
           data: { user },
         } = await supabase.auth.getUser();
@@ -99,7 +101,6 @@ export default function NewChatModal({
           if (me) {
             setUsers([me as UserRow]);
           } else {
-            // last resort: empty list
             setUsers([]);
           }
         } else {
@@ -116,6 +117,7 @@ export default function NewChatModal({
     })();
   }, [isOpen, supabase]);
 
+  // filter
   const filtered = React.useMemo(() => {
     const t = search.trim().toLowerCase();
     return users.filter((u) => {
@@ -134,17 +136,37 @@ export default function NewChatModal({
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
 
+  // make sure we have a real user id before insert
+  const getCreatorId = async (): Promise<string | null> => {
+    // if parent passed a uuid-looking value, use it
+    if (created_by && created_by.length > 20) {
+      return created_by;
+    }
+    // else ask supabase
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    return user?.id ?? null;
+  };
+
   const handleCreate = async () => {
     if (selectedIds.length === 0) {
       toast.error("Pick at least one person");
       return;
     }
+
     setLoading(true);
     const convoId = uuidv4();
     try {
+      const creatorId = await getCreatorId();
+      if (!creatorId) {
+        toast.error("No authenticated user – please sign in again.");
+        return;
+      }
+
       const { error: convErr } = await supabase.from("conversations").insert({
         id: convoId,
-        created_by,
+        created_by: creatorId, // ✅ always a real uuid now
         context_type,
         context_id,
       });
@@ -164,9 +186,9 @@ export default function NewChatModal({
       toast.success("Chat created");
       onCreated?.(convoId);
       onClose();
-    } catch (e) {
-      console.error(e);
-      toast.error("Could not create chat");
+    } catch (e: any) {
+      console.error("[NewChatModal] create error:", e);
+      toast.error(e?.message ?? "Could not create chat");
     } finally {
       setLoading(false);
     }
@@ -181,7 +203,6 @@ export default function NewChatModal({
       onSubmit={handleCreate}
       submitText={loading ? "Creating…" : "Start"}
     >
-      {/* show server error if API route rejected auth */}
       {apiError ? (
         <div className="mb-2 rounded border border-red-500/40 bg-red-950/30 px-3 py-2 text-xs text-red-100">
           {apiError}
