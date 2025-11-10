@@ -12,7 +12,6 @@ import { v4 as uuidv4 } from "uuid";
 import { toast } from "sonner";
 import ModalShell from "@/features/shared/components/ModalShell";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
-// import type { Database } from "@shared/types/types/supabase"; // ← not needed right now
 
 const ROLE_OPTIONS = [
   { value: "all", label: "All roles" },
@@ -39,12 +38,6 @@ type MessageRow = {
   recipients?: string[] | null;
 };
 
-// we no longer read full conversations from the table (that was 500’ing)
-// we just keep the ids from the view
-type MyConversation = {
-  id: string;
-};
-
 type Props = {
   isOpen: boolean;
   onClose: () => void;
@@ -52,10 +45,12 @@ type Props = {
   created_by?: string;
   context_type?: string | null;
   context_id?: string | null;
+  // app shell can push a convo id here to force-open that thread
   activeConversationId?: string | null;
 };
 
-const LOCAL_KEY = "pfq-chat-last-conversation";
+const LOCAL_ACTIVE_KEY = "pfq-chat-last-conversation";
+const LOCAL_RECENT_KEY = "pfq-chat-recent-convos";
 
 export default function NewChatModal({
   isOpen,
@@ -68,7 +63,7 @@ export default function NewChatModal({
 }: Props) {
   const supabase = useMemo(() => createBrowserSupabase(), []);
 
-  // who am I
+  // current user
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
 
@@ -87,12 +82,43 @@ export default function NewChatModal({
   const [sending, setSending] = useState(false);
   const [sendText, setSendText] = useState("");
 
-  // convo switcher (just ids)
-  const [myConversations, setMyConversations] = useState<MyConversation[]>([]);
+  // client-side dropdown (just ids)
+  const [recentConversationIds, setRecentConversationIds] = useState<string[]>([]);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  // load current user & role
+  // ---- helpers to touch localStorage --------------------------------
+  const loadRecentFromStorage = useCallback(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = window.localStorage.getItem(LOCAL_RECENT_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed as string[];
+      return [];
+    } catch {
+      return [];
+    }
+  }, []);
+
+  const saveRecentToStorage = useCallback((ids: string[]) => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(LOCAL_RECENT_KEY, JSON.stringify(ids));
+  }, []);
+
+  const upsertRecent = useCallback(
+    (id: string) => {
+      if (!id) return;
+      setRecentConversationIds((prev) => {
+        const next = [id, ...prev.filter((x) => x !== id)].slice(0, 25);
+        saveRecentToStorage(next);
+        return next;
+      });
+    },
+    [saveRecentToStorage],
+  );
+
+  // ---- load current user & role -------------------------------------
   useEffect(() => {
     (async () => {
       const {
@@ -110,27 +136,15 @@ export default function NewChatModal({
     })();
   }, [supabase]);
 
-  // fetch convo ids from the SAFE VIEW (no more 500)
-  const loadMyConversations = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("v_my_conversation_ids")
-      .select("conversation_id");
-    if (error) {
-      console.warn("[NewChatModal] v_my_conversation_ids failed:", error);
-      return;
-    }
-    const list: MyConversation[] =
-      data?.map((row: { conversation_id: string }) => ({
-        id: row.conversation_id,
-      })) ?? [];
-    setMyConversations(list);
-  }, [supabase]);
-
-  // when modal opens
+  // ---- when modal opens ---------------------------------------------
   useEffect(() => {
     if (!isOpen) return;
 
     (async () => {
+      // load recent convo ids from localStorage
+      const recent = loadRecentFromStorage();
+      setRecentConversationIds(recent);
+
       setLoadingUsers(true);
       setApiError(null);
 
@@ -181,23 +195,22 @@ export default function NewChatModal({
       // restore last convo
       const stored =
         typeof window !== "undefined"
-          ? window.localStorage.getItem(LOCAL_KEY)
+          ? window.localStorage.getItem(LOCAL_ACTIVE_KEY)
           : null;
 
       if (forcedConversationId) {
         setActiveConvoId(forcedConversationId);
+        upsertRecent(forcedConversationId);
       } else if (stored) {
         setActiveConvoId(stored);
+        upsertRecent(stored);
       } else {
         setActiveConvoId(null);
       }
-
-      // load ids from view
-      await loadMyConversations();
     })();
-  }, [isOpen, supabase, forcedConversationId, loadMyConversations]);
+  }, [isOpen, supabase, forcedConversationId, loadRecentFromStorage, upsertRecent]);
 
-  // auto role filter
+  // ---- auto role filter when opened in context ----------------------
   useEffect(() => {
     if (!isOpen) return;
     if (!context_type) return;
@@ -214,7 +227,7 @@ export default function NewChatModal({
     }
   }, [isOpen, context_type, currentUserRole]);
 
-  // load messages for active conversation
+  // ---- load messages for active convo -------------------------------
   useEffect(() => {
     if (!isOpen) return;
     if (!activeConvoId) {
@@ -236,8 +249,10 @@ export default function NewChatModal({
         if (!cancelled) {
           setMessages(data);
           if (typeof window !== "undefined") {
-            window.localStorage.setItem(LOCAL_KEY, activeConvoId);
+            window.localStorage.setItem(LOCAL_ACTIVE_KEY, activeConvoId);
           }
+          // make sure this id is in recent
+          upsertRecent(activeConvoId);
         }
       } catch (e) {
         console.error("[NewChatModal] get-messages failed:", e);
@@ -250,9 +265,9 @@ export default function NewChatModal({
     return () => {
       cancelled = true;
     };
-  }, [activeConvoId, isOpen]);
+  }, [activeConvoId, isOpen, upsertRecent]);
 
-  // realtime
+  // ---- realtime ------------------------------------------------------
   useEffect(() => {
     if (!activeConvoId) return;
     const channel = supabase
@@ -283,7 +298,7 @@ export default function NewChatModal({
   }, [messages]);
 
   // filtered users
-  const filtered = useMemo(() => {
+  const filtered = React.useMemo(() => {
     const t = search.trim().toLowerCase();
     return users.filter((u) => {
       if (role !== "all" && (u.role ?? "") !== role) return false;
@@ -349,12 +364,10 @@ export default function NewChatModal({
 
       setActiveConvoId(newId);
       if (typeof window !== "undefined") {
-        window.localStorage.setItem(LOCAL_KEY, newId);
+        window.localStorage.setItem(LOCAL_ACTIVE_KEY, newId);
       }
       onCreated?.(newId);
-
-      // refresh ids
-      void loadMyConversations();
+      upsertRecent(newId);
 
       return newId;
     },
@@ -366,7 +379,7 @@ export default function NewChatModal({
       context_type,
       context_id,
       onCreated,
-      loadMyConversations,
+      upsertRecent,
     ],
   );
 
@@ -417,7 +430,6 @@ export default function NewChatModal({
     }
   }, [sendText, sending, selectedIds, ensureConversation, currentUserId]);
 
-  // render
   return (
     <ModalShell
       isOpen={isOpen}
@@ -518,16 +530,16 @@ export default function NewChatModal({
                   ? "Conversation"
                   : "New conversation (not saved until you send)"}
               </div>
-              {myConversations.length > 0 ? (
+              {recentConversationIds.length > 0 ? (
                 <select
                   value={activeConvoId ?? ""}
                   onChange={(e) => setActiveConvoId(e.target.value || null)}
                   className="text-[10px] bg-neutral-900 border border-neutral-700 rounded px-1 py-1 text-neutral-200"
                 >
                   <option value="">Select conversation…</option>
-                  {myConversations.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.id.slice(0, 8)}
+                  {recentConversationIds.map((id) => (
+                    <option key={id} value={id}>
+                      {id.slice(0, 8)}
                     </option>
                   ))}
                 </select>
@@ -540,7 +552,6 @@ export default function NewChatModal({
             ) : null}
           </div>
 
-          {/* messages */}
           <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
             {messagesLoading ? (
               <div className="text-center text-neutral-500 text-xs py-6">
