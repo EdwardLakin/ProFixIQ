@@ -1,4 +1,3 @@
-// features/chat/components/ChatWindow.tsx
 "use client";
 
 import {
@@ -17,7 +16,6 @@ type Message = Database["public"]["Tables"]["messages"]["Row"];
 type ChatWindowProps = {
   conversationId: string;
   userId: string;
-  /** optional: show a small header title */
   title?: string;
 };
 
@@ -39,35 +37,30 @@ export default function ChatWindow({
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
+  const fetchMessages = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/chat/get-messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as Message[];
+      setMessages(data);
+    } catch (err) {
+      console.error("Fetch messages failed:", err);
+      setError("Couldn't load messages.");
+    } finally {
+      setLoading(false);
+    }
+  }, [conversationId]);
+
   // initial fetch
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await fetch("/api/chat/get-messages", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ conversationId }),
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data: Message[] = await res.json();
-        if (!cancelled) {
-          setMessages(data);
-        }
-      } catch (err) {
-        console.error("Fetch messages failed:", err);
-        if (!cancelled) setError("Couldn't load messages.");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [conversationId]);
+    void fetchMessages();
+  }, [fetchMessages]);
 
   // realtime inserts
   useEffect(() => {
@@ -113,9 +106,8 @@ export default function ChatWindow({
       sender_id: userId,
       content,
       sent_at: new Date().toISOString(),
-      // keep this if/when you add recipients[]
-      recipients: [],
-    } as unknown as Message;
+      // keep the rest as-is
+    } as Message;
 
     setMessages((prev) => [...prev, optimistic]);
     setNewMessage("");
@@ -133,19 +125,22 @@ export default function ChatWindow({
           recipients: [],
         }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      // realtime will deliver the real row
+      if (!res.ok) {
+        const text = await res.text();
+        console.error("send failed:", text);
+        setError("Message failed to send.");
+        // try to pull the real list once more in case the insert actually happened
+        void fetchMessages();
+      }
+      // otherwise realtime will add the real row
     } catch (err) {
       console.error("send failed:", err);
-      // pull back optimistic message
-      setMessages((prev) => prev.filter((m) => m.id !== tempId));
       setError("Message failed to send.");
-      setNewMessage(content);
-      inputRef.current?.focus();
+      // don't remove the optimistic bubble
     } finally {
       setSending(false);
     }
-  }, [conversationId, newMessage, sending, userId]);
+  }, [conversationId, newMessage, sending, userId, fetchMessages]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -154,7 +149,7 @@ export default function ChatWindow({
     }
   };
 
-  // group messages by day + sender
+  // group messages by day + sender (unchanged)
   const grouped = useMemo(() => {
     const byDay: Array<
       | { type: "day"; label: string }
@@ -186,7 +181,6 @@ export default function ChatWindow({
 
   return (
     <div className="flex h-full flex-col rounded border border-neutral-800 bg-neutral-950 text-white">
-      {/* header */}
       <div className="border-b border-neutral-800 px-4 py-3 flex items-center justify-between">
         <div className="text-sm font-medium text-neutral-200">{title}</div>
         {error ? (
@@ -196,7 +190,6 @@ export default function ChatWindow({
         ) : null}
       </div>
 
-      {/* messages */}
       <div className="flex-1 overflow-y-auto px-3 py-4 space-y-2">
         {loading ? (
           <div className="text-center text-neutral-500 text-sm py-6">
@@ -267,7 +260,6 @@ export default function ChatWindow({
         <div ref={bottomRef} />
       </div>
 
-      {/* composer */}
       <div className="border-t border-neutral-800 p-3 flex gap-2 items-end">
         <textarea
           ref={inputRef}

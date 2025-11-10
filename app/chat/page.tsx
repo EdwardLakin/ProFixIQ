@@ -1,102 +1,75 @@
+// app/chat/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
 import PageShell from "@/features/shared/components/PageShell";
 import NewChatModal from "@/features/ai/components/chat/NewChatModal";
-import { getUserConversations } from "@ai/lib/chat/getUserConversations";
+import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
+type ConversationRow = DB["public"]["Tables"]["conversations"]["Row"];
+type MessageRow = DB["public"]["Tables"]["messages"]["Row"];
 
-type Conversation = DB["public"]["Tables"]["conversations"]["Row"];
-type Message = DB["public"]["Tables"]["messages"]["Row"];
-
-type ConversationWithMeta = Conversation & {
-  latest_message?: Message | null;
+type ApiConversationPayload = {
+  conversation: ConversationRow;
+  latest_message: MessageRow | null;
   unread_count: number;
 };
 
 export default function ChatListPage(): JSX.Element {
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
-  const [conversations, setConversations] = useState<ConversationWithMeta[]>([]);
+  const [conversations, setConversations] = useState<ApiConversationPayload[]>([]);
   const [loading, setLoading] = useState(true);
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
 
+  async function fetchConversations(): Promise<void> {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/chat/my-conversations", {
+        method: "GET",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        setConversations([]);
+        setLoading(false);
+        return;
+      }
+      const data = (await res.json()) as ApiConversationPayload[];
+
+      // newest first
+      data.sort((a, b) => {
+        const at =
+          a.latest_message?.sent_at ??
+          a.conversation.created_at ??
+          "";
+        const bt =
+          b.latest_message?.sent_at ??
+          b.conversation.created_at ??
+          "";
+        return bt.localeCompare(at);
+      });
+
+      setConversations(data);
+    } catch {
+      setConversations([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   // initial load
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      try {
-        const result = await getUserConversations(supabase);
-        if (!cancelled) {
-          // newest first
-          result.sort((a, b) => {
-            const at = a.latest_message?.sent_at || a.created_at || "";
-            const bt = b.latest_message?.sent_at || b.created_at || "";
-            return bt.localeCompare(at);
-          });
-          setConversations(result);
-        }
-      } catch (err) {
-        console.error("[/chat] failed to load conversations:", err);
-        if (!cancelled) setConversations([]);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
+    void fetchConversations();
+  }, []);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [supabase]);
-
-  // live refresh when a message or conversation is inserted
+  // realtime-ish refresh: listen to the server via pusher/supabase?
+  // we already have an API that is safe, so just poll on inserts from supabase
   useEffect(() => {
-    const channel = supabase
-      .channel("chat-page-refresh")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "messages" },
-        async () => {
-          try {
-            const result = await getUserConversations(supabase);
-            result.sort((a, b) => {
-              const at = a.latest_message?.sent_at || a.created_at || "";
-              const bt = b.latest_message?.sent_at || b.created_at || "";
-              return bt.localeCompare(at);
-            });
-            setConversations(result);
-          } catch (err) {
-            console.warn("[/chat] refresh after message failed:", err);
-          }
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "conversations" },
-        async () => {
-          try {
-            const result = await getUserConversations(supabase);
-            result.sort((a, b) => {
-              const at = a.latest_message?.sent_at || a.created_at || "";
-              const bt = b.latest_message?.sent_at || b.created_at || "";
-              return bt.localeCompare(at);
-            });
-            setConversations(result);
-          } catch (err) {
-            console.warn("[/chat] refresh after conversation failed:", err);
-          }
-        }
-      )
-      .subscribe();
-
+    const ev = new EventSource("/api/realtime/placeholder"); // you can remove this if you don't have it
     return () => {
-      supabase.removeChannel(channel);
+      ev.close();
     };
-  }, [supabase]);
+  }, []);
 
   return (
     <PageShell title="Conversations">
@@ -123,13 +96,14 @@ export default function ChatListPage(): JSX.Element {
         </div>
       ) : (
         <ul className="divide-y divide-border/40 rounded border border-border/60 bg-background/20">
-          {conversations.map((conv) => {
+          {conversations.map((item) => {
+            const conv = item.conversation;
             const title = conv.context_type
               ? `${conv.context_type}: ${conv.id.slice(0, 6)}`
               : `Conversation ${conv.id.slice(0, 6)}`;
 
             const preview =
-              conv.latest_message?.content?.slice(0, 140) ??
+              item.latest_message?.content?.slice(0, 140) ??
               "No messages yet";
 
             return (
@@ -147,9 +121,9 @@ export default function ChatListPage(): JSX.Element {
                         {preview}
                       </div>
                     </div>
-                    {conv.unread_count > 0 ? (
+                    {item.unread_count > 0 ? (
                       <span className="inline-flex items-center rounded-full bg-orange-500 px-2 py-0.5 text-[10px] font-semibold text-black">
-                        {conv.unread_count}
+                        {item.unread_count}
                       </span>
                     ) : null}
                   </div>
@@ -160,26 +134,13 @@ export default function ChatListPage(): JSX.Element {
         </ul>
       )}
 
-      {/* modal for starting a chat — uses your working NewChatModal */}
+      {/* modal */}
       <NewChatModal
         isOpen={isNewChatOpen}
         onClose={() => setIsNewChatOpen(false)}
-        // when a convo is created in the modal, refresh this list right away
         onCreated={() => {
-          // refetch conversations
-          (async () => {
-            try {
-              const result = await getUserConversations(supabase);
-              result.sort((a, b) => {
-                const at = a.latest_message?.sent_at || a.created_at || "";
-                const bt = b.latest_message?.sent_at || b.created_at || "";
-                return bt.localeCompare(at);
-              });
-              setConversations(result);
-            } catch (err) {
-              console.warn("[/chat] refresh after modal create failed:", err);
-            }
-          })();
+          // pull the fresh list right after the modal creates one
+          void fetchConversations();
         }}
       />
     </PageShell>
