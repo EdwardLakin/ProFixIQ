@@ -1,3 +1,4 @@
+// features/ai/components/chat/NewChatModal.tsx (or wherever you keep it)
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -47,19 +48,27 @@ export default function NewChatModal({
   const [role, setRole] = useState<"all" | string>("all");
   const [loading, setLoading] = useState(false);
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
 
-  // 🔸 Load shop-scoped users via API route
   useEffect(() => {
     if (!isOpen) return;
 
     (async () => {
       setLoadingUsers(true);
-      try {
-        const res = await fetch("/api/admin/users", { cache: "no-store" });
-        const json = await res.json();
-        console.log("[ChatModal] fetched:", res.status, json);
+      setApiError(null);
 
-        if (!res.ok || !json) throw new Error(json?.error || "Failed");
+      try {
+        // IMPORTANT: send cookies
+        const res = await fetch("/api/chat/users", {
+          method: "GET",
+          credentials: "include",
+        });
+
+        const json = await res.json().catch(() => ({} as any));
+        if (!res.ok) {
+          // e.g. { error: "Not authenticated" }
+          throw new Error(json?.error || `HTTP ${res.status}`);
+        }
 
         const list: UserRow[] = Array.isArray(json)
           ? json
@@ -71,12 +80,32 @@ export default function NewChatModal({
 
         setUsers(list ?? []);
       } catch (err) {
-        console.error("[ChatModal] Fallback due to:", err);
-        const { data } = await supabase
-          .from("profiles")
-          .select("id, full_name, role, email")
-          .order("full_name", { ascending: true });
-        setUsers((data as UserRow[]) ?? []);
+        // server route failed → fall back to RLS-limited client query
+        console.warn("[NewChatModal] API users fallback:", err);
+        setApiError(err instanceof Error ? err.message : "Could not load from /api/chat/users");
+
+        // first, try to at least fetch *your* profile
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (user) {
+          const { data: me } = await supabase
+            .from("profiles")
+            .select("id, full_name, role, email")
+            .eq("id", user.id)
+            .maybeSingle();
+
+          if (me) {
+            setUsers([me as UserRow]);
+          } else {
+            // last resort: empty list
+            setUsers([]);
+          }
+        } else {
+          setUsers([]);
+        }
+
         toast.error("Showing limited user list.");
       } finally {
         setLoadingUsers(false);
@@ -87,8 +116,7 @@ export default function NewChatModal({
     })();
   }, [isOpen, supabase]);
 
-  // 🔹 Filter logic
-  const filtered = useMemo(() => {
+  const filtered = React.useMemo(() => {
     const t = search.trim().toLowerCase();
     return users.filter((u) => {
       if (role !== "all" && (u.role ?? "") !== role) return false;
@@ -101,22 +129,18 @@ export default function NewChatModal({
     });
   }, [users, search, role]);
 
-  // 🔹 Select toggles
   const toggle = (id: string) =>
     setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
 
-  // 🔹 Create conversation
   const handleCreate = async () => {
     if (selectedIds.length === 0) {
       toast.error("Pick at least one person");
       return;
     }
-
     setLoading(true);
     const convoId = uuidv4();
-
     try {
       const { error: convErr } = await supabase.from("conversations").insert({
         id: convoId,
@@ -135,14 +159,13 @@ export default function NewChatModal({
       const { error: partErr } = await supabase
         .from("conversation_participants")
         .insert(rows);
-
       if (partErr) throw partErr;
 
       toast.success("Chat created");
       onCreated?.(convoId);
       onClose();
     } catch (e) {
-      console.error("[ChatModal] create error:", e);
+      console.error(e);
       toast.error("Could not create chat");
     } finally {
       setLoading(false);
@@ -158,6 +181,13 @@ export default function NewChatModal({
       onSubmit={handleCreate}
       submitText={loading ? "Creating…" : "Start"}
     >
+      {/* show server error if API route rejected auth */}
+      {apiError ? (
+        <div className="mb-2 rounded border border-red-500/40 bg-red-950/30 px-3 py-2 text-xs text-red-100">
+          {apiError}
+        </div>
+      ) : null}
+
       <HeaderBar
         search={search}
         setSearch={setSearch}
@@ -179,7 +209,6 @@ export default function NewChatModal({
   );
 }
 
-// 🔸 HeaderBar component
 function HeaderBar({
   search,
   setSearch,
@@ -214,7 +243,6 @@ function HeaderBar({
   );
 }
 
-// 🔸 UserList component
 function UserList({
   loading,
   users,
@@ -257,9 +285,7 @@ function UserList({
                   onChange={() => onToggle(u.id)}
                 />
                 <div className="min-w-0">
-                  <div className="truncate">
-                    {u.full_name ?? "(no name)"}
-                  </div>
+                  <div className="truncate">{u.full_name ?? "(no name)"}</div>
                   <div className="truncate text-xs text-neutral-400">
                     {u.role ?? "—"}
                     {u.email ? ` • ${u.email}` : ""}
