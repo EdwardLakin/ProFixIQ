@@ -45,7 +45,6 @@ type Props = {
   created_by?: string;
   context_type?: string | null;
   context_id?: string | null;
-  // app shell can push a convo id here to force-open that thread
   activeConversationId?: string | null;
 };
 
@@ -82,20 +81,37 @@ export default function NewChatModal({
   const [sending, setSending] = useState(false);
   const [sendText, setSendText] = useState("");
 
-  // client-side dropdown (just ids)
+  // client-side recent list
   const [recentConversationIds, setRecentConversationIds] = useState<string[]>([]);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  // ---- helpers to touch localStorage --------------------------------
+  // load current user & role
+  useEffect(() => {
+    (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        setCurrentUserId(user.id);
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", user.id)
+          .maybeSingle();
+        setCurrentUserRole(profile?.role ?? null);
+      }
+    })();
+  }, [supabase]);
+
+  // helpers for localStorage
   const loadRecentFromStorage = useCallback(() => {
     if (typeof window === "undefined") return [];
     try {
       const raw = window.localStorage.getItem(LOCAL_RECENT_KEY);
       if (!raw) return [];
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed as string[];
-      return [];
+      return Array.isArray(parsed) ? (parsed as string[]) : [];
     } catch {
       return [];
     }
@@ -118,81 +134,78 @@ export default function NewChatModal({
     [saveRecentToStorage],
   );
 
-  // ---- load current user & role -------------------------------------
-  useEffect(() => {
-    (async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (user) {
-        setCurrentUserId(user.id);
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", user.id)
-          .maybeSingle();
-        setCurrentUserRole(profile?.role ?? null);
-      }
-    })();
-  }, [supabase]);
-
-  // ---- when modal opens ---------------------------------------------
+  // when modal opens
   useEffect(() => {
     if (!isOpen) return;
 
     (async () => {
-      // load recent convo ids from localStorage
+      // load recent ids
       const recent = loadRecentFromStorage();
       setRecentConversationIds(recent);
 
       setLoadingUsers(true);
       setApiError(null);
 
+      // 1) try the Next.js route (best case, shop-scoped)
+      let gotUsers = false;
       try {
         const res = await fetch("/api/chat/users", {
           method: "GET",
           credentials: "include",
         });
         const json = await res.json().catch(() => ({} as any));
-        if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
-
-        const list: UserRow[] = Array.isArray(json)
-          ? json
-          : Array.isArray(json.users)
-          ? json.users
-          : Array.isArray(json.data)
-          ? json.data
-          : [];
-
-        setUsers(list ?? []);
-      } catch (err) {
-        console.warn("[NewChatModal] /api/chat/users failed:", err);
-        setApiError(
-          err instanceof Error ? err.message : "Could not load /api/chat/users",
-        );
-
-        // fallback: just me
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (user) {
-          const { data: me } = await supabase
-            .from("profiles")
-            .select("id, full_name, role, email")
-            .eq("id", user.id)
-            .maybeSingle();
-          setUsers(me ? [me as UserRow] : []);
-        } else {
-          setUsers([]);
+        if (res.ok) {
+          const list: UserRow[] = Array.isArray(json)
+            ? json
+            : Array.isArray(json.users)
+            ? json.users
+            : Array.isArray(json.data)
+            ? json.data
+            : [];
+          setUsers(list ?? []);
+          gotUsers = true;
+        } else if (res.status !== 401) {
+          // real error (500 etc.)
+          setApiError(json?.error || `HTTP ${res.status}`);
         }
-
-        toast.error("Showing limited user list.");
-      } finally {
-        setLoadingUsers(false);
-        setSearch("");
+      } catch (err) {
+        // ignore here – we'll fall back
+        console.warn("[NewChatModal] /api/chat/users failed, trying client:", err);
       }
 
-      // restore last convo
+      // 2) fallback: client-side Supabase
+      if (!gotUsers) {
+        try {
+          const { data: profiles, error } = await supabase
+            .from("profiles")
+            .select("id, full_name, role, email")
+            .order("full_name", { ascending: true })
+            .limit(200);
+
+          if (error) {
+            console.warn("[NewChatModal] client profiles failed:", error);
+            setApiError("Could not load users.");
+            setUsers([]);
+          } else {
+            setUsers(
+              (profiles ?? []).map((p) => ({
+                id: p.id,
+                full_name: p.full_name,
+                role: p.role,
+                email: p.email,
+              })),
+            );
+            // we managed to load users → clear banner
+            setApiError(null);
+          }
+        } catch (err) {
+          console.warn("[NewChatModal] client profiles threw:", err);
+          setApiError("Could not load users.");
+          setUsers([]);
+        }
+      }
+
+      // restore active convo
       const stored =
         typeof window !== "undefined"
           ? window.localStorage.getItem(LOCAL_ACTIVE_KEY)
@@ -207,10 +220,13 @@ export default function NewChatModal({
       } else {
         setActiveConvoId(null);
       }
+
+      setLoadingUsers(false);
+      setSearch("");
     })();
   }, [isOpen, supabase, forcedConversationId, loadRecentFromStorage, upsertRecent]);
 
-  // ---- auto role filter when opened in context ----------------------
+  // auto-role filter when opened in context
   useEffect(() => {
     if (!isOpen) return;
     if (!context_type) return;
@@ -227,7 +243,7 @@ export default function NewChatModal({
     }
   }, [isOpen, context_type, currentUserRole]);
 
-  // ---- load messages for active convo -------------------------------
+  // load messages
   useEffect(() => {
     if (!isOpen) return;
     if (!activeConvoId) {
@@ -251,7 +267,6 @@ export default function NewChatModal({
           if (typeof window !== "undefined") {
             window.localStorage.setItem(LOCAL_ACTIVE_KEY, activeConvoId);
           }
-          // make sure this id is in recent
           upsertRecent(activeConvoId);
         }
       } catch (e) {
@@ -267,7 +282,7 @@ export default function NewChatModal({
     };
   }, [activeConvoId, isOpen, upsertRecent]);
 
-  // ---- realtime ------------------------------------------------------
+  // realtime for current convo
   useEffect(() => {
     if (!activeConvoId) return;
     const channel = supabase
@@ -292,12 +307,12 @@ export default function NewChatModal({
     };
   }, [supabase, activeConvoId]);
 
-  // scroll to bottom
+  // scroll
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // filtered users
+  // user filter
   const filtered = React.useMemo(() => {
     const t = search.trim().toLowerCase();
     return users.filter((u) => {
@@ -316,7 +331,7 @@ export default function NewChatModal({
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
 
-  // ensure conversation
+  // ensure convo
   const ensureConversation = useCallback(
     async (participantIds: string[]): Promise<string | null> => {
       if (activeConvoId) return activeConvoId;
@@ -552,6 +567,7 @@ export default function NewChatModal({
             ) : null}
           </div>
 
+          {/* messages */}
           <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
             {messagesLoading ? (
               <div className="text-center text-neutral-500 text-xs py-6">
