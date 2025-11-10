@@ -1,9 +1,17 @@
 // features/chat/components/ChatWindow.tsx
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { RealtimePostgresInsertPayload } from "@supabase/supabase-js";
+import type {
+  RealtimePostgresInsertPayload,
+} from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 
 type Message = Database["public"]["Tables"]["messages"]["Row"];
@@ -13,16 +21,29 @@ type ChatWindowProps = {
   userId: string;
 };
 
-export default function ChatWindow({ conversationId, userId }: ChatWindowProps) {
-  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
+export default function ChatWindow({
+  conversationId,
+  userId,
+}: ChatWindowProps) {
+  const supabase = useMemo(
+    () => createClientComponentClient<Database>(),
+    []
+  );
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
-  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Fetch existing messages
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // initial fetch
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      setLoading(true);
+      setError(null);
       try {
         const res = await fetch("/api/chat/get-messages", {
           method: "POST",
@@ -31,17 +52,23 @@ export default function ChatWindow({ conversationId, userId }: ChatWindowProps) 
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data: Message[] = await res.json();
-        if (!cancelled) setMessages(data);
+        if (!cancelled) {
+          setMessages(data);
+        }
       } catch (err) {
         console.error("Fetch messages failed:", err);
+        if (!cancelled) setError("Couldn't load messages.");
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     })();
+
     return () => {
       cancelled = true;
     };
   }, [conversationId]);
 
-  // Live inserts for this conversation
+  // realtime inserts
   useEffect(() => {
     const channel = supabase
       .channel(`messages-${conversationId}`)
@@ -64,14 +91,37 @@ export default function ChatWindow({ conversationId, userId }: ChatWindowProps) 
     };
   }, [supabase, conversationId]);
 
-  const handleSend = useCallback(async () => {
+  // scroll on new messages
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  // focus composer once
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const sendMessage = useCallback(async () => {
     const content = newMessage.trim();
-    if (!content) return;
+    if (!content || sending) return;
+
+    // optimistic item
+    const tempId = `temp-${Date.now()}`;
+    const optimistic: Message = {
+      id: tempId,
+      conversation_id: conversationId,
+      sender_id: userId,
+      content,
+      sent_at: new Date().toISOString(),
+      // other columns can be null
+    } as unknown as Message;
+
+    setMessages((prev) => [...prev, optimistic]);
+    setNewMessage("");
+    setSending(true);
+    setError(null);
 
     try {
-      // (optional) optimistic UI:
-      // setMessages((prev) => [...prev, { ...temp msg } as Message]);
-
       const res = await fetch("/api/chat/send-message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -81,53 +131,160 @@ export default function ChatWindow({ conversationId, userId }: ChatWindowProps) 
           content,
         }),
       });
-
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setNewMessage("");
-    } catch (error) {
-      console.error("Error sending message:", error);
+      // realtime will deliver the real row
+    } catch (err) {
+      console.error("send failed:", err);
+      // pull back optimistic message
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      setError("Message failed to send.");
+      setNewMessage(content);
+      inputRef.current?.focus();
+    } finally {
+      setSending(false);
     }
-  }, [conversationId, userId, newMessage]);
+  }, [conversationId, newMessage, sending, userId]);
 
-  // Auto-scroll to bottom on new messages
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      void sendMessage();
+    }
+  };
+
+  // group messages by day + sender
+  const grouped = useMemo(() => {
+    const byDay: Array<
+      | { type: "day"; label: string }
+      | { type: "msg"; msg: Message; isMine: boolean; showAvatar: boolean }
+    > = [];
+
+    let lastDay = "";
+    let lastSender = "";
+
+    messages.forEach((m) => {
+      const day = m.sent_at
+        ? new Date(m.sent_at).toDateString()
+        : "Unknown";
+      if (day !== lastDay) {
+        byDay.push({ type: "day", label: day });
+        lastDay = day;
+        lastSender = "";
+      }
+
+      const isMine = m.sender_id === userId;
+      const showAvatar = m.sender_id !== lastSender;
+      byDay.push({ type: "msg", msg: m, isMine, showAvatar });
+
+      lastSender = m.sender_id ?? "";
+    });
+
+    return byDay;
+  }, [messages, userId]);
 
   return (
-    <div className="flex flex-col h-full border rounded bg-neutral-900 text-white">
-      <div className="flex-1 p-4 overflow-y-auto space-y-2">
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`p-2 rounded ${
-              msg.sender_id === userId
-                ? "bg-orange-600 ml-auto text-right"
-                : "bg-gray-700 mr-auto"
-            }`}
-          >
-            <p className="text-sm break-words">{msg.content}</p>
-            <p className="text-xs text-gray-400">
-              {msg.sent_at ? new Date(msg.sent_at).toLocaleTimeString() : ""}
-            </p>
+    <div className="flex h-full flex-col rounded border border-neutral-800 bg-neutral-950 text-white">
+      {/* header (optional: could show participants here) */}
+      <div className="border-b border-neutral-800 px-4 py-3 text-sm font-medium text-neutral-200">
+        Conversation
+      </div>
+
+      {/* messages */}
+      <div className="flex-1 overflow-y-auto px-3 py-4 space-y-2">
+        {loading ? (
+          <div className="text-center text-neutral-500 text-sm py-6">
+            Loading messages…
           </div>
-        ))}
+        ) : grouped.length === 0 ? (
+          <div className="text-center text-neutral-500 text-sm py-6">
+            No messages yet. Say hi 👋
+          </div>
+        ) : (
+          grouped.map((item, idx) => {
+            if (item.type === "day") {
+              return (
+                <div key={`day-${idx}`} className="flex justify-center">
+                  <span className="rounded-full bg-neutral-900 px-3 py-1 text-[11px] text-neutral-400">
+                    {item.label}
+                  </span>
+                </div>
+              );
+            }
+
+            const { msg, isMine, showAvatar } = item;
+            const time =
+              msg.sent_at &&
+              new Date(msg.sent_at).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              });
+
+            return (
+              <div
+                key={msg.id}
+                className={`flex gap-2 ${
+                  isMine ? "justify-end" : "justify-start"
+                }`}
+              >
+                {!isMine && showAvatar ? (
+                  <div className="mt-6 h-7 w-7 rounded-full bg-neutral-700 flex items-center justify-center text-[10px] text-white/80">
+                    {/* could show initials if you have them */}
+                    U
+                  </div>
+                ) : (
+                  !isMine && <div className="w-7" />
+                )}
+
+                <div
+                  className={`max-w-[70%] rounded-md px-3 py-2 text-sm break-words ${
+                    isMine
+                      ? "bg-orange-500 text-black"
+                      : "bg-neutral-800 text-neutral-100"
+                  }`}
+                >
+                  <p>{msg.content}</p>
+                  {time ? (
+                    <p
+                      className={`mt-1 text-[10px] ${
+                        isMine ? "text-black/60" : "text-neutral-400"
+                      }`}
+                    >
+                      {time}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })
+        )}
+
         <div ref={bottomRef} />
       </div>
 
-      <div className="p-2 border-t border-gray-700 flex items-center gap-2">
-        <input
+      {/* error bar */}
+      {error ? (
+        <div className="bg-red-600/10 text-red-200 text-xs px-4 py-2 border-t border-red-600/30">
+          {error}
+        </div>
+      ) : null}
+
+      {/* composer */}
+      <div className="border-t border-neutral-800 p-3 flex gap-2 items-end">
+        <textarea
+          ref={inputRef}
           value={newMessage}
           onChange={(e) => setNewMessage(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSend()}
-          placeholder="Type a message..."
-          className="flex-1 rounded bg-neutral-800 border border-neutral-600 px-3 py-2"
+          onKeyDown={handleKeyDown}
+          rows={1}
+          placeholder="Type a message… (Enter to send, Shift+Enter for new line)"
+          className="flex-1 resize-none rounded bg-neutral-900 border border-neutral-700 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-400 focus:outline-none"
         />
         <button
-          onClick={handleSend}
-          className="bg-orange-500 px-4 py-2 rounded hover:bg-orange-600 font-semibold"
+          onClick={() => void sendMessage()}
+          disabled={sending || !newMessage.trim()}
+          className="rounded bg-orange-500 px-4 py-2 text-sm font-semibold text-black hover:bg-orange-400 disabled:opacity-50"
         >
-          Send
+          {sending ? "Sending…" : "Send"}
         </button>
       </div>
     </div>
