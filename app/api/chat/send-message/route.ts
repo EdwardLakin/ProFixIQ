@@ -10,7 +10,6 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request): Promise<NextResponse> {
   const userClient = createServerSupabaseRoute();
 
-  // who is calling
   const {
     data: { user },
   } = await userClient.auth.getUser();
@@ -40,7 +39,7 @@ export async function POST(req: Request): Promise<NextResponse> {
 
   const admin = createAdminSupabase();
 
-  // make sure conversation exists
+  // Confirm conversation exists
   const { data: convo, error: convoErr } = await admin
     .from("conversations")
     .select("id, created_by")
@@ -57,17 +56,31 @@ export async function POST(req: Request): Promise<NextResponse> {
     );
   }
 
-  // messages table no longer has chat_id, so we only insert what's real
+  // Fetch participants to determine recipients
+  const { data: participants, error: partsErr } = await admin
+    .from("conversation_participants")
+    .select("user_id")
+    .eq("conversation_id", conversationId);
+
+  if (partsErr) {
+    return NextResponse.json({ error: partsErr.message }, { status: 500 });
+  }
+
+  // Recipients are all users in conversation except the sender
+  const recipients = (participants ?? [])
+    .map((p) => p.user_id)
+    .filter((id) => id !== senderId);
+
+  // Insert message
   const now = new Date().toISOString();
   const { data: inserted, error: insertErr } = await admin
     .from("messages")
     .insert({
       conversation_id: conversationId,
       sender_id: senderId,
+      recipients,
       content,
       sent_at: now,
-      // these exist in your table according to your earlier screenshots
-      recipients: [],
       attachments: [],
       metadata: {},
     })
