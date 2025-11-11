@@ -106,7 +106,7 @@ export default function ChatWindow({
       sender_id: userId,
       content,
       sent_at: new Date().toISOString(),
-      // keep the rest as-is
+      // recipients can just be left out
     } as Message;
 
     setMessages((prev) => [...prev, optimistic]);
@@ -132,11 +132,10 @@ export default function ChatWindow({
         // try to pull the real list once more in case the insert actually happened
         void fetchMessages();
       }
-      // otherwise realtime will add the real row
+      // realtime will add the real row if it succeeded
     } catch (err) {
       console.error("send failed:", err);
       setError("Message failed to send.");
-      // don't remove the optimistic bubble
     } finally {
       setSending(false);
     }
@@ -149,7 +148,38 @@ export default function ChatWindow({
     }
   };
 
-  // group messages by day + sender (unchanged)
+  // delete a message (only own messages show the button)
+  const handleDelete = useCallback(
+    async (id: string) => {
+      // optimistic remove
+      const prev = messages;
+      const next = prev.filter((m) => m.id !== id);
+      setMessages(next);
+      setError(null);
+
+      try {
+        const res = await fetch("/api/chat/delete-message", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id }),
+        });
+        if (!res.ok) {
+          const txt = await res.text();
+          console.error("delete failed:", txt);
+          setError("Could not delete message.");
+          // restore
+          setMessages(prev);
+        }
+      } catch (err) {
+        console.error("delete failed:", err);
+        setError("Could not delete message.");
+        setMessages(prev);
+      }
+    },
+    [messages]
+  );
+
+  // group messages by day + sender
   const grouped = useMemo(() => {
     const byDay: Array<
       | { type: "day"; label: string }
@@ -181,6 +211,7 @@ export default function ChatWindow({
 
   return (
     <div className="flex h-full flex-col rounded border border-neutral-800 bg-neutral-950 text-white">
+      {/* header */}
       <div className="border-b border-neutral-800 px-4 py-3 flex items-center justify-between">
         <div className="text-sm font-medium text-neutral-200">{title}</div>
         {error ? (
@@ -190,6 +221,7 @@ export default function ChatWindow({
         ) : null}
       </div>
 
+      {/* messages */}
       <div className="flex-1 overflow-y-auto px-3 py-4 space-y-2">
         {loading ? (
           <div className="text-center text-neutral-500 text-sm py-6">
@@ -235,7 +267,7 @@ export default function ChatWindow({
                 )}
 
                 <div
-                  className={`max-w-[70%] rounded-md px-3 py-2 text-sm break-words ${
+                  className={`max-w-[70%] rounded-md px-3 py-2 text-sm break-words relative group ${
                     isMine
                       ? "bg-orange-500 text-black"
                       : "bg-neutral-800 text-neutral-100"
@@ -251,6 +283,17 @@ export default function ChatWindow({
                       {time}
                     </p>
                   ) : null}
+
+                  {/* tiny delete button on my own messages */}
+                  {isMine ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleDelete(msg.id)}
+                      className="absolute -top-2 -right-2 hidden rounded bg-neutral-950/90 px-2 py-0.5 text-[10px] text-red-200 shadow group-hover:block hover:bg-neutral-900"
+                    >
+                      Delete
+                    </button>
+                  ) : null}
                 </div>
               </div>
             );
@@ -260,6 +303,7 @@ export default function ChatWindow({
         <div ref={bottomRef} />
       </div>
 
+      {/* composer */}
       <div className="border-t border-neutral-800 p-3 flex gap-2 items-end">
         <textarea
           ref={inputRef}
