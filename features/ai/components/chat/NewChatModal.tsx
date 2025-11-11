@@ -35,7 +35,7 @@ type MessageRow = {
   sender_id: string | null;
   content: string | null;
   sent_at: string | null;
-  // client-only: who we picked — not sent to API
+  // client-only
   recipients?: string[] | null;
 };
 
@@ -260,9 +260,8 @@ export default function NewChatModal({
         const data: MessageRow[] = await res.json();
 
         if (!cancelled) {
-          // key bit: if we already have an optimistic message locally
-          // and the server still returns 0 (because insert+select raced),
-          // keep our local list instead of wiping it
+          // if we already have an optimistic bubble and server is empty,
+          // keep local ones
           if (messages.length > 0 && data.length === 0) {
             console.log(
               "[NewChatModal] server returned 0 messages, keeping optimistic ones",
@@ -289,7 +288,7 @@ export default function NewChatModal({
     return () => {
       cancelled = true;
     };
-    // include messages.length so the guard above is up-to-date
+    // include messages.length so the guard is accurate
   }, [activeConvoId, isOpen, upsertRecent, messages.length]);
 
   // realtime for current convo
@@ -340,6 +339,19 @@ export default function NewChatModal({
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
+
+  // helper to guarantee we have a user right before send
+  const getOrFetchUserId = useCallback(async () => {
+    if (currentUserId) return currentUserId;
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user) {
+      setCurrentUserId(user.id);
+      return user.id;
+    }
+    return null;
+  }, [currentUserId, supabase]);
 
   // create convo if needed
   const ensureConversation = useCallback(
@@ -414,10 +426,17 @@ export default function NewChatModal({
     if (!text) return;
     if (sending) return;
 
+    // make sure we really have a user right now
+    const actualUserId = await getOrFetchUserId();
+    if (!actualUserId) {
+      toast.error("Can't send — no authenticated user.");
+      return;
+    }
+
     const targetIds = selectedIds.length ? selectedIds : [];
 
     const convoId = await ensureConversation(targetIds);
-    if (!convoId || !currentUserId) return;
+    if (!convoId) return;
 
     setSending(true);
 
@@ -426,10 +445,10 @@ export default function NewChatModal({
     const optimistic: MessageRow = {
       id: tempId,
       conversation_id: convoId,
-      sender_id: currentUserId,
+      sender_id: actualUserId,
       content: text,
       sent_at: new Date().toISOString(),
-      recipients: targetIds.filter((id) => id !== currentUserId),
+      recipients: targetIds.filter((id) => id !== actualUserId),
     };
     setMessages((prev) => [...prev, optimistic]);
     setSendText("");
@@ -440,7 +459,7 @@ export default function NewChatModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           conversationId: convoId,
-          senderId: currentUserId,
+          senderId: actualUserId,
           content: text,
         }),
       });
@@ -455,7 +474,13 @@ export default function NewChatModal({
     } finally {
       setSending(false);
     }
-  }, [sendText, sending, selectedIds, ensureConversation, currentUserId]);
+  }, [
+    sendText,
+    sending,
+    selectedIds,
+    ensureConversation,
+    getOrFetchUserId,
+  ]);
 
   return (
     <ModalShell

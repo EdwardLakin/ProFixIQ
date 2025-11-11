@@ -54,21 +54,34 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
   }
 
-  // 2b) make sure this user belongs
+  // 2b) load participants for this convo (typed)
+  const {
+    data: participants,
+    error: partsErr,
+  } = await admin
+    .from("conversation_participants")
+    .select("*")
+    .eq("conversation_id", conversationId) as {
+    data: ParticipantRow[] | null;
+    error: { message: string } | null;
+  };
+
+  if (partsErr) {
+    return NextResponse.json({ error: partsErr.message }, { status: 500 });
+  }
+
+  const hasParticipants = (participants?.length ?? 0) > 0;
+
+  // 2c) decide if caller is allowed
   let allowed = convo.created_by === user.id;
 
   if (!allowed) {
-    const { data: participant, error: partErr } = await admin
-      .from("conversation_participants")
-      .select("id")
-      .eq("conversation_id", conversationId)
-      .eq("user_id", user.id)
-      .maybeSingle<Pick<ParticipantRow, "id">>();
-
-    if (partErr) {
-      return NextResponse.json({ error: partErr.message }, { status: 500 });
+    if (hasParticipants) {
+      allowed = (participants ?? []).some((p) => p.user_id === user.id);
+    } else {
+      // brand new convo, nobody added yet – allow the creator/caller to see it
+      allowed = true;
     }
-    allowed = Boolean(participant);
   }
 
   if (!allowed) {
