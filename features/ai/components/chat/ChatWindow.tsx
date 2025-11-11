@@ -53,12 +53,9 @@ export default function ChatWindow({
       }
       const data = (await res.json()) as Message[];
 
-      // 👇 key guard: if we already had an optimistic message
-      // and the server came back EMPTY, keep what we had
+      // if we already had an optimistic message and server is empty, keep ours
       setMessages((prev) => {
-        if (prev.length > 0 && data.length === 0) {
-          return prev;
-        }
+        if (prev.length > 0 && data.length === 0) return prev;
         return data;
       });
     } catch (err) {
@@ -73,10 +70,55 @@ export default function ChatWindow({
     void fetchMessages();
   }, [fetchMessages]);
 
-  // realtime inserts
+  /**
+   * 1) listen to *broadcast* channel that your trigger publishes to:
+   *    conversation:<id>:messages
+   */
+  useEffect(() => {
+    if (!conversationId) return;
+
+    const channel = supabase
+      .channel(`conversation:${conversationId}:messages`, {
+        config: {
+          broadcast: { self: true },
+        },
+      })
+      .on("broadcast", { event: "INSERT" }, (payload: any) => {
+        // Supabase note said: payload.record contains NEW row
+        const row = payload?.record as Message | undefined;
+        if (!row) return;
+        setMessages((prev) => {
+          // avoid accidental duplicates
+          if (prev.some((m) => m.id === row.id)) return prev;
+          return [...prev, row];
+        });
+      })
+      .on("broadcast", { event: "UPDATE" }, (payload: any) => {
+        const row = payload?.record as Message | undefined;
+        if (!row) return;
+        setMessages((prev) =>
+          prev.map((m) => (m.id === row.id ? row : m))
+        );
+      })
+      .on("broadcast", { event: "DELETE" }, (payload: any) => {
+        const row = payload?.record as Message | undefined;
+        if (!row) return;
+        setMessages((prev) => prev.filter((m) => m.id !== row.id));
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase, conversationId]);
+
+  /**
+   * 2) keep your old postgres_changes subscription as a fallback.
+   *    (useful if you ever disable the trigger.)
+   */
   useEffect(() => {
     const channel = supabase
-      .channel(`messages-${conversationId}`)
+      .channel(`messages-fallback-${conversationId}`)
       .on(
         "postgres_changes",
         {
@@ -86,7 +128,10 @@ export default function ChatWindow({
           filter: `conversation_id=eq.${conversationId}`,
         },
         (payload: RealtimePostgresInsertPayload<Message>) => {
-          setMessages((prev) => [...prev, payload.new]);
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === payload.new.id)) return prev;
+            return [...prev, payload.new];
+          });
         }
       )
       .subscribe();
@@ -115,12 +160,10 @@ export default function ChatWindow({
     const optimistic: Message = {
       id: tempId,
       conversation_id: conversationId,
-      chat_id: conversationId, // ← harmless, matches your API
+      chat_id: conversationId,
       sender_id: userId,
       content,
       sent_at: new Date().toISOString(),
-      // the other columns exist in DB but are nullable / have defaults,
-      // so we don't need to set them here
     } as Message;
 
     setMessages((prev) => [...prev, optimistic]);
@@ -143,9 +186,6 @@ export default function ChatWindow({
         const text = await res.text();
         console.error("[ChatWindow] send-message failed:", text);
         setError("Message failed to send.");
-
-        // re-sync, but our fetch has the guard now, so it won't blow away
-        // the optimistic bubble if the server is still empty
         void fetchMessages();
       }
     } catch (err) {
@@ -156,7 +196,6 @@ export default function ChatWindow({
     }
   }, [conversationId, newMessage, sending, userId, fetchMessages]);
 
-  // delete
   const deleteMessage = useCallback(
     async (id: string) => {
       const prev = messages;
@@ -219,7 +258,6 @@ export default function ChatWindow({
 
   return (
     <div className="flex h-full flex-col rounded border border-neutral-800 bg-neutral-950 text-white">
-      {/* header */}
       <div className="border-b border-neutral-800 px-4 py-3 flex items-center justify-between">
         <div className="text-sm font-medium text-neutral-200">{title}</div>
         {error ? (
@@ -229,7 +267,6 @@ export default function ChatWindow({
         ) : null}
       </div>
 
-      {/* messages */}
       <div className="flex-1 overflow-y-auto px-3 py-4 space-y-2">
         {loading ? (
           <div className="text-center text-neutral-500 text-sm py-6">
@@ -312,7 +349,6 @@ export default function ChatWindow({
         <div ref={bottomRef} />
       </div>
 
-      {/* composer */}
       <div className="border-t border-neutral-800 p-3 flex gap-2 items-end">
         <textarea
           ref={inputRef}
