@@ -15,7 +15,7 @@ type ParticipantRow =
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request): Promise<NextResponse> {
-  // 1) auth with the normal (RLS) client – this tells us who the user is
+  // 1) who is calling
   const userClient = createServerSupabaseRoute();
   const {
     data: { user },
@@ -25,10 +25,11 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const { conversationId } = (await req.json()) as {
+  const body = (await req.json().catch(() => null)) as {
     conversationId?: string;
-  };
+  } | null;
 
+  const conversationId = body?.conversationId;
   if (!conversationId) {
     return NextResponse.json(
       { error: "conversationId required" },
@@ -36,14 +37,11 @@ export async function POST(req: Request): Promise<NextResponse> {
     );
   }
 
-  // 2) use admin client to dodge “I just inserted but RLS didn't see it yet”
+  // 2) use admin so we always see fresh rows
   const admin = createAdminSupabase();
 
-  // 2a) does the conversation exist?
-  const {
-    data: convo,
-    error: convoErr,
-  } = await admin
+  // 2a) make sure the conversation exists
+  const { data: convo, error: convoErr } = await admin
     .from("conversations")
     .select("*")
     .eq("id", conversationId)
@@ -56,14 +54,11 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
   }
 
-  // 2b) is this user allowed to see it? creator or participant
+  // 2b) make sure this user belongs
   let allowed = convo.created_by === user.id;
 
   if (!allowed) {
-    const {
-      data: participant,
-      error: partErr,
-    } = await admin
+    const { data: participant, error: partErr } = await admin
       .from("conversation_participants")
       .select("id")
       .eq("conversation_id", conversationId)
@@ -83,8 +78,8 @@ export async function POST(req: Request): Promise<NextResponse> {
     );
   }
 
-  // 3) finally get the messages (both new `conversation_id` and legacy `chat_id`)
-  const { data, error } = await admin
+  // 3) fetch messages — support both new and legacy columns
+  const { data: messages, error: msgErr } = await admin
     .from("messages")
     .select("*")
     .or(
@@ -92,9 +87,9 @@ export async function POST(req: Request): Promise<NextResponse> {
     )
     .order("created_at", { ascending: true });
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (msgErr) {
+    return NextResponse.json({ error: msgErr.message }, { status: 500 });
   }
 
-  return NextResponse.json<MessageRow[]>(data ?? []);
+  return NextResponse.json<MessageRow[]>(messages ?? []);
 }

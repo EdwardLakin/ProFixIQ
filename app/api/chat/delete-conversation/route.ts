@@ -1,54 +1,70 @@
+// app/api/chat/delete-conversation/route.ts
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import {
+  createServerSupabaseRoute,
+  createAdminSupabase,
+} from "@/features/shared/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(req: Request): Promise<NextResponse> {
-  const supabase = createServerSupabaseRoute();
-
-  // 1) require auth
+export async function POST(req: Request) {
+  const userClient = createServerSupabaseRoute();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await userClient.auth.getUser();
+
   if (!user) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  // 2) read body
-  const { id } = (await req.json().catch(() => ({}))) as { id?: string };
+  const { id } = (await req.json()) as { id?: string };
   if (!id) {
-    return NextResponse.json(
-      { error: "Conversation ID required" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "id required" }, { status: 400 });
   }
 
-  // 3) verify ownership (only creator can delete)
-  const { data: convo, error } = await supabase
+  const admin = createAdminSupabase();
+
+  // make sure the convo exists and user is allowed
+  const { data: convo, error: convoErr } = await admin
     .from("conversations")
-    .select("id, created_by")
+    .select("*")
     .eq("id", id)
     .maybeSingle();
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (convoErr) {
+    return NextResponse.json({ error: convoErr.message }, { status: 500 });
   }
   if (!convo) {
-    return NextResponse.json(
-      { error: "Conversation not found" },
-      { status: 404 },
-    );
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+
+  // only creator can delete, adjust if you want participants too
   if (convo.created_by !== user.id) {
-    return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+    return NextResponse.json({ error: "Not allowed" }, { status: 403 });
   }
 
-  // 4) delete related rows first (messages, participants)
-  await supabase.from("messages").delete().eq("conversation_id", id);
-  await supabase.from("conversation_participants").delete().eq("conversation_id", id);
+  // delete messages first (FKs)
+  const { error: msgErr } = await admin
+    .from("messages")
+    .delete()
+    .eq("conversation_id", id);
 
-  // 5) delete the conversation
-  const { error: delErr } = await supabase
+  if (msgErr) {
+    return NextResponse.json({ error: msgErr.message }, { status: 500 });
+  }
+
+  // delete participants
+  const { error: partErr } = await admin
+    .from("conversation_participants")
+    .delete()
+    .eq("conversation_id", id);
+
+  if (partErr) {
+    return NextResponse.json({ error: partErr.message }, { status: 500 });
+  }
+
+  // delete conversation
+  const { error: delErr } = await admin
     .from("conversations")
     .delete()
     .eq("id", id);

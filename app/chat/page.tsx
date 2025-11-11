@@ -135,27 +135,31 @@ export default function ChatListPage(): JSX.Element {
     );
   });
 
-  // delete conversation
-  const handleDelete = useCallback(
-    async (id: string) => {
-      const prev = conversations;
-      // optimistic
-      setConversations((curr) => curr.filter((c) => c.conversation.id !== id));
+  // delete conversation (optimistic, then rollback on error)
+  const handleDelete = useCallback(async (id: string) => {
+    // optimistic: remove immediately
+    let prev: ConversationWithMeta[] = [];
+    setConversations((curr) => {
+      prev = curr;
+      return curr.filter((c) => c.conversation.id !== id);
+    });
 
+    try {
       const res = await fetch("/api/chat/delete-conversation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
       });
-
       if (!res.ok) {
         console.error("[/chat] delete failed:", await res.text());
         // rollback
         setConversations(prev);
       }
-    },
-    [conversations],
-  );
+    } catch (err) {
+      console.error("[/chat] delete failed:", err);
+      setConversations(prev);
+    }
+  }, []);
 
   return (
     <PageShell title="Conversations">
@@ -271,7 +275,7 @@ export default function ChatListPage(): JSX.Element {
                       </p>
                     </div>
 
-                    {/* right info */}
+                    {/* right */}
                     <div className="flex flex-col items-end gap-1">
                       {timeLabel ? (
                         <span className="text-[10px] text-neutral-500">

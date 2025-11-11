@@ -1,3 +1,4 @@
+// app/api/chat/my-conversations/route.ts
 import { NextResponse } from "next/server";
 import {
   createServerSupabaseRoute,
@@ -25,7 +26,6 @@ type ConversationPayload = {
 };
 
 export async function GET(): Promise<NextResponse> {
-  // get the caller
   const userClient = createServerSupabaseRoute();
   const {
     data: { user },
@@ -36,52 +36,34 @@ export async function GET(): Promise<NextResponse> {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  // use admin to dodge RLS 500s
   const admin = createAdminSupabase();
 
-  // 1) conversations where I'm a participant
-  const {
-    data: participantRows,
-    error: participantErr,
-  } = await admin
+  // conversations I’m in
+  const { data: participantRows, error: participantErr } = await admin
     .from("conversation_participants")
     .select("conversation_id")
     .eq("user_id", user.id);
 
   if (participantErr) {
-    return NextResponse.json(
-      { error: participantErr.message },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: participantErr.message }, { status: 500 });
   }
 
-  // 2) conversations I created
-  const {
-    data: createdRows,
-    error: createdErr,
-  } = await admin
+  // conversations I created
+  const { data: createdRows, error: createdErr } = await admin
     .from("conversations")
     .select("id")
     .eq("created_by", user.id);
 
   if (createdErr) {
-    return NextResponse.json(
-      { error: createdErr.message },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: createdErr.message }, { status: 500 });
   }
 
-  // collect all convo ids
   const idSet = new Set<string>();
   (participantRows ?? []).forEach((row) => {
-    if (row.conversation_id) {
-      idSet.add(row.conversation_id);
-    }
+    if (row.conversation_id) idSet.add(row.conversation_id);
   });
   (createdRows ?? []).forEach((row) => {
-    if (row.id) {
-      idSet.add(row.id);
-    }
+    if (row.id) idSet.add(row.id);
   });
 
   const conversationIds = Array.from(idSet);
@@ -89,11 +71,8 @@ export async function GET(): Promise<NextResponse> {
     return NextResponse.json<ConversationPayload[]>([]);
   }
 
-  // 3) fetch those conversations
-  const {
-    data: conversations,
-    error: convErr,
-  } = await admin
+  // conversations
+  const { data: conversations, error: convErr } = await admin
     .from("conversations")
     .select("*")
     .in("id", conversationIds);
@@ -103,28 +82,24 @@ export async function GET(): Promise<NextResponse> {
   }
   const safeConversations: ConversationRow[] = conversations ?? [];
 
-  // 4) fetch messages for those convos (new schema)
-  const {
-    data: messagesByConversation,
-    error: msgConvErr,
-  } = await admin
+  // messages by conversation_id
+  const { data: messagesByConversation, error: msgConvErr } = await admin
     .from("messages")
     .select("*")
     .in("conversation_id", conversationIds)
+    .is("deleted_at", null) // ignore soft-deleted
     .order("created_at", { ascending: false });
 
   if (msgConvErr) {
     return NextResponse.json({ error: msgConvErr.message }, { status: 500 });
   }
 
-  // 5) fetch messages for legacy chat_id
-  const {
-    data: messagesByChat,
-    error: msgChatErr,
-  } = await admin
+  // legacy messages by chat_id
+  const { data: messagesByChat, error: msgChatErr } = await admin
     .from("messages")
     .select("*")
     .in("chat_id", conversationIds)
+    .is("deleted_at", null) // ignore soft-deleted
     .order("created_at", { ascending: false });
 
   if (msgChatErr) {
@@ -136,11 +111,8 @@ export async function GET(): Promise<NextResponse> {
     ...(messagesByChat ?? []),
   ];
 
-  // 6) fetch participants for those convos
-  const {
-    data: convoParticipants,
-    error: convPartErr,
-  } = await admin
+  // participants
+  const { data: convoParticipants, error: convPartErr } = await admin
     .from("conversation_participants")
     .select("conversation_id, user_id")
     .in("conversation_id", conversationIds);
@@ -149,26 +121,17 @@ export async function GET(): Promise<NextResponse> {
     return NextResponse.json({ error: convPartErr.message }, { status: 500 });
   }
 
-  // 7) collect user ids so we can show names
   const userIdSet = new Set<string>();
   (convoParticipants ?? []).forEach((row) => {
-    if (row.user_id) {
-      userIdSet.add(row.user_id);
-    }
+    if (row.user_id) userIdSet.add(row.user_id);
   });
   safeConversations.forEach((c) => {
-    if (c.created_by) {
-      userIdSet.add(c.created_by);
-    }
+    if (c.created_by) userIdSet.add(c.created_by);
   });
 
   const allUserIds = Array.from(userIdSet);
 
-  // we only need id + full_name, so select just those
-  const {
-    data: profiles,
-    error: profErr,
-  } = await admin
+  const { data: profiles, error: profErr } = await admin
     .from("profiles")
     .select("id, full_name")
     .in("id", allUserIds);
@@ -177,19 +140,13 @@ export async function GET(): Promise<NextResponse> {
     return NextResponse.json({ error: profErr.message }, { status: 500 });
   }
 
-  // the rows we selected are NOT full ProfileRow,
-  // so type the map to match exactly what we selected
   type MinimalProfile = Pick<ProfileRow, "id" | "full_name">;
   const profileMap = new Map<string, MinimalProfile>();
   (profiles ?? []).forEach((p) => {
-    // p has id + full_name because of the select above
-    profileMap.set(p.id, {
-      id: p.id,
-      full_name: p.full_name,
-    });
+    profileMap.set(p.id, { id: p.id, full_name: p.full_name });
   });
 
-  // 8) pick latest message per convo
+  // latest message per convo
   const latestByConvo = new Map<string, MessageRow>();
   for (const msg of allMessages) {
     const convId =
@@ -199,15 +156,13 @@ export async function GET(): Promise<NextResponse> {
       (msg.chat_id && conversationIds.includes(msg.chat_id)
         ? msg.chat_id
         : null);
-
     if (!convId) continue;
-    // messages are ordered desc, so first one wins
     if (!latestByConvo.has(convId)) {
       latestByConvo.set(convId, msg);
     }
   }
 
-  // 9) build participant list per convo
+  // participants per convo
   const participantsByConvo = new Map<string, ParticipantInfo[]>();
   (convoParticipants ?? []).forEach((row) => {
     if (!row.conversation_id || !row.user_id) return;
@@ -220,7 +175,7 @@ export async function GET(): Promise<NextResponse> {
     participantsByConvo.set(row.conversation_id, arr);
   });
 
-  // also add the creator to the participants list
+  // include creator
   safeConversations.forEach((c) => {
     if (!c.id || !c.created_by) return;
     const arr = participantsByConvo.get(c.id) ?? [];
@@ -235,7 +190,6 @@ export async function GET(): Promise<NextResponse> {
     participantsByConvo.set(c.id, arr);
   });
 
-  // 10) build payload
   const payload: ConversationPayload[] = safeConversations.map((conv) => {
     const latest = latestByConvo.get(conv.id) ?? null;
     const parts = participantsByConvo.get(conv.id) ?? [];
