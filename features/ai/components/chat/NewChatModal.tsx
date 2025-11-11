@@ -35,7 +35,7 @@ type MessageRow = {
   sender_id: string | null;
   content: string | null;
   sent_at: string | null;
-  // we can keep this on the client, but we WON'T send it to the API anymore
+  // client-only: who we picked — not sent to API
   recipients?: string[] | null;
 };
 
@@ -82,7 +82,7 @@ export default function NewChatModal({
   const [sending, setSending] = useState(false);
   const [sendText, setSendText] = useState("");
 
-  // client-side “recent” convos (storage only, not Supabase)
+  // client-side recent convos
   const [recentConversationIds, setRecentConversationIds] = useState<string[]>([]);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -140,14 +140,14 @@ export default function NewChatModal({
     if (!isOpen) return;
 
     (async () => {
-      // load recent convos from localStorage
+      // load recent from storage
       const recent = loadRecentFromStorage();
       setRecentConversationIds(recent);
 
       setLoadingUsers(true);
       setApiError(null);
 
-      // 1) try server route
+      // try server route first
       let gotUsers = false;
       try {
         const res = await fetch("/api/chat/users", {
@@ -172,7 +172,7 @@ export default function NewChatModal({
         console.warn("[NewChatModal] /api/chat/users failed, will fallback:", err);
       }
 
-      // 2) fallback: client-side profiles
+      // fallback to client-side profiles
       if (!gotUsers) {
         try {
           const { data: profiles, error } = await supabase
@@ -222,7 +222,7 @@ export default function NewChatModal({
     })();
   }, [isOpen, supabase, forcedConversationId, loadRecentFromStorage, upsertRecent]);
 
-  // auto-role filter
+  // auto-role filter from context
   useEffect(() => {
     if (!isOpen) return;
     if (!context_type) return;
@@ -258,8 +258,19 @@ export default function NewChatModal({
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data: MessageRow[] = await res.json();
+
         if (!cancelled) {
-          setMessages(data);
+          // key bit: if we already have an optimistic message locally
+          // and the server still returns 0 (because insert+select raced),
+          // keep our local list instead of wiping it
+          if (messages.length > 0 && data.length === 0) {
+            console.log(
+              "[NewChatModal] server returned 0 messages, keeping optimistic ones",
+            );
+          } else {
+            setMessages(data);
+          }
+
           if (typeof window !== "undefined") {
             window.localStorage.setItem(LOCAL_ACTIVE_KEY, activeConvoId);
           }
@@ -267,7 +278,9 @@ export default function NewChatModal({
         }
       } catch (e) {
         console.error("[NewChatModal] get-messages failed:", e);
-        if (!cancelled) setMessages([]);
+        if (!cancelled && messages.length === 0) {
+          setMessages([]);
+        }
       } finally {
         if (!cancelled) setMessagesLoading(false);
       }
@@ -276,7 +289,8 @@ export default function NewChatModal({
     return () => {
       cancelled = true;
     };
-  }, [activeConvoId, isOpen, upsertRecent]);
+    // include messages.length so the guard above is up-to-date
+  }, [activeConvoId, isOpen, upsertRecent, messages.length]);
 
   // realtime for current convo
   useEffect(() => {
@@ -303,7 +317,7 @@ export default function NewChatModal({
     };
   }, [supabase, activeConvoId]);
 
-  // scroll
+  // auto-scroll
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -400,7 +414,6 @@ export default function NewChatModal({
     if (!text) return;
     if (sending) return;
 
-    // recipients = selectedIds (we keep them locally only)
     const targetIds = selectedIds.length ? selectedIds : [];
 
     const convoId = await ensureConversation(targetIds);
@@ -408,7 +421,7 @@ export default function NewChatModal({
 
     setSending(true);
 
-    // optimistic message
+    // optimistic bubble
     const tempId = `temp-${Date.now()}`;
     const optimistic: MessageRow = {
       id: tempId,
@@ -425,7 +438,6 @@ export default function NewChatModal({
       const res = await fetch("/api/chat/send-message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // 👇 IMPORTANT: send only columns that actually exist in `messages`
         body: JSON.stringify({
           conversationId: convoId,
           senderId: currentUserId,
@@ -433,14 +445,12 @@ export default function NewChatModal({
         }),
       });
       if (!res.ok) {
-        // don't delete the optimistic message — just complain
         console.error("send-message failed:", await res.text());
         toast.error("Message failed to send (server).");
       }
-      // if it *did* succeed, realtime will deliver the real row
+      // realtime will insert the real row
     } catch (e) {
       console.error("send failed:", e);
-      // DON'T remove the optimistic bubble anymore
       toast.error("Message failed to send (network).");
     } finally {
       setSending(false);
