@@ -135,6 +135,28 @@ export default function ChatListPage(): JSX.Element {
     );
   });
 
+  // delete conversation
+  const handleDelete = useCallback(
+    async (id: string) => {
+      const prev = conversations;
+      // optimistic
+      setConversations((curr) => curr.filter((c) => c.conversation.id !== id));
+
+      const res = await fetch("/api/chat/delete-conversation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+
+      if (!res.ok) {
+        console.error("[/chat] delete failed:", await res.text());
+        // rollback
+        setConversations(prev);
+      }
+    },
+    [conversations],
+  );
+
   return (
     <PageShell title="Conversations">
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -216,10 +238,11 @@ export default function ChatListPage(): JSX.Element {
                   : null;
 
               return (
-                <li key={conv.id}>
+                <li key={conv.id} className="flex items-center gap-3 px-3 py-3">
+                  {/* clickable part */}
                   <Link
                     href={`/chat/${conv.id}`}
-                    className="flex items-center gap-3 px-3 py-3 hover:bg-neutral-900/50 transition-colors"
+                    className="flex flex-1 items-center gap-3 hover:bg-neutral-900/30 rounded-md px-1 py-1 transition-colors"
                   >
                     {/* avatar */}
                     <div className="flex h-9 w-9 items-center justify-center rounded-full bg-orange-500/90 text-sm font-semibold text-black">
@@ -248,16 +271,24 @@ export default function ChatListPage(): JSX.Element {
                       </p>
                     </div>
 
-                    {/* right */}
+                    {/* right info */}
                     <div className="flex flex-col items-end gap-1">
                       {timeLabel ? (
                         <span className="text-[10px] text-neutral-500">
                           {timeLabel}
                         </span>
                       ) : null}
-                      {/* you can add a dot or icon here later */}
                     </div>
                   </Link>
+
+                  {/* delete always visible */}
+                  <button
+                    type="button"
+                    onClick={() => void handleDelete(conv.id)}
+                    className="ml-2 rounded-md border border-red-500/50 px-2 py-1 text-[10px] font-semibold text-red-200 hover:bg-red-500/20"
+                  >
+                    Delete
+                  </button>
                 </li>
               );
             })}
