@@ -52,7 +52,15 @@ export default function ChatWindow({
         throw new Error(`HTTP ${res.status}`);
       }
       const data = (await res.json()) as Message[];
-      setMessages(data);
+
+      // 👇 key guard: if we already had an optimistic message
+      // and the server came back EMPTY, keep what we had
+      setMessages((prev) => {
+        if (prev.length > 0 && data.length === 0) {
+          return prev;
+        }
+        return data;
+      });
     } catch (err) {
       console.error("[ChatWindow] fetchMessages error:", err);
       setError("Couldn't load messages.");
@@ -102,13 +110,17 @@ export default function ChatWindow({
     const content = newMessage.trim();
     if (!content || sending) return;
 
+    // optimistic bubble
     const tempId = `temp-${Date.now()}`;
     const optimistic: Message = {
       id: tempId,
       conversation_id: conversationId,
+      chat_id: conversationId, // ← harmless, matches your API
       sender_id: userId,
       content,
       sent_at: new Date().toISOString(),
+      // the other columns exist in DB but are nullable / have defaults,
+      // so we don't need to set them here
     } as Message;
 
     setMessages((prev) => [...prev, optimistic]);
@@ -131,7 +143,9 @@ export default function ChatWindow({
         const text = await res.text();
         console.error("[ChatWindow] send-message failed:", text);
         setError("Message failed to send.");
-        // try to re-sync
+
+        // re-sync, but our fetch has the guard now, so it won't blow away
+        // the optimistic bubble if the server is still empty
         void fetchMessages();
       }
     } catch (err) {
@@ -142,10 +156,9 @@ export default function ChatWindow({
     }
   }, [conversationId, newMessage, sending, userId, fetchMessages]);
 
-  // NEW: delete
+  // delete
   const deleteMessage = useCallback(
     async (id: string) => {
-      // optimistic remove
       const prev = messages;
       setMessages((curr) => curr.filter((m) => m.id !== id));
 
@@ -158,12 +171,10 @@ export default function ChatWindow({
         if (!res.ok) {
           const text = await res.text();
           console.error("[ChatWindow] delete-message failed:", text);
-          // rollback
           setMessages(prev);
         }
       } catch (err) {
         console.error("[ChatWindow] deleteMessage error:", err);
-        // rollback
         setMessages(prev);
       }
     },

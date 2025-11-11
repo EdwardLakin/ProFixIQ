@@ -239,7 +239,7 @@ export default function NewChatModal({
     }
   }, [isOpen, context_type, currentUserRole]);
 
-  // load messages for active convo
+  // ✅ load messages for active convo (patched)
   useEffect(() => {
     if (!isOpen) return;
     if (!activeConvoId) {
@@ -260,15 +260,15 @@ export default function NewChatModal({
         const data: MessageRow[] = await res.json();
 
         if (!cancelled) {
-          // if we already have an optimistic bubble and server is empty,
-          // keep local ones
-          if (messages.length > 0 && data.length === 0) {
-            console.log(
-              "[NewChatModal] server returned 0 messages, keeping optimistic ones",
-            );
-          } else {
-            setMessages(data);
-          }
+          // IMPORTANT: use functional set so we see *current* optimistic messages
+          setMessages((prev) => {
+            if (prev.length > 0 && data.length === 0) {
+              // we already showed an optimistic message, server is still empty,
+              // so keep what we have
+              return prev;
+            }
+            return data;
+          });
 
           if (typeof window !== "undefined") {
             window.localStorage.setItem(LOCAL_ACTIVE_KEY, activeConvoId);
@@ -277,9 +277,7 @@ export default function NewChatModal({
         }
       } catch (e) {
         console.error("[NewChatModal] get-messages failed:", e);
-        if (!cancelled && messages.length === 0) {
-          setMessages([]);
-        }
+        // keep existing messages if we had any
       } finally {
         if (!cancelled) setMessagesLoading(false);
       }
@@ -288,8 +286,8 @@ export default function NewChatModal({
     return () => {
       cancelled = true;
     };
-    // include messages.length so the guard is accurate
-  }, [activeConvoId, isOpen, upsertRecent, messages.length]);
+    // 👇 NO messages.length here — that was the flicker
+  }, [activeConvoId, isOpen, upsertRecent]);
 
   // realtime for current convo
   useEffect(() => {
@@ -426,7 +424,6 @@ export default function NewChatModal({
     if (!text) return;
     if (sending) return;
 
-    // make sure we really have a user right now
     const actualUserId = await getOrFetchUserId();
     if (!actualUserId) {
       toast.error("Can't send — no authenticated user.");

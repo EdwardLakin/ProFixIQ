@@ -144,13 +144,13 @@ export default function ConversationList({
 
           {/* delete button */}
           <button
-            type="button"
-            onClick={() => handleDelete(conv.id)}
-            className="opacity-0 group-hover:opacity-100 text-xs text-neutral-500 hover:text-red-500 transition"
-            aria-label="Delete conversation"
-          >
-            ✕
-          </button>
+  type="button"
+  onClick={() => handleDelete(conv.id)}
+  className="text-xs text-neutral-500 hover:text-red-500 transition"
+  aria-label="Delete conversation"
+>
+  ✕
+</button>
         </div>
       ))}
     </div>

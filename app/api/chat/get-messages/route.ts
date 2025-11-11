@@ -58,10 +58,10 @@ export async function POST(req: Request): Promise<NextResponse> {
   const {
     data: participants,
     error: partsErr,
-  } = await admin
+  } = (await admin
     .from("conversation_participants")
     .select("*")
-    .eq("conversation_id", conversationId) as {
+    .eq("conversation_id", conversationId)) as {
     data: ParticipantRow[] | null;
     error: { message: string } | null;
   };
