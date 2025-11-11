@@ -1,121 +1,125 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 
-type DB = Database;
-type Conversation = DB["public"]["Tables"]["conversations"]["Row"];
-type Message = DB["public"]["Tables"]["messages"]["Row"];
+type Conversation = Database["public"]["Tables"]["conversations"]["Row"];
+type Message = Database["public"]["Tables"]["messages"]["Row"];
 
 interface ConversationWithMeta extends Conversation {
-  latest_message: Message | null;
+  latest_message?: Message | null;
   unread_count: number;
 }
 
 export async function getUserConversations(
-  supabase: SupabaseClient<DB>,
+  supabase: SupabaseClient<Database>,
 ): Promise<ConversationWithMeta[]> {
   // 1) who am I
   const {
     data: { user },
     error: userError,
   } = await supabase.auth.getUser();
-  if (userError || !user) return [];
 
-  // 2) conversations I created
-  const { data: createdConvos, error: createdErr } = await supabase
-    .from("conversations")
-    .select("*")
-    .eq("created_by", user.id)
-    .order("created_at", { ascending: false });
-
-  if (createdErr) {
-    console.error("[getUserConversations] created err:", createdErr);
+  if (userError || !user) {
+    return [];
   }
 
-  // 3) conversations I participate in
-  const { data: participantRows, error: partErr } = await supabase
+  const myId = user.id;
+
+  // 2) conversations where I'm a participant
+  const { data: participantRows, error: participantErr } = await supabase
     .from("conversation_participants")
     .select("conversation_id")
-    .eq("user_id", user.id);
+    .eq("user_id", myId);
 
-  if (partErr) {
-    console.error("[getUserConversations] participants err:", partErr);
+  if (participantErr) {
+    console.error("[getUserConversations] participants error:", participantErr);
   }
-
-  // 4) merge IDs
-  const convoMap = new Map<string, Conversation>();
-  (createdConvos ?? []).forEach((c) => convoMap.set(c.id, c));
 
   const participantIds =
-    participantRows?.map((p) => p.conversation_id) ?? [];
+    participantRows?.map((row) => row.conversation_id).filter(Boolean) ?? [];
 
-  if (participantIds.length) {
-    const { data: participantConvos, error: pcErr } = await supabase
-      .from("conversations")
-      .select("*")
-      .in("id", participantIds);
+  // 3) conversations I created
+  const { data: createdRows, error: createdErr } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("created_by", myId);
 
-    if (pcErr) {
-      console.error("[getUserConversations] participant convos err:", pcErr);
-    } else {
-      (participantConvos ?? []).forEach((c) => {
-        if (!convoMap.has(c.id)) {
-          convoMap.set(c.id, c);
-        }
-      });
-    }
+  if (createdErr) {
+    console.error("[getUserConversations] created error:", createdErr);
   }
 
-  const allConvos = Array.from(convoMap.values());
-  if (allConvos.length === 0) return [];
+  const createdIds = createdRows?.map((row) => row.id).filter(Boolean) ?? [];
 
-  const convoIds = allConvos.map((c) => c.id);
+  // 4) union → final list of convo IDs
+  const allConvoIds = Array.from(
+    new Set<string>([...participantIds, ...createdIds]),
+  );
 
-  // 5) get messages for *all* these convos in one go, newest first
-  const { data: allMessages, error: msgErr } = await supabase
+  if (allConvoIds.length === 0) {
+    return [];
+  }
+
+  // 5) fetch those conversations
+  const { data: conversations, error: convErr } = await supabase
+    .from("conversations")
+    .select("*")
+    .in("id", allConvoIds);
+
+  if (convErr) {
+    console.error("[getUserConversations] conversations error:", convErr);
+    return [];
+  }
+
+  const safeConversations: Conversation[] = conversations ?? [];
+
+  // 6) fetch ALL messages for those convos in one query (new schema)
+  const { data: messages, error: msgErr } = await supabase
     .from("messages")
     .select("*")
-    .in("conversation_id", convoIds)
-    .order("sent_at", { ascending: false })
-    .order("created_at", { ascending: false });
+    .in("conversation_id", allConvoIds)
+    .order("sent_at", { ascending: false });
 
   if (msgErr) {
-    console.error("[getUserConversations] messages err:", msgErr);
+    console.error("[getUserConversations] messages error:", msgErr);
   }
 
-  // pick the latest per conversation
+  const allMessages: Message[] = messages ?? [];
+
+  // 7) pick the latest message per conversation
   const latestByConvo = new Map<string, Message>();
-  (allMessages ?? []).forEach((m) => {
-    if (!latestByConvo.has(m.conversation_id)) {
-      latestByConvo.set(m.conversation_id, m);
+  for (const m of allMessages) {
+    const cid = m.conversation_id;
+    if (!cid) continue;
+    // messages are ordered DESC by sent_at, so first one we see is the latest
+    if (!latestByConvo.has(cid)) {
+      latestByConvo.set(cid, m);
     }
-  });
+  }
 
-  // 6) shape result
-  const result: ConversationWithMeta[] = allConvos.map((c) => {
-    const latest = latestByConvo.get(c.id) ?? null;
+  // 8) build final list
+  const result: ConversationWithMeta[] = safeConversations.map((conv) => {
+    const latest = latestByConvo.get(conv.id) ?? null;
 
+    // you don't have message_reads wired yet, so keep unread_count = 0 for now
     return {
-      ...c,
+      ...conv,
       latest_message: latest,
-      // you have a message_reads table, but this helper doesn't join it yet
-      // so keep unread_count at 0 to avoid schema mismatches
       unread_count: 0,
     };
   });
 
-  // 7) sort newest first
+  // 9) sort newest-first
   result.sort((a, b) => {
-    const aTime =
+    const at =
       a.latest_message?.sent_at ??
       a.latest_message?.created_at ??
       a.created_at ??
       "";
-    const bTime =
+    const bt =
       b.latest_message?.sent_at ??
       b.latest_message?.created_at ??
       b.created_at ??
       "";
-    return bTime.localeCompare(aTime);
+    return bt.localeCompare(at);
   });
 
   return result;
