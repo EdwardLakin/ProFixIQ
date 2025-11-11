@@ -75,13 +75,13 @@ export async function POST(req: Request): Promise<NextResponse> {
 
   const hasParticipants = (participants?.length ?? 0) > 0;
 
-  // 2c) decide if caller is allowed
+  // 2c) check access
   let allowed = convo.created_by === user.id;
   if (!allowed) {
     if (hasParticipants) {
       allowed = (participants ?? []).some((p) => p.user_id === user.id);
     } else {
-      // empty participants but caller created it -> allow
+      // convo exists but has no participants yet – let creator in
       allowed = true;
     }
   }
@@ -93,11 +93,12 @@ export async function POST(req: Request): Promise<NextResponse> {
     );
   }
 
-  // 3) fetch messages — ONLY by conversation_id (chat_id column is gone)
+  // 3) fetch messages – ONLY by conversation_id now
   const { data: messages, error: msgErr } = await admin
     .from("messages")
     .select("*")
     .eq("conversation_id", conversationId)
+    .order("sent_at", { ascending: true })
     .order("created_at", { ascending: true });
 
   if (msgErr) {

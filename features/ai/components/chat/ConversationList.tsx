@@ -1,18 +1,28 @@
+// features/ai/components/chat/ConversationList.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import clsx from "clsx";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
-import { getUserConversations } from "@ai/lib/chat/getUserConversations";
 
-type Conversation = Database["public"]["Tables"]["conversations"]["Row"];
-type Message = Database["public"]["Tables"]["messages"]["Row"];
-
-interface ConversationWithMeta extends Conversation {
-  latest_message?: Message | null;
+type ConversationPayload = {
+  conversation: {
+    id: string;
+    created_at: string | null;
+    context_type: string | null;
+    context_id: string | null;
+    created_by: string | null;
+  };
+  latest_message: {
+    id: string;
+    conversation_id: string | null;
+    sender_id: string | null;
+    content: string | null;
+    sent_at: string | null;
+    created_at: string | null;
+  } | null;
+  participants: Array<{ id: string; full_name: string | null }>;
   unread_count: number;
-}
+};
 
 interface Props {
   activeConversationId: string;
@@ -23,73 +33,53 @@ export default function ConversationList({
   activeConversationId,
   setActiveConversationId,
 }: Props) {
-  const supabase = useMemo(() => createClientComponentClient<Database>(), []);
-  const [conversations, setConversations] = useState<ConversationWithMeta[]>([]);
+  const [conversations, setConversations] = useState<ConversationPayload[]>([]);
 
-  // initial fetch
+  // fetch from API (same data as /chat page)
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const result = await getUserConversations(supabase);
+        const res = await fetch("/api/chat/my-conversations", {
+          method: "GET",
+          credentials: "include",
+        });
+        if (!res.ok) {
+          if (!cancelled) setConversations([]);
+          return;
+        }
+        const data = (await res.json()) as ConversationPayload[];
         if (!cancelled) {
-          result.sort((a, b) => {
-            const at = a.latest_message?.sent_at || a.created_at || "";
-            const bt = b.latest_message?.sent_at || b.created_at || "";
+          // sort newest first
+          data.sort((a, b) => {
+            const at =
+              a.latest_message?.sent_at ||
+              a.conversation.created_at ||
+              "1970-01-01";
+            const bt =
+              b.latest_message?.sent_at ||
+              b.conversation.created_at ||
+              "1970-01-01";
             return bt.localeCompare(at);
           });
-          setConversations(result);
+          setConversations(data);
         }
-      } catch (e) {
-        console.error("Failed to load conversations:", e);
+      } catch (err) {
+        console.error("Failed to load conversations:", err);
+        if (!cancelled) setConversations([]);
       }
     })();
+
     return () => {
       cancelled = true;
     };
-  }, [supabase]);
-
-  // live updates
-  useEffect(() => {
-    const channel = supabase
-      .channel("ai-conversation-list")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "messages" },
-        async () => {
-          const result = await getUserConversations(supabase);
-          result.sort((a, b) => {
-            const at = a.latest_message?.sent_at || a.created_at || "";
-            const bt = b.latest_message?.sent_at || b.created_at || "";
-            return bt.localeCompare(at);
-          });
-          setConversations(result);
-        },
-      )
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "conversations" },
-        async () => {
-          const result = await getUserConversations(supabase);
-          result.sort((a, b) => {
-            const at = a.latest_message?.sent_at || a.created_at || "";
-            const bt = b.latest_message?.sent_at || b.created_at || "";
-            return bt.localeCompare(at);
-          });
-          setConversations(result);
-        },
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [supabase]);
+  }, []);
 
   async function handleDelete(id: string) {
-    // optimistic remove
     const prev = conversations;
-    setConversations((curr) => curr.filter((c) => c.id !== id));
+    setConversations((curr) =>
+      curr.filter((c) => c.conversation.id !== id),
+    );
     if (activeConversationId === id) {
       setActiveConversationId("");
     }
@@ -102,7 +92,6 @@ export default function ConversationList({
 
     if (!res.ok) {
       console.error("Failed to delete conversation", await res.text());
-      // rollback
       setConversations(prev);
     }
   }
@@ -110,49 +99,52 @@ export default function ConversationList({
   return (
     <div className="w-full">
       <h2 className="text-sm font-bold text-gray-400 px-3 mb-2">Chats</h2>
-      {conversations.map((conv) => (
-        <div
-          key={conv.id}
-          className={clsx(
-            "group flex items-center gap-2 px-3 py-2 rounded",
-            conv.id === activeConversationId
-              ? "bg-neutral-800 font-bold"
-              : "hover:bg-neutral-900",
-          )}
-        >
-          {/* click area */}
-          <div
-            className="flex-1 min-w-0 cursor-pointer"
-            onClick={() => setActiveConversationId(conv.id)}
-          >
-            <div className="flex items-center gap-2">
-              <div className="text-sm truncate">
-                {conv.context_type
-                  ? `${conv.context_type}: ${conv.id.slice(0, 6)}`
-                  : `Conversation ${conv.id.slice(0, 6)}`}
-              </div>
-              {conv.unread_count > 0 && (
-                <span className="bg-orange-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
-                  {conv.unread_count}
-                </span>
-              )}
-            </div>
-            <div className="text-xs text-gray-400 truncate max-w-[180px]">
-              {conv.latest_message?.content || "No messages yet"}
-            </div>
-          </div>
+      {conversations.map((item) => {
+        const conv = item.conversation;
+        const latest = item.latest_message;
+        const label =
+          item.participants[0]?.full_name ??
+          conv.context_type ??
+          `Conversation ${conv.id.slice(0, 6)}`;
 
-          {/* delete button */}
-          <button
-  type="button"
-  onClick={() => handleDelete(conv.id)}
-  className="text-xs text-neutral-500 hover:text-red-500 transition"
-  aria-label="Delete conversation"
->
-  ✕
-</button>
-        </div>
-      ))}
+        return (
+          <div
+            key={conv.id}
+            className={clsx(
+              "group flex items-center gap-2 px-3 py-2 rounded",
+              conv.id === activeConversationId
+                ? "bg-neutral-800 font-bold"
+                : "hover:bg-neutral-900",
+            )}
+          >
+            <div
+              className="flex-1 min-w-0 cursor-pointer"
+              onClick={() => setActiveConversationId(conv.id)}
+            >
+              <div className="flex items-center gap-2">
+                <div className="text-sm truncate">{label}</div>
+                {item.unread_count > 0 && (
+                  <span className="bg-orange-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                    {item.unread_count}
+                  </span>
+                )}
+              </div>
+              <div className="text-xs text-gray-400 truncate max-w-[180px]">
+                {latest?.content || "No messages yet"}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => void handleDelete(conv.id)}
+              className="opacity-0 group-hover:opacity-100 text-xs text-neutral-500 hover:text-red-500 transition"
+              aria-label="Delete conversation"
+            >
+              ✕
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 }

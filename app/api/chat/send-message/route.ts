@@ -38,7 +38,6 @@ export async function POST(req: Request): Promise<NextResponse> {
     );
   }
 
-  // use admin to bypass RLS, we already checked membership above
   const admin = createAdminSupabase();
 
   // make sure conversation exists
@@ -58,8 +57,8 @@ export async function POST(req: Request): Promise<NextResponse> {
     );
   }
 
+  // messages table no longer has chat_id, so we only insert what's real
   const now = new Date().toISOString();
-
   const { data: inserted, error: insertErr } = await admin
     .from("messages")
     .insert({
@@ -67,6 +66,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       sender_id: senderId,
       content,
       sent_at: now,
+      // these exist in your table according to your earlier screenshots
       recipients: [],
       attachments: [],
       metadata: {},
