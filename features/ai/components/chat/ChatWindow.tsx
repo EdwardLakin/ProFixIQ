@@ -46,18 +46,21 @@ export default function ChatWindow({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conversationId }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        const text = await res.text();
+        console.error("[ChatWindow] get-messages failed:", res.status, text);
+        throw new Error(`HTTP ${res.status}`);
+      }
       const data = (await res.json()) as Message[];
       setMessages(data);
     } catch (err) {
-      console.error("Fetch messages failed:", err);
+      console.error("[ChatWindow] fetchMessages error:", err);
       setError("Couldn't load messages.");
     } finally {
       setLoading(false);
     }
   }, [conversationId]);
 
-  // initial fetch
   useEffect(() => {
     void fetchMessages();
   }, [fetchMessages]);
@@ -106,7 +109,6 @@ export default function ChatWindow({
       sender_id: userId,
       content,
       sent_at: new Date().toISOString(),
-      // recipients can just be left out
     } as Message;
 
     setMessages((prev) => [...prev, optimistic]);
@@ -127,35 +129,25 @@ export default function ChatWindow({
       });
       if (!res.ok) {
         const text = await res.text();
-        console.error("send failed:", text);
+        console.error("[ChatWindow] send-message failed:", text);
         setError("Message failed to send.");
-        // try to pull the real list once more in case the insert actually happened
+        // try to re-sync
         void fetchMessages();
       }
-      // realtime will add the real row if it succeeded
     } catch (err) {
-      console.error("send failed:", err);
+      console.error("[ChatWindow] sendMessage error:", err);
       setError("Message failed to send.");
     } finally {
       setSending(false);
     }
   }, [conversationId, newMessage, sending, userId, fetchMessages]);
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      void sendMessage();
-    }
-  };
-
-  // delete a message (only own messages show the button)
-  const handleDelete = useCallback(
+  // NEW: delete
+  const deleteMessage = useCallback(
     async (id: string) => {
       // optimistic remove
       const prev = messages;
-      const next = prev.filter((m) => m.id !== id);
-      setMessages(next);
-      setError(null);
+      setMessages((curr) => curr.filter((m) => m.id !== id));
 
       try {
         const res = await fetch("/api/chat/delete-message", {
@@ -164,22 +156,27 @@ export default function ChatWindow({
           body: JSON.stringify({ id }),
         });
         if (!res.ok) {
-          const txt = await res.text();
-          console.error("delete failed:", txt);
-          setError("Could not delete message.");
-          // restore
+          const text = await res.text();
+          console.error("[ChatWindow] delete-message failed:", text);
+          // rollback
           setMessages(prev);
         }
       } catch (err) {
-        console.error("delete failed:", err);
-        setError("Could not delete message.");
+        console.error("[ChatWindow] deleteMessage error:", err);
+        // rollback
         setMessages(prev);
       }
     },
     [messages]
   );
 
-  // group messages by day + sender
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      void sendMessage();
+    }
+  };
+
   const grouped = useMemo(() => {
     const byDay: Array<
       | { type: "day"; label: string }
@@ -266,32 +263,33 @@ export default function ChatWindow({
                   !isMine && <div className="w-7" />
                 )}
 
-                <div
-                  className={`max-w-[70%] rounded-md px-3 py-2 text-sm break-words relative group ${
-                    isMine
-                      ? "bg-orange-500 text-black"
-                      : "bg-neutral-800 text-neutral-100"
-                  }`}
-                >
-                  <p>{msg.content}</p>
-                  {time ? (
-                    <p
-                      className={`mt-1 text-[10px] ${
-                        isMine ? "text-black/60" : "text-neutral-400"
-                      }`}
-                    >
-                      {time}
-                    </p>
-                  ) : null}
-
-                  {/* tiny delete button on my own messages */}
+                <div className="relative">
+                  <div
+                    className={`max-w-[70%] rounded-md px-3 py-2 text-sm break-words ${
+                      isMine
+                        ? "bg-orange-500 text-black"
+                        : "bg-neutral-800 text-neutral-100"
+                    }`}
+                  >
+                    <p>{msg.content}</p>
+                    {time ? (
+                      <p
+                        className={`mt-1 text-[10px] ${
+                          isMine ? "text-black/60" : "text-neutral-400"
+                        }`}
+                      >
+                        {time}
+                      </p>
+                    ) : null}
+                  </div>
                   {isMine ? (
                     <button
                       type="button"
-                      onClick={() => void handleDelete(msg.id)}
-                      className="absolute -top-2 -right-2 hidden rounded bg-neutral-950/90 px-2 py-0.5 text-[10px] text-red-200 shadow group-hover:block hover:bg-neutral-900"
+                      onClick={() => void deleteMessage(msg.id)}
+                      className="absolute -top-2 -right-2 h-5 w-5 rounded-full bg-neutral-900 text-[10px] text-white/70 hover:bg-red-500 hover:text-white"
+                      aria-label="Delete message"
                     >
-                      Delete
+                      ×
                     </button>
                   ) : null}
                 </div>

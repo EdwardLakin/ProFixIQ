@@ -9,13 +9,20 @@ import ChatWindow from "@/features/ai/components/chat/ChatWindow";
 
 type DB = Database;
 
+type ConversationPayload = {
+  conversation: DB["public"]["Tables"]["conversations"]["Row"];
+  latest_message: DB["public"]["Tables"]["messages"]["Row"] | null;
+  participants: Array<{ id: string; full_name: string | null }>;
+  unread_count: number;
+};
+
 export default function ChatThreadPage(): JSX.Element {
-  // this will be the value from /chat/<id>
   const params = useParams<{ chatId: string }>();
   const conversationId = params.chatId;
 
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
   const [userId, setUserId] = useState<string | null>(null);
+  const [title, setTitle] = useState<string>("Conversation");
 
   // who am I
   useEffect(() => {
@@ -24,22 +31,48 @@ export default function ChatThreadPage(): JSX.Element {
         data: { user },
       } = await supabase.auth.getUser();
       setUserId(user?.id ?? null);
+
+      // fetch conversations and try to label nicely
+      try {
+        const res = await fetch("/api/chat/my-conversations", {
+          method: "GET",
+          credentials: "include",
+        });
+        if (res.ok) {
+          const data = (await res.json()) as ConversationPayload[];
+          const found = data.find(
+            (item) => item.conversation.id === conversationId
+          );
+          if (found) {
+            const others =
+              user?.id == null
+                ? found.participants
+                : found.participants.filter((p) => p.id !== user.id);
+            const label =
+              others[0]?.full_name ??
+              found.conversation.context_type ??
+              `Conversation ${conversationId.slice(0, 6)}`;
+            setTitle(label);
+          }
+        }
+      } catch {
+        // ignore — we'll keep "Conversation"
+      }
     })();
-  }, [supabase]);
+  }, [supabase, conversationId]);
 
   return (
-    <PageShell title="Conversation">
+    <PageShell title={title}>
       {!userId ? (
         <div className="rounded border border-neutral-800 bg-neutral-900/40 p-4 text-sm text-neutral-300">
           Loading…
         </div>
       ) : (
         <div className="h-[70vh]">
-          {/* re-use the working window that uses /api/chat/get-messages */}
           <ChatWindow
             conversationId={conversationId}
             userId={userId}
-            title="Conversation"
+            title={title}
           />
         </div>
       )}
