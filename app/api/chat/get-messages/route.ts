@@ -51,10 +51,13 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json({ error: convoErr.message }, { status: 500 });
   }
   if (!convo) {
-    return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
+    return NextResponse.json(
+      { error: "Conversation not found" },
+      { status: 404 },
+    );
   }
 
-  // 2b) load participants for this convo (typed)
+  // 2b) load participants
   const {
     data: participants,
     error: partsErr,
@@ -74,12 +77,11 @@ export async function POST(req: Request): Promise<NextResponse> {
 
   // 2c) decide if caller is allowed
   let allowed = convo.created_by === user.id;
-
   if (!allowed) {
     if (hasParticipants) {
       allowed = (participants ?? []).some((p) => p.user_id === user.id);
     } else {
-      // brand new convo, nobody added yet – allow the creator/caller to see it
+      // empty participants but caller created it -> allow
       allowed = true;
     }
   }
@@ -91,13 +93,11 @@ export async function POST(req: Request): Promise<NextResponse> {
     );
   }
 
-  // 3) fetch messages — support both new and legacy columns
+  // 3) fetch messages — ONLY by conversation_id (chat_id column is gone)
   const { data: messages, error: msgErr } = await admin
     .from("messages")
     .select("*")
-    .or(
-      `conversation_id.eq.${conversationId},chat_id.eq.${conversationId}`,
-    )
+    .eq("conversation_id", conversationId)
     .order("created_at", { ascending: true });
 
   if (msgErr) {

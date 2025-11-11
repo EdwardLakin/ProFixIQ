@@ -19,7 +19,6 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  // body
   const body = (await req.json().catch(() => null)) as
     | {
         conversationId?: string;
@@ -39,10 +38,10 @@ export async function POST(req: Request): Promise<NextResponse> {
     );
   }
 
-  // use admin so RLS on messages can't block us
+  // use admin to bypass RLS, we already checked membership above
   const admin = createAdminSupabase();
 
-  // make sure conversation exists (optional but nice)
+  // make sure conversation exists
   const { data: convo, error: convoErr } = await admin
     .from("conversations")
     .select("id, created_by")
@@ -53,20 +52,21 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json({ error: convoErr.message }, { status: 500 });
   }
   if (!convo) {
-    return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
+    return NextResponse.json(
+      { error: "Conversation not found" },
+      { status: 404 },
+    );
   }
 
-  // insert the message EXACTLY with the columns your table has
   const now = new Date().toISOString();
+
   const { data: inserted, error: insertErr } = await admin
     .from("messages")
     .insert({
       conversation_id: conversationId,
-      chat_id: conversationId, // legacy field your UI still checks
       sender_id: senderId,
       content,
       sent_at: now,
-      // these 3 are NOT NULL in your table, so let’s send them explicitly
       recipients: [],
       attachments: [],
       metadata: {},

@@ -1,3 +1,4 @@
+// features/ai/components/chat/ChatWindow.tsx
 "use client";
 
 import {
@@ -26,7 +27,7 @@ export default function ChatWindow({
 }: ChatWindowProps) {
   const supabase = useMemo(
     () => createClientComponentClient<Database>(),
-    []
+    [],
   );
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
@@ -53,7 +54,6 @@ export default function ChatWindow({
       }
       const data = (await res.json()) as Message[];
 
-      // if we already had an optimistic message and server is empty, keep ours
       setMessages((prev) => {
         if (prev.length > 0 && data.length === 0) return prev;
         return data;
@@ -70,10 +70,7 @@ export default function ChatWindow({
     void fetchMessages();
   }, [fetchMessages]);
 
-  /**
-   * 1) listen to *broadcast* channel that your trigger publishes to:
-   *    conversation:<id>:messages
-   */
+  // 1) listen to trigger-based broadcast channel
   useEffect(() => {
     if (!conversationId) return;
 
@@ -84,11 +81,9 @@ export default function ChatWindow({
         },
       })
       .on("broadcast", { event: "INSERT" }, (payload: any) => {
-        // Supabase note said: payload.record contains NEW row
         const row = payload?.record as Message | undefined;
         if (!row) return;
         setMessages((prev) => {
-          // avoid accidental duplicates
           if (prev.some((m) => m.id === row.id)) return prev;
           return [...prev, row];
         });
@@ -96,9 +91,7 @@ export default function ChatWindow({
       .on("broadcast", { event: "UPDATE" }, (payload: any) => {
         const row = payload?.record as Message | undefined;
         if (!row) return;
-        setMessages((prev) =>
-          prev.map((m) => (m.id === row.id ? row : m))
-        );
+        setMessages((prev) => prev.map((m) => (m.id === row.id ? row : m)));
       })
       .on("broadcast", { event: "DELETE" }, (payload: any) => {
         const row = payload?.record as Message | undefined;
@@ -112,10 +105,7 @@ export default function ChatWindow({
     };
   }, [supabase, conversationId]);
 
-  /**
-   * 2) keep your old postgres_changes subscription as a fallback.
-   *    (useful if you ever disable the trigger.)
-   */
+  // 2) keep postgres_changes as fallback
   useEffect(() => {
     const channel = supabase
       .channel(`messages-fallback-${conversationId}`)
@@ -132,7 +122,7 @@ export default function ChatWindow({
             if (prev.some((m) => m.id === payload.new.id)) return prev;
             return [...prev, payload.new];
           });
-        }
+        },
       )
       .subscribe();
 
@@ -141,12 +131,12 @@ export default function ChatWindow({
     };
   }, [supabase, conversationId]);
 
-  // scroll on new messages
+  // scroll to bottom on new messages
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // focus composer once
+  // focus once
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
@@ -155,12 +145,11 @@ export default function ChatWindow({
     const content = newMessage.trim();
     if (!content || sending) return;
 
-    // optimistic bubble
+    // optimistic bubble — NOTE: no chat_id here anymore
     const tempId = `temp-${Date.now()}`;
     const optimistic: Message = {
       id: tempId,
       conversation_id: conversationId,
-      chat_id: conversationId,
       sender_id: userId,
       content,
       sent_at: new Date().toISOString(),
@@ -217,7 +206,7 @@ export default function ChatWindow({
         setMessages(prev);
       }
     },
-    [messages]
+    [messages],
   );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -258,15 +247,15 @@ export default function ChatWindow({
 
   return (
     <div className="flex h-full flex-col rounded border border-neutral-800 bg-neutral-950 text-white">
+      {/* header */}
       <div className="border-b border-neutral-800 px-4 py-3 flex items-center justify-between">
         <div className="text-sm font-medium text-neutral-200">{title}</div>
         {error ? (
-          <div className="text-[10px] text-red-200/80">
-            {error}
-          </div>
+          <div className="text-[10px] text-red-200/80">{error}</div>
         ) : null}
       </div>
 
+      {/* messages */}
       <div className="flex-1 overflow-y-auto px-3 py-4 space-y-2">
         {loading ? (
           <div className="text-center text-neutral-500 text-sm py-6">
@@ -349,6 +338,7 @@ export default function ChatWindow({
         <div ref={bottomRef} />
       </div>
 
+      {/* composer */}
       <div className="border-t border-neutral-800 p-3 flex gap-2 items-end">
         <textarea
           ref={inputRef}
