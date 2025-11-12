@@ -110,9 +110,7 @@ export default function ChatListPage(): JSX.Element {
     if (!term) return true;
 
     const titleParts: string[] = [];
-    if (item.conversation.context_type) {
-      titleParts.push(item.conversation.context_type);
-    }
+    if (item.conversation.context_type) titleParts.push(item.conversation.context_type);
     item.participants.forEach((p) => {
       if (p.full_name) titleParts.push(p.full_name);
     });
@@ -162,12 +160,12 @@ export default function ChatListPage(): JSX.Element {
             className={[
               "rounded-md",
               "border border-neutral-700",
-              "!bg-neutral-900",                 // force dark
+              "!bg-neutral-900",
               "px-3 py-2 text-sm",
               "text-foreground placeholder:text-neutral-500",
               "focus:border-orange-400 focus:outline-none focus:ring-0",
-              "appearance-none",                 // strip iOS search UI
-              "[color-scheme:dark]",             // hint for Safari/iOS
+              "appearance-none",
+              "[color-scheme:dark]",
             ].join(" ")}
           />
         </div>
@@ -202,15 +200,25 @@ export default function ChatListPage(): JSX.Element {
             {filtered.map((item) => {
               const conv = item.conversation;
               const latest = item.latest_message;
-              const others =
-                me == null
-                  ? item.participants
-                  : item.participants.filter((p) => p.id !== me);
+
+              // prefer names of "others" (exclude me). If none, fall back to all participants.
+              const others = me == null
+                ? item.participants
+                : item.participants.filter((p) => p.id !== me);
+
+              const baseSet = others.length > 0 ? others : item.participants;
+              const displayNames = baseSet
+                .map((p) => p.full_name ?? "")
+                .filter((n) => n.trim().length > 0);
 
               const nameLabel =
-                others[0]?.full_name ??
-                conv.context_type ??
-                `Conversation ${conv.id.slice(0, 6)}`;
+                displayNames.length > 0
+                  ? (displayNames.length > 2
+                      ? `${displayNames.slice(0, 2).join(", ")} +${
+                          displayNames.length - 2
+                        }`
+                      : displayNames.join(", "))
+                  : (conv.context_type ?? `Conversation ${conv.id.slice(0, 6)}`);
 
               const preview =
                 latest?.content?.slice(0, 140) ?? "No messages yet";
@@ -229,23 +237,25 @@ export default function ChatListPage(): JSX.Element {
                   : "C";
 
               const participantNames =
-                others.length > 1
-                  ? others
-                      .slice(0, 3)
-                      .map((p) => p.full_name ?? "User")
-                      .join(", ") + (others.length > 3 ? "…" : "")
+                displayNames.length > 1
+                  ? (displayNames.length > 3
+                      ? `${displayNames.slice(0, 3).join(", ")}…`
+                      : displayNames.join(", "))
                   : null;
 
               return (
                 <li key={conv.id} className="flex items-center gap-3 px-3 py-3">
+                  {/* clickable part */}
                   <Link
                     href={`/chat/${conv.id}`}
                     className="flex flex-1 items-center gap-3 hover:bg-neutral-900/30 rounded-md px-1 py-1 transition-colors"
                   >
+                    {/* avatar */}
                     <div className="flex h-9 w-9 items-center justify-center rounded-full bg-orange-500/90 text-sm font-semibold text-black">
                       {initials}
                     </div>
 
+                    {/* main */}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <p className="truncate text-sm font-medium text-foreground">
@@ -267,6 +277,7 @@ export default function ChatListPage(): JSX.Element {
                       </p>
                     </div>
 
+                    {/* right */}
                     <div className="flex flex-col items-end gap-1">
                       {timeLabel ? (
                         <span className="text-[10px] text-neutral-500">
@@ -276,6 +287,7 @@ export default function ChatListPage(): JSX.Element {
                     </div>
                   </Link>
 
+                  {/* delete always visible */}
                   <button
                     type="button"
                     onClick={() => void handleDelete(conv.id)}
