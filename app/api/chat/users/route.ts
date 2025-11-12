@@ -152,7 +152,7 @@ export async function GET(): Promise<NextResponse> {
   const allUserIds = Array.from(userIdSet);
 
   // fetch profiles by *either* id or user_id and map by both keys
-  let profileMap = new Map<string, { id: string; full_name: string | null }>();
+  const profileMap = new Map<string, { id: string; full_name: string | null }>();
   if (allUserIds.length > 0) {
     const {
       data: profiles,
