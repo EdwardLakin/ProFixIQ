@@ -47,17 +47,9 @@ export default function ChatWindow({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conversationId }),
       });
-      if (!res.ok) {
-        const text = await res.text();
-        console.error("[ChatWindow] get-messages failed:", res.status, text);
-        throw new Error(`HTTP ${res.status}`);
-      }
+      if (!res.ok) throw new Error(String(res.status));
       const data = (await res.json()) as Message[];
-
-      setMessages((prev) => {
-        if (prev.length > 0 && data.length === 0) return prev;
-        return data;
-      });
+      setMessages((prev) => (prev.length > 0 && data.length === 0 ? prev : data));
     } catch (err) {
       console.error("[ChatWindow] fetchMessages error:", err);
       setError("Couldn't load messages.");
@@ -70,31 +62,26 @@ export default function ChatWindow({
     void fetchMessages();
   }, [fetchMessages]);
 
-  // 1) listen to trigger-based broadcast channel
+  // broadcast (trigger) channel
   useEffect(() => {
     if (!conversationId) return;
 
     const channel = supabase
       .channel(`conversation:${conversationId}:messages`, {
-        config: {
-          broadcast: { self: true },
-        },
+        config: { broadcast: { self: true } },
       })
-      .on("broadcast", { event: "INSERT" }, (payload: any) => {
-        const row = payload?.record as Message | undefined;
+      .on("broadcast", { event: "INSERT" }, (payload: unknown) => {
+        const row = (payload as { record?: Message })?.record;
         if (!row) return;
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === row.id)) return prev;
-          return [...prev, row];
-        });
+        setMessages((prev) => (prev.some((m) => m.id === row.id) ? prev : [...prev, row]));
       })
-      .on("broadcast", { event: "UPDATE" }, (payload: any) => {
-        const row = payload?.record as Message | undefined;
+      .on("broadcast", { event: "UPDATE" }, (payload: unknown) => {
+        const row = (payload as { record?: Message })?.record;
         if (!row) return;
         setMessages((prev) => prev.map((m) => (m.id === row.id ? row : m)));
       })
-      .on("broadcast", { event: "DELETE" }, (payload: any) => {
-        const row = payload?.record as Message | undefined;
+      .on("broadcast", { event: "DELETE" }, (payload: unknown) => {
+        const row = (payload as { record?: Message })?.record;
         if (!row) return;
         setMessages((prev) => prev.filter((m) => m.id !== row.id));
       })
@@ -105,7 +92,7 @@ export default function ChatWindow({
     };
   }, [supabase, conversationId]);
 
-  // 2) keep postgres_changes as fallback
+  // postgres_changes fallback
   useEffect(() => {
     const channel = supabase
       .channel(`messages-fallback-${conversationId}`)
@@ -118,10 +105,9 @@ export default function ChatWindow({
           filter: `conversation_id=eq.${conversationId}`,
         },
         (payload: RealtimePostgresInsertPayload<Message>) => {
-          setMessages((prev) => {
-            if (prev.some((m) => m.id === payload.new.id)) return prev;
-            return [...prev, payload.new];
-          });
+          setMessages((prev) =>
+            prev.some((m) => m.id === payload.new.id) ? prev : [...prev, payload.new],
+          );
         },
       )
       .subscribe();
@@ -145,7 +131,6 @@ export default function ChatWindow({
     const content = newMessage.trim();
     if (!content || sending) return;
 
-    // optimistic bubble — NOTE: no chat_id here anymore
     const tempId = `temp-${Date.now()}`;
     const optimistic: Message = {
       id: tempId,
@@ -172,8 +157,7 @@ export default function ChatWindow({
         }),
       });
       if (!res.ok) {
-        const text = await res.text();
-        console.error("[ChatWindow] send-message failed:", text);
+        console.error("[ChatWindow] send-message failed:", await res.text());
         setError("Message failed to send.");
         void fetchMessages();
       }
@@ -189,7 +173,6 @@ export default function ChatWindow({
     async (id: string) => {
       const prev = messages;
       setMessages((curr) => curr.filter((m) => m.id !== id));
-
       try {
         const res = await fetch("/api/chat/delete-message", {
           method: "POST",
@@ -197,8 +180,7 @@ export default function ChatWindow({
           body: JSON.stringify({ id }),
         });
         if (!res.ok) {
-          const text = await res.text();
-          console.error("[ChatWindow] delete-message failed:", text);
+          console.error("[ChatWindow] delete-message failed:", await res.text());
           setMessages(prev);
         }
       } catch (err) {
@@ -216,6 +198,7 @@ export default function ChatWindow({
     }
   };
 
+  // group & render helpers
   const grouped = useMemo(() => {
     const byDay: Array<
       | { type: "day"; label: string }
@@ -226,9 +209,7 @@ export default function ChatWindow({
     let lastSender = "";
 
     messages.forEach((m) => {
-      const day = m.sent_at
-        ? new Date(m.sent_at).toDateString()
-        : "Unknown";
+      const day = m.sent_at ? new Date(m.sent_at).toDateString() : "Unknown";
       if (day !== lastDay) {
         byDay.push({ type: "day", label: day });
         lastDay = day;
@@ -250,17 +231,13 @@ export default function ChatWindow({
       {/* header */}
       <div className="border-b border-neutral-800 px-4 py-3 flex items-center justify-between">
         <div className="text-sm font-medium text-neutral-200">{title}</div>
-        {error ? (
-          <div className="text-[10px] text-red-200/80">{error}</div>
-        ) : null}
+        {error ? <div className="text-[10px] text-red-200/80">{error}</div> : null}
       </div>
 
       {/* messages */}
       <div className="flex-1 overflow-y-auto px-3 py-4 space-y-2">
         {loading ? (
-          <div className="text-center text-neutral-500 text-sm py-6">
-            Loading messages…
-          </div>
+          <div className="text-center text-neutral-500 text-sm py-6">Loading messages…</div>
         ) : grouped.length === 0 ? (
           <div className="text-center text-neutral-500 text-sm py-6">
             No messages yet. Say hi 👋
@@ -280,18 +257,10 @@ export default function ChatWindow({
             const { msg, isMine, showAvatar } = item;
             const time =
               msg.sent_at &&
-              new Date(msg.sent_at).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              });
+              new Date(msg.sent_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
             return (
-              <div
-                key={msg.id}
-                className={`flex gap-2 ${
-                  isMine ? "justify-end" : "justify-start"
-                }`}
-              >
+              <div key={msg.id} className={`flex gap-2 ${isMine ? "justify-end" : "justify-start"}`}>
                 {!isMine && showAvatar ? (
                   <div className="mt-6 h-7 w-7 rounded-full bg-neutral-700 flex items-center justify-center text-[10px] text-white/80">
                     U
@@ -302,23 +271,30 @@ export default function ChatWindow({
 
                 <div className="relative">
                   <div
-                    className={`max-w-[70%] rounded-md px-3 py-2 text-sm break-words ${
+                    className={[
+                      "inline-block",             // keep natural width
+                      "max-w-[80%]",              // roomy but consistent
+                      "rounded-2xl",              // consistent bubble shape
+                      "px-3 py-2 text-sm",
+                      "whitespace-pre-wrap break-words", // no skinny “C\no\nl” bubbles
                       isMine
                         ? "bg-orange-500 text-black"
-                        : "bg-neutral-800 text-neutral-100"
-                    }`}
+                        : "bg-neutral-800 text-neutral-100",
+                    ].join(" ")}
                   >
                     <p>{msg.content}</p>
                     {time ? (
                       <p
-                        className={`mt-1 text-[10px] ${
-                          isMine ? "text-black/60" : "text-neutral-400"
-                        }`}
+                        className={[
+                          "mt-1 text-[10px]",
+                          isMine ? "text-black/60" : "text-neutral-400",
+                        ].join(" ")}
                       >
                         {time}
                       </p>
                     ) : null}
                   </div>
+
                   {isMine ? (
                     <button
                       type="button"

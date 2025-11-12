@@ -42,7 +42,7 @@ const STATUS_BADGE: Record<StatusKey, string> = {
   on_hold: "bg-amber-200/20  border-amber-200/40  text-amber-800 dark:bg-amber-900/20  dark:border-amber-500/40  dark:text-amber-300",
   planned: "bg-purple-200/20 border-purple-200/40 text-purple-800 dark:bg-purple-900/20 dark:border-purple-500/40 dark:text-purple-300",
   new: "bg-muted border-border text-foreground",
-  completed: "bg-green-200/20  border-green-200/40 text-green-800 dark:bg-green-900/20  dark:border-green-500/40 dark:text-green-300",
+  completed: "bg-green-200/20  border-green-200/40 text-green-800 dark:bg-green-900/20  dark:border-green-500/40  dark:text-green-300",
   ready_to_invoice: "bg-emerald-200/20 border-emerald-200/40 text-emerald-800 dark:bg-emerald-900/20 dark:border-emerald-500/40 dark:text-emerald-300",
   invoiced: "bg-teal-200/20    border-teal-200/40    text-teal-800 dark:bg-teal-900/20    dark:border-teal-500/40    dark:text-teal-300",
 };
@@ -65,6 +65,16 @@ const NORMAL_FLOW_STATUSES: StatusKey[] = [
 
 // roles that can assign techs from this view
 const ASSIGN_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
+
+/* --------------------------- Dark input styles --------------------------- */
+const INPUT_DARK =
+  "rounded border border-neutral-700 !bg-neutral-900 px-3 py-1.5 text-sm text-foreground placeholder:text-neutral-500 " +
+  "focus:border-orange-400 focus:outline-none focus:ring-0 appearance-none [color-scheme:dark]";
+const SELECT_DARK =
+  "rounded border border-neutral-700 !bg-neutral-900 px-3 py-1.5 text-sm text-foreground " +
+  "focus:border-orange-400 focus:outline-none appearance-none [color-scheme:dark]";
+const BUTTON_MUTED =
+  "rounded border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-900/40";
 
 export default function WorkOrdersView(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
@@ -319,12 +329,12 @@ export default function WorkOrdersView(): JSX.Element {
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && void load()}
             placeholder="Search id, custom id, name, plate, YMM…"
-            className="rounded border border-border bg-background px-3 py-1.5 text-sm"
+            className={INPUT_DARK}
           />
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value)}
-            className="rounded border border-border bg-background px-3 py-1.5 text-sm"
+            className={SELECT_DARK}
             aria-label="Filter by status"
           >
             <option value="">All (approved / normal flow)</option>
@@ -341,7 +351,7 @@ export default function WorkOrdersView(): JSX.Element {
           </select>
           <button
             onClick={() => void load()}
-            className="rounded border border-border px-3 py-1.5 text-sm hover:bg-muted"
+            className={BUTTON_MUTED}
           >
             Refresh
           </button>
@@ -377,9 +387,7 @@ export default function WorkOrdersView(): JSX.Element {
                 className="flex flex-wrap items-center gap-3 p-3"
               >
                 <div className="w-28 text-xs text-muted-foreground">
-                  {r.created_at
-                    ? format(new Date(r.created_at), "PP")
-                    : "—"}
+                  {r.created_at ? format(new Date(r.created_at), "PP") : "—"}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
@@ -425,13 +433,13 @@ export default function WorkOrdersView(): JSX.Element {
                 <div className="flex items-center gap-2">
                   <Link
                     href={href}
-                    className="rounded border border-border px-2 py-1 text-sm hover:bg-muted"
+                    className={BUTTON_MUTED}
                   >
                     Open
                   </Link>
                   <button
                     onClick={() => void handleDelete(r.id)}
-                    className="rounded border border-red-500/60 px-2 py-1 text-sm text-red-500 hover:bg-red-500/10"
+                    className="rounded border border-red-500/60 px-2 py-1.5 text-sm text-red-500 hover:bg-red-500/10"
                   >
                     Delete
                   </button>
@@ -442,7 +450,7 @@ export default function WorkOrdersView(): JSX.Element {
                           onClick={() => {
                             setAssigningFor(r.id);
                           }}
-                          className="rounded border border-sky-500/60 px-2 py-1 text-sm text-sky-500 hover:bg-sky-500/10"
+                          className="rounded border border-sky-500/60 px-2 py-1.5 text-sm text-sky-500 hover:bg-sky-500/10"
                         >
                           Assign
                         </button>
@@ -451,25 +459,24 @@ export default function WorkOrdersView(): JSX.Element {
                           <select
                             value={selectedTechId}
                             onChange={(e) => setSelectedTechId(e.target.value)}
-                            className="rounded border border-border bg-background px-2 py-1 text-xs"
+                            className={SELECT_DARK.replace("px-3 py-1.5", "px-2 py-1 text-xs")}
                           >
                             <option value="">Pick mechanic…</option>
                             {techs.map((t) => (
                               <option key={t.id} value={t.id}>
-                                {t.full_name ?? "(no name)"}{" "}
-                                {t.role ? `(${t.role})` : ""}
+                                {t.full_name ?? "(no name)"} {t.role ? `(${t.role})` : ""}
                               </option>
                             ))}
                           </select>
                           <button
                             onClick={() => void handleAssignAll(r.id)}
-                            className="rounded bg-orange-500 px-2 py-1 text-xs font-semibold text-black hover:bg-orange-400"
+                            className="rounded bg-orange-500 px-2 py-1.5 text-xs font-semibold text-black hover:bg-orange-400"
                           >
                             Apply
                           </button>
                           <button
                             onClick={() => setAssigningFor(null)}
-                            className="rounded border border-border px-2 py-1 text-xs hover:bg-muted"
+                            className={BUTTON_MUTED.replace("px-3 py-1.5", "px-2 py-1 text-xs")}
                           >
                             ✕
                           </button>
