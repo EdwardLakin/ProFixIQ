@@ -66,7 +66,7 @@ export default function NewChatModal({
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
 
-  // left pane
+  // users / recipients
   const [users, setUsers] = useState<UserRow[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [search, setSearch] = useState("");
@@ -74,14 +74,14 @@ export default function NewChatModal({
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
 
-  // right pane
+  // conversation / messages
   const [activeConvoId, setActiveConvoId] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendText, setSendText] = useState("");
 
-  // client-side recent convos
+  // recent convos
   const [recentConversationIds, setRecentConversationIds] = useState<string[]>(
     [],
   );
@@ -178,7 +178,7 @@ export default function NewChatModal({
         try {
           const { data: profiles, error } = await supabase
             .from("profiles")
-            .select("id, user_id, full_name, role, email") // ← include user_id
+            .select("id, user_id, full_name, role, email")
             .order("full_name", { ascending: true })
             .limit(200);
 
@@ -188,7 +188,7 @@ export default function NewChatModal({
           } else {
             setUsers(
               (profiles ?? []).map((p) => ({
-                id: p.user_id ?? p.id, // ← prefer auth UID
+                id: p.user_id ?? p.id, // prefer auth UID
                 full_name: p.full_name,
                 role: p.role,
                 email: p.email,
@@ -240,7 +240,7 @@ export default function NewChatModal({
     }
   }, [isOpen, context_type, currentUserRole]);
 
-  // ✅ load messages for active convo (patched)
+  // load messages for active convo
   useEffect(() => {
     if (!isOpen) return;
     if (!activeConvoId) {
@@ -380,7 +380,7 @@ export default function NewChatModal({
       const rows = Array.from(setIds).map((user_id) => ({
         id: uuidv4(),
         conversation_id: newId,
-        user_id, // ← these are now auth UIDs
+        user_id, // ← auth UID
       }));
 
       const { error: partErr } = await supabase
@@ -479,6 +479,7 @@ export default function NewChatModal({
       size="xl"
       onSubmit={undefined}
     >
+      {/* helper row */}
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="text-xs text-neutral-400">
           Pick recipients → type → send. Conversation is created automatically.
@@ -491,182 +492,195 @@ export default function NewChatModal({
         </a>
       </div>
 
-      <div className="flex gap-3 min-h-[360px]">
-        {/* LEFT */}
-        <div className="w-60 shrink-0 flex flex-col gap-2">
-          {apiError ? (
-            <div className="rounded border border-red-500/30 bg-red-950/30 px-3 py-2 text-xs text-red-100">
-              {apiError}
-            </div>
-          ) : null}
-
-          <div className="flex gap-2">
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search name, role, or email…"
-              className="flex-1 rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-xs text-white placeholder:text-neutral-500 focus:border-orange-400 focus:outline-none"
-            />
-            <select
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-              className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-xs text-white focus:border-orange-400"
-            >
-              {ROLE_OPTIONS.map((r) => (
-                <option key={r.value} value={r.value}>
-                  {r.label}
-                </option>
-              ))}
-            </select>
+      {/* Recipient selector (moved ABOVE chat) */}
+      <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
+        {apiError ? (
+          <div className="mb-2 rounded border border-red-500/30 bg-red-950/30 px-3 py-2 text-xs text-red-100">
+            {apiError}
           </div>
+        ) : null}
 
-          <div className="text-[10px] text-neutral-500">
-            {selectedIds.length} selected
-          </div>
-
-          <div className="flex-1 overflow-y-auto rounded border border-neutral-800 bg-neutral-900/40">
-            {loadingUsers ? (
-              <div className="p-3 text-xs text-neutral-400">Loading…</div>
-            ) : filtered.length === 0 ? (
-              <div className="p-3 text-xs text-neutral-400">
-                No users match this filter.
-              </div>
-            ) : (
-              <ul className="divide-y divide-neutral-800 text-sm">
-                {filtered.map((u) => {
-                  const checked = selectedIds.includes(u.id);
-                  return (
-                    <li key={u.id}>
-                      <label className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs text-white hover:bg-neutral-800/70">
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 accent-orange-500"
-                          checked={checked}
-                          onChange={() => toggle(u.id)}
-                        />
-                        <div className="min-w-0">
-                          <div className="truncate">
-                            {u.full_name ?? "(no name)"}
-                          </div>
-                          <div className="truncate text-[10px] text-neutral-400">
-                            {u.role ?? "—"}
-                            {u.email ? ` • ${u.email}` : ""}
-                          </div>
-                        </div>
-                      </label>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
+        <div className="flex gap-2">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search name, role, or email…"
+            className="flex-1 rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-xs text-white placeholder:text-neutral-500 focus:border-orange-400 focus:outline-none"
+          />
+          <select
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+            className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-xs text-white focus:border-orange-400"
+          >
+            {ROLE_OPTIONS.map((r) => (
+              <option key={r.value} value={r.value}>
+                {r.label}
+              </option>
+            ))}
+          </select>
         </div>
 
-        {/* RIGHT */}
-        <div className="flex-1 flex flex-col rounded border border-neutral-800 bg-neutral-950">
-          <div className="border-b border-neutral-800 px-4 py-2 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <div className="text-sm font-medium text-neutral-100">
-                {activeConvoId
-                  ? "Conversation"
-                  : "New conversation (not saved until you send)"}
-              </div>
-              {recentConversationIds.length > 0 ? (
-                <select
-                  value={activeConvoId ?? ""}
-                  onChange={(e) => setActiveConvoId(e.target.value || null)}
-                  className="text-[10px] bg-neutral-900 border border-neutral-700 rounded px-1 py-1 text-neutral-200"
-                >
-                  <option value="">Select conversation…</option>
-                  {recentConversationIds.map((id) => (
-                    <option key={id} value={id}>
-                      {id.slice(0, 8)}
-                    </option>
-                  ))}
-                </select>
-              ) : null}
+        <div className="mt-1 text-[10px] text-neutral-500">
+          {selectedIds.length} selected
+        </div>
+
+        <div className="mt-2 max-h-48 overflow-y-auto rounded border border-neutral-800 bg-neutral-900/40">
+          {loadingUsers ? (
+            <div className="p-3 text-xs text-neutral-400">Loading…</div>
+          ) : filtered.length === 0 ? (
+            <div className="p-3 text-xs text-neutral-400">
+              No users match this filter.
             </div>
-            {activeConvoId ? (
-              <div className="text-[10px] text-neutral-500">
-                ID: {activeConvoId.slice(0, 8)}
-              </div>
-            ) : null}
-          </div>
-
-          {/* messages */}
-          <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
-            {messagesLoading ? (
-              <div className="text-center text-neutral-500 text-xs py-6">
-                Loading messages…
-              </div>
-            ) : messages.length === 0 ? (
-              <div className="text-center text-neutral-500 text-xs py-6">
-                {activeConvoId
-                  ? "No messages yet."
-                  : "Pick recipients and send a message to start."}
-              </div>
-            ) : (
-              messages.map((m) => {
-                const isMine = m.sender_id === currentUserId;
-                const time =
-                  m.sent_at &&
-                  new Date(m.sent_at).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  });
+          ) : (
+            <ul className="divide-y divide-neutral-800 text-sm">
+              {filtered.map((u) => {
+                const checked = selectedIds.includes(u.id);
                 return (
-                  <div
-                    key={m.id}
-                    className={`flex ${isMine ? "justify-end" : "justify-start"}`}
-                  >
-                    <div
-                      className={`max-w-[70%] rounded-md px-3 py-2 text-xs break-words ${
-                        isMine
-                          ? "bg-orange-500 text-black"
-                          : "bg-neutral-900 text-neutral-100"
-                      }`}
-                    >
-                      <p>{m.content}</p>
-                      {time ? (
-                        <p
-                          className={`mt-1 text-[9px] ${
-                            isMine ? "text-black/60" : "text-neutral-400"
-                          }`}
-                        >
-                          {time}
-                        </p>
-                      ) : null}
-                    </div>
-                  </div>
+                  <li key={u.id}>
+                    <label className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs text-white hover:bg-neutral-800/70">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 accent-orange-500"
+                        checked={checked}
+                        onChange={() => toggle(u.id)}
+                      />
+                      <div className="min-w-0">
+                        <div className="truncate">
+                          {u.full_name ?? "(no name)"}
+                        </div>
+                        <div className="truncate text-[10px] text-neutral-400">
+                          {u.role ?? "—"}
+                          {u.email ? ` • ${u.email}` : ""}
+                        </div>
+                      </div>
+                    </label>
+                  </li>
                 );
-              })
-            )}
-            <div ref={bottomRef} />
-          </div>
+              })}
+            </ul>
+          )}
+        </div>
+      </div>
 
-          {/* composer */}
-          <div className="border-t border-neutral-800 p-3 flex gap-2 items-end">
-            <textarea
-              value={sendText}
-              onChange={(e) => setSendText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void handleSend();
-                }
-              }}
-              rows={1}
-              placeholder="Type a message… (Enter to send, Shift+Enter for new line)"
-              className="flex-1 resize-none rounded bg-neutral-900 border border-neutral-700 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-400 focus:outline-none"
-            />
-            <button
-              onClick={() => void handleSend()}
-              disabled={sending || !sendText.trim()}
-              className="rounded border border-orange-500/70 text-orange-300 px-4 py-2 text-sm font-semibold hover:bg-orange-500/10 disabled:opacity-50"
-            >
-              {sending ? "Sending…" : "Send"}
-            </button>
+      {/* Recent chats (ABOVE chat) */}
+      <div className="mt-3 flex items-center gap-2">
+        <div className="text-[11px] text-neutral-500">Recent:</div>
+        <div className="flex flex-wrap gap-2">
+          {recentConversationIds.length === 0 ? (
+            <div className="text-[11px] text-neutral-500">No recent threads.</div>
+          ) : (
+            recentConversationIds.slice(0, 12).map((id) => {
+              const active = id === activeConvoId;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setActiveConvoId(id)}
+                  className={`rounded px-2 py-1 text-[11px] ${
+                    active
+                      ? "bg-orange-500 text-black"
+                      : "border border-neutral-700 bg-neutral-900 text-neutral-200 hover:bg-neutral-800"
+                  }`}
+                  title={id}
+                >
+                  {id.slice(0, 8)}
+                </button>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      {/* CHAT — now full span of the modal */}
+      <div className="mt-3 flex flex-col rounded border border-neutral-800 bg-neutral-950 min-h-[360px]">
+        <div className="border-b border-neutral-800 px-4 py-2 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <div className="text-sm font-medium text-neutral-100">
+              {activeConvoId
+                ? "Conversation"
+                : "New conversation (not saved until you send)"}
+            </div>
           </div>
+          {activeConvoId ? (
+            <div className="text-[10px] text-neutral-500">
+              ID: {activeConvoId.slice(0, 8)}
+            </div>
+          ) : null}
+        </div>
+
+        {/* messages */}
+        <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
+          {messagesLoading ? (
+            <div className="text-center text-neutral-500 text-xs py-6">
+              Loading messages…
+            </div>
+          ) : messages.length === 0 ? (
+            <div className="text-center text-neutral-500 text-xs py-6">
+              {activeConvoId
+                ? "No messages yet."
+                : "Pick recipients and send a message to start."}
+            </div>
+          ) : (
+            messages.map((m) => {
+              const isMine = m.sender_id === currentUserId;
+              const time =
+                m.sent_at &&
+                new Date(m.sent_at).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                });
+              return (
+                <div
+                  key={m.id}
+                  className={`flex ${isMine ? "justify-end" : "justify-start"}`}
+                >
+                  <div
+                    className={`max-w-[70%] rounded-md px-3 py-2 text-xs break-words ${
+                      isMine
+                        ? "bg-orange-500 text-black"
+                        : "bg-neutral-900 text-neutral-100"
+                    }`}
+                  >
+                    <p>{m.content}</p>
+                    {time ? (
+                      <p
+                        className={`mt-1 text-[9px] ${
+                          isMine ? "text-black/60" : "text-neutral-400"
+                        }`}
+                      >
+                        {time}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })
+          )}
+          <div ref={bottomRef} />
+        </div>
+
+        {/* composer */}
+        <div className="border-t border-neutral-800 p-3 flex gap-2 items-end">
+          <textarea
+            value={sendText}
+            onChange={(e) => setSendText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void handleSend();
+              }
+            }}
+            rows={1}
+            placeholder="Type a message… (Enter to send, Shift+Enter for new line)"
+            className="flex-1 resize-none rounded bg-neutral-900 border border-neutral-700 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-400 focus:outline-none"
+          />
+          <button
+            onClick={() => void handleSend()}
+            disabled={sending || !sendText.trim()}
+            className="rounded border border-orange-500/70 text-orange-300 px-4 py-2 text-sm font-semibold hover:bg-orange-500/10 disabled:opacity-50"
+          >
+            {sending ? "Sending…" : "Send"}
+          </button>
         </div>
       </div>
     </ModalShell>

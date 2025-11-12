@@ -51,9 +51,9 @@ export default function ModalShell({
 
       {/* panel wrapper */}
       <div className={`relative z-[510] w-full ${width}`}>
-        <Dialog.Panel className="w-full rounded-lg border border-border bg-background text-foreground shadow-xl">
-          {/* header */}
-          <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
+        <Dialog.Panel className="w-full overflow-hidden rounded-lg border border-border bg-background text-foreground shadow-xl">
+          {/* header — orange bar */}
+          <div className="flex items-center justify-between border-b border-border/60 bg-orange-500 px-4 py-3 text-black">
             {title ? (
               <Dialog.Title className="text-base font-semibold">
                 {title}
@@ -64,7 +64,9 @@ export default function ModalShell({
             <button
               type="button"
               onClick={onClose}
-              className="rounded px-2 py-1 text-sm text-muted-foreground hover:bg-muted/60"
+              className="rounded px-2 py-1 text-sm hover:bg-black/10"
+              aria-label="Close"
+              title="Close"
             >
               ✕
             </button>
