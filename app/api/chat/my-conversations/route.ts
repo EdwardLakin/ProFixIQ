@@ -11,7 +11,6 @@ type DB = Database;
 type ConversationRow = DB["public"]["Tables"]["conversations"]["Row"];
 type MessageRow = DB["public"]["Tables"]["messages"]["Row"];
 type ParticipantRow = DB["public"]["Tables"]["conversation_participants"]["Row"];
-type ProfileRow = DB["public"]["Tables"]["profiles"]["Row"];
 
 interface ParticipantInfo {
   id: string;
@@ -83,7 +82,7 @@ export async function GET(): Promise<NextResponse> {
 
   const safeConvos = (convos ?? []) as ConversationRow[];
 
-  // Latest messages (no chat_id)
+  // Latest messages
   const { data: msgs, error: msgErr } = await admin
     .from("messages")
     .select("*")
@@ -103,7 +102,11 @@ export async function GET(): Promise<NextResponse> {
     }
   });
 
-  // Participants + profile names
+  // Participants with profiles
+  type ParticipantWithProfile = ParticipantRow & {
+    profiles: { full_name: string | null } | null;
+  };
+
   const { data: partsWithNames, error: partsNamesErr } = await admin
     .from("conversation_participants")
     .select(
@@ -120,23 +123,17 @@ export async function GET(): Promise<NextResponse> {
   }
 
   const participantsByConvo = new Map<string, ParticipantInfo[]>();
-  (partsWithNames ?? []).forEach(
-    (row: {
-      conversation_id: ParticipantRow["conversation_id"];
-      user_id: ParticipantRow["user_id"];
-      profiles: Pick<ProfileRow, "full_name"> | null;
-    }) => {
-      if (!row.conversation_id || !row.user_id) return;
-      const arr = participantsByConvo.get(row.conversation_id) ?? [];
-      arr.push({
-        id: row.user_id,
-        full_name: row.profiles?.full_name ?? null,
-      });
-      participantsByConvo.set(row.conversation_id, arr);
-    },
-  );
+  (partsWithNames as ParticipantWithProfile[] | null)?.forEach((row) => {
+    if (!row.conversation_id || !row.user_id) return;
+    const arr = participantsByConvo.get(row.conversation_id) ?? [];
+    arr.push({
+      id: row.user_id,
+      full_name: row.profiles?.full_name ?? null,
+    });
+    participantsByConvo.set(row.conversation_id, arr);
+  });
 
-  // Ensure creator included
+  // Ensure creator is included
   safeConvos.forEach((c) => {
     if (!c.id || !c.created_by) return;
     const arr = participantsByConvo.get(c.id) ?? [];
