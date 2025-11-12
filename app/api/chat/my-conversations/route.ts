@@ -11,10 +11,11 @@ type DB = Database;
 type ConversationRow = DB["public"]["Tables"]["conversations"]["Row"];
 type MessageRow = DB["public"]["Tables"]["messages"]["Row"];
 type ParticipantRow = DB["public"]["Tables"]["conversation_participants"]["Row"];
+type ProfileRow = DB["public"]["Tables"]["profiles"]["Row"];
 
 interface ParticipantInfo {
   id: string;
-  full_name: string | null;
+  full_name: string | null; // will be name or email fallback
 }
 
 interface ConversationPayload {
@@ -102,9 +103,9 @@ export async function GET(): Promise<NextResponse> {
     }
   });
 
-  // Participants with profiles
+  // Participants WITH profile (name/email)
   type ParticipantWithProfile = ParticipantRow & {
-    profiles: { full_name: string | null } | null;
+    profiles: Pick<ProfileRow, "full_name" | "email"> | null;
   };
 
   const { data: partsWithNames, error: partsNamesErr } = await admin
@@ -113,7 +114,7 @@ export async function GET(): Promise<NextResponse> {
       `
         conversation_id,
         user_id,
-        profiles:profiles!conversation_participants_user_id_fkey ( full_name )
+        profiles:profiles!conversation_participants_user_id_fkey ( full_name, email )
       `,
     )
     .in("conversation_id", convoIds);
@@ -126,19 +127,45 @@ export async function GET(): Promise<NextResponse> {
   (partsWithNames as ParticipantWithProfile[] | null)?.forEach((row) => {
     if (!row.conversation_id || !row.user_id) return;
     const arr = participantsByConvo.get(row.conversation_id) ?? [];
+    const display = row.profiles?.full_name ?? row.profiles?.email ?? null;
     arr.push({
       id: row.user_id,
-      full_name: row.profiles?.full_name ?? null,
+      full_name: display,
     });
     participantsByConvo.set(row.conversation_id, arr);
   });
 
-  // Ensure creator is included
+  // Ensure creator is included with a label (name→email fallback)
+  const creatorIds = Array.from(
+    new Set(
+      safeConvos
+        .map((c) => c.created_by)
+        .filter(Boolean) as string[],
+    ),
+  );
+
+  let creatorProfileMap = new Map<string, string | null>();
+  if (creatorIds.length > 0) {
+    const { data: creators, error: creatorsErr } = await admin
+      .from("profiles")
+      .select("id, full_name, email")
+      .in("id", creatorIds);
+
+    if (creatorsErr) {
+      console.error("[my-conversations] creatorsErr:", creatorsErr);
+    }
+
+    (creators ?? []).forEach((p) => {
+      creatorProfileMap.set(p.id, p.full_name ?? p.email ?? null);
+    });
+  }
+
   safeConvos.forEach((c) => {
     if (!c.id || !c.created_by) return;
     const arr = participantsByConvo.get(c.id) ?? [];
     if (!arr.some((p) => p.id === c.created_by)) {
-      arr.push({ id: c.created_by, full_name: null });
+      const display = creatorProfileMap.get(c.created_by) ?? null;
+      arr.push({ id: c.created_by, full_name: display });
     }
     participantsByConvo.set(c.id, arr);
   });
