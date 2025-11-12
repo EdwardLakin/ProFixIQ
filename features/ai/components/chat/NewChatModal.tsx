@@ -1,4 +1,3 @@
-// features/ai/components/chat/NewChatModal.tsx
 "use client";
 
 import React, {
@@ -83,7 +82,9 @@ export default function NewChatModal({
   const [sendText, setSendText] = useState("");
 
   // client-side recent convos
-  const [recentConversationIds, setRecentConversationIds] = useState<string[]>([]);
+  const [recentConversationIds, setRecentConversationIds] = useState<string[]>(
+    [],
+  );
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -172,12 +173,12 @@ export default function NewChatModal({
         console.warn("[NewChatModal] /api/chat/users failed, will fallback:", err);
       }
 
-      // fallback to client-side profiles
+      // fallback to client-side profiles (PREFER user_id!)
       if (!gotUsers) {
         try {
           const { data: profiles, error } = await supabase
             .from("profiles")
-            .select("id, full_name, role, email")
+            .select("id, user_id, full_name, role, email") // ← include user_id
             .order("full_name", { ascending: true })
             .limit(200);
 
@@ -187,7 +188,7 @@ export default function NewChatModal({
           } else {
             setUsers(
               (profiles ?? []).map((p) => ({
-                id: p.id,
+                id: p.user_id ?? p.id, // ← prefer auth UID
                 full_name: p.full_name,
                 role: p.role,
                 email: p.email,
@@ -260,13 +261,8 @@ export default function NewChatModal({
         const data: MessageRow[] = await res.json();
 
         if (!cancelled) {
-          // IMPORTANT: use functional set so we see *current* optimistic messages
           setMessages((prev) => {
-            if (prev.length > 0 && data.length === 0) {
-              // we already showed an optimistic message, server is still empty,
-              // so keep what we have
-              return prev;
-            }
+            if (prev.length > 0 && data.length === 0) return prev;
             return data;
           });
 
@@ -277,7 +273,6 @@ export default function NewChatModal({
         }
       } catch (e) {
         console.error("[NewChatModal] get-messages failed:", e);
-        // keep existing messages if we had any
       } finally {
         if (!cancelled) setMessagesLoading(false);
       }
@@ -286,7 +281,6 @@ export default function NewChatModal({
     return () => {
       cancelled = true;
     };
-    // 👇 NO messages.length here — that was the flicker
   }, [activeConvoId, isOpen, upsertRecent]);
 
   // realtime for current convo
@@ -338,7 +332,6 @@ export default function NewChatModal({
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
 
-  // helper to guarantee we have a user right before send
   const getOrFetchUserId = useCallback(async () => {
     if (currentUserId) return currentUserId;
     const {
@@ -387,7 +380,7 @@ export default function NewChatModal({
       const rows = Array.from(setIds).map((user_id) => ({
         id: uuidv4(),
         conversation_id: newId,
-        user_id,
+        user_id, // ← these are now auth UIDs
       }));
 
       const { error: partErr } = await supabase
@@ -464,7 +457,6 @@ export default function NewChatModal({
         console.error("send-message failed:", await res.text());
         toast.error("Message failed to send (server).");
       }
-      // realtime will insert the real row
     } catch (e) {
       console.error("send failed:", e);
       toast.error("Message failed to send (network).");

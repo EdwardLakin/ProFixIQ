@@ -1,4 +1,3 @@
-// app/api/chat/my-conversations/route.ts
 import { NextResponse } from "next/server";
 import {
   createServerSupabaseRoute,
@@ -151,24 +150,29 @@ export async function GET(): Promise<NextResponse> {
   });
 
   const allUserIds = Array.from(userIdSet);
-  let profileMap = new Map<string, { id: string; full_name: string | null }>();
 
+  // fetch profiles by *either* id or user_id and map by both keys
+  let profileMap = new Map<string, { id: string; full_name: string | null }>();
   if (allUserIds.length > 0) {
     const {
       data: profiles,
       error: profErr,
     } = await admin
       .from("profiles")
-      .select("id, full_name")
-      .in("id", allUserIds);
+      .select("id, user_id, full_name")
+      .or(
+        `id.in.(${allUserIds.join(",")}),user_id.in.(${allUserIds.join(",")})`,
+      );
 
     if (profErr) {
       return NextResponse.json({ error: profErr.message }, { status: 500 });
     }
 
-    profileMap = new Map(
-      (profiles ?? []).map((p) => [p.id, { id: p.id, full_name: p.full_name }]),
-    );
+    for (const p of profiles ?? []) {
+      const label = { id: p.user_id ?? p.id, full_name: p.full_name ?? null };
+      if (p.id) profileMap.set(p.id, label);
+      if (p.user_id) profileMap.set(p.user_id, label); // ← critical
+    }
   }
 
   // 7) build participants list per convo AND make sure the creator is included
