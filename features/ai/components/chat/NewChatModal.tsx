@@ -73,7 +73,12 @@ export default function NewChatModal({
   const [role, setRole] = useState<"all" | string>("all");
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
+
+  // dropdown UI
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [roleOpen, setRoleOpen] = useState(false);
+  const pickerRef = useRef<HTMLDivElement | null>(null);
+  const roleRef = useRef<HTMLDivElement | null>(null);
 
   // conversation / messages
   const [activeConvoId, setActiveConvoId] = useState<string | null>(null);
@@ -86,9 +91,9 @@ export default function NewChatModal({
   const [recentConversationIds, setRecentConversationIds] = useState<string[]>(
     [],
   );
+  const [recentLabels, setRecentLabels] = useState<Record<string, string>>({});
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
-  const pickerRef = useRef<HTMLDivElement | null>(null);
 
   // load current user & role
   useEffect(() => {
@@ -175,7 +180,7 @@ export default function NewChatModal({
         console.warn("[NewChatModal] /api/chat/users failed, will fallback:", err);
       }
 
-      // fallback to client-side profiles (PREFER user_id!)
+      // fallback to client-side profiles (prefer user_id)
       if (!gotUsers) {
         try {
           const { data: profiles, error } = await supabase
@@ -190,7 +195,7 @@ export default function NewChatModal({
           } else {
             setUsers(
               (profiles ?? []).map((p) => ({
-                id: p.user_id ?? p.id, // prefer auth UID
+                id: p.user_id ?? p.id,
                 full_name: p.full_name,
                 role: p.role,
                 email: p.email,
@@ -198,7 +203,7 @@ export default function NewChatModal({
             );
             setApiError(null);
           }
-        } catch (err) {
+        } catch {
           setApiError("Could not load users.");
           setUsers([]);
         }
@@ -232,13 +237,9 @@ export default function NewChatModal({
     if (!currentUserRole) return;
 
     if (context_type === "work_order") {
-      if (currentUserRole === "tech") {
-        setRole("advisor");
-      } else if (currentUserRole === "advisor") {
-        setRole("tech");
-      } else {
-        setRole("all");
-      }
+      if (currentUserRole === "tech") setRole("advisor");
+      else if (currentUserRole === "advisor") setRole("tech");
+      else setRole("all");
     }
   }, [isOpen, context_type, currentUserRole]);
 
@@ -315,20 +316,22 @@ export default function NewChatModal({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // close picker when clicking outside
+  // close dropdowns when clicking outside
   useEffect(() => {
-    if (!pickerOpen) return;
     const onClick = (e: MouseEvent) => {
-      if (!pickerRef.current) return;
-      if (!pickerRef.current.contains(e.target as Node)) {
+      const t = e.target as Node;
+      if (pickerOpen && pickerRef.current && !pickerRef.current.contains(t)) {
         setPickerOpen(false);
+      }
+      if (roleOpen && roleRef.current && !roleRef.current.contains(t)) {
+        setRoleOpen(false);
       }
     };
     window.addEventListener("mousedown", onClick);
     return () => window.removeEventListener("mousedown", onClick);
-  }, [pickerOpen]);
+  }, [pickerOpen, roleOpen]);
 
-  // filtered users
+  // filtered users (by search + role)
   const filtered = React.useMemo(() => {
     const t = search.trim().toLowerCase();
     return users.filter((u) => {
@@ -342,18 +345,25 @@ export default function NewChatModal({
     });
   }, [users, search, role]);
 
-  const toggle = (id: string) =>
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
-
   const selectedUsers = React.useMemo(
     () => users.filter((u) => selectedIds.includes(u.id)),
     [users, selectedIds],
   );
 
+  const toggle = (id: string) =>
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+
   const removeSelected = (id: string) =>
     setSelectedIds((prev) => prev.filter((x) => x !== id));
+
+  // ⬇️ Selecting recipients starts a NEW conversation (refresh chat area)
+  useEffect(() => {
+    // If user changes recipients, clear current thread (new unsaved convo)
+    setActiveConvoId(null);
+    setMessages([]);
+  }, [selectedIds.join(",")]); // join to avoid effect spam
 
   const getOrFetchUserId = useCallback(async () => {
     if (currentUserId) return currentUserId;
@@ -440,6 +450,12 @@ export default function NewChatModal({
     if (!text) return;
     if (sending) return;
 
+    // 🚫 Disallow new messages without recipients (unless replying in an existing convo)
+    if (!activeConvoId && selectedIds.length === 0) {
+      toast.error("Select at least one recipient.");
+      return;
+    }
+
     const actualUserId = await getOrFetchUserId();
     if (!actualUserId) {
       toast.error("Can't send — no authenticated user.");
@@ -492,7 +508,52 @@ export default function NewChatModal({
     selectedIds,
     ensureConversation,
     getOrFetchUserId,
+    activeConvoId,
   ]);
+
+  // Build human labels for recents (other participants' names)
+  const buildRecentLabel = useCallback(
+    async (convoId: string) => {
+      if (!convoId || recentLabels[convoId]) return;
+      try {
+        // participants for convo
+        const { data: parts, error: partsErr } = await supabase
+          .from("conversation_participants")
+          .select("user_id")
+          .eq("conversation_id", convoId);
+
+        if (partsErr || !parts?.length) return;
+
+        const ids = parts.map((p) => p.user_id).filter(Boolean);
+        // profiles by user_id (auth uid)
+        const { data: profs } = await supabase
+          .from("profiles")
+          .select("full_name,user_id")
+          .in("user_id", ids as string[]);
+
+        const others = (profs ?? [])
+          .filter((p) => p.user_id !== currentUserId)
+          .map((p) => p.full_name || "Unknown");
+
+        const label =
+          others.length <= 2
+            ? others.join(", ")
+            : `${others.slice(0, 2).join(", ")} (+${others.length - 2})`;
+
+        setRecentLabels((prev) => ({ ...prev, [convoId]: label || "Thread" }));
+      } catch {
+        // ignore
+      }
+    },
+    [supabase, currentUserId, recentLabels],
+  );
+
+  useEffect(() => {
+    // fetch labels for top 12 recents
+    recentConversationIds.slice(0, 12).forEach((id) => {
+      void buildRecentLabel(id);
+    });
+  }, [recentConversationIds, buildRecentLabel]);
 
   return (
     <ModalShell
@@ -515,128 +576,163 @@ export default function NewChatModal({
         </a>
       </div>
 
-      {/* Recipient MULTI-SELECT (dropdown) */}
-      <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
-        {apiError ? (
-          <div className="mb-2 rounded border border-red-500/30 bg-red-950/30 px-3 py-2 text-xs text-red-100">
-            {apiError}
-          </div>
-        ) : null}
+      {/* Controls row: Recipients + Roles (equal size) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {/* Recipients */}
+        <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
+          {apiError ? (
+            <div className="mb-2 rounded border border-red-500/30 bg-red-950/30 px-3 py-2 text-xs text-red-100">
+              {apiError}
+            </div>
+          ) : null}
 
-        {/* selected chips + toggle button */}
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setPickerOpen((o) => !o)}
-            className="rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-100 hover:bg-neutral-800"
-          >
-            {pickerOpen ? "Close recipients" : "Select recipients"}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setPickerOpen((o) => !o);
+                setRoleOpen(false);
+              }}
+              className="rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-100 hover:bg-neutral-800"
+            >
+              {pickerOpen ? "Close recipients" : "Select recipients"}
+            </button>
 
-          {selectedUsers.length === 0 ? (
-            <span className="text-[11px] text-neutral-500">
-              No recipients selected
-            </span>
-          ) : (
-            selectedUsers.map((u) => (
-              <span
-                key={u.id}
-                className="inline-flex items-center gap-1 rounded bg-neutral-800 px-2 py-1 text-[11px] text-neutral-100"
-              >
-                {u.full_name ?? "(no name)"}
-                <button
-                  type="button"
-                  onClick={() => removeSelected(u.id)}
-                  className="ml-1 rounded px-1 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200"
-                  aria-label="Remove"
-                  title="Remove"
-                >
-                  ✕
-                </button>
+            {selectedUsers.length === 0 ? (
+              <span className="text-[11px] text-neutral-500">
+                No recipients selected
               </span>
-            ))
+            ) : (
+              selectedUsers.map((u) => (
+                <span
+                  key={u.id}
+                  className="inline-flex items-center gap-1 rounded bg-neutral-800 px-2 py-1 text-[11px] text-neutral-100"
+                >
+                  {u.full_name ?? "(no name)"}
+                  <button
+                    type="button"
+                    onClick={() => removeSelected(u.id)}
+                    className="ml-1 rounded px-1 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200"
+                    aria-label="Remove"
+                    title="Remove"
+                  >
+                    ✕
+                  </button>
+                </span>
+              ))
+            )}
+          </div>
+
+          {pickerOpen && (
+            <div ref={pickerRef} className="relative mt-2">
+              <div className="absolute z-[520] w-full rounded border border-neutral-700 bg-neutral-900 p-2 shadow-xl">
+                <div className="flex gap-2">
+                  <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search name, role, or email…"
+                    className="flex-1 rounded border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-white placeholder:text-neutral-500 focus:border-orange-400 focus:outline-none"
+                  />
+                </div>
+
+                <div className="mt-2 max-h-56 overflow-y-auto rounded border border-neutral-800 bg-neutral-950/60">
+                  {loadingUsers ? (
+                    <div className="p-3 text-xs text-neutral-400">Loading…</div>
+                  ) : filtered.length === 0 ? (
+                    <div className="p-3 text-xs text-neutral-400">
+                      No users match this filter.
+                    </div>
+                  ) : (
+                    <ul className="divide-y divide-neutral-800 text-sm">
+                      {filtered.map((u) => {
+                        const checked = selectedIds.includes(u.id);
+                        return (
+                          <li key={u.id}>
+                            <label className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs text-white hover:bg-neutral-800/70">
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 accent-orange-500"
+                                checked={checked}
+                                onChange={() => toggle(u.id)}
+                              />
+                              <div className="min-w-0">
+                                <div className="truncate">
+                                  {u.full_name ?? "(no name)"}
+                                </div>
+                                <div className="truncate text-[10px] text-neutral-400">
+                                  {u.role ?? "—"}
+                                  {u.email ? ` • ${u.email}` : ""}
+                                </div>
+                              </div>
+                            </label>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+
+                <div className="mt-2 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setPickerOpen(false)}
+                    className="rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-[11px] text-neutral-100 hover:bg-neutral-700"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
         </div>
 
-        {/* dropdown panel */}
-        {pickerOpen && (
-          <div
-            ref={pickerRef}
-            className="relative mt-2"
-          >
-            <div className="absolute z-[520] w-full rounded border border-neutral-700 bg-neutral-900 p-2 shadow-xl">
-              <div className="flex gap-2">
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search name, role, or email…"
-                  className="flex-1 rounded border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-white placeholder:text-neutral-500 focus:border-orange-400 focus:outline-none"
-                />
-                <select
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  className="rounded border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-white focus:border-orange-400"
-                >
-                  {ROLE_OPTIONS.map((r) => (
-                    <option key={r.value} value={r.value}>
-                      {r.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="mt-2 max-h-56 overflow-y-auto rounded border border-neutral-800 bg-neutral-950/60">
-                {loadingUsers ? (
-                  <div className="p-3 text-xs text-neutral-400">Loading…</div>
-                ) : filtered.length === 0 ? (
-                  <div className="p-3 text-xs text-neutral-400">
-                    No users match this filter.
-                  </div>
-                ) : (
-                  <ul className="divide-y divide-neutral-800 text-sm">
-                    {filtered.map((u) => {
-                      const checked = selectedIds.includes(u.id);
-                      return (
-                        <li key={u.id}>
-                          <label className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs text-white hover:bg-neutral-800/70">
-                            <input
-                              type="checkbox"
-                              className="h-4 w-4 accent-orange-500"
-                              checked={checked}
-                              onChange={() => toggle(u.id)}
-                            />
-                            <div className="min-w-0">
-                              <div className="truncate">
-                                {u.full_name ?? "(no name)"}
-                              </div>
-                              <div className="truncate text-[10px] text-neutral-400">
-                                {u.role ?? "—"}
-                                {u.email ? ` • ${u.email}` : ""}
-                              </div>
-                            </div>
-                          </label>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </div>
-
-              <div className="mt-2 flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => setPickerOpen(false)}
-                  className="rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-[11px] text-neutral-100 hover:bg-neutral-700"
-                >
-                  Done
-                </button>
-              </div>
+        {/* Roles (separate dropdown, equal size) */}
+        <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setRoleOpen((o) => !o);
+                setPickerOpen(false);
+              }}
+              className="rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-100 hover:bg-neutral-800"
+            >
+              {roleOpen ? "Close role filter" : "Filter roles"}
+            </button>
+            <div className="text-[11px] text-neutral-500">
+              Current: {ROLE_OPTIONS.find((r) => r.value === role)?.label ?? "All roles"}
             </div>
           </div>
-        )}
+
+          {roleOpen && (
+            <div ref={roleRef} className="relative mt-2">
+              <div className="absolute z-[520] w-full rounded border border-neutral-700 bg-neutral-900 p-2 shadow-xl">
+                <ul className="max-h-56 overflow-auto divide-y divide-neutral-800">
+                  {ROLE_OPTIONS.map((r) => (
+                    <li key={r.value}>
+                      <label className="flex cursor-pointer items-center justify-between gap-3 px-3 py-2 text-xs text-white hover:bg-neutral-800/70">
+                        <span>{r.label}</span>
+                        <input
+                          type="radio"
+                          name="role-filter"
+                          className="h-4 w-4 accent-orange-500"
+                          checked={role === r.value}
+                          onChange={() => {
+                            setRole(r.value);
+                            setRoleOpen(false);
+                          }}
+                        />
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Recent chats (ABOVE chat) */}
+      {/* Recents */}
       <div className="mt-3 flex items-center gap-2">
         <div className="text-[11px] text-neutral-500">Recent:</div>
         <div className="flex flex-wrap gap-2">
@@ -645,11 +741,15 @@ export default function NewChatModal({
           ) : (
             recentConversationIds.slice(0, 12).map((id) => {
               const active = id === activeConvoId;
+              const label = recentLabels[id] || id.slice(0, 8);
               return (
                 <button
                   key={id}
                   type="button"
-                  onClick={() => setActiveConvoId(id)}
+                  onClick={() => {
+                    setActiveConvoId(id);
+                    setSelectedIds([]); // entering an existing thread; clear recipients UI
+                  }}
                   className={`rounded px-2 py-1 text-[11px] ${
                     active
                       ? "bg-orange-500 text-black"
@@ -657,7 +757,7 @@ export default function NewChatModal({
                   }`}
                   title={id}
                 >
-                  {id.slice(0, 8)}
+                  {label}
                 </button>
               );
             })
@@ -665,7 +765,7 @@ export default function NewChatModal({
         </div>
       </div>
 
-      {/* CHAT — full span of the modal */}
+      {/* CHAT — full width */}
       <div className="mt-3 flex flex-col rounded border border-neutral-800 bg-neutral-950 min-h-[360px]">
         <div className="border-b border-neutral-800 px-4 py-2 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -750,7 +850,11 @@ export default function NewChatModal({
           />
           <button
             onClick={() => void handleSend()}
-            disabled={sending || !sendText.trim()}
+            disabled={
+              sending ||
+              !sendText.trim() ||
+              (!activeConvoId && selectedIds.length === 0)
+            }
             className="rounded border border-orange-500/70 text-orange-300 px-4 py-2 text-sm font-semibold hover:bg-orange-500/10 disabled:opacity-50"
           >
             {sending ? "Sending…" : "Send"}
