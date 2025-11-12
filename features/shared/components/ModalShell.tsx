@@ -91,7 +91,7 @@ export default function ModalShell({
                   <button
                     type="button"
                     onClick={() => void onSubmit()}
-                    className="rounded bg-orange-500 px-3 py-1.5 text-sm font-medium text-black hover:bg-orange-400 disabled:opacity-60"
+                    className="rounded bg-orange-400 px-3 py-1.5 text-sm font-medium text-black hover:bg-orange-400 disabled:opacity-60"
                   >
                     {submitText}
                   </button>

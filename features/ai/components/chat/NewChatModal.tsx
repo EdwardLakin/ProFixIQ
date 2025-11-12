@@ -73,6 +73,7 @@ export default function NewChatModal({
   const [role, setRole] = useState<"all" | string>("all");
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   // conversation / messages
   const [activeConvoId, setActiveConvoId] = useState<string | null>(null);
@@ -87,6 +88,7 @@ export default function NewChatModal({
   );
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const pickerRef = useRef<HTMLDivElement | null>(null);
 
   // load current user & role
   useEffect(() => {
@@ -313,6 +315,19 @@ export default function NewChatModal({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // close picker when clicking outside
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (!pickerRef.current) return;
+      if (!pickerRef.current.contains(e.target as Node)) {
+        setPickerOpen(false);
+      }
+    };
+    window.addEventListener("mousedown", onClick);
+    return () => window.removeEventListener("mousedown", onClick);
+  }, [pickerOpen]);
+
   // filtered users
   const filtered = React.useMemo(() => {
     const t = search.trim().toLowerCase();
@@ -331,6 +346,14 @@ export default function NewChatModal({
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
+
+  const selectedUsers = React.useMemo(
+    () => users.filter((u) => selectedIds.includes(u.id)),
+    [users, selectedIds],
+  );
+
+  const removeSelected = (id: string) =>
+    setSelectedIds((prev) => prev.filter((x) => x !== id));
 
   const getOrFetchUserId = useCallback(async () => {
     if (currentUserId) return currentUserId;
@@ -380,7 +403,7 @@ export default function NewChatModal({
       const rows = Array.from(setIds).map((user_id) => ({
         id: uuidv4(),
         conversation_id: newId,
-        user_id, // ← auth UID
+        user_id, // auth UID
       }));
 
       const { error: partErr } = await supabase
@@ -492,7 +515,7 @@ export default function NewChatModal({
         </a>
       </div>
 
-      {/* Recipient selector (moved ABOVE chat) */}
+      {/* Recipient MULTI-SELECT (dropdown) */}
       <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
         {apiError ? (
           <div className="mb-2 rounded border border-red-500/30 bg-red-950/30 px-3 py-2 text-xs text-red-100">
@@ -500,66 +523,117 @@ export default function NewChatModal({
           </div>
         ) : null}
 
-        <div className="flex gap-2">
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search name, role, or email…"
-            className="flex-1 rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-xs text-white placeholder:text-neutral-500 focus:border-orange-400 focus:outline-none"
-          />
-          <select
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-            className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-xs text-white focus:border-orange-400"
+        {/* selected chips + toggle button */}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setPickerOpen((o) => !o)}
+            className="rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-100 hover:bg-neutral-800"
           >
-            {ROLE_OPTIONS.map((r) => (
-              <option key={r.value} value={r.value}>
-                {r.label}
-              </option>
-            ))}
-          </select>
-        </div>
+            {pickerOpen ? "Close recipients" : "Select recipients"}
+          </button>
 
-        <div className="mt-1 text-[10px] text-neutral-500">
-          {selectedIds.length} selected
-        </div>
-
-        <div className="mt-2 max-h-48 overflow-y-auto rounded border border-neutral-800 bg-neutral-900/40">
-          {loadingUsers ? (
-            <div className="p-3 text-xs text-neutral-400">Loading…</div>
-          ) : filtered.length === 0 ? (
-            <div className="p-3 text-xs text-neutral-400">
-              No users match this filter.
-            </div>
+          {selectedUsers.length === 0 ? (
+            <span className="text-[11px] text-neutral-500">
+              No recipients selected
+            </span>
           ) : (
-            <ul className="divide-y divide-neutral-800 text-sm">
-              {filtered.map((u) => {
-                const checked = selectedIds.includes(u.id);
-                return (
-                  <li key={u.id}>
-                    <label className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs text-white hover:bg-neutral-800/70">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 accent-orange-500"
-                        checked={checked}
-                        onChange={() => toggle(u.id)}
-                      />
-                      <div className="min-w-0">
-                        <div className="truncate">
-                          {u.full_name ?? "(no name)"}
-                        </div>
-                        <div className="truncate text-[10px] text-neutral-400">
-                          {u.role ?? "—"}
-                          {u.email ? ` • ${u.email}` : ""}
-                        </div>
-                      </div>
-                    </label>
-                  </li>
-                );
-              })}
-            </ul>
+            selectedUsers.map((u) => (
+              <span
+                key={u.id}
+                className="inline-flex items-center gap-1 rounded bg-neutral-800 px-2 py-1 text-[11px] text-neutral-100"
+              >
+                {u.full_name ?? "(no name)"}
+                <button
+                  type="button"
+                  onClick={() => removeSelected(u.id)}
+                  className="ml-1 rounded px-1 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-200"
+                  aria-label="Remove"
+                  title="Remove"
+                >
+                  ✕
+                </button>
+              </span>
+            ))
           )}
         </div>
+
+        {/* dropdown panel */}
+        {pickerOpen && (
+          <div
+            ref={pickerRef}
+            className="relative mt-2"
+          >
+            <div className="absolute z-[520] w-full rounded border border-neutral-700 bg-neutral-900 p-2 shadow-xl">
+              <div className="flex gap-2">
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search name, role, or email…"
+                  className="flex-1 rounded border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-white placeholder:text-neutral-500 focus:border-orange-400 focus:outline-none"
+                />
+                <select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  className="rounded border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-white focus:border-orange-400"
+                >
+                  {ROLE_OPTIONS.map((r) => (
+                    <option key={r.value} value={r.value}>
+                      {r.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="mt-2 max-h-56 overflow-y-auto rounded border border-neutral-800 bg-neutral-950/60">
+                {loadingUsers ? (
+                  <div className="p-3 text-xs text-neutral-400">Loading…</div>
+                ) : filtered.length === 0 ? (
+                  <div className="p-3 text-xs text-neutral-400">
+                    No users match this filter.
+                  </div>
+                ) : (
+                  <ul className="divide-y divide-neutral-800 text-sm">
+                    {filtered.map((u) => {
+                      const checked = selectedIds.includes(u.id);
+                      return (
+                        <li key={u.id}>
+                          <label className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs text-white hover:bg-neutral-800/70">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 accent-orange-500"
+                              checked={checked}
+                              onChange={() => toggle(u.id)}
+                            />
+                            <div className="min-w-0">
+                              <div className="truncate">
+                                {u.full_name ?? "(no name)"}
+                              </div>
+                              <div className="truncate text-[10px] text-neutral-400">
+                                {u.role ?? "—"}
+                                {u.email ? ` • ${u.email}` : ""}
+                              </div>
+                            </div>
+                          </label>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+
+              <div className="mt-2 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setPickerOpen(false)}
+                  className="rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-[11px] text-neutral-100 hover:bg-neutral-700"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Recent chats (ABOVE chat) */}
@@ -591,7 +665,7 @@ export default function NewChatModal({
         </div>
       </div>
 
-      {/* CHAT — now full span of the modal */}
+      {/* CHAT — full span of the modal */}
       <div className="mt-3 flex flex-col rounded border border-neutral-800 bg-neutral-950 min-h-[360px]">
         <div className="border-b border-neutral-800 px-4 py-2 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
