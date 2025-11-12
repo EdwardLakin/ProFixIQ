@@ -144,7 +144,7 @@ export async function GET(): Promise<NextResponse> {
     ),
   );
 
-  let creatorProfileMap = new Map<string, string | null>();
+  const creatorProfileMap = new Map<string, string | null>();
   if (creatorIds.length > 0) {
     const { data: creators, error: creatorsErr } = await admin
       .from("profiles")
