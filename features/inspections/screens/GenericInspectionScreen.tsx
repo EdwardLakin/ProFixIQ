@@ -34,6 +34,7 @@ import { SaveInspectionButton } from "@inspections/components/inspection/SaveIns
 import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
 import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicleHeader";
 import PageShell from "@/features/shared/components/PageShell";
+import { Button } from "@shared/components/ui/Button";
 
 /* -------------------------- helpers -------------------------- */
 
@@ -158,7 +159,17 @@ function shouldRenderCornerGrid(
     return AIR_RE.test(label) || HYD_ABBR_RE.test(label) || HYD_FULL_RE.test(label);
   });
 
-  const measurementKeywords = ["tread", "pressure", "lining", "shoe", "drum", "rotor", "push rod", "pad", "torque"];
+  const measurementKeywords = [
+    "tread",
+    "pressure",
+    "lining",
+    "shoe",
+    "drum",
+    "rotor",
+    "push rod",
+    "pad",
+    "torque",
+  ];
   const measurementLikeCount = items.reduce((count, it) => {
     const label = (it.item || "").toLowerCase();
     const isMeasurement = measurementKeywords.some((kw) => label.includes(kw));
@@ -307,7 +318,6 @@ export default function GenericInspectionScreen(): JSX.Element {
 
   // start
   useEffect(() => {
-    // if we had a saved session, don’t blow it away
     if (persistedSession) {
       startSession(persistedSession);
     } else {
@@ -372,24 +382,19 @@ export default function GenericInspectionScreen(): JSX.Element {
     const lower = raw.toLowerCase().trim();
     const WAKE_WORDS = ["hey techy", "hey techie", "hey teki", "hey tekky"];
 
-    // if we’re not active yet, look for wake word
     if (!wakeActive) {
       const hit = WAKE_WORDS.find((w) => lower.startsWith(w));
       if (hit) {
         setWakeActive(true);
-        // auto-expire activation after 8s of silence / other speech
         if (wakeTimeoutRef.current) window.clearTimeout(wakeTimeoutRef.current);
         wakeTimeoutRef.current = window.setTimeout(() => {
           setWakeActive(false);
         }, 8000);
-        // return the rest after the wake word
         return lower.slice(hit.length).trim();
       }
-      // no wake → ignore
       return null;
     }
 
-    // already active → keep extending the timer
     if (wakeTimeoutRef.current) window.clearTimeout(wakeTimeoutRef.current);
     wakeTimeoutRef.current = window.setTimeout(() => {
       setWakeActive(false);
@@ -410,7 +415,6 @@ export default function GenericInspectionScreen(): JSX.Element {
       wsRef.current = ws;
 
       ws.onopen = async () => {
-        // auth message
         ws.send(
           JSON.stringify({
             type: "authorization",
@@ -418,7 +422,6 @@ export default function GenericInspectionScreen(): JSX.Element {
           })
         );
 
-        // mic
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         mediaRef.current = stream;
 
@@ -435,19 +438,16 @@ export default function GenericInspectionScreen(): JSX.Element {
       };
 
       ws.onmessage = async (evt) => {
-        // some messages will be binary – ignore
         if (typeof evt.data !== "string") return;
         try {
           const msg = JSON.parse(evt.data);
-          // the exact field name can differ; support a couple
           const text: string =
             msg.text || msg.transcript || msg.output || msg.content || "";
           if (!text) return;
 
           const maybeText = maybeHandleWakeWord(text);
-          if (!maybeText) return; // no wake, ignore
+          if (!maybeText) return;
 
-          // optional: handle "stop listening" to drop out of wake mode
           const lower = maybeText.toLowerCase();
           if (lower === "stop listening" || lower === "go to sleep") {
             setWakeActive(false);
@@ -455,7 +455,7 @@ export default function GenericInspectionScreen(): JSX.Element {
           }
 
           await handleTranscript(maybeText);
-        } catch (e) {
+        } catch {
           // ignore parse errors
         }
       };
@@ -661,19 +661,32 @@ export default function GenericInspectionScreen(): JSX.Element {
   }, [isEmbed]);
 
   if (!session || !session.sections || session.sections.length === 0) {
-    return <div className="p-4 text-white">Loading inspection…</div>;
+    return (
+      <div className="p-4 text-sm text-neutral-300">
+        Loading inspection…
+      </div>
+    );
   }
 
-  const shell = isEmbed ? "mx-auto max-w-[1100px] px-3 pb-8" : "px-4 pb-14";
-  const controlsGap = "mb-4 grid grid-cols-3 gap-2";
-  const card =
-    "rounded-lg border border-zinc-800 bg-zinc-900 " +
-    (isEmbed ? "p-3 mb-6" : "p-4 mb-8");
-  const sectionTitle = "text-xl font-semibold text-orange-400 text-center";
-  const hint = "text-xs text-zinc-400" + (isEmbed ? " mt-1 block text-center" : "");
+  const shell = isEmbed
+    ? "mx-auto max-w-[1100px] px-3 pb-8"
+    : "max-w-5xl mx-auto px-3 md:px-6 pb-16";
 
-  const Body = (
-    <div ref={rootRef} className={shell + (isEmbed ? " inspection-embed" : "")}>
+  const cardBase =
+    "rounded-2xl border border-white/10 bg-black/30 backdrop-blur-md shadow-card";
+  const headerCard = `${cardBase} px-4 py-4 md:px-6 md:py-5 mb-6`;
+  const sectionCard = `${cardBase} px-4 py-4 md:px-5 md:py-5 mb-6`;
+
+  const sectionTitle =
+    "text-lg md:text-xl font-semibold text-accent text-center tracking-wide";
+  const hint =
+    "mt-1 block text-center text-[11px] uppercase tracking-[0.12em] text-neutral-500";
+
+  const body = (
+    <div
+      ref={rootRef}
+      className={shell + (isEmbed ? " inspection-embed" : "")}
+    >
       {isEmbed && (
         <style jsx global>{`
           .inspection-embed,
@@ -683,10 +696,17 @@ export default function GenericInspectionScreen(): JSX.Element {
         `}</style>
       )}
 
-      <div className={card}>
-        <div className="text-center text-lg font-semibold text-orange-400">
-          {templateName}
+      {/* Header card */}
+      <div className={headerCard}>
+        <div className="mb-2 text-center">
+          <div className="text-xs font-blackops uppercase tracking-[0.18em] text-neutral-400">
+            ProFixIQ Inspection
+          </div>
+          <div className="mt-1 text-xl font-blackops text-white">
+            {templateName}
+          </div>
         </div>
+
         <CustomerVehicleHeader
           templateName=""
           customer={toHeaderCustomer(session.customer ?? null)}
@@ -694,7 +714,8 @@ export default function GenericInspectionScreen(): JSX.Element {
         />
       </div>
 
-      <div className={controlsGap}>
+      {/* Controls row */}
+      <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
         <StartListeningButton
           isListening={isListening}
           setIsListening={setIsListening}
@@ -720,20 +741,29 @@ export default function GenericInspectionScreen(): JSX.Element {
             /* noop – using OpenAI now */
           }}
         />
-        <button
-          onClick={(): void => setUnit(unit === "metric" ? "imperial" : "metric")}
-          className="w-full rounded bg-zinc-700 py-2 text-white hover:bg-zinc-600"
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full justify-center"
+          onClick={(): void =>
+            setUnit(unit === "metric" ? "imperial" : "metric")
+          }
         >
-          Unit: {unit === "metric" ? "Metric" : "Imperial"}
-        </button>
+          Unit: {unit === "metric" ? "Metric (mm / kPa)" : "Imperial (in / psi)"}
+        </Button>
       </div>
 
-      <ProgressTracker
-        currentItem={session.currentItemIndex}
-        currentSection={session.currentSectionIndex}
-        totalSections={session.sections.length}
-        totalItems={session.sections[session.currentSectionIndex]?.items.length || 0}
-      />
+      {/* Progress */}
+      <div className="mb-6 rounded-2xl border border-white/5 bg-black/20 px-4 py-3 backdrop-blur">
+        <ProgressTracker
+          currentItem={session.currentItemIndex}
+          currentSection={session.currentSectionIndex}
+          totalSections={session.sections.length}
+          totalItems={
+            session.sections[session.currentSectionIndex]?.items.length || 0
+          }
+        />
+      </div>
 
       <InspectionFormCtx.Provider value={{ updateItem }}>
         {session.sections.map((section: InspectionSection, sectionIndex: number) => {
@@ -745,17 +775,22 @@ export default function GenericInspectionScreen(): JSX.Element {
           const useGrid = shouldRenderCornerGrid(section.title, itemsWithHints);
 
           return (
-            <div key={`${section.title}-${sectionIndex}`} className={card}>
+            <div key={`${section.title}-${sectionIndex}`} className={sectionCard}>
               <h2 className={sectionTitle}>{section.title}</h2>
               {useGrid && (
                 <span className={hint}>
-                  {unit === "metric" ? "Enter mm / kPa / N·m" : "Enter in / psi / ft·lb"}
+                  {unit === "metric"
+                    ? "Enter mm / kPa / N·m"
+                    : "Enter in / psi / ft·lb"}
                 </span>
               )}
 
-              <div className={isEmbed ? "mt-3" : "mt-4"}>
+              <div className="mt-4">
                 {useGrid ? (
-                  <AxlesCornerGrid sectionIndex={sectionIndex} items={itemsWithHints} />
+                  <AxlesCornerGrid
+                    sectionIndex={sectionIndex}
+                    items={itemsWithHints}
+                  />
                 ) : (
                   <SectionDisplay
                     title=""
@@ -793,39 +828,34 @@ export default function GenericInspectionScreen(): JSX.Element {
         })}
       </InspectionFormCtx.Provider>
 
-      <div
-        className={
-          "flex items-center justify-between gap-4 " + (isEmbed ? "mt-6" : "mt-8")
-        }
-      >
-        <div className="flex items-center gap-3">
+      {/* Footer actions */}
+      <div className="mt-8 flex flex-col gap-4 border-t border-white/5 pt-4 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-wrap items-center gap-3">
           <SaveInspectionButton session={session} workOrderLineId={workOrderLineId} />
           <FinishInspectionButton session={session} workOrderLineId={workOrderLineId} />
+          {!workOrderLineId && (
+            <div className="text-xs text-red-400">
+              Missing <code>workOrderLineId</code> — save/finish will be blocked.
+            </div>
+          )}
         </div>
 
-        {!workOrderLineId && (
-          <div className="text-xs text-red-400">
-            Missing <code>workOrderLineId</code> — save/finish will be blocked.
-          </div>
-        )}
-
-        <div className="ml-auto text-xs text-zinc-400">
-          P = PASS, F = FAIL, NA = Not Applicable
+        <div className="text-xs text-neutral-400 md:text-right">
+          <span className="font-semibold text-neutral-200">Legend:</span>{" "}
+          P = Pass &nbsp;•&nbsp; F = Fail &nbsp;•&nbsp; NA = Not applicable
         </div>
       </div>
     </div>
   );
 
-  // embed → do NOT wrap
-  if (isEmbed) return Body;
+  if (isEmbed) return body;
 
-  // normal page → wrap in shell
   return (
     <PageShell
       title={templateName || "Inspection"}
-      description="Start or resume an inspection and stream findings into a work order."
+      description="Run guided inspections, capture notes, and push items into work orders."
     >
-      {Body}
+      {body}
     </PageShell>
   );
 }
