@@ -5,12 +5,13 @@ import PublicProfileClient from "./ShopPublicProfileView";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+// Local props type for the page component
 type PageProps = {
   params: { slug: string };
 };
 
 export async function generateMetadata(
-  { params }: PageProps
+  { params }: { params: { slug: string } }
 ): Promise<Metadata> {
   const { slug } = params;
 
