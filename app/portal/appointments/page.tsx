@@ -291,7 +291,7 @@ export default function PortalAppointmentsPage() {
       {/* main layout: calendar + list + form */}
       <div className="grid gap-6 lg:grid-cols-[1.1fr,0.9fr]">
         {/* left: 7-day calendar */}
-        <div className="rounded-2xl border border-white/10 bg-black/30 p-4 backdrop-blur-md shadow-card">
+        <div className="rounded-2xl border border-white/10 bg-black/30 p-4 overflow-hidden backdrop-blur-md shadow-card">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-sm font-semibold text-white">
               This week&apos;s calendar
