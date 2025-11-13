@@ -6,19 +6,20 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 type PageProps = {
-  params: Promise<{ slug: string }>;
+  params: { slug: string };
 };
 
 export async function generateMetadata(
-  props: PageProps
+  { params }: PageProps
 ): Promise<Metadata> {
-  const { slug } = await props.params;
+  const { slug } = params;
+
   return {
     title: `Shop • ${slug} | ProFixIQ`,
   };
 }
 
-export default async function Page(props: PageProps) {
-  const { slug } = await props.params;
+export default function Page({ params }: PageProps) {
+  const { slug } = params;
   return <PublicProfileClient slug={slug} />;
 }

@@ -1,3 +1,4 @@
+// app/portal/auth/confirm/page.tsx
 "use client";
 
 import { useEffect } from "react";
@@ -11,14 +12,17 @@ export default function PortalConfirmPage() {
 
   useEffect(() => {
     (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      router.replace(session?.user ? "/portal/profile" : "/portal/auth/sign-in");
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      router.replace(session?.user ? "/portal/profile" : "/portal/signin");
     })();
   }, [router, supabase]);
 
   return (
-    <main className="min-h-screen grid place-items-center bg-black text-white">
-      <p className="text-white/80">Completing sign-in…</p>
-    </main>
+    <div className="mx-auto flex max-w-md items-center justify-center rounded-2xl border border-neutral-800 bg-neutral-950/80 p-6 text-sm text-neutral-200">
+      Completing sign-in…
+    </div>
   );
 }

@@ -11,8 +11,7 @@ type SettingsRow = Database["public"]["Tables"]["customer_settings"]["Row"];
 type SettingsInsert = Database["public"]["Tables"]["customer_settings"]["Insert"];
 
 export default function PortalSettingsPage() {
-    const supabase = createClientComponentClient<Database>();
-
+  const supabase = createClientComponentClient<Database>();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -110,8 +109,15 @@ export default function PortalSettingsPage() {
           timezone: "UTC",
         };
         // Try to insert optimistically; if RLS blocks, user Save will upsert later
-        await supabase.from("customer_settings").upsert(defaults).select().single();
-        setForm({ ...(defaults as SettingsRow), updated_at: new Date().toISOString() });
+        await supabase
+          .from("customer_settings")
+          .upsert(defaults)
+          .select()
+          .single();
+        setForm({
+          ...(defaults as SettingsRow),
+          updated_at: new Date().toISOString(),
+        });
       }
 
       setLoading(false);
@@ -144,42 +150,54 @@ export default function PortalSettingsPage() {
     if (upsertErr) {
       setError(upsertErr.message);
     } else {
-      update("updated_at", new Date().toISOString() as SettingsRow["updated_at"]);
+      update(
+        "updated_at",
+        new Date().toISOString() as SettingsRow["updated_at"],
+      );
     }
     setSaving(false);
   };
 
   if (loading) {
     return (
-      <div className="text-sm text-gray-400">Loading your settings…</div>
+      <div className="mx-auto max-w-2xl rounded-2xl border border-neutral-800 bg-neutral-950/80 p-4 text-sm text-neutral-300">
+        Loading your settings…
+      </div>
     );
   }
 
   if (error) {
     return (
-      <div className="space-y-3">
-        <p className="text-red-400">{error}</p>
-        <LinkButton href="/portal/profile" variant="outline" size="sm">
-          Go to Profile
-        </LinkButton>
+      <div className="mx-auto max-w-2xl space-y-4">
+        <header>
+          <h1 className="text-2xl font-blackops text-orange-400">Settings</h1>
+        </header>
+        <div className="space-y-3 rounded-2xl border border-red-700 bg-red-900/40 p-4 text-sm">
+          <p className="text-red-100">{error}</p>
+          <LinkButton href="/portal/profile" variant="outline" size="sm">
+            Go to profile
+          </LinkButton>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-2xl space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold">Settings</h1>
-        <p className="text-sm text-gray-400">
+    <div className="mx-auto max-w-2xl space-y-6">
+      <header className="space-y-1">
+        <h1 className="text-2xl font-blackops text-orange-400">Settings</h1>
+        <p className="text-sm text-neutral-400">
           Choose how we contact you and how information is displayed.
         </p>
       </header>
 
       {/* Communication Preferences */}
-      <section className="border border-neutral-800 rounded-lg p-4 space-y-3 bg-neutral-900/40">
-        <h2 className="font-semibold text-lg">Communication</h2>
+      <section className="space-y-3 rounded-2xl border border-neutral-800 bg-neutral-950/80 p-4 sm:p-5">
+        <h2 className="text-lg font-semibold text-neutral-50">
+          Communication
+        </h2>
 
-        <label className="flex items-center gap-3">
+        <label className="flex items-center gap-3 text-sm text-neutral-100">
           <input
             type="checkbox"
             className="h-4 w-4"
@@ -189,7 +207,7 @@ export default function PortalSettingsPage() {
           <span>Email notifications</span>
         </label>
 
-        <label className="flex items-center gap-3">
+        <label className="flex items-center gap-3 text-sm text-neutral-100">
           <input
             type="checkbox"
             className="h-4 w-4"
@@ -199,26 +217,29 @@ export default function PortalSettingsPage() {
           <span>SMS notifications</span>
         </label>
 
-        <label className="flex items-center gap-3">
+        <label className="flex items-center gap-3 text-sm text-neutral-100">
           <input
             type="checkbox"
             className="h-4 w-4"
             checked={!!form.marketing_opt_in}
             onChange={(e) => update("marketing_opt_in", e.target.checked)}
           />
-          <span>Receive service tips & updates</span>
+          <span>Receive service tips &amp; updates</span>
         </label>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
-            <label className="block text-sm text-gray-400 mb-1">
+            <label className="mb-1 block text-sm text-gray-400">
               Preferred contact
             </label>
             <select
-              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2"
+              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-sm text-white"
               value={form.preferred_contact ?? "email"}
               onChange={(e) =>
-                update("preferred_contact", e.target.value as SettingsRow["preferred_contact"])
+                update(
+                  "preferred_contact",
+                  e.target.value as SettingsRow["preferred_contact"],
+                )
               }
             >
               <option value="email">Email</option>
@@ -230,16 +251,18 @@ export default function PortalSettingsPage() {
       </section>
 
       {/* Display */}
-      <section className="border border-neutral-800 rounded-lg p-4 space-y-3 bg-neutral-900/40">
-        <h2 className="font-semibold text-lg">Display</h2>
+      <section className="space-y-3 rounded-2xl border border-neutral-800 bg-neutral-950/80 p-4 sm:p-5">
+        <h2 className="text-lg font-semibold text-neutral-50">Display</h2>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
-            <label className="block text-sm text-gray-400 mb-1">Units</label>
+            <label className="mb-1 block text-sm text-gray-400">Units</label>
             <select
-              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2"
+              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-sm text-white"
               value={form.units ?? "imperial"}
-              onChange={(e) => update("units", e.target.value as SettingsRow["units"])}
+              onChange={(e) =>
+                update("units", e.target.value as SettingsRow["units"])
+              }
             >
               <option value="imperial">Imperial (mi, °F)</option>
               <option value="metric">Metric (km, °C)</option>
@@ -247,9 +270,11 @@ export default function PortalSettingsPage() {
           </div>
 
           <div>
-            <label className="block text-sm text-gray-400 mb-1">Language</label>
+            <label className="mb-1 block text-sm text-gray-400">
+              Language
+            </label>
             <select
-              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2"
+              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-sm text-white"
               value={form.language ?? "en"}
               onChange={(e) => update("language", e.target.value)}
             >
@@ -259,9 +284,11 @@ export default function PortalSettingsPage() {
           </div>
 
           <div className="sm:col-span-2">
-            <label className="block text-sm text-gray-400 mb-1">Timezone</label>
+            <label className="mb-1 block text-sm text-gray-400">
+              Timezone
+            </label>
             <select
-              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2"
+              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-sm text-white"
               value={form.timezone ?? "UTC"}
               onChange={(e) => update("timezone", e.target.value)}
             >
@@ -276,11 +303,11 @@ export default function PortalSettingsPage() {
       </section>
 
       {/* Save */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <button
           onClick={onSave}
           disabled={saving}
-          className="px-4 py-2 rounded bg-orange-600 hover:bg-orange-700 text-white font-semibold disabled:opacity-60"
+          className="rounded bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700 disabled:opacity-60"
         >
           {saving ? "Saving…" : "Save settings"}
         </button>

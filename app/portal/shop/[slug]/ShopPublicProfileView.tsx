@@ -24,7 +24,6 @@ type PublicFields = Pick<
   | "geo_lat"
   | "geo_lng"
 > & {
-  // Optional extras if your DB actually has them; keep them as maybe-null to avoid TS blowups
   description?: string | null;
   website?: string | null;
 };
@@ -69,7 +68,7 @@ export default function PublicProfileClient({ slug }: Props) {
             "images",
             "geo_lat",
             "geo_lng",
-            // include extras only if they exist in your DB:
+            // Uncomment if these exist in your DB:
             // "description",
             // "website",
           ].join(","),
@@ -93,7 +92,7 @@ export default function PublicProfileClient({ slug }: Props) {
         city: row.city ?? null,
         province: row.province ?? null,
         postal_code: row.postal_code ?? null,
-        images: row.images ?? null,
+        images: (row as any).images ?? null,
         geo_lat: row.geo_lat ?? null,
         geo_lng: row.geo_lng ?? null,
         // description: (row as any).description ?? null,
@@ -109,8 +108,7 @@ export default function PublicProfileClient({ slug }: Props) {
     };
   }, [slug, supabase]);
 
-  // Split hero vs gallery from images[]
-  const images = data.images ?? [];
+  const images = (data.images as string[] | null) ?? [];
   const hero = images[0] ?? null;
   const gallery = images.slice(1);
 
@@ -124,20 +122,23 @@ export default function PublicProfileClient({ slug }: Props) {
 
   if (notFound) {
     return (
-      <div className="mx-auto max-w-4xl p-6">
-        <h1 className="text-2xl font-bold">Shop not found</h1>
-        <p className="text-neutral-400">
-          We couldn’t find a shop with slug <span className="font-mono">{slug}</span>.
+      <div className="mx-auto max-w-4xl px-4 py-8 space-y-2">
+        <h1 className="text-2xl font-blackops text-orange-400">
+          Shop not found
+        </h1>
+        <p className="text-sm text-neutral-400">
+          We couldn’t find a shop with slug{" "}
+          <span className="font-mono">{slug}</span>.
         </p>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8 space-y-8">
+    <div className="mx-auto max-w-5xl space-y-8 px-4 py-8">
       {/* Hero */}
-      {hero ? (
-        <div className="overflow-hidden rounded-xl border border-neutral-800">
+      {hero && (
+        <div className="overflow-hidden rounded-2xl border border-neutral-800">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={hero}
@@ -145,21 +146,25 @@ export default function PublicProfileClient({ slug }: Props) {
             className="h-64 w-full object-cover"
           />
         </div>
-      ) : null}
+      )}
 
       {/* Header */}
       <header className="space-y-1">
-        <h1 className="text-3xl font-bold">{data.name}</h1>
+        <h1 className="text-3xl font-blackops text-orange-400">
+          {data.name}
+        </h1>
         {data.description ? (
-          <p className="text-neutral-300">{data.description}</p>
+          <p className="text-sm text-neutral-300">{data.description}</p>
         ) : null}
       </header>
 
       {/* Contact / Basics */}
       <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
-          <h2 className="mb-2 text-sm font-semibold text-neutral-300">Contact</h2>
-          <ul className="space-y-1 text-sm">
+        <div className="rounded-2xl border border-neutral-800 bg-neutral-950/80 p-4">
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-neutral-400">
+            Contact
+          </h2>
+          <ul className="space-y-1 text-sm text-neutral-100">
             {data.phone_number ? <li>📞 {data.phone_number}</li> : null}
             {data.email ? <li>✉️ {data.email}</li> : null}
             {data.website ? (
@@ -169,7 +174,7 @@ export default function PublicProfileClient({ slug }: Props) {
                   href={data.website}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-orange-400 underline"
+                  className="text-orange-400 underline underline-offset-2"
                 >
                   {data.website}
                 </a>
@@ -178,9 +183,11 @@ export default function PublicProfileClient({ slug }: Props) {
           </ul>
         </div>
 
-        <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 md:col-span-2">
-          <h2 className="mb-2 text-sm font-semibold text-neutral-300">Location</h2>
-          <p className="text-sm">
+        <div className="rounded-2xl border border-neutral-800 bg-neutral-950/80 p-4 md:col-span-2">
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-neutral-400">
+            Location
+          </h2>
+          <p className="text-sm text-neutral-100">
             {[data.address, data.city, data.province, data.postal_code]
               .filter(Boolean)
               .join(", ")}
@@ -189,7 +196,7 @@ export default function PublicProfileClient({ slug }: Props) {
           {data.geo_lat !== null && data.geo_lng !== null ? (
             <p className="mt-2 text-sm">
               <a
-                className="text-orange-400 underline"
+                className="text-orange-400 underline underline-offset-2"
                 href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
                   `${data.geo_lat},${data.geo_lng}`,
                 )}`}
@@ -204,9 +211,11 @@ export default function PublicProfileClient({ slug }: Props) {
       </section>
 
       {/* Gallery */}
-      {gallery.length > 0 ? (
+      {gallery.length > 0 && (
         <section className="space-y-3">
-          <h2 className="text-lg font-semibold">Gallery</h2>
+          <h2 className="text-sm font-semibold text-neutral-50">
+            Gallery
+          </h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {gallery.map((url) => (
               // eslint-disable-next-line @next/next/no-img-element
@@ -219,7 +228,7 @@ export default function PublicProfileClient({ slug }: Props) {
             ))}
           </div>
         </section>
-      ) : null}
+      )}
 
       {/* Primary CTA to book */}
       <div className="pt-2">

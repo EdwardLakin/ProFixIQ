@@ -66,10 +66,9 @@ export default function PortalProfilePage() {
       const { data: customer, error: fetchErr } = await supabase
         .from("customers")
         .select(
-          "first_name,last_name,phone,email,street,city,province,postal_code"
+          "first_name,last_name,phone,email,street,city,province,postal_code",
         )
         .eq("user_id", user.id)
-        // 👇 Tell TS exactly which row type this is (your schema)
         .maybeSingle<CustomerRow>();
 
       if (fetchErr) {
@@ -139,86 +138,108 @@ export default function PortalProfilePage() {
     setSaving(false);
   };
 
-  if (loading) return <div>Loading…</div>;
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-xl rounded-2xl border border-neutral-800 bg-neutral-950/80 p-4 text-sm text-neutral-300">
+        Loading your profile…
+      </div>
+    );
+  }
 
   return (
-    <div className="max-w-xl space-y-4">
-      <h1 className="mb-2 text-2xl font-semibold">My Profile</h1>
+    <div className="mx-auto max-w-xl space-y-5">
+      <header className="space-y-1">
+        <h1 className="text-2xl font-blackops text-orange-400">My profile</h1>
+        <p className="text-sm text-neutral-400">
+          Keep your contact details up to date so your shop can reach you
+          easily.
+        </p>
+      </header>
 
-      {error ? (
-        <div className="rounded border border-red-700 bg-red-900/40 px-3 py-2 text-sm text-red-200">
-          {error}
-        </div>
-      ) : null}
-      {saved ? (
-        <div className="rounded border border-emerald-700 bg-emerald-900/30 px-3 py-2 text-sm text-emerald-200">
-          Saved!
-        </div>
-      ) : null}
+      <div className="space-y-4 rounded-2xl border border-neutral-800 bg-neutral-950/80 p-4 sm:p-6">
+        {error ? (
+          <div className="rounded border border-red-700 bg-red-900/40 px-3 py-2 text-sm text-red-200">
+            {error}
+          </div>
+        ) : null}
+        {saved ? (
+          <div className="rounded border border-emerald-700 bg-emerald-900/30 px-3 py-2 text-sm text-emerald-200">
+            Saved!
+          </div>
+        ) : null}
 
-      {/* Contact */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <input
-          className="input"
-          placeholder="First name"
-          value={form.first_name}
-          onChange={(e) => setForm({ ...form, first_name: e.target.value })}
-        />
-        <input
-          className="input"
-          placeholder="Last name"
-          value={form.last_name}
-          onChange={(e) => setForm({ ...form, last_name: e.target.value })}
-        />
-      </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <input
-          className="input"
-          placeholder="Phone"
-          value={form.phone}
-          onChange={(e) => setForm({ ...form, phone: e.target.value })}
-        />
-        <input
-          className="input"
-          placeholder="Email"
-          value={form.email}
-          onChange={(e) => setForm({ ...form, email: e.target.value })}
-        />
-      </div>
-
-      {/* Address */}
-      <div className="space-y-3">
-        <input
-          className="input"
-          placeholder="Street address"
-          value={form.street}
-          onChange={(e) => setForm({ ...form, street: e.target.value })}
-        />
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {/* Contact */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <input
             className="input"
-            placeholder="City"
-            value={form.city}
-            onChange={(e) => setForm({ ...form, city: e.target.value })}
+            placeholder="First name"
+            value={form.first_name}
+            onChange={(e) =>
+              setForm({ ...form, first_name: e.target.value })
+            }
           />
           <input
             className="input"
-            placeholder="Province/State"
-            value={form.province}
-            onChange={(e) => setForm({ ...form, province: e.target.value })}
+            placeholder="Last name"
+            value={form.last_name}
+            onChange={(e) =>
+              setForm({ ...form, last_name: e.target.value })
+            }
+          />
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <input
+            className="input"
+            placeholder="Phone"
+            value={form.phone}
+            onChange={(e) => setForm({ ...form, phone: e.target.value })}
           />
           <input
             className="input"
-            placeholder="Postal/ZIP code"
-            value={form.postal_code}
-            onChange={(e) => setForm({ ...form, postal_code: e.target.value })}
+            placeholder="Email"
+            value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
           />
         </div>
-      </div>
 
-      <button className="btn" onClick={onSave} disabled={saving}>
-        {saving ? "Saving…" : "Save"}
-      </button>
+        {/* Address */}
+        <div className="space-y-3">
+          <input
+            className="input"
+            placeholder="Street address"
+            value={form.street}
+            onChange={(e) => setForm({ ...form, street: e.target.value })}
+          />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <input
+              className="input"
+              placeholder="City"
+              value={form.city}
+              onChange={(e) => setForm({ ...form, city: e.target.value })}
+            />
+            <input
+              className="input"
+              placeholder="Province/State"
+              value={form.province}
+              onChange={(e) =>
+                setForm({ ...form, province: e.target.value })
+              }
+            />
+            <input
+              className="input"
+              placeholder="Postal/ZIP code"
+              value={form.postal_code}
+              onChange={(e) =>
+                setForm({ ...form, postal_code: e.target.value })
+              }
+            />
+          </div>
+        </div>
+
+        <button className="btn mt-2" onClick={onSave} disabled={saving}>
+          {saving ? "Saving…" : "Save"}
+        </button>
+      </div>
     </div>
   );
 }

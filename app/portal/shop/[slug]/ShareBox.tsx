@@ -33,6 +33,7 @@ export default function ShareBox({
     try {
       setDownloading(true);
       const res = await fetch(qrSrc, { cache: "no-store" });
+      if (!res.ok) throw new Error("Failed to fetch QR");
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -51,20 +52,22 @@ export default function ShareBox({
   }
 
   return (
-    <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+    <div className="space-y-6 rounded-2xl border border-neutral-800 bg-neutral-950/80 p-4 sm:p-5">
       {/* Booking link */}
-      <div className="space-y-3">
-        <label className="block text-sm text-neutral-400">Booking link</label>
-        <div className="flex gap-2">
+      <div className="space-y-2">
+        <label className="block text-xs font-medium uppercase tracking-[0.12em] text-neutral-400">
+          Booking link
+        </label>
+        <div className="flex flex-col gap-2 sm:flex-row">
           <input
             readOnly
             value={bookingUrl}
-            className="flex-1 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white"
+            className="flex-1 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-500"
           />
           <button
             onClick={copyLink}
             disabled={copying}
-            className="rounded-lg border border-orange-600 px-3 py-2 text-sm text-orange-400 transition hover:bg-orange-600 hover:text-black disabled:opacity-60"
+            className="rounded-lg border border-orange-600 px-3 py-2 text-sm font-semibold text-orange-400 transition hover:bg-orange-600 hover:text-black disabled:opacity-60"
           >
             {copying ? "Copying…" : "Copy link"}
           </button>
@@ -72,21 +75,22 @@ export default function ShareBox({
       </div>
 
       {/* QR + actions */}
-      <div className="mt-6 grid grid-cols-1 items-start gap-4 sm:grid-cols-[auto,1fr]">
+      <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-[auto,1fr]">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={qrSrc}
           alt="Booking QR code"
-          className="h-48 w-48 rounded-lg border border-neutral-800 bg-black p-2"
+          className="h-44 w-44 rounded-lg border border-neutral-800 bg-black p-2"
         />
 
-        <div className="space-y-2">
-          <p className="text-sm text-neutral-300">
-            Print this QR and place it at your counter. Customers scan to open
-            your booking page for <span className="text-orange-400">@{slug}</span>.
+        <div className="space-y-3 text-sm text-neutral-300">
+          <p>
+            Print this QR and place it at your counter. Customers can scan it to
+            open your booking page for{" "}
+            <span className="font-mono text-orange-400">@{slug}</span>.
           </p>
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <LinkButton
               href={`/portal/booking?shop=${encodeURIComponent(slug)}`}
               className="rounded-lg border border-orange-600 bg-orange-600 px-3 py-2 text-sm font-semibold text-black transition hover:bg-orange-500"
@@ -97,7 +101,7 @@ export default function ShareBox({
             <button
               onClick={downloadQR}
               disabled={downloading}
-              className="rounded-lg border border-orange-600 px-3 py-2 text-sm text-orange-400 transition hover:bg-orange-600 hover:text-black disabled:opacity-60"
+              className="rounded-lg border border-orange-600 px-3 py-2 text-sm font-semibold text-orange-400 transition hover:bg-orange-600 hover:text-black disabled:opacity-60"
             >
               {downloading ? "Downloading…" : "Download QR"}
             </button>

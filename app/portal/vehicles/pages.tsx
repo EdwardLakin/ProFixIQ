@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
 
 /** Minimal shapes (keep lint happy, no `any`, no big supabase types) */
 type VehicleRow = {
@@ -36,7 +37,7 @@ type VehicleForm = {
 };
 
 export default function PortalVehiclesPage() {
-  const supabase = createClientComponentClient();
+  const supabase = createClientComponentClient<Database>();
 
   const [customer, setCustomer] = useState<CustomerRow | null>(null);
   const [vehicles, setVehicles] = useState<VehicleRow[]>([]);
@@ -130,7 +131,9 @@ export default function PortalVehiclesPage() {
   };
 
   // helpers: convert UI strings -> DB values
-  const toNull = (s: string): string | null => (s.trim() === "" ? null : s.trim());
+  const toNull = (s: string): string | null =>
+    s.trim() === "" ? null : s.trim();
+
   const toYear = (s: string): number | null => {
     const n = Number(s);
     return Number.isFinite(n) ? n : null;
@@ -195,7 +198,10 @@ export default function PortalVehiclesPage() {
 
   const onDelete = async (id: string) => {
     if (!confirm("Delete this vehicle?")) return;
-    const { error: delErr } = await supabase.from("vehicles").delete().eq("id", id);
+    const { error: delErr } = await supabase
+      .from("vehicles")
+      .delete()
+      .eq("id", id);
     if (delErr) {
       setError(delErr.message);
     } else {
@@ -204,23 +210,48 @@ export default function PortalVehiclesPage() {
     }
   };
 
-  if (loading) return <div className="text-white">Loading…</div>;
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-3xl rounded-2xl border border-neutral-800 bg-neutral-950/80 p-4 text-sm text-neutral-300">
+        Loading your vehicles…
+      </div>
+    );
+  }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      <h1 className="text-2xl font-semibold">My Vehicles</h1>
+    <div className="mx-auto max-w-3xl space-y-6">
+      <header className="space-y-1">
+        <h1 className="text-2xl font-blackops text-orange-400">
+          My Vehicles
+        </h1>
+        <p className="text-sm text-neutral-400">
+          Save your vehicles so booking and service history stays organized.
+        </p>
+      </header>
 
       {error && (
-        <div className="rounded border border-red-600 bg-red-950/40 text-red-200 px-3 py-2">
+        <div className="rounded-2xl border border-red-700 bg-red-900/40 px-3 py-2 text-sm text-red-100">
           {error}
         </div>
       )}
 
       {/* Add / Edit form */}
-      <div className="rounded border border-neutral-700 p-4 bg-neutral-900 space-y-3">
-        <h2 className="font-medium mb-1">{isEdit ? "Edit Vehicle" : "Add Vehicle"}</h2>
+      <div className="space-y-3 rounded-2xl border border-neutral-800 bg-neutral-950/80 p-4 sm:p-5">
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-neutral-50">
+            {isEdit ? "Edit vehicle" : "Add vehicle"}
+          </h2>
+          {isEdit && (
+            <span className="text-xs text-neutral-500">
+              Editing{" "}
+              <span className="font-mono">
+                {editingId?.slice(0, 8)}…
+              </span>
+            </span>
+          )}
+        </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <input
             className="input"
             placeholder="Year"
@@ -241,7 +272,7 @@ export default function PortalVehiclesPage() {
           />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <input
             className="input"
             placeholder="VIN"
@@ -250,9 +281,11 @@ export default function PortalVehiclesPage() {
           />
           <input
             className="input"
-            placeholder="License Plate"
+            placeholder="License plate"
             value={form.license_plate}
-            onChange={(e) => setForm({ ...form, license_plate: e.target.value })}
+            onChange={(e) =>
+              setForm({ ...form, license_plate: e.target.value })
+            }
           />
           <input
             className="input"
@@ -269,46 +302,92 @@ export default function PortalVehiclesPage() {
           onChange={(e) => setForm({ ...form, color: e.target.value })}
         />
 
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           <button className="btn" onClick={onSave} disabled={saving}>
-            {saving ? "Saving…" : isEdit ? "Save Changes" : "Add Vehicle"}
+            {saving
+              ? "Saving…"
+              : isEdit
+              ? "Save changes"
+              : "Add vehicle"}
           </button>
           {isEdit && (
-            <button className="btn-secondary" onClick={resetForm} disabled={saving}>
+            <button
+              className="btn-secondary"
+              onClick={resetForm}
+              disabled={saving}
+            >
               Cancel
             </button>
           )}
         </div>
+
+        <p className="text-xs text-neutral-500">
+          Fields marked with * are required.
+        </p>
       </div>
 
       {/* List */}
       <div className="space-y-3">
         {vehicles.length === 0 ? (
-          <p className="text-sm text-gray-400">No vehicles yet.</p>
+          <div className="rounded-2xl border border-dashed border-neutral-800 bg-neutral-950/70 p-4 text-sm text-neutral-400">
+            No vehicles yet. Add your first vehicle above so you can book
+            appointments faster and see service history.
+          </div>
         ) : (
-          vehicles.map((v) => (
-            <div
-              key={v.id}
-              className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-neutral-800 bg-neutral-900 rounded p-3"
-            >
-              <div>
-                <div className="font-medium">
-                  {[v.year ?? "", v.make ?? "", v.model ?? ""].filter(Boolean).join(" ")}
+          vehicles.map((v) => {
+            const title = [v.year ?? "", v.make ?? "", v.model ?? ""]
+              .filter(Boolean)
+              .join(" ")
+              .trim() || "Vehicle";
+
+            return (
+              <div
+                key={v.id}
+                className="flex flex-col justify-between gap-3 rounded-2xl border border-neutral-800 bg-neutral-950/80 p-3 sm:flex-row sm:items-center"
+              >
+                <div>
+                  <div className="text-sm font-semibold text-neutral-50">
+                    {title}
+                  </div>
+                  <div className="mt-0.5 text-xs text-neutral-400">
+                    VIN{" "}
+                    <span className="font-mono">
+                      {v.vin || "—"}
+                    </span>{" "}
+                    • Plate{" "}
+                    <span className="font-mono">
+                      {v.license_plate || "—"}
+                    </span>{" "}
+                    • Mileage{" "}
+                    <span className="font-mono">
+                      {v.mileage || "—"}
+                    </span>
+                    {v.color && (
+                      <>
+                        {" "}
+                        • Color{" "}
+                        <span className="font-mono">{v.color}</span>
+                      </>
+                    )}
+                  </div>
                 </div>
-                <div className="text-sm text-gray-400">
-                  VIN {v.vin || "—"} • Plate {v.license_plate || "—"} • Mileage {v.mileage || "—"}
+                <div className="flex gap-2">
+                  <button
+                    className="btn-secondary"
+                    onClick={() => startEdit(v)}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    className="btn-danger"
+                    onClick={() => onDelete(v.id)}
+                  >
+                    Delete
+                  </button>
                 </div>
               </div>
-              <div className="flex gap-2">
-                <button className="btn-secondary" onClick={() => startEdit(v)}>
-                  Edit
-                </button>
-                <button className="btn-danger" onClick={() => onDelete(v.id)}>
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>
