@@ -5,24 +5,28 @@ import PublicProfileClient from "./ShopPublicProfileView";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-// Make params compatible with Next's internal `Params` type
-type ShopPageParams = Record<string, string> & {
-  slug: string;
+// Match Next's Params shape: string | string[]
+type ShopPageParams = {
+  [key: string]: string | string[];
+  slug: string | string[];
 };
 
-type ShopPageProps = {
-  params: ShopPageParams;
-};
+function getSlug(params: ShopPageParams): string {
+  const raw = params.slug;
+  return Array.isArray(raw) ? raw[0] : raw;
+}
 
-// Optional: dynamic-ish title; safe typing-wise now
 export async function generateMetadata(
-  { params }: ShopPageProps
+  props: { params: ShopPageParams }
 ): Promise<Metadata> {
+  const slug = getSlug(props.params);
+
   return {
-    title: `Shop • ${params.slug} | ProFixIQ`,
+    title: `Shop • ${slug} | ProFixIQ`,
   };
 }
 
-export default function Page({ params }: ShopPageProps) {
-  return <PublicProfileClient slug={params.slug} />;
+export default function Page(props: { params: ShopPageParams }) {
+  const slug = getSlug(props.params);
+  return <PublicProfileClient slug={slug} />;
 }
