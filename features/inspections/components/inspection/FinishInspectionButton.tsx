@@ -3,9 +3,9 @@
 
 import React, { useState } from "react";
 import { toast } from "sonner";
+import { Button } from "@shared/components/ui/Button";
 
 type Props = {
-  // <- make it completely loose so pages can pass their InspectionSession
   session: any;
   workOrderLineId?: string | null;
 };
@@ -16,21 +16,18 @@ export default function FinishInspectionButton({
 }: Props) {
   const [busy, setBusy] = useState(false);
 
-  // build a reasonable correction text from the session
   function buildCorrectionFromSession(s: any): {
     cause: string;
     correction: string;
   } {
-    // your session sometimes has quote as a single object or an array,
-    // so normalize to an array here.
     const raw = s?.quote;
     const items: any[] = Array.isArray(raw) ? raw : raw ? [raw] : [];
 
     const failed = items.filter(
-      (i) => (i?.status ?? "").toLowerCase() === "fail"
+      (i) => (i?.status ?? "").toLowerCase() === "fail",
     );
     const recommended = items.filter(
-      (i) => (i?.status ?? "").toLowerCase() === "recommend"
+      (i) => (i?.status ?? "").toLowerCase() === "recommend",
     );
 
     if (failed.length === 0 && recommended.length === 0) {
@@ -47,7 +44,7 @@ export default function FinishInspectionButton({
       parts.push(
         `Failed items: ${failed
           .map((f) => f?.description || f?.notes || "Item")
-          .join("; ")}.`
+          .join("; ")}.`,
       );
     }
 
@@ -55,7 +52,7 @@ export default function FinishInspectionButton({
       parts.push(
         `Recommended items: ${recommended
           .map((r) => r?.description || r?.notes || "Item")
-          .join("; ")}.`
+          .join("; ")}.`,
       );
     }
 
@@ -82,7 +79,7 @@ export default function FinishInspectionButton({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ cause, correction }),
-        }
+        },
       );
 
       const json = await res.json().catch(() => null);
@@ -90,7 +87,6 @@ export default function FinishInspectionButton({
         throw new Error(json?.error || "Failed to finish inspection");
       }
 
-      // tell the WO page / focused-job modal to open & prefill
       if (typeof window !== "undefined") {
         window.dispatchEvent(
           new CustomEvent("inspection:completed", {
@@ -99,7 +95,7 @@ export default function FinishInspectionButton({
               cause,
               correction,
             },
-          })
+          }),
         );
       }
 
@@ -112,13 +108,15 @@ export default function FinishInspectionButton({
   };
 
   return (
-    <button
+    <Button
       onClick={handleFinish}
       disabled={busy}
-      className="rounded bg-orange-500 px-4 py-2 text-sm font-semibold text-black hover:bg-orange-400 disabled:opacity-60"
+      variant="orange"
+      size="md"
       type="button"
+      className="font-semibold"
     >
       {busy ? "Finishing…" : "Finish inspection"}
-    </button>
+    </Button>
   );
 }

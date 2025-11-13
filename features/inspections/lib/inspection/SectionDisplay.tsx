@@ -6,6 +6,7 @@ import {
   InspectionItemStatus,
 } from "@inspections/lib/inspection/types";
 import InspectionItemCard from "./InspectionItemCard";
+import { Button } from "@shared/components/ui/Button";
 
 interface SectionDisplayProps {
   title: string;
@@ -29,11 +30,11 @@ interface SectionDisplayProps {
     itemIndex: number,
   ) => void;
 
-  /** NEW: require a note and show a Submit button for AI */
+  /** require a note and show a Submit button for AI */
   requireNoteForAI?: boolean;
-  /** NEW: handler to run AI + persist, invoked per item */
+  /** handler to run AI + persist, invoked per item */
   onSubmitAI?: (sectionIndex: number, itemIndex: number) => void;
-  /** NEW: let parent indicate a submit is in-flight for this item */
+  /** let parent indicate a submit is in-flight for this item */
   isSubmittingAI?: (sectionIndex: number, itemIndex: number) => boolean;
 }
 
@@ -66,83 +67,100 @@ export default function SectionDisplay(props: SectionDisplayProps) {
   }, [section.items]);
 
   const markAll = (status: InspectionItemStatus) => {
-    section.items.forEach((_item, idx) => onUpdateStatus(sectionIndex, idx, status));
+    section.items.forEach((_item, idx) =>
+      onUpdateStatus(sectionIndex, idx, status),
+    );
   };
 
   return (
-    <div className="mx-4 mb-6 rounded-lg border border-zinc-800 bg-zinc-900">
+    <div className="mb-6 rounded-2xl border border-white/8 bg-black/30 px-4 py-3 shadow-card backdrop-blur-md md:px-5 md:py-4">
       {/* Header */}
-      <div className="flex items-center justify-between p-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 pb-3">
         {/* Title still toggles open/closed */}
         <button
           onClick={() => setOpen((v) => !v)}
-          className="text-left text-lg font-semibold text-orange-400"
+          className="text-left text-lg font-semibold tracking-wide text-orange-400"
           style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
           aria-expanded={open}
         >
           {title}
         </button>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span
-            className="hidden text-xs text-zinc-400 md:inline"
+            className="hidden text-[11px] uppercase tracking-wide text-neutral-400 md:inline"
             style={{ fontFamily: "Roboto, system-ui, sans-serif" }}
           >
-            {stats.ok} OK · {stats.fail} FAIL · {stats.na} NA · {stats.recommend} REC · {stats.unset} —
+            {stats.ok} OK · {stats.fail} FAIL · {stats.na} NA ·{" "}
+            {stats.recommend} REC · {stats.unset} —
           </span>
 
-          <div className="flex items-center gap-1">
-            <button
-              className="rounded bg-zinc-700 px-2 py-1 text-xs text-white hover:bg-green-600"
+          <div className="flex flex-wrap items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-[11px]"
               onClick={() => markAll("ok")}
               title="Mark all OK"
+              type="button"
             >
               All OK
-            </button>
-            <button
-              className="rounded bg-zinc-700 px-2 py-1 text-xs text-white hover:bg-red-600"
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-[11px]"
               onClick={() => markAll("fail")}
               title="Mark all FAIL"
+              type="button"
             >
               All FAIL
-            </button>
-            <button
-              className="rounded bg-zinc-700 px-2 py-1 text-xs text-white hover:bg-yellow-600"
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-[11px]"
               onClick={() => markAll("na")}
               title="Mark all NA"
+              type="button"
             >
               All NA
-            </button>
-            <button
-              className="rounded bg-zinc-700 px-2 py-1 text-xs text-white hover:bg-blue-600"
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-[11px]"
               onClick={() => markAll("recommend")}
               title="Mark all Recommend"
+              type="button"
             >
               All REC
-            </button>
+            </Button>
 
-            {/* explicit collapse/expand control on the right */}
-            <button
-              className="ml-2 rounded bg-zinc-800 px-2 py-1 text-xs text-white hover:bg-zinc-700"
+            {/* explicit collapse/expand control */}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-1 h-7 px-2 text-[11px]"
               onClick={() => setOpen((v) => !v)}
               aria-expanded={open}
               title={open ? "Collapse section" : "Expand section"}
+              type="button"
             >
               {open ? "Collapse" : "Expand"}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
 
       {/* Body */}
       {open && (
-        <div className="space-y-4 p-3">
+        <div className="space-y-3 pt-3">
           {section.items.map((item, itemIndex) => {
             const key =
               (item.item ?? item.name ?? `item-${sectionIndex}-${itemIndex}`) +
               `-${itemIndex}`;
 
-            // NEW: Submit gating logic
             const status = String(item.status ?? "").toLowerCase();
             const isFailOrRec = status === "fail" || status === "recommend";
             const note = (item.notes ?? "").trim();
@@ -152,10 +170,14 @@ export default function SectionDisplay(props: SectionDisplayProps) {
               note.length > 0 &&
               typeof onSubmitAI === "function";
 
-            const submitting = isSubmittingAI?.(sectionIndex, itemIndex) ?? false;
+            const submitting =
+              isSubmittingAI?.(sectionIndex, itemIndex) ?? false;
 
             return (
-              <div key={key}>
+              <div
+                key={key}
+                className="rounded-xl border border-white/5 bg-black/40 p-3 md:p-3.5"
+              >
                 <InspectionItemCard
                   item={item}
                   sectionIndex={sectionIndex}
@@ -167,17 +189,18 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                   onUpload={onUpload}
                 />
 
-                {/* NEW: per-item Submit button, shown only when note present + fail/recommend */}
                 {canShowSubmit && (
-                  <div className="mt-2 flex items-center justify-end">
-                    <button
+                  <div className="mt-3 flex items-center justify-end">
+                    <Button
                       type="button"
+                      variant="outline"
+                      size="sm"
+                      className="px-3"
                       disabled={submitting}
                       onClick={() => onSubmitAI!(sectionIndex, itemIndex)}
-                      className="rounded border border-blue-600 px-3 py-1.5 text-sm text-blue-300 hover:bg-blue-900/20 disabled:opacity-60"
                     >
-                      {submitting ? "Submitting…" : "Submit"}
-                    </button>
+                      {submitting ? "Submitting…" : "Submit for estimate"}
+                    </Button>
                   </div>
                 )}
               </div>

@@ -600,7 +600,7 @@ export default function GenericInspectionScreen(): JSX.Element {
     }
   };
 
-  // 🧹 embed-safe scrubber
+  // 🧹 embed-safe scrubber (for iframe / modal host)
   useEffect(() => {
     if (!isEmbed) return;
     const root = rootRef.current;
@@ -642,7 +642,7 @@ export default function GenericInspectionScreen(): JSX.Element {
             if (n instanceof HTMLElement) {
               scrub(n);
               n.querySelectorAll?.("*")?.forEach((child) => {
-                if (child instanceof HTMLElement) scrub(child);
+                if (child instanceof HTMLElement) scrub(child as HTMLElement);
               });
             }
           });
@@ -658,6 +658,59 @@ export default function GenericInspectionScreen(): JSX.Element {
     });
 
     return () => obs.disconnect();
+  }, [isEmbed]);
+
+  // 🔐 Focus trap so Tab stays inside the inspection when embedded in modal
+  useEffect(() => {
+    if (!isEmbed) return;
+    const root = rootRef.current;
+    if (!root) return;
+
+    const selector =
+      'a[href], button, textarea, input, select, [tabindex]:not([tabindex="-1"])';
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return;
+
+      const focusables = Array.from(
+        root.querySelectorAll<HTMLElement>(selector)
+      ).filter(
+        (el) =>
+          !el.hasAttribute("disabled") &&
+          el.tabIndex !== -1 &&
+          el.getAttribute("aria-hidden") !== "true"
+      );
+
+      if (!focusables.length) return;
+
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+
+      // If focus is already outside the root, jump to first
+      if (!active || !root.contains(active)) {
+        e.preventDefault();
+        first.focus();
+        return;
+      }
+
+      if (e.shiftKey) {
+        // Shift+Tab: if we're on first, loop to last
+        if (active === first) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else {
+        // Tab forward: if we're on last, loop to first
+        if (active === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+
+    root.addEventListener("keydown", handleKeyDown);
+    return () => root.removeEventListener("keydown", handleKeyDown);
   }, [isEmbed]);
 
   if (!session || !session.sections || session.sections.length === 0) {
@@ -700,10 +753,10 @@ export default function GenericInspectionScreen(): JSX.Element {
       <div className={headerCard}>
         <div className="mb-2 text-center">
           <div className="text-xs font-blackops uppercase tracking-[0.18em] text-neutral-400">
-            ProFixIQ Inspection
+            Inspection
           </div>
           <div className="mt-1 text-xl font-blackops text-white">
-            {templateName}
+            {session?.templateitem || templateName || "Inspection"}
           </div>
         </div>
 
@@ -852,7 +905,7 @@ export default function GenericInspectionScreen(): JSX.Element {
 
   return (
     <PageShell
-      title={templateName || "Inspection"}
+      title={session?.templateitem || templateName || "Inspection"}
       description="Run guided inspections, capture notes, and push items into work orders."
     >
       {body}

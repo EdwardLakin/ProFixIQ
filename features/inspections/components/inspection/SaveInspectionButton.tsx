@@ -3,10 +3,11 @@
 
 import { saveInspectionSession } from "@inspections/lib/inspection/save";
 import type { InspectionSession } from "@inspections/lib/inspection/types";
+import { Button } from "@shared/components/ui/Button";
 
 type Props = {
   session: InspectionSession;
-  workOrderLineId: string; // NEW
+  workOrderLineId: string;
 };
 
 export function SaveInspectionButton({ session, workOrderLineId }: Props) {
@@ -14,6 +15,7 @@ export function SaveInspectionButton({ session, workOrderLineId }: Props) {
     try {
       if (!workOrderLineId) throw new Error("Missing workOrderLineId");
       await saveInspectionSession(session, workOrderLineId);
+      // you can swap this to a toast later if you prefer
       alert("Inspection saved");
     } catch (error: any) {
       console.error("Save error:", error);
@@ -22,11 +24,14 @@ export function SaveInspectionButton({ session, workOrderLineId }: Props) {
   };
 
   return (
-    <button
+    <Button
       onClick={handleSave}
-      className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded"
+      type="button"
+      variant="outline"
+      size="md"
+      className="font-medium"
     >
-      Save Progress
-    </button>
+      Save progress
+    </Button>
   );
 }
