@@ -68,7 +68,9 @@ export default function OnboardingPage() {
   // --- 2) Check if user already belongs to a shop ---
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       const has = !!user;
       setHasSession(has);
       setSessionChecked(true);
@@ -127,7 +129,9 @@ export default function OnboardingPage() {
     setError("");
     setLoading(true);
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) {
       setError("User not found.");
       setLoading(false);
@@ -199,7 +203,9 @@ export default function OnboardingPage() {
   if (!sessionChecked) {
     return (
       <div className="min-h-screen grid place-items-center bg-black text-white">
-        <div className="text-neutral-300 text-sm">Loading…</div>
+        <div className="rounded-lg border border-neutral-800 bg-neutral-950 px-4 py-3 text-xs text-neutral-300">
+          Checking your session…
+        </div>
       </div>
     );
   }
@@ -207,14 +213,17 @@ export default function OnboardingPage() {
   if (!hasSession) {
     return (
       <div className="min-h-screen grid place-items-center bg-black text-white px-6">
-        <div className="max-w-md text-center">
-          <h1 className="text-2xl font-bold mb-2 text-orange-400">Almost there</h1>
-          <p className="text-neutral-400 mb-4">
-            Please confirm your email from the link we sent. After confirming, you’ll be routed here automatically.
+        <div className="max-w-md space-y-4 rounded-xl border border-neutral-800 bg-neutral-950 px-6 py-5">
+          <h1 className="text-2xl font-blackops text-orange-400">
+            Confirm your email
+          </h1>
+          <p className="text-sm text-neutral-300">
+            We sent a confirmation link to your email. Once you confirm, we&apos;ll bring you
+            back here automatically to finish setting up your account.
           </p>
           <a
             href="/sign-in"
-            className="inline-flex items-center gap-2 rounded border border-orange-500 px-4 py-2 text-sm text-orange-200 hover:bg-orange-500/10"
+            className="inline-flex items-center justify-center rounded-md border border-orange-500 px-4 py-2 text-sm font-medium text-orange-100 hover:bg-orange-500/10"
           >
             Already confirmed? Sign in
           </a>
@@ -226,85 +235,122 @@ export default function OnboardingPage() {
   // --- UI ---
   return (
     <div className="min-h-screen bg-black text-white">
-      <div className="border-b border-neutral-900 bg-neutral-950/60 px-6 py-4">
+      {/* Top bar */}
+      <header className="border-b border-neutral-900 bg-neutral-950/70 px-4 py-4 sm:px-6">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
           <div>
-            <h1 className="text-xl font-blackops text-orange-400">Onboarding</h1>
+            <p className="text-xs uppercase tracking-[0.2em] text-neutral-500">
+              ProFixIQ
+            </p>
+            <h1 className="text-xl font-blackops text-orange-400">
+              Get your workspace ready
+            </h1>
             <p className="text-xs text-neutral-400">
-              Tell us about you {asOwner ? "and your shop" : ""} so we can set up your workspace.
+              Tell us about you {asOwner ? "and your shop" : ""} so we can route you to the
+              right dashboard.
             </p>
           </div>
-          <div className="text-[10px] px-2 py-1 rounded bg-neutral-900 border border-neutral-800 text-neutral-300">
-            Step 1 of 1
+          <div className="hidden sm:flex flex-col items-end gap-1 text-[10px]">
+            <span className="rounded-full border border-neutral-800 bg-neutral-900 px-2 py-1 text-neutral-300">
+              Onboarding • Step 1 of 1
+            </span>
+            <span className="text-[10px] text-neutral-500">
+              Takes about 1–2 minutes.
+            </span>
           </div>
         </div>
-      </div>
+      </header>
 
-      <div className="mx-auto flex max-w-6xl gap-6 px-6 py-6 flex-col lg:flex-row">
+      <main className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row">
+        {/* Left: form */}
         <div className="flex-1 space-y-6">
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-5">
-              <h2 className="text-sm font-semibold text-neutral-100 mb-4">Your info</h2>
+            {/* Your info */}
+            <section className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 sm:p-5">
+              <div className="mb-4 flex items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-sm font-semibold text-neutral-100">
+                    Your information
+                  </h2>
+                  <p className="text-[11px] text-neutral-500">
+                    We use this for your profile and invoices.
+                  </p>
+                </div>
+                <span className="rounded-full bg-neutral-900 px-2 py-0.5 text-[10px] text-neutral-400">
+                  Required
+                </span>
+              </div>
 
               <div className="space-y-3">
-                <input
-                  type="text"
-                  required
-                  placeholder="Full Name"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm focus:border-orange-500 outline-none"
-                />
-                <input
-                  type="text"
-                  required
-                  placeholder="Phone"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm focus:border-orange-500 outline-none"
-                />
-                <input
-                  type="text"
-                  required
-                  placeholder="Street Address"
-                  value={userStreet}
-                  onChange={(e) => setUserStreet(e.target.value)}
-                  className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm focus:border-orange-500 outline-none"
-                />
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                <div className="space-y-1">
+                  <label className="text-xs text-neutral-300">Full name</label>
                   <input
                     type="text"
                     required
-                    placeholder="City"
-                    value={userCity}
-                    onChange={(e) => setUserCity(e.target.value)}
-                    className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm focus:border-orange-500 outline-none"
-                  />
-                  <input
-                    type="text"
-                    required
-                    placeholder="Province"
-                    value={userProvince}
-                    onChange={(e) => setUserProvince(e.target.value)}
-                    className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm focus:border-orange-500 outline-none"
-                  />
-                  <input
-                    type="text"
-                    required
-                    placeholder="Postal Code"
-                    value={userPostal}
-                    onChange={(e) => setUserPostal(e.target.value)}
-                    className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm focus:border-orange-500 outline-none"
+                    placeholder="e.g. Alex Smith"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
                   />
                 </div>
 
+                <div className="space-y-1">
+                  <label className="text-xs text-neutral-300">Phone</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Mobile or shop phone"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs text-neutral-300">Home / billing address</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Street address"
+                    value={userStreet}
+                    onChange={(e) => setUserStreet(e.target.value)}
+                    className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+                  />
+                  <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-3">
+                    <input
+                      type="text"
+                      required
+                      placeholder="City"
+                      value={userCity}
+                      onChange={(e) => setUserCity(e.target.value)}
+                      className="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+                    />
+                    <input
+                      type="text"
+                      required
+                      placeholder="Province / State"
+                      value={userProvince}
+                      onChange={(e) => setUserProvince(e.target.value)}
+                      className="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+                    />
+                    <input
+                      type="text"
+                      required
+                      placeholder="Postal / ZIP"
+                      value={userPostal}
+                      onChange={(e) => setUserPostal(e.target.value)}
+                      className="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
                 <div className="space-y-2">
-                  <label className="text-xs text-neutral-300">Role</label>
+                  <label className="text-xs text-neutral-300">Your role</label>
                   <select
                     required
                     value={role}
                     onChange={(e) => setRole(e.target.value as Role)}
-                    className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm focus:border-orange-500 outline-none"
+                    className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
                   >
                     <option value="owner">Owner</option>
                     <option value="admin">Admin</option>
@@ -312,127 +358,169 @@ export default function OnboardingPage() {
                     <option value="advisor">Advisor</option>
                     <option value="mechanic">Mechanic</option>
                   </select>
-                  <label className="mt-1 flex items-center gap-2 text-xs text-neutral-300">
+                  <label className="mt-1 flex items-center gap-2 text-[11px] text-neutral-300">
                     <input
                       type="checkbox"
                       checked={asOwner}
                       onChange={(e) => setAsOwner(e.target.checked)}
                       className="h-4 w-4 rounded border-neutral-600 bg-neutral-900"
                     />
-                    I’m setting this up for my shop (make me the owner)
+                    <span>
+                      I&apos;m setting this up for my shop{" "}
+                      <span className="text-neutral-400">(make me the owner)</span>
+                    </span>
                   </label>
                 </div>
               </div>
-            </div>
+            </section>
 
-            <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-5">
-              <h2 className="text-sm font-semibold text-neutral-100 mb-4">Shop info</h2>
+            {/* Shop info */}
+            <section className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 sm:p-5">
+              <div className="mb-4 flex items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-sm font-semibold text-neutral-100">
+                    Shop information
+                  </h2>
+                  <p className="text-[11px] text-neutral-500">
+                    If you&apos;re staff, your owner can link you to a shop later.
+                  </p>
+                </div>
+                {asOwner ? (
+                  <span className="rounded-full bg-orange-500/10 px-2 py-0.5 text-[10px] text-orange-300">
+                    Required for owners
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-neutral-900 px-2 py-0.5 text-[10px] text-neutral-400">
+                    Optional for staff
+                  </span>
+                )}
+              </div>
 
               <div className="space-y-3">
-                <input
-                  type="text"
-                  placeholder="Business Name"
-                  value={businessName}
-                  onChange={(e) => setBusinessName(e.target.value)}
-                  className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm focus:border-orange-500 outline-none"
-                  required={asOwner}
-                />
-                <input
-                  type="text"
-                  placeholder="Shop Name (Optional)"
-                  value={shopName}
-                  onChange={(e) => setShopName(e.target.value)}
-                  className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm focus:border-orange-500 outline-none"
-                />
-                <input
-                  type="text"
-                  placeholder="Street Address"
-                  value={shopStreet}
-                  onChange={(e) => setShopStreet(e.target.value)}
-                  className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm focus:border-orange-500 outline-none"
-                  required={asOwner}
-                />
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                <div className="space-y-1">
+                  <label className="text-xs text-neutral-300">Business name</label>
                   <input
                     type="text"
-                    placeholder="City"
-                    value={shopCity}
-                    onChange={(e) => setShopCity(e.target.value)}
-                    className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm focus:border-orange-500 outline-none"
-                    required={asOwner}
-                  />
-                  <input
-                    type="text"
-                    placeholder="Province"
-                    value={shopProvince}
-                    onChange={(e) => setShopProvince(e.target.value)}
-                    className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm focus:border-orange-500 outline-none"
-                    required={asOwner}
-                  />
-                  <input
-                    type="text"
-                    placeholder="Postal Code"
-                    value={shopPostal}
-                    onChange={(e) => setShopPostal(e.target.value)}
-                    className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm focus:border-orange-500 outline-none"
+                    placeholder="Legal business name"
+                    value={businessName}
+                    onChange={(e) => setBusinessName(e.target.value)}
+                    className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
                     required={asOwner}
                   />
                 </div>
 
+                <div className="space-y-1">
+                  <label className="text-xs text-neutral-300">Shop name</label>
+                  <input
+                    type="text"
+                    placeholder="Public-facing shop name (optional)"
+                    value={shopName}
+                    onChange={(e) => setShopName(e.target.value)}
+                    className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs text-neutral-300">Shop address</label>
+                  <input
+                    type="text"
+                    placeholder="Street address"
+                    value={shopStreet}
+                    onChange={(e) => setShopStreet(e.target.value)}
+                    className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+                    required={asOwner}
+                  />
+                  <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-3">
+                    <input
+                      type="text"
+                      placeholder="City"
+                      value={shopCity}
+                      onChange={(e) => setShopCity(e.target.value)}
+                      className="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+                      required={asOwner}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Province / State"
+                      value={shopProvince}
+                      onChange={(e) => setShopProvince(e.target.value)}
+                      className="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+                      required={asOwner}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Postal / ZIP"
+                      value={shopPostal}
+                      onChange={(e) => setShopPostal(e.target.value)}
+                      className="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+                      required={asOwner}
+                    />
+                  </div>
+                </div>
+
                 {asOwner && (
-                  <div>
-                    <label className="block text-xs text-neutral-300 mb-1">
-                      Owner PIN (min 4 characters)
+                  <div className="space-y-1">
+                    <label className="text-xs text-neutral-300">
+                      Owner PIN <span className="text-neutral-400">(min 4 characters)</span>
                     </label>
                     <input
                       type="password"
-                      placeholder="Owner PIN"
+                      placeholder="PIN you can share with trusted staff"
                       value={ownerPin}
                       onChange={(e) => setOwnerPin(e.target.value)}
-                      className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm focus:border-orange-500 outline-none"
+                      className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
                       required
                     />
+                    <p className="text-[11px] text-neutral-500">
+                      Used to securely connect staff accounts to your shop.
+                    </p>
                   </div>
                 )}
               </div>
-            </div>
+            </section>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <button
                 type="submit"
                 disabled={loading}
-                className="rounded bg-orange-500 px-4 py-2 text-sm font-semibold text-black hover:bg-orange-600 disabled:opacity-60"
+                className="inline-flex items-center justify-center rounded-md bg-orange-500 px-4 py-2 text-sm font-semibold text-black shadow-sm transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {loading ? "Saving..." : "Complete Onboarding"}
+                {loading ? "Saving…" : "Complete onboarding"}
               </button>
-              {error && <p className="text-xs text-red-400">{error}</p>}
+              {error && (
+                <p className="text-xs text-red-400">
+                  {error}
+                </p>
+              )}
             </div>
           </form>
         </div>
 
-        <div className="w-full lg:w-72 space-y-6">
-          <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4">
-            <h3 className="text-sm font-semibold text-neutral-100 mb-2">
+        {/* Right side: helper cards */}
+        <aside className="w-full space-y-4 lg:w-72">
+          <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+            <h3 className="mb-2 text-sm font-semibold text-neutral-100">
               What happens next
             </h3>
             <p className="text-xs text-neutral-400">
-              We’ll create or update your profile, and if you’re the owner, we’ll bootstrap your shop record.
-              After that you’ll land on your dashboard.
+              When you hit <span className="text-orange-300">Complete onboarding</span>,
+              we&apos;ll update your profile and, if you&apos;re the owner, create your shop
+              record. Then we&apos;ll route you straight to the right dashboard view.
             </p>
           </div>
 
-          <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4">
-            <h3 className="text-sm font-semibold text-neutral-100 mb-2">
+          <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+            <h3 className="mb-2 text-sm font-semibold text-neutral-100">
               Current mode
             </h3>
             <p className="text-xs text-neutral-400">
               {asOwner
-                ? "Owner setup — you’re creating the shop."
-                : "Staff setup — you’re joining an existing shop (owner will link you)."}
+                ? "Owner setup — you’re creating the shop and will have full access."
+                : "Staff setup — your shop owner can link you to their shop later with your profile."}
             </p>
           </div>
-        </div>
-      </div>
+        </aside>
+      </main>
     </div>
   );
 }
