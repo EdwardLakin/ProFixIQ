@@ -117,89 +117,138 @@ export function NewWorkOrderLineForm(props: {
   }
 
   return (
-    <div className="rounded border border-neutral-800 bg-neutral-900 p-3 text-sm text-white">
-      <div className="grid gap-2 sm:grid-cols-2">
-        <div className="sm:col-span-2">
-          <label className="mb-1 block text-xs text-neutral-400">Complaint</label>
-          <input
+    <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 sm:p-5 text-sm text-white space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold text-neutral-100">
+            Add job line
+          </h3>
+          <p className="text-[11px] text-neutral-400">
+            Complaint is required. Cause / correction can be filled in later.
+          </p>
+        </div>
+        <div className="rounded-full border border-neutral-700 bg-neutral-900 px-3 py-1 text-[10px] text-neutral-300">
+          Linked to WO: <span className="font-mono">{workOrderId.slice(0, 8)}…</span>
+        </div>
+      </div>
+
+      {/* Fields */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        {/* Complaint */}
+        <div className="sm:col-span-2 space-y-1">
+          <label className="mb-0.5 block text-xs text-neutral-300">
+            Complaint <span className="text-red-400">*</span>
+          </label>
+          <textarea
             value={complaint}
             onChange={(e) => setComplaint(e.target.value)}
-            className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
-            placeholder="Describe the issue"
+            className="w-full min-h-[60px] rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+            placeholder="Describe the issue / customer concern"
           />
         </div>
 
-        <div>
-          <label className="mb-1 block text-xs text-neutral-400">Cause</label>
-          <input
+        {/* Cause */}
+        <div className="space-y-1">
+          <label className="mb-0.5 block text-xs text-neutral-300">Cause</label>
+          <textarea
             value={cause}
             onChange={(e) => setCause(e.target.value)}
-            className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
+            className="w-full min-h-[48px] rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
             placeholder="Root cause (optional)"
           />
         </div>
 
-        <div>
-          <label className="mb-1 block text-xs text-neutral-400">Correction</label>
-          <input
+        {/* Correction */}
+        <div className="space-y-1">
+          <label className="mb-0.5 block text-xs text-neutral-300">
+            Correction
+          </label>
+          <textarea
             value={correction}
             onChange={(e) => setCorrection(e.target.value)}
-            className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
-            placeholder="What to do (optional)"
+            className="w-full min-h-[48px] rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+            placeholder="What to do / repair plan (optional)"
           />
         </div>
 
-        <div>
-          <label className="mb-1 block text-xs text-neutral-400">Labor (hrs)</label>
+        {/* Labor */}
+        <div className="space-y-1">
+          <label className="mb-0.5 block text-xs text-neutral-300">
+            Labor (hrs)
+          </label>
           <input
             inputMode="decimal"
             value={labor}
             onChange={(e) => setLabor(e.target.value)}
-            className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
+            className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
             placeholder="0.0"
           />
+          <p className="text-[10px] text-neutral-500">
+            Flat-rate or estimated hours. Leave blank if unknown.
+          </p>
         </div>
 
-        <div>
-          <label className="mb-1 block text-xs text-neutral-400">Status</label>
+        {/* Status */}
+        <div className="space-y-1">
+          <label className="mb-0.5 block text-xs text-neutral-300">
+            Status
+          </label>
           <select
             value={normalizeStatus(status)}
             onChange={(e) => setStatus(e.target.value as InsertLine["status"])}
-            className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white"
+            className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
           >
             <option value="awaiting">Awaiting</option>
-            <option value="in_progress">In Progress</option>
-            <option value="on_hold">On Hold</option>
+            <option value="in_progress">In progress</option>
+            <option value="on_hold">On hold</option>
             <option value="paused">Paused</option>
             <option value="completed">Completed</option>
           </select>
+          <p className="text-[10px] text-neutral-500">
+            Defaults to <span className="italic">Awaiting</span> if not changed.
+          </p>
         </div>
 
-        <div>
-          <label className="mb-1 block text-xs text-neutral-400">Job type</label>
+        {/* Job type */}
+        <div className="space-y-1">
+          <label className="mb-0.5 block text-xs text-neutral-300">
+            Job type
+          </label>
           <select
             value={jobType ?? ""}
-            onChange={(e) => setJobType((e.target.value || null) as WOJobType | null)}
-            className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white"
+            onChange={(e) =>
+              setJobType((e.target.value || null) as WOJobType | null)
+            }
+            className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
           >
-            <option value="">—</option>
+            <option value="">Unspecified</option>
             <option value="diagnosis">Diagnosis</option>
             <option value="inspection">Inspection</option>
             <option value="maintenance">Maintenance</option>
             <option value="repair">Repair</option>
           </select>
+          <p className="text-[10px] text-neutral-500">
+            Used for reporting and technician queues.
+          </p>
         </div>
       </div>
 
-      {err && <div className="mt-2 text-red-400">{err}</div>}
+      {/* Error */}
+      {err && (
+        <div className="rounded-md border border-red-500/60 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+          {err}
+        </div>
+      )}
 
-      <div className="mt-3 flex justify-end">
+      {/* Actions */}
+      <div className="flex items-center justify-end gap-2 pt-1">
         <button
           disabled={!canSave || busy}
           onClick={addLine}
-          className="rounded bg-neutral-900 px-3 py-1 font-semibold text-white ring-1 ring-neutral-700 hover:bg-neutral-800 disabled:opacity-60"
+          className="btn btn-orange px-4 py-1.5 text-xs font-semibold disabled:opacity-60"
         >
-          {busy ? "Adding…" : "Add Line"}
+          {busy ? "Adding…" : "Add line to work order"}
         </button>
       </div>
     </div>

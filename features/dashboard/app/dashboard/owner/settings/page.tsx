@@ -4,9 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { toast } from "sonner";
 
+import type { Database } from "@shared/types/types/supabase";
 import { Input } from "@shared/components/ui/input";
 import { Button } from "@shared/components/ui/Button";
-import type { Database } from "@shared/types/types/supabase";
 import OwnerPinModal from "@shared/components/OwnerPinModal";
 import OwnerPinBadge from "@shared/components/OwnerPinBadge";
 import ShopPublicProfileSection from "@/features/shops/components/ShopPublicProfileSection";
@@ -23,7 +23,10 @@ type TimeOffRow = {
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export default function OwnerSettingsPage() {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = useMemo(
+    () => createClientComponentClient<Database>(),
+    []
+  );
 
   const [loading, setLoading] = useState(true);
   const [shopId, setShopId] = useState<string | null>(null);
@@ -69,7 +72,7 @@ export default function OwnerSettingsPage() {
       weekday: i,
       open_time: "08:00",
       close_time: "17:00",
-    })),
+    }))
   );
   const [timeOff, setTimeOff] = useState<TimeOffRow[]>([]);
   const [newOffStart, setNewOffStart] = useState("");
@@ -93,12 +96,12 @@ export default function OwnerSettingsPage() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
+
       if (!user) {
         setLoading(false);
         return;
       }
 
-      // get profile for shop id
       const { data: profile, error: profErr } = await supabase
         .from("profiles")
         .select("shop_id")
@@ -112,7 +115,6 @@ export default function OwnerSettingsPage() {
       }
 
       if (!profile?.shop_id) {
-        // owner with no shop yet
         setLoading(false);
         return;
       }
@@ -120,16 +122,14 @@ export default function OwnerSettingsPage() {
       const sid = profile.shop_id;
       setShopId(sid);
 
-      // core shop
+      // core shop row
       const { data: shop, error } = await supabase
         .from("shops")
         .select("*")
         .eq("id", sid)
         .maybeSingle();
 
-      if (error) {
-        toast.error(error.message);
-      }
+      if (error) toast.error(error.message);
 
       if (shop) {
         setShopName(shop.name || "");
@@ -173,13 +173,13 @@ export default function OwnerSettingsPage() {
                 weekday: i,
                 open_time: "08:00",
                 close_time: "17:00",
-              },
+              }
             );
             setHours(normalized);
           }
         }
       } catch {
-        /* ignore */
+        // ignore
       }
 
       // time off
@@ -192,7 +192,7 @@ export default function OwnerSettingsPage() {
           if (Array.isArray(j?.items)) setTimeOff(j.items);
         }
       } catch {
-        /* ignore */
+        // ignore
       }
 
       setLoading(false);
@@ -201,14 +201,19 @@ export default function OwnerSettingsPage() {
     void fetchSettings();
   }, [supabase]);
 
-  // save core shop
-  const handleSave = async () => {
-    if (!shopId) return;
+  const guardUnlock = () => {
     if (!isUnlocked) {
       toast.warning("Unlock with Owner PIN first.");
       setPinModalOpen(true);
-      return;
+      return false;
     }
+    return true;
+  };
+
+  // save core shop
+  const handleSave = async () => {
+    if (!shopId) return;
+    if (!guardUnlock()) return;
 
     const payload = {
       shopId,
@@ -221,20 +226,16 @@ export default function OwnerSettingsPage() {
         phone_number: phone,
         email,
         logo_url: logoUrl,
-
         labor_rate: laborRate ? parseFloat(laborRate) : null,
         supplies_percent: suppliesPercent ? parseFloat(suppliesPercent) : null,
         diagnostic_fee: diagnosticFee ? parseFloat(diagnosticFee) : null,
         tax_rate: taxRate ? parseFloat(taxRate) : null,
-
         use_ai: useAi,
         require_cause_correction: requireCauseCorrection,
         require_authorization: requireAuthorization,
-
         invoice_terms: invoiceTerms,
         invoice_footer: invoiceFooter,
         email_on_complete: emailOnComplete,
-
         auto_generate_pdf: autoGeneratePdf,
         auto_send_quote_email: autoSendQuoteEmail,
       },
@@ -255,9 +256,12 @@ export default function OwnerSettingsPage() {
     toast.success("Settings saved.");
   };
 
-  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
     const filePath = `logos/${crypto.randomUUID()}-${file.name}`;
     const { error } = await supabase.storage
       .from("logos")
@@ -265,11 +269,12 @@ export default function OwnerSettingsPage() {
 
     if (error) {
       toast.error(error.message);
-    } else {
-      const { data } = supabase.storage.from("logos").getPublicUrl(filePath);
-      setLogoUrl(data.publicUrl);
-      toast.success("Logo uploaded.");
+      return;
     }
+
+    const { data } = supabase.storage.from("logos").getPublicUrl(filePath);
+    setLogoUrl(data.publicUrl);
+    toast.success("Logo uploaded.");
   };
 
   const handleGenerateLogo = () => {
@@ -279,17 +284,14 @@ export default function OwnerSettingsPage() {
   // save hours
   const saveHours = async () => {
     if (!shopId) return;
-    if (!isUnlocked) {
-      toast.warning("Unlock with Owner PIN first.");
-      setPinModalOpen(true);
-      return;
-    }
-    const payload = { shopId, hours };
+    if (!guardUnlock()) return;
+
     const res = await fetch("/api/settings/hours", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ shopId, hours }),
     });
+
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
       toast.error(j?.error || "Failed to save hours");
@@ -301,15 +303,13 @@ export default function OwnerSettingsPage() {
   // add time off
   const addTimeOff = async () => {
     if (!shopId) return;
-    if (!isUnlocked) {
-      toast.warning("Unlock with Owner PIN first.");
-      setPinModalOpen(true);
-      return;
-    }
+    if (!guardUnlock()) return;
+
     if (!newOffStart || !newOffEnd) {
       toast.warning("Select start and end time.");
       return;
     }
+
     const res = await fetch("/api/settings/time-off", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -322,15 +322,17 @@ export default function OwnerSettingsPage() {
         },
       }),
     });
+
     const j = await res.json().catch(() => ({}));
     if (!res.ok) {
       toast.error(j?.error || "Failed to add time off");
       return;
     }
-    // refresh list
+
     setNewOffStart("");
     setNewOffEnd("");
     setNewOffReason("");
+
     try {
       const r = await fetch(`/api/settings/time-off?shopId=${shopId}`, {
         cache: "no-store",
@@ -340,42 +342,44 @@ export default function OwnerSettingsPage() {
         setTimeOff(jj.items || []);
       }
     } catch {
-      /* ignore */
+      // ignore
     }
+
     toast.success("Time off added.");
   };
 
   const deleteTimeOff = async (id: string) => {
     if (!shopId) return;
-    if (!isUnlocked) {
-      toast.warning("Unlock with Owner PIN first.");
-      setPinModalOpen(true);
-      return;
-    }
+    if (!guardUnlock()) return;
+
     const res = await fetch("/api/settings/time-off", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ shopId, id }),
     });
+
     const j = await res.json().catch(() => ({}));
     if (!res.ok) {
       toast.error(j?.error || "Failed to remove time off");
       return;
     }
+
     setTimeOff((prev) => prev.filter((t) => t.id !== id));
     toast.success("Removed.");
   };
 
   if (loading) {
     return (
-      <div className="p-6 text-white">Loading shop settings…</div>
+      <div className="p-6 text-muted-foreground">
+        Loading shop settings…
+      </div>
     );
   }
 
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-6 p-6 text-white">
+    <div className="mx-auto flex max-w-6xl flex-col gap-6 p-6 text-foreground">
       {/* top header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-neutral-800 bg-neutral-950/70 px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
         <div>
           <h1 className="text-2xl font-blackops text-orange-400">
             Shop Settings
@@ -386,62 +390,69 @@ export default function OwnerSettingsPage() {
         </div>
         <div className="flex items-center gap-2">
           <OwnerPinBadge expiresAt={pinExpiresAt} />
-          <Button onClick={() => setPinModalOpen(true)}>
+          <Button size="sm" onClick={() => setPinModalOpen(true)}>
             {isUnlocked ? "Re-unlock" : "Unlock"}
           </Button>
-          <Button onClick={handleSave} disabled={!isUnlocked}>
-            {isUnlocked ? "Save All" : "Unlock to Save"}
+          <Button size="sm" onClick={handleSave} disabled={!isUnlocked}>
+            {isUnlocked ? "Save all" : "Unlock to save"}
           </Button>
         </div>
       </div>
 
-      {/* main layout: left (settings) + right (extras) */}
+      {/* main layout */}
       <div className="flex flex-col gap-6 lg:flex-row">
         {/* LEFT COLUMN */}
         <div className="flex-1 space-y-6">
-          {/* Shop info card */}
-          <section className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+          {/* Shop info */}
+          <section className="space-y-3 rounded-xl border border-border bg-card p-4">
             <h2 className="text-sm font-semibold text-neutral-50">
               Shop info
             </h2>
-            <div className="space-y-2">
+            <div className="space-y-2 text-sm">
               <Input
                 value={shopName}
                 onChange={(e) => setShopName(e.target.value)}
                 placeholder="Shop name"
+                disabled={!isUnlocked}
               />
               <Input
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
                 placeholder="Street address"
+                disabled={!isUnlocked}
               />
               <div className="grid gap-2 md:grid-cols-3">
                 <Input
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
-                    placeholder="City"
-                  />
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  placeholder="City"
+                  disabled={!isUnlocked}
+                />
                 <Input
-                    value={province}
-                    onChange={(e) => setProvince(e.target.value)}
-                    placeholder="Province / State"
-                  />
+                  value={province}
+                  onChange={(e) => setProvince(e.target.value)}
+                  placeholder="Province / State"
+                  disabled={!isUnlocked}
+                />
                 <Input
-                    value={postalCode}
-                    onChange={(e) => setPostalCode(e.target.value)}
-                    placeholder="Postal code"
-                  />
+                  value={postalCode}
+                  onChange={(e) => setPostalCode(e.target.value)}
+                  placeholder="Postal code"
+                  disabled={!isUnlocked}
+                />
               </div>
               <div className="grid gap-2 md:grid-cols-2">
                 <Input
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="Phone number"
+                  disabled={!isUnlocked}
                 />
                 <Input
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="Email"
+                  disabled={!isUnlocked}
                 />
               </div>
               <div className="grid gap-2 md:grid-cols-2">
@@ -449,61 +460,68 @@ export default function OwnerSettingsPage() {
                   value={logoUrl}
                   onChange={(e) => setLogoUrl(e.target.value)}
                   placeholder="Logo URL"
+                  disabled={!isUnlocked}
                 />
                 <Input
                   type="file"
                   accept="image/*"
                   onChange={handleLogoUpload}
+                  disabled={!isUnlocked}
                 />
               </div>
               <Button
                 onClick={handleGenerateLogo}
                 variant="secondary"
                 className="mt-1"
+                disabled={!isUnlocked}
               >
-                Generate Logo with AI
+                Generate logo with AI
               </Button>
-              {logoUrl ? (
+              {logoUrl && (
                 <img
                   src={logoUrl}
                   alt="Logo"
                   className="mt-2 h-20 w-32 rounded bg-white p-1 object-contain"
                 />
-              ) : null}
+              )}
             </div>
           </section>
 
-          {/* Billing + workflow side-by-side on desktop */}
+          {/* Billing + workflow */}
           <div className="grid gap-6 md:grid-cols-2">
-            <section className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+            <section className="space-y-3 rounded-xl border border-border bg-card p-4">
               <h2 className="text-sm font-semibold text-neutral-50">
                 Billing defaults
               </h2>
-              <div className="grid gap-2 md:grid-cols-2">
+              <div className="grid gap-2 md:grid-cols-2 text-sm">
                 <Input
                   value={laborRate}
                   onChange={(e) => setLaborRate(e.target.value)}
                   placeholder="Labor rate ($/hr)"
+                  disabled={!isUnlocked}
                 />
                 <Input
                   value={suppliesPercent}
                   onChange={(e) => setSuppliesPercent(e.target.value)}
                   placeholder="Shop supplies (%)"
+                  disabled={!isUnlocked}
                 />
                 <Input
                   value={diagnosticFee}
                   onChange={(e) => setDiagnosticFee(e.target.value)}
                   placeholder="Diagnostic fee ($)"
+                  disabled={!isUnlocked}
                 />
                 <Input
                   value={taxRate}
                   onChange={(e) => setTaxRate(e.target.value)}
                   placeholder="Tax rate (%)"
+                  disabled={!isUnlocked}
                 />
               </div>
             </section>
 
-            <section className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+            <section className="space-y-3 rounded-xl border border-border bg-card p-4">
               <h2 className="text-sm font-semibold text-neutral-50">
                 Workflow
               </h2>
@@ -512,6 +530,7 @@ export default function OwnerSettingsPage() {
                   type="checkbox"
                   checked={useAi}
                   onChange={(e) => setUseAi(e.target.checked)}
+                  disabled={!isUnlocked}
                 />
                 Use AI features
               </label>
@@ -522,6 +541,7 @@ export default function OwnerSettingsPage() {
                   onChange={(e) =>
                     setRequireCauseCorrection(e.target.checked)
                   }
+                  disabled={!isUnlocked}
                 />
                 Require cause / correction on lines
               </label>
@@ -529,7 +549,10 @@ export default function OwnerSettingsPage() {
                 <input
                   type="checkbox"
                   checked={requireAuthorization}
-                  onChange={(e) => setRequireAuthorization(e.target.checked)}
+                  onChange={(e) =>
+                    setRequireAuthorization(e.target.checked)
+                  }
+                  disabled={!isUnlocked}
                 />
                 Require customer authorization
               </label>
@@ -537,7 +560,7 @@ export default function OwnerSettingsPage() {
           </div>
 
           {/* Communication */}
-          <section className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+          <section className="space-y-3 rounded-xl border border-border bg-card p-4">
             <h2 className="text-sm font-semibold text-neutral-50">
               Communication & branding
             </h2>
@@ -545,24 +568,27 @@ export default function OwnerSettingsPage() {
               value={invoiceTerms}
               onChange={(e) => setInvoiceTerms(e.target.value)}
               placeholder="Invoice terms"
+              disabled={!isUnlocked}
             />
             <Input
               value={invoiceFooter}
               onChange={(e) => setInvoiceFooter(e.target.value)}
               placeholder="Invoice footer note"
+              disabled={!isUnlocked}
             />
             <label className="flex items-center gap-2 text-sm text-neutral-200">
               <input
                 type="checkbox"
                 checked={emailOnComplete}
                 onChange={(e) => setEmailOnComplete(e.target.checked)}
+                disabled={!isUnlocked}
               />
               Email customer when job is complete
             </label>
           </section>
 
           {/* Automation */}
-          <section className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+          <section className="space-y-3 rounded-xl border border-border bg-card p-4">
             <h2 className="text-sm font-semibold text-neutral-50">
               Automation
             </h2>
@@ -571,6 +597,7 @@ export default function OwnerSettingsPage() {
                 type="checkbox"
                 checked={autoGeneratePdf}
                 onChange={(e) => setAutoGeneratePdf(e.target.checked)}
+                disabled={!isUnlocked}
               />
               Auto-generate quote PDF
             </label>
@@ -579,16 +606,19 @@ export default function OwnerSettingsPage() {
                 type="checkbox"
                 checked={autoSendQuoteEmail}
                 onChange={(e) => setAutoSendQuoteEmail(e.target.checked)}
+                disabled={!isUnlocked}
               />
               Auto-send quote email
             </label>
           </section>
 
           {/* Hours */}
-          <section className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+          <section className="space-y-3 rounded-xl border border-border bg-card p-4">
             <div className="flex items-center justify-between gap-3">
-              <h2 className="text-sm font-semibold text-neutral-50">Hours</h2>
-              <Button onClick={saveHours} disabled={!isUnlocked}>
+              <h2 className="text-sm font-semibold text-neutral-50">
+                Hours
+              </h2>
+              <Button onClick={saveHours} disabled={!isUnlocked} size="sm">
                 Save hours
               </Button>
             </div>
@@ -642,7 +672,7 @@ export default function OwnerSettingsPage() {
           </section>
 
           {/* Time off */}
-          <section className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+          <section className="space-y-3 rounded-xl border border-border bg-card p-4">
             <h2 className="text-sm font-semibold text-neutral-50">
               Time off / blackouts
             </h2>
@@ -691,14 +721,15 @@ export default function OwnerSettingsPage() {
                         <div className="text-neutral-100">
                           {start.toLocaleString()} → {end.toLocaleString()}
                         </div>
-                        {t.reason ? (
+                        {t.reason && (
                           <div className="text-xs text-neutral-400">
                             Reason: {t.reason}
                           </div>
-                        ) : null}
+                        )}
                       </div>
                       <Button
                         variant="secondary"
+                        size="sm"
                         onClick={() => void deleteTimeOff(t.id)}
                         disabled={!isUnlocked}
                       >
@@ -712,30 +743,31 @@ export default function OwnerSettingsPage() {
           </section>
         </div>
 
-        {/* RIGHT COLUMN (aux: public profile, invoice preview, reviews) */}
+        {/* RIGHT COLUMN */}
         <div className="w-full space-y-6 lg:w-80">
-          {shopId ? (
+          {shopId && (
             <ShopPublicProfileSection
               shopId={shopId}
               isUnlocked={isUnlocked}
             />
-          ) : null}
+          )}
 
-          {/* invoice preview */}
-          <section className="space-y-2 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+          {/* Invoice preview */}
+          <section className="space-y-2 rounded-xl border border-border bg-card p-4">
             <h2 className="text-sm font-semibold text-neutral-50">
               Invoice preview
             </h2>
             <div className="space-y-2 rounded bg-white p-3 text-xs text-black shadow">
-              {logoUrl ? (
+              {logoUrl && (
                 <img src={logoUrl} alt="Logo" className="h-12 object-contain" />
-              ) : null}
-              <div className="font-semibold">{shopName}</div>
+              )}
+              <div className="font-semibold">{shopName || "Your shop name"}</div>
               <div>
-                {address}, {city}, {province} {postalCode}
+                {address}
+                {address && ","} {city} {province} {postalCode}
               </div>
               <div>
-                {phone} • {email}
+                {phone} {phone && email && "•"} {email}
               </div>
               <hr className="my-2" />
               <div className="font-semibold text-black">Invoice terms</div>
@@ -745,8 +777,8 @@ export default function OwnerSettingsPage() {
             </div>
           </section>
 
-          {shopId ? (
-            <section className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+          {shopId && (
+            <section className="space-y-3 rounded-xl border border-border bg-card p-4">
               <h2 className="text-sm font-semibold text-neutral-50">
                 Customer reviews
               </h2>
@@ -756,16 +788,16 @@ export default function OwnerSettingsPage() {
               </p>
               <ReviewsList shopId={shopId} />
             </section>
-          ) : null}
+          )}
         </div>
       </div>
 
-     <OwnerPinModal
-  shopId={shopId}
-  open={pinModalOpen}
-  onClose={() => setPinModalOpen(false)}
-  onVerified={(iso: string | undefined) => setPinExpiresAt(iso)}
-/> 
+      <OwnerPinModal
+        shopId={shopId}
+        open={pinModalOpen}
+        onClose={() => setPinModalOpen(false)}
+        onVerified={(iso: string | undefined) => setPinExpiresAt(iso)}
+      />
     </div>
   );
 }

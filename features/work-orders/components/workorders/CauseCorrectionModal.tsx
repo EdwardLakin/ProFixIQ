@@ -48,65 +48,89 @@ export default function CauseCorrectionModal({
     <Dialog
       open={isOpen}
       onClose={onClose}
-      className="fixed inset-0 z-[500] flex items-center justify-center p-4 sm:p-6"
+      className="fixed inset-0 z-[500] flex items-center justify-center px-3 py-6 sm:px-4"
     >
+      {/* Backdrop */}
       <div
-        className="fixed inset-0 z-[500] bg-black/60 backdrop-blur-sm"
+        className="fixed inset-0 z-[500] bg-black/70 backdrop-blur-sm"
         aria-hidden="true"
       />
 
-      <div className="relative z-[510] w-full max-w-md">
-        <Dialog.Panel className="rounded-lg border border-border bg-background text-foreground shadow-xl dark:border-orange-400/90 dark:bg-neutral-950">
-          <Dialog.Title className="border-b border-border/60 px-6 py-4 text-lg font-header font-semibold tracking-wide dark:border-neutral-800">
-            Complete Job
-          </Dialog.Title>
+      {/* Panel */}
+      <div className="relative z-[510] w-full max-w-lg">
+        <Dialog.Panel className="overflow-hidden rounded-lg border border-orange-400 bg-neutral-950 text-white shadow-2xl">
+          {/* Header */}
+          <div className="flex items-center justify-between gap-3 border-b border-neutral-800 px-5 py-3">
+            <div>
+              <Dialog.Title className="text-sm font-blackops tracking-wide text-orange-400 sm:text-base">
+                Complete Job
+              </Dialog.Title>
+              <p className="mt-0.5 text-[11px] text-neutral-400">
+                Job ID:{" "}
+                <span className="font-mono text-neutral-200">{jobId}</span>
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-800"
+            >
+              ✕
+            </button>
+          </div>
 
-          <div className="px-6 py-5">
-            <div className="mb-3">
-              <label className="mb-1 block text-sm text-foreground/80 dark:text-neutral-300">
+          {/* Body */}
+          <div className="px-5 py-4 space-y-4">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-neutral-300">
                 Cause
               </label>
               <textarea
                 ref={causeRef}
                 rows={3}
-                className="w-full rounded border border-border/60 bg-background px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
+                className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
                 value={cause}
                 onChange={(e) => setCause(e.target.value)}
                 placeholder="What caused the issue?"
               />
             </div>
 
-            <div className="mb-4">
-              <label className="mb-1 block text-sm text-foreground/80 dark:text-neutral-300">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-neutral-300">
                 Correction
               </label>
               <textarea
                 rows={3}
-                className="w-full rounded border border-border/60 bg-background px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
+                className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
                 value={correction}
                 onChange={(e) => setCorrection(e.target.value)}
                 placeholder="Describe what was done to correct the issue…"
                 onKeyDown={(e) => {
-                  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") handleSubmit();
+                  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                    e.preventDefault();
+                    handleSubmit();
+                  }
                 }}
               />
-            </div>
-
-            <div className="text-xs text-muted-foreground dark:text-neutral-500">
-              Job ID: {jobId}
+              <p className="mt-1 text-[11px] text-neutral-500">
+                Press <kbd className="rounded border border-neutral-700 bg-neutral-900 px-1 text-[10px]">Ctrl</kbd>/
+                <kbd className="rounded border border-neutral-700 bg-neutral-900 px-1 text-[10px]">⌘</kbd>+
+                <kbd className="rounded border border-neutral-700 bg-neutral-900 px-1 text-[10px]">Enter</kbd> to submit.
+              </p>
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 border-t border-border/60 px-6 py-4 dark:border-neutral-800">
+          {/* Footer */}
+          <div className="flex items-center justify-end gap-2 border-t border-neutral-800 px-5 py-3">
             <button
-              className="font-header rounded border border-border/70 bg-background px-4 py-2 text-sm hover:bg-muted dark:border-neutral-700 dark:bg-neutral-900 dark:hover:bg-neutral-800"
+              className="rounded border border-neutral-700 bg-neutral-900 px-4 py-1.5 text-sm text-neutral-200 hover:bg-neutral-800"
               onClick={onClose}
               disabled={submitting}
             >
               Cancel
             </button>
             <button
-              className="font-header rounded bg-orange-500 px-4 py-2 text-sm font-semibold text-black hover:bg-orange-400 disabled:opacity-60"
+              className="rounded bg-orange-500 px-4 py-1.5 text-sm font-semibold text-black hover:bg-orange-400 disabled:opacity-60"
               onClick={handleSubmit}
               disabled={submitting}
             >

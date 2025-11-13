@@ -7,8 +7,6 @@ export type HistoryRow = Database["public"]["Tables"]["history"]["Row"];
 /**
  * Small shapes the UI needs. These keep us compatible even if your
  * work_orders table doesn’t actually have `status` or `type` right now.
- * If they do exist, it still matches at runtime; we’re just not tying the
- * property types directly to the table to avoid Pick<> mismatches.
  */
 type VehicleMini = {
   id: Vehicle["id"];
@@ -16,6 +14,9 @@ type VehicleMini = {
   make: Vehicle["make"];
   model: Vehicle["model"];
   vin: Vehicle extends { vin: infer V } ? V | null : string | null;
+  license_plate: Vehicle extends { license_plate: infer P }
+    ? P | null
+    : string | null;
 };
 
 type WorkOrderMini = {

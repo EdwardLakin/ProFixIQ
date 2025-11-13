@@ -1,4 +1,3 @@
-// features/inspections/components/InspectionModal.tsx
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -54,6 +53,7 @@ export default function InspectionModal({
 
   // 💡 wheel/touch guard: keep scroll inside THIS box
   useEffect(() => {
+    if (!open) return;
     const el = scrollRef.current;
     if (!el) return;
 
@@ -63,22 +63,18 @@ export default function InspectionModal({
       const atTop = scrollTop <= 0;
       const atBottom = scrollTop + clientHeight >= scrollHeight - 1;
 
-      // scrolling down but at bottom → eat it
       if (e.deltaY > 0 && atBottom) {
         e.preventDefault();
         e.stopPropagation();
         return;
       }
-      // scrolling up but at top → eat it
       if (e.deltaY < 0 && atTop) {
         e.preventDefault();
         e.stopPropagation();
         return;
       }
-      // otherwise let it happen on this element
     };
 
-    // for touch (mobile)
     let lastY = 0;
     const onTouchStart = (e: TouchEvent) => {
       lastY = e.touches[0]?.clientY ?? 0;
@@ -89,7 +85,7 @@ export default function InspectionModal({
       const atTop = scrollTop <= 0;
       const atBottom = scrollTop + clientHeight >= scrollHeight - 1;
       const currentY = e.touches[0]?.clientY ?? 0;
-      const goingDown = lastY > currentY; // finger goes up → scroll down
+      const goingDown = lastY > currentY;
       const goingUp = lastY < currentY;
       lastY = currentY;
 
@@ -110,11 +106,14 @@ export default function InspectionModal({
     };
   }, [open]);
 
+  const panelWidth = compact ? "max-w-4xl" : "max-w-6xl";
+  const bodyHeight = compact ? "max-h-[80vh]" : "max-h-[92vh]";
+
   return (
     <Dialog
       open={open}
       onClose={close}
-      className="fixed inset-0 z-[300] flex items-center justify-center overflow-y-auto"
+      className="fixed inset-0 z-[300] flex items-center justify-center px-2 py-6 sm:px-4"
     >
       {/* Backdrop */}
       <div
@@ -124,26 +123,36 @@ export default function InspectionModal({
 
       {/* Panel */}
       <Dialog.Panel
-        className="relative z-[310] mx-4 my-6 w-full max-w-5xl"
+        className={`relative z-[310] mx-auto w-full ${panelWidth}`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="mb-2 flex items-start justify-between gap-3">
-          <Dialog.Title className="text-lg font-header font-semibold tracking-wide text-white">
-            {title}
-          </Dialog.Title>
+        <div className="mb-2 flex items-start justify-between gap-3 rounded-t-lg border border-b-0 border-orange-500 bg-neutral-950/90 px-4 py-3">
+          <div className="space-y-1">
+            <Dialog.Title className="text-base font-blackops tracking-wide text-orange-400 sm:text-lg">
+              {title}
+            </Dialog.Title>
+            {derived.template && (
+              <p className="text-[11px] text-neutral-400">
+                Template:{" "}
+                <span className="font-mono text-neutral-200">
+                  {derived.template}
+                </span>
+              </p>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => setCompact((v) => !v)}
-              className="rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs text-white hover:bg-neutral-800"
+              className="rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-[11px] text-neutral-100 hover:border-orange-500 hover:bg-neutral-800"
             >
-              {compact ? "Maximize" : "Minimize"}
+              {compact ? "Expand" : "Shrink"}
             </button>
             <button
               type="button"
               onClick={close}
-              className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm text-neutral-200 hover:bg-neutral-800"
+              className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-800"
             >
               ✕
             </button>
@@ -153,7 +162,7 @@ export default function InspectionModal({
         {/* Scrollable body */}
         <div
           ref={scrollRef}
-          className="max-h-[85vh] overflow-y-auto overscroll-contain rounded-lg border border-orange-400 bg-neutral-950 p-4 text-white shadow-xl"
+          className={`${bodyHeight} overflow-y-auto overscroll-contain rounded-b-lg border border-orange-500 bg-neutral-950 p-4 text-white shadow-xl`}
           style={{
             WebkitOverflowScrolling: "touch",
             scrollbarGutter: "stable both-edges",
@@ -162,42 +171,48 @@ export default function InspectionModal({
           {derived.missingWOLine && (
             <div className="mb-3 rounded border border-yellow-700 bg-yellow-900/30 px-3 py-2 text-xs text-yellow-200">
               <strong>Heads up:</strong>{" "}
-              <code>workOrderLineId</code> is missing; Save/Finish may be blocked.
+              <code className="font-mono text-yellow-100">workOrderLineId</code>{" "}
+              is missing; Save/Finish may be blocked.
             </div>
           )}
 
           {!derived.template ? (
-            <div className="rounded border border-neutral-800 bg-neutral-900 p-4 text-center text-neutral-400">
+            <div className="rounded border border-neutral-800 bg-neutral-900 px-4 py-6 text-center text-sm text-neutral-400">
               No inspection selected.
             </div>
           ) : (
             <div className="mx-auto w-full max-w-5xl">
-              <InspectionHost template={derived.template} embed params={derived.params} />
+              <InspectionHost
+                template={derived.template}
+                embed
+                params={derived.params}
+              />
             </div>
           )}
 
-          <div className="mt-4 flex items-center justify-between">
+          {/* Footer actions */}
+          <div className="mt-4 flex flex-col gap-2 border-t border-neutral-800 pt-3 sm:flex-row sm:items-center sm:justify-between">
             <button
               type="button"
               onClick={() => setCompact((v) => !v)}
-              className="rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs hover:bg-neutral-800"
+              className="inline-flex items-center justify-center rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-100 hover:border-orange-500 hover:bg-neutral-800 sm:text-[11px]"
             >
-              {compact ? "Maximize" : "Minimize"}
+              {compact ? "Expand View" : "Shrink View"}
             </button>
-            <div className="flex items-center gap-2">
+            <div className="flex justify-end gap-2">
               <button
                 type="button"
                 onClick={close}
-                className="rounded border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm hover:bg-neutral-800"
+                className="rounded border border-neutral-700 bg-neutral-900 px-4 py-1.5 text-xs sm:text-sm text-neutral-200 hover:bg-neutral-800"
               >
-                Close
+                Cancel
               </button>
               <button
                 type="button"
                 onClick={close}
-                className="rounded border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm hover:bg-neutral-800"
+                className="rounded border border-orange-500 bg-orange-500/10 px-4 py-1.5 text-xs sm:text-sm font-medium text-orange-100 hover:bg-orange-500/20"
               >
-                Cancel
+                Close
               </button>
             </div>
           </div>

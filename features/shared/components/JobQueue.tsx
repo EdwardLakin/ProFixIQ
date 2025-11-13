@@ -30,7 +30,7 @@ export default function JobQueue({
   onAssignTech,
   onView,
   filterTechId,
-  title = "Work Order Queue",
+  title = "Technician Job Queue",
 }: JobQueueProps) {
   const filteredJobs = (filterTechId
     ? jobs.filter((job) => (job.assigned_to ?? null) === filterTechId)
@@ -48,14 +48,34 @@ export default function JobQueue({
     return ta - tb;
   });
 
+  const activeLabel =
+    filterTechId &&
+    techOptions.find((t) => t.id === filterTechId)?.full_name;
+
   return (
-    <div className="p-4">
-      <h2 className="text-xl font-semibold mb-4 text-white">{title}</h2>
+    <div className="rounded-2xl border border-neutral-800 bg-neutral-950/80 p-4 text-white shadow-card">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-base font-semibold tracking-wide text-orange-400">
+          {title}
+        </h2>
+        <div className="flex items-center gap-3 text-xs text-neutral-400">
+          <span className="rounded-full border border-neutral-700 px-2 py-0.5">
+            {filteredJobs.length} job{filteredJobs.length === 1 ? "" : "s"}
+          </span>
+          {filterTechId && (
+            <span className="rounded-full border border-blue-500/60 bg-blue-500/10 px-2 py-0.5 text-blue-200">
+              Tech: {activeLabel || filterTechId}
+            </span>
+          )}
+        </div>
+      </div>
 
       {filteredJobs.length === 0 ? (
-        <p className="text-sm text-gray-400 italic">No jobs available.</p>
+        <p className="text-sm italic text-neutral-500">
+          No jobs in this queue.
+        </p>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {filteredJobs.map((job) => (
             <JobQueueCard
               key={job.id}

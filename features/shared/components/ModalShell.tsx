@@ -41,7 +41,7 @@ export default function ModalShell({
     <Dialog
       open={isOpen}
       onClose={onClose}
-      className="fixed inset-0 z-[500] flex items-center justify-center p-4 sm:p-6"
+      className="fixed inset-0 z-[500] flex items-center justify-center px-3 py-6 sm:px-4"
     >
       {/* backdrop */}
       <div
@@ -51,11 +51,11 @@ export default function ModalShell({
 
       {/* panel wrapper */}
       <div className={`relative z-[510] w-full ${width}`}>
-        <Dialog.Panel className="w-full overflow-hidden rounded-lg border border-border bg-background text-foreground shadow-xl">
-          {/* header — orange bar */}
-          <div className="flex items-center justify-between border-b border-border/60 bg-orange-500 px-4 py-3 text-black">
+        <Dialog.Panel className="w-full overflow-hidden rounded-lg border border-border bg-background text-foreground shadow-2xl dark:border-orange-400/90 dark:bg-neutral-950 dark:text-white">
+          {/* header — orange bar in dark mode */}
+          <div className="flex items-center justify-between border-b border-border/60 bg-muted px-4 py-3 text-foreground dark:border-neutral-800 dark:bg-orange-500 dark:text-black">
             {title ? (
-              <Dialog.Title className="text-base font-semibold">
+              <Dialog.Title className="text-base font-semibold font-header tracking-wide">
                 {title}
               </Dialog.Title>
             ) : (
@@ -64,7 +64,7 @@ export default function ModalShell({
             <button
               type="button"
               onClick={onClose}
-              className="rounded px-2 py-1 text-sm hover:bg-black/10"
+              className="rounded px-2 py-1 text-sm hover:bg-black/5 dark:hover:bg-black/10"
               aria-label="Close"
               title="Close"
             >
@@ -77,13 +77,13 @@ export default function ModalShell({
 
           {/* footer */}
           {!hideFooter && (onSubmit || footerLeft) && (
-            <div className="flex items-center justify-between gap-3 border-t border-border/60 px-4 py-3">
+            <div className="flex items-center justify-between gap-3 border-t border-border/60 px-4 py-3 dark:border-neutral-800">
               <div>{footerLeft}</div>
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={onClose}
-                  className="rounded border border-border/60 bg-muted px-3 py-1.5 text-sm text-foreground hover:bg-muted/70"
+                  className="rounded border border-border/60 bg-muted px-3 py-1.5 text-sm text-foreground hover:bg-muted/70 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"
                 >
                   Cancel
                 </button>
@@ -91,7 +91,7 @@ export default function ModalShell({
                   <button
                     type="button"
                     onClick={() => void onSubmit()}
-                    className="rounded bg-orange-400 px-3 py-1.5 text-sm font-medium text-black hover:bg-orange-400 disabled:opacity-60"
+                    className="rounded bg-orange-500 px-3 py-1.5 text-sm font-semibold text-black hover:bg-orange-400 disabled:opacity-60"
                   >
                     {submitText}
                   </button>

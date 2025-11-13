@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import Link from "next/link";
+import PageShell from "@/features/shared/components/PageShell";
 
 type DB = Database;
 type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
@@ -18,23 +19,22 @@ const STATUS_LABELS: Record<RollupStatus, string> = {
   completed: "Completed",
 };
 
-// slightly different accents so you can tell they’re clickable
 const STATUS_STYLES: Record<RollupStatus, string> = {
   awaiting:
-    "border-border bg-card/70 hover:border-orange-400 data-[active=true]:border-green-500 data-[active=true]:bg-green-500/10",
+    "border-neutral-800 bg-neutral-950/70 hover:border-orange-400 data-[active=true]:border-orange-400 data-[active=true]:bg-orange-500/10",
   in_progress:
-    "border-border bg-card/70 hover:border-orange-400 data-[active=true]:border-green-500 data-[active=true]:bg-green-500/10",
+    "border-neutral-800 bg-neutral-950/70 hover:border-orange-400 data-[active=true]:border-orange-400 data-[active=true]:bg-orange-500/10",
   on_hold:
-    "border-border bg-card/70 hover:border-orange-400 data-[active=true]:border-green-500 data-[active=true]:bg-green-500/10",
+    "border-neutral-800 bg-neutral-950/70 hover:border-orange-400 data-[active=true]:border-orange-400 data-[active=true]:bg-orange-500/10",
   completed:
-    "border-border bg-card/70 hover:border-orange-400 data-[active=true]:border-green-500 data-[active=true]:bg-green-500/10",
+    "border-neutral-800 bg-neutral-950/70 hover:border-orange-400 data-[active=true]:border-orange-400 data-[active=true]:bg-orange-500/10",
 };
 
 function rollupStatus(lines: Line[]): RollupStatus {
   const s = new Set(
     (lines ?? []).map((l) => (l.status ?? "awaiting") as RollupStatus)
   );
-  // priority
+
   if (s.has("in_progress")) return "in_progress";
   if (s.has("on_hold")) return "on_hold";
   if (lines.length && lines.every((l) => (l.status ?? "") === "completed"))
@@ -42,14 +42,32 @@ function rollupStatus(lines: Line[]): RollupStatus {
   return "awaiting";
 }
 
+function countLineStatuses(lines: Line[]) {
+  let awaiting = 0;
+  let in_progress = 0;
+  let on_hold = 0;
+  let completed = 0;
+
+  for (const l of lines ?? []) {
+    const s = (l.status ?? "awaiting") as RollupStatus;
+    if (s === "awaiting") awaiting += 1;
+    else if (s === "in_progress") in_progress += 1;
+    else if (s === "on_hold") on_hold += 1;
+    else if (s === "completed") completed += 1;
+  }
+
+  return { awaiting, in_progress, on_hold, completed };
+}
+
 export default function QueuePage() {
   const supabase = createClientComponentClient<DB>();
 
-  // server-ish data
+  // auth / profile
   const [userId, setUserId] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(null);
   const [shopId, setShopId] = useState<string | null>(null);
 
+  // data
   const [workOrders, setWorkOrders] = useState<WO[]>([]);
   const [linesByWo, setLinesByWo] = useState<Record<string, Line[]>>({});
 
@@ -57,8 +75,12 @@ export default function QueuePage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<RollupStatus | null>(null);
+  const [showMineOnly, setShowMineOnly] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
 
-  // load everything once in the browser
+  /* -------------------------------------------------------------------------
+   * Load auth + profile + recent work orders + lines
+   * ---------------------------------------------------------------------- */
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -78,7 +100,7 @@ export default function QueuePage() {
 
       setUserId(user.id);
 
-      // 2) profile
+      // 2) profile → shop + role
       const { data: profile, error: profErr } = await supabase
         .from("profiles")
         .select("shop_id, role")
@@ -100,7 +122,7 @@ export default function QueuePage() {
       setRole(profile.role ?? null);
       setShopId(profile.shop_id);
 
-      // 3) work orders (last 30 days)
+      // 3) recent work orders (last 30 days, excluding awaiting_approval)
       const since = new Date();
       since.setDate(since.getDate() - 30);
 
@@ -145,8 +167,12 @@ export default function QueuePage() {
         map[l.work_order_id].push(l);
       });
 
-      // 5) apply tech visibility on client
-      const isTech = profile.role === "tech" || profile.role === "mechanic";
+      // 5) tech visibility
+      const isTech =
+        profile.role === "tech" ||
+        profile.role === "mechanic" ||
+        profile.role === "technician";
+
       const visibleWos: WO[] = isTech
         ? wos.filter((wo) =>
             (map[wo.id] ?? []).some((l) => l.assigned_to === user.id)
@@ -166,7 +192,9 @@ export default function QueuePage() {
     "completed",
   ];
 
-  // counts per bucket
+  /* -------------------------------------------------------------------------
+   * Overall counts per status
+   * ---------------------------------------------------------------------- */
   const counts = useMemo(() => {
     const base = {
       awaiting: 0,
@@ -183,139 +211,232 @@ export default function QueuePage() {
     return base;
   }, [workOrders, linesByWo]);
 
-  // filtered list
+  /* -------------------------------------------------------------------------
+   * Filtered work orders for the main list
+   * ---------------------------------------------------------------------- */
   const filteredWos = useMemo(() => {
-    if (activeFilter == null) return workOrders;
-    return workOrders.filter(
-      (wo) => rollupStatus(linesByWo[wo.id] ?? []) === activeFilter
-    );
-  }, [activeFilter, workOrders, linesByWo]);
+    let pool = workOrders;
 
+    if (activeFilter != null) {
+      pool = pool.filter(
+        (wo) => rollupStatus(linesByWo[wo.id] ?? []) === activeFilter
+      );
+    }
+
+    if (showMineOnly && userId) {
+      pool = pool.filter((wo) =>
+        (linesByWo[wo.id] ?? []).some((l) => l.assigned_to === userId)
+      );
+    }
+
+    return pool;
+  }, [activeFilter, showMineOnly, userId, workOrders, linesByWo]);
+
+  /* -------------------------------------------------------------------------
+   * Render states
+   * ---------------------------------------------------------------------- */
   if (loading) {
     return (
-      <div className="mx-auto max-w-6xl px-4 py-6 text-muted-foreground">
-        Loading queue…
-      </div>
+      <PageShell
+        title="Job Queue"
+        description="Live job queue for technicians, grouped by work order."
+      >
+        <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 px-4 py-6 text-sm text-neutral-300">
+          Loading queue…
+        </div>
+      </PageShell>
     );
   }
 
   if (err) {
     return (
-      <div className="mx-auto max-w-6xl px-4 py-6 text-destructive">
-        {err}
-      </div>
+      <PageShell
+        title="Job Queue"
+        description="Live job queue for technicians, grouped by work order."
+      >
+        <div className="rounded-xl border border-red-500/40 bg-red-900/20 px-4 py-6 text-sm text-red-200">
+          {err}
+        </div>
+      </PageShell>
     );
   }
 
+  /* -------------------------------------------------------------------------
+   * Main UI
+   * ---------------------------------------------------------------------- */
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 bg-background text-foreground">
-      <h1 className="mb-4 text-2xl font-blackops text-orange-500">
-        Job Queue
-      </h1>
-
-      {/* DEBUG */}
-      <div className="mb-4 rounded-lg border border-border bg-card px-4 py-3 text-sm">
-        <div className="mb-1 font-semibold text-orange-500">Debug</div>
-        <div className="grid gap-2 sm:grid-cols-2">
-          <div className="space-y-1">
-            <div>
-              <span className="text-muted-foreground">User:</span> {userId}
+    <PageShell
+      title="Job Queue"
+      description="Live view of active work orders for your shop. This is separate from the shop appointments calendar."
+    >
+      <div className="space-y-6">
+        {/* Header row / top summary */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="rounded-lg border border-neutral-800 bg-neutral-950/70 px-3 py-2 text-xs text-neutral-300">
+            <div className="text-[10px] uppercase tracking-wide text-neutral-500">
+              Active work orders (last 30 days)
             </div>
-            <div>
-              <span className="text-muted-foreground">Role:</span>{" "}
-              {role ?? "—"}
-            </div>
-            <div>
-              <span className="text-muted-foreground">Shop:</span>{" "}
-              {shopId ?? "—"}
-            </div>
-          </div>
-          <div className="space-y-1">
-            <div>
-              <span className="text-muted-foreground">Visible WOs:</span>{" "}
+            <div className="mt-1 text-lg font-semibold text-white">
               {workOrders.length}
             </div>
           </div>
+
+          <div className="flex items-center gap-3 rounded-lg border border-neutral-800 bg-neutral-950/70 px-3 py-2 text-xs text-neutral-300">
+            <label className="inline-flex cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                checked={showMineOnly}
+                onChange={(e) => setShowMineOnly(e.target.checked)}
+                className="h-4 w-4 rounded border-neutral-700 bg-neutral-900 text-orange-500"
+              />
+              <span>
+                Show only jobs assigned to{" "}
+                <span className="font-medium">me</span>
+              </span>
+            </label>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowDebug((v) => !v)}
+            className="ml-auto rounded border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-[11px] text-neutral-300 hover:border-orange-400 hover:text-orange-300"
+          >
+            {showDebug ? "Hide debug" : "Show debug"}
+          </button>
         </div>
-      </div>
 
-      {/* FILTER BUTTONS */}
-      <div className="mb-6 grid gap-3 md:grid-cols-4">
-        {statuses.map((s) => {
-          const isActive = activeFilter === s;
-          return (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setActiveFilter(isActive ? null : s)}
-              className={`rounded-lg p-3 text-left transition ${STATUS_STYLES[s]}`}
-              data-active={isActive ? "true" : "false"}
-            >
-              <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                {STATUS_LABELS[s]}
-              </div>
-              <div className="mt-1 text-2xl font-semibold">{counts[s]}</div>
-              {isActive && (
-                <div className="mt-1 text-[10px] text-orange-500">
-                  Showing {STATUS_LABELS[s].toLowerCase()}
+        {/* Optional debug block */}
+        {showDebug && (
+          <div className="rounded-xl border border-neutral-800 bg-neutral-950/80 px-4 py-3 text-xs text-neutral-300">
+            <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-orange-400">
+              Debug
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="space-y-1">
+                <div>
+                  <span className="text-neutral-500">User:</span>{" "}
+                  <span className="font-mono text-neutral-200">
+                    {userId ?? "—"}
+                  </span>
                 </div>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* LIST */}
-      <div className="space-y-2">
-        {filteredWos.map((wo) => {
-          const lns = linesByWo[wo.id] ?? [];
-          const status = rollupStatus(lns);
-          const awaiting = lns.filter((l) => (l.status ?? "") === "awaiting")
-            .length;
-          const inProg = lns.filter((l) => (l.status ?? "") === "in_progress")
-            .length;
-          const onHold = lns.filter((l) => (l.status ?? "") === "on_hold")
-            .length;
-          const done = lns.filter((l) => (l.status ?? "") === "completed")
-            .length;
-
-          const slug = wo.custom_id ?? wo.id;
-
-          return (
-            <Link
-              key={wo.id}
-              href={`/work-orders/${slug}?mode=tech`}
-              className="block rounded-lg border border-border bg-card px-3 py-3 transition hover:border-orange-500"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="truncate font-medium">
-                    {wo.custom_id ? wo.custom_id : `#${wo.id.slice(0, 8)}`}
-                  </div>
-                  {wo.custom_id && (
-                    <div className="text-[10px] text-muted-foreground">
-                      #{wo.id.slice(0, 8)}
-                    </div>
-                  )}
-                  <div className="text-xs text-muted-foreground">
-                    {awaiting} awaiting · {inProg} in progress · {onHold} on hold
-                    · {done} completed
-                  </div>
+                <div>
+                  <span className="text-neutral-500">Role:</span>{" "}
+                  {role ?? "—"}
                 </div>
-                <span className="rounded border border-border px-2 py-1 text-xs capitalize text-muted-foreground">
-                  {status.replace("_", " ")}
-                </span>
+                <div>
+                  <span className="text-neutral-500">Shop:</span>{" "}
+                  {shopId ?? "—"}
+                </div>
               </div>
-            </Link>
-          );
-        })}
-
-        {filteredWos.length === 0 && (
-          <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
-            No work orders in this bucket.
+              <div className="space-y-1">
+                <div>
+                  <span className="text-neutral-500">Visible WOs:</span>{" "}
+                  {workOrders.length}
+                </div>
+                <div>
+                  <span className="text-neutral-500">Active filter:</span>{" "}
+                  {activeFilter ? STATUS_LABELS[activeFilter] : "All"}
+                </div>
+                <div>
+                  <span className="text-neutral-500">Mine only:</span>{" "}
+                  {showMineOnly ? "Yes" : "No"}
+                </div>
+              </div>
+            </div>
           </div>
         )}
+
+        {/* Status buckets */}
+        <div className="grid gap-3 md:grid-cols-4">
+          {statuses.map((s) => {
+            const isActive = activeFilter === s;
+            return (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setActiveFilter(isActive ? null : s)}
+                className={`rounded-xl border px-3 py-3 text-left text-sm text-neutral-100 transition ${STATUS_STYLES[s]}`}
+                data-active={isActive ? "true" : "false"}
+              >
+                <div className="text-[10px] uppercase tracking-wide text-neutral-400">
+                  {STATUS_LABELS[s]}
+                </div>
+                <div className="mt-1 text-2xl font-semibold">
+                  {counts[s] ?? 0}
+                </div>
+                {isActive && (
+                  <div className="mt-1 text-[10px] text-orange-400">
+                    Showing {STATUS_LABELS[s].toLowerCase()} work orders
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Work order list */}
+        <div className="space-y-2">
+          {filteredWos.map((wo) => {
+            const lines = linesByWo[wo.id] ?? [];
+            const status = rollupStatus(lines);
+            const bucketCounts = countLineStatuses(lines);
+
+            const slug = wo.custom_id ?? wo.id;
+            const createdLabel = wo.created_at
+              ? new Date(wo.created_at).toLocaleString()
+              : "—";
+
+            return (
+              <Link
+                key={wo.id}
+                href={`/work-orders/${slug}?mode=tech`}
+                className="block rounded-lg border border-neutral-800 bg-neutral-950/70 px-3 py-3 text-sm text-neutral-100 transition hover:border-orange-500 hover:bg-neutral-900"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate font-medium text-white">
+                      {wo.custom_id ? wo.custom_id : `#${wo.id.slice(0, 8)}`}
+                    </div>
+                    {wo.custom_id && (
+                      <div className="text-[10px] text-neutral-500">
+                        #{wo.id.slice(0, 8)}
+                      </div>
+                    )}
+                    <div className="mt-1 text-[11px] text-neutral-400">
+                      Created: {createdLabel}
+                    </div>
+                    <div className="mt-1 text-[11px] text-neutral-400">
+                      {bucketCounts.awaiting} awaiting ·{" "}
+                      {bucketCounts.in_progress} in progress ·{" "}
+                      {bucketCounts.on_hold} on hold ·{" "}
+                      {bucketCounts.completed} completed
+                    </div>
+                  </div>
+                  <span className="rounded border border-neutral-700 px-2 py-1 text-[11px] capitalize text-neutral-300">
+                    {status.replace("_", " ")}
+                  </span>
+                </div>
+              </Link>
+            );
+          })}
+
+          {filteredWos.length === 0 && (
+            <div className="rounded-lg border border-neutral-800 bg-neutral-950/70 p-4 text-sm text-neutral-400">
+              No work orders in this bucket.
+            </div>
+          )}
+        </div>
+
+        {/* Tiny footer hint */}
+        <div className="pt-2 text-[11px] text-neutral-500">
+          Manage customer & vehicle details, inspections, labor, and parts from
+          the individual work order page. This view is focused on{" "}
+          <span className="font-medium text-neutral-300">
+            technician job flow
+          </span>
+          , not the shop appointments calendar.
+        </div>
       </div>
-    </div>
+    </PageShell>
   );
 }

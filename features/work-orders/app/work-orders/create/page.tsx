@@ -177,12 +177,19 @@ export default function CreateWorkOrderPage() {
   }, []); // once
 
   const onCustomerChange = (
-    field: keyof SessionCustomer,
+    field: keyof SessionCustomer | "business_name",
     value: string | null
   ) => {
-    setCustomer((c) => ({ ...c, [field]: value }));
-    cvDraft.setCustomerField(field as any, value);
+    if (field === "business_name") {
+      // store extra field alongside SessionCustomer shape
+      setCustomer((c) => ({ ...(c as any), business_name: value } as any));
+      cvDraft.setCustomerField(field as any, value);
+    } else {
+      setCustomer((c) => ({ ...c, [field]: value }));
+      cvDraft.setCustomerField(field as any, value);
+    }
   };
+
   const onVehicleChange = (
     field: keyof SessionVehicle,
     value: string | null
@@ -212,7 +219,7 @@ export default function CreateWorkOrderPage() {
   // Defaults / notes
   const [type, setType] = useTabState<WOType>("type", "maintenance");
   const [notes, setNotes] = useTabState("notes", "");
-  // 👇 new: work order priority (1 urgent → 4 low). default 3 = normal
+  // 👇 work order priority (1 urgent → 4 low). default 3 = normal
   const [priority, setPriority] = useTabState<number>("priority", 3);
 
   // Uploads
@@ -387,6 +394,7 @@ export default function CreateWorkOrderPage() {
   }
 
   const buildCustomerInsert = (c: SessionCustomer, shopId: string | null) => ({
+    business_name: strOrNull((c as any).business_name ?? null),
     first_name: strOrNull(c.first_name),
     last_name: strOrNull(c.last_name),
     phone: strOrNull(c.phone),
@@ -416,6 +424,24 @@ export default function CreateWorkOrderPage() {
     shop_id: shopId,
   });
 
+  // helper to hydrate customer state from DB row (including business_name when present)
+  const hydrateCustomerFromRow = (row: any): SessionCustomer => {
+    const base: any = {
+      first_name: row.first_name ?? null,
+      last_name: row.last_name ?? null,
+      phone: getStrField(row, "phone"),
+      email: row.email ?? null,
+      address: getStrField(row, "address"),
+      city: getStrField(row, "city"),
+      province: getStrField(row, "province"),
+      postal_code: getStrField(row, "postal_code"),
+    };
+    if (row.business_name) {
+      base.business_name = row.business_name;
+    }
+    return base as SessionCustomer;
+  };
+
   // Read query params (prefill)
   useEffect(() => {
     const v = searchParams.get("vehicleId");
@@ -442,16 +468,7 @@ export default function CreateWorkOrderPage() {
             .eq("id", prefillCustomerId)
             .single();
           if (!cancelled && data) {
-            setCustomer({
-              first_name: data.first_name ?? null,
-              last_name: data.last_name ?? null,
-              phone: getStrField(data, "phone"),
-              email: data.email ?? null,
-              address: getStrField(data, "address"),
-              city: getStrField(data, "city"),
-              province: getStrField(data, "province"),
-              postal_code: getStrField(data, "postal_code"),
-            });
+            setCustomer(hydrateCustomerFromRow(data));
             setCustomerId(data.id);
           }
         }
@@ -485,16 +502,7 @@ export default function CreateWorkOrderPage() {
                 .eq("id", data.customer_id)
                 .maybeSingle();
               if (cust) {
-                setCustomer({
-                  first_name: cust.first_name ?? null,
-                  last_name: cust.last_name ?? null,
-                  phone: getStrField(cust, "phone"),
-                  email: cust.email ?? null,
-                  address: getStrField(cust, "address"),
-                  city: getStrField(cust, "city"),
-                  province: getStrField(cust, "province"),
-                  postal_code: getStrField(cust, "postal_code"),
-                });
+                setCustomer(hydrateCustomerFromRow(cust));
                 setCustomerId(cust.id);
               }
             }
@@ -632,7 +640,11 @@ export default function CreateWorkOrderPage() {
           city: customer.city ?? null,
           province: customer.province ?? null,
           postal_code: customer.postal_code ?? null,
-        },
+          // business_name is optional, lives in draft as any if supported
+          ...(cust as any).business_name
+            ? { business_name: (cust as any).business_name }
+            : {},
+        } as any,
         vehicle: {
           vin: veh.vin ?? null,
           year: veh.year != null ? String(veh.year) : null,
@@ -715,7 +727,7 @@ export default function CreateWorkOrderPage() {
 
   // Clear form
   const handleClearForm = useCallback(() => {
-    setCustomer(defaultCustomer);
+    setCustomer(defaultCustomer as any); // clears known fields; extra ones like business_name drop to undefined
     setVehicle(defaultVehicle);
     setCustomerId(null);
     setVehicleId(null);
@@ -1112,8 +1124,16 @@ export default function CreateWorkOrderPage() {
             Create Work Order
           </h1>
           <p className="text-sm text-neutral-400">
-            Capture customer & vehicle, add jobs, then approve.
+            Capture customer &amp; vehicle, add jobs, then approve.
           </p>
+          {wo?.custom_id && (
+            <div className="mt-1 text-xs text-neutral-500">
+              Current WO:&nbsp;
+              <span className="font-mono text-orange-300">
+                {wo.custom_id}
+              </span>
+            </div>
+          )}
         </div>
         <div className="flex gap-2">
           <button
@@ -1127,19 +1147,19 @@ export default function CreateWorkOrderPage() {
       </div>
 
       {error && (
-        <div className="mb-4 rounded border border-red-500/40 bg-red-500/10 px-4 py-2 text-red-200 text-sm">
+        <div className="mb-4 rounded border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm text-red-200">
           {error}
         </div>
       )}
 
       {uploadSummary && (
-        <div className="mb-4 rounded border border-neutral-700 bg-neutral-950 px-4 py-2 text-neutral-200 text-sm">
+        <div className="mb-4 rounded border border-neutral-700 bg-neutral-950 px-4 py-2 text-sm text-neutral-200">
           Uploaded {uploadSummary.uploaded} file(s)
           {uploadSummary.failed ? `, ${uploadSummary.failed} failed` : ""}.
         </div>
       )}
       {inviteNotice && (
-        <div className="mb-4 rounded border border-neutral-700 bg-neutral-950 px-4 py-2 text-neutral-200 text-sm">
+        <div className="mb-4 rounded border border-neutral-700 bg-neutral-950 px-4 py-2 text-sm text-neutral-200">
           {inviteNotice}
         </div>
       )}
@@ -1147,7 +1167,7 @@ export default function CreateWorkOrderPage() {
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Customer & Vehicle */}
         <section className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 sm:p-5">
-          <h2 className="text-sm font-semibold text-white mb-3">
+          <h2 className="mb-3 text-sm font-semibold text-white">
             Customer &amp; Vehicle
           </h2>
 
@@ -1211,7 +1231,7 @@ export default function CreateWorkOrderPage() {
                 });
               }}
             >
-              <span className="rounded border border-orange-500/80 px-3 py-1.5 text-xs sm:text-sm text-orange-300 hover:bg-orange-500/10 cursor-pointer">
+              <span className="cursor-pointer rounded border border-orange-500/80 px-3 py-1.5 text-xs text-orange-300 hover:bg-orange-500/10 sm:text-sm">
                 Add by VIN / Scan
               </span>
             </VinCaptureModal>
@@ -1232,10 +1252,10 @@ export default function CreateWorkOrderPage() {
 
         {/* Uploads */}
         <section className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 sm:p-5">
-          <h2 className="text-sm font-semibold text-white mb-3">Uploads</h2>
+          <h2 className="mb-3 text-sm font-semibold text-white">Uploads</h2>
           <div className="grid gap-3 md:grid-cols-2">
             <div>
-              <label className="block text-xs uppercase tracking-wide text-neutral-400 mb-1">
+              <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
                 Vehicle Photos
               </label>
               <input
@@ -1248,7 +1268,7 @@ export default function CreateWorkOrderPage() {
               />
             </div>
             <div>
-              <label className="block text-xs uppercase tracking-wide text-neutral-400 mb-1">
+              <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
                 Documents (PDF/JPG/PNG)
               </label>
               <input
@@ -1266,7 +1286,7 @@ export default function CreateWorkOrderPage() {
         {/* Quick add from menu */}
         {wo?.id && (
           <section className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 sm:p-5">
-            <h2 className="text-sm font-semibold text-orange-300 mb-3">
+            <h2 className="mb-3 text-sm font-semibold text-orange-300">
               Quick add from menu
             </h2>
             <MenuQuickAdd workOrderId={wo.id} />
@@ -1276,7 +1296,7 @@ export default function CreateWorkOrderPage() {
         {/* Manual add line */}
         {wo?.id && (
           <section className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 sm:p-5">
-            <h2 className="text-sm font-semibold text-white mb-3">
+            <h2 className="mb-3 text-sm font-semibold text-white">
               Add Job Line
             </h2>
             <NewWorkOrderLineForm
@@ -1291,7 +1311,7 @@ export default function CreateWorkOrderPage() {
 
         {/* Current Lines */}
         <section className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 sm:p-5">
-          <h2 className="text-sm font-semibold text-white mb-3">
+          <h2 className="mb-3 text-sm font-semibold text-white">
             Current Lines
           </h2>
           {!wo?.id || lines.length === 0 ? (
@@ -1301,7 +1321,7 @@ export default function CreateWorkOrderPage() {
               {lines.map((ln) => (
                 <div
                   key={ln.id}
-                  className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 rounded border border-neutral-800 bg-neutral-950 p-3"
+                  className="flex flex-col gap-3 rounded border border-neutral-800 bg-neutral-950 p-3 sm:flex-row sm:items-start sm:justify-between"
                 >
                   <div className="min-w-0">
                     <div className="truncate font-medium">
@@ -1315,7 +1335,7 @@ export default function CreateWorkOrderPage() {
                       • {(ln.status ?? "awaiting").replaceAll("_", " ")}
                     </div>
                     {(ln.complaint || ln.cause || ln.correction) && (
-                      <div className="text-xs text-neutral-500 mt-1">
+                      <div className="mt-1 text-xs text-neutral-500">
                         {ln.complaint ? `Cmpl: ${ln.complaint}  ` : ""}
                         {ln.cause ? `| Cause: ${ln.cause}  ` : ""}
                         {ln.correction ? `| Corr: ${ln.correction}` : ""}
@@ -1348,12 +1368,12 @@ export default function CreateWorkOrderPage() {
 
         {/* Work Order defaults */}
         <section className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 sm:p-5">
-          <h2 className="text-sm font-semibold text-white mb-3">
+          <h2 className="mb-3 text-sm font-semibold text-white">
             Work Order options
           </h2>
           <div className="grid gap-3 md:grid-cols-3">
             <div>
-              <label className="block text-xs uppercase tracking-wide text-neutral-400 mb-1">
+              <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
                 Default job type
               </label>
               <select
@@ -1368,7 +1388,7 @@ export default function CreateWorkOrderPage() {
               </select>
             </div>
             <div>
-              <label className="block text-xs uppercase tracking-wide text-neutral-400 mb-1">
+              <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
                 Priority
               </label>
               <select
@@ -1384,7 +1404,7 @@ export default function CreateWorkOrderPage() {
               </select>
             </div>
             <div className="md:col-span-3">
-              <label className="block text-xs uppercase tracking-wide text-neutral-400 mb-1">
+              <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
                 Notes
               </label>
               <textarea

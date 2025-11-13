@@ -1,7 +1,7 @@
 // features/dashboard/admin/SchedulingClient.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { format, parseISO, isValid, addMinutes } from "date-fns";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
@@ -95,22 +95,47 @@ export default function SchedulingClient(): JSX.Element {
     Record<string, Punch[]>
   >({});
 
-  // Load users once
+  // shop + billable summary
+  const [currentShopId, setCurrentShopId] = useState<string | null>(null);
+  const [billableMinutes, setBillableMinutes] = useState<number | null>(null);
+
+  // Bootstrap current shop + staff list
   useEffect(() => {
     (async () => {
-      const { data, error } = await supabase
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      const uid = user?.id ?? null;
+
+      let shop: string | null = null;
+      if (uid) {
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("shop_id")
+          .eq("id", uid)
+          .maybeSingle();
+
+        shop = prof?.shop_id ?? null;
+      }
+      setCurrentShopId(shop);
+
+      let q = supabase
         .from("profiles")
         .select("id, full_name, role")
         .order("full_name", { ascending: true });
 
+      if (shop) q = q.eq("shop_id", shop);
+
+      const { data, error } = await q;
       if (!error) setUsers((data ?? []) as UserLite[]);
     })();
   }, [supabase]);
 
-  // Load shifts + punches
-  async function load() {
+  // Load shifts + punches + billable
+  const load = useCallback(async () => {
     setLoading(true);
     setErr(null);
+
     try {
       const fromISO = new Date(from + "T00:00:00Z").toISOString();
       const toEnd = addMinutes(
@@ -118,6 +143,7 @@ export default function SchedulingClient(): JSX.Element {
         1439
       ).toISOString();
 
+      // Shifts
       let q = supabase
         .from("tech_shifts")
         .select("*")
@@ -125,6 +151,7 @@ export default function SchedulingClient(): JSX.Element {
         .lte("start_time", toEnd)
         .order("start_time", { ascending: false });
 
+      if (currentShopId) q = q.eq("shop_id", currentShopId);
       if (userId) q = q.eq("user_id", userId);
 
       const { data: shiftRows, error: shiftErr } = await q;
@@ -150,18 +177,45 @@ export default function SchedulingClient(): JSX.Element {
 
       setShifts((shiftRows ?? []) as Shift[]);
       setPunchesByShift(map);
+
+      // Billable labor from work_order_lines (hours → minutes)
+      let woQ = supabase
+        .from("work_order_lines")
+        .select("labor_time, user_id, assigned_to, created_at, shop_id")
+        .gte("created_at", fromISO)
+        .lte("created_at", toEnd);
+
+      if (currentShopId) woQ = woQ.eq("shop_id", currentShopId);
+      if (userId) {
+        woQ = woQ.or(
+          `user_id.eq.${userId},assigned_to.eq.${userId}`
+        );
+      }
+
+      const { data: lineRows, error: lineErr } = await woQ;
+      if (lineErr) throw lineErr;
+
+      let billable = 0;
+      for (const r of lineRows ?? []) {
+        const hrs =
+          typeof r.labor_time === "number" ? r.labor_time : 0;
+        billable += Math.max(0, hrs) * 60;
+      }
+      setBillableMinutes(billable);
     } catch (e: any) {
       setErr(e?.message ?? "Failed to load data");
       setShifts([]);
       setPunchesByShift({});
+      setBillableMinutes(null);
     } finally {
       setLoading(false);
     }
-  }
+  }, [from, to, userId, currentShopId, supabase]);
 
+  // initial + whenever filters change
   useEffect(() => {
     void load();
-  }, []); // initial load
+  }, [load]);
 
   const totalMinutes = useMemo(
     () =>
@@ -172,6 +226,11 @@ export default function SchedulingClient(): JSX.Element {
       ),
     [shifts, punchesByShift]
   );
+
+  const utilization =
+    totalMinutes > 0 && billableMinutes != null
+      ? Math.round((billableMinutes / totalMinutes) * 100)
+      : null;
 
   // ---- Mutations ----
   async function updateShiftTime(
@@ -232,11 +291,11 @@ export default function SchedulingClient(): JSX.Element {
 
   return (
     <PageShell
-      title="Appointments & Technician Time"
-      description="Review shifts, punches, and total hours worked across your team."
+      title="Scheduling & Technician Time"
+      description="Review employee shifts, punches, and compare worked hours vs billed labor. (Shop appointments are managed on the Appointments page.)"
     >
       <div className="space-y-5">
-        {/* Filters */}
+        {/* Filters + summary */}
         <div className="rounded-2xl border border-white/10 bg-black/40 p-4 backdrop-blur-md shadow-card">
           <div className="mb-3 flex flex-wrap items-center gap-3">
             <div>
@@ -263,7 +322,7 @@ export default function SchedulingClient(): JSX.Element {
             </div>
             <div>
               <label className="block text-[0.7rem] uppercase tracking-[0.12em] text-neutral-400">
-                Tech / User
+                Employee
               </label>
               <select
                 value={userId}
@@ -280,15 +339,37 @@ export default function SchedulingClient(): JSX.Element {
               </select>
             </div>
 
-            <div className="ml-auto flex items-end gap-3">
-              <div className="text-sm text-neutral-300">
+            <div className="ml-auto flex flex-wrap items-end gap-4 text-sm text-neutral-300">
+              <div>
                 <span className="text-xs uppercase tracking-[0.12em] text-neutral-400">
-                  Total worked
+                  Worked (clocked)
                 </span>
                 <div className="font-semibold">
                   {Math.floor(totalMinutes / 60)}h {totalMinutes % 60}m
                 </div>
               </div>
+
+              {billableMinutes != null && (
+                <div>
+                  <span className="text-xs uppercase tracking-[0.12em] text-neutral-400">
+                    Billed (labor)
+                  </span>
+                  <div className="font-semibold">
+                    {Math.floor(billableMinutes / 60)}h{" "}
+                    {billableMinutes % 60}m
+                  </div>
+                </div>
+              )}
+
+              {utilization != null && (
+                <div>
+                  <span className="text-xs uppercase tracking-[0.12em] text-neutral-400">
+                    Utilization
+                  </span>
+                  <div className="font-semibold">{utilization}%</div>
+                </div>
+              )}
+
               <Button
                 type="button"
                 variant="default"
@@ -339,7 +420,7 @@ export default function SchedulingClient(): JSX.Element {
                     </div>
                     <div>
                       <div className="text-[0.7rem] uppercase tracking-[0.12em] text-neutral-400">
-                        Start
+                        Shift start
                       </div>
                       <input
                         type="datetime-local"
@@ -363,7 +444,7 @@ export default function SchedulingClient(): JSX.Element {
                     </div>
                     <div>
                       <div className="text-[0.7rem] uppercase tracking-[0.12em] text-neutral-400">
-                        End
+                        Shift end
                       </div>
                       <input
                         type="datetime-local"
@@ -383,7 +464,7 @@ export default function SchedulingClient(): JSX.Element {
                     </div>
                     <div className="ml-auto text-right">
                       <div className="text-[0.7rem] uppercase tracking-[0.12em] text-neutral-400">
-                        Worked
+                        Worked this shift
                       </div>
                       <div className="mt-1 text-sm font-semibold text-white">
                         {Math.floor(minutes / 60)}h {minutes % 60}m

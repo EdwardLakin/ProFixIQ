@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import type { Database } from "@shared/types/types/supabase";
 
 type JobLine = Database["public"]["Tables"]["work_order_lines"]["Row"];
@@ -23,7 +23,7 @@ type JobQueueCardProps = {
   PunchProps;
 
 const BADGE_BASE =
-  "inline-flex items-center rounded px-2 py-0.5 text-[10px] font-medium";
+  "inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-medium";
 
 const STATUS_STYLES: Record<string, string> = {
   in_progress: `${BADGE_BASE} bg-orange-500/10 text-orange-200 border border-orange-400/40`,
@@ -71,9 +71,16 @@ function JobQueueCard({
     status,
     hold_reason,
   } = job;
+
   const [selectedTech, setSelectedTech] = useState<string | null>(
     assigned_to ?? null
   );
+
+  const assignedLabel = useMemo(() => {
+    if (!selectedTech) return "Unassigned";
+    const match = techOptions.find((t) => t.id === selectedTech);
+    return match?.full_name || selectedTech;
+  }, [selectedTech, techOptions]);
 
   const { text: badgeText, className: badgeClass } = getStatusBadge(
     status ?? null,
@@ -90,60 +97,67 @@ function JobQueueCard({
 
   return (
     <div
-      className={`border rounded bg-white dark:bg-gray-900 hover:shadow ${
-        isActive ? "ring-2 ring-orange-400" : ""
+      className={`rounded-xl border bg-neutral-950/90 p-3 shadow-sm transition hover:border-orange-500/70 hover:shadow-md ${
+        isActive ? "border-orange-400 ring-1 ring-orange-400/70" : "border-neutral-800"
       }`}
     >
-      <div className="p-3 space-y-2">
-        <div className="flex items-start justify-between gap-2">
+      <div className="space-y-2">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="font-medium truncate">
+            <div className="truncate text-sm font-semibold text-white">
               {complaint || description || "No description"}
             </div>
-            <div className="text-xs text-neutral-500">
-              Created: {created_at ? new Date(created_at).toLocaleString() : "—"}
+            <div className="mt-0.5 text-[11px] text-neutral-400">
+              Created:{" "}
+              {created_at ? new Date(created_at).toLocaleString() : "—"}
             </div>
-            <div className="text-[11px] text-neutral-400 mt-1">
-              {selectedTech
-                ? `Assigned to: ${selectedTech}`
-                : "Assigned to: Unassigned"}
+            <div className="mt-1 text-[11px] text-neutral-400">
+              <span className="text-neutral-500">Assigned:</span>{" "}
+              <span className="font-medium text-neutral-200">
+                {assignedLabel}
+              </span>
             </div>
           </div>
 
           <span className={badgeClass}>{badgeText}</span>
         </div>
 
-        {techOptions.length > 0 && onAssignTech && (
-          <div className="flex items-center gap-2">
-            <select
-              value={selectedTech ?? ""}
-              onChange={handleAssign}
-              className="border rounded px-2 py-1 bg-neutral-50 dark:bg-neutral-800 text-sm"
-            >
-              <option value="">Unassigned</option>
-              {techOptions.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.full_name ?? t.id}
-                </option>
-              ))}
-            </select>
+        {/* Tech assign + view */}
+        {(techOptions.length > 0 || onView) && (
+          <div className="flex flex-wrap items-center gap-2">
+            {techOptions.length > 0 && onAssignTech && (
+              <select
+                value={selectedTech ?? ""}
+                onChange={handleAssign}
+                className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs text-neutral-100 focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+              >
+                <option value="">Unassigned</option>
+                {techOptions.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.full_name ?? t.id}
+                  </option>
+                ))}
+              </select>
+            )}
 
             {onView && (
               <button
-                className="px-2 py-1 rounded bg-neutral-700 text-white text-xs"
+                className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs text-neutral-100 hover:border-orange-400 hover:bg-neutral-800"
                 onClick={onView}
               >
-                View
+                View work order
               </button>
             )}
           </div>
         )}
 
+        {/* Punch buttons */}
         {(onPunchIn || onPunchOut) && (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 pt-1">
             {onPunchIn && !isActive && (
               <button
-                className="px-3 py-1 rounded bg-blue-600 text-white text-sm"
+                className="rounded bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-500"
                 onClick={() => void onPunchIn(job)}
               >
                 Punch in
@@ -151,7 +165,7 @@ function JobQueueCard({
             )}
             {onPunchOut && isActive && (
               <button
-                className="px-3 py-1 rounded bg-gray-700 text-white text-sm"
+                className="rounded bg-neutral-700 px-3 py-1 text-xs font-semibold text-white hover:bg-neutral-600"
                 onClick={() => void onPunchOut(job)}
               >
                 Punch out

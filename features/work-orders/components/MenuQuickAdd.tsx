@@ -618,43 +618,79 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // UI
+  // ---------------------------------------------------------------------------
+  const vehicleLabel =
+    vehicle && (vehicle.year || vehicle.make || vehicle.model)
+      ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim()
+      : vehicle?.license_plate
+      ? `Plate ${vehicle.license_plate}`
+      : null;
+
   return (
-    <div className="space-y-6">
-      {/* Quick header */}
-      <div className="flex items-center justify-between">
-        <h3 className="w-full text-center font-semibold text-orange-400">
-          Quick Add
-        </h3>
-        <div className="absolute right-0 flex items-center gap-2 pr-0 sm:pr-0">
-          <button
-            type="button"
-            onClick={() =>
-              router.push(`/work-orders/quote-review?woId=${workOrderId}`)
-            }
-            className="rounded border border-neutral-800 bg-neutral-950 px-3 py-1.5 text-sm hover:bg-neutral-900"
-          >
-            Review Quote
-            {typeof woLineCount === "number" && woLineCount > 0
-              ? ` (${woLineCount})`
-              : ""}
-          </button>
-          <button
-            type="button"
-            onClick={() => setAiOpen(true)}
-            className="rounded border border-blue-600 px-3 py-1.5 text-sm text-blue-300 hover:bg-blue-900/20"
-            title="Describe work and let AI suggest service lines"
-          >
-            AI Suggest
-          </button>
+    <div className="space-y-5 text-white">
+      {/* Header / context */}
+      <div className="rounded-lg border border-neutral-800 bg-neutral-950/80 px-3 py-3 sm:px-4 sm:py-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-orange-400">
+                Quick Add Jobs
+              </h3>
+              <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] font-mono text-neutral-300">
+                WO {workOrderId.slice(0, 8)}…
+              </span>
+            </div>
+            {vehicleLabel && (
+              <p className="text-[11px] text-neutral-400">
+                Vehicle:&nbsp;
+                <span className="font-medium text-neutral-200">
+                  {vehicleLabel}
+                </span>
+              </p>
+            )}
+            {!vehicleLabel && (
+              <p className="text-[11px] text-neutral-500">
+                Add lines now — you can update vehicle details later.
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                router.push(`/work-orders/quote-review?woId=${workOrderId}`)
+              }
+              className="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs sm:text-sm text-neutral-100 hover:border-orange-500 hover:bg-neutral-800"
+            >
+              Review quote
+              {typeof woLineCount === "number" && woLineCount > 0
+                ? ` (${woLineCount})`
+                : ""}
+            </button>
+            <button
+              type="button"
+              onClick={() => setAiOpen(true)}
+              className="rounded-md border border-blue-600 bg-neutral-950 px-3 py-1.5 text-xs sm:text-sm text-blue-300 hover:bg-blue-900/30"
+              title="Describe work and let AI suggest service lines"
+            >
+              AI Suggest
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Packages */}
-      <div>
-        <div className="mb-2 flex items-center justify-center">
-          <h4 className="text-center font-semibold text-neutral-200">
+      <div className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3 sm:p-4">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">
             Packages
           </h4>
+          <p className="text-[10px] text-neutral-500">
+            Common services with pre-set labor & notes.
+          </p>
         </div>
         <div className="grid gap-2 sm:grid-cols-2">
           {packages.map((p) => (
@@ -663,17 +699,21 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
               key={p.id}
               onClick={() => addPackage(p)}
               disabled={addingId === p.id || !shopReady}
-              className="rounded border border-neutral-800 bg-neutral-950 p-3 text-left hover:bg-neutral-900 disabled:opacity-60"
+              className="flex flex-col rounded-md border border-neutral-800 bg-neutral-950 p-3 text-left text-sm hover:border-orange-500/70 hover:bg-neutral-900 disabled:opacity-60"
               title={p.summary}
             >
-              <div className="font-medium">{p.name}</div>
-              <div className="text-xs text-neutral-400">
-                {p.jobType} •{" "}
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium text-neutral-50">{p.name}</span>
+                <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] uppercase tracking-wide text-neutral-300">
+                  {p.jobType}
+                </span>
+              </div>
+              <div className="mt-1 text-xs text-neutral-400">
                 {p.estLaborHours != null
                   ? `~${p.estLaborHours.toFixed(1)}h`
-                  : "—"}
+                  : "Labor TBD"}
               </div>
-              <div className="mt-1 line-clamp-2 text-xs text-neutral-500">
+              <div className="mt-1 line-clamp-2 text-[11px] text-neutral-500">
                 {p.summary}
               </div>
             </button>
@@ -682,16 +722,19 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       </div>
 
       {/* Inspection templates */}
-      <div>
-        <div className="mb-2 flex items-center justify-center">
-          <h4 className="text-center font-semibold text-neutral-200">
+      <div className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3 sm:p-4">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">
             Inspection Templates
           </h4>
+          <p className="text-[10px] text-neutral-500">
+            Saved/standard inspections you can attach as jobs.
+          </p>
         </div>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {templatesLoading && (
-            <div className="w-full text-center text-sm text-neutral-400">
-              Loading…
+            <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">
+              Loading templates…
             </div>
           )}
           {!templatesLoading &&
@@ -702,22 +745,27 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
                   type="button"
                   onClick={() => addTemplateAsLine(t)}
                   disabled={addingId === t.id || !shopReady}
-                  className="rounded border border-neutral-800 bg-neutral-950 p-3 text-left hover:bg-neutral-900 disabled:opacity-60"
+                  className="flex flex-col rounded-md border border-neutral-800 bg-neutral-950 p-3 text-left text-sm hover:border-orange-500/70 hover:bg-neutral-900 disabled:opacity-60"
                   title={t.description ?? undefined}
                 >
-                  <div className="font-medium">
+                  <span className="font-medium text-neutral-50">
                     {t.template_name ?? "Inspection"}
-                  </div>
-                  <div className="text-xs text-neutral-400">
+                  </span>
+                  <div className="mt-1 text-xs text-neutral-400">
                     inspection •{" "}
                     {typeof t.labor_hours === "number"
                       ? `${t.labor_hours.toFixed(1)}h`
-                      : "—"}
+                      : "Labor TBD"}
                   </div>
+                  {t.description && (
+                    <div className="mt-1 line-clamp-2 text-[11px] text-neutral-500">
+                      {t.description}
+                    </div>
+                  )}
                 </button>
               ))
             ) : (
-              <div className="w-full text-center text-sm text-neutral-400">
+              <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">
                 No templates yet.
               </div>
             ))}
@@ -725,16 +773,19 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       </div>
 
       {/* From My Menu */}
-      <div>
-        <div className="mb-2 flex items-center justify-center">
-          <h4 className="text-center font-semibold text-neutral-200">
+      <div className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3 sm:p-4">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">
             From My Menu
           </h4>
+          <p className="text-[10px] text-neutral-500">
+            Saved services — great for repeat jobs.
+          </p>
         </div>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {menuLoading && (
-            <div className="w-full text-center text-sm text-neutral-400">
-              Loading…
+            <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">
+              Loading menu items…
             </div>
           )}
           {!menuLoading &&
@@ -745,24 +796,30 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
                   key={mi.id}
                   onClick={() => addSavedMenuItem(mi)}
                   disabled={addingId === (mi.name ?? "") || !shopReady}
-                  className="rounded border border-neutral-800 bg-neutral-950 p-3 text-left hover:bg-neutral-900 disabled:opacity-60"
+                  className="flex flex-col rounded-md border border-neutral-800 bg-neutral-950 p-3 text-left text-sm hover:border-orange-500/70 hover:bg-neutral-900 disabled:opacity-60"
                   title={mi.description ?? undefined}
                 >
-                  <div className="font-medium">{mi.name}</div>
-                  <div className="text-xs text-neutral-400">
-                    {/* prefer labor_time, but fall back if you later add labor_hours to this table */}
+                  <span className="font-medium text-neutral-50">
+                    {mi.name}
+                  </span>
+                  <div className="mt-1 text-xs text-neutral-400">
                     {typeof mi.labor_time === "number"
                       ? `${mi.labor_time.toFixed(1)}h`
-                      : "—"}{" "}
+                      : "Labor TBD"}{" "}
                     •{" "}
                     {typeof mi.total_price === "number"
                       ? `$${mi.total_price.toFixed(0)}`
-                      : "—"}
+                      : "No price"}
                   </div>
+                  {mi.description && (
+                    <div className="mt-1 line-clamp-2 text-[11px] text-neutral-500">
+                      {mi.description}
+                    </div>
+                  )}
                 </button>
               ))
             ) : (
-              <div className="w-full text-center text-sm text-neutral-400">
+              <div className="col-span-full w-full py-2 text-center text-sm text-neutral-400">
                 No saved menu items yet.
               </div>
             ))}
@@ -777,30 +834,48 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
             onClick={() => setAiOpen(false)}
           />
           <div
-            className="relative z-[310] w-full max-w-xl rounded border border-orange-400 bg-neutral-950 p-4 text-white"
+            className="relative z-[310] w-full max-w-xl rounded-lg border border-orange-400 bg-neutral-950 p-4 sm:p-5 text-white shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mb-3 flex items-center justify-between">
-              <div className="text-lg font-semibold">AI: Suggest Services</div>
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div>
+                <div className="text-sm font-semibold text-orange-400">
+                  AI: Suggest Services
+                </div>
+                <p className="text-[11px] text-neutral-400">
+                  Describe the concern; we’ll suggest jobs and add them to this
+                  work order.
+                </p>
+              </div>
               <button
                 type="button"
-                className="rounded border border-neutral-700 px-2 py-1 text-sm hover:bg-neutral-800"
+                className="rounded-md border border-neutral-700 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-800"
                 onClick={() => setAiOpen(false)}
               >
                 ✕
               </button>
             </div>
+
+            {vehicleLabel && (
+              <div className="mb-2 rounded-md border border-neutral-800 bg-neutral-900/70 px-3 py-1.5 text-[11px] text-neutral-300">
+                Using context for:{" "}
+                <span className="font-medium text-neutral-100">
+                  {vehicleLabel}
+                </span>
+              </div>
+            )}
+
             <textarea
               rows={4}
-              className="w-full rounded border border-neutral-700 bg-neutral-900 p-2"
-              placeholder="Describe the issue or request…"
+              className="w-full rounded-md border border-neutral-700 bg-neutral-900 p-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-400 focus:outline-none"
+              placeholder="Example: Customer reports vibration at highway speeds, no dash lights on. Recently replaced front tires."
               value={aiPrompt}
               onChange={(e) => setAiPrompt(e.target.value)}
             />
             <div className="mt-3 flex justify-end gap-2">
               <button
                 type="button"
-                className="rounded border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-800"
+                className="rounded-md border border-neutral-700 px-3 py-1.5 text-xs sm:text-sm text-neutral-200 hover:bg-neutral-800"
                 onClick={() => setAiOpen(false)}
               >
                 Cancel
@@ -808,7 +883,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
               <button
                 type="button"
                 disabled={aiBusy}
-                className="rounded border border-blue-600 px-3 py-1.5 text-sm text-blue-300 hover:bg-blue-900/20 disabled:opacity-60"
+                className="rounded-md border border-blue-600 bg-neutral-950 px-3 py-1.5 text-xs sm:text-sm text-blue-300 hover:bg-blue-900/30 disabled:opacity-60"
                 onClick={runAiSuggest}
               >
                 {aiBusy ? "Thinking…" : "Suggest & Add"}
