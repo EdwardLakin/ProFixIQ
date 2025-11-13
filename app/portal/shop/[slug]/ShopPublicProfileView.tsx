@@ -1,4 +1,3 @@
-// app/portal/shop/[slug]/ShopPublicProfileView.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -51,6 +50,7 @@ export default function PublicProfileClient({ slug }: Props) {
 
   useEffect(() => {
     let cancelled = false;
+
     (async () => {
       setLoading(true);
 
@@ -92,11 +92,11 @@ export default function PublicProfileClient({ slug }: Props) {
         city: row.city ?? null,
         province: row.province ?? null,
         postal_code: row.postal_code ?? null,
-        images: (row as any).images ?? null,
+        images: row.images ?? null,
         geo_lat: row.geo_lat ?? null,
         geo_lng: row.geo_lng ?? null,
-        // description: (row as any).description ?? null,
-        // website: (row as any).website ?? null,
+        // description: row.description ?? null, // if column exists
+        // website: row.website ?? null,         // if column exists
       };
 
       setData(next);
@@ -108,7 +108,10 @@ export default function PublicProfileClient({ slug }: Props) {
     };
   }, [slug, supabase]);
 
-  const images = (data.images as string[] | null) ?? [];
+  // Defensive: ensure we always have an array
+  const images: string[] = Array.isArray(data.images)
+    ? (data.images as string[])
+    : [];
   const hero = images[0] ?? null;
   const gallery = images.slice(1);
 
@@ -213,9 +216,7 @@ export default function PublicProfileClient({ slug }: Props) {
       {/* Gallery */}
       {gallery.length > 0 && (
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-neutral-50">
-            Gallery
-          </h2>
+          <h2 className="text-sm font-semibold text-neutral-50">Gallery</h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {gallery.map((url) => (
               // eslint-disable-next-line @next/next/no-img-element

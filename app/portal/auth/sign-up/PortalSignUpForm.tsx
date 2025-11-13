@@ -51,8 +51,12 @@ export default function PortalSignUpForm() {
       } else {
         router.replace("/portal/profile");
       }
-    } catch (err: any) {
-      setError(err?.message ?? "Unable to create your account right now.");
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Unable to create your account right now.";
+      setError(message);
     } finally {
       setLoading(false);
     }
