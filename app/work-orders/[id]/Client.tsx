@@ -705,11 +705,11 @@ export default function WorkOrderIdClient(): JSX.Element {
     return <div className="p-6 text-red-500">Missing work order id.</div>;
 
   const Skeleton = ({ className = "" }: { className?: string }) => (
-    <div className={`animate-pulse rounded bg-neutral-800/60 ${className}`} />
+    <div className={`animate-pulse rounded-lg bg-neutral-800/60 ${className}`} />
   );
 
   return (
-    <div className="p-4 sm:p-6 text-white">
+    <div className="mx-auto max-w-6xl px-3 py-6 bg-background text-foreground">
       <VoiceContextSetter
         currentView="work_order_page"
         workOrderId={wo?.id}
@@ -718,10 +718,17 @@ export default function WorkOrderIdClient(): JSX.Element {
         lineId={null}
       />
 
-      <PreviousPageButton to="/work-orders" />
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <PreviousPageButton to="/work-orders" />
+        {wo?.custom_id && (
+          <span className="rounded-full border border-neutral-800 bg-neutral-900/70 px-3 py-1 text-xs text-neutral-300">
+            Internal ID: {wo.id.slice(0, 8)}
+          </span>
+        )}
+      </div>
 
       {!currentUserId && (
-        <div className="mt-3 rounded border border-amber-500/30 bg-amber-500/10 p-3 text-amber-200 text-sm">
+        <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-900/10 p-3 text-sm text-amber-100">
           You appear signed out on this tab. If actions fail, open{" "}
           <Link href="/sign-in" className="underline hover:text-white">
             Sign In
@@ -731,7 +738,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       )}
 
       {viewError && (
-        <div className="mt-4 whitespace-pre-wrap rounded border border-red-500/40 bg-red-500/10 p-3 text-red-300">
+        <div className="mb-4 whitespace-pre-wrap rounded-lg border border-red-500/40 bg-red-950/60 p-3 text-sm text-red-200">
           {viewError}
         </div>
       )}
@@ -743,40 +750,54 @@ export default function WorkOrderIdClient(): JSX.Element {
           <Skeleton className="h-56" />
         </div>
       ) : !wo ? (
-        <div className="mt-6 text-red-500">Work order not found.</div>
+        <div className="mt-6 text-sm text-red-400">Work order not found.</div>
       ) : (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px]">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.7fr),minmax(0,1fr)]">
           {/* LEFT */}
           <div className="space-y-6">
             {/* Header */}
-            <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <h1 className="text-2xl font-semibold">
-                    Work Order {wo.custom_id || `#${wo.id.slice(0, 8)}`}
-                  </h1>
-                  <span className={chip(wo.status)}>
-                    {(wo.status ?? "awaiting").replaceAll("_", " ")}
-                  </span>
+            <div className="rounded-xl border border-border bg-card/95 p-4 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h1 className="text-xl font-semibold text-white sm:text-2xl">
+                      Work Order{" "}
+                      <span className="text-orange-400">
+                        {wo.custom_id || `#${wo.id.slice(0, 8)}`}
+                      </span>
+                    </h1>
+                    <span className={chip(wo.status)}>
+                      {(wo.status ?? "awaiting").replaceAll("_", " ")}
+                    </span>
+                  </div>
+                  <p className="text-xs text-neutral-400">
+                    Created {createdAtText}
+                  </p>
                 </div>
               </div>
 
-              <div className="mt-2 grid gap-2 text-sm text-neutral-300 sm:grid-cols-4">
+              <div className="mt-3 grid gap-3 text-xs text-neutral-300 sm:grid-cols-4">
                 <div>
-                  <div className="text-neutral-400">Created</div>
+                  <div className="text-neutral-500">Created</div>
                   <div>{createdAtText}</div>
                 </div>
                 <div>
-                  <div className="text-neutral-400">WO ID</div>
-                  <div className="truncate">{wo.id}</div>
+                  <div className="text-neutral-500">WO ID</div>
+                  <div className="truncate font-mono text-[11px] text-neutral-200">
+                    {wo.id}
+                  </div>
                 </div>
                 <div>
-                  <div className="text-neutral-400">Custom ID</div>
-                  <div className="truncate">{wo.custom_id ?? "—"}</div>
+                  <div className="text-neutral-500">Custom ID</div>
+                  <div className="truncate">
+                    {wo.custom_id ?? (
+                      <span className="text-neutral-500">Not set</span>
+                    )}
+                  </div>
                 </div>
                 <div>
-                  <div className="text-neutral-400">Status</div>
-                  <div>
+                  <div className="text-neutral-500">Status</div>
+                  <div className="mt-0.5">
                     <span className={chip(wo.status)}>
                       {(wo.status ?? "awaiting").replaceAll("_", " ")}
                     </span>
@@ -786,12 +807,14 @@ export default function WorkOrderIdClient(): JSX.Element {
             </div>
 
             {/* Vehicle & Customer */}
-            <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold">Vehicle & Customer</h2>
+            <div className="rounded-xl border border-border bg-card/95 p-4">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold text-white sm:text-base">
+                  Vehicle &amp; Customer
+                </h2>
                 <button
                   type="button"
-                  className="text-sm text-orange-400 hover:underline"
+                  className="text-xs font-medium text-orange-400 hover:text-orange-300 hover:underline"
                   onClick={() => setShowDetails((v) => !v)}
                   aria-expanded={showDetails}
                 >
@@ -801,29 +824,42 @@ export default function WorkOrderIdClient(): JSX.Element {
 
               {showDetails && (
                 <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <h3 className="mb-1 font-semibold">Vehicle</h3>
+                  <div className="rounded-lg bg-neutral-950/60 p-3">
+                    <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+                      Vehicle
+                    </h3>
                     {vehicle ? (
                       <>
-                        <p>
+                        <p className="text-sm font-medium text-white">
                           {(vehicle.year ?? "").toString()}{" "}
                           {vehicle.make ?? ""} {vehicle.model ?? ""}
                         </p>
-                        <p className="text-sm text-neutral-400">
-                          VIN: {vehicle.vin ?? "—"} • Plate:{" "}
-                          {vehicle.license_plate ?? "—"}
+                        <p className="mt-1 text-xs text-neutral-400">
+                          VIN:{" "}
+                          <span className="font-mono">
+                            {vehicle.vin ?? "—"}
+                          </span>
+                          <br />
+                          Plate:{" "}
+                          {vehicle.license_plate ?? (
+                            <span className="text-neutral-500">—</span>
+                          )}
                         </p>
                       </>
                     ) : (
-                      <p className="text-neutral-400">—</p>
+                      <p className="text-sm text-neutral-500">
+                        No vehicle linked yet.
+                      </p>
                     )}
                   </div>
 
-                  <div>
-                    <h3 className="mb-1 font-semibold">Customer</h3>
+                  <div className="rounded-lg bg-neutral-950/60 p-3">
+                    <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+                      Customer
+                    </h3>
                     {customer ? (
                       <>
-                        <p>
+                        <p className="text-sm font-medium text-white">
                           {[
                             customer.first_name ?? "",
                             customer.last_name ?? "",
@@ -831,22 +867,29 @@ export default function WorkOrderIdClient(): JSX.Element {
                             .filter(Boolean)
                             .join(" ") || "—"}
                         </p>
-                        <p className="text-sm text-neutral-400">
+                        <p className="mt-1 text-xs text-neutral-400">
                           {customer.phone ?? "—"}{" "}
-                          {customer.email ? `• ${customer.email}` : ""}
+                          {customer.email ? (
+                            <>
+                              <span className="mx-1 text-neutral-600">•</span>
+                              {customer.email}
+                            </>
+                          ) : null}
                         </p>
                         {customer.id && (
                           <Link
                             href={`/customers/${customer.id}`}
-                            className="mt-1 inline-block text-xs text-orange-500 hover:underline"
+                            className="mt-2 inline-flex text-[11px] font-medium text-orange-400 hover:text-orange-300 hover:underline"
                             title="Open customer profile"
                           >
-                            View Customer Profile →
+                            View customer profile →
                           </Link>
                         )}
                       </>
                     ) : (
-                      <p className="text-neutral-400">—</p>
+                      <p className="text-sm text-neutral-500">
+                        No customer linked yet.
+                      </p>
                     )}
                   </div>
                 </div>
@@ -854,15 +897,15 @@ export default function WorkOrderIdClient(): JSX.Element {
             </div>
 
             {/* Awaiting Customer Approval */}
-            <div className="rounded border border-blue-900/40 bg-neutral-950 p-4">
+            <div className="rounded-xl border border-blue-900/60 bg-gradient-to-b from-slate-950 to-slate-950/90 p-4">
               <div className="mb-3 flex items-center justify-between gap-2">
-                <h2 className="text-lg font-semibold text-blue-300">
-                  Awaiting Customer Approval
+                <h2 className="text-sm font-semibold text-blue-200 sm:text-base">
+                  Awaiting customer approval
                 </h2>
                 {approvalPending.length > 1 && (
                   <button
                     type="button"
-                    className="rounded bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-500"
+                    className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-500"
                     onClick={sendAllPendingToParts}
                     title="Queue all lines for parts quoting"
                   >
@@ -872,7 +915,7 @@ export default function WorkOrderIdClient(): JSX.Element {
               </div>
 
               {approvalPending.length === 0 ? (
-                <p className="text-sm text-neutral-400">
+                <p className="text-xs text-neutral-400">
                   No lines waiting for approval.
                 </p>
               ) : (
@@ -890,30 +933,30 @@ export default function WorkOrderIdClient(): JSX.Element {
                     return (
                       <div
                         key={ln.id}
-                        className="rounded border border-neutral-800 bg-neutral-900 p-3"
+                        className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3"
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <div className="truncate font-medium">
+                            <div className="truncate text-sm font-medium text-white">
                               {idx + 1}.{" "}
                               {ln.description || ln.complaint || "Untitled job"}
                             </div>
-                            <div className="text-xs text-neutral-400">
+                            <div className="mt-0.5 text-[11px] text-neutral-400">
                               {String(ln.job_type ?? "job").replaceAll("_", " ")}{" "}
                               •{" "}
                               {typeof ln.labor_time === "number"
                                 ? `${ln.labor_time}h`
                                 : "—"}{" "}
                               • Status:{" "}
-                              {(ln.status ?? "awaiting").replaceAll("_", " ")} •
-                              Approval:{" "}
+                              {(ln.status ?? "awaiting").replaceAll("_", " ")}{" "}
+                              • Approval:{" "}
                               {(ln.approval_state ?? "pending").replaceAll(
                                 "_",
                                 " "
                               )}
                             </div>
                             {ln.notes && (
-                              <div className="mt-1 text-xs text-neutral-400">
+                              <div className="mt-1 text-[11px] text-neutral-400">
                                 Notes: {ln.notes}
                               </div>
                             )}
@@ -922,14 +965,14 @@ export default function WorkOrderIdClient(): JSX.Element {
                           <div className="flex shrink-0 flex-wrap items-center gap-2">
                             <button
                               type="button"
-                              className="rounded border border-green-700 px-2 py-1 text-xs text-green-300 hover:bg-green-900/20"
+                              className="rounded-md border border-green-700 px-2 py-1 text-[11px] font-medium text-green-200 hover:bg-green-900/25"
                               onClick={() => approveLine(ln.id)}
                             >
                               Approve
                             </button>
                             <button
                               type="button"
-                              className="rounded border border-red-700 px-2 py-1 text-xs text-red-300 hover:bg-red-900/20"
+                              className="rounded-md border border-red-700 px-2 py-1 text-[11px] font-medium text-red-200 hover:bg-red-900/30"
                               onClick={() => declineLine(ln.id)}
                             >
                               Decline
@@ -939,18 +982,18 @@ export default function WorkOrderIdClient(): JSX.Element {
                               <button
                                 type="button"
                                 disabled
-                                className="rounded border border-neutral-700 px-2 py-1 text-xs text-neutral-400 cursor-not-allowed"
+                                className="cursor-not-allowed rounded-md border border-neutral-700 px-2 py-1 text-[11px] text-neutral-400"
                               >
                                 Sent to parts
                               </button>
                             ) : (
                               <button
                                 type="button"
-                                className="rounded border border-blue-700 px-2 py-1 text-xs text-blue-300 hover:bg-blue-900/20"
+                                className="rounded-md border border-blue-700 px-2 py-1 text-[11px] font-medium text-blue-200 hover:bg-blue-900/25"
                                 onClick={() => sendToParts(ln.id)}
                                 title="Send to parts for quoting"
                               >
-                                Send to Parts
+                                Send to parts
                               </button>
                             )}
                           </div>
@@ -963,11 +1006,16 @@ export default function WorkOrderIdClient(): JSX.Element {
             </div>
 
             {/* Jobs list */}
-            <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
+            <div className="rounded-xl border border-border bg-card/95 p-4">
               <div className="mb-3 flex items-center justify-between gap-2">
-                <h2 className="text-lg font-semibold">
-                  Jobs in this Work Order
-                </h2>
+                <div>
+                  <h2 className="text-sm font-semibold text-white sm:text-base">
+                    Jobs in this work order
+                  </h2>
+                  <p className="text-[11px] text-neutral-500">
+                    Tap a job to open the focused panel with full controls.
+                  </p>
+                </div>
               </div>
 
               {sortedLines.length === 0 ? (
@@ -1005,8 +1053,8 @@ export default function WorkOrderIdClient(): JSX.Element {
                     return (
                       <div
                         key={ln.id}
-                        className={`rounded border border-neutral-800 ${tintCls} p-3 ${borderCls} ${
-                          punchedIn ? "ring-2 ring-orange-500" : ""
+                        className={`group rounded-lg border border-neutral-800 ${tintCls} p-3 transition hover:border-orange-500/70 hover:bg-neutral-900/80 ${borderCls} ${
+                          punchedIn ? "ring-2 ring-orange-500/80" : ""
                         }`}
                         title="Open focused job"
                         onClick={() => {
@@ -1016,8 +1064,8 @@ export default function WorkOrderIdClient(): JSX.Element {
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <div className="truncate font-medium">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className="truncate text-sm font-medium text-white">
                                 {idx + 1}.{" "}
                                 {ln.description ||
                                   ln.complaint ||
@@ -1030,7 +1078,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                                     e.stopPropagation();
                                     void openInspectionForLine(ln);
                                   }}
-                                  className={`rounded border px-2 py-0.5 text-xs ${
+                                  className={`rounded-md border px-2 py-0.5 text-[11px] font-medium ${
                                     ln.status === "completed"
                                       ? "border-green-400 text-green-200"
                                       : "border-orange-400 text-orange-200 hover:bg-orange-500/10"
@@ -1049,14 +1097,14 @@ export default function WorkOrderIdClient(): JSX.Element {
                                     setAssignLineId(ln.id);
                                     setAssignOpen(true);
                                   }}
-                                  className="rounded border border-sky-500/70 px-2 py-0.5 text-xs text-sky-200 hover:bg-sky-900/20"
+                                  className="rounded-md border border-sky-500/70 px-2 py-0.5 text-[11px] font-medium text-sky-200 hover:bg-sky-900/25"
                                   title="Assign mechanic to this line"
                                 >
                                   Assign mechanic
                                 </button>
                               )}
                             </div>
-                            <div className="text-xs text-neutral-400">
+                            <div className="mt-0.5 text-[11px] text-neutral-400">
                               {String(ln.job_type ?? "job").replaceAll("_", " ")}{" "}
                               •{" "}
                               {typeof ln.labor_time === "number"
@@ -1074,7 +1122,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                                   return (
                                     <span
                                       key={tid}
-                                      className="inline-flex items-center gap-1 rounded bg-sky-900/30 px-2 py-0.5 text-[10px] text-sky-100"
+                                      className="inline-flex items-center gap-1 rounded-full bg-sky-900/40 px-2 py-0.5 text-[10px] text-sky-100"
                                     >
                                       <span className="h-1.5 w-1.5 rounded-full bg-sky-300" />
                                       {label}
@@ -1085,7 +1133,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                             )}
 
                             {(ln.complaint || ln.cause || ln.correction) && (
-                              <div className="text-xs text-neutral-400 mt-1 flex flex-wrap items-center gap-2">
+                              <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-neutral-400">
                                 {ln.complaint ? (
                                   <span>Cmpl: {ln.complaint}</span>
                                 ) : null}
@@ -1099,9 +1147,9 @@ export default function WorkOrderIdClient(): JSX.Element {
                             )}
 
                             {/* Parts used */}
-                            <div className="mt-2 rounded border border-neutral-800 bg-neutral-950 p-2">
-                              <div className="mb-1 flex items-center justify-between">
-                                <div className="text-xs font-semibold text-neutral-300">
+                            <div className="mt-2 rounded-lg border border-neutral-800 bg-neutral-950/80 p-2">
+                              <div className="mb-1 flex items-center justify-between gap-2">
+                                <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-300">
                                   Parts used
                                 </div>
                                 <div className="shrink-0">
@@ -1117,29 +1165,29 @@ export default function WorkOrderIdClient(): JSX.Element {
                                 </div>
                               </div>
                               {partsForLine.length ? (
-                                <ul className="divide-y divide-neutral-800 rounded border border-neutral-800 text-sm">
+                                <ul className="mt-1 divide-y divide-neutral-800 rounded border border-neutral-800 text-sm">
                                   {partsForLine.map((a) => (
                                     <li
                                       key={a.id}
-                                      className="flex items-center justify-between p-2"
+                                      className="flex items-center justify-between bg-neutral-900/70 p-2"
                                     >
                                       <div className="min-w-0">
-                                        <div className="truncate">
+                                        <div className="truncate text-sm text-white">
                                           {a.parts?.name ?? "Part"}
                                         </div>
-                                        <div className="text-xs text-neutral-500">
+                                        <div className="text-[11px] text-neutral-500">
                                           loc {String(a.location_id).slice(0, 6)}
                                           …
                                         </div>
                                       </div>
-                                      <div className="pl-3 font-semibold">
+                                      <div className="pl-3 text-sm font-semibold text-neutral-100">
                                         × {a.qty}
                                       </div>
                                     </li>
                                   ))}
                                 </ul>
                               ) : (
-                                <div className="text-xs text-neutral-500">
+                                <div className="mt-1 text-[11px] text-neutral-500">
                                   No parts used yet.
                                 </div>
                               )}
@@ -1159,9 +1207,12 @@ export default function WorkOrderIdClient(): JSX.Element {
           </div>
 
           {/* RIGHT rail */}
-          <aside className="space-y-6">
-            <div className="rounded border border-neutral-800 bg-neutral-900 p-4 text-sm text-neutral-400">
-              Select a job to open the focused panel with full controls.
+          <aside className="space-y-4 lg:space-y-6">
+            <div className="rounded-xl border border-border bg-card/95 p-4 text-sm text-neutral-300">
+              <p>
+                Select a job card on the left to open the focused job panel with
+                full editing, punch and inspection controls.
+              </p>
             </div>
           </aside>
         </div>
@@ -1170,7 +1221,9 @@ export default function WorkOrderIdClient(): JSX.Element {
       {/* Vehicle photos */}
       {vehicle?.id && (
         <div className="mt-8 space-y-4">
-          <h2 className="text-xl font-semibold">Vehicle Photos</h2>
+          <h2 className="text-lg font-semibold text-white sm:text-xl">
+            Vehicle photos
+          </h2>
           <VehiclePhotoUploader vehicleId={vehicle.id} />
           <VehiclePhotoGallery
             vehicleId={vehicle.id}

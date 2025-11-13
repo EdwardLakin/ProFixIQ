@@ -177,84 +177,141 @@ export default function AuthPage() {
   const isSignIn = mode === "sign-in";
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 bg-black text-white">
-      <div className="max-w-md w-full space-y-6 border border-orange-500 p-8 rounded-xl bg-black/30 backdrop-blur">
-        <h1 className="text-4xl text-center font-blackops text-orange-500">
-          {isSignIn ? "Sign In" : "Create your Account"}
-        </h1>
+    <div className="min-h-screen bg-gradient-to-b from-black via-neutral-950 to-black px-4 text-white">
+      <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center">
+        <div className="w-full rounded-2xl border border-neutral-800 bg-neutral-950/90 p-6 shadow-xl shadow-black/40 sm:p-8">
+          {/* Brand / title */}
+          <div className="mb-6 space-y-2 text-center">
+            <div className="inline-flex items-center rounded-full border border-neutral-800 bg-neutral-900 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-neutral-400">
+              ProFixIQ Portal
+            </div>
+            <h1 className="mt-2 text-3xl font-blackops text-orange-500 sm:text-4xl">
+              {isSignIn ? "Sign in" : "Create your account"}
+            </h1>
+            <p className="text-xs text-neutral-400 sm:text-sm">
+              {isSignIn
+                ? "Use your shop username or email to access your dashboard."
+                : "Create an account with your email to get started."}
+            </p>
+          </div>
 
-        <div className="flex justify-center gap-4 text-sm">
-          <button
-            className={`px-3 py-1 rounded ${
-              isSignIn ? "bg-orange-500 text-black" : "bg-neutral-800 text-neutral-300"
-            }`}
-            onClick={() => setMode("sign-in")}
-            disabled={loading}
+          {/* Mode switch */}
+          <div className="mb-4 flex items-center justify-center">
+            <div className="inline-flex rounded-full border border-neutral-800 bg-neutral-900 p-1 text-xs">
+              <button
+                type="button"
+                className={`px-3 py-1 rounded-full transition ${
+                  isSignIn
+                    ? "bg-orange-500 text-black shadow-sm"
+                    : "text-neutral-300 hover:text-white"
+                }`}
+                onClick={() => setMode("sign-in")}
+                disabled={loading}
+              >
+                Sign in
+              </button>
+              <button
+                type="button"
+                className={`px-3 py-1 rounded-full transition ${
+                  !isSignIn
+                    ? "bg-orange-500 text-black shadow-sm"
+                    : "text-neutral-300 hover:text-white"
+                }`}
+                onClick={() => setMode("sign-up")}
+                disabled={loading}
+              >
+                Sign up
+              </button>
+            </div>
+          </div>
+
+          {/* Error / notice */}
+          {error && (
+            <div className="mb-3 rounded-lg border border-red-500/60 bg-red-950/60 px-3 py-2 text-xs text-red-100">
+              {error}
+            </div>
+          )}
+          {notice && (
+            <div className="mb-3 rounded-lg border border-emerald-500/60 bg-emerald-950/60 px-3 py-2 text-xs text-emerald-100">
+              {notice}
+            </div>
+          )}
+
+          {/* Form */}
+          <form
+            onSubmit={isSignIn ? handleSignIn : handleSignUp}
+            className="space-y-4"
           >
-            Sign In
-          </button>
-          <button
-            className={`px-3 py-1 rounded ${
-              !isSignIn ? "bg-orange-500 text-black" : "bg-neutral-800 text-neutral-300"
-            }`}
-            onClick={() => setMode("sign-up")}
-            disabled={loading}
-          >
-            Sign Up
-          </button>
-        </div>
+            <div className="space-y-1 text-sm">
+              <label className="block text-xs font-medium text-neutral-300">
+                {isSignIn ? "Email or username" : "Email"}
+              </label>
+              <input
+                type={isSignIn ? "text" : "email"}
+                placeholder={isSignIn ? "jane@shop.com or shop username" : "you@example.com"}
+                autoComplete={isSignIn ? "username" : "email"}
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-0"
+                required
+              />
+              {isSignIn && (
+                <p className="text-[11px] text-neutral-500">
+                  Shop accounts can sign in using the username provided by your admin.
+                </p>
+              )}
+            </div>
 
-        <form onSubmit={isSignIn ? handleSignIn : handleSignUp} className="space-y-4">
-          <input
-            type={isSignIn ? "text" : "email"}
-            placeholder={isSignIn ? "Email or Username" : "Email"}
-            autoComplete={isSignIn ? "username" : "email"}
-            value={identifier}
-            onChange={(e) => setIdentifier(e.target.value)}
-            className="w-full p-2 rounded bg-gray-900 border border-orange-500"
-            required
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            autoComplete={isSignIn ? "current-password" : "new-password"}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full p-2 rounded bg-gray-900 border border-orange-500"
-            required
-            minLength={6}
-          />
+            <div className="space-y-1 text-sm">
+              <label className="block text-xs font-medium text-neutral-300">
+                Password
+              </label>
+              <input
+                type="password"
+                placeholder="••••••••"
+                autoComplete={isSignIn ? "current-password" : "new-password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-0"
+                required
+                minLength={6}
+              />
+            </div>
 
-          {error && <p className="text-red-500 text-sm text-center">{error}</p>}
-          {notice && <p className="text-green-400 text-sm text-center">{notice}</p>}
+            <button
+              type="submit"
+              className="mt-2 w-full rounded-md bg-orange-500 py-2.5 text-center text-sm font-blackops text-black tracking-wide transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={loading}
+            >
+              {loading
+                ? isSignIn
+                  ? "Signing in…"
+                  : "Creating account…"
+                : isSignIn
+                ? "Sign in"
+                : "Sign up"}
+            </button>
+          </form>
 
-          <button
-            type="submit"
-            className="w-full py-2 rounded bg-orange-500 hover:bg-orange-600 font-blackops text-lg transition-all disabled:opacity-60"
-            disabled={loading}
-          >
-            {loading
-              ? isSignIn
-                ? "Signing in…"
-                : "Creating account…"
-              : isSignIn
-              ? "Sign In"
-              : "Sign Up"}
-          </button>
-        </form>
-
-        <div className="text-center text-xs text-neutral-400">
-          <p>
-            By continuing you agree to our{" "}
-            <a href="/terms" className="text-orange-400 hover:underline">
-              Terms
-            </a>{" "}
-            and{" "}
-            <a href="/privacy" className="text-orange-400 hover:underline">
-              Privacy Policy
-            </a>
-            .
-          </p>
+          <div className="mt-6 text-center text-[11px] text-neutral-500">
+            <p>
+              By continuing you agree to our{" "}
+              <a
+                href="/terms"
+                className="font-medium text-orange-400 hover:text-orange-300 hover:underline"
+              >
+                Terms
+              </a>{" "}
+              and{" "}
+              <a
+                href="/privacy"
+                className="font-medium text-orange-400 hover:text-orange-300 hover:underline"
+              >
+                Privacy Policy
+              </a>
+              .
+            </p>
+          </div>
         </div>
       </div>
     </div>
