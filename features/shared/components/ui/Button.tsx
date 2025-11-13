@@ -1,3 +1,4 @@
+// @shared/components/ui/Button.tsx
 "use client";
 
 import React from "react";
@@ -24,23 +25,26 @@ interface ButtonProps
 }
 
 const base =
-  "inline-flex items-center justify-center rounded font-semibold transition duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500";
+  "inline-flex items-center justify-center rounded font-semibold transition duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 backdrop-blur-sm";
 
-const variantClasses: Record<
-  Exclude<Variant, "orange">,
-  string
-> = {
-  // calmer default
-  default: "bg-zinc-800 hover:bg-zinc-700 text-white",
-  secondary: "bg-zinc-700 hover:bg-zinc-600 text-white",
-  destructive: "bg-red-600 hover:bg-red-700 text-white",
-  ghost: "bg-transparent hover:bg-zinc-800 text-white border border-zinc-600",
-  // your “not so bright” orange
+// glassy variants – all white text, orange-ish borders
+const variantClasses: Record<Exclude<Variant, "orange">, string> = {
+  default:
+    "bg-black/30 border border-orange-400/80 text-white hover:bg-orange-500/10",
+  secondary:
+    "bg-black/20 border border-orange-400/60 text-white hover:bg-orange-500/10",
+  destructive:
+    "bg-red-700/80 border border-red-400 text-white hover:bg-red-600",
+  ghost:
+    "bg-transparent border border-orange-400/50 text-white hover:bg-orange-500/10",
   outline:
-    "bg-transparent border border-orange-500/80 text-orange-300 hover:bg-orange-500/10",
+    "bg-transparent border border-orange-400 text-white hover:bg-orange-500/10",
 };
 
-// small helper so we can reuse on <Link> etc.
+// optional filled orange accent if you still want it elsewhere
+const orangeClass =
+  "bg-orange-500/90 hover:bg-orange-500 text-black border border-orange-400/80";
+
 export function buttonClasses({
   variant = "default",
   size = "md",
@@ -59,10 +63,6 @@ export function buttonClasses({
     md: "text-sm px-4 py-2",
     lg: "text-base px-5 py-3",
   };
-
-  // light orange fill version (optional)
-  const orangeClass =
-    "bg-orange-500/90 hover:bg-orange-500 text-black border border-orange-400/80";
 
   const applied =
     variant === "orange"
@@ -103,7 +103,7 @@ export const Button = ({
     >
       {isLoading && (
         <svg
-          className="animate-spin h-4 w-4 mr-2 text-white"
+          className="mr-2 h-4 w-4 animate-spin text-white"
           xmlns="http://www.w3.org/2000/svg"
           fill="none"
           viewBox="0 0 24 24"

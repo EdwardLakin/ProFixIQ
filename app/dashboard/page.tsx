@@ -63,22 +63,30 @@ export default function DashboardPage() {
     })();
   }, [supabase]);
 
+  const firstName = name ? name.split(" ")[0] : null;
+
   return (
-    <div className="space-y-6">
-      {/* top welcome */}
-      <div className="flex items-center justify-between gap-4">
+    <div className="relative space-y-8 fade-in">
+      {/* soft gradient background for this page */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(249,115,22,0.14),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.9),#020617_70%)]"
+      />
+
+      {/* welcome panel */}
+      <section className="rounded-xl border border-white/10 bg-white/[0.03] px-5 py-4 shadow-card backdrop-blur-md flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">
-            {name ? `Welcome back, ${name.split(" ")[0]} 👋` : "Welcome 👋"}
+          <h1 className="text-2xl font-semibold text-white">
+            {firstName ? `Welcome back, ${firstName} 👋` : "Welcome 👋"}
           </h1>
-          <p className="text-sm text-muted-foreground">
-            Here’s a quick view of what matters today.
+          <p className="mt-1 text-sm text-neutral-400">
+            Here’s a quick view of what matters today in your shop.
           </p>
         </div>
-      </div>
+      </section>
 
       {/* overview cards */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-4">
         <OverviewCard
           title="Today’s appointments"
           value={
@@ -98,21 +106,21 @@ export default function DashboardPage() {
           }
           href="/parts/requests"
         />
-        {/* 👉 this is the one on the right – goes to chat/conversation list */}
         <OverviewCard title="Team chat" value="Open" href="/chat" />
-      </div>
+      </section>
 
       {/* quick actions */}
-      <div className="space-y-3">
-        <h2 className="text-sm font-medium text-muted-foreground">
+      <section className="space-y-3">
+        <h2 className="text-sm font-medium text-neutral-300">
           Quick actions
         </h2>
         <div className="flex flex-wrap gap-3">
           <QuickButton href="/work-orders/create?autostart=1">
             New work order
           </QuickButton>
-          <QuickButton href="/portal/appointments">Appointments</QuickButton>
-          {/* 👇 removed the “Messages” button here */}
+          <QuickButton href="/portal/appointments">
+            Appointments
+          </QuickButton>
           <QuickButton href="/ai/assistant">AI assistant</QuickButton>
           {role === "owner" || role === "admin" ? (
             <QuickButton href="/dashboard/owner/reports">
@@ -120,7 +128,7 @@ export default function DashboardPage() {
             </QuickButton>
           ) : null}
         </div>
-      </div>
+      </section>
     </div>
   );
 }
@@ -135,13 +143,18 @@ function OverviewCard({
   href?: string;
 }) {
   const content = (
-    <div className="rounded-lg border border-border/40 bg-surface/40 px-4 py-3 hover:border-accent/80 transition">
-      <p className="text-xs uppercase tracking-wide text-muted-foreground">
-        {title}
-      </p>
-      <p className="mt-1 text-xl font-semibold text-foreground">{value}</p>
+    <div className="group relative overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] px-4 py-4 shadow-card backdrop-blur-md transition hover:border-accent hover:shadow-glow">
+      {/* subtle highlight wash on hover */}
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.12),transparent_60%)] opacity-0 transition-opacity group-hover:opacity-100" />
+      <div className="relative">
+        <p className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+          {title}
+        </p>
+        <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
+      </div>
     </div>
   );
+
   if (href) {
     return (
       <Link href={href} className="block">
@@ -162,7 +175,7 @@ function QuickButton({
   return (
     <Link
       href={href}
-      className="inline-flex items-center gap-2 rounded-md border border-border/40 bg-surface/40 px-3 py-1.5 text-sm text-foreground hover:border-accent hover:text-foreground transition"
+      className="inline-flex items-center gap-2 rounded-md border border-orange-400/60 bg-white/[0.03] px-4 py-2 text-sm text-white shadow-sm backdrop-blur-md transition hover:bg-orange-500/10 hover:border-orange-400"
     >
       {children}
     </Link>

@@ -27,7 +27,6 @@ type OcrFields = {
   email?: string | null;
 };
 
-// 🔹 now supports fleet + approvals modes as well
 type PlannerKind = "simple" | "openai" | "fleet" | "approvals";
 
 type AgentStartOut = { runId: string; alreadyExists: boolean };
@@ -64,7 +63,6 @@ function toMsg(e: unknown): string {
   }
 }
 
-/** Friendly labels for common event kinds */
 function labelFor(evt: AgentEvent): string | null {
   const k = (evt.kind ?? "").toString();
   const woId = extractWorkOrderId(evt);
@@ -118,15 +116,12 @@ export default function PlannerPage() {
 
   const esRef = useRef<EventSource | null>(null);
 
-  // Preview modal state
   const [previewWoId, setPreviewWoId] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
 
-  // VIN capture modal state
   const [vinOpen, setVinOpen] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
 
-  // toast for VIN
   const [toast, setToast] = useState<string | null>(null);
 
   const supabase = createClientComponentClient<Database>();
@@ -152,7 +147,6 @@ export default function PlannerPage() {
     };
   }, [photoPreview]);
 
-  // Prefill from draft once
   useEffect(() => {
     const v = (draft?.vehicle?.vin ?? "").trim();
     if (v && !plateOrVin) setPlateOrVin(v);
@@ -181,24 +175,6 @@ export default function PlannerPage() {
     if (!pub.data?.publicUrl) throw new Error("Could not resolve public URL");
     return pub.data.publicUrl;
   }
-
-  // Presets
-  const presetOilGas = () =>
-    setGoal(
-      "Create a work order for oil change (gas engine). Add line items for engine oil and filter, reset maintenance light, quick multi-point inspection, then generate and email the invoice.",
-    );
-  const presetOilDiesel = () =>
-    setGoal(
-      "Create a work order for oil change (diesel). Add engine oil and filter, include fuel filter check, DEF level check, reset maintenance message, then generate and email the invoice.",
-    );
-  const presetMaint50 = () =>
-    setGoal(
-      "Create a work order for 50-point maintenance inspection. Add inspection checklist line, top off fluids, rotate tires if needed, report any issues, and produce a summarized estimate/invoice.",
-    );
-  const presetMaint50Air = () =>
-    setGoal(
-      "Create a work order for 50-point maintenance inspection plus air filters. Include engine air filter and cabin air filter lines if due, top off fluids, rotate tires if needed, and produce estimate/invoice.",
-    );
 
   function clearAll() {
     setGoal("");
@@ -237,7 +213,6 @@ export default function PlannerPage() {
         setPhotoPreview(null);
       }
 
-      // OCR
       let ocrFields: OcrFields | null = null;
       if (imageUrl) {
         appendStep("Uploading photo…");
@@ -380,147 +355,129 @@ export default function PlannerPage() {
     }
   }
 
+  const plannerModes: { id: PlannerKind; label: string }[] = [
+    { id: "openai", label: "OpenAI (rich)" },
+    { id: "simple", label: "Simple (rules)" },
+    { id: "fleet", label: "Fleet PM" },
+    { id: "approvals", label: "Advisor approvals" },
+  ];
+
   return (
     <PageShell
       title="AI Planner"
       description="Describe what you want done — we'll create the work order, add lines, attach photos, and optionally email the invoice."
     >
-      <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-5 space-y-4">
+      <div className="space-y-4 rounded-lg border border-neutral-800 bg-neutral-950 p-5">
+        {/* planner mode buttons */}
+        <div className="flex flex-wrap gap-2">
+          {plannerModes.map((m) => (
+            <Button
+              key={m.id}
+              variant={planner === m.id ? "outline" : "ghost"}
+              size="sm"
+              className={
+                planner === m.id
+                  ? "bg-orange-500/10"
+                  : "opacity-80 hover:opacity-100"
+              }
+              onClick={() => setPlanner(m.id)}
+              type="button"
+            >
+              {m.label}
+            </Button>
+          ))}
+        </div>
+
+        {/* goal textarea (full width) */}
+        <textarea
+          value={goal}
+          onChange={(e) => setGoal(e.target.value)}
+          placeholder="e.g. Find John Smith, create inspection WO, add note, email invoice"
+          className="w-full min-h-[110px] rounded border border-neutral-800 bg-neutral-900/80 p-3 text-sm text-neutral-100 placeholder:text-neutral-500"
+        />
+
+        {/* secondary inputs */}
         <div className="grid gap-3 md:grid-cols-2">
           <label className="block">
-            <div className="mb-1 text-sm text-neutral-400">Goal</div>
-            <textarea
-              value={goal}
-              onChange={(e) => setGoal(e.target.value)}
-              placeholder="e.g. Find John Smith, create inspection WO, add note, email invoice"
-              className="w-full min-h-[96px] rounded border border-neutral-800 bg-neutral-900 p-2 text-neutral-100"
+            <div className="mb-1 text-sm text-neutral-100">
+              Customer query (name)
+            </div>
+            <input
+              value={customerQuery}
+              onChange={(e) => setCustomerQuery(e.target.value)}
+              className="w-full rounded border border-neutral-800 bg-neutral-900/80 p-2 text-sm text-neutral-100 placeholder:text-neutral-500"
+              placeholder="e.g. John Smith"
             />
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={presetOilGas}>
-                Oil change (gas)
-              </Button>
-              <Button variant="outline" size="sm" onClick={presetOilDiesel}>
-                Oil change (diesel)
-              </Button>
-              <Button variant="outline" size="sm" onClick={presetMaint50}>
-                Maintenance 50
-              </Button>
-              <Button variant="outline" size="sm" onClick={presetMaint50Air}>
-                Maintenance 50 + Air
+          </label>
+
+          <label className="block">
+            <div className="mb-1 text-sm text-neutral-100">Plate or VIN</div>
+            <div className="flex gap-2">
+              <input
+                value={plateOrVin}
+                onChange={(e) => setPlateOrVin(e.target.value)}
+                className="w-full rounded border border-neutral-800 bg-neutral-900/80 p-2 text-sm text-neutral-100 placeholder:text-neutral-500"
+                placeholder="e.g. 8ABC123 or 1FT…"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setVinOpen(true)}
+                title="Open VIN capture"
+                disabled={!userId}
+              >
+                Scan VIN
               </Button>
             </div>
           </label>
 
-          <div className="grid gap-3">
-            <label className="block">
-              <div className="mb-1 text-sm text-neutral-400">Planner</div>
-              <select
-                value={planner}
-                onChange={(e) => setPlanner((e.target.value as PlannerKind) ?? "openai")}
-                className="w-full rounded border border-neutral-800 bg-neutral-900 p-2 text-neutral-100"
-              >
-                <option value="openai">OpenAI (rich)</option>
-                <option value="simple">Simple (rules)</option>
-                <option value="fleet">Fleet PM</option>
-                <option value="approvals">Advisor approvals</option>
-              </select>
-            </label>
+          <label className="block">
+            <div className="mb-1 text-sm text-neutral-100">
+              Email invoice to (optional)
+            </div>
+            <input
+              value={emailInvoiceTo}
+              onChange={(e) => setEmailInvoiceTo(e.target.value)}
+              className="w-full rounded border border-neutral-800 bg-neutral-900/80 p-2 text-sm text-neutral-100 placeholder:text-neutral-500"
+              placeholder="customer@example.com"
+              type="email"
+              inputMode="email"
+            />
+          </label>
 
-            <label className="block">
-              <div className="mb-1 text-sm text-neutral-400">Customer query (name)</div>
-              <input
-                value={customerQuery}
-                onChange={(e) => setCustomerQuery(e.target.value)}
-                className="w-full rounded border border-neutral-800 bg-neutral-900 p-2 text-neutral-100"
-                placeholder="e.g. John Smith"
+          <label className="block">
+            <div className="mb-1 text-sm text-neutral-100">
+              Photo (DL / Registration)
+            </div>
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={(e) => onPickPhoto(e.target.files?.[0] ?? null)}
+              className="block w-full text-sm text-neutral-100 file:mr-4 file:rounded file:border file:border-orange-400 file:bg-transparent file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-orange-500/10"
+            />
+            {photoPreview ? (
+              <img
+                src={photoPreview}
+                alt="Preview"
+                className="mt-2 max-h-40 rounded border border-neutral-800 object-contain"
               />
-            </label>
-
-            <label className="block">
-              <div className="mb-1 text-sm text-neutral-400">Plate or VIN</div>
-              <div className="flex gap-2">
-                <input
-                  value={plateOrVin}
-                  onChange={(e) => setPlateOrVin(e.target.value)}
-                  className="w-full rounded border border-neutral-800 bg-neutral-900 p-2 text-neutral-100"
-                  placeholder="e.g. 8ABC123 or 1FT…"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setVinOpen(true)}
-                  title="Open VIN capture"
-                  disabled={!userId}
-                >
-                  Scan VIN
-                </Button>
-              </div>
-            </label>
-
-            <label className="block">
-              <div className="mb-1 text-sm text-neutral-400">
-                Email invoice to (optional)
-              </div>
-              <input
-                value={emailInvoiceTo}
-                onChange={(e) => setEmailInvoiceTo(e.target.value)}
-                className="w-full rounded border border-neutral-800 bg-neutral-900 p-2 text-neutral-100"
-                placeholder="customer@example.com"
-                type="email"
-                inputMode="email"
-              />
-            </label>
-
-            <label className="block">
-              <div className="mb-1 text-sm text-neutral-400">
-                Photo (DL / Registration)
-              </div>
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={(e) => onPickPhoto(e.target.files?.[0] ?? null)}
-                className="block w-full text-sm text-neutral-300 file:mr-4 file:rounded file:border-0 file:bg-orange-600 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-orange-700"
-              />
-              {photoPreview ? (
-                <img
-                  src={photoPreview}
-                  alt="Preview"
-                  className="mt-2 max-h-40 rounded border border-neutral-800 object-contain"
-                />
-              ) : null}
-            </label>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button
-            onClick={start}
-            variant="orange"
-            size="md"
-            isLoading={running}
-            disabled={!goal.trim() || running}
-            className="font-black"
-          >
-            Run Plan
-          </Button>
-
-          <Button onClick={clearAll} variant="outline" size="md" disabled={running}>
-            Clear
-          </Button>
+            ) : null}
+          </label>
         </div>
 
         {runId && (
-          <div className="text-xs text-neutral-500">
+          <div className="text-xs text-neutral-400">
             Run ID: <code>{runId}</code>
           </div>
         )}
 
-        <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
-          <div className="mb-2 text-sm text-neutral-300">Stream</div>
+        {/* stream above buttons */}
+        <div className="rounded border border-neutral-800 bg-neutral-900/80 p-4">
+          <div className="mb-2 text-sm font-medium text-neutral-100">Stream</div>
           {steps.length === 0 ? (
-            <div className="text-sm text-neutral-500">Waiting for updates…</div>
+            <div className="text-sm text-neutral-400">Waiting for updates…</div>
           ) : (
             <ul className="space-y-2">
               {steps.map((s, i) => (
@@ -531,6 +488,30 @@ export default function PlannerPage() {
               ))}
             </ul>
           )}
+        </div>
+
+        {/* centered actions */}
+        <div className="flex items-center justify-center gap-4 pt-1">
+          <Button
+            onClick={start}
+            variant="outline"
+            size="md"
+            isLoading={running}
+            disabled={!goal.trim() || running}
+            className="min-w-[140px]"
+          >
+            Run Plan
+          </Button>
+
+          <Button
+            onClick={clearAll}
+            variant="ghost"
+            size="md"
+            disabled={running}
+            className="min-w-[140px]"
+          >
+            Clear
+          </Button>
         </div>
       </div>
 

@@ -8,7 +8,7 @@ import { cookies } from "next/headers";
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { VoiceProvider } from "@/features/shared/voice/VoiceProvider";
-import VoiceButton from "@/features/shared/voice/VoiceButton";
+
 import { Toaster } from "react-hot-toast";
 
 const inter = Inter({
@@ -56,7 +56,6 @@ export default async function RootLayout({
                 <main>{children}</main>
               )}
             </AppShell>
-            <VoiceButton />
           </VoiceProvider>
           <Toaster position="bottom-center" />
         </Providers>
