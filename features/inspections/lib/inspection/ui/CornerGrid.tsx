@@ -1,3 +1,4 @@
+// shared/components/ui/CornerGrid.tsx
 "use client";
 
 import { useMemo, useRef, useState } from "react";
@@ -34,14 +35,18 @@ const metricOrder = [
   "Wheel Torque",
 ];
 const orderIndex = (m: string) => {
-  const i = metricOrder.findIndex((x) => m.toLowerCase().includes(x.toLowerCase()));
+  const i = metricOrder.findIndex((x) =>
+    m.toLowerCase().includes(x.toLowerCase()),
+  );
   return i === -1 ? Number.MAX_SAFE_INTEGER : i;
 };
 
 export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
   const { updateItem } = useInspectionForm();
 
-  const parseCorner = (label: string): { corner: CornerKey | null; metric: string } => {
+  const parseCorner = (
+    label: string,
+  ): { corner: CornerKey | null; metric: string } => {
     let corner: CornerKey | null = null;
     let metric = "";
 
@@ -79,7 +84,8 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
 
   const groups = useMemo(() => {
     const byRegion = new Map<Region, Map<string, RowTriplet>>();
-    const ensureRegion = (r: Region) => byRegion.get(r) ?? byRegion.set(r, new Map()).get(r)!;
+    const ensureRegion = (r: Region) =>
+      byRegion.get(r) ?? byRegion.set(r, new Map()).get(r)!;
 
     items.forEach((it, idx) => {
       const label = it.item ?? "";
@@ -92,7 +98,8 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
       const key = metric.toLowerCase();
       if (!reg.has(key)) reg.set(key, { metric });
 
-      const unit = (it.unit ?? "") || (unitHint ? unitHint(label) : "") || "";
+      const unit =
+        (it.unit ?? "") || (unitHint ? unitHint(label) : "") || "";
       const cell: MetricCell = {
         idx,
         metric,
@@ -154,17 +161,34 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
     unit: string;
   }) => {
     const kpaRef = useRef<HTMLSpanElement | null>(null);
+
     const onInput = (e: React.FormEvent<HTMLInputElement>) => {
       if (!isPressure || !kpaRef.current) return;
       const k = kpaFromPsi(e.currentTarget.value);
-      kpaRef.current.textContent = showKpaHint ? `(${k ?? "—"} kPa)` : "";
+      if (!showKpaHint) {
+        kpaRef.current.textContent = "psi";
+      } else if (k != null) {
+        kpaRef.current.textContent = `psi (${k} kPa)`;
+      } else {
+        kpaRef.current.textContent = "psi (— kPa)";
+      }
     };
+
+    // seed text
+    const seed = () => {
+      if (!isPressure) return unit;
+      const k = kpaFromPsi(defaultValue);
+      if (!showKpaHint) return "psi";
+      return k != null ? `psi (${k} kPa)` : "psi (— kPa)";
+    };
+
     return (
-      <div className="flex items-center gap-2">
+      <div className="relative w-full max-w-[11rem]">
         <input
           name={`hyd-${idx}`}
           defaultValue={defaultValue}
-          className="w-40 rounded border border-gray-600 bg-black px-2 py-1 text-sm text-white outline-none placeholder:text-zinc-400"
+          tabIndex={0}
+          className="w-full rounded-lg border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 pr-20 text-sm text-white placeholder:text-neutral-500 focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
           placeholder="Value"
           autoComplete="off"
           autoCorrect="off"
@@ -177,33 +201,32 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
             if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
           }}
         />
-        <div className="min-w-[64px] text-right text-xs text-zinc-400">
-          {isPressure ? (
-            <span>
-              psi{" "}
-              <span
-                ref={kpaRef}
-                className={showKpaHint ? "text-zinc-500" : "hidden"}
-              />
-            </span>
-          ) : (
-            <span>{unit}</span>
-          )}
-        </div>
+        <span
+          ref={kpaRef}
+          className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-neutral-400"
+        >
+          {seed()}
+        </span>
       </div>
     );
   };
 
-  const RegionCard = ({ region, rows }: { region: Region; rows: RowTriplet[] }) => (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+  const RegionCard = ({
+    region,
+    rows,
+  }: {
+    region: Region;
+    rows: RowTriplet[];
+  }) => (
+    <div className="rounded-2xl border border-white/8 bg-black/40 p-4 shadow-card backdrop-blur-md">
       <div
-        className="mb-3 text-lg font-semibold text-orange-400"
+        className="mb-3 text-lg font-semibold text-accent"
         style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
       >
         {region}
       </div>
 
-      <div className="mb-2 grid grid-cols-[1fr_auto_1fr] items-center gap-4 text-xs text-zinc-400">
+      <div className="mb-2 grid grid-cols-[1fr_auto_1fr] items-center gap-4 text-xs text-neutral-400">
         <div>Left</div>
         <div className="text-center">Item</div>
         <div className="text-right">Right</div>
@@ -214,7 +237,7 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
           {rows.map((row, i) => (
             <div
               key={`${region}-${row.metric}-${i}`}
-              className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded bg-zinc-950/70 p-3"
+              className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded-xl bg-neutral-950/70 p-3"
             >
               <div>
                 {row.left ? (
@@ -225,7 +248,7 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
                     unit={row.left.unit}
                   />
                 ) : (
-                  <div className="h-[30px]" />
+                  <div className="h-[34px]" />
                 )}
               </div>
 
@@ -246,7 +269,7 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
                     unit={row.right.unit}
                   />
                 ) : (
-                  <div className="h-[30px]" />
+                  <div className="h-[34px]" />
                 )}
               </div>
             </div>
@@ -259,21 +282,23 @@ export default function CornerGrid({ sectionIndex, items, unitHint }: Props) {
   return (
     <div className="grid gap-3">
       <div className="flex items-center justify-end gap-3 px-1">
-        <label className="flex items-center gap-2 select-none text-xs text-zinc-400">
+        <label className="flex items-center gap-2 select-none text-xs text-neutral-400">
           <input
             type="checkbox"
             className="h-3 w-3 accent-orange-500"
             checked={showKpaHint}
             onChange={(e) => setShowKpaHint(e.target.checked)}
+            tabIndex={-1}
           />
           kPa hint
         </label>
 
         <button
           onClick={() => setOpen((v) => !v)}
-          className="rounded bg-zinc-700 px-2 py-1 text-xs text-white hover:bg-zinc-600"
+          className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs text-white hover:border-accent hover:bg-white/10"
           aria-expanded={open}
           title={open ? "Collapse" : "Expand"}
+          tabIndex={-1}
         >
           {open ? "Collapse" : "Expand"}
         </button>

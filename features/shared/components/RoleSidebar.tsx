@@ -103,7 +103,7 @@ export default function RoleSidebar() {
 
   if (!role) {
     return (
-      <div className="p-4 text-sm text-muted-foreground">
+      <div className="p-4 text-xs text-neutral-400">
         Loading navigation…
       </div>
     );
@@ -117,6 +117,9 @@ export default function RoleSidebar() {
     <nav className="flex-1 overflow-y-auto py-4 space-y-3">
       {sortedGroups.map(([group, groupTiles]) => {
         const open = !!openSections[group];
+        const hasActive = groupTiles.some(
+          (t) => pathname === t.href || pathname.startsWith(t.href + "/"),
+        );
 
         return (
           <div key={group} className="px-3">
@@ -125,16 +128,23 @@ export default function RoleSidebar() {
               type="button"
               onClick={() => toggleSection(group)}
               className={cn(
-                "flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left",
-                "text-[0.65rem] uppercase tracking-wide",
-                "text-muted-foreground hover:text-foreground hover:bg-white/5",
+                "flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left",
+                "text-[0.65rem] uppercase tracking-[0.12em]",
+                "border border-white/5 bg-white/5/0 hover:bg-white/5",
+                "text-neutral-400 hover:text-white transition-colors",
+                hasActive && "border-orange-400/60 text-white shadow-glow",
               )}
             >
-              <span>{labelForGroup(group)}</span>
+              <span className="flex items-center gap-2">
+                {hasActive && (
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-orange-400 shadow-glow" />
+                )}
+                <span>{labelForGroup(group)}</span>
+              </span>
               {open ? (
-                <ChevronDown className="h-3.5 w-3.5" />
+                <ChevronDown className="h-3.5 w-3.5 text-neutral-500" />
               ) : (
-                <ChevronRight className="h-3.5 w-3.5" />
+                <ChevronRight className="h-3.5 w-3.5 text-neutral-500" />
               )}
             </button>
 
@@ -149,15 +159,18 @@ export default function RoleSidebar() {
                       key={t.href}
                       href={t.href}
                       className={cn(
-                        "flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm transition",
+                        "group flex items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-[0.8rem] transition-colors",
+                        "bg-white/0 border border-transparent",
                         active
-                          ? "bg-white/5 text-foreground"
-                          : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
+                          ? "bg-white/5 border-orange-400/70 text-white shadow-sm"
+                          : "text-neutral-400 hover:text-white hover:bg-white/5 hover:border-white/10",
                       )}
                     >
-                      <span className="truncate">{t.title}</span>
+                      <span className="truncate">
+                        {t.title}
+                      </span>
                       {t.cta ? (
-                        <span className="text-xs text-muted-foreground/80">
+                        <span className="text-[0.7rem] text-neutral-500 group-hover:text-neutral-300">
                           {t.cta}
                         </span>
                       ) : null}

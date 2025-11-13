@@ -1,3 +1,4 @@
+// shared/components/Section.tsx
 "use client";
 
 import React from "react";
@@ -21,7 +22,9 @@ export default function Section({
       id={id}
       aria-label={ariaLabel || id || undefined}
       className={cn(
-        "w-full py-10 md:py-14 lg:py-20 px-4 sm:px-6 fade-in",
+        "w-full py-10 md:py-14 lg:py-20 px-4 sm:px-6",
+        "fade-in",
+        "bg-transparent",
         className,
       )}
     >

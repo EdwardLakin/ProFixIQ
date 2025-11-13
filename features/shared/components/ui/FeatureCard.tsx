@@ -1,3 +1,4 @@
+// shared/components/ui/FeatureCard.tsx
 "use client";
 
 import { CheckCircle2, Lock } from "lucide-react";
@@ -9,12 +10,16 @@ type BaseProps = {
   available?: boolean; // optional now
 };
 
-/** Support either:
- *  - { title, description, available? }
- *  - { title, subtitle?, content, available? }
- */
-type WithDescription = BaseProps & { description: string; content?: never; subtitle?: never };
-type WithContent = BaseProps & { content: string; subtitle?: string; description?: never };
+type WithDescription = BaseProps & {
+  description: string;
+  content?: never;
+  subtitle?: never;
+};
+type WithContent = BaseProps & {
+  content: string;
+  subtitle?: string;
+  description?: never;
+};
 
 type FeatureCardProps = WithDescription | WithContent;
 
@@ -26,26 +31,29 @@ export default function FeatureCard(props: FeatureCardProps) {
 
   const palette =
     available === undefined
-      ? // Neutral style when availability isn’t specified
-        "border-neutral-700 bg-neutral-900/40 hover:shadow-black/30"
+      ? "border-white/10 bg-black/30 hover:border-accent/70 hover:shadow-glow"
       : available
-      ? "border-green-600/60 bg-green-900/10 hover:shadow-green-600/30"
-      : "border-red-600/60 bg-red-900/10 hover:shadow-red-600/30";
+      ? "border-emerald-500/70 bg-emerald-900/20 hover:shadow-[0_0_12px_rgba(16,185,129,0.6)]"
+      : "border-red-500/70 bg-red-900/20 hover:shadow-[0_0_12px_rgba(248,113,113,0.6)]";
 
-  const Icon = available === undefined ? null : available ? CheckCircle2 : Lock;
+  const Icon =
+    available === undefined ? null : available ? CheckCircle2 : Lock;
   const iconColor =
-    available === undefined ? "text-orange-400" : available ? "text-green-400" : "text-red-400";
+    available === undefined
+      ? "text-accent"
+      : available
+      ? "text-emerald-400"
+      : "text-red-400";
 
   return (
-    <div
+    <article
       className={cn(
-        "rounded-xl p-5 backdrop-blur-md border transition-all duration-200 shadow-md",
+        "rounded-2xl p-5 backdrop-blur-md border shadow-card",
         "flex flex-col gap-2 items-start text-left",
-        "hover:-translate-y-[1px]",
+        "transition-transform duration-150 hover:-translate-y-[1px]",
         palette,
         className,
       )}
-      role="article"
       aria-label={title}
     >
       <div className="flex items-center gap-2">
@@ -54,12 +62,12 @@ export default function FeatureCard(props: FeatureCardProps) {
       </div>
 
       {hasSubtitle ? (
-        <p className="text-xs text-orange-300/80 font-blackops -mt-1">{(props as any).subtitle}</p>
+        <p className="text-[11px] uppercase tracking-wide text-orange-300/80 -mt-1">
+          {(props as any).subtitle}
+        </p>
       ) : null}
 
-      <p className="text-sm text-neutral-300 leading-snug">
-        {bodyText}
-      </p>
-    </div>
+      <p className="text-sm text-neutral-300 leading-snug">{bodyText}</p>
+    </article>
   );
 }

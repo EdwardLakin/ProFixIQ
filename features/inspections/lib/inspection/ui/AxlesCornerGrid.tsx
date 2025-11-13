@@ -1,3 +1,4 @@
+// shared/components/ui/AxlesCornerGrid.tsx
 "use client";
 
 import { useMemo, useRef, useState } from "react";
@@ -7,7 +8,7 @@ import type { InspectionItem } from "@inspections/lib/inspection/types";
 type Props = {
   sectionIndex: number;
   items: InspectionItem[];
-  /** Optional unit resolver when an item has no `unit` */
+  /** Optional unit resolver when an item has no unit */
   unitHint?: (label: string) => string;
   /** Only shown (and used) for AIR mode */
   onAddAxle?: (axleLabel: string) => void;
@@ -80,14 +81,23 @@ const hydMetricOrder = [
   "Wheel Torque",
 ];
 const hydCompare = (a: string, b: string) => {
-  const ai = hydMetricOrder.findIndex((x) => a.toLowerCase().includes(x.toLowerCase()));
-  const bi = hydMetricOrder.findIndex((x) => b.toLowerCase().includes(x.toLowerCase()));
+  const ai = hydMetricOrder.findIndex((x) =>
+    a.toLowerCase().includes(x.toLowerCase()),
+  );
+  const bi = hydMetricOrder.findIndex((x) =>
+    b.toLowerCase().includes(x.toLowerCase()),
+  );
   const A = ai === -1 ? Number.MAX_SAFE_INTEGER : ai;
   const B = bi === -1 ? Number.MAX_SAFE_INTEGER : bi;
   return A - B;
 };
 
-export default function AxlesCornerGrid({ sectionIndex, items, unitHint, onAddAxle }: Props) {
+export default function AxlesCornerGrid({
+  sectionIndex,
+  items,
+  unitHint,
+  onAddAxle,
+}: Props) {
   const { updateItem } = useInspectionForm();
 
   // Detect mode from the item labels
@@ -118,7 +128,8 @@ export default function AxlesCornerGrid({ sectionIndex, items, unitHint, onAddAx
     if (mode !== "hyd") return [] as Array<{ region: Region; rows: HydRow[] }>;
 
     const byRegion = new Map<Region, Map<string, HydRow>>();
-    const ensureRegion = (r: Region) => byRegion.get(r) ?? byRegion.set(r, new Map()).get(r)!;
+    const ensureRegion = (r: Region) =>
+      byRegion.get(r) ?? byRegion.set(r, new Map()).get(r)!;
 
     items.forEach((it, idx) => {
       const label = it.item ?? "";
@@ -164,7 +175,9 @@ export default function AxlesCornerGrid({ sectionIndex, items, unitHint, onAddAx
     (["Front", "Rear"] as Region[]).forEach((region) => {
       const reg = byRegion.get(region);
       if (!reg) return;
-      const rows = Array.from(reg.values()).sort((a, b) => hydCompare(a.metric, b.metric));
+      const rows = Array.from(reg.values()).sort((a, b) =>
+        hydCompare(a.metric, b.metric),
+      );
       out.push({ region, rows });
     });
     return out;
@@ -187,14 +200,15 @@ export default function AxlesCornerGrid({ sectionIndex, items, unitHint, onAddAx
 
   const isDualAxle = (axle: string) => {
     const a = axle.toLowerCase();
-    if (a.startsWith("drive") || a.startsWith("trailer") || a.includes("rear")) return true;
+    if (a.startsWith("drive") || a.startsWith("trailer") || a.includes("rear"))
+      return true;
     if (a.startsWith("tag") || a.startsWith("steer")) return false;
     return false;
   };
 
-  // duplicate only Pressure/Tread for duals
   const isDualizable = (metric: string) =>
-    /tire\s*pressure/i.test(metric) || /(tire\s*)?tread\s*depth|tire\s*tread/i.test(metric);
+    /tire\s*pressure/i.test(metric) ||
+    /(tire\s*)?tread\s*depth|tire\s*tread/i.test(metric);
   const hasInnerOuter = (m: string) => /(inner|outer)/i.test(m);
 
   function expandDuals(axle: string, cells: AirCell[]): AirCell[] {
@@ -228,7 +242,8 @@ export default function AxlesCornerGrid({ sectionIndex, items, unitHint, onAddAx
 
       if (!byAxle.has(axle)) byAxle.set(axle, { Left: [], Right: [] });
 
-      const unit = (it.unit ?? "") || (unitHint ? unitHint(label) : "");
+      const unit =
+        (it.unit ?? "") || (unitHint ? unitHint(label) : "") || "";
       const cell: AirCell = {
         metric,
         idx,
@@ -242,8 +257,12 @@ export default function AxlesCornerGrid({ sectionIndex, items, unitHint, onAddAx
     });
 
     return Array.from(byAxle.entries()).map(([axle, sides]) => {
-      const left = expandDuals(axle, sides.Left).sort((a, b) => airCompare(a.metric, b.metric));
-      const right = expandDuals(axle, sides.Right).sort((a, b) => airCompare(a.metric, b.metric));
+      const left = expandDuals(axle, sides.Left).sort((a, b) =>
+        airCompare(a.metric, b.metric),
+      );
+      const right = expandDuals(axle, sides.Right).sort((a, b) =>
+        airCompare(a.metric, b.metric),
+      );
       return { axle, left, right };
     });
   }, [items, unitHint, mode]);
@@ -262,7 +281,9 @@ export default function AxlesCornerGrid({ sectionIndex, items, unitHint, onAddAx
       };
       g.left.forEach((c) => add(c, "left"));
       g.right.forEach((c) => add(c, "right"));
-      const merged = Array.from(map.values()).sort((a, b) => airCompare(a.metric, b.metric));
+      const merged = Array.from(map.values()).sort((a, b) =>
+        airCompare(a.metric, b.metric),
+      );
       rows.push({ axle: g.axle, rows: merged });
     }
     return rows;
@@ -281,7 +302,9 @@ export default function AxlesCornerGrid({ sectionIndex, items, unitHint, onAddAx
     if (!el) return;
     const value = el.value;
     updateItem(sectionIndex, idx, { value });
-    setFilledMap((p) => (p[idx] === !!value.trim() ? p : { ...p, [idx]: !!value.trim() }));
+    setFilledMap((p) =>
+      p[idx] === !!value.trim() ? p : { ...p, [idx]: !!value.trim() },
+    );
   };
 
   /* ------------------- shared input used by both modes ------------------ */
@@ -298,31 +321,45 @@ export default function AxlesCornerGrid({ sectionIndex, items, unitHint, onAddAx
     defaultValue: string;
   }) => {
     const spanRef = useRef<HTMLSpanElement | null>(null);
+
     const seedText = () => {
       if (!isPressureRow) return unit;
       const k = kpaFromPsi(defaultValue);
-      return showKpa ? `psi (${k ?? "—"} kPa)` : "psi";
+      if (!showKpa) return "psi";
+      return k != null ? `psi (${k} kPa)` : "psi (— kPa)";
     };
+
     const onInput = (e: React.FormEvent<HTMLInputElement>) => {
       if (!isPressureRow || !spanRef.current) return;
       const k = kpaFromPsi(e.currentTarget.value);
-      spanRef.current.textContent = showKpa ? `psi (${k ?? "—"} kPa)` : "psi";
+      if (!showKpa) {
+        spanRef.current.textContent = "psi";
+      } else if (k != null) {
+        spanRef.current.textContent = `psi (${k} kPa)`;
+      } else {
+        spanRef.current.textContent = "psi (— kPa)";
+      }
     };
+
     return (
-      <div className="relative w-40">
+      <div className="relative w-full max-w-[11rem]">
         <input
           defaultValue={defaultValue}
-          className="w-full rounded border border-gray-600 bg-black px-2 py-1 pr-16 text-sm text-white outline-none placeholder:text-zinc-400"
+          tabIndex={0}
+          className="w-full rounded-lg border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 pr-20 text-sm text-white placeholder:text-neutral-500 focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
           placeholder="Value"
           autoComplete="off"
           inputMode="decimal"
           onInput={onInput}
           onBlur={(e) => commit(idx, e.currentTarget)}
-          onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
+          onKeyDown={(e) =>
+            e.key === "Enter" &&
+            (e.currentTarget as HTMLInputElement).blur()
+          }
         />
         <span
           ref={spanRef}
-          className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-zinc-400"
+          className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-neutral-400"
         >
           {seedText()}
         </span>
@@ -332,87 +369,16 @@ export default function AxlesCornerGrid({ sectionIndex, items, unitHint, onAddAx
 
   /* ---------------------------- HYD UI ---------------------------- */
 
-  const HydRegionCard = ({ region, rows }: { region: Region; rows: HydRow[] }) => {
-    let nextTab = 1;
-    return (
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
-        <div
-          className="mb-3 text-lg font-semibold text-orange-400"
-          style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-        >
-          {region}
-        </div>
-
-        <div className="mb-2 grid grid-cols-[1fr_auto_1fr] items-center gap-4 text-xs text-zinc-400">
-          <div>Left</div>
-          <div className="text-center">Item</div>
-          <div className="text-right">Right</div>
-        </div>
-
-        {open && (
-          <div className="space-y-3">
-            {rows.map((row, i) => (
-              <div
-                key={`${region}-${row.metric}-${i}`}
-                className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded bg-zinc-950/70 p-3"
-              >
-                <div>
-                  {row.left ? (
-                    <div tabIndex={nextTab++}>
-                      <InputWithInlineUnit
-                        idx={row.left.idx}
-                        isPressureRow={row.left.isPressure}
-                        unit={row.left.unit}
-                        defaultValue={row.left.initial}
-                      />
-                    </div>
-                  ) : (
-                    <div className="h-[30px]" />
-                  )}
-                </div>
-
-                <div
-                  className="min-w-0 truncate text-center text-sm font-semibold text-white"
-                  style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-                  title={row.metric}
-                >
-                  {row.metric}
-                </div>
-
-                <div className="justify-self-end">
-                  {row.right ? (
-                    <div tabIndex={nextTab++}>
-                      <InputWithInlineUnit
-                        idx={row.right.idx}
-                        isPressureRow={row.right.isPressure}
-                        unit={row.right.unit}
-                        defaultValue={row.right.initial}
-                      />
-                    </div>
-                  ) : (
-                    <div className="h-[30px]" />
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  /* ----------------------------- AIR UI ----------------------------- */
-
-  const AirAxleCard = ({ axle, rows }: { axle: string; rows: AirRow[] }) => (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+  const HydRegionCard = ({ region, rows }: { region: Region; rows: HydRow[] }) => (
+    <div className="rounded-2xl border border-white/8 bg-black/40 p-4 shadow-card backdrop-blur-md">
       <div
-        className="mb-3 text-lg font-semibold text-orange-400"
+        className="mb-3 text-lg font-semibold text-accent"
         style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
       >
-        {axle}
+        {region}
       </div>
 
-      <div className="mb-2 grid grid-cols-[1fr_auto_1fr] items-center gap-4 text-xs text-zinc-400">
+      <div className="mb-2 grid grid-cols-[1fr_auto_1fr] items-center gap-4 text-xs text-neutral-400">
         <div>Left</div>
         <div className="text-center">Item</div>
         <div className="text-right">Right</div>
@@ -422,8 +388,8 @@ export default function AxlesCornerGrid({ sectionIndex, items, unitHint, onAddAx
         <div className="space-y-3">
           {rows.map((row, i) => (
             <div
-              key={`${axle}-${row.metric}-${i}`}
-              className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded bg-zinc-950/70 p-3"
+              key={`${region}-${row.metric}-${i}`}
+              className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded-xl bg-neutral-950/70 p-3"
             >
               <div>
                 {row.left ? (
@@ -434,7 +400,7 @@ export default function AxlesCornerGrid({ sectionIndex, items, unitHint, onAddAx
                     defaultValue={row.left.initial}
                   />
                 ) : (
-                  <div className="h-[30px]" />
+                  <div className="h-[34px]" />
                 )}
               </div>
 
@@ -455,7 +421,71 @@ export default function AxlesCornerGrid({ sectionIndex, items, unitHint, onAddAx
                     defaultValue={row.right.initial}
                   />
                 ) : (
-                  <div className="h-[30px]" />
+                  <div className="h-[34px]" />
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  /* ----------------------------- AIR UI ----------------------------- */
+
+  const AirAxleCard = ({ axle, rows }: { axle: string; rows: AirRow[] }) => (
+    <div className="rounded-2xl border border-white/8 bg-black/40 p-4 shadow-card backdrop-blur-md">
+      <div
+        className="mb-3 text-lg font-semibold text-accent"
+        style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+      >
+        {axle}
+      </div>
+
+      <div className="mb-2 grid grid-cols-[1fr_auto_1fr] items-center gap-4 text-xs text-neutral-400">
+        <div>Left</div>
+        <div className="text-center">Item</div>
+        <div className="text-right">Right</div>
+      </div>
+
+      {open && (
+        <div className="space-y-3">
+          {rows.map((row, i) => (
+            <div
+              key={`${axle}-${row.metric}-${i}`}
+              className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded-xl bg-neutral-950/70 p-3"
+            >
+              <div>
+                {row.left ? (
+                  <InputWithInlineUnit
+                    idx={row.left.idx}
+                    isPressureRow={row.left.isPressure}
+                    unit={row.left.unit}
+                    defaultValue={row.left.initial}
+                  />
+                ) : (
+                  <div className="h-[34px]" />
+                )}
+              </div>
+
+              <div
+                className="min-w-0 truncate text-center text-sm font-semibold text-white"
+                style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+                title={row.metric}
+              >
+                {row.metric}
+              </div>
+
+              <div className="justify-self-end">
+                {row.right ? (
+                  <InputWithInlineUnit
+                    idx={row.right.idx}
+                    isPressureRow={row.right.isPressure}
+                    unit={row.right.unit}
+                    defaultValue={row.right.initial}
+                  />
+                ) : (
+                  <div className="h-[34px]" />
                 )}
               </div>
             </div>
@@ -476,7 +506,7 @@ export default function AxlesCornerGrid({ sectionIndex, items, unitHint, onAddAx
         {/* progress strip for AIR mode */}
         {mode === "air" ? (
           <div
-            className="hidden text-xs text-zinc-400 md:block"
+            className="hidden text-xs text-neutral-400 md:block"
             style={{ fontFamily: "Roboto, system-ui, sans-serif" }}
           >
             {airGroups.map((g, i) => {
@@ -495,20 +525,22 @@ export default function AxlesCornerGrid({ sectionIndex, items, unitHint, onAddAx
         )}
 
         <div className="flex items-center gap-3">
-          <label className="flex select-none items-center gap-2 text-xs text-zinc-300">
+          <label className="flex select-none items-center gap-2 text-xs text-neutral-300">
             <input
               type="checkbox"
               className="h-3 w-3 accent-orange-500"
               checked={showKpa}
               onChange={(e) => setShowKpa(e.target.checked)}
+              tabIndex={-1}
             />
             kPa hint
           </label>
 
           <button
             onClick={() => setOpen((v) => !v)}
-            className="rounded bg-zinc-700 px-2 py-1 text-xs text-white hover:bg-zinc-600"
+            className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs text-white hover:border-accent hover:bg-white/10"
             title={open ? "Collapse" : "Expand"}
+            tabIndex={-1}
           >
             {open ? "Collapse" : "Expand"}
           </button>
@@ -560,9 +592,9 @@ function AddAxlePicker({
   }, [existingAxles]);
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 px-1">
       <select
-        className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-sm text-white"
+        className="rounded-lg border border-neutral-700 bg-neutral-900/80 px-2 py-1 text-sm text-white"
         value={pending}
         onChange={(e) => setPending(e.target.value)}
       >
@@ -574,7 +606,7 @@ function AddAxlePicker({
         ))}
       </select>
       <button
-        className="rounded bg-orange-600 px-3 py-1 text-sm font-semibold text-black hover:bg-orange-500 disabled:opacity-40"
+        className="rounded-lg bg-accent px-3 py-1 text-sm font-semibold text-black hover:bg-orange-500 disabled:opacity-40"
         onClick={() => pending && onAddAxle(pending)}
         disabled={!pending}
       >
@@ -583,4 +615,3 @@ function AddAxlePicker({
     </div>
   );
 }
-

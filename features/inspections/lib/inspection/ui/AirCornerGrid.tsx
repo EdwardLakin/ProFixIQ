@@ -1,3 +1,4 @@
+// shared/components/ui/AirCornerGrid.tsx
 "use client";
 
 import { useMemo, useRef, useState } from "react";
@@ -11,7 +12,12 @@ type Props = {
   onAddAxle?: (axleLabel: string) => void;
 };
 
-export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle }: Props) {
+export default function AirCornerGrid({
+  sectionIndex,
+  items,
+  unitHint,
+  onAddAxle,
+}: Props) {
   const { updateItem } = useInspectionForm();
 
   type Side = "Left" | "Right";
@@ -27,34 +33,20 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
   };
   type AxleGroup = { axle: string; left: MetricCell[]; right: MetricCell[] };
 
-  /* --------------------- strict ordering for AIR --------------------- */
   const airPriority = (metric: string): [number, number] => {
     const m = metric.toLowerCase();
-
-    // 0: Tire Pressure (Outer before Inner)
     if (/tire\s*pressure/i.test(m)) {
       const second = /outer/i.test(m) ? 0 : /inner/i.test(m) ? 1 : 0;
       return [0, second];
     }
-
-    // 1: Tread Depth (Outer before Inner) + "Tire Tread"
     if (/(tire\s*)?tread\s*depth|tire\s*tread/i.test(m)) {
       const second = /outer/i.test(m) ? 0 : /inner/i.test(m) ? 1 : 0;
       return [1, second];
     }
-
-    // 2: Shoes/Pads (Lining/Shoe/Pad)
     if (/(lining|shoe|pad)/i.test(m)) return [2, 0];
-
-    // 3: Drum/Rotor (Condition/Thickness)
     if (/(drum|rotor)/i.test(m)) return [3, 0];
-
-    // 4: Push Rod Travel
     if (/push\s*rod/i.test(m)) return [4, 0];
-
-    // 5: Wheel torque variants (Inner/Outer secondary key if present)
     if (/wheel\s*torque/i.test(m)) return [5, /inner/i.test(m) ? 1 : 0];
-
     return [99, 0];
   };
   const orderCompare = (a: string, b: string) => {
@@ -63,21 +55,19 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
     return pa !== pb ? pa - pb : sa - sb;
   };
 
-  /** Identify which axles are dual-tire axles. Tag axles = steer type (single tires). */
   const isDualAxle = (axleLabel: string) => {
     const a = axleLabel.toLowerCase();
-    // Drive, Trailer, and Rear are duals; Tag and Steer are not.
-    if (a.startsWith("drive") || a.startsWith("trailer") || a.includes("rear")) return true;
+    if (a.startsWith("drive") || a.startsWith("trailer") || a.includes("rear"))
+      return true;
     if (a.startsWith("tag") || a.startsWith("steer")) return false;
     return false;
   };
 
-  // Only duplicate Pressure/Tread, never Push Rod or other rows.
   const isDualizableMetric = (metric: string) =>
-    /tire\s*pressure/i.test(metric) || /(tire\s*)?tread\s*depth|tire\s*tread/i.test(metric);
+    /tire\s*pressure/i.test(metric) ||
+    /(tire\s*)?tread\s*depth|tire\s*tread/i.test(metric);
   const hasInnerOuter = (metric: string) => /(inner|outer)/i.test(metric);
 
-  /** Expand dual-tire rows for drive/trailer/rear axles. */
   function expandDuals(axle: string, cells: MetricCell[]): MetricCell[] {
     if (!isDualAxle(axle)) return cells;
 
@@ -108,7 +98,8 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
 
       if (!byAxle.has(axle)) byAxle.set(axle, { Left: [], Right: [] });
 
-      const unit = (it.unit ?? "") || (unitHint ? unitHint(label) : "") || "";
+      const unit =
+        (it.unit ?? "") || (unitHint ? unitHint(label) : "") || "";
       const cell: MetricCell = {
         metric,
         idx,
@@ -122,13 +113,16 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
     });
 
     return Array.from(byAxle.entries()).map(([axle, sides]) => {
-      const left = expandDuals(axle, sides.Left).sort((a, b) => orderCompare(a.metric, b.metric));
-      const right = expandDuals(axle, sides.Right).sort((a, b) => orderCompare(a.metric, b.metric));
+      const left = expandDuals(axle, sides.Left).sort((a, b) =>
+        orderCompare(a.metric, b.metric),
+      );
+      const right = expandDuals(axle, sides.Right).sort((a, b) =>
+        orderCompare(a.metric, b.metric),
+      );
       return { axle, left, right };
     });
   }, [items, unitHint]);
 
-  // UI toggles
   const [open, setOpen] = useState(true);
   const [showKpa, setShowKpa] = useState(true);
 
@@ -137,7 +131,8 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
     items.forEach((it, i) => (m[i] = !!String(it.value ?? "").trim()));
     return m;
   });
-  const count = (cells: MetricCell[]) => cells.reduce((a, r) => a + (filledMap[r.idx] ? 1 : 0), 0);
+  const count = (cells: MetricCell[]) =>
+    cells.reduce((a, r) => a + (filledMap[r.idx] ? 1 : 0), 0);
 
   const commit = (idx: number, el: HTMLInputElement | null) => {
     if (!el) return;
@@ -153,6 +148,7 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
   };
 
   type RowTriplet = { metric: string; left?: MetricCell; right?: MetricCell };
+
   const buildTriplets = (g: AxleGroup): RowTriplet[] => {
     const map = new Map<string, RowTriplet>();
     const add = (c: MetricCell, which: "left" | "right") => {
@@ -162,7 +158,9 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
     };
     g.left.forEach((c) => add(c, "left"));
     g.right.forEach((c) => add(c, "right"));
-    return Array.from(map.values()).sort((a, b) => orderCompare(a.metric, b.metric));
+    return Array.from(map.values()).sort((a, b) =>
+      orderCompare(a.metric, b.metric),
+    );
   };
 
   const InputWithInlineUnit = ({
@@ -180,36 +178,47 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
   }) => {
     const spanRef = useRef<HTMLSpanElement | null>(null);
 
-    const seedText = () => {
+    const kSeed = () => {
       if (!isPressure) return unit;
       const k = kpaFromPsi(defaultValue);
-      return showKpaHint ? `psi (${k ?? "—"} kPa)` : "psi";
+      if (!showKpaHint) return "psi";
+      return k != null ? `psi (${k} kPa)` : "psi (— kPa)";
     };
 
     const onInput = (e: React.FormEvent<HTMLInputElement>) => {
       if (!isPressure || !spanRef.current) return;
       const k = kpaFromPsi(e.currentTarget.value);
-      spanRef.current.textContent = showKpaHint ? `psi (${k ?? "—"} kPa)` : "psi";
+      if (!showKpaHint) {
+        spanRef.current.textContent = "psi";
+      } else if (k != null) {
+        spanRef.current.textContent = `psi (${k} kPa)`;
+      } else {
+        spanRef.current.textContent = "psi (— kPa)";
+      }
     };
 
     return (
-      <div className="relative w-40">
+      <div className="relative w-full max-w-[11rem]">
         <input
           name={`air-${idx}`}
           defaultValue={defaultValue}
-          className="w-full rounded border border-gray-600 bg-black px-2 py-1 pr-16 text-sm text-white outline-none placeholder:text-zinc-400"
+          tabIndex={0}
+          className="w-full rounded-lg border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 pr-20 text-sm text-white placeholder:text-neutral-500 focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
           placeholder="Value"
           autoComplete="off"
           inputMode="decimal"
           onInput={onInput}
           onBlur={(e) => commit(idx, e.currentTarget)}
-          onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
+          onKeyDown={(e) =>
+            e.key === "Enter" &&
+            (e.currentTarget as HTMLInputElement).blur()
+          }
         />
         <span
           ref={spanRef}
-          className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-zinc-400"
+          className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-neutral-400"
         >
-          {seedText()}
+          {kSeed()}
         </span>
       </div>
     );
@@ -218,15 +227,15 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
   const AxleCard = ({ g }: { g: AxleGroup }) => {
     const rows = buildTriplets(g);
     return (
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3">
+      <div className="rounded-2xl border border-white/8 bg-black/40 p-4 shadow-card backdrop-blur-md">
         <div
-          className="mb-3 text-lg font-semibold text-orange-400"
+          className="mb-3 text-lg font-semibold text-accent"
           style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
         >
           {g.axle}
         </div>
 
-        <div className="mb-2 grid grid-cols-[1fr_auto_1fr] items-center gap-4 text-xs text-zinc-400">
+        <div className="mb-2 grid grid-cols-[1fr_auto_1fr] items-center gap-4 text-xs text-neutral-400">
           <div>Left</div>
           <div className="text-center">Item</div>
           <div className="text-right">Right</div>
@@ -236,13 +245,17 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
           <div className="space-y-3">
             {rows.map((row, i) => {
               const leftUnit =
-                row.left?.unit ?? (unitHint ? unitHint(row.left?.fullLabel ?? "") : "") ?? "";
+                row.left?.unit ??
+                (unitHint ? unitHint(row.left?.fullLabel ?? "") : "") ??
+                "";
               const rightUnit =
-                row.right?.unit ?? (unitHint ? unitHint(row.right?.fullLabel ?? "") : "") ?? "";
+                row.right?.unit ??
+                (unitHint ? unitHint(row.right?.fullLabel ?? "") : "") ??
+                "";
               return (
                 <div
                   key={`${row.metric}-${i}`}
-                  className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded bg-zinc-950/70 p-3"
+                  className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded-xl bg-neutral-950/70 p-3"
                 >
                   <div>
                     {row.left ? (
@@ -254,7 +267,7 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
                         showKpaHint={showKpa}
                       />
                     ) : (
-                      <div className="h-[30px]" />
+                      <div className="h-[34px]" />
                     )}
                   </div>
 
@@ -276,7 +289,7 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
                         showKpaHint={showKpa}
                       />
                     ) : (
-                      <div className="h-[30px]" />
+                      <div className="h-[34px]" />
                     )}
                   </div>
                 </div>
@@ -292,7 +305,7 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
     <div className="grid gap-3">
       <div className="flex items-center justify-between gap-3 px-1">
         <div
-          className="hidden text-xs text-zinc-400 md:block"
+          className="hidden text-xs text-neutral-400 md:block"
           style={{ fontFamily: "Roboto, system-ui, sans-serif" }}
         >
           {groups.map((g, i) => {
@@ -308,19 +321,21 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
         </div>
 
         <div className="flex items-center gap-3">
-          <label className="flex select-none items-center gap-2 text-xs text-zinc-300">
+          <label className="flex select-none items-center gap-2 text-xs text-neutral-300">
             <input
               type="checkbox"
               className="h-3 w-3 accent-orange-500"
               checked={showKpa}
               onChange={(e) => setShowKpa(e.target.checked)}
+              tabIndex={-1}
             />
             kPa hint
           </label>
 
           <button
             onClick={() => setOpen((v) => !v)}
-            className="rounded bg-zinc-700 px-2 py-1 text-xs text-white hover:bg-zinc-600"
+            className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs text-white hover:border-accent hover:bg-white/10"
+            tabIndex={-1}
           >
             {open ? "Collapse" : "Expand"}
           </button>
@@ -336,7 +351,7 @@ export default function AirCornerGrid({ sectionIndex, items, unitHint, onAddAxle
   );
 }
 
-/** Inline axle picker (unchanged) */
+/** Inline axle picker (same, but glassy) */
 function AddAxlePicker({
   groups,
   onAddAxle,
@@ -356,9 +371,9 @@ function AddAxlePicker({
   }, [existing]);
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 px-1">
       <select
-        className="rounded border border-zinc-800 bg-zinc-900 px-2 py-1 text-sm text-white"
+        className="rounded-lg border border-neutral-700 bg-neutral-900/80 px-2 py-1 text-sm text-white"
         value={pending}
         onChange={(e) => setPending(e.target.value)}
       >
@@ -370,7 +385,7 @@ function AddAxlePicker({
         ))}
       </select>
       <button
-        className="rounded bg-orange-600 px-3 py-1 text-sm font-semibold text-black hover:bg-orange-500 disabled:opacity-40"
+        className="rounded-lg bg-accent px-3 py-1 text-sm font-semibold text-black hover:bg-orange-500 disabled:opacity-40"
         onClick={() => pending && onAddAxle(pending)}
         disabled={!pending}
       >
