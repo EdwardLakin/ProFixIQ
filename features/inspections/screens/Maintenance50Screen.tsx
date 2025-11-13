@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
+import toast from "react-hot-toast";
 
 import PauseResumeButton from "@inspections/lib/inspection/PauseResume";
 import StartListeningButton from "@inspections/lib/inspection/StartListeningButton";
@@ -29,8 +30,8 @@ import { InspectionFormCtx } from "@inspections/lib/inspection/ui/InspectionForm
 import { SaveInspectionButton } from "@inspections/components/inspection/SaveInspectionButton";
 import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
 import { startVoiceRecognition } from "@inspections/lib/inspection/voiceControl";
-import toast from "react-hot-toast";
 import PageShell from "@/features/shared/components/PageShell";
+import { Button } from "@shared/components/ui/Button";
 
 /* ---------- Props for screen usage (modal + page) ---------- */
 type ScreenProps = {
@@ -153,35 +154,35 @@ function applyUnitsHydraulic(
 export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
   const searchParams = useSearchParams();
   const p = props.params ?? {};
+  const rootRef = useRef<HTMLDivElement | null>(null);
 
-  // prefer params passed from modal, then URL
   const get = (k: string): string => {
     const v = p[k];
     if (v !== undefined && v !== null) return String(v);
     return searchParams.get(k) ?? "";
   };
 
-  // detect true iframe usage only
-  const inIframe =
-    typeof window !== "undefined" && window.self !== window.top;
-
-  // compact spacing when embedded from modal
-  const compact =
+  const isEmbed =
     !!props.embed ||
-    ["1", "true", "yes"].includes((get("embed") || get("compact")).toLowerCase());
+    ["1", "true", "yes"].includes(
+      (get("embed") || get("compact")).toLowerCase()
+    );
 
   const workOrderLineId = get("workOrderLineId") || null;
   const workOrderId = get("workOrderId") || null;
-  const inspectionId = useMemo<string>(() => get("inspectionId") || uuidv4(), [p, searchParams]);
+  const inspectionId = useMemo<string>(
+    () => get("inspectionId") || uuidv4(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [searchParams]
+  );
 
   const [unit, setUnit] = useState<"metric" | "imperial">("metric");
   const [isListening, setIsListening] = useState<boolean>(false);
   const [isPaused, setIsPaused] = useState<boolean>(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
-  const templateName: string = props.template || get("template") || "maintenance50";
+  const templateName: string = props.template || get("template") || "Maintenance 50";
 
-  // minimal session
   const initialSession = useMemo<Partial<InspectionSession>>(
     () => ({
       id: inspectionId,
@@ -299,6 +300,7 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
         toast.error("Missing work order id — saved locally only", { id: tId });
       }
     } catch (e) {
+      // eslint-disable-next-line no-console
       console.error("Submit AI failed:", e);
       toast.error("Couldn't add to work order");
     } finally {
@@ -363,23 +365,34 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
       buildSuspensionSection(),
       buildDrivelineSection(),
     ];
-    updateInspection({ sections: applyUnitsHydraulic(next, unit) as typeof session.sections });
+    updateInspection({
+      sections: applyUnitsHydraulic(next, unit) as typeof session.sections,
+    });
   }, [session, updateInspection, unit]);
 
   // re-apply units
   useEffect(() => {
     if (!session?.sections?.length) return;
-    updateInspection({ sections: applyUnitsHydraulic(session.sections, unit) as typeof session.sections });
+    updateInspection({
+      sections: applyUnitsHydraulic(session.sections, unit) as typeof session.sections,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unit]);
 
-  // transcript
+  // transcript → commands
   const handleTranscript = async (text: string): Promise<void> => {
     const commands: ParsedCommand[] = await interpretCommand(text);
     const sess: InspectionSession | undefined = session ?? undefined;
     if (!sess) return;
     for (const command of commands) {
-      await handleTranscriptFn({ command, session: sess, updateInspection, updateItem, updateSection, finishSession });
+      await handleTranscriptFn({
+        command,
+        session: sess,
+        updateInspection,
+        updateItem,
+        updateSection,
+        finishSession,
+      });
     }
   };
 
@@ -403,67 +416,170 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
     };
   }, []);
 
-  // only inject isolation CSS when truly inside an iframe
+  /* 🧹 embed-safe scrubber (remove full-screen / overflow locks) */
   useEffect(() => {
-    if (!inIframe) return;
-    try {
-      document.documentElement.classList.add("inspection-embed");
-      document.body?.classList.add("inspection-embed");
-      const CSS = `
-        html.inspection-embed, body.inspection-embed { background:#000 !important; overflow:auto !important; }
-        .inspection-embed header,
-        .inspection-embed nav,
-        .inspection-embed aside,
-        .inspection-embed footer,
-        .inspection-embed [data-app-chrome],
-        .inspection-embed .app-shell,
-        .inspection-embed .global-header,
-        .inspection-embed .global-footer { display:none !important; visibility:hidden !important; }
-        .inspection-embed main,
-        .inspection-embed #__next > *:not(main) { margin:0 !important; padding:0 !important; width:100% !important; max-width:none !important; }
-      `;
-      const tag = document.createElement("style");
-      tag.setAttribute("data-inspection-embed-style", "1");
-      tag.appendChild(document.createTextNode(CSS));
-      document.head.appendChild(tag);
-      const mo = new MutationObserver(() => {
-        if (!document.querySelector('style[data-inspection-embed-style="1"]')) {
-          const t2 = document.createElement("style");
-          t2.setAttribute("data-inspection-embed-style", "1");
-          t2.appendChild(document.createTextNode(CSS));
-          document.head.appendChild(t2);
+    if (!isEmbed) return;
+    const root = rootRef.current;
+    if (!root) return;
+
+    const BAD = [
+      "h-screen",
+      "min-h-screen",
+      "max-h-screen",
+      "overflow-hidden",
+      "fixed",
+      "inset-0",
+      "w-screen",
+      "overscroll-contain",
+      "touch-pan-y",
+    ];
+
+    const scrub = (el: HTMLElement) => {
+      if (!el.className) return;
+      const classes = el.className.split(" ");
+      const filtered = classes.filter((c) => c && !BAD.includes(c));
+      if (filtered.length !== classes.length) {
+        el.className = filtered.join(" ");
+      }
+      if (el.style?.overflow === "hidden") {
+        el.style.overflow = "visible";
+      }
+    };
+
+    root.querySelectorAll<HTMLElement>("*").forEach(scrub);
+
+    const obs = new MutationObserver((muts) => {
+      for (const m of muts) {
+        if (m.type === "attributes" && m.target instanceof HTMLElement) {
+          scrub(m.target);
         }
-      });
-      mo.observe(document.documentElement, { childList: true, subtree: true });
-      return () => mo.disconnect();
-    } catch {}
-  }, [inIframe]);
+        if (m.type === "childList") {
+          m.addedNodes.forEach((n) => {
+            if (n instanceof HTMLElement) {
+              scrub(n);
+              n.querySelectorAll?.("*")?.forEach((child) => {
+                if (child instanceof HTMLElement) scrub(child);
+              });
+            }
+          });
+        }
+      }
+    });
+
+    obs.observe(root, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ["class", "style"],
+    });
+
+    return () => obs.disconnect();
+  }, [isEmbed]);
+
+  /* 🔐 focus trap while embedded (keep Tab inside) */
+  useEffect(() => {
+    if (!isEmbed) return;
+    const root = rootRef.current;
+    if (!root) return;
+
+    const selector =
+      'a[href], button, textarea, input, select, [tabindex]:not([tabindex="-1"])';
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return;
+
+      const focusables = Array.from(
+        root.querySelectorAll<HTMLElement>(selector)
+      ).filter(
+        (el) =>
+          !el.hasAttribute("disabled") &&
+          el.tabIndex !== -1 &&
+          el.getAttribute("aria-hidden") !== "true"
+      );
+
+      if (!focusables.length) return;
+
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+
+      if (!active || !root.contains(active)) {
+        e.preventDefault();
+        first.focus();
+        return;
+      }
+
+      if (e.shiftKey) {
+        if (active === first) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else {
+        if (active === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+
+    root.addEventListener("keydown", handleKeyDown);
+    return () => root.removeEventListener("keydown", handleKeyDown);
+  }, [isEmbed]);
 
   if (!session || !session.sections || session.sections.length === 0) {
-    return <div className="p-4 text-white">Loading inspection…</div>;
+    return <div className="p-4 text-sm text-neutral-300">Loading inspection…</div>;
   }
 
-  const isMeasurements = (t?: string): boolean => (t || "").toLowerCase().includes("measurements");
+  const isMeasurements = (t?: string): boolean =>
+    (t || "").toLowerCase().includes("measurements");
 
-  // compact spacing when embed flag is set (no global CSS)
-  const shell = compact ? "mx-auto max-w-[1100px] px-3 pb-8" : "px-4 pb-14";
-  const controlsGap = "mb-4 grid grid-cols-3 gap-2";
-  const card =
-    "rounded-lg border border-zinc-800 bg-zinc-900 " + (compact ? "p-3 mb-6" : "p-4 mb-8");
-  const sectionTitle = "text-xl font-semibold text-orange-400 text-center";
-  const hint = "text-xs text-zinc-400" + (compact ? " mt-1 block text-center" : "");
+  const shell = isEmbed
+    ? "mx-auto max-w-[1100px] px-3 pb-8"
+    : "max-w-5xl mx-auto px-3 md:px-6 pb-16";
+
+  const cardBase =
+    "rounded-2xl border border-white/10 bg-black/30 backdrop-blur-md shadow-card";
+  const headerCard = `${cardBase} px-4 py-4 md:px-6 md:py-5 mb-6`;
+  const sectionCard = `${cardBase} px-4 py-4 md:px-5 md:py-5 mb-6`;
+
+  const sectionTitle =
+    "text-lg md:text-xl font-semibold text-accent text-center tracking-wide";
+  const hint =
+    "mt-1 block text-center text-[11px] uppercase tracking-[0.12em] text-neutral-500";
 
   const Body = (
-    <div className={shell}>
-      {/* Title only (Customer/Vehicle removed) */}
-      <div className={card}>
-        <div className="text-center text-lg font-semibold text-orange-400">
-          {templateName === "maintenance50" ? "Maintenance 50" : templateName}
+    <div
+      ref={rootRef}
+      className={shell + (isEmbed ? " inspection-embed" : "")}
+    >
+      {isEmbed && (
+        <style jsx global>{`
+          .inspection-embed,
+          .inspection-embed * {
+            overscroll-behavior: auto !important;
+          }
+        `}</style>
+      )}
+
+      {/* Header */}
+      <div className={headerCard}>
+        <div className="mb-2 text-center">
+          <div className="text-xs font-blackops uppercase tracking-[0.18em] text-neutral-400">
+            Inspection
+          </div>
+          <div className="mt-1 text-xl font-blackops text-white">
+            {session?.templateitem || templateName || "Maintenance 50"}
+          </div>
         </div>
       </div>
 
-      <div className={controlsGap}>
-        <StartListeningButton isListening={isListening} setIsListening={setIsListening} onStart={startListening} />
+      {/* Controls */}
+      <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <StartListeningButton
+          isListening={isListening}
+          setIsListening={setIsListening}
+          onStart={startListening}
+        />
         <PauseResumeButton
           isPaused={isPaused}
           isListening={isListening}
@@ -480,38 +596,54 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
             resumeSession();
             recognitionRef.current = startVoiceRecognition(handleTranscript);
           }}
-          recognitionInstance={recognitionRef.current as unknown as SpeechRecognition | null}
+          recognitionInstance={
+            recognitionRef.current as unknown as SpeechRecognition | null
+          }
           onTranscript={handleTranscript}
           setRecognitionRef={(instance: SpeechRecognition | null): void => {
-            (recognitionRef as React.MutableRefObject<SpeechRecognition | null>).current = instance ?? null;
+            (
+              recognitionRef as React.MutableRefObject<SpeechRecognition | null>
+            ).current = instance ?? null;
           }}
         />
-        <button
-          onClick={(): void => setUnit(unit === "metric" ? "imperial" : "metric")}
-          className="w-full rounded bg-zinc-700 py-2 text-white hover:bg-zinc-600"
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full justify-center"
+          onClick={(): void =>
+            setUnit(unit === "metric" ? "imperial" : "metric")
+          }
         >
-          Unit: {unit === "metric" ? "Metric" : "Imperial"}
-        </button>
+          Unit: {unit === "metric" ? "Metric (mm / kPa)" : "Imperial (in / psi)"}
+        </Button>
       </div>
 
-      <ProgressTracker
-        currentItem={session.currentItemIndex}
-        currentSection={session.currentSectionIndex}
-        totalSections={session.sections.length}
-        totalItems={session.sections[session.currentSectionIndex]?.items.length || 0}
-      />
+      {/* Progress */}
+      <div className="mb-6 rounded-2xl border border-white/5 bg-black/20 px-4 py-3 backdrop-blur">
+        <ProgressTracker
+          currentItem={session.currentItemIndex}
+          currentSection={session.currentSectionIndex}
+          totalSections={session.sections.length}
+          totalItems={
+            session.sections[session.currentSectionIndex]?.items.length || 0
+          }
+        />
+      </div>
 
+      {/* Sections */}
       <InspectionFormCtx.Provider value={{ updateItem }}>
         {session.sections.map((section: InspectionSection, sectionIndex: number) => (
-          <div key={`${section.title}-${sectionIndex}`} className={card}>
+          <div key={`${section.title}-${sectionIndex}`} className={sectionCard}>
             <h2 className={sectionTitle}>{section.title}</h2>
             {isMeasurements(section.title) && (
               <span className={hint}>
-                {unit === "metric" ? "Enter mm / kPa / N·m" : "Enter in / psi / ft·lb"}
+                {unit === "metric"
+                  ? "Enter mm / kPa / N·m"
+                  : "Enter in / psi / ft·lb"}
               </span>
             )}
 
-            <div className={compact ? "mt-3" : "mt-4"}>
+            <div className="mt-4">
               {isMeasurements(section.title) ? (
                 <CornerGrid sectionIndex={sectionIndex} items={section.items} />
               ) : (
@@ -521,18 +653,35 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
                   sectionIndex={sectionIndex}
                   showNotes
                   showPhotos
-                  onUpdateStatus={(secIdx: number, itemIdx: number, status: InspectionItemStatus): void => {
+                  onUpdateStatus={(
+                    secIdx: number,
+                    itemIdx: number,
+                    status: InspectionItemStatus
+                  ): void => {
                     updateItem(secIdx, itemIdx, { status });
                   }}
-                  onUpdateNote={(secIdx: number, itemIdx: number, note: string): void => {
+                  onUpdateNote={(
+                    secIdx: number,
+                    itemIdx: number,
+                    note: string
+                  ): void => {
                     updateItem(secIdx, itemIdx, { notes: note });
                   }}
-                  onUpload={(photoUrl: string, secIdx: number, itemIdx: number): void => {
-                    const prev = session.sections[secIdx].items[itemIdx].photoUrls ?? [];
-                    updateItem(secIdx, itemIdx, { photoUrls: [...prev, photoUrl] });
+                  onUpload={(
+                    photoUrl: string,
+                    secIdx: number,
+                    itemIdx: number
+                  ): void => {
+                    const prev =
+                      session.sections[secIdx].items[itemIdx].photoUrls ?? [];
+                    updateItem(secIdx, itemIdx, {
+                      photoUrls: [...prev, photoUrl],
+                    });
                   }}
                   requireNoteForAI
-                  onSubmitAI={(secIdx, itemIdx) => void submitAIForItem(secIdx, itemIdx)}
+                  onSubmitAI={(secIdx, itemIdx) =>
+                    void submitAIForItem(secIdx, itemIdx)
+                  }
                   isSubmittingAI={isSubmittingAI}
                 />
               )}
@@ -541,29 +690,39 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
         ))}
       </InspectionFormCtx.Provider>
 
-      <div className={"flex items-center justify-between gap-4 " + (compact ? "mt-6" : "mt-8")}>
-        <div className="flex items-center gap-3">
-          <SaveInspectionButton session={session} workOrderLineId={workOrderLineId ?? ""} />
-          <FinishInspectionButton session={session} workOrderLineId={workOrderLineId ?? ""} />
+      {/* Footer */}
+      <div className="mt-8 flex flex-col gap-4 border-t border-white/5 pt-4 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-wrap items-center gap-3">
+          <SaveInspectionButton
+            session={session}
+            workOrderLineId={workOrderLineId ?? ""}
+          />
+          <FinishInspectionButton
+            session={session}
+            workOrderLineId={workOrderLineId ?? ""}
+          />
+          {!workOrderLineId && (
+            <div className="text-xs text-red-400">
+              Missing <code>workOrderLineId</code> — save/finish will be blocked.
+            </div>
+          )}
         </div>
 
-        {!workOrderLineId && (
-          <div className="text-xs text-red-400">
-            Missing <code>workOrderLineId</code> in URL — save/finish will be blocked.
-          </div>
-        )}
-
-        <div className="ml-auto text-xs text-zinc-400">P = PASS, F = FAIL, NA = Not Applicable</div>
+        <div className="text-xs text-neutral-400 md:text-right">
+          <span className="font-semibold text-neutral-200">Legend:</span>{" "}
+          P = Pass &nbsp;•&nbsp; F = Fail &nbsp;•&nbsp; NA = Not applicable
+        </div>
       </div>
     </div>
   );
 
-  // embed/compact → no shell
-  if (compact) return Body;
+  if (isEmbed) return Body;
 
-  // normal page → shell
   return (
-    <PageShell title="Maintenance 50" description="Quick 50-point maintenance inspection.">
+    <PageShell
+      title={session?.templateitem || templateName || "Maintenance 50"}
+      description="Quick 50-point hydraulic brake maintenance inspection."
+    >
       {Body}
     </PageShell>
   );

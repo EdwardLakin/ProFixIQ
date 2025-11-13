@@ -36,6 +36,7 @@ import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicl
 import { buildAirAxleItems } from "@inspections/lib/inspection/builders/addAxleHelpers";
 import { startVoiceRecognition } from "@inspections/lib/inspection/voiceControl";
 import PageShell from "@/features/shared/components/PageShell";
+import { Button } from "@shared/components/ui/Button";
 
 /* ------------------------------ Header adapters ------------------------------ */
 type HeaderCustomer = {
@@ -219,8 +220,8 @@ function applyUnitsAir(
 /* ------------------------------ Page (Screen) ------------------------------ */
 export default function Maintenance50AirPage(): JSX.Element {
   const searchParams = useSearchParams();
+  const rootRef = useRef<HTMLDivElement | null>(null);
 
-  // Force embed when actually inside an iframe OR when flags are present
   const isEmbed = useMemo(() => {
     const flag =
       ["1", "true", "yes"].includes(
@@ -299,7 +300,7 @@ export default function Maintenance50AirPage(): JSX.Element {
     updateQuoteLine,
   } = useInspectionSession(initialSession);
 
-  /* ---------- AI submit flow parity with Hydraulic ---------- */
+  /* ---------- AI submit flow ---------- */
   const inFlightRef = useRef<Set<string>>(new Set());
   const isSubmittingAI = (secIdx: number, itemIdx: number): boolean =>
     inFlightRef.current.has(`${secIdx}:${itemIdx}`);
@@ -323,7 +324,6 @@ export default function Maintenance50AirPage(): JSX.Element {
     try {
       const desc = it.item ?? it.name ?? "Item";
 
-      // 1) placeholder for local quote UI
       const id = uuidv4();
       const placeholder: QuoteLineItem = {
         id,
@@ -343,7 +343,6 @@ export default function Maintenance50AirPage(): JSX.Element {
       };
       addQuoteLine(placeholder);
 
-      // 2) AI suggestion (vehicle context if present)
       const tId = toast.loading("Getting AI estimate…");
       const suggestion = await requestQuoteSuggestion({
         item: desc,
@@ -377,7 +376,6 @@ export default function Maintenance50AirPage(): JSX.Element {
         aiState: "done",
       });
 
-      // 3) Persist to Work Order if we have one
       if (workOrderId) {
         await addWorkOrderLineFromSuggestion({
           workOrderId,
@@ -401,7 +399,7 @@ export default function Maintenance50AirPage(): JSX.Element {
     }
   };
 
-  /* ------------------------------ hydrate / persist ------------------------------ */
+  /* ---------- hydrate / persist ---------- */
   useEffect(() => {
     const key = `inspection-${inspectionId}`;
     const saved = typeof window !== "undefined" ? localStorage.getItem(key) : null;
@@ -449,7 +447,7 @@ export default function Maintenance50AirPage(): JSX.Element {
     };
   }, [session, inspectionId, initialSession]);
 
-  /* ------------------------------ sections + unit toggle ------------------------------ */
+  /* ---------- sections + unit toggle ---------- */
   useEffect(() => {
     if (!session) return;
     if ((session.sections?.length ?? 0) > 0) return;
@@ -474,47 +472,7 @@ export default function Maintenance50AirPage(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unit]);
 
-  /* ------------------------------ header backfill (same as Hydraulic) ------------------------------ */
-  useEffect(() => {
-    (async () => {
-      if (!session || !workOrderId) return;
-      const haveName =
-        (session.customer?.first_name || session.customer?.last_name || "")
-          .trim().length > 0;
-      const haveVehicle =
-        (session.vehicle?.make || session.vehicle?.model || "")
-          .trim().length > 0;
-      if (haveName && haveVehicle) return;
-
-      try {
-        const res = await fetch(`/api/work-orders/header?id=${workOrderId}`);
-        if (!res.ok) return;
-
-        const j = (await res.json()) as {
-          customer?: Partial<SessionCustomer>;
-          vehicle?: Partial<SessionVehicle>;
-        };
-
-        const nextCust: Partial<SessionCustomer> = {
-          ...(session.customer ?? {}),
-          ...(j.customer ?? {}),
-        };
-        const nextVeh: Partial<SessionVehicle> = {
-          ...(session.vehicle ?? {}),
-          ...(j.vehicle ?? {}),
-        };
-
-        updateInspection({
-          customer: nextCust,
-          vehicle: nextVeh,
-        } as Partial<InspectionSession>);
-      } catch {
-        // silent fail
-      }
-    })();
-  }, [session, workOrderId, updateInspection]);
-
-  /* ------------------------------ speech → commands ------------------------------ */
+  /* ---------- speech → commands ---------- */
   const handleTranscript = async (text: string): Promise<void> => {
     const commands: ParsedCommand[] = await interpretCommand(text);
     const sess: InspectionSession | undefined = session ?? undefined;
@@ -534,7 +492,9 @@ export default function Maintenance50AirPage(): JSX.Element {
 
   const startListening = (): void => {
     if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch {}
+      try {
+        recognitionRef.current.stop();
+      } catch {}
     }
     recognitionRef.current = startVoiceRecognition(async (text) => {
       await handleTranscript(text);
@@ -544,73 +504,120 @@ export default function Maintenance50AirPage(): JSX.Element {
 
   useEffect(() => {
     return () => {
-      try { recognitionRef.current?.stop(); } catch {}
+      try {
+        recognitionRef.current?.stop();
+      } catch {}
     };
   }, []);
 
-  // --- Screen embed: hide shell + notify parent (robust) ---
+  /* 🧹 embed-safe scrubber */
   useEffect(() => {
     if (!isEmbed) return;
+    const root = rootRef.current;
+    if (!root) return;
 
-    try {
-      document.documentElement.classList.add("inspection-embed");
-      document.body?.classList.add("inspection-embed");
+    const BAD = [
+      "h-screen",
+      "min-h-screen",
+      "max-h-screen",
+      "overflow-hidden",
+      "fixed",
+      "inset-0",
+      "w-screen",
+      "overscroll-contain",
+      "touch-pan-y",
+    ];
 
-      const CSS = `
-        html.inspection-embed, body.inspection-embed { background:#000 !important; overflow:auto !important; }
-        .inspection-embed header,
-        .inspection-embed nav,
-        .inspection-embed aside,
-        .inspection-embed footer,
-        .inspection-embed [data-app-chrome],
-        .inspection-embed [data-app-header],
-        .inspection-embed [data-app-nav],
-        .inspection-embed [data-app-sidebar],
-        .inspection-embed [data-app-footer],
-        .inspection-embed .app-shell,
-        .inspection-embed .app-shell-nav,
-        .inspection-embed .app-shell-header,
-        .inspection-embed .app-shell-footer,
-        .inspection-embed .app-sidebar,
-        .inspection-embed .app-topbar,
-        .inspection-embed .nav-tabs,
-        .inspection-embed .tabs-bar,
-        .inspection-embed .dashboard-tabs,
-        .inspection-embed .global-nav,
-        .inspection-embed .global-header,
-        .inspection-embed .global-footer {
-          display: none !important; visibility: hidden !important;
+    const scrub = (el: HTMLElement) => {
+      if (!el.className) return;
+      const classes = el.className.split(" ");
+      const filtered = classes.filter((c) => c && !BAD.includes(c));
+      if (filtered.length !== classes.length) {
+        el.className = filtered.join(" ");
+      }
+      if (el.style?.overflow === "hidden") {
+        el.style.overflow = "visible";
+      }
+    };
+
+    root.querySelectorAll<HTMLElement>("*").forEach(scrub);
+
+    const obs = new MutationObserver((muts) => {
+      for (const m of muts) {
+        if (m.type === "attributes" && m.target instanceof HTMLElement) {
+          scrub(m.target);
         }
-        .inspection-embed main,
-        .inspection-embed [data-app-content],
-        .inspection-embed .app-content,
-        .inspection-embed #__next > *:not(main) {
-          margin: 0 !important; padding: 0 !important; width: 100% !important; max-width: none !important;
+        if (m.type === "childList") {
+          m.addedNodes.forEach((n) => {
+            if (n instanceof HTMLElement) {
+              scrub(n);
+              n.querySelectorAll?.("*")?.forEach((child) => {
+                if (child instanceof HTMLElement) scrub(child);
+              });
+            }
+          });
         }
-      `;
-      const tag = document.createElement("style");
-      tag.setAttribute("data-inspection-embed-style", "1");
-      tag.appendChild(document.createTextNode(CSS));
-      document.head.appendChild(tag);
+      }
+    });
 
-      const mo = new MutationObserver(() => {
-        if (!document.querySelector('style[data-inspection-embed-style="1"]')) {
-          const t2 = document.createElement("style");
-          t2.setAttribute("data-inspection-embed-style", "1");
-          t2.appendChild(document.createTextNode(CSS));
-          document.head.appendChild(t2);
-        }
-      });
-      mo.observe(document.documentElement, { childList: true, subtree: true });
+    obs.observe(root, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ["class", "style"],
+    });
 
-      if (window.parent && window.parent !== window) {
-        window.parent.postMessage({ type: "inspection:ready" }, window.location.origin);
+    return () => obs.disconnect();
+  }, [isEmbed]);
+
+  /* 🔐 focus trap when embedded */
+  useEffect(() => {
+    if (!isEmbed) return;
+    const root = rootRef.current;
+    if (!root) return;
+
+    const selector =
+      'a[href], button, textarea, input, select, [tabindex]:not([tabindex="-1"])';
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return;
+
+      const focusables = Array.from(
+        root.querySelectorAll<HTMLElement>(selector)
+      ).filter(
+        (el) =>
+          !el.hasAttribute("disabled") &&
+          el.tabIndex !== -1 &&
+          el.getAttribute("aria-hidden") !== "true"
+      );
+
+      if (!focusables.length) return;
+
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+
+      if (!active || !root.contains(active)) {
+        e.preventDefault();
+        first.focus();
+        return;
       }
 
-      return () => mo.disconnect();
-    } catch {
-      /* no-op */
-    }
+      if (e.shiftKey) {
+        if (active === first) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else {
+        if (active === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+
+    root.addEventListener("keydown", handleKeyDown);
+    return () => root.removeEventListener("keydown", handleKeyDown);
   }, [isEmbed]);
 
   if (!session || !session.sections || session.sections.length === 0) {
@@ -620,20 +627,43 @@ export default function Maintenance50AirPage(): JSX.Element {
   const isCorner = (t?: string): boolean =>
     (t || "").toLowerCase().includes("corner");
 
-  /* ------------------------------ layout parity with Hydraulic ------------------------------ */
-  const shell = isEmbed ? "mx-auto max-w-[1100px] px-3 pb-8" : "px-4 pb-14";
-  const controlsGap = "mb-4 grid grid-cols-3 gap-2";
-  const card =
-    "rounded-lg border border-zinc-800 bg-zinc-900 " +
-    (isEmbed ? "p-3 mb-6" : "p-4 mb-8");
-  const sectionTitle = "text-xl font-semibold text-orange-400 text-center";
-  const hint = "text-xs text-zinc-400" + (isEmbed ? " mt-1 block text-center" : "");
+  const shell = isEmbed
+    ? "mx-auto max-w-[1100px] px-3 pb-8"
+    : "max-w-5xl mx-auto px-3 md:px-6 pb-16";
+
+  const cardBase =
+    "rounded-2xl border border-white/10 bg-black/30 backdrop-blur-md shadow-card";
+  const headerCard = `${cardBase} px-4 py-4 md:px-6 md:py-5 mb-6`;
+  const sectionCard = `${cardBase} px-4 py-4 md:px-5 md:py-5 mb-6`;
+
+  const sectionTitle =
+    "text-lg md:text-xl font-semibold text-accent text-center tracking-wide";
+  const hint =
+    "mt-1 block text-center text-[11px] uppercase tracking-[0.12em] text-neutral-500";
 
   const Body = (
-    <div className={shell}>
-      <div className={card}>
-        <div className="text-center text-lg font-semibold text-orange-400">
-          {templateName}
+    <div
+      ref={rootRef}
+      className={shell + (isEmbed ? " inspection-embed" : "")}
+    >
+      {isEmbed && (
+        <style jsx global>{`
+          .inspection-embed,
+          .inspection-embed * {
+            overscroll-behavior: auto !important;
+          }
+        `}</style>
+      )}
+
+      {/* Header */}
+      <div className={headerCard}>
+        <div className="mb-2 text-center">
+          <div className="text-xs font-blackops uppercase tracking-[0.18em] text-neutral-400">
+            Inspection
+          </div>
+          <div className="mt-1 text-xl font-blackops text-white">
+            {session?.templateitem || templateName || "Maintenance 50 – Air Brake CVIP"}
+          </div>
         </div>
         <CustomerVehicleHeader
           templateName=""
@@ -642,7 +672,8 @@ export default function Maintenance50AirPage(): JSX.Element {
         />
       </div>
 
-      <div className={controlsGap}>
+      {/* Controls */}
+      <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
         <StartListeningButton
           isListening={isListening}
           setIsListening={setIsListening}
@@ -655,7 +686,9 @@ export default function Maintenance50AirPage(): JSX.Element {
           onPause={(): void => {
             setIsPaused(true);
             pauseSession();
-            try { recognitionRef.current?.stop(); } catch {}
+            try {
+              recognitionRef.current?.stop();
+            } catch {}
           }}
           onResume={(): void => {
             setIsPaused(false);
@@ -672,32 +705,44 @@ export default function Maintenance50AirPage(): JSX.Element {
             ).current = instance ?? null;
           }}
         />
-        <button
-          onClick={(): void => setUnit(unit === "metric" ? "imperial" : "metric")}
-          className="w-full rounded bg-zinc-700 py-2 text-white hover:bg-zinc-600"
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full justify-center"
+          onClick={(): void =>
+            setUnit(unit === "metric" ? "imperial" : "metric")
+          }
         >
-          Unit: {unit === "metric" ? "Metric" : "Imperial"}
-        </button>
+          Unit: {unit === "metric" ? "Metric (mm / kPa)" : "Imperial (in / psi)"}
+        </Button>
       </div>
 
-      <ProgressTracker
-        currentItem={session.currentItemIndex}
-        currentSection={session.currentSectionIndex}
-        totalSections={session.sections.length}
-        totalItems={session.sections[session.currentSectionIndex]?.items.length || 0}
-      />
+      {/* Progress */}
+      <div className="mb-6 rounded-2xl border border-white/5 bg-black/20 px-4 py-3 backdrop-blur">
+        <ProgressTracker
+          currentItem={session.currentItemIndex}
+          currentSection={session.currentSectionIndex}
+          totalSections={session.sections.length}
+          totalItems={
+            session.sections[session.currentSectionIndex]?.items.length || 0
+          }
+        />
+      </div>
 
+      {/* Sections */}
       <InspectionFormCtx.Provider value={{ updateItem }}>
         {session.sections.map((section: InspectionSection, sectionIndex: number) => (
-          <div key={`${section.title}-${sectionIndex}`} className={card}>
+          <div key={`${section.title}-${sectionIndex}`} className={sectionCard}>
             <h2 className={sectionTitle}>{section.title}</h2>
             {isCorner(section.title) && (
               <span className={hint}>
-                {unit === "metric" ? "Enter mm / kPa / N·m" : "Enter in / psi / ft·lb"}
+                {unit === "metric"
+                  ? "Enter mm / kPa / N·m"
+                  : "Enter in / psi / ft·lb"}
               </span>
             )}
 
-            <div className={isEmbed ? "mt-3" : "mt-4"}>
+            <div className="mt-4">
               {isCorner(section.title) ? (
                 <AirCornerGrid
                   sectionIndex={sectionIndex}
@@ -705,7 +750,9 @@ export default function Maintenance50AirPage(): JSX.Element {
                   unitHint={(label: string) => unitForAir(label, unit)}
                   onAddAxle={(axleLabel: string) => {
                     const extra = buildAirAxleItems(axleLabel);
-                    updateSection(sectionIndex, { items: [...section.items, ...extra] });
+                    updateSection(sectionIndex, {
+                      items: [...section.items, ...extra],
+                    });
                   }}
                 />
               ) : (
@@ -713,8 +760,8 @@ export default function Maintenance50AirPage(): JSX.Element {
                   title=""
                   section={section}
                   sectionIndex={sectionIndex}
-                  showNotes={true}
-                  showPhotos={true}
+                  showNotes
+                  showPhotos
                   onUpdateStatus={(
                     secIdx: number,
                     itemIdx: number,
@@ -752,12 +799,9 @@ export default function Maintenance50AirPage(): JSX.Element {
         ))}
       </InspectionFormCtx.Provider>
 
-      <div
-        className={
-          "flex items-center justify-between gap-4 " + (isEmbed ? "mt-6" : "mt-8")
-        }
-      >
-        <div className="flex items-center gap-3">
+      {/* Footer */}
+      <div className="mt-8 flex flex-col gap-4 border-t border-white/5 pt-4 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-wrap items-center gap-3">
           <SaveInspectionButton
             session={session}
             workOrderLineId={workOrderLineId ?? ""}
@@ -766,28 +810,26 @@ export default function Maintenance50AirPage(): JSX.Element {
             session={session}
             workOrderLineId={workOrderLineId ?? ""}
           />
+          {!workOrderLineId && (
+            <div className="text-xs text-red-400">
+              Missing <code>workOrderLineId</code> — save/finish will be blocked.
+            </div>
+          )}
         </div>
 
-        {!workOrderLineId && (
-          <div className="text-xs text-red-400">
-            Missing <code>workOrderLineId</code> in URL — save/finish will be blocked.
-          </div>
-        )}
-
-        <div className="ml-auto text-xs text-zinc-400">
-          P = PASS, F = FAIL, NA = Not Applicable
+        <div className="text-xs text-neutral-400 md:text-right">
+          <span className="font-semibold text-neutral-200">Legend:</span>{" "}
+          P = Pass &nbsp;•&nbsp; F = Fail &nbsp;•&nbsp; NA = Not applicable
         </div>
       </div>
     </div>
   );
 
-  // embed → raw
   if (isEmbed) return Body;
 
-  // normal page → shell
   return (
     <PageShell
-      title={templateName || "Maintenance 50 – Air Brake CVIP"}
+      title={session?.templateitem || templateName || "Maintenance 50 – Air Brake CVIP"}
       description="Air-brake CVIP multi-axle inspection."
     >
       {Body}

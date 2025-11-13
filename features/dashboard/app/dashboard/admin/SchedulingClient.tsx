@@ -5,11 +5,13 @@ import { useEffect, useMemo, useState } from "react";
 import { format, parseISO, isValid, addMinutes } from "date-fns";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import PageShell from "@/features/shared/components/PageShell";
+import { Button } from "@shared/components/ui/Button";
 
 type DB = Database;
 type Profile = DB["public"]["Tables"]["profiles"]["Row"];
-type Shift   = DB["public"]["Tables"]["tech_shifts"]["Row"];
-type Punch   = DB["public"]["Tables"]["punch_events"]["Row"];
+type Shift = DB["public"]["Tables"]["tech_shifts"]["Row"];
+type Punch = DB["public"]["Tables"]["punch_events"]["Row"];
 type UserLite = Pick<Profile, "id" | "full_name" | "role">;
 
 type PunchType =
@@ -29,7 +31,6 @@ const PUNCH_TYPES: PunchType[] = [
   "end",
 ];
 
-
 function minutesBetween(isoA: string, isoB: string): number {
   const a = parseISO(isoA);
   const b = parseISO(isoB);
@@ -44,7 +45,6 @@ function computeWorkedMinutes(shift: Shift, punches: Punch[]): number {
   if (!start) return 0;
   const base = end ? minutesBetween(start, end) : 0;
 
-  // aggregate break and lunch durations from event pairs
   let breakMinutes = 0;
   let lunchMinutes = 0;
 
@@ -54,7 +54,7 @@ function computeWorkedMinutes(shift: Shift, punches: Punch[]): number {
   const ordered = [...punches].sort(
     (a, b) =>
       (a.timestamp ? +new Date(a.timestamp) : 0) -
-      (b.timestamp ? +new Date(b.timestamp) : 0),
+      (b.timestamp ? +new Date(b.timestamp) : 0)
   );
 
   for (const p of ordered) {
@@ -80,14 +80,20 @@ export default function SchedulingClient(): JSX.Element {
   const [users, setUsers] = useState<UserLite[]>([]);
   const [userId, setUserId] = useState<string>("");
 
-  const [from, setFrom] = useState<string>(() => format(new Date(), "yyyy-MM-dd"));
-  const [to, setTo]     = useState<string>(() => format(new Date(), "yyyy-MM-dd"));
+  const [from, setFrom] = useState<string>(() =>
+    format(new Date(), "yyyy-MM-dd")
+  );
+  const [to, setTo] = useState<string>(() =>
+    format(new Date(), "yyyy-MM-dd")
+  );
 
   const [loading, setLoading] = useState<boolean>(true);
   const [err, setErr] = useState<string | null>(null);
 
   const [shifts, setShifts] = useState<Shift[]>([]);
-  const [punchesByShift, setPunchesByShift] = useState<Record<string, Punch[]>>({});
+  const [punchesByShift, setPunchesByShift] = useState<
+    Record<string, Punch[]>
+  >({});
 
   // Load users once
   useEffect(() => {
@@ -106,10 +112,11 @@ export default function SchedulingClient(): JSX.Element {
     setLoading(true);
     setErr(null);
     try {
-      // Build a date range across the whole days
       const fromISO = new Date(from + "T00:00:00Z").toISOString();
-      // End-of-day: include up to 23:59
-      const toEnd = addMinutes(new Date(to + "T00:00:00Z"), 1439).toISOString();
+      const toEnd = addMinutes(
+        new Date(to + "T00:00:00Z"),
+        1439
+      ).toISOString();
 
       let q = supabase
         .from("tech_shifts")
@@ -118,7 +125,6 @@ export default function SchedulingClient(): JSX.Element {
         .lte("start_time", toEnd)
         .order("start_time", { ascending: false });
 
-      // ✅ filter by user_id (not tech_id)
       if (userId) q = q.eq("user_id", userId);
 
       const { data: shiftRows, error: shiftErr } = await q;
@@ -126,6 +132,7 @@ export default function SchedulingClient(): JSX.Element {
 
       const ids = (shiftRows ?? []).map((s) => s.id);
       const map: Record<string, Punch[]> = {};
+
       if (ids.length > 0) {
         const { data: punchRows, error: punchErr } = await supabase
           .from("punch_events")
@@ -152,38 +159,68 @@ export default function SchedulingClient(): JSX.Element {
     }
   }
 
-  useEffect(() => { void load(); }, []); // initial load
+  useEffect(() => {
+    void load();
+  }, []); // initial load
 
   const totalMinutes = useMemo(
-    () => shifts.reduce((sum, s) => sum + computeWorkedMinutes(s, punchesByShift[s.id] ?? []), 0),
-    [shifts, punchesByShift],
+    () =>
+      shifts.reduce(
+        (sum, s) =>
+          sum + computeWorkedMinutes(s, punchesByShift[s.id] ?? []),
+        0
+      ),
+    [shifts, punchesByShift]
   );
 
   // ---- Mutations ----
-  async function updateShiftTime(shiftId: string, field: "start_time" | "end_time", value: string) {
+  async function updateShiftTime(
+    shiftId: string,
+    field: "start_time" | "end_time",
+    value: string
+  ) {
     const iso = new Date(value).toISOString();
-    const { error } = await supabase.from("tech_shifts").update({ [field]: iso }).eq("id", shiftId);
+    const { error } = await supabase
+      .from("tech_shifts")
+      .update({ [field]: iso })
+      .eq("id", shiftId);
     if (!error) await load();
   }
 
-  async function addPunch(shiftId: string, event_type: PunchType, when: string) {
+  async function addPunch(
+    shiftId: string,
+    event_type: PunchType,
+    when: string
+  ) {
     const { error } = await supabase.from("punch_events").insert({
       shift_id: shiftId,
-      event_type, // ✅ use event_type
+      event_type,
       timestamp: new Date(when).toISOString(),
     } as Punch);
     if (!error) await load();
   }
 
-  async function updatePunch(punchId: string, when: string, event_type?: PunchType) {
-    const payload: Partial<Punch> = { timestamp: new Date(when).toISOString() };
+  async function updatePunch(
+    punchId: string,
+    when: string,
+    event_type?: PunchType
+  ) {
+    const payload: Partial<Punch> = {
+      timestamp: new Date(when).toISOString(),
+    };
     if (event_type) payload.event_type = event_type;
-    const { error } = await supabase.from("punch_events").update(payload).eq("id", punchId);
+    const { error } = await supabase
+      .from("punch_events")
+      .update(payload)
+      .eq("id", punchId);
     if (!error) await load();
   }
 
   async function deletePunch(punchId: string) {
-    const { error } = await supabase.from("punch_events").delete().eq("id", punchId);
+    const { error } = await supabase
+      .from("punch_events")
+      .delete()
+      .eq("id", punchId);
     if (!error) await load();
   }
 
@@ -194,140 +231,203 @@ export default function SchedulingClient(): JSX.Element {
   }
 
   return (
-    <div className="p-6 text-white">
-      <h1 className="text-2xl font-bold mb-4">Scheduling & Punches</h1>
+    <PageShell
+      title="Appointments & Technician Time"
+      description="Review shifts, punches, and total hours worked across your team."
+    >
+      <div className="space-y-5">
+        {/* Filters */}
+        <div className="rounded-2xl border border-white/10 bg-black/40 p-4 backdrop-blur-md shadow-card">
+          <div className="mb-3 flex flex-wrap items-center gap-3">
+            <div>
+              <label className="block text-[0.7rem] uppercase tracking-[0.12em] text-neutral-400">
+                From
+              </label>
+              <input
+                type="date"
+                value={from}
+                onChange={(e) => setFrom(e.target.value)}
+                className="mt-1 rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+              />
+            </div>
+            <div>
+              <label className="block text-[0.7rem] uppercase tracking-[0.12em] text-neutral-400">
+                To
+              </label>
+              <input
+                type="date"
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+                className="mt-1 rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+              />
+            </div>
+            <div>
+              <label className="block text-[0.7rem] uppercase tracking-[0.12em] text-neutral-400">
+                Tech / User
+              </label>
+              <select
+                value={userId}
+                onChange={(e) => setUserId(e.target.value)}
+                className="mt-1 min-w-[200px] rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+              >
+                <option value="">All staff</option>
+                {users.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.full_name ?? u.id.slice(0, 8)}{" "}
+                    {u.role ? `(${u.role})` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-      {/* Filters */}
-      <div className="mb-4 flex flex-wrap items-end gap-3">
-        <div>
-          <label className="block text-xs text-neutral-400">From</label>
-          <input
-            type="date"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-            className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1"
-          />
-        </div>
-        <div>
-          <label className="block text-xs text-neutral-400">To</label>
-          <input
-            type="date"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-            className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1"
-          />
-        </div>
-        <div>
-          <label className="block text-xs text-neutral-400">User</label>
-          <select
-            value={userId}
-            onChange={(e) => setUserId(e.target.value)}
-            className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 min-w-[200px]"
-          >
-            <option value="">All staff</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.full_name ?? u.id.slice(0, 8)} ({u.role ?? "n/a"})
-              </option>
-            ))}
-          </select>
-        </div>
-        <button
-          onClick={load}
-          className="rounded border border-orange-400 bg-orange-500 px-3 py-1 text-black font-semibold hover:bg-orange-600"
-        >
-          Refresh
-        </button>
-
-        <div className="ml-auto text-sm text-neutral-300">
-          <span className="font-semibold">Total:</span>{" "}
-          {Math.floor(totalMinutes / 60)}h {totalMinutes % 60}m
-        </div>
-      </div>
-
-      {err && (
-        <div className="mb-3 rounded bg-red-500/10 p-2 text-red-300 text-sm">
-          {err}
-        </div>
-      )}
-
-      {loading ? (
-        <div className="text-neutral-300">Loading…</div>
-      ) : shifts.length === 0 ? (
-        <div className="text-neutral-400">No shifts in range.</div>
-      ) : (
-        <div className="space-y-4">
-          {shifts.map((s) => {
-            const punches = punchesByShift[s.id] ?? [];
-            const minutes = computeWorkedMinutes(s, punches);
-            return (
-              <div key={s.id} className="rounded border border-neutral-800 bg-neutral-900/40 p-3">
-                {/* Shift header */}
-                <div className="flex flex-wrap items-center gap-3">
-                  <div className="min-w-[200px]">
-                    <div className="text-xs text-neutral-400">Employee</div>
-                    <div className="font-semibold">{userName(s.user_id ?? null)}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-neutral-400">Start</div>
-                    <input
-                      type="datetime-local"
-                      value={s.start_time ? format(parseISO(s.start_time), "yyyy-MM-dd'T'HH:mm") : ""}
-                      onChange={(e) => updateShiftTime(s.id, "start_time", e.target.value)}
-                      className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1"
-                    />
-                  </div>
-                  <div>
-                    <div className="text-xs text-neutral-400">End</div>
-                    <input
-                      type="datetime-local"
-                      value={
-                        s.end_time
-                          ? format(parseISO(s.end_time), "yyyy-MM-dd'T'HH:mm")
-                          : s.end_time
-                          ? format(parseISO(s.end_time), "yyyy-MM-dd'T'HH:mm")
-                          : ""
-                      }
-                      onChange={(e) => updateShiftTime(s.id, "end_time", e.target.value)}
-                      className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1"
-                    />
-                  </div>
-                  <div className="ml-auto text-right">
-                    <div className="text-xs text-neutral-400">Worked</div>
-                    <div className="font-semibold">
-                      {Math.floor(minutes / 60)}h {minutes % 60}m
-                    </div>
-                  </div>
-                </div>
-
-                {/* Punches list */}
-                <div className="mt-3 rounded border border-neutral-800 bg-neutral-950 p-2">
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm font-semibold text-neutral-300">Punch Events</div>
-                    <AddPunchInline onAdd={(type, when) => addPunch(s.id, type, when)} />
-                  </div>
-
-                  {punches.length === 0 ? (
-                    <div className="mt-2 text-sm text-neutral-400">No punches recorded.</div>
-                  ) : (
-                    <div className="mt-2 divide-y divide-neutral-800">
-                      {punches.map((p) => (
-                        <PunchRow
-                          key={p.id}
-                          punch={p}
-                          onUpdate={(when, type) => updatePunch(p.id, when, type)}
-                          onDelete={() => deletePunch(p.id)}
-                        />
-                      ))}
-                    </div>
-                  )}
+            <div className="ml-auto flex items-end gap-3">
+              <div className="text-sm text-neutral-300">
+                <span className="text-xs uppercase tracking-[0.12em] text-neutral-400">
+                  Total worked
+                </span>
+                <div className="font-semibold">
+                  {Math.floor(totalMinutes / 60)}h {totalMinutes % 60}m
                 </div>
               </div>
-            );
-          })}
+              <Button
+                type="button"
+                variant="default"
+                className="font-semibold"
+                onClick={() => void load()}
+              >
+                Refresh
+              </Button>
+            </div>
+          </div>
+
+          {err && (
+            <div className="mt-2 rounded-md border border-red-500/40 bg-red-900/20 px-3 py-2 text-xs text-red-200">
+              {err}
+            </div>
+          )}
         </div>
-      )}
-    </div>
+
+        {/* Shifts list */}
+        {loading ? (
+          <div className="rounded-2xl border border-white/5 bg-black/30 px-4 py-6 text-sm text-neutral-300">
+            Loading shifts…
+          </div>
+        ) : shifts.length === 0 ? (
+          <div className="rounded-2xl border border-white/5 bg-black/30 px-4 py-6 text-sm text-neutral-400">
+            No shifts in this range.
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {shifts.map((s) => {
+              const punches = punchesByShift[s.id] ?? [];
+              const minutes = computeWorkedMinutes(s, punches);
+
+              return (
+                <div
+                  key={s.id}
+                  className="rounded-2xl border border-white/10 bg-black/30 px-4 py-4 backdrop-blur shadow-card"
+                >
+                  {/* Shift header */}
+                  <div className="flex flex-wrap items-center gap-4">
+                    <div className="min-w-[200px]">
+                      <div className="text-[0.7rem] uppercase tracking-[0.14em] text-neutral-400">
+                        Employee
+                      </div>
+                      <div className="text-sm font-semibold text-white">
+                        {userName(s.user_id ?? null)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[0.7rem] uppercase tracking-[0.12em] text-neutral-400">
+                        Start
+                      </div>
+                      <input
+                        type="datetime-local"
+                        value={
+                          s.start_time
+                            ? format(
+                                parseISO(s.start_time),
+                                "yyyy-MM-dd'T'HH:mm"
+                              )
+                            : ""
+                        }
+                        onChange={(e) =>
+                          updateShiftTime(
+                            s.id,
+                            "start_time",
+                            e.target.value
+                          )
+                        }
+                        className="mt-1 rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                      />
+                    </div>
+                    <div>
+                      <div className="text-[0.7rem] uppercase tracking-[0.12em] text-neutral-400">
+                        End
+                      </div>
+                      <input
+                        type="datetime-local"
+                        value={
+                          s.end_time
+                            ? format(
+                                parseISO(s.end_time),
+                                "yyyy-MM-dd'T'HH:mm"
+                              )
+                            : ""
+                        }
+                        onChange={(e) =>
+                          updateShiftTime(s.id, "end_time", e.target.value)
+                        }
+                        className="mt-1 rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                      />
+                    </div>
+                    <div className="ml-auto text-right">
+                      <div className="text-[0.7rem] uppercase tracking-[0.12em] text-neutral-400">
+                        Worked
+                      </div>
+                      <div className="mt-1 text-sm font-semibold text-white">
+                        {Math.floor(minutes / 60)}h {minutes % 60}m
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Punches */}
+                  <div className="mt-4 rounded-xl border border-neutral-800 bg-black/40 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-sm font-semibold text-neutral-200">
+                        Punch events
+                      </div>
+                      <AddPunchInline
+                        onAdd={(type, when) => void addPunch(s.id, type, when)}
+                      />
+                    </div>
+
+                    {punches.length === 0 ? (
+                      <div className="mt-2 text-xs text-neutral-400">
+                        No punches recorded for this shift.
+                      </div>
+                    ) : (
+                      <div className="mt-2 divide-y divide-neutral-800">
+                        {punches.map((p) => (
+                          <PunchRow
+                            key={p.id}
+                            punch={p}
+                            onUpdate={(when, type) =>
+                              void updatePunch(p.id, when, type)
+                            }
+                            onDelete={() => void deletePunch(p.id)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </PageShell>
   );
 }
 
@@ -339,14 +439,16 @@ function AddPunchInline({
   onAdd: (type: PunchType, when: string) => void;
 }) {
   const [type, setType] = useState<PunchType>("start");
-  const [when, setWhen] = useState<string>(() => format(new Date(), "yyyy-MM-dd'T'HH:mm"));
+  const [when, setWhen] = useState<string>(() =>
+    format(new Date(), "yyyy-MM-dd'T'HH:mm")
+  );
 
   return (
     <div className="flex items-center gap-2">
       <select
         value={type}
         onChange={(e) => setType(e.target.value as PunchType)}
-        className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm"
+        className="rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs text-white focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
       >
         {PUNCH_TYPES.map((t) => (
           <option key={t} value={t}>
@@ -358,14 +460,16 @@ function AddPunchInline({
         type="datetime-local"
         value={when}
         onChange={(e) => setWhen(e.target.value)}
-        className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm"
+        className="rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs text-white focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
       />
-      <button
+      <Button
+        type="button"
+        size="xs"
+        className="text-xs font-semibold"
         onClick={() => onAdd(type, when)}
-        className="rounded border border-orange-400 bg-orange-500 px-2 py-1 text-xs font-semibold text-black hover:bg-orange-600"
       >
-        Add
-      </button>
+        Add punch
+      </Button>
     </div>
   );
 }
@@ -380,9 +484,13 @@ function PunchRow({
   onDelete: () => void;
 }) {
   const [when, setWhen] = useState<string>(() =>
-    punch.timestamp ? format(parseISO(punch.timestamp), "yyyy-MM-dd'T'HH:mm") : "",
+    punch.timestamp
+      ? format(parseISO(punch.timestamp), "yyyy-MM-dd'T'HH:mm")
+      : ""
   );
-  const [type, setType] = useState<PunchType>((punch.event_type as PunchType) ?? "start");
+  const [type, setType] = useState<PunchType>(
+    (punch.event_type as PunchType) ?? "start"
+  );
   const [dirty, setDirty] = useState<boolean>(false);
 
   return (
@@ -393,7 +501,7 @@ function PunchRow({
           setType(e.target.value as PunchType);
           setDirty(true);
         }}
-        className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm"
+        className="rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs text-white focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
       >
         {PUNCH_TYPES.map((t) => (
           <option key={t} value={t}>
@@ -408,22 +516,28 @@ function PunchRow({
           setWhen(e.target.value);
           setDirty(true);
         }}
-        className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm"
+        className="rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs text-white focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
       />
       <div className="ml-auto flex items-center gap-2">
-        <button
-          onClick={() => dirty && onUpdate(when, type)}
+        <Button
+          type="button"
+          size="xs"
+          variant="outline"
           disabled={!dirty}
-          className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800 disabled:opacity-50"
+          onClick={() => dirty && onUpdate(when, type)}
+          className="text-[0.65rem] disabled:opacity-50"
         >
           Save
-        </button>
-        <button
+        </Button>
+        <Button
+          type="button"
+          size="xs"
+          variant="ghost"
+          className="text-[0.65rem] text-red-300 hover:bg-red-900/20"
           onClick={onDelete}
-          className="rounded border border-red-600/60 px-2 py-1 text-xs text-red-300 hover:bg-red-900/20"
         >
           Delete
-        </button>
+        </Button>
       </div>
     </div>
   );

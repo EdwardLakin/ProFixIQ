@@ -32,19 +32,29 @@ type StatusKey =
   | "invoiced";
 
 const BADGE_BASE =
-  "inline-flex items-center whitespace-nowrap rounded border px-2 py-0.5 text-xs font-medium";
+  "inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[0.7rem] font-medium tracking-[0.08em] uppercase";
 
 const STATUS_BADGE: Record<StatusKey, string> = {
-  awaiting_approval: "bg-blue-200/20 border-blue-200/40 text-blue-800 dark:bg-blue-900/20 dark:border-blue-500/40 dark:text-blue-300",
-  awaiting: "bg-sky-200/20  border-sky-200/40  text-sky-800 dark:bg-sky-900/20  dark:border-sky-500/40  dark:text-sky-300",
-  queued: "bg-indigo-200/20 border-indigo-200/40 text-indigo-800 dark:bg-indigo-900/20 dark:border-indigo-500/40 dark:text-indigo-300",
-  in_progress: "bg-orange-200/20 border-orange-200/40 text-orange-800 dark:bg-orange-900/20 dark:border-orange-500/40 dark:text-orange-300",
-  on_hold: "bg-amber-200/20  border-amber-200/40  text-amber-800 dark:bg-amber-900/20  dark:border-amber-500/40  dark:text-amber-300",
-  planned: "bg-purple-200/20 border-purple-200/40 text-purple-800 dark:bg-purple-900/20 dark:border-purple-500/40 dark:text-purple-300",
-  new: "bg-muted border-border text-foreground",
-  completed: "bg-green-200/20  border-green-200/40 text-green-800 dark:bg-green-900/20  dark:border-green-500/40  dark:text-green-300",
-  ready_to_invoice: "bg-emerald-200/20 border-emerald-200/40 text-emerald-800 dark:bg-emerald-900/20 dark:border-emerald-500/40 dark:text-emerald-300",
-  invoiced: "bg-teal-200/20    border-teal-200/40    text-teal-800 dark:bg-teal-900/20    dark:border-teal-500/40    dark:text-teal-300",
+  awaiting_approval:
+    "bg-blue-200/10 border-blue-400/50 text-blue-100",
+  awaiting:
+    "bg-sky-200/10 border-sky-400/50 text-sky-100",
+  queued:
+    "bg-indigo-200/10 border-indigo-400/50 text-indigo-100",
+  in_progress:
+    "bg-orange-200/10 border-orange-400/60 text-orange-100",
+  on_hold:
+    "bg-amber-200/10 border-amber-400/60 text-amber-100",
+  planned:
+    "bg-purple-200/10 border-purple-400/60 text-purple-100",
+  new:
+    "bg-neutral-800/80 border-neutral-500/80 text-neutral-100",
+  completed:
+    "bg-green-200/10 border-green-400/60 text-green-100",
+  ready_to_invoice:
+    "bg-emerald-200/10 border-emerald-400/60 text-emerald-100",
+  invoiced:
+    "bg-teal-200/10 border-teal-400/60 text-teal-100",
 };
 
 const chip = (s: string | null | undefined) => {
@@ -68,13 +78,13 @@ const ASSIGN_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
 
 /* --------------------------- Dark input styles --------------------------- */
 const INPUT_DARK =
-  "rounded border border-neutral-700 !bg-neutral-900 px-3 py-1.5 text-sm text-foreground placeholder:text-neutral-500 " +
-  "focus:border-orange-400 focus:outline-none focus:ring-0 appearance-none [color-scheme:dark]";
+  "w-full rounded-md border border-neutral-700 !bg-neutral-950 px-3 py-1.5 text-sm text-foreground placeholder:text-neutral-500 " +
+  "focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-500/60 appearance-none [color-scheme:dark]";
 const SELECT_DARK =
-  "rounded border border-neutral-700 !bg-neutral-900 px-3 py-1.5 text-sm text-foreground " +
-  "focus:border-orange-400 focus:outline-none appearance-none [color-scheme:dark]";
+  "w-full rounded-md border border-neutral-700 !bg-neutral-950 px-3 py-1.5 text-sm text-foreground " +
+  "focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-500/60 appearance-none [color-scheme:dark]";
 const BUTTON_MUTED =
-  "rounded border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-900/40";
+  "rounded-md border border-neutral-700 px-3 py-1.5 text-sm text-neutral-100 hover:bg-neutral-900/60 active:bg-neutral-800/80 transition-colors";
 
 export default function WorkOrdersView(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
@@ -94,7 +104,7 @@ export default function WorkOrdersView(): JSX.Element {
 
   const [currentRole, setCurrentRole] = useState<string | null>(null);
 
-  // NEW: we keep assignments separate since Supabase couldn't join them
+  // assignments
   const [woAssignments, setWoAssignments] = useState<Record<string, string[]>>({});
 
   // load current user role + mechanics once
@@ -224,9 +234,13 @@ export default function WorkOrdersView(): JSX.Element {
   useEffect(() => {
     const ch = supabase
       .channel("work_orders:list")
-      .on("postgres_changes", { event: "*", schema: "public", table: "work_orders" }, () => {
-        setTimeout(() => void load(), 60);
-      })
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "work_orders" },
+        () => {
+          setTimeout(() => void load(), 60);
+        }
+      )
       .subscribe();
 
     return () => {
@@ -313,181 +327,280 @@ export default function WorkOrdersView(): JSX.Element {
     return m;
   }, [techs]);
 
+  const total = rows.length;
+  const activeCount = useMemo(
+    () =>
+      rows.filter((r) =>
+        NORMAL_FLOW_STATUSES.includes(
+          (r.status ?? "awaiting").toLowerCase().replaceAll(" ", "_") as StatusKey
+        )
+      ).length,
+    [rows]
+  );
+  const awaitingApprovalCount = useMemo(
+    () =>
+      rows.filter((r) => (r.status ?? "").toLowerCase() === "awaiting_approval").length,
+    [rows]
+  );
+
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 bg-background text-foreground">
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-bold text-orange-500">Work Orders</h1>
-        <Link
-          href="/work-orders/create"
-          className="rounded bg-orange-500 px-3 py-1.5 font-semibold text-black hover:bg-orange-600"
-        >
-          + New
-        </Link>
-        <div className="ml-auto flex gap-2">
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && void load()}
-            placeholder="Search id, custom id, name, plate, YMM…"
-            className={INPUT_DARK}
-          />
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className={SELECT_DARK}
-            aria-label="Filter by status"
+    <div className="mx-auto max-w-6xl px-4 py-6 text-foreground">
+      {/* Header */}
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-200">
+            Work Orders
+          </h1>
+          <p className="mt-1 text-xs text-neutral-400">
+            Live view of active jobs, their status, and technician assignments.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <Link
+            href="/work-orders/create"
+            className="inline-flex items-center justify-center rounded-full border border-orange-500/60 bg-orange-500 px-3.5 py-1.5 text-sm font-semibold text-black shadow-sm hover:bg-orange-400 hover:border-orange-400"
           >
-            <option value="">All (approved / normal flow)</option>
-            <option value="awaiting_approval">Awaiting approval</option>
-            <option value="awaiting">Awaiting</option>
-            <option value="queued">Queued</option>
-            <option value="in_progress">In progress</option>
-            <option value="on_hold">On hold</option>
-            <option value="planned">Planned</option>
-            <option value="new">New</option>
-            <option value="completed">Completed</option>
-            <option value="ready_to_invoice">Ready to invoice</option>
-            <option value="invoiced">Invoiced</option>
-          </select>
-          <button
-            onClick={() => void load()}
-            className={BUTTON_MUTED}
-          >
-            Refresh
-          </button>
+            <span className="mr-1.5 text-base leading-none">+</span>
+            New work order
+          </Link>
+        </div>
+      </div>
+
+      {/* Filters + stats strip */}
+      <div className="mb-5 flex flex-col gap-3 rounded-2xl border border-white/10 bg-black/40 p-3 text-xs shadow-md shadow-black/40 backdrop-blur-md sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="flex-1 min-w-[220px]">
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && void load()}
+              placeholder="Search id, custom id, customer, plate, YMM…"
+              className={INPUT_DARK}
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              className={SELECT_DARK + " text-xs min-w-[200px]"}
+              aria-label="Filter by status"
+            >
+              <option value="">Active (normal flow)</option>
+              <option value="awaiting_approval">Awaiting approval</option>
+              <option value="awaiting">Awaiting</option>
+              <option value="queued">Queued</option>
+              <option value="in_progress">In progress</option>
+              <option value="on_hold">On hold</option>
+              <option value="planned">Planned</option>
+              <option value="new">New</option>
+              <option value="completed">Completed</option>
+              <option value="ready_to_invoice">Ready to invoice</option>
+              <option value="invoiced">Invoiced</option>
+            </select>
+            <button
+              onClick={() => void load()}
+              className={BUTTON_MUTED + " text-xs"}
+            >
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4 text-[0.7rem] text-neutral-300">
+          <div className="flex flex-col">
+            <span className="uppercase tracking-[0.13em] text-neutral-500">
+              Total
+            </span>
+            <span className="text-sm font-semibold text-white">{total}</span>
+          </div>
+          <div className="h-7 w-px bg-neutral-700/60" />
+          <div className="flex flex-col">
+            <span className="uppercase tracking-[0.13em] text-neutral-500">
+              Active
+            </span>
+            <span className="text-sm font-semibold text-sky-200">
+              {activeCount}
+            </span>
+          </div>
+          <div className="h-7 w-px bg-neutral-700/60" />
+          <div className="flex flex-col">
+            <span className="uppercase tracking-[0.13em] text-neutral-500">
+              Awaiting approval
+            </span>
+            <span className="text-sm font-semibold text-blue-200">
+              {awaitingApprovalCount}
+            </span>
+          </div>
         </div>
       </div>
 
       {err && (
-        <div className="mb-3 rounded bg-destructive/10 p-2 text-sm text-destructive">
+        <div className="mb-3 rounded-md border border-red-500/60 bg-red-950/40 p-2 text-xs text-red-200">
           {err}
         </div>
       )}
 
       {loading ? (
-        <div className="text-muted-foreground">Loading…</div>
+        <div className="rounded-2xl border border-white/10 bg-black/40 p-4 text-sm text-neutral-300">
+          Loading work orders…
+        </div>
       ) : rows.length === 0 ? (
-        <div className="text-muted-foreground">No work orders found.</div>
+        <div className="rounded-2xl border border-dashed border-white/15 bg-black/40 p-6 text-sm text-neutral-400">
+          No work orders match your current filters.
+        </div>
       ) : (
-        <div className="divide-y divide-border rounded-lg border border-border bg-card">
-          {rows.map((r) => {
-            const href = `/work-orders/${r.custom_id ?? r.id}?mode=view`;
-            const isAssigning = assigningFor === r.id;
+        <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/30 shadow-lg shadow-black/40">
+          <div className="hidden border-b border-white/5 bg-black/40 px-4 py-2 text-[0.7rem] uppercase tracking-[0.12em] text-neutral-500 sm:grid sm:grid-cols-[110px,1.6fr,1.1fr,auto] sm:gap-3">
+            <div>Date</div>
+            <div>Work order / customer / vehicle</div>
+            <div>Assigned to</div>
+            <div className="text-right">Actions</div>
+          </div>
 
-            const assignedIds = woAssignments[r.id] ?? [];
-            const firstTechId = assignedIds.length > 0 ? assignedIds[0] : null;
-            const firstTechName =
-              firstTechId && techsById[firstTechId]
-                ? techsById[firstTechId].full_name ?? "Mechanic"
-                : null;
+          <div className="divide-y divide-white/5">
+            {rows.map((r) => {
+              const href = `/work-orders/${r.custom_id ?? r.id}?mode=view`;
+              const isAssigning = assigningFor === r.id;
 
-            return (
-              <div
-                key={r.id}
-                className="flex flex-wrap items-center gap-3 p-3"
-              >
-                <div className="w-28 text-xs text-muted-foreground">
-                  {r.created_at ? format(new Date(r.created_at), "PP") : "—"}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
+              const assignedIds = woAssignments[r.id] ?? [];
+              const firstTechId = assignedIds.length > 0 ? assignedIds[0] : null;
+              const firstTechName =
+                firstTechId && techsById[firstTechId]
+                  ? techsById[firstTechId].full_name ?? "Mechanic"
+                  : null;
+
+              const customerName = r.customers
+                ? [r.customers.first_name ?? "", r.customers.last_name ?? ""]
+                    .filter(Boolean)
+                    .join(" ")
+                : "";
+
+              const vehicleLabel = r.vehicles
+                ? `${r.vehicles.year ?? ""} ${r.vehicles.make ?? ""} ${
+                    r.vehicles.model ?? ""
+                  }`.trim()
+                : "";
+
+              const plate = r.vehicles?.license_plate ?? "";
+
+              return (
+                <div
+                  key={r.id}
+                  className="flex flex-col gap-3 px-3 py-3 text-sm sm:grid sm:grid-cols-[110px,1.6fr,1.1fr,auto] sm:items-center sm:gap-3"
+                >
+                  {/* Date */}
+                  <div className="text-[0.7rem] text-neutral-400">
+                    {r.created_at ? format(new Date(r.created_at), "PP") : "—"}
+                  </div>
+
+                  {/* Main: id, status, customer + vehicle */}
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Link
+                        href={href}
+                        className="text-sm font-semibold text-white underline decoration-neutral-500/40 underline-offset-2 hover:decoration-orange-400"
+                      >
+                        {r.custom_id ? r.custom_id : `#${r.id.slice(0, 8)}`}
+                      </Link>
+                      {r.custom_id && (
+                        <span className="rounded-full border border-neutral-700/80 bg-neutral-900/70 px-1.5 py-0.5 text-[0.65rem] text-neutral-400">
+                          #{r.id.slice(0, 6)}
+                        </span>
+                      )}
+                      <span className={chip(r.status)}>
+                        {(r.status ?? "awaiting").replaceAll("_", " ")}
+                      </span>
+                    </div>
+
+                    <div className="truncate text-[0.8rem] text-neutral-300">
+                      {customerName || "No customer"}{" "}
+                      <span className="mx-1 text-neutral-600">•</span>
+                      {vehicleLabel || "No vehicle"}
+                      {plate ? (
+                        <span className="ml-1 text-neutral-400">
+                          ({plate})
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {/* Assigned to */}
+                  <div className="text-[0.75rem] text-neutral-300">
+                    {firstTechName ? (
+                      <div className="inline-flex items-center gap-1 rounded-full bg-sky-500/10 px-2 py-0.5 text-[0.7rem] text-sky-100">
+                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-sky-400" />
+                        {firstTechName}
+                      </div>
+                    ) : (
+                      <span className="text-neutral-500">Unassigned</span>
+                    )}
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex flex-wrap items-center justify-end gap-2">
                     <Link
                       href={href}
-                      className="font-medium underline decoration-muted underline-offset-2 hover:decoration-orange-500"
+                      className="rounded-md border border-neutral-700 px-2.5 py-1 text-xs text-neutral-100 hover:bg-neutral-900/60"
                     >
-                      {r.custom_id ? r.custom_id : `#${r.id.slice(0, 8)}`}
+                      Open
                     </Link>
-                    {r.custom_id && (
-                      <span className="text-[10px] rounded border border-border px-1 py-0.5 text-muted-foreground">
-                        #{r.id.slice(0, 6)}
-                      </span>
+                    <button
+                      onClick={() => void handleDelete(r.id)}
+                      className="rounded-md border border-red-500/60 px-2.5 py-1 text-xs text-red-300 hover:bg-red-900/30"
+                    >
+                      Delete
+                    </button>
+                    {canAssign && (
+                      <>
+                        {!isAssigning ? (
+                          <button
+                            onClick={() => {
+                              setAssigningFor(r.id);
+                            }}
+                            className="rounded-md border border-sky-500/60 px-2.5 py-1 text-xs text-sky-200 hover:bg-sky-900/30"
+                          >
+                            Assign
+                          </button>
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            <select
+                              value={selectedTechId}
+                              onChange={(e) => setSelectedTechId(e.target.value)}
+                              className={
+                                SELECT_DARK +
+                                " h-8 min-w-[150px] px-2 py-1 text-[0.7rem]"
+                              }
+                            >
+                              <option value="">Pick mechanic…</option>
+                              {techs.map((t) => (
+                                <option key={t.id} value={t.id}>
+                                  {t.full_name ?? "(no name)"}{" "}
+                                  {t.role ? `(${t.role})` : ""}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              onClick={() => void handleAssignAll(r.id)}
+                              className="rounded-md bg-orange-500 px-2 py-1 text-[0.7rem] font-semibold text-black hover:bg-orange-400"
+                            >
+                              Apply
+                            </button>
+                            <button
+                              onClick={() => setAssigningFor(null)}
+                              className="rounded-md border border-neutral-700 px-2 py-1 text-[0.7rem] text-neutral-200 hover:bg-neutral-900/60"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        )}
+                      </>
                     )}
-                    <span className={chip(r.status)}>
-                      {(r.status ?? "awaiting").replaceAll("_", " ")}
-                    </span>
                   </div>
-                  <div className="truncate text-sm text-muted-foreground">
-                    {r.customers
-                      ? `${[r.customers.first_name ?? "", r.customers.last_name ?? ""]
-                          .filter(Boolean)
-                          .join(" ")}`
-                      : "—"}{" "}
-                    •{" "}
-                    {r.vehicles
-                      ? `${r.vehicles.year ?? ""} ${r.vehicles.make ?? ""} ${
-                          r.vehicles.model ?? ""
-                        }${
-                          r.vehicles.license_plate
-                            ? ` (${r.vehicles.license_plate})`
-                            : ""
-                        }`
-                      : "—"}
-                  </div>
-                  {firstTechName ? (
-                    <div className="mt-0.5 inline-flex items-center gap-1 rounded bg-sky-200/30 px-2 py-0.5 text-[10px] text-sky-900 dark:bg-sky-900/30 dark:text-sky-100">
-                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-sky-400" />
-                      Assigned to {firstTechName}
-                    </div>
-                  ) : null}
                 </div>
-                <div className="flex items-center gap-2">
-                  <Link
-                    href={href}
-                    className={BUTTON_MUTED}
-                  >
-                    Open
-                  </Link>
-                  <button
-                    onClick={() => void handleDelete(r.id)}
-                    className="rounded border border-red-500/60 px-2 py-1.5 text-sm text-red-500 hover:bg-red-500/10"
-                  >
-                    Delete
-                  </button>
-                  {canAssign && (
-                    <>
-                      {!isAssigning ? (
-                        <button
-                          onClick={() => {
-                            setAssigningFor(r.id);
-                          }}
-                          className="rounded border border-sky-500/60 px-2 py-1.5 text-sm text-sky-500 hover:bg-sky-500/10"
-                        >
-                          Assign
-                        </button>
-                      ) : (
-                        <div className="flex items-center gap-1">
-                          <select
-                            value={selectedTechId}
-                            onChange={(e) => setSelectedTechId(e.target.value)}
-                            className={SELECT_DARK.replace("px-3 py-1.5", "px-2 py-1 text-xs")}
-                          >
-                            <option value="">Pick mechanic…</option>
-                            {techs.map((t) => (
-                              <option key={t.id} value={t.id}>
-                                {t.full_name ?? "(no name)"} {t.role ? `(${t.role})` : ""}
-                              </option>
-                            ))}
-                          </select>
-                          <button
-                            onClick={() => void handleAssignAll(r.id)}
-                            className="rounded bg-orange-500 px-2 py-1.5 text-xs font-semibold text-black hover:bg-orange-400"
-                          >
-                            Apply
-                          </button>
-                          <button
-                            onClick={() => setAssigningFor(null)}
-                            className={BUTTON_MUTED.replace("px-3 py-1.5", "px-2 py-1 text-xs")}
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       )}
     </div>

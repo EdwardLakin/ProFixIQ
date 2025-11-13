@@ -3,6 +3,7 @@
 
 import { useMemo } from "react";
 import type { Booking } from "./page";
+import { Button } from "@shared/components/ui/Button";
 
 type Props = {
   weekStart: Date;
@@ -13,6 +14,19 @@ type Props = {
 };
 
 const dayKey = (d: Date) => d.toISOString().slice(0, 10);
+
+function displayCustomerName(b: Booking): string {
+  // Expect `customer_name` to come from DB (join on customers)
+  // You can extend this if Booking has customer_id, etc.
+  // e.g., customer_name is filled in page.tsx from Supabase.
+  // @ts-expect-error – if you add extra fields like customer_full_name
+  const fromExtra = b.customer_full_name as string | undefined;
+  return (
+    b.customer_name ||
+    fromExtra ||
+    "Customer"
+  );
+}
 
 export default function WeeklyCalendar({
   weekStart,
@@ -37,7 +51,6 @@ export default function WeeklyCalendar({
       arr.push(b);
       map.set(k, arr);
     }
-    // sort each bucket by time
     map.forEach((arr) => {
       arr.sort(
         (a, b) =>
@@ -47,69 +60,89 @@ export default function WeeklyCalendar({
     return map;
   }, [bookings]);
 
+  const todayKey = new Date().toISOString().slice(0, 10);
+
   return (
-    <div className="grid grid-cols-7 gap-2">
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-7">
       {days.map((d) => {
         const k = dayKey(d);
         const dayBookings = grouped.get(k) ?? [];
-        const isToday = new Date().toISOString().slice(0, 10) === k;
+        const isToday = todayKey === k;
 
         return (
           <div
             key={k}
-            className="rounded-lg border border-neutral-800 bg-neutral-950/50 p-2 flex flex-col gap-2 min-h-[120px]"
+            className="flex min-h-[130px] flex-col gap-2 rounded-2xl border border-white/10 bg-black/40 p-3 text-xs text-neutral-100 shadow-card backdrop-blur-md"
           >
-            <button
+            {/* Day header */}
+            <Button
               type="button"
+              variant={isToday ? "default" : "outline"}
+              size="sm"
               onClick={() => onSelectDay(k)}
-              className="flex items-center justify-between text-xs text-neutral-200"
+              className="flex w-full items-center justify-between rounded-xl px-2 py-1 text-[0.75rem]"
             >
-              <span>
+              <span className="font-medium">
                 {d.toLocaleDateString(undefined, {
                   weekday: "short",
                   month: "short",
                   day: "numeric",
                 })}
               </span>
-              {isToday ? (
-                <span className="rounded bg-orange-500/90 px-1.5 py-0.5 text-[0.65rem] font-medium text-black">
+              {isToday && (
+                <span className="rounded-full bg-black/15 px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.12em]">
                   Today
                 </span>
-              ) : null}
-            </button>
-            <div className="flex-1 space-y-1">
+              )}
+            </Button>
+
+            {/* Appointments list */}
+            <div className="flex-1 space-y-1.5">
               {loading && dayBookings.length === 0 ? (
-                <div className="text-[0.65rem] text-neutral-500">
+                <div className="rounded-md border border-neutral-800 bg-neutral-900/60 px-2 py-2 text-[0.65rem] text-neutral-400">
                   Loading…
                 </div>
               ) : dayBookings.length === 0 ? (
-                <div className="text-[0.65rem] text-neutral-500">
+                <div className="rounded-md border border-dashed border-neutral-800 bg-neutral-950/40 px-2 py-2 text-[0.65rem] text-neutral-500">
                   No appointments
                 </div>
               ) : (
-                dayBookings.map((b) => (
-                  <button
-                    key={b.id}
-                    type="button"
-                    onClick={() => onSelectBooking(b)}
-                    className="w-full rounded bg-orange-500/10 border border-orange-500/30 px-2 py-1 text-left text-[0.65rem] hover:bg-orange-500/20"
-                  >
-                    <div className="font-medium text-white/90">
-                      {b.customer_name || "Customer"}
-                    </div>
-                    <div className="text-[0.6rem] text-neutral-300">
-                      {new Date(b.starts_at).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                      {" – "}
-                      {new Date(b.ends_at).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </div>
-                  </button>
-                ))
+                dayBookings.map((b) => {
+                  const start = new Date(b.starts_at);
+                  const end = new Date(b.ends_at);
+                  const timeLabel = `${start.toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })} – ${end.toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}`;
+
+                  return (
+                    <Button
+                      key={b.id}
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onSelectBooking(b)}
+                      className="flex w-full flex-col items-start gap-0.5 rounded-xl border border-orange-400/40 bg-orange-500/10 px-2 py-1.5 text-left text-[0.7rem] hover:bg-orange-500/20"
+                    >
+                      <div className="flex w-full items-center justify-between gap-2">
+                        <div className="truncate font-semibold text-white">
+                          {displayCustomerName(b)}
+                        </div>
+                        <div className="whitespace-nowrap text-[0.6rem] text-orange-200/90">
+                          {timeLabel}
+                        </div>
+                      </div>
+                      {b.notes && (
+                        <div className="mt-0.5 line-clamp-2 text-[0.6rem] text-neutral-200/80">
+                          {b.notes}
+                        </div>
+                      )}
+                    </Button>
+                  );
+                })
               )}
             </div>
           </div>
