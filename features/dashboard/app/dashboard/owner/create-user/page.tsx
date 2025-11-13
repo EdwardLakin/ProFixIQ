@@ -171,25 +171,44 @@ export default function CreateUserPage(): JSX.Element {
   return (
     <PageShell
       title="Create User"
-      description="Add shop staff with a username + temporary password."
+      description="Add shop staff with a username and temporary password."
     >
       {/* top 2-column content */}
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         {/* LEFT: create user */}
-        <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4 sm:p-6 space-y-4">
-          <h2 className="text-lg font-semibold text-white">New user</h2>
-          <p className="text-sm text-neutral-400">
-            The user will sign in with{" "}
-            <span className="text-orange-300">their username</span> and this
-            temporary password.
-          </p>
+        <div className="space-y-4 rounded-xl border border-neutral-800 bg-neutral-950 p-4 sm:p-6">
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold text-white">New team member</h2>
+            <p className="text-sm text-neutral-400">
+              Create a username-based account for shop staff. They&apos;ll sign in with{" "}
+              <span className="text-orange-300">their username</span> and this temporary
+              password.
+            </p>
+          </div>
+
+          {(error || success) && (
+            <div className="space-y-2">
+              {error && (
+                <div className="rounded-md border border-red-500/60 bg-red-950/60 px-3 py-2 text-xs text-red-100">
+                  {error}
+                </div>
+              )}
+              {success && (
+                <div className="rounded-md border border-emerald-500/60 bg-emerald-950/60 px-3 py-2 text-xs text-emerald-100">
+                  {success}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1">
-              <label className="text-xs text-neutral-400">Full name</label>
+              <label className="text-xs font-medium text-neutral-300">
+                Full name
+              </label>
               <input
-                className="input text-white"
-                placeholder="Full Name"
+                className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-0"
+                placeholder="Full name"
                 value={form.full_name ?? ""}
                 onChange={(e) =>
                   setForm({ ...form, full_name: e.target.value })
@@ -197,39 +216,44 @@ export default function CreateUserPage(): JSX.Element {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs text-neutral-400">Phone</label>
+              <label className="text-xs font-medium text-neutral-300">Phone</label>
               <input
-                className="input text-white"
+                className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-0"
                 placeholder="Phone"
                 value={form.phone ?? ""}
                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs text-neutral-400">Username *</label>
+              <label className="text-xs font-medium text-neutral-300">
+                Username <span className="text-red-400">*</span>
+              </label>
               <input
-                className="input text-white"
+                className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-0"
                 placeholder="e.g. jsmith"
                 value={form.username}
                 onChange={(e) => setForm({ ...form, username: e.target.value })}
               />
+              <p className="text-[11px] text-neutral-500">
+                Use lowercase letters / numbers only. This becomes their login.
+              </p>
             </div>
             <div className="space-y-1">
-              <label className="text-xs text-neutral-400">
-                Temporary password *
+              <label className="text-xs font-medium text-neutral-300">
+                Temporary password <span className="text-red-400">*</span>
               </label>
               <input
-                className="input text-white"
-                placeholder="Temporary Password"
+                className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-0"
+                placeholder="Temporary password"
                 type="password"
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs text-neutral-400">Role</label>
+              <label className="text-xs font-medium text-neutral-300">Role</label>
               <select
-                className="input text-white"
+                className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none"
                 value={form.role ?? ""}
                 onChange={(e) =>
                   setForm({ ...form, role: e.target.value as UserRole })
@@ -243,11 +267,14 @@ export default function CreateUserPage(): JSX.Element {
               </select>
             </div>
             <div className="space-y-1">
-              <label className="text-xs text-neutral-400">
-                Shop ID {creatorShopId ? "(auto)" : "(optional)"}
+              <label className="text-xs font-medium text-neutral-300">
+                Shop ID{" "}
+                <span className="text-neutral-500">
+                  {creatorShopId ? "(auto from your profile)" : "(optional)"}
+                </span>
               </label>
               <input
-                className="input text-white"
+                className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-0"
                 placeholder="Shop ID"
                 value={form.shop_id ?? ""}
                 onChange={(e) =>
@@ -260,46 +287,47 @@ export default function CreateUserPage(): JSX.Element {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={() => void submit()}
               disabled={submitting}
-              className="btn btn-orange disabled:opacity-60"
+              className="inline-flex items-center justify-center rounded-md bg-orange-500 px-4 py-2 text-sm font-semibold text-black shadow-sm transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {submitting ? "Creating…" : "Create User"}
+              {submitting ? "Creating…" : "Create user"}
             </button>
-            {error && <div className="text-sm text-red-300">{error}</div>}
-            {success && <div className="text-sm text-green-300">{success}</div>}
+            <p className="text-xs text-neutral-500">
+              New users can update their password after they sign in.
+            </p>
           </div>
         </div>
 
         {/* RIGHT: recents + internal reset */}
         <div className="space-y-6">
           {/* recently created */}
-          <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4 sm:p-6">
-            <h2 className="text-lg font-semibold mb-2 text-white">
+          <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 sm:p-6">
+            <h2 className="mb-2 text-lg font-semibold text-white">
               Recently created
             </h2>
             {recentUsers.length === 0 ? (
               <p className="text-sm text-neutral-500">
-                Create a user to see it here.
+                New users you create will appear here with their role.
               </p>
             ) : (
-              <ul className="space-y-2">
+              <ul className="space-y-2 text-sm">
                 {recentUsers.map((u) => (
                   <li
                     key={u.username}
-                    className="flex items-center justify-between gap-2 rounded bg-neutral-800/40 px-3 py-2"
+                    className="flex items-center justify-between gap-2 rounded-lg bg-neutral-900 px-3 py-2"
                   >
                     <div>
-                      <div className="text-sm font-medium text-white">
+                      <div className="font-medium text-white">
                         {u.full_name || u.username}
                       </div>
                       <div className="text-xs text-neutral-400">
                         @{u.username} • {u.role ?? "mechanic"}
                       </div>
                     </div>
-                    <span className="rounded bg-neutral-700/40 px-2 py-0.5 text-xs text-neutral-200">
+                    <span className="rounded-full bg-neutral-800 px-2 py-0.5 text-[11px] text-neutral-200">
                       temp set
                     </span>
                   </li>
@@ -309,22 +337,23 @@ export default function CreateUserPage(): JSX.Element {
           </div>
 
           {/* reset */}
-          <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4 sm:p-6">
-            <h2 className="text-lg font-semibold mb-2 text-white">
+          <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4 sm:p-6">
+            <h2 className="mb-2 text-lg font-semibold text-white">
               Reset password (internal)
             </h2>
-            <p className="text-xs text-neutral-500 mb-3">
-              For shop-created accounts (username-based). This won’t send email.
+            <p className="mb-3 text-xs text-neutral-500">
+              For username-based shop accounts only. This does not email the user; you&apos;ll
+              need to share the new temporary password with them.
             </p>
-            <div className="space-y-2">
+            <div className="space-y-2 text-sm">
               <input
-                className="input text-white"
+                className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-0"
                 placeholder="Username to reset"
                 value={resetUsername}
                 onChange={(e) => setResetUsername(e.target.value)}
               />
               <input
-                className="input text-white"
+                className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-0"
                 placeholder="New temporary password"
                 type="password"
                 value={resetPass}
@@ -334,12 +363,12 @@ export default function CreateUserPage(): JSX.Element {
                 type="button"
                 onClick={() => void resetPassword()}
                 disabled={resetBusy}
-                className="btn btn-orange w-full disabled:opacity-50"
+                className="mt-1 inline-flex w-full items-center justify-center rounded-md bg-orange-500 px-4 py-2 text-sm font-semibold text-black shadow-sm transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {resetBusy ? "Updating…" : "Reset Password"}
+                {resetBusy ? "Updating…" : "Reset password"}
               </button>
               {resetMsg && (
-                <div className="text-xs mt-1 text-neutral-200">{resetMsg}</div>
+                <div className="mt-1 text-xs text-neutral-200">{resetMsg}</div>
               )}
             </div>
           </div>
@@ -347,7 +376,12 @@ export default function CreateUserPage(): JSX.Element {
       </div>
 
       {/* USERS LIST (full width, own card) */}
-      <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4 sm:p-6">
+      <div className="mt-6 rounded-xl border border-neutral-800 bg-neutral-950 p-4 sm:p-6">
+        <h2 className="mb-3 text-lg font-semibold text-white">All users</h2>
+        <p className="mb-3 text-xs text-neutral-500">
+          This is the full list of users for your shop. New accounts appear here
+          automatically.
+        </p>
         <UsersList key={listRefreshKey} />
       </div>
     </PageShell>
