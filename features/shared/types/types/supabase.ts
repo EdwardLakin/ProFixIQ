@@ -928,6 +928,187 @@ export type Database = {
         }
         Relationships: []
       }
+      fleet_program_tasks: {
+        Row: {
+          created_at: string
+          default_labor_hours: number | null
+          description: string
+          display_order: number
+          id: string
+          job_type: string
+          program_id: string
+          section_key: string | null
+        }
+        Insert: {
+          created_at?: string
+          default_labor_hours?: number | null
+          description: string
+          display_order?: number
+          id?: string
+          job_type?: string
+          program_id: string
+          section_key?: string | null
+        }
+        Update: {
+          created_at?: string
+          default_labor_hours?: number | null
+          description?: string
+          display_order?: number
+          id?: string
+          job_type?: string
+          program_id?: string
+          section_key?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_program_tasks_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_programs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fleet_programs: {
+        Row: {
+          base_template_slug: string | null
+          cadence: Database["public"]["Enums"]["fleet_program_cadence"]
+          created_at: string
+          fleet_id: string
+          id: string
+          include_custom_inspection: boolean
+          interval_days: number | null
+          interval_hours: number | null
+          interval_km: number | null
+          name: string
+          notes: string | null
+        }
+        Insert: {
+          base_template_slug?: string | null
+          cadence: Database["public"]["Enums"]["fleet_program_cadence"]
+          created_at?: string
+          fleet_id: string
+          id?: string
+          include_custom_inspection?: boolean
+          interval_days?: number | null
+          interval_hours?: number | null
+          interval_km?: number | null
+          name: string
+          notes?: string | null
+        }
+        Update: {
+          base_template_slug?: string | null
+          cadence?: Database["public"]["Enums"]["fleet_program_cadence"]
+          created_at?: string
+          fleet_id?: string
+          id?: string
+          include_custom_inspection?: boolean
+          interval_days?: number | null
+          interval_hours?: number | null
+          interval_km?: number | null
+          name?: string
+          notes?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_programs_fleet_id_fkey"
+            columns: ["fleet_id"]
+            isOneToOne: false
+            referencedRelation: "fleets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fleet_vehicles: {
+        Row: {
+          active: boolean
+          custom_interval_days: number | null
+          custom_interval_hours: number | null
+          custom_interval_km: number | null
+          fleet_id: string
+          nickname: string | null
+          vehicle_id: string
+        }
+        Insert: {
+          active?: boolean
+          custom_interval_days?: number | null
+          custom_interval_hours?: number | null
+          custom_interval_km?: number | null
+          fleet_id: string
+          nickname?: string | null
+          vehicle_id: string
+        }
+        Update: {
+          active?: boolean
+          custom_interval_days?: number | null
+          custom_interval_hours?: number | null
+          custom_interval_km?: number | null
+          fleet_id?: string
+          nickname?: string | null
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_vehicles_fleet_id_fkey"
+            columns: ["fleet_id"]
+            isOneToOne: false
+            referencedRelation: "fleets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_vehicles_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fleets: {
+        Row: {
+          contact_email: string | null
+          contact_name: string | null
+          created_at: string
+          id: string
+          name: string
+          notes: string | null
+          shop_id: string
+        }
+        Insert: {
+          contact_email?: string | null
+          contact_name?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          notes?: string | null
+          shop_id: string
+        }
+        Update: {
+          contact_email?: string | null
+          contact_name?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          shop_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleets_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleets_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       followups: {
         Row: {
           created_at: string | null
@@ -1695,7 +1876,6 @@ export type Database = {
       messages: {
         Row: {
           attachments: Json
-          chat_id: string | null
           content: string
           conversation_id: string | null
           created_at: string
@@ -1710,7 +1890,6 @@ export type Database = {
         }
         Insert: {
           attachments?: Json
-          chat_id?: string | null
           content: string
           conversation_id?: string | null
           created_at?: string
@@ -1725,7 +1904,6 @@ export type Database = {
         }
         Update: {
           attachments?: Json
-          chat_id?: string | null
           content?: string
           conversation_id?: string | null
           created_at?: string
@@ -1739,13 +1917,6 @@ export type Database = {
           sent_at?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "messages_chat_id_fkey"
-            columns: ["chat_id"]
-            isOneToOne: false
-            referencedRelation: "chats"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "messages_conversation_id_fkey"
             columns: ["conversation_id"]
@@ -5562,6 +5733,11 @@ export type Database = {
       }
     }
     Enums: {
+      fleet_program_cadence:
+        | "monthly"
+        | "quarterly"
+        | "mileage_based"
+        | "hours_based"
       inspection_item_status: "ok" | "fail" | "na" | "recommend"
       inspection_status:
         | "new"
@@ -5732,6 +5908,12 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      fleet_program_cadence: [
+        "monthly",
+        "quarterly",
+        "mileage_based",
+        "hours_based",
+      ],
       inspection_item_status: ["ok", "fail", "na", "recommend"],
       inspection_status: [
         "new",

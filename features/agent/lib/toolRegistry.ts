@@ -49,12 +49,45 @@ import {
   type AttachPhotoOut,
 } from "../tools/toolAttachPhoto";
 
-/* 🔶 NEW: Custom inspection tool */
+/* 🔶 Custom inspection tool */
 import {
   toolCreateCustomInspection,
   type CreateCustomInspectionIn,
   type CreateCustomInspectionOut,
 } from "../tools/createCustomInspection";
+
+/* 🔶 Fleet tools */
+import {
+  toolFindOrCreateFleet,
+  type FindOrCreateFleetIn,
+  type FindOrCreateFleetOut,
+} from "../tools/findOrCreateFleet";
+
+import {
+  toolGenerateFleetWorkOrders,
+  type GenerateFleetWorkOrdersIn,
+  type GenerateFleetWorkOrdersOut,
+} from "../tools/generateFleetWorkOrders";
+
+/* 🔶 Approval tools (line-level) */
+import {
+  toolListPendingApprovals,
+  type ListPendingApprovalsIn,
+  type ListPendingApprovalsOut,
+} from "../tools/listPendingApprovals";
+
+import {
+  toolSetLineApproval,
+  type SetLineApprovalIn,
+  type SetLineApprovalOut,
+} from "../tools/setLineApproval";
+
+/* 🔶 Work-order-level approval history tool */
+import {
+  toolRecordWorkOrderApproval,
+  type RecordWorkOrderApprovalIn,
+  type RecordWorkOrderApprovalOut,
+} from "../tools/recordWorkOrderApproval";
 
 /** Register all tools here (order doesn't matter) */
 export const TOOLSET = [
@@ -66,7 +99,14 @@ export const TOOLSET = [
   toolCreateCustomer,
   toolCreateVehicle,
   toolAttachPhoto,
-  toolCreateCustomInspection, // ← NEW
+  toolCreateCustomInspection,
+  // Fleet
+  toolFindOrCreateFleet,
+  toolGenerateFleetWorkOrders,
+  // Approvals
+  toolListPendingApprovals,
+  toolSetLineApproval,
+  toolRecordWorkOrderApproval,
 ] as const;
 
 export type ToolName = (typeof TOOLSET)[number]["name"];
@@ -127,12 +167,44 @@ export async function validateAndRun(
   ctx: ToolContext
 ): Promise<AttachPhotoOut>;
 
-/* 🔶 NEW overload */
 export async function validateAndRun(
   name: "create_custom_inspection",
   input: CreateCustomInspectionIn,
   ctx: ToolContext
 ): Promise<CreateCustomInspectionOut>;
+
+/* 🔶 Fleet */
+export async function validateAndRun(
+  name: "find_or_create_fleet",
+  input: FindOrCreateFleetIn,
+  ctx: ToolContext
+): Promise<FindOrCreateFleetOut>;
+
+export async function validateAndRun(
+  name: "generate_fleet_work_orders",
+  input: GenerateFleetWorkOrdersIn,
+  ctx: ToolContext
+): Promise<GenerateFleetWorkOrdersOut>;
+
+/* 🔶 Approvals (line-level) */
+export async function validateAndRun(
+  name: "list_pending_approvals",
+  input: ListPendingApprovalsIn,
+  ctx: ToolContext
+): Promise<ListPendingApprovalsOut>;
+
+export async function validateAndRun(
+  name: "set_line_approval",
+  input: SetLineApprovalIn,
+  ctx: ToolContext
+): Promise<SetLineApprovalOut>;
+
+/* 🔶 Work-order-level approvals history */
+export async function validateAndRun(
+  name: "record_work_order_approval",
+  input: RecordWorkOrderApprovalIn,
+  ctx: ToolContext
+): Promise<RecordWorkOrderApprovalOut>;
 
 /** Generic implementation (types above resolve to this) */
 export async function validateAndRun(
@@ -153,14 +225,35 @@ export async function validateAndRun(
 export const runCreateWorkOrder = (input: CreateWorkOrderIn, ctx: ToolContext) =>
   validateAndRun("create_work_order", input, ctx) as Promise<CreateWorkOrderOut>;
 
-export const runAddWorkOrderLine = (input: AddWorkOrderLineIn, ctx: ToolContext) =>
-  validateAndRun("add_work_order_line", input, ctx) as Promise<AddWorkOrderLineOut>;
+export const runAddWorkOrderLine = (
+  input: AddWorkOrderLineIn,
+  ctx: ToolContext
+) =>
+  validateAndRun(
+    "add_work_order_line",
+    input,
+    ctx
+  ) as Promise<AddWorkOrderLineOut>;
 
-export const runFindCustomerVehicle = (input: FindCustomerVehicleIn, ctx: ToolContext) =>
-  validateAndRun("find_customer_vehicle", input, ctx) as Promise<FindCustomerVehicleOut>;
+export const runFindCustomerVehicle = (
+  input: FindCustomerVehicleIn,
+  ctx: ToolContext
+) =>
+  validateAndRun(
+    "find_customer_vehicle",
+    input,
+    ctx
+  ) as Promise<FindCustomerVehicleOut>;
 
-export const runGenerateInvoiceHtml = (input: GenerateInvoiceHtmlIn, ctx: ToolContext) =>
-  validateAndRun("generate_invoice_html", input, ctx) as Promise<GenerateInvoiceHtmlOut>;
+export const runGenerateInvoiceHtml = (
+  input: GenerateInvoiceHtmlIn,
+  ctx: ToolContext
+) =>
+  validateAndRun(
+    "generate_invoice_html",
+    input,
+    ctx
+  ) as Promise<GenerateInvoiceHtmlOut>;
 
 export const runEmailInvoice = (input: EmailInvoiceIn, ctx: ToolContext) =>
   validateAndRun("email_invoice", input, ctx) as Promise<EmailInvoiceOut>;
@@ -172,14 +265,74 @@ export const runCreateVehicle = (input: CreateVehicleIn, ctx: ToolContext) =>
   validateAndRun("create_vehicle", input, ctx) as Promise<CreateVehicleOut>;
 
 export const runAttachPhoto = (input: AttachPhotoIn, ctx: ToolContext) =>
-  validateAndRun("attach_photo_to_work_order", input, ctx) as Promise<AttachPhotoOut>;
+  validateAndRun(
+    "attach_photo_to_work_order",
+    input,
+    ctx
+  ) as Promise<AttachPhotoOut>;
 
-/* 🔶 NEW thin wrapper */
 export const runCreateCustomInspection = (
   input: CreateCustomInspectionIn,
   ctx: ToolContext
 ) =>
-  validateAndRun("create_custom_inspection", input, ctx) as Promise<CreateCustomInspectionOut>;
+  validateAndRun(
+    "create_custom_inspection",
+    input,
+    ctx
+  ) as Promise<CreateCustomInspectionOut>;
+
+/* 🔶 Fleet wrappers */
+export const runFindOrCreateFleet = (
+  input: FindOrCreateFleetIn,
+  ctx: ToolContext
+) =>
+  validateAndRun(
+    "find_or_create_fleet",
+    input,
+    ctx
+  ) as Promise<FindOrCreateFleetOut>;
+
+export const runGenerateFleetWorkOrders = (
+  input: GenerateFleetWorkOrdersIn,
+  ctx: ToolContext
+) =>
+  validateAndRun(
+    "generate_fleet_work_orders",
+    input,
+    ctx
+  ) as Promise<GenerateFleetWorkOrdersOut>;
+
+/* 🔶 Approvals wrappers (line-level) */
+export const runListPendingApprovals = (
+  input: ListPendingApprovalsIn,
+  ctx: ToolContext
+) =>
+  validateAndRun(
+    "list_pending_approvals",
+    input,
+    ctx
+  ) as Promise<ListPendingApprovalsOut>;
+
+export const runSetLineApproval = (
+  input: SetLineApprovalIn,
+  ctx: ToolContext
+) =>
+  validateAndRun(
+    "set_line_approval",
+    input,
+    ctx
+  ) as Promise<SetLineApprovalOut>;
+
+/* 🔶 Work-order-level approvals wrapper */
+export const runRecordWorkOrderApproval = (
+  input: RecordWorkOrderApprovalIn,
+  ctx: ToolContext
+) =>
+  validateAndRun(
+    "record_work_order_approval",
+    input,
+    ctx
+  ) as Promise<RecordWorkOrderApprovalOut>;
 
 /* -------------------------------------------------------------------------- */
 

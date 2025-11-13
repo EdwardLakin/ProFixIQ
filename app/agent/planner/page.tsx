@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
-import PageShell from "@/features/shared/components/PageShell"; // ✅ use your shared shell
+import PageShell from "@/features/shared/components/PageShell";
 import { Button } from "@shared/components/ui/Button";
 import { useWorkOrderDraft } from "app/work-orders/state/useWorkOrderDraft";
 import { WorkOrderPreviewTrigger } from "app/work-orders/components/WorkOrderPreviewTrigger";
@@ -27,7 +27,9 @@ type OcrFields = {
   email?: string | null;
 };
 
-type PlannerKind = "simple" | "openai";
+// 🔹 now supports fleet + approvals modes as well
+type PlannerKind = "simple" | "openai" | "fleet" | "approvals";
+
 type AgentStartOut = { runId: string; alreadyExists: boolean };
 
 type AgentEvent = Record<string, unknown> & { kind?: string };
@@ -35,6 +37,7 @@ type AgentEvent = Record<string, unknown> & { kind?: string };
 function asString(v: unknown): string | null {
   return typeof v === "string" ? v : null;
 }
+
 function extractWorkOrderId(evt: AgentEvent): string | null {
   return (
     asString(evt.work_order_id) ??
@@ -43,6 +46,7 @@ function extractWorkOrderId(evt: AgentEvent): string | null {
     asString(evt.id)
   );
 }
+
 function toMsg(e: unknown): string {
   if (typeof e === "string") return e;
   if (
@@ -133,7 +137,9 @@ export default function PlannerPage() {
 
   useEffect(() => {
     let mounted = true;
-    supabase.auth.getUser().then(({ data }) => mounted && setUserId(data.user?.id ?? null));
+    supabase.auth
+      .getUser()
+      .then(({ data }) => mounted && setUserId(data.user?.id ?? null));
     return () => void (mounted = false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -212,7 +218,8 @@ export default function PlannerPage() {
     setRunning(false);
   }
 
-  const appendStep = (s: string) => setSteps((arr) => (arr.includes(s) ? arr : [...arr, s]));
+  const appendStep = (s: string) =>
+    setSteps((arr) => (arr.includes(s) ? arr : [...arr, s]));
   const appendLog = (l: string) => setLog((arr) => [...arr, l]);
 
   async function start() {
@@ -381,12 +388,12 @@ export default function PlannerPage() {
       <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-5 space-y-4">
         <div className="grid gap-3 md:grid-cols-2">
           <label className="block">
-            <div className="text-sm text-neutral-400 mb-1">Goal</div>
+            <div className="mb-1 text-sm text-neutral-400">Goal</div>
             <textarea
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
               placeholder="e.g. Find John Smith, create inspection WO, add note, email invoice"
-              className="w-full min-h-[96px] p-2 rounded border border-neutral-800 bg-neutral-900 text-neutral-100"
+              className="w-full min-h-[96px] rounded border border-neutral-800 bg-neutral-900 p-2 text-neutral-100"
             />
             <div className="mt-2 flex flex-wrap gap-2">
               <Button variant="outline" size="sm" onClick={presetOilGas}>
@@ -406,34 +413,36 @@ export default function PlannerPage() {
 
           <div className="grid gap-3">
             <label className="block">
-              <div className="text-sm text-neutral-400 mb-1">Planner</div>
+              <div className="mb-1 text-sm text-neutral-400">Planner</div>
               <select
                 value={planner}
                 onChange={(e) => setPlanner((e.target.value as PlannerKind) ?? "openai")}
-                className="w-full p-2 rounded border border-neutral-800 bg-neutral-900 text-neutral-100"
+                className="w-full rounded border border-neutral-800 bg-neutral-900 p-2 text-neutral-100"
               >
                 <option value="openai">OpenAI (rich)</option>
                 <option value="simple">Simple (rules)</option>
+                <option value="fleet">Fleet PM</option>
+                <option value="approvals">Advisor approvals</option>
               </select>
             </label>
 
             <label className="block">
-              <div className="text-sm text-neutral-400 mb-1">Customer query (name)</div>
+              <div className="mb-1 text-sm text-neutral-400">Customer query (name)</div>
               <input
                 value={customerQuery}
                 onChange={(e) => setCustomerQuery(e.target.value)}
-                className="w-full p-2 rounded border border-neutral-800 bg-neutral-900 text-neutral-100"
+                className="w-full rounded border border-neutral-800 bg-neutral-900 p-2 text-neutral-100"
                 placeholder="e.g. John Smith"
               />
             </label>
 
             <label className="block">
-              <div className="text-sm text-neutral-400 mb-1">Plate or VIN</div>
+              <div className="mb-1 text-sm text-neutral-400">Plate or VIN</div>
               <div className="flex gap-2">
                 <input
                   value={plateOrVin}
                   onChange={(e) => setPlateOrVin(e.target.value)}
-                  className="w-full p-2 rounded border border-neutral-800 bg-neutral-900 text-neutral-100"
+                  className="w-full rounded border border-neutral-800 bg-neutral-900 p-2 text-neutral-100"
                   placeholder="e.g. 8ABC123 or 1FT…"
                 />
                 <Button
@@ -450,11 +459,13 @@ export default function PlannerPage() {
             </label>
 
             <label className="block">
-              <div className="text-sm text-neutral-400 mb-1">Email invoice to (optional)</div>
+              <div className="mb-1 text-sm text-neutral-400">
+                Email invoice to (optional)
+              </div>
               <input
                 value={emailInvoiceTo}
                 onChange={(e) => setEmailInvoiceTo(e.target.value)}
-                className="w-full p-2 rounded border border-neutral-800 bg-neutral-900 text-neutral-100"
+                className="w-full rounded border border-neutral-800 bg-neutral-900 p-2 text-neutral-100"
                 placeholder="customer@example.com"
                 type="email"
                 inputMode="email"
@@ -462,13 +473,15 @@ export default function PlannerPage() {
             </label>
 
             <label className="block">
-              <div className="text-sm text-neutral-400 mb-1">Photo (DL / Registration)</div>
+              <div className="mb-1 text-sm text-neutral-400">
+                Photo (DL / Registration)
+              </div>
               <input
                 type="file"
                 accept="image/*"
                 capture="environment"
                 onChange={(e) => onPickPhoto(e.target.files?.[0] ?? null)}
-                className="block w-full text-sm text-neutral-300 file:mr-4 file:py-2 file:px-3 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-orange-600 file:text-white hover:file:bg-orange-700"
+                className="block w-full text-sm text-neutral-300 file:mr-4 file:rounded file:border-0 file:bg-orange-600 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-orange-700"
               />
               {photoPreview ? (
                 <img
@@ -505,7 +518,7 @@ export default function PlannerPage() {
         )}
 
         <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
-          <div className="text-sm text-neutral-300 mb-2">Stream</div>
+          <div className="mb-2 text-sm text-neutral-300">Stream</div>
           {steps.length === 0 ? (
             <div className="text-sm text-neutral-500">Waiting for updates…</div>
           ) : (
@@ -568,7 +581,7 @@ export default function PlannerPage() {
 
       {toast && (
         <div
-          className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 rounded border px-4 py-2 shadow-xl"
+          className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded border px-4 py-2 shadow-xl"
           style={{ borderColor: "#f97316", backgroundColor: "#0a0a0a" }}
         >
           <div className="flex items-center gap-2 text-sm text-neutral-100">
