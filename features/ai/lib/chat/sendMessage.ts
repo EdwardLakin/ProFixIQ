@@ -87,7 +87,6 @@ export async function POST(req: Request): Promise<NextResponse> {
   }
 
   if (!isCreator && !isParticipant) {
-    // we still protect the route, just not with RLS timing issues
     return NextResponse.json(
       { error: "You are not part of this conversation" },
       { status: 403 },
@@ -97,8 +96,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   // 4. insert the message with admin client (so no RLS race)
   const messagePayload: MessageInsert = {
     conversation_id: conversationId,
-    // keep legacy value for pages that look at chat_id
-    chat_id: conversationId,
+    // chat_id removed – column no longer exists in types
     sender_id: senderId,
     content,
     recipients: Array.isArray(body.recipients) ? body.recipients : [],
