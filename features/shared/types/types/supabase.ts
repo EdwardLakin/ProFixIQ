@@ -112,6 +112,54 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_events: {
+        Row: {
+          created_at: string
+          entity_id: string | null
+          entity_table: string | null
+          event_type: string
+          id: string
+          payload: Json
+          shop_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          entity_id?: string | null
+          entity_table?: string | null
+          event_type: string
+          id?: string
+          payload: Json
+          shop_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          entity_id?: string | null
+          entity_table?: string | null
+          event_type?: string
+          id?: string
+          payload?: Json
+          shop_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_requests: {
         Row: {
           created_at: string | null
@@ -156,6 +204,55 @@ export type Database = {
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_training_data: {
+        Row: {
+          content: string
+          created_at: string
+          embedding: string | null
+          id: string
+          shop_id: string | null
+          source_event_id: string | null
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          embedding?: string | null
+          id?: string
+          shop_id?: string | null
+          source_event_id?: string | null
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          embedding?: string | null
+          id?: string
+          shop_id?: string | null
+          source_event_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_training_data_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_training_data_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_training_data_source_event_id_fkey"
+            columns: ["source_event_id"]
+            isOneToOne: false
+            referencedRelation: "ai_events"
             referencedColumns: ["id"]
           },
         ]
@@ -1646,6 +1743,102 @@ export type Database = {
           },
         ]
       }
+      integration_logs: {
+        Row: {
+          action: string
+          created_at: string
+          error_message: string | null
+          id: string
+          provider: string
+          request: Json | null
+          response: Json | null
+          shop_id: string | null
+          success: boolean
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          provider: string
+          request?: Json | null
+          response?: Json | null
+          shop_id?: string | null
+          success?: boolean
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          provider?: string
+          request?: Json | null
+          response?: Json | null
+          shop_id?: string | null
+          success?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integration_logs_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "integration_logs_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      integrations: {
+        Row: {
+          config: Json | null
+          created_at: string
+          id: string
+          provider: string
+          shop_id: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          config?: Json | null
+          created_at?: string
+          id?: string
+          provider: string
+          shop_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          config?: Json | null
+          created_at?: string
+          id?: string
+          provider?: string
+          shop_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integrations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "integrations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       media_uploads: {
         Row: {
           analysis_summary: string | null
@@ -2728,6 +2921,258 @@ export type Database = {
           },
         ]
       }
+      parts_suppliers: {
+        Row: {
+          api_base_url: string | null
+          api_key: string | null
+          created_at: string | null
+          id: string
+          shop_id: string | null
+          supplier_name: string
+        }
+        Insert: {
+          api_base_url?: string | null
+          api_key?: string | null
+          created_at?: string | null
+          id?: string
+          shop_id?: string | null
+          supplier_name: string
+        }
+        Update: {
+          api_base_url?: string | null
+          api_key?: string | null
+          created_at?: string | null
+          id?: string
+          shop_id?: string | null
+          supplier_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "parts_suppliers_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parts_suppliers_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payroll_deductions: {
+        Row: {
+          amount: number
+          created_at: string | null
+          deduction_type: string
+          id: string
+          timecard_id: string | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string | null
+          deduction_type: string
+          id?: string
+          timecard_id?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string | null
+          deduction_type?: string
+          id?: string
+          timecard_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_deductions_timecard_id_fkey"
+            columns: ["timecard_id"]
+            isOneToOne: false
+            referencedRelation: "payroll_timecards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payroll_export_log: {
+        Row: {
+          created_at: string | null
+          id: string
+          message: string | null
+          pay_period_id: string | null
+          provider_id: string | null
+          status: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          message?: string | null
+          pay_period_id?: string | null
+          provider_id?: string | null
+          status: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          message?: string | null
+          pay_period_id?: string | null
+          provider_id?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_export_log_pay_period_id_fkey"
+            columns: ["pay_period_id"]
+            isOneToOne: false
+            referencedRelation: "payroll_pay_periods"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_export_log_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "payroll_providers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payroll_pay_periods: {
+        Row: {
+          created_at: string | null
+          end_date: string
+          id: string
+          processed: boolean | null
+          shop_id: string | null
+          start_date: string
+        }
+        Insert: {
+          created_at?: string | null
+          end_date: string
+          id?: string
+          processed?: boolean | null
+          shop_id?: string | null
+          start_date: string
+        }
+        Update: {
+          created_at?: string | null
+          end_date?: string
+          id?: string
+          processed?: boolean | null
+          shop_id?: string | null
+          start_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_pay_periods_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_pay_periods_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payroll_providers: {
+        Row: {
+          api_base_url: string | null
+          api_key: string | null
+          created_at: string | null
+          id: string
+          provider_name: string
+          shop_id: string | null
+        }
+        Insert: {
+          api_base_url?: string | null
+          api_key?: string | null
+          created_at?: string | null
+          id?: string
+          provider_name: string
+          shop_id?: string | null
+        }
+        Update: {
+          api_base_url?: string | null
+          api_key?: string | null
+          created_at?: string | null
+          id?: string
+          provider_name?: string
+          shop_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_providers_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_providers_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payroll_timecards: {
+        Row: {
+          clock_in: string
+          clock_out: string | null
+          created_at: string | null
+          hours_worked: number | null
+          id: string
+          shop_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          clock_in: string
+          clock_out?: string | null
+          created_at?: string | null
+          hours_worked?: number | null
+          id?: string
+          shop_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          clock_in?: string
+          clock_out?: string | null
+          created_at?: string | null
+          hours_worked?: number | null
+          id?: string
+          shop_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_timecards_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_timecards_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_timecards_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           business_name: string | null
@@ -3508,6 +3953,52 @@ export type Database = {
         }
         Relationships: []
       }
+      shop_tax_overrides: {
+        Row: {
+          created_at: string | null
+          id: string
+          override_rate: number
+          shop_id: string | null
+          tax_rate_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          override_rate: number
+          shop_id?: string | null
+          tax_rate_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          override_rate?: number
+          shop_id?: string | null
+          tax_rate_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_tax_overrides_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_tax_overrides_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_tax_overrides_tax_rate_id_fkey"
+            columns: ["tax_rate_id"]
+            isOneToOne: false
+            referencedRelation: "tax_rates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shop_time_off: {
         Row: {
           ends_at: string
@@ -3816,6 +4307,144 @@ export type Database = {
           },
         ]
       }
+      supplier_catalog_items: {
+        Row: {
+          brand: string | null
+          compatibility: Json | null
+          cost: number | null
+          description: string | null
+          external_sku: string
+          id: string
+          price: number | null
+          supplier_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          brand?: string | null
+          compatibility?: Json | null
+          cost?: number | null
+          description?: string | null
+          external_sku: string
+          id?: string
+          price?: number | null
+          supplier_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          brand?: string | null
+          compatibility?: Json | null
+          cost?: number | null
+          description?: string | null
+          external_sku?: string
+          id?: string
+          price?: number | null
+          supplier_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_catalog_items_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "parts_suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supplier_orders: {
+        Row: {
+          created_at: string | null
+          external_order_id: string | null
+          id: string
+          items: Json | null
+          shop_id: string | null
+          status: string
+          supplier_id: string | null
+          work_order_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          external_order_id?: string | null
+          id?: string
+          items?: Json | null
+          shop_id?: string | null
+          status: string
+          supplier_id?: string | null
+          work_order_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          external_order_id?: string | null
+          id?: string
+          items?: Json | null
+          shop_id?: string | null
+          status?: string
+          supplier_id?: string | null
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_orders_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_orders_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_orders_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "parts_suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplier_orders_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supplier_price_history: {
+        Row: {
+          catalog_item_id: string | null
+          changed_at: string | null
+          id: string
+          new_price: number | null
+          old_price: number | null
+        }
+        Insert: {
+          catalog_item_id?: string | null
+          changed_at?: string | null
+          id?: string
+          new_price?: number | null
+          old_price?: number | null
+        }
+        Update: {
+          catalog_item_id?: string | null
+          changed_at?: string | null
+          id?: string
+          new_price?: number | null
+          old_price?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_price_history_catalog_item_id_fkey"
+            columns: ["catalog_item_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_catalog_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       suppliers: {
         Row: {
           account_no: string | null
@@ -3854,6 +4483,185 @@ export type Database = {
           shop_id?: string
         }
         Relationships: []
+      }
+      tax_calculation_log: {
+        Row: {
+          breakdown: Json | null
+          created_at: string | null
+          gst: number | null
+          hst: number | null
+          id: string
+          jurisdiction_id: string | null
+          pst: number | null
+          quote_id: string | null
+          shop_id: string | null
+          total_tax: number
+          work_order_id: string | null
+        }
+        Insert: {
+          breakdown?: Json | null
+          created_at?: string | null
+          gst?: number | null
+          hst?: number | null
+          id?: string
+          jurisdiction_id?: string | null
+          pst?: number | null
+          quote_id?: string | null
+          shop_id?: string | null
+          total_tax: number
+          work_order_id?: string | null
+        }
+        Update: {
+          breakdown?: Json | null
+          created_at?: string | null
+          gst?: number | null
+          hst?: number | null
+          id?: string
+          jurisdiction_id?: string | null
+          pst?: number | null
+          quote_id?: string | null
+          shop_id?: string | null
+          total_tax?: number
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tax_calculation_log_jurisdiction_id_fkey"
+            columns: ["jurisdiction_id"]
+            isOneToOne: false
+            referencedRelation: "tax_jurisdictions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tax_calculation_log_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "customer_quotes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tax_calculation_log_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tax_calculation_log_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tax_calculation_log_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tax_jurisdictions: {
+        Row: {
+          code: string
+          created_at: string | null
+          id: string
+          name: string
+        }
+        Insert: {
+          code: string
+          created_at?: string | null
+          id?: string
+          name: string
+        }
+        Update: {
+          code?: string
+          created_at?: string | null
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      tax_providers: {
+        Row: {
+          api_base_url: string | null
+          api_key: string | null
+          created_at: string | null
+          id: string
+          provider_name: string
+          shop_id: string | null
+        }
+        Insert: {
+          api_base_url?: string | null
+          api_key?: string | null
+          created_at?: string | null
+          id?: string
+          provider_name: string
+          shop_id?: string | null
+        }
+        Update: {
+          api_base_url?: string | null
+          api_key?: string | null
+          created_at?: string | null
+          id?: string
+          provider_name?: string
+          shop_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tax_providers_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tax_providers_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tax_rates: {
+        Row: {
+          created_at: string | null
+          effective_from: string
+          effective_to: string | null
+          id: string
+          jurisdiction_id: string | null
+          rate: number
+          tax_type: string
+        }
+        Insert: {
+          created_at?: string | null
+          effective_from: string
+          effective_to?: string | null
+          id?: string
+          jurisdiction_id?: string | null
+          rate: number
+          tax_type: string
+        }
+        Update: {
+          created_at?: string | null
+          effective_from?: string
+          effective_to?: string | null
+          id?: string
+          jurisdiction_id?: string | null
+          rate?: number
+          tax_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tax_rates_jurisdiction_id_fkey"
+            columns: ["jurisdiction_id"]
+            isOneToOne: false
+            referencedRelation: "tax_jurisdictions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       tech_sessions: {
         Row: {
