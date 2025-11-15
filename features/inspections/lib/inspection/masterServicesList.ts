@@ -58,7 +58,8 @@ export const masterServicesList: ServiceCategory[] = [
       { item: "Brake drum replacement" },
       { item: "Parking brake adjustment" },
       { item: "Push rod travel check (air brakes)" },
-    ],
+      { item: "Clutch hydraulic system bleed" }
+],
   },
   {
     title: "Tire, Wheel & Alignment",
