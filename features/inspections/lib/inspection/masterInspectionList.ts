@@ -264,8 +264,16 @@ export const masterInspectionList: InspectionCategory[] = [
         vehicleTypes: ["car", "truck", "bus", "trailer"],
         dutyClasses: ["light", "medium", "heavy"],
         priority: 90,
-      }, // 3H.19
-    ],
+      }, // 3H.19,
+      {
+        item: "Trailer breakaway battery condition",
+        systems: ["hyd_brake"],
+        vehicleTypes: ["trailer"],
+        dutyClasses: ["heavy"],
+        required: false,
+        priority: 70,
+      }
+],
   },
   {
     title: "Brakes — Air (Heavy Duty)",
