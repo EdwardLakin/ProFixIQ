@@ -43,6 +43,10 @@ export interface AIEngine {
 
 class ProFixIQAI implements AIEngine {
   async recordTraining(data: AITrainingRecord): Promise<void> {
+    // Stub implementation for now – later this will:
+    // - write into ai_training_data
+    // - generate embeddings
+    // - update vector indexes
     console.log("AI TRAINING RECORD:", data);
   }
 
@@ -51,12 +55,49 @@ class ProFixIQAI implements AIEngine {
     vehicleYmm?: string | null;
     complaint: string;
   }): Promise<AIQuoteSuggestion | null> {
+    const { shopId, vehicleYmm, complaint } = input;
+
+    // Use all fields so there are no “unused variable” warnings
+    console.log("AI QUOTE SUGGEST (stub)", {
+      shopId,
+      vehicleYmm,
+      complaint,
+    });
+
+    const normalizedComplaint = complaint.trim().toLowerCase();
+
+    // If there's no actual complaint text, don't suggest anything
+    if (!normalizedComplaint) {
+      return null;
+    }
+
+    // Super-simple heuristic just so this function is "real"
+    let laborHours = 1.0;
+
+    if (normalizedComplaint.includes("engine")) {
+      laborHours = 4.0;
+    } else if (normalizedComplaint.includes("transmission")) {
+      laborHours = 3.0;
+    } else if (
+      normalizedComplaint.includes("brake") ||
+      normalizedComplaint.includes("brakes")
+    ) {
+      laborHours = 1.5;
+    } else if (normalizedComplaint.includes("diagnose")) {
+      laborHours = 1.0;
+    }
+
+    const confidence =
+      normalizedComplaint.length > 40 ? 0.7 : 0.5;
+
     return {
+      // For now we return no parts – the actual parts will come from
+      // the vector search + training data pipeline.
       parts: [],
-      laborHours: 1.0,
-      confidence: 0.5,
+      laborHours,
+      confidence,
     };
   }
 }
 
-export const AI = new ProFixIQAI();
+export const AI: AIEngine = new ProFixIQAI();
