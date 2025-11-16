@@ -14,23 +14,18 @@ type AgentRequestStatus =
 
 type PatchBody = {
   action?: "approve" | "reject";
-  // optional: allow notes on the decision
+  // optional: allow overriding / adding notes when deciding
   llm_notes?: string;
-};
-
-type RouteParams = {
-  id: string | string[];
 };
 
 const APPROVER_ROLES = ["owner", "admin", "manager"];
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: RouteParams }
-) {
-  // Next can theoretically give string | string[], so normalize
-  const rawId = params.id;
-  const id = Array.isArray(rawId) ? rawId[0] : rawId;
+export async function PATCH(req: NextRequest) {
+  // --- derive id from URL path, so we don't need a typed `params` arg ---
+  const url = new URL(req.url);
+  const pathname = url.pathname.replace(/\/$/, "");
+  const segments = pathname.split("/");
+  const id = segments[segments.length - 1] ?? "";
 
   if (!id) {
     return NextResponse.json(
@@ -73,10 +68,7 @@ export async function PATCH(
 
   if (profileError || !profile) {
     console.error("agent_requests PATCH profile error", profileError);
-    return NextResponse.json(
-      { error: "Profile not found" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Profile not found" }, { status: 400 });
   }
 
   if (!APPROVER_ROLES.includes(profile.role ?? "")) {
@@ -94,8 +86,8 @@ export async function PATCH(
     .from("agent_requests")
     .update({
       status: newStatus,
-      // if llm_notes is provided, update; otherwise leave as-is
-      llm_notes: body.llm_notes ?? null,
+      // if llm_notes is undefined, Supabase ignores the field; if string, it overwrites
+      llm_notes: body.llm_notes,
     })
     .eq("id", id)
     .select("*")
