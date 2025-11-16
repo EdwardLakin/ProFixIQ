@@ -1,3 +1,4 @@
+// app/api/agent/requests/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
@@ -7,6 +8,30 @@ import type { Database } from "@shared/types/types/supabase";
 const AGENT_SERVICE_URL =
   process.env.PROFIXIQ_AGENT_URL?.replace(/\/$/, "") ||
   "https://obscure-space-guacamole-69pvggxvgrxj2qxr-4001.app.github.dev";
+
+type AgentGithubMeta = {
+  issueNumber?: number | null;
+  issueUrl?: string | null;
+  prNumber?: number | null;
+  prUrl?: string | null;
+  branchName?: string | null;
+  commitSha?: string | null;
+  fileUrl?: string | null;
+};
+
+type AgentLLMMeta = {
+  model?: string | null;
+  confidence?: number | null;
+  notes?: string | null;
+};
+
+type AgentServiceResponse = {
+  message?: string;
+  intent?: string | null;
+  request?: Record<string, unknown> | null;
+  github?: AgentGithubMeta | null;
+  llm?: AgentLLMMeta | null;
+};
 
 export async function GET(_req: NextRequest) {
   const cookieStore = cookies();
@@ -114,7 +139,7 @@ export async function POST(req: NextRequest) {
   }
 
   // 2. Call the external agent service
-  let agentResponse: any = null;
+  let agentResponse: AgentServiceResponse | null = null;
   try {
     const res = await fetch(`${AGENT_SERVICE_URL}/feature-requests`, {
       method: "POST",
@@ -128,7 +153,16 @@ export async function POST(req: NextRequest) {
       }),
     });
 
-    agentResponse = await res.json();
+    // If the agent service errors, we still keep the local row as "submitted"
+    if (res.ok) {
+      agentResponse = (await res.json()) as AgentServiceResponse;
+    } else {
+      console.error(
+        "ProFixIQ-Agent returned non-OK status",
+        res.status,
+        await res.text()
+      );
+    }
   } catch (err) {
     console.error("Error calling ProFixIQ-Agent", err);
   }
