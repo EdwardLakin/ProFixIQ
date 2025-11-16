@@ -1,3 +1,4 @@
+// app/(app)/AppShell.tsx  (or wherever your shell actually lives)
 "use client";
 
 import Link from "next/link";
@@ -10,6 +11,7 @@ import RoleSidebar from "@/features/shared/components/RoleSidebar";
 import ThemeToggleButton from "@/features/shared/components/ThemeToggleButton";
 import ShiftTracker from "@shared/components/ShiftTracker";
 import NewChatModal from "@/features/ai/components/chat/NewChatModal";
+import AgentRequestModal from "@/features/agent/components/AgentRequestModal";
 
 const NON_APP_ROUTES = [
   "/",
@@ -47,6 +49,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [userRole, setUserRole] = useState<string | null>(null);
   const [punchOpen, setPunchOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [agentDialogOpen, setAgentDialogOpen] = useState(false);
   const [incomingConvoId, setIncomingConvoId] = useState<string | null>(null);
   const punchRef = useRef<HTMLDivElement | null>(null);
 
@@ -217,6 +220,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 💬 <span className="hidden lg:inline">Messages</span>
               </ActionButton>
 
+              {/* Agent Request – available to any signed-in user */}
+              {userId && (
+                <ActionButton
+                  onClick={() => setAgentDialogOpen(true)}
+                  title="Submit a request to ProFixIQ Agent"
+                >
+                  🤖 <span className="hidden lg:inline">Agent Request</span>
+                </ActionButton>
+              )}
+
               <ActionButton
                 onClick={() => router.push("/portal/appointments")}
                 title="Planner / appointments"
@@ -231,7 +244,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 ⚡ <span className="hidden lg:inline">AI Planner</span>
               </ActionButton>
 
-              {/* NEW: Agent Console (role-gated) */}
+              {/* Agent Console (role-gated) */}
               {userId && canSeeAgentConsole && (
                 <ActionButton
                   onClick={() => router.push("/agent")}
@@ -295,6 +308,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         context_id={null}
         activeConversationId={incomingConvoId}
       />
+
+      {/* Global Agent Request modal */}
+      {userId && (
+        <AgentRequestModal
+          open={agentDialogOpen}
+          onOpenChange={setAgentDialogOpen}
+        />
+      )}
     </>
   );
 }
