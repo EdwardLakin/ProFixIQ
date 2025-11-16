@@ -1,11 +1,10 @@
-// features/agent-console/app/agent/page.tsx
+// features/agent/agent-console/app/agent/page.tsx
 "use client";
 
-import { useState, useTransition } from "react";
-import useSWR from "swr";
+import { useEffect, useState, useTransition } from "react";
 
 import { Button } from "@shared/components/ui/Button";
-import Card from "@shared/components/ui/Card";
+import  Card from "@shared/components/ui/Card";
 import { Badge } from "@shared/components/ui/badge";
 import { Separator } from "@shared/components/ui/separator";
 import { cn } from "@shared/lib/utils";
@@ -41,12 +40,6 @@ type AgentRequest = {
   updated_at: string;
 };
 
-const fetcher = (url: string) =>
-  fetch(url).then((res) => {
-    if (!res.ok) throw new Error("Failed to load");
-    return res.json();
-  });
-
 function statusClasses(status: AgentRequestStatus) {
   // Dark / chip-style badges to match the rest of the portal
   switch (status) {
@@ -69,16 +62,39 @@ function statusClasses(status: AgentRequestStatus) {
 }
 
 export default function AgentConsolePage() {
-  const { data, error, isLoading, mutate } = useSWR<{ requests: AgentRequest[] }>(
-    "/api/agent/requests",
-    fetcher,
-    { refreshInterval: 30000 }
-  );
-
+  const [requests, setRequests] = useState<AgentRequest[]>([]);
   const [selected, setSelected] = useState<AgentRequest | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const requests = data?.requests ?? [];
+  async function loadRequests() {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const res = await fetch("/api/agent/requests");
+      if (!res.ok) {
+        throw new Error(`Failed to load (status ${res.status})`);
+      }
+
+      const json = (await res.json()) as { requests: AgentRequest[] };
+      setRequests(json.requests);
+    } catch (err) {
+      console.error("Failed to load agent requests", err);
+      setError("Failed to load agent requests. Check logs.");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    // initial load
+    loadRequests();
+    // polling (30s)
+    const interval = setInterval(loadRequests, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   async function updateStatus(
     action: "approve" | "reject",
@@ -100,18 +116,9 @@ export default function AgentConsolePage() {
         const json = (await res.json()) as { request: AgentRequest };
 
         // Optimistically update list + selected
-        mutate(
-          (prev) =>
-            prev
-              ? {
-                  requests: prev.requests.map((r) =>
-                    r.id === json.request.id ? json.request : r
-                  ),
-                }
-              : prev,
-          false
+        setRequests((prev) =>
+          prev.map((r) => (r.id === json.request.id ? json.request : r))
         );
-
         setSelected(json.request);
       } catch (err) {
         console.error("Error updating agent request", err);
@@ -146,7 +153,7 @@ export default function AgentConsolePage() {
             size="sm"
             variant="outline"
             className="border-orange-500/60 bg-black/40 text-xs font-semibold text-orange-400 hover:bg-orange-600 hover:text-black"
-            onClick={() => mutate()}
+            onClick={() => loadRequests()}
           >
             Refresh
           </Button>
@@ -171,7 +178,7 @@ export default function AgentConsolePage() {
           <div className="flex-1 space-y-2 overflow-auto">
             {error && (
               <p className="text-xs text-red-400">
-                Failed to load agent requests. Check logs.
+                {error}
               </p>
             )}
 
