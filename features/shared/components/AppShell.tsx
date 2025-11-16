@@ -44,6 +44,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const supabase = createClientComponentClient<Database>();
 
   const [userId, setUserId] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
   const [punchOpen, setPunchOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [incomingConvoId, setIncomingConvoId] = useState<string | null>(null);
@@ -53,7 +54,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     (p) => pathname === p || pathname.startsWith(p + "/")
   );
 
-  // load session user once & subscribe to messages
+  // load session user once, load role, & subscribe to messages
   useEffect(() => {
     (async () => {
       const {
@@ -63,6 +64,21 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       setUserId(uid);
 
       if (!uid) return;
+
+      // load user role for agent console gating
+      try {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", uid)
+          .single();
+
+        if (profile?.role) {
+          setUserRole(profile.role as string);
+        }
+      } catch (err) {
+        console.error("Failed to load profile role for AppShell", err);
+      }
 
       // realtime for incoming messages
       const channel = supabase
@@ -132,6 +148,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </Link>
     );
   };
+
+  // who can see the Agent Console button
+  const canSeeAgentConsole =
+    !!userRole &&
+    ["owner", "manager", "admin", "advisor", "agent_admin"].includes(userRole);
 
   if (!isAppRoute) {
     return (
@@ -209,6 +230,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               >
                 ⚡ <span className="hidden lg:inline">AI Planner</span>
               </ActionButton>
+
+              {/* NEW: Agent Console (role-gated) */}
+              {userId && canSeeAgentConsole && (
+                <ActionButton
+                  onClick={() => router.push("/agent")}
+                  title="ProFixIQ Agent Console"
+                >
+                  🧠 <span className="hidden lg:inline">Agent</span>
+                </ActionButton>
+              )}
 
               <ActionButton
                 onClick={async () => {

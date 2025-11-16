@@ -79,6 +79,94 @@ export type Database = {
           },
         ]
       }
+      agent_requests: {
+        Row: {
+          created_at: string
+          description: string
+          github_branch: string | null
+          github_commit_sha: string | null
+          github_issue_number: number | null
+          github_issue_url: string | null
+          github_pr_number: number | null
+          github_pr_url: string | null
+          id: string
+          intent: Database["public"]["Enums"]["agent_request_intent"] | null
+          llm_confidence: number | null
+          llm_model: string | null
+          llm_notes: string | null
+          normalized_json: Json | null
+          reporter_id: string | null
+          reporter_role: string | null
+          shop_id: string | null
+          status: Database["public"]["Enums"]["agent_request_status"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          github_branch?: string | null
+          github_commit_sha?: string | null
+          github_issue_number?: number | null
+          github_issue_url?: string | null
+          github_pr_number?: number | null
+          github_pr_url?: string | null
+          id?: string
+          intent?: Database["public"]["Enums"]["agent_request_intent"] | null
+          llm_confidence?: number | null
+          llm_model?: string | null
+          llm_notes?: string | null
+          normalized_json?: Json | null
+          reporter_id?: string | null
+          reporter_role?: string | null
+          shop_id?: string | null
+          status?: Database["public"]["Enums"]["agent_request_status"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          github_branch?: string | null
+          github_commit_sha?: string | null
+          github_issue_number?: number | null
+          github_issue_url?: string | null
+          github_pr_number?: number | null
+          github_pr_url?: string | null
+          id?: string
+          intent?: Database["public"]["Enums"]["agent_request_intent"] | null
+          llm_confidence?: number | null
+          llm_model?: string | null
+          llm_notes?: string | null
+          normalized_json?: Json | null
+          reporter_id?: string | null
+          reporter_role?: string | null
+          shop_id?: string | null
+          status?: Database["public"]["Enums"]["agent_request_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_requests_reporter_id_fkey"
+            columns: ["reporter_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_requests_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_requests_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agent_runs: {
         Row: {
           created_at: string
@@ -6541,6 +6629,20 @@ export type Database = {
       }
     }
     Enums: {
+      agent_request_intent:
+        | "feature_request"
+        | "bug_report"
+        | "inspection_catalog_add"
+        | "service_catalog_add"
+        | "refactor"
+      agent_request_status:
+        | "submitted"
+        | "in_progress"
+        | "awaiting_approval"
+        | "approved"
+        | "rejected"
+        | "failed"
+        | "merged"
       fleet_program_cadence:
         | "monthly"
         | "quarterly"
@@ -6716,6 +6818,22 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      agent_request_intent: [
+        "feature_request",
+        "bug_report",
+        "inspection_catalog_add",
+        "service_catalog_add",
+        "refactor",
+      ],
+      agent_request_status: [
+        "submitted",
+        "in_progress",
+        "awaiting_approval",
+        "approved",
+        "rejected",
+        "failed",
+        "merged",
+      ],
       fleet_program_cadence: [
         "monthly",
         "quarterly",
