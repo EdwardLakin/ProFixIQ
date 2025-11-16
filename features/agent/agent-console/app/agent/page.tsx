@@ -1,11 +1,11 @@
 // features/agent-console/app/agent/page.tsx
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import useSWR from "swr";
 
 import { Button } from "@shared/components/ui/Button";
-import  Card  from "@shared/components/ui/Card";
+import Card from "@shared/components/ui/Card";
 import { Badge } from "@shared/components/ui/badge";
 import { Separator } from "@shared/components/ui/separator";
 import { cn } from "@shared/lib/utils";
@@ -76,8 +76,48 @@ export default function AgentConsolePage() {
   );
 
   const [selected, setSelected] = useState<AgentRequest | null>(null);
+  const [isPending, startTransition] = useTransition();
 
   const requests = data?.requests ?? [];
+
+  async function updateStatus(
+    action: "approve" | "reject",
+    request: AgentRequest
+  ) {
+    startTransition(async () => {
+      try {
+        const res = await fetch(`/api/agent/requests/${request.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action }),
+        });
+
+        if (!res.ok) {
+          console.error("Failed to update agent request", await res.text());
+          return;
+        }
+
+        const json = (await res.json()) as { request: AgentRequest };
+
+        // Optimistically update list + selected
+        mutate(
+          (prev) =>
+            prev
+              ? {
+                  requests: prev.requests.map((r) =>
+                    r.id === json.request.id ? json.request : r
+                  ),
+                }
+              : prev,
+          false
+        );
+
+        setSelected(json.request);
+      } catch (err) {
+        console.error("Error updating agent request", err);
+      }
+    });
+  }
 
   return (
     <div className="mx-auto max-w-6xl px-3 py-6 text-white">
@@ -98,9 +138,7 @@ export default function AgentConsolePage() {
             <span className="text-[0.65rem] uppercase tracking-[0.13em] text-neutral-500">
               Requests
             </span>
-            <span className="font-semibold">
-              {requests.length} open
-            </span>
+            <span className="font-semibold">{requests.length} open</span>
           </div>
           <Separator orientation="vertical" className="h-6 bg-white/10" />
           <Button
@@ -124,9 +162,7 @@ export default function AgentConsolePage() {
               Requests
             </h2>
             {isLoading && (
-              <span className="text-[0.7rem] text-neutral-500">
-                Syncing…
-              </span>
+              <span className="text-[0.7rem] text-neutral-500">Syncing…</span>
             )}
           </div>
 
@@ -140,9 +176,7 @@ export default function AgentConsolePage() {
             )}
 
             {!isLoading && !error && requests.length === 0 && (
-              <p className="text-xs text-neutral-500">
-                No agent requests yet.
-              </p>
+              <p className="text-xs text-neutral-500">No agent requests yet.</p>
             )}
 
             {requests.map((req) => (
@@ -333,25 +367,37 @@ export default function AgentConsolePage() {
 
                 <Separator className="bg-white/10" />
 
-                {/* Actions – wired later */}
+                {/* Actions */}
                 <div className="flex gap-2">
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
-                    disabled
-                    className="border-emerald-500/60 text-xs font-semibold text-emerald-300 hover:bg-emerald-600 hover:text-black disabled:opacity-50"
+                    disabled={!selected || isPending}
+                    className={cn(
+                      "border-emerald-500/60 text-xs font-semibold text-emerald-300 hover:bg-emerald-600 hover:text-black disabled:opacity-50",
+                      isPending && "cursor-wait"
+                    )}
+                    onClick={() =>
+                      selected && updateStatus("approve", selected)
+                    }
                   >
-                    Approve (wire later)
+                    {isPending ? "Working…" : "Approve"}
                   </Button>
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
-                    disabled
-                    className="border-red-500/70 text-xs font-semibold text-red-300 hover:bg-red-600 hover:text-black disabled:opacity-50"
+                    disabled={!selected || isPending}
+                    className={cn(
+                      "border-red-500/70 text-xs font-semibold text-red-300 hover:bg-red-600 hover:text-black disabled:opacity-50",
+                      isPending && "cursor-wait"
+                    )}
+                    onClick={() =>
+                      selected && updateStatus("reject", selected)
+                    }
                   >
-                    Reject (wire later)
+                    {isPending ? "Working…" : "Reject"}
                   </Button>
                 </div>
               </>
