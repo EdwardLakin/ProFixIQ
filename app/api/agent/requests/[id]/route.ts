@@ -14,17 +14,23 @@ type AgentRequestStatus =
 
 type PatchBody = {
   action?: "approve" | "reject";
-  // optional: let you override notes on decision later
+  // optional: allow notes on the decision
   llm_notes?: string;
+};
+
+type RouteParams = {
+  id: string | string[];
 };
 
 const APPROVER_ROLES = ["owner", "admin", "manager"];
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: RouteParams }
 ) {
-  const { id } = params;
+  // Next can theoretically give string | string[], so normalize
+  const rawId = params.id;
+  const id = Array.isArray(rawId) ? rawId[0] : rawId;
 
   if (!id) {
     return NextResponse.json(
@@ -88,8 +94,8 @@ export async function PATCH(
     .from("agent_requests")
     .update({
       status: newStatus,
-      // optionally store decision notes or override LLM notes
-      llm_notes: body.llm_notes ?? undefined,
+      // if llm_notes is provided, update; otherwise leave as-is
+      llm_notes: body.llm_notes ?? null,
     })
     .eq("id", id)
     .select("*")
