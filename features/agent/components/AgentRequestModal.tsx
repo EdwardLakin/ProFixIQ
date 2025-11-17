@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, ChangeEvent } from "react";
 import { Button } from "@shared/components/ui/Button";
 import { Textarea } from "@shared/components/ui/textarea";
 import {
@@ -11,6 +11,7 @@ import {
   DialogFooter,
 } from "@shared/components/ui/dialog";
 import { toast } from "sonner";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 type Props = {
   open: boolean;
@@ -36,10 +37,57 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
   const [expected, setExpected] = useState("");
   const [actual, setActual] = useState("");
   const [device, setDevice] = useState("");
-  // Placeholder for future screenshot integration (agent_attachments ids)
-  const [attachmentIds] = useState<string[]>([]);
+
+  // Local files → uploaded to Supabase on submit
+  const [files, setFiles] = useState<File[]>([]);
 
   const [loading, setLoading] = useState(false);
+
+  function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const list = e.target.files;
+    if (!list) {
+      setFiles([]);
+      return;
+    }
+    const arr = Array.from(list);
+    setFiles(arr);
+  }
+
+  async function uploadScreenshots(): Promise<string[]> {
+    if (!files.length) return [];
+
+    const supabase = createBrowserSupabase();
+    const uploadedPaths: string[] = [];
+
+    // Grab user id so we can namespace uploads
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const userId = user?.id ?? "anonymous";
+
+    for (const file of files) {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const timestamp = Date.now();
+      const path = `${userId}/${timestamp}-${safeName}`;
+
+      const { error } = await supabase.storage
+        .from("agent_uploads")
+        .upload(path, file, {
+          cacheControl: "3600",
+          upsert: false,
+        });
+
+      if (error) {
+        console.error("agent_uploads upload error:", error);
+        toast.error(`Failed to upload ${file.name}`);
+        continue;
+      }
+
+      uploadedPaths.push(path);
+    }
+
+    return uploadedPaths;
+  }
 
   async function submit() {
     if (!description.trim()) {
@@ -50,8 +98,11 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
     setLoading(true);
 
     try {
-      const context: Record<string, unknown> = {};
+      // 1) Upload screenshots first (if any)
+      const attachmentIds = await uploadScreenshots();
 
+      // 2) Build context for v2 route
+      const context: Record<string, unknown> = {};
       if (location.trim()) context.location = location.trim();
       if (steps.trim()) context.steps = steps.trim();
       if (expected.trim()) context.expected = expected.trim();
@@ -65,6 +116,13 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
         body: JSON.stringify({
           description: description.trim(),
           intent,
+          // these top-level fields match CreateAgentRequestBody
+          location: location.trim() || undefined,
+          steps: steps.trim() || undefined,
+          expected: expected.trim() || undefined,
+          actual: actual.trim() || undefined,
+          device: device.trim() || undefined,
+          attachmentIds: attachmentIds.length ? attachmentIds : undefined,
           context: Object.keys(context).length ? context : undefined,
         }),
       });
@@ -82,7 +140,7 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
         setExpected("");
         setActual("");
         setDevice("");
-        // attachmentIds will be set once screenshot upload is wired
+        setFiles([]);
         onOpenChange(false);
       }
     } catch (err) {
@@ -212,15 +270,27 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
             </div>
           </div>
 
-          {/* Screenshots – wired later via agent_attachments */}
+          {/* Screenshots */}
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-neutral-500 uppercase tracking-wider">
-              Screenshots (coming next)
+            <label className="text-xs text-neutral-400 uppercase tracking-wider">
+              Screenshots
             </label>
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleFileChange}
+              className="text-xs text-neutral-300"
+            />
+            {files.length > 0 && (
+              <p className="text-[0.7rem] text-neutral-500">
+                {files.length} file{files.length > 1 ? "s" : ""} selected
+              </p>
+            )}
             <p className="text-[0.7rem] text-neutral-500">
-              You’ll be able to attach screenshots directly here. For now, paste
-              links or mention “screenshot uploaded to agent folder” in the
-              description.
+              Attach clear screenshots of the issue. These will be stored in the
+              secure <code>agent_uploads</code> bucket and linked to this
+              request.
             </p>
           </div>
         </div>

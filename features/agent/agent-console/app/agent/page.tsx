@@ -76,6 +76,15 @@ function prettyIntent(intent: string | null): string {
   return intent.replace(/_/g, " ");
 }
 
+// Public Supabase URL for building screenshot links
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+function resolveAttachmentUrl(path: string): string {
+  if (!SUPABASE_URL) return path;
+  // path is like "userId/timestamp-filename.png"
+  return `${SUPABASE_URL}/storage/v1/object/public/agent_uploads/${path}`;
+}
+
 export default function AgentConsolePage() {
   const [requests, setRequests] = useState<AgentRequest[]>([]);
   const [selected, setSelected] = useState<AgentRequest | null>(null);
@@ -376,11 +385,31 @@ export default function AgentConsolePage() {
                                 Attachments:
                               </div>
                               <ul className="mt-0.5 list-disc pl-4 text-[0.7rem]">
-                                {selectedContext.attachmentIds.map((id) => (
-                                  <li key={id} className="text-neutral-300">
-                                    {id}
-                                  </li>
-                                ))}
+                                {selectedContext.attachmentIds.map(
+                                  (path, idx) => (
+                                    <li key={path} className="text-neutral-300">
+                                      <a
+                                        href={resolveAttachmentUrl(path)}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="text-orange-400 underline underline-offset-2 hover:text-orange-300"
+                                      >
+                                        Screenshot {idx + 1}
+                                      </a>{" "}
+                                      <span className="text-neutral-500 truncate">
+                                        (
+                                        {
+                                          path
+                                            .split("/")
+                                            [
+                                              path.split("/").length - 1
+                                            ]
+                                        }
+                                        )
+                                      </span>
+                                    </li>
+                                  )
+                                )}
                               </ul>
                             </div>
                           )}
@@ -400,14 +429,14 @@ export default function AgentConsolePage() {
                     {selected.github_issue_url ? (
                       <div>
                         Issue:{" "}
-                        <a
-                          href={selected.github_issue_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-orange-400 underline underline-offset-2 hover:text-orange-300"
-                        >
-                          #{selected.github_issue_number}
-                        </a>
+                          <a
+                            href={selected.github_issue_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-orange-400 underline underline-offset-2 hover:text-orange-300"
+                          >
+                            #{selected.github_issue_number}
+                          </a>
                       </div>
                     ) : (
                       <div>Issue: n/a</div>
