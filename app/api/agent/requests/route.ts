@@ -213,6 +213,12 @@ export async function POST(req: NextRequest) {
     // If the agent service errors, we still keep the local row as "submitted"
     if (res.ok) {
       agentResponse = (await res.json()) as AgentServiceResponse;
+      // Optional debug logging; helpful while we tune LLM notes behavior
+      console.log(
+        "ProFixIQ-Agent response for request",
+        inserted.id,
+        JSON.stringify(agentResponse, null, 2)
+      );
     } else {
       console.error(
         "ProFixIQ-Agent returned non-OK status",
@@ -229,11 +235,13 @@ export async function POST(req: NextRequest) {
   const llmMeta = agentResponse?.llm ?? null;
   const llm_confidence = llmMeta?.confidence ?? null;
 
-  // Support old (`notes`) and new (`commentary` / `summary`) fields
+  // Support old (`notes`) and new (`commentary` / `summary`) fields,
+  // and fall back to the top-level agent message if LLM meta is missing.
   const llm_notes =
     llmMeta?.notes ??
     llmMeta?.commentary ??
     llmMeta?.summary ??
+    agentResponse?.message ??
     null;
 
   const finalIntent =
