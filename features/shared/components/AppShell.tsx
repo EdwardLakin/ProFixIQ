@@ -1,4 +1,4 @@
-// app/(app)/AppShell.tsx  (or wherever your shell actually lives)
+// app/(app)/AppShell.tsx
 "use client";
 
 import Link from "next/link";
@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+import { Toaster } from "sonner";
 
 import RoleSidebar from "@/features/shared/components/RoleSidebar";
 import ThemeToggleButton from "@/features/shared/components/ThemeToggleButton";
@@ -161,6 +162,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return (
       <div className="min-h-screen bg-background text-foreground">
         {children}
+        {/* Global toaster even on non-app routes if you want */}
+        <Toaster
+          closeButton
+          richColors
+          position="top-right"
+          theme="dark"
+        />
       </div>
     );
   }
@@ -316,6 +324,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           onOpenChange={setAgentDialogOpen}
         />
       )}
+
+      {/* Global toaster for the entire app shell (agent modal, etc.) */}
+      <Toaster
+        closeButton
+        richColors
+        position="top-right"
+        theme="dark"
+      />
     </>
   );
 }

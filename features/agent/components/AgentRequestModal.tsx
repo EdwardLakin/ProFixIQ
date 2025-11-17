@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, ChangeEvent } from "react";
+import { useState, useEffect, ChangeEvent } from "react";
 import { Button } from "@shared/components/ui/Button";
 import { Textarea } from "@shared/components/ui/textarea";
 import {
@@ -42,6 +42,12 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
   const [files, setFiles] = useState<File[]>([]);
 
   const [loading, setLoading] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+
+  // Avoid “click before hydration” doing nothing
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
 
   function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
     const list = e.target.files;
@@ -150,6 +156,8 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
       setLoading(false);
     }
   }
+
+  const canSubmit = hydrated && !!description.trim() && !loading;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -298,6 +306,7 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
         <DialogFooter>
           <Button
             variant="outline"
+            type="button"
             onClick={() => onOpenChange(false)}
             className="border-white/20 text-neutral-300"
           >
@@ -305,9 +314,10 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
           </Button>
 
           <Button
+            type="button"
             onClick={submit}
-            disabled={loading}
-            className="bg-orange-600 hover:bg-orange-500 text-black font-semibold"
+            disabled={!canSubmit}
+            className="bg-orange-600 hover:bg-orange-500 text-black font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? "Submitting…" : "Submit"}
           </Button>
