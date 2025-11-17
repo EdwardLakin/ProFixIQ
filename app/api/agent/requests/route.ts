@@ -23,7 +23,6 @@ type AgentLLMMeta = {
   model?: string | null;
   confidence?: number | null;
   notes?: string | null;
-  // newer agent payloads may use `commentary` or `summary`
   commentary?: string | null;
   summary?: string | null;
 };
@@ -36,7 +35,7 @@ type AgentServiceResponse = {
   llm?: AgentLLMMeta | null;
 };
 
-// DB enum values for agent_requests.intent
+// DB enum values
 type AgentIntent =
   | "feature_request"
   | "bug_report"
@@ -44,7 +43,6 @@ type AgentIntent =
   | "service_catalog_add"
   | "refactor";
 
-// DB enum values for agent_requests.status
 type AgentRequestStatus =
   | "submitted"
   | "in_progress"
@@ -67,7 +65,6 @@ function normalizeIntent(raw: unknown): AgentIntent {
     const match = AGENT_INTENTS.find((v) => v === raw);
     if (match) return match;
   }
-  // safe default that always exists in your enum
   return "feature_request";
 }
 
@@ -75,13 +72,12 @@ type CreateAgentRequestBody = {
   description?: string;
   intent?: string;
   context?: Record<string, unknown>;
-  // v2 structured fields for QA:
   location?: string;
   steps?: string;
   expected?: string;
   actual?: string;
   device?: string;
-  attachmentIds?: string[]; // ids from agent_attachments (future)
+  attachmentIds?: string[];
 };
 
 export async function GET(_req: NextRequest) {
@@ -149,7 +145,7 @@ export async function POST(req: NextRequest) {
   const description = body.description.trim();
   const intent = normalizeIntent(body.intent);
 
-  // Pull user profile (assumes profiles.id === auth.users.id)
+  // Load profile
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("id, shop_id, role")
@@ -161,7 +157,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Profile not found" }, { status: 400 });
   }
 
-  // v2: structured context object we pass both to DB + agent
+  // Structured context
   const structuredContext = {
     location: body.location ?? null,
     steps: body.steps ?? null,
@@ -172,7 +168,7 @@ export async function POST(req: NextRequest) {
     rawContext: body.context ?? {},
   };
 
-  // 1. Insert initial request entry (persist structured context right away)
+  // Insert initial request
   const { data: inserted, error: insertError } = await supabase
     .from("agent_requests")
     .insert({
@@ -180,8 +176,8 @@ export async function POST(req: NextRequest) {
       reporter_id: profile.id,
       reporter_role: profile.role,
       description,
-      intent, // always a valid enum value
-      status: "submitted" as AgentRequestStatus, // valid status enum
+      intent,
+      status: "submitted" as AgentRequestStatus,
       normalized_json: structuredContext,
     })
     .select("*")
@@ -195,7 +191,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 2. Call the external agent service
+  // Call agent service
   let agentResponse: AgentServiceResponse | null = null;
   try {
     const res = await fetch(`${AGENT_SERVICE_URL}/feature-requests`, {
@@ -210,18 +206,16 @@ export async function POST(req: NextRequest) {
       }),
     });
 
-    // If the agent service errors, we still keep the local row as "submitted"
     if (res.ok) {
       agentResponse = (await res.json()) as AgentServiceResponse;
-      // Optional debug logging; helpful while we tune LLM notes behavior
       console.log(
-        "ProFixIQ-Agent response for request",
+        "ProFixIQ-Agent response",
         inserted.id,
         JSON.stringify(agentResponse, null, 2)
       );
     } else {
       console.error(
-        "ProFixIQ-Agent returned non-OK status",
+        "ProFixIQ-Agent returned non-OK",
         res.status,
         await res.text()
       );
@@ -230,13 +224,11 @@ export async function POST(req: NextRequest) {
     console.error("Error calling ProFixIQ-Agent", err);
   }
 
-  // 3. Update row with returned GitHub & LLM metadata
+  // Extract GitHub + LLM
   const github = agentResponse?.github ?? null;
   const llmMeta = agentResponse?.llm ?? null;
   const llm_confidence = llmMeta?.confidence ?? null;
 
-  // Support old (`notes`) and new (`commentary` / `summary`) fields,
-  // and fall back to the top-level agent message if LLM meta is missing.
   const llm_notes =
     llmMeta?.notes ??
     llmMeta?.commentary ??
@@ -244,19 +236,32 @@ export async function POST(req: NextRequest) {
     agentResponse?.message ??
     null;
 
-  const finalIntent =
-    (agentResponse?.intent as AgentIntent | null | undefined) ?? intent;
+  // -----------------------------------------------------
+  // 🔥 FIX: Final intent logic (UI choice always wins)
+  // -----------------------------------------------------
+  let finalIntent: AgentIntent = intent;
+  const agentIntent = agentResponse?.intent as AgentIntent | null | undefined;
 
+  if (
+    agentIntent === "inspection_catalog_add" ||
+    agentIntent === "service_catalog_add"
+  ) {
+    finalIntent = agentIntent;
+  }
+  // Otherwise: DO NOT override the UI-selected intent.
+
+  // Status selection
   const status: AgentRequestStatus =
-    github && github.prUrl
+    github?.prUrl
       ? "awaiting_approval"
-      : github && github.issueUrl
+      : github?.issueUrl
       ? "in_progress"
       : finalIntent === "inspection_catalog_add" ||
         finalIntent === "service_catalog_add"
-      ? "merged" // small catalog updates auto-merged
+      ? "merged"
       : "submitted";
 
+  // Update row
   const { data: updated, error: updateError } = await supabase
     .from("agent_requests")
     .update({
