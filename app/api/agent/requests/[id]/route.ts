@@ -26,12 +26,22 @@ const AGENT_SERVICE_URL =
   process.env.PROFIXIQ_AGENT_URL?.replace(/\/$/, "") ||
   "https://obscure-space-guacamole-69pvggxvgrxj2qxr-4001.app.github.dev";
 
-export async function PATCH(req: NextRequest) {
-  // derive id from URL path, so we don't need a typed `params` arg
+// Helper to extract id from /api/agent/requests/:id
+function getIdFromUrl(req: NextRequest): string | null {
   const url = new URL(req.url);
   const pathname = url.pathname.replace(/\/$/, "");
   const segments = pathname.split("/");
-  const id = segments[segments.length - 1] ?? "";
+  const id = segments[segments.length - 1];
+  return id || null;
+}
+
+/**
+ * PATCH /api/agent/requests/:id
+ * - approve / reject a request
+ * - when approving a PR in awaiting_approval, call the agent merge endpoint
+ */
+export async function PATCH(req: NextRequest) {
+  const id = getIdFromUrl(req);
 
   if (!id) {
     return NextResponse.json(
@@ -180,4 +190,106 @@ export async function PATCH(req: NextRequest) {
   }
 
   return NextResponse.json({ request: data });
+}
+
+/**
+ * DELETE /api/agent/requests/:id
+ * - developer-only
+ * - best-effort cleanup of screenshot files in agent_uploads
+ */
+export async function DELETE(req: NextRequest) {
+  const id = getIdFromUrl(req);
+
+  if (!id) {
+    return NextResponse.json(
+      { error: "Missing agent request id" },
+      { status: 400 }
+    );
+  }
+
+  const cookieStore = cookies();
+  const supabase = createRouteHandlerClient<Database>({
+    cookies: () => cookieStore,
+  });
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Same role gate as PATCH: only developer (agent_role) can delete
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("id, agent_role")
+    .eq("id", user.id)
+    .single();
+
+  if (profileError || !profile) {
+    console.error("agent_requests DELETE profile error", profileError);
+    return NextResponse.json({ error: "Profile not found" }, { status: 400 });
+  }
+
+  if (!APPROVER_ROLES.includes(profile.agent_role ?? "")) {
+    return NextResponse.json(
+      { error: "Forbidden – insufficient role to delete requests" },
+      { status: 403 }
+    );
+  }
+
+  // Fetch the row so we can see any attachmentIds
+  const {
+    data: existing,
+    error: existingError,
+  } = await supabase
+    .from("agent_requests")
+    .select("id, normalized_json")
+    .eq("id", id)
+    .single();
+
+  if (existingError || !existing) {
+    console.error("agent_requests DELETE load error", existingError);
+    return NextResponse.json(
+      { error: "Agent request not found" },
+      { status: 404 }
+    );
+  }
+
+  // Best-effort cleanup of screenshot files in agent_uploads
+  try {
+    const ctx = (existing.normalized_json ?? {}) as {
+      attachmentIds?: string[];
+    };
+
+    if (Array.isArray(ctx.attachmentIds) && ctx.attachmentIds.length > 0) {
+      const { error: storageError } = await supabase.storage
+        .from("agent_uploads")
+        .remove(ctx.attachmentIds);
+
+      if (storageError) {
+        console.error("agent_uploads cleanup error", storageError);
+        // don't fail the whole delete because of storage
+      }
+    }
+  } catch (err) {
+    console.error("Error processing attachmentIds for cleanup", err);
+  }
+
+  // Finally remove the DB row
+  const { error: deleteError } = await supabase
+    .from("agent_requests")
+    .delete()
+    .eq("id", id);
+
+  if (deleteError) {
+    console.error("agent_requests DELETE error", deleteError);
+    return NextResponse.json(
+      { error: "Failed to delete agent request" },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({ success: true });
 }

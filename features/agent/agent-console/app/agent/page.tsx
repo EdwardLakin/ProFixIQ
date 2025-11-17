@@ -82,7 +82,9 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 function resolveAttachmentUrl(path: string): string {
   if (!SUPABASE_URL) return path;
   // path is like "userId/timestamp-filename.png"
-  return `${SUPABASE_URL}/storage/v1/object/public/agent_uploads/${path}`;
+  // Encode path safely in case of spaces / special chars
+  const encodedPath = encodeURIComponent(path).replace(/%2F/g, "/");
+  return `${SUPABASE_URL}/storage/v1/object/public/agent_uploads/${encodedPath}`;
 }
 
 export default function AgentConsolePage() {
@@ -146,6 +148,33 @@ export default function AgentConsolePage() {
         setSelected(json.request);
       } catch (err) {
         console.error("Error updating agent request", err);
+      }
+    });
+  }
+
+  async function deleteRequest(request: AgentRequest) {
+    const confirmed = window.confirm(
+      "Delete this agent request and its metadata? This cannot be undone."
+    );
+    if (!confirmed) return;
+
+    startTransition(async () => {
+      try {
+        const res = await fetch(`/api/agent/requests/${request.id}`, {
+          method: "DELETE",
+        });
+
+        if (!res.ok) {
+          console.error("Failed to delete agent request", await res.text());
+          return;
+        }
+
+        setRequests((prev) => prev.filter((r) => r.id !== request.id));
+        if (selected?.id === request.id) {
+          setSelected(null);
+        }
+      } catch (err) {
+        console.error("Error deleting agent request", err);
       }
     });
   }
@@ -399,11 +428,9 @@ export default function AgentConsolePage() {
                                       <span className="text-neutral-500 truncate">
                                         (
                                         {
-                                          path
-                                            .split("/")
-                                            [
-                                              path.split("/").length - 1
-                                            ]
+                                          path.split("/")[
+                                            path.split("/").length - 1
+                                          ]
                                         }
                                         )
                                       </span>
@@ -429,14 +456,14 @@ export default function AgentConsolePage() {
                     {selected.github_issue_url ? (
                       <div>
                         Issue:{" "}
-                          <a
-                            href={selected.github_issue_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-orange-400 underline underline-offset-2 hover:text-orange-300"
-                          >
-                            #{selected.github_issue_number}
-                          </a>
+                        <a
+                          href={selected.github_issue_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-orange-400 underline underline-offset-2 hover:text-orange-300"
+                        >
+                          #{selected.github_issue_number}
+                        </a>
                       </div>
                     ) : (
                       <div>Issue: n/a</div>
@@ -485,7 +512,7 @@ export default function AgentConsolePage() {
                 <Separator className="bg-white/10" />
 
                 {/* Actions */}
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Button
                     type="button"
                     size="sm"
@@ -515,6 +542,19 @@ export default function AgentConsolePage() {
                     }
                   >
                     {isPending ? "Working…" : "Reject"}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={!selected || isPending}
+                    className={cn(
+                      "border-white/40 text-xs font-semibold text-neutral-300 hover:bg-red-700 hover:text-white disabled:opacity-50",
+                      isPending && "cursor-wait"
+                    )}
+                    onClick={() => selected && deleteRequest(selected)}
+                  >
+                    {isPending ? "Working…" : "Delete"}
                   </Button>
                 </div>
               </>
