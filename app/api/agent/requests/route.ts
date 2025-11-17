@@ -23,6 +23,9 @@ type AgentLLMMeta = {
   model?: string | null;
   confidence?: number | null;
   notes?: string | null;
+  // newer agent payloads may use `commentary` or `summary`
+  commentary?: string | null;
+  summary?: string | null;
 };
 
 type AgentServiceResponse = {
@@ -40,6 +43,16 @@ type AgentIntent =
   | "inspection_catalog_add"
   | "service_catalog_add"
   | "refactor";
+
+// DB enum values for agent_requests.status
+type AgentRequestStatus =
+  | "submitted"
+  | "in_progress"
+  | "awaiting_approval"
+  | "approved"
+  | "rejected"
+  | "failed"
+  | "merged";
 
 const AGENT_INTENTS: AgentIntent[] = [
   "feature_request",
@@ -116,7 +129,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = (await req.json().catch(() => null)) as CreateAgentRequestBody | null;
+  const body = (await req.json().catch(() => null)) as
+    | CreateAgentRequestBody
+    | null;
 
   if (!body || !body.description || !body.description.trim()) {
     return NextResponse.json(
@@ -143,10 +158,7 @@ export async function POST(req: NextRequest) {
 
   if (profileError || !profile) {
     console.error("agent_requests profile error", profileError);
-    return NextResponse.json(
-      { error: "Profile not found" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Profile not found" }, { status: 400 });
   }
 
   // v2: structured context object we pass both to DB + agent
@@ -169,7 +181,7 @@ export async function POST(req: NextRequest) {
       reporter_role: profile.role,
       description,
       intent, // always a valid enum value
-      status: "submitted", // valid status enum
+      status: "submitted" as AgentRequestStatus, // valid status enum
       normalized_json: structuredContext,
     })
     .select("*")
@@ -214,12 +226,20 @@ export async function POST(req: NextRequest) {
 
   // 3. Update row with returned GitHub & LLM metadata
   const github = agentResponse?.github ?? null;
-  const llm_confidence = agentResponse?.llm?.confidence ?? null;
-  const llm_notes = agentResponse?.llm?.notes ?? null;
+  const llmMeta = agentResponse?.llm ?? null;
+  const llm_confidence = llmMeta?.confidence ?? null;
+
+  // Support old (`notes`) and new (`commentary` / `summary`) fields
+  const llm_notes =
+    llmMeta?.notes ??
+    llmMeta?.commentary ??
+    llmMeta?.summary ??
+    null;
+
   const finalIntent =
     (agentResponse?.intent as AgentIntent | null | undefined) ?? intent;
 
-  const status: AgentIntent | AgentIntent | "submitted" | "in_progress" | "awaiting_approval" | "merged" =
+  let status: AgentRequestStatus =
     github && github.prUrl
       ? "awaiting_approval"
       : github && github.issueUrl
@@ -243,9 +263,9 @@ export async function POST(req: NextRequest) {
       github_pr_url: github?.prUrl ?? null,
       github_branch: github?.branchName ?? null,
       github_commit_sha: github?.commitSha ?? null,
-      llm_model: agentResponse?.llm?.model ?? null,
+      llm_model: llmMeta?.model ?? null,
       llm_confidence,
-      llm_notes,
+      llm_notes: llm_notes ?? null,
       status,
     })
     .eq("id", inserted.id)
