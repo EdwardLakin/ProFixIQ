@@ -2,12 +2,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 
 // Normalize URL so we don't get `//feature-requests`
 const AGENT_SERVICE_URL =
   process.env.PROFIXIQ_AGENT_URL?.replace(/\/$/, "") ||
   "https://obscure-space-guacamole-69pvggxvgrxj2qxr-4001.app.github.dev";
+
+// Service-role client used ONLY to sign private screenshot URLs
+const supabaseAdmin = createClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  {
+    auth: { persistSession: false },
+  }
+);
 
 type AgentGithubMeta = {
   issueNumber?: number | null;
@@ -157,14 +167,41 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Profile not found" }, { status: 400 });
   }
 
-  // Structured context
+  // ---------------------------------------------------------------------------
+  // Create SHORT-LIVED SIGNED URLS for uploaded screenshots
+  // (bucket `agent_uploads` stays private, RLS unchanged)
+  // ---------------------------------------------------------------------------
+  const attachmentIds = Array.isArray(body.attachmentIds)
+    ? body.attachmentIds
+    : [];
+
+  let signedAttachments: { path: string; url: string; name: string }[] = [];
+
+  if (attachmentIds.length > 0) {
+    const { data, error } = await supabaseAdmin.storage
+      .from("agent_uploads")
+      .createSignedUrls(attachmentIds, 60 * 60 * 24); // 24 hours
+
+    if (error) {
+      console.error("createSignedUrls error for agent_uploads:", error);
+    } else if (data) {
+      signedAttachments = data.map((row, i) => ({
+        path: attachmentIds[i],
+        url: row.signedUrl,
+        name: attachmentIds[i].split("/").pop() ?? attachmentIds[i],
+      }));
+    }
+  }
+
+  // Structured context (what we store in DB)
   const structuredContext = {
     location: body.location ?? null,
     steps: body.steps ?? null,
     expected: body.expected ?? null,
     actual: body.actual ?? null,
     device: body.device ?? null,
-    attachmentIds: body.attachmentIds ?? [],
+    attachmentIds,
+    attachments: signedAttachments,
     rawContext: body.context ?? {},
   };
 
@@ -191,6 +228,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Context we send to the Agent service (includes signed attachment URLs)
+  const contextForAgent = {
+    ...structuredContext,
+  };
+
   // Call agent service
   let agentResponse: AgentServiceResponse | null = null;
   try {
@@ -202,7 +244,8 @@ export async function POST(req: NextRequest) {
         reporterId: profile.id,
         shopId: profile.shop_id,
         description,
-        context: structuredContext,
+        intent,
+        context: contextForAgent,
       }),
     });
 
@@ -237,7 +280,8 @@ export async function POST(req: NextRequest) {
     null;
 
   // -----------------------------------------------------
-  // 🔥 FIX: Final intent logic (UI choice always wins)
+  // Final intent logic (UI choice wins unless LLM switched
+  // into one of the catalog-add flows)
   // -----------------------------------------------------
   let finalIntent: AgentIntent = intent;
   const agentIntent = agentResponse?.intent as AgentIntent | null | undefined;
@@ -248,7 +292,6 @@ export async function POST(req: NextRequest) {
   ) {
     finalIntent = agentIntent;
   }
-  // Otherwise: DO NOT override the UI-selected intent.
 
   // Status selection
   const status: AgentRequestStatus =
@@ -261,7 +304,7 @@ export async function POST(req: NextRequest) {
       ? "merged"
       : "submitted";
 
-  // Update row
+  // Update row with agent details
   const { data: updated, error: updateError } = await supabase
     .from("agent_requests")
     .update({
