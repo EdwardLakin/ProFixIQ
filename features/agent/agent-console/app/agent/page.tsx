@@ -7,6 +7,7 @@ import Card from "@shared/components/ui/Card";
 import { Badge } from "@shared/components/ui/badge";
 import { Separator } from "@shared/components/ui/separator";
 import { cn } from "@shared/lib/utils";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 type AgentRequestStatus =
   | "submitted"
@@ -76,15 +77,21 @@ function prettyIntent(intent: string | null): string {
   return intent.replace(/_/g, " ");
 }
 
-// Public Supabase URL for building screenshot links
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+// Use Supabase client to generate correct public URLs (avoids env URL issues)
+const supabase = createBrowserSupabase();
 
 function resolveAttachmentUrl(path: string): string {
-  if (!SUPABASE_URL) return path;
-  // path is like "userId/timestamp-filename.png"
-  // Encode path safely in case of spaces / special chars
-  const encodedPath = encodeURIComponent(path).replace(/%2F/g, "/");
-  return `${SUPABASE_URL}/storage/v1/object/public/agent_uploads/${encodedPath}`;
+  const { data } = supabase.storage
+    .from("agent_uploads")
+    .getPublicUrl(path);
+
+  if (!data?.publicUrl) {
+    console.error("getPublicUrl returned no publicUrl for agent_uploads path:", path);
+    // fall back to showing the raw path so at least it's visible
+    return path;
+  }
+
+  return data.publicUrl;
 }
 
 export default function AgentConsolePage() {
@@ -301,7 +308,7 @@ export default function AgentConsolePage() {
               <>
                 {/* Description */}
                 <div className="space-y-1">
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center justify_between gap-2">
                     <h3 className="text-sm font-semibold text-neutral-50">
                       Description
                     </h3>
