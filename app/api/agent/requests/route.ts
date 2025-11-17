@@ -58,6 +58,19 @@ function normalizeIntent(raw: unknown): AgentIntent {
   return "feature_request";
 }
 
+type CreateAgentRequestBody = {
+  description?: string;
+  intent?: string;
+  context?: Record<string, unknown>;
+  // v2 structured fields for QA:
+  location?: string;
+  steps?: string;
+  expected?: string;
+  actual?: string;
+  device?: string;
+  attachmentIds?: string[]; // ids from agent_attachments (future)
+};
+
 export async function GET(_req: NextRequest) {
   const cookieStore = cookies();
   const supabase = createRouteHandlerClient<Database>({
@@ -103,13 +116,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = (await req.json().catch(() => null)) as
-    | {
-        description?: string;
-        intent?: string;
-        context?: Record<string, unknown>;
-      }
-    | null;
+  const body = (await req.json().catch(() => null)) as CreateAgentRequestBody | null;
 
   if (!body || !body.description || !body.description.trim()) {
     return NextResponse.json(
@@ -142,7 +149,18 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 1. Insert initial request entry
+  // v2: structured context object we pass both to DB + agent
+  const structuredContext = {
+    location: body.location ?? null,
+    steps: body.steps ?? null,
+    expected: body.expected ?? null,
+    actual: body.actual ?? null,
+    device: body.device ?? null,
+    attachmentIds: body.attachmentIds ?? [],
+    rawContext: body.context ?? {},
+  };
+
+  // 1. Insert initial request entry (persist structured context right away)
   const { data: inserted, error: insertError } = await supabase
     .from("agent_requests")
     .insert({
@@ -152,6 +170,7 @@ export async function POST(req: NextRequest) {
       description,
       intent, // always a valid enum value
       status: "submitted", // valid status enum
+      normalized_json: structuredContext,
     })
     .select("*")
     .single();
@@ -175,7 +194,7 @@ export async function POST(req: NextRequest) {
         reporterId: profile.id,
         shopId: profile.shop_id,
         description,
-        context: body.context ?? {},
+        context: structuredContext,
       }),
     });
 
@@ -200,18 +219,24 @@ export async function POST(req: NextRequest) {
   const finalIntent =
     (agentResponse?.intent as AgentIntent | null | undefined) ?? intent;
 
-  const status =
+  const status: AgentIntent | AgentIntent | "submitted" | "in_progress" | "awaiting_approval" | "merged" =
     github && github.prUrl
       ? "awaiting_approval"
       : github && github.issueUrl
       ? "in_progress"
+      : finalIntent === "inspection_catalog_add" ||
+        finalIntent === "service_catalog_add"
+      ? "merged" // small catalog updates auto-merged
       : "submitted";
 
   const { data: updated, error: updateError } = await supabase
     .from("agent_requests")
     .update({
       intent: finalIntent,
-      normalized_json: agentResponse?.request ?? {},
+      normalized_json: {
+        ...structuredContext,
+        agentRequest: agentResponse?.request ?? {},
+      },
       github_issue_number: github?.issueNumber ?? null,
       github_issue_url: github?.issueUrl ?? null,
       github_pr_number: github?.prNumber ?? null,

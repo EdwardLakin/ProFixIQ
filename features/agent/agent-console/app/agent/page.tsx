@@ -1,10 +1,9 @@
-// features/agent/agent-console/app/agent/page.tsx
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
 
 import { Button } from "@shared/components/ui/Button";
-import  Card from "@shared/components/ui/Card";
+import Card from "@shared/components/ui/Card";
 import { Badge } from "@shared/components/ui/badge";
 import { Separator } from "@shared/components/ui/separator";
 import { cn } from "@shared/lib/utils";
@@ -18,6 +17,17 @@ type AgentRequestStatus =
   | "failed"
   | "merged";
 
+type AgentContext = {
+  location?: string | null;
+  steps?: string | null;
+  expected?: string | null;
+  actual?: string | null;
+  device?: string | null;
+  attachmentIds?: string[];
+  // catch-all for anything else the agent stores
+  [key: string]: unknown;
+};
+
 type AgentRequest = {
   id: string;
   shop_id: string | null;
@@ -25,7 +35,7 @@ type AgentRequest = {
   reporter_role: string | null;
   description: string;
   intent: string | null;
-  normalized_json: Record<string, unknown> | null;
+  normalized_json: AgentContext | null;
   github_issue_number: number | null;
   github_issue_url: string | null;
   github_pr_number: number | null;
@@ -59,6 +69,11 @@ function statusClasses(status: AgentRequestStatus) {
     default:
       return "border-neutral-700 bg-neutral-900 text-neutral-200";
   }
+}
+
+function prettyIntent(intent: string | null): string {
+  if (!intent) return "unknown";
+  return intent.replace(/_/g, " ");
 }
 
 export default function AgentConsolePage() {
@@ -126,6 +141,8 @@ export default function AgentConsolePage() {
     });
   }
 
+  const selectedContext: AgentContext | null = selected?.normalized_json ?? null;
+
   return (
     <div className="mx-auto max-w-6xl px-3 py-6 text-white">
       {/* Header */}
@@ -176,11 +193,7 @@ export default function AgentConsolePage() {
           <Separator className="mb-2 bg-white/10" />
 
           <div className="flex-1 space-y-2 overflow-auto">
-            {error && (
-              <p className="text-xs text-red-400">
-                {error}
-              </p>
-            )}
+            {error && <p className="text-xs text-red-400">{error}</p>}
 
             {!isLoading && !error && requests.length === 0 && (
               <p className="text-xs text-neutral-500">No agent requests yet.</p>
@@ -203,7 +216,7 @@ export default function AgentConsolePage() {
                       {req.description}
                     </span>
                     <span className="text-[0.7rem] text-neutral-400">
-                      {req.intent ?? "unknown"} •{" "}
+                      {prettyIntent(req.intent)} •{" "}
                       {new Date(req.created_at).toLocaleString()}
                     </span>
                   </div>
@@ -242,7 +255,7 @@ export default function AgentConsolePage() {
             {!selected && (
               <p className="text-xs text-neutral-500">
                 Choose a request on the left to see description, GitHub links,
-                and LLM notes.
+                context, and LLM notes.
               </p>
             )}
 
@@ -277,7 +290,7 @@ export default function AgentConsolePage() {
                       Intent
                     </div>
                     <div className="text-neutral-100">
-                      {selected.intent ?? "unknown"}
+                      {prettyIntent(selected.intent)}
                     </div>
                   </div>
                   <div className="space-y-1">
@@ -309,6 +322,74 @@ export default function AgentConsolePage() {
                 </div>
 
                 <Separator className="bg-white/10" />
+
+                {/* Context */}
+                {selectedContext && Object.keys(selectedContext).length > 0 && (
+                  <>
+                    <div className="space-y-2 text-[0.75rem]">
+                      <div className="text-[0.7rem] font-semibold uppercase tracking-[0.13em] text-neutral-400">
+                        Context
+                      </div>
+                      <div className="space-y-1 text-neutral-200">
+                        {selectedContext.location && (
+                          <div>
+                            <span className="text-neutral-500">Location:</span>{" "}
+                            {selectedContext.location}
+                          </div>
+                        )}
+                        {selectedContext.device && (
+                          <div>
+                            <span className="text-neutral-500">Device:</span>{" "}
+                            {selectedContext.device}
+                          </div>
+                        )}
+                        {selectedContext.steps && (
+                          <div>
+                            <div className="text-neutral-500">
+                              Steps to Reproduce:
+                            </div>
+                            <pre className="mt-0.5 whitespace-pre-wrap rounded-md bg-black/40 p-2 text-[0.7rem] text-neutral-200">
+                              {selectedContext.steps}
+                            </pre>
+                          </div>
+                        )}
+                        {selectedContext.expected && (
+                          <div>
+                            <div className="text-neutral-500">Expected:</div>
+                            <pre className="mt-0.5 whitespace-pre-wrap rounded-md bg-black/40 p-2 text-[0.7rem] text-neutral-200">
+                              {selectedContext.expected}
+                            </pre>
+                          </div>
+                        )}
+                        {selectedContext.actual && (
+                          <div>
+                            <div className="text-neutral-500">Actual:</div>
+                            <pre className="mt-0.5 whitespace-pre-wrap rounded-md bg-black/40 p-2 text-[0.7rem] text-neutral-200">
+                              {selectedContext.actual}
+                            </pre>
+                          </div>
+                        )}
+                        {Array.isArray(selectedContext.attachmentIds) &&
+                          selectedContext.attachmentIds.length > 0 && (
+                            <div>
+                              <div className="text-neutral-500">
+                                Attachments:
+                              </div>
+                              <ul className="mt-0.5 list-disc pl-4 text-[0.7rem]">
+                                {selectedContext.attachmentIds.map((id) => (
+                                  <li key={id} className="text-neutral-300">
+                                    {id}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                      </div>
+                    </div>
+
+                    <Separator className="bg-white/10" />
+                  </>
+                )}
 
                 {/* GitHub */}
                 <div className="space-y-1 text-[0.75rem]">
