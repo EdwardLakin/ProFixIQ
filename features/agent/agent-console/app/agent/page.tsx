@@ -52,7 +52,6 @@ type AgentRequest = {
 };
 
 function statusClasses(status: AgentRequestStatus) {
-  // Dark / chip-style badges to match the rest of the portal
   switch (status) {
     case "submitted":
       return "border-neutral-700 bg-neutral-900 text-neutral-200";
@@ -77,29 +76,23 @@ function prettyIntent(intent: string | null): string {
   return intent.replace(/_/g, " ");
 }
 
-// Use Supabase client to generate correct public URLs (avoids env URL issues)
-const supabase = createBrowserSupabase();
-
-function resolveAttachmentUrl(path: string): string {
-  const { data } = supabase.storage
-    .from("agent_uploads")
-    .getPublicUrl(path);
-
-  if (!data?.publicUrl) {
-    console.error("getPublicUrl returned no publicUrl for agent_uploads path:", path);
-    // fall back to showing the raw path so at least it's visible
-    return path;
-  }
-
-  return data.publicUrl;
-}
-
 export default function AgentConsolePage() {
   const [requests, setRequests] = useState<AgentRequest[]>([]);
   const [selected, setSelected] = useState<AgentRequest | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  // signed URLs for the currently selected request's attachments
+  const [attachmentUrls, setAttachmentUrls] = useState<Record<string, string>>(
+    {}
+  );
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+
+  // lightbox: which screenshot is open (signed URL)
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+
+  const selectedContext: AgentContext | null = selected?.normalized_json ?? null;
 
   async function loadRequests() {
     try {
@@ -129,6 +122,69 @@ export default function AgentConsolePage() {
     return () => clearInterval(interval);
   }, []);
 
+  // When selected request changes, fetch signed URLs for its attachments
+  useEffect(() => {
+    const paths =
+      (selectedContext?.attachmentIds ?? []).filter(
+        (p): p is string => Boolean(p)
+      ) || [];
+
+    if (!paths.length) {
+      setAttachmentUrls({});
+      setAttachmentsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function fetchSignedUrls() {
+      try {
+        setAttachmentsLoading(true);
+        const supabase = createBrowserSupabase();
+
+        // @ts-ignore - TS may not know createSignedUrls exists
+        const { data, error } = await supabase.storage
+          .from("agent_uploads")
+          .createSignedUrls(paths, 60 * 60); // 1 hour
+
+        if (error) {
+          console.error("createSignedUrls error for agent_uploads:", error);
+          if (!cancelled) {
+            setAttachmentUrls({});
+          }
+          return;
+        }
+
+        const map: Record<string, string> = {};
+        (data || []).forEach((item: any, idx: number) => {
+          if (item?.signedUrl) {
+            map[paths[idx]] = item.signedUrl;
+          }
+        });
+
+        if (!cancelled) {
+          setAttachmentUrls(map);
+        }
+      } catch (err) {
+        console.error("Error loading signed URLs for agent_uploads:", err);
+        if (!cancelled) {
+          setAttachmentUrls({});
+        }
+      } finally {
+        if (!cancelled) {
+          setAttachmentsLoading(false);
+        }
+      }
+    }
+
+    fetchSignedUrls();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id]);
+
   async function updateStatus(
     action: "approve" | "reject",
     request: AgentRequest
@@ -148,7 +204,6 @@ export default function AgentConsolePage() {
 
         const json = (await res.json()) as { request: AgentRequest };
 
-        // Optimistically update list + selected
         setRequests((prev) =>
           prev.map((r) => (r.id === json.request.id ? json.request : r))
         );
@@ -179,14 +234,14 @@ export default function AgentConsolePage() {
         setRequests((prev) => prev.filter((r) => r.id !== request.id));
         if (selected?.id === request.id) {
           setSelected(null);
+          setAttachmentUrls({});
+          setLightboxUrl(null);
         }
       } catch (err) {
         console.error("Error deleting agent request", err);
       }
     });
   }
-
-  const selectedContext: AgentContext | null = selected?.normalized_json ?? null;
 
   return (
     <div className="mx-auto max-w-6xl px-3 py-6 text-white">
@@ -308,7 +363,7 @@ export default function AgentConsolePage() {
               <>
                 {/* Description */}
                 <div className="space-y-1">
-                  <div className="flex items-center justify_between gap-2">
+                  <div className="flex items-center justify-between gap-2">
                     <h3 className="text-sm font-semibold text-neutral-50">
                       Description
                     </h3>
@@ -414,35 +469,71 @@ export default function AgentConsolePage() {
                             </pre>
                           </div>
                         )}
+
                         {Array.isArray(selectedContext.attachmentIds) &&
                           selectedContext.attachmentIds.length > 0 && (
-                            <div>
+                            <div className="space-y-1">
                               <div className="text-neutral-500">
                                 Attachments:
                               </div>
-                              <ul className="mt-0.5 list-disc pl-4 text-[0.7rem]">
+
+                              {attachmentsLoading && (
+                                <div className="text-[0.7rem] text-neutral-500">
+                                  Loading screenshots…
+                                </div>
+                              )}
+
+                              <ul className="mt-0.5 space-y-2 text-[0.7rem]">
                                 {selectedContext.attachmentIds.map(
-                                  (path, idx) => (
-                                    <li key={path} className="text-neutral-300">
-                                      <a
-                                        href={resolveAttachmentUrl(path)}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="text-orange-400 underline underline-offset-2 hover:text-orange-300"
+                                  (path, idx) => {
+                                    const url = attachmentUrls[path];
+
+                                    return (
+                                      <li
+                                        key={path}
+                                        className="text-neutral-300"
                                       >
-                                        Screenshot {idx + 1}
-                                      </a>{" "}
-                                      <span className="text-neutral-500 truncate">
-                                        (
-                                        {
-                                          path.split("/")[
-                                            path.split("/").length - 1
-                                          ]
-                                        }
-                                        )
-                                      </span>
-                                    </li>
-                                  )
+                                        <div className="flex items-center gap-2">
+                                          <button
+                                            type="button"
+                                            disabled={!url}
+                                            onClick={() =>
+                                              url && setLightboxUrl(url)
+                                            }
+                                            className={cn(
+                                              "text-left text-orange-400 underline underline-offset-2 hover:text-orange-300",
+                                              !url &&
+                                                "cursor-not-allowed opacity-60"
+                                            )}
+                                          >
+                                            Screenshot {idx + 1}
+                                          </button>
+                                          <span className="text-neutral-500 truncate">
+                                            (
+                                            {
+                                              path.split("/")[
+                                                path.split("/").length - 1
+                                              ]
+                                            }
+                                            )
+                                          </span>
+                                        </div>
+
+                                        {url && (
+                                          <div className="mt-1">
+                                            <img
+                                              src={url}
+                                              alt={`Screenshot ${idx + 1}`}
+                                              onClick={() =>
+                                                setLightboxUrl(url)
+                                              }
+                                              className="max-h-40 w-auto cursor-zoom-in rounded-md border border-white/10 bg-black/40 object-contain"
+                                            />
+                                          </div>
+                                        )}
+                                      </li>
+                                    );
+                                  }
                                 )}
                               </ul>
                             </div>
@@ -569,6 +660,32 @@ export default function AgentConsolePage() {
           </div>
         </Card>
       </div>
+
+      {/* Lightbox overlay */}
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-3"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <div
+            className="relative max-h-[90vh] max-w-[90vw]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="absolute right-2 top-2 rounded-full bg-black/70 px-2 py-1 text-xs font-semibold text-neutral-200 hover:bg-black"
+              onClick={() => setLightboxUrl(null)}
+            >
+              Close
+            </button>
+            <img
+              src={lightboxUrl}
+              alt="Screenshot"
+              className="max-h-[90vh] max-w-[90vw] rounded-lg border border-white/20 object-contain"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
