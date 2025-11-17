@@ -1,3 +1,4 @@
+// app/api/agent/requests/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
@@ -21,7 +22,7 @@ type PatchBody = {
 const APPROVER_ROLES = ["owner", "admin", "manager"];
 
 export async function PATCH(req: NextRequest) {
-  // --- derive id from URL path, so we don't need a typed `params` arg ---
+  // derive id from URL path, so we don't need a typed `params` arg
   const url = new URL(req.url);
   const pathname = url.pathname.replace(/\/$/, "");
   const segments = pathname.split("/");

@@ -33,6 +33,31 @@ type AgentServiceResponse = {
   llm?: AgentLLMMeta | null;
 };
 
+// DB enum values for agent_requests.intent
+type AgentIntent =
+  | "feature_request"
+  | "bug_report"
+  | "inspection_catalog_add"
+  | "service_catalog_add"
+  | "refactor";
+
+const AGENT_INTENTS: AgentIntent[] = [
+  "feature_request",
+  "bug_report",
+  "inspection_catalog_add",
+  "service_catalog_add",
+  "refactor",
+];
+
+function normalizeIntent(raw: unknown): AgentIntent {
+  if (typeof raw === "string") {
+    const match = AGENT_INTENTS.find((v) => v === raw);
+    if (match) return match;
+  }
+  // safe default that always exists in your enum
+  return "feature_request";
+}
+
 export async function GET(_req: NextRequest) {
   const cookieStore = cookies();
   const supabase = createRouteHandlerClient<Database>({
@@ -100,8 +125,9 @@ export async function POST(req: NextRequest) {
   }
 
   const description = body.description.trim();
+  const intent = normalizeIntent(body.intent);
 
-  // Pull user profile
+  // Pull user profile (assumes profiles.id === auth.users.id)
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("id, shop_id, role")
@@ -124,8 +150,8 @@ export async function POST(req: NextRequest) {
       reporter_id: profile.id,
       reporter_role: profile.role,
       description,
-      intent: body.intent ?? null,
-      status: "submitted",
+      intent, // always a valid enum value
+      status: "submitted", // valid status enum
     })
     .select("*")
     .single();
@@ -171,7 +197,8 @@ export async function POST(req: NextRequest) {
   const github = agentResponse?.github ?? null;
   const llm_confidence = agentResponse?.llm?.confidence ?? null;
   const llm_notes = agentResponse?.llm?.notes ?? null;
-  const intent = agentResponse?.intent ?? inserted.intent;
+  const finalIntent =
+    (agentResponse?.intent as AgentIntent | null | undefined) ?? intent;
 
   const status =
     github && github.prUrl
@@ -183,7 +210,7 @@ export async function POST(req: NextRequest) {
   const { data: updated, error: updateError } = await supabase
     .from("agent_requests")
     .update({
-      intent,
+      intent: finalIntent,
       normalized_json: agentResponse?.request ?? {},
       github_issue_number: github?.issueNumber ?? null,
       github_issue_url: github?.issueUrl ?? null,
