@@ -239,7 +239,7 @@ export async function POST(req: NextRequest) {
   const finalIntent =
     (agentResponse?.intent as AgentIntent | null | undefined) ?? intent;
 
-  let status: AgentRequestStatus =
+  const status: AgentRequestStatus =
     github && github.prUrl
       ? "awaiting_approval"
       : github && github.issueUrl
