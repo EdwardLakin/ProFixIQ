@@ -21,7 +21,8 @@ export const masterServicesList: ServiceCategory[] = [
       { item: "Coolant flush and fill" },
       { item: "Brake fluid flush" },
       { item: "DEF tank fill and system check" },
-    ],
+      { item: "winter tire swap" }
+],
   },
   {
     title: "Fuel System",
