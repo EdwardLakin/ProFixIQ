@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
+import { recordQuoteTraining } from "@/features/integrations/ai";
 
 type DB = Database;
 
@@ -36,7 +37,7 @@ function isBody(x: unknown): x is Body {
 
 async function resolvePrimaryLocationId(
   sb: SupabaseClient<DB>,
-  workOrderLineId: string
+  workOrderLineId: string,
 ): Promise<string | null> {
   const { data: line } = await sb
     .from("work_order_lines")
@@ -69,9 +70,9 @@ export async function POST(req: Request) {
 
     // Env: server key only (non-null)
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseKey = (
-      process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY
-    )!;
+    const supabaseKey =
+      (process.env.SUPABASE_SERVICE_ROLE_KEY ??
+        process.env.SUPABASE_SERVICE_KEY)!;
 
     if (!supabaseUrl || !supabaseKey) {
       return NextResponse.json(
@@ -80,7 +81,7 @@ export async function POST(req: Request) {
           detail:
             "Check NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_SERVICE_KEY).",
         },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -95,7 +96,7 @@ export async function POST(req: Request) {
           detail: "Create a primary inventory location first.",
           code: "NO_LOCATION_CONFIGURED",
         },
-        { status: 422 }
+        { status: 422 },
       );
     }
 
@@ -148,8 +149,37 @@ export async function POST(req: Request) {
     if (updateErr) {
       return NextResponse.json(
         { error: "Failed updating approval state", detail: updateErr.message },
-        { status: 500 }
+        { status: 500 },
       );
+    }
+
+    // ------------------------ AI TRAINING: APPLIED QUOTE ------------------------
+    try {
+      const { data: line } = await sb
+        .from("work_order_lines")
+        .select("id, work_order_id, shop_id, description, complaint")
+        .eq("id", workOrderLineId)
+        .maybeSingle();
+
+      if (line?.shop_id) {
+        await recordQuoteTraining({
+          quoteId: workOrderLineId, // treat the line as the "quote" record
+          shopId: line.shop_id,
+          workOrderId: line.work_order_id ?? null,
+          workOrderLineId,
+          vehicleYmm: null, // TODO: hydrate via vehicles table
+          payload: {
+            complaint: line.complaint,
+            description: line.description,
+            suggestion,
+            unmatched,
+          },
+        });
+      }
+    } catch (trainErr) {
+      // Never block user flow on training errors
+      // eslint-disable-next-line no-console
+      console.warn("AI training for apply-ai quote failed:", trainErr);
     }
 
     return NextResponse.json({ ok: true, unmatched });
@@ -158,7 +188,7 @@ export async function POST(req: Request) {
     console.error("apply-ai Quote Error 👉", e);
     return NextResponse.json(
       { error: "Failed applying AI quote" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

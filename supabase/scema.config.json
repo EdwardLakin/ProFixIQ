@@ -1,7 +1,0 @@
-{
-  "schemaPath": "supabase/schema.sql",
-  "generatedBy": "GitHub Actions (pg_dump)",
-  "description": "Nightly and manual schema dumps from Supabase DB for reference and migrations.",
-  "lastUpdated": "",
-  "note": "This file is metadata only — it does not affect app logic."
-}

@@ -1,693 +1,4 @@
-export type Json =
-  | string
-  | number
-  | boolean
-  | null
-  | { [key: string]: Json | undefined }
-  | Json[]
 
-export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "12.2.3 (519615d)"
-  }
-  public: {
-    Tables: {
-      activity_logs: {
-        Row: {
-          action: string | null
-          context: Json | null
-          id: string
-          target_id: string | null
-          target_table: string | null
-          timestamp: string | null
-          user_id: string | null
-        }
-        Insert: {
-          action?: string | null
-          context?: Json | null
-          id?: string
-          target_id?: string | null
-          target_table?: string | null
-          timestamp?: string | null
-          user_id?: string | null
-        }
-        Update: {
-          action?: string | null
-          context?: Json | null
-          id?: string
-          target_id?: string | null
-          target_table?: string | null
-          timestamp?: string | null
-          user_id?: string | null
-        }
-        Relationships: []
-      }
-      agent_attachments: {
-        Row: {
-          agent_request_id: string
-          caption: string | null
-          created_at: string
-          created_by: string
-          id: string
-          kind: string
-          public_url: string
-          storage_path: string
-        }
-        Insert: {
-          agent_request_id: string
-          caption?: string | null
-          created_at?: string
-          created_by: string
-          id?: string
-          kind?: string
-          public_url: string
-          storage_path: string
-        }
-        Update: {
-          agent_request_id?: string
-          caption?: string | null
-          created_at?: string
-          created_by?: string
-          id?: string
-          kind?: string
-          public_url?: string
-          storage_path?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "agent_attachments_agent_request_id_fkey"
-            columns: ["agent_request_id"]
-            isOneToOne: false
-            referencedRelation: "agent_requests"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "agent_attachments_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      agent_events: {
-        Row: {
-          content: Json
-          created_at: string
-          id: string
-          kind: string
-          run_id: string
-          step: number
-        }
-        Insert: {
-          content: Json
-          created_at?: string
-          id?: string
-          kind: string
-          run_id: string
-          step: number
-        }
-        Update: {
-          content?: Json
-          created_at?: string
-          id?: string
-          kind?: string
-          run_id?: string
-          step?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "agent_events_run_id_fkey"
-            columns: ["run_id"]
-            isOneToOne: false
-            referencedRelation: "agent_runs"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      agent_knowledge: {
-        Row: {
-          body: string
-          created_at: string
-          created_by: string
-          id: string
-          shop_id: string | null
-          slug: string
-          tags: string[] | null
-          title: string
-        }
-        Insert: {
-          body: string
-          created_at?: string
-          created_by: string
-          id?: string
-          shop_id?: string | null
-          slug: string
-          tags?: string[] | null
-          title: string
-        }
-        Update: {
-          body?: string
-          created_at?: string
-          created_by?: string
-          id?: string
-          shop_id?: string | null
-          slug?: string
-          tags?: string[] | null
-          title?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "agent_knowledge_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      agent_requests: {
-        Row: {
-          created_at: string
-          description: string
-          github_branch: string | null
-          github_commit_sha: string | null
-          github_issue_number: number | null
-          github_issue_url: string | null
-          github_pr_number: number | null
-          github_pr_url: string | null
-          id: string
-          intent: Database["public"]["Enums"]["agent_request_intent"] | null
-          llm_confidence: number | null
-          llm_model: string | null
-          llm_notes: string | null
-          normalized_json: Json | null
-          reporter_id: string | null
-          reporter_role: string | null
-          run_id: string | null
-          shop_id: string | null
-          status: Database["public"]["Enums"]["agent_request_status"]
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          description: string
-          github_branch?: string | null
-          github_commit_sha?: string | null
-          github_issue_number?: number | null
-          github_issue_url?: string | null
-          github_pr_number?: number | null
-          github_pr_url?: string | null
-          id?: string
-          intent?: Database["public"]["Enums"]["agent_request_intent"] | null
-          llm_confidence?: number | null
-          llm_model?: string | null
-          llm_notes?: string | null
-          normalized_json?: Json | null
-          reporter_id?: string | null
-          reporter_role?: string | null
-          run_id?: string | null
-          shop_id?: string | null
-          status?: Database["public"]["Enums"]["agent_request_status"]
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          description?: string
-          github_branch?: string | null
-          github_commit_sha?: string | null
-          github_issue_number?: number | null
-          github_issue_url?: string | null
-          github_pr_number?: number | null
-          github_pr_url?: string | null
-          id?: string
-          intent?: Database["public"]["Enums"]["agent_request_intent"] | null
-          llm_confidence?: number | null
-          llm_model?: string | null
-          llm_notes?: string | null
-          normalized_json?: Json | null
-          reporter_id?: string | null
-          reporter_role?: string | null
-          run_id?: string | null
-          shop_id?: string | null
-          status?: Database["public"]["Enums"]["agent_request_status"]
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "agent_requests_reporter_id_fkey"
-            columns: ["reporter_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "agent_requests_run_id_fkey"
-            columns: ["run_id"]
-            isOneToOne: false
-            referencedRelation: "agent_runs"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "agent_requests_shop_id_fkey"
-            columns: ["shop_id"]
-            isOneToOne: false
-            referencedRelation: "shop_public_profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "agent_requests_shop_id_fkey"
-            columns: ["shop_id"]
-            isOneToOne: false
-            referencedRelation: "shops"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      agent_runs: {
-        Row: {
-          created_at: string
-          goal: string
-          id: string
-          idempotency_key: string | null
-          shop_id: string
-          status: string
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          goal: string
-          id?: string
-          idempotency_key?: string | null
-          shop_id: string
-          status: string
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          goal?: string
-          id?: string
-          idempotency_key?: string | null
-          shop_id?: string
-          status?: string
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
-      ai_events: {
-        Row: {
-          created_at: string
-          entity_id: string | null
-          entity_table: string | null
-          event_type: string
-          id: string
-          payload: Json
-          shop_id: string | null
-          source_id: string | null
-          training_source:
-            | Database["public"]["Enums"]["ai_training_source"]
-            | null
-          user_id: string | null
-          vehicle_ymm: string | null
-        }
-        Insert: {
-          created_at?: string
-          entity_id?: string | null
-          entity_table?: string | null
-          event_type: string
-          id?: string
-          payload: Json
-          shop_id?: string | null
-          source_id?: string | null
-          training_source?:
-            | Database["public"]["Enums"]["ai_training_source"]
-            | null
-          user_id?: string | null
-          vehicle_ymm?: string | null
-        }
-        Update: {
-          created_at?: string
-          entity_id?: string | null
-          entity_table?: string | null
-          event_type?: string
-          id?: string
-          payload?: Json
-          shop_id?: string | null
-          source_id?: string | null
-          training_source?:
-            | Database["public"]["Enums"]["ai_training_source"]
-            | null
-          user_id?: string | null
-          vehicle_ymm?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "ai_events_shop_id_fkey"
-            columns: ["shop_id"]
-            isOneToOne: false
-            referencedRelation: "shop_public_profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ai_events_shop_id_fkey"
-            columns: ["shop_id"]
-            isOneToOne: false
-            referencedRelation: "shops"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      ai_requests: {
-        Row: {
-          created_at: string | null
-          id: string
-          prompt: string | null
-          response: string | null
-          tool_used: string | null
-          user_id: string | null
-          vehicle_id: string | null
-          work_order_id: string | null
-        }
-        Insert: {
-          created_at?: string | null
-          id?: string
-          prompt?: string | null
-          response?: string | null
-          tool_used?: string | null
-          user_id?: string | null
-          vehicle_id?: string | null
-          work_order_id?: string | null
-        }
-        Update: {
-          created_at?: string | null
-          id?: string
-          prompt?: string | null
-          response?: string | null
-          tool_used?: string | null
-          user_id?: string | null
-          vehicle_id?: string | null
-          work_order_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "ai_requests_vehicle_id_fkey"
-            columns: ["vehicle_id"]
-            isOneToOne: false
-            referencedRelation: "vehicles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ai_requests_work_order_id_fkey"
-            columns: ["work_order_id"]
-            isOneToOne: false
-            referencedRelation: "work_orders"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      ai_training_data: {
-        Row: {
-          content: string
-          created_at: string
-          embedding: string | null
-          id: string
-          shop_id: string | null
-          source_event_id: string | null
-        }
-        Insert: {
-          content: string
-          created_at?: string
-          embedding?: string | null
-          id?: string
-          shop_id?: string | null
-          source_event_id?: string | null
-        }
-        Update: {
-          content?: string
-          created_at?: string
-          embedding?: string | null
-          id?: string
-          shop_id?: string | null
-          source_event_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "ai_training_data_shop_id_fkey"
-            columns: ["shop_id"]
-            isOneToOne: false
-            referencedRelation: "shop_public_profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ai_training_data_shop_id_fkey"
-            columns: ["shop_id"]
-            isOneToOne: false
-            referencedRelation: "shops"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ai_training_data_source_event_id_fkey"
-            columns: ["source_event_id"]
-            isOneToOne: false
-            referencedRelation: "ai_events"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      ai_training_events: {
-        Row: {
-          created_at: string
-          id: string
-          payload: Json
-          shop_id: string
-          source: string
-          vehicle_ymm: string | null
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          payload?: Json
-          shop_id: string
-          source: string
-          vehicle_ymm?: string | null
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          payload?: Json
-          shop_id?: string
-          source?: string
-          vehicle_ymm?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "ai_training_events_shop_id_fkey"
-            columns: ["shop_id"]
-            isOneToOne: false
-            referencedRelation: "shop_public_profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ai_training_events_shop_id_fkey"
-            columns: ["shop_id"]
-            isOneToOne: false
-            referencedRelation: "shops"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      api_keys: {
-        Row: {
-          api_key: string | null
-          created_at: string | null
-          id: string
-          label: string | null
-          user_id: string | null
-        }
-        Insert: {
-          api_key?: string | null
-          created_at?: string | null
-          id?: string
-          label?: string | null
-          user_id?: string | null
-        }
-        Update: {
-          api_key?: string | null
-          created_at?: string | null
-          id?: string
-          label?: string | null
-          user_id?: string | null
-        }
-        Relationships: []
-      }
-      apps: {
-        Row: {
-          default_route: string
-          icon_url: string | null
-          id: string
-          is_enabled: boolean
-          name: string
-          slug: string
-        }
-        Insert: {
-          default_route: string
-          icon_url?: string | null
-          id?: string
-          is_enabled?: boolean
-          name: string
-          slug: string
-        }
-        Update: {
-          default_route?: string
-          icon_url?: string | null
-          id?: string
-          is_enabled?: boolean
-          name?: string
-          slug?: string
-        }
-        Relationships: []
-      }
-      audit_logs: {
-        Row: {
-          action: string
-          actor_id: string | null
-          created_at: string
-          id: string
-          metadata: Json | null
-          target: string | null
-        }
-        Insert: {
-          action: string
-          actor_id?: string | null
-          created_at?: string
-          id?: string
-          metadata?: Json | null
-          target?: string | null
-        }
-        Update: {
-          action?: string
-          actor_id?: string | null
-          created_at?: string
-          id?: string
-          metadata?: Json | null
-          target?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "audit_logs_actor_id_fkey"
-            columns: ["actor_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      bookings: {
-        Row: {
-          created_at: string
-          created_by: string | null
-          customer_id: string | null
-          ends_at: string
-          id: string
-          notes: string | null
-          shop_id: string | null
-          starts_at: string
-          status: string
-          vehicle_id: string | null
-        }
-        Insert: {
-          created_at?: string
-          created_by?: string | null
-          customer_id?: string | null
-          ends_at: string
-          id?: string
-          notes?: string | null
-          shop_id?: string | null
-          starts_at: string
-          status?: string
-          vehicle_id?: string | null
-        }
-        Update: {
-          created_at?: string
-          created_by?: string | null
-          customer_id?: string | null
-          ends_at?: string
-          id?: string
-          notes?: string | null
-          shop_id?: string | null
-          starts_at?: string
-          status?: string
-          vehicle_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "bookings_customer_id_fkey"
-            columns: ["customer_id"]
-            isOneToOne: false
-            referencedRelation: "customers"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "bookings_shop_id_fkey"
-            columns: ["shop_id"]
-            isOneToOne: false
-            referencedRelation: "shop_public_profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "bookings_shop_id_fkey"
-            columns: ["shop_id"]
-            isOneToOne: false
-            referencedRelation: "shops"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "bookings_vehicle_id_fkey"
-            columns: ["vehicle_id"]
-            isOneToOne: false
-            referencedRelation: "vehicles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      chat_participants: {
-        Row: {
-          chat_id: string | null
-          id: string
-          joined_at: string | null
-          profile_id: string | null
-          role: string | null
-        }
-        Insert: {
-          chat_id?: string | null
-          id?: string
-          joined_at?: string | null
-          profile_id?: string | null
-          role?: string | null
-        }
-        Update: {
-          chat_id?: string | null
-          id?: string
-          joined_at?: string | null
-          profile_id?: string | null
-          role?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "chat_participants_chat_id_fkey"
-            columns: ["chat_id"]
-            isOneToOne: false
-            referencedRelation: "chats"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      chats: {
         Row: {
           context_id: string | null
           created_at: string | null
@@ -1309,7 +620,2169 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+==== FILE: features/integrations/ai/index.ts ====
+/**
+ * ProFixIQ AI Integration Layer
+ * Central hub for all AI-powered logic across the system.
+ * No 'any' types. All AI input/output types are explicitly defined.
+ */
+
+export type AIRecordSource =
+  | "quote"
+  | "appointment"
+  | "inspection"
+  | "work_order"
+  | "customer"
+  | "vehicle";
+
+export interface AITrainingRecord {
+  id: string;
+  source: AIRecordSource;
+  shopId: string;
+  vehicleYmm?: string | null;
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface AIQuoteSuggestion {
+  parts: Array<{
+    partId: string;
+    description: string;
+    qty: number;
+    price: number;
+  }>;
+  laborHours: number;
+  confidence: number; // 0–1
+}
+
+export interface AIEngine {
+  recordTraining(data: AITrainingRecord): Promise<void>;
+  suggestQuote(input: {
+    shopId: string;
+    vehicleYmm?: string | null;
+    complaint: string;
+  }): Promise<AIQuoteSuggestion | null>;
+}
+
+class ProFixIQAI implements AIEngine {
+  async recordTraining(data: AITrainingRecord): Promise<void> {
+    // Stub implementation for now – later this will:
+    // - write into ai_training_data
+    // - generate embeddings
+    // - update vector indexes
+    console.log("AI TRAINING RECORD:", data);
+  }
+
+  async suggestQuote(input: {
+    shopId: string;
+    vehicleYmm?: string | null;
+    complaint: string;
+  }): Promise<AIQuoteSuggestion | null> {
+    const { shopId, vehicleYmm, complaint } = input;
+
+    // Use all fields so there are no “unused variable” warnings
+    console.log("AI QUOTE SUGGEST (stub)", {
+      shopId,
+      vehicleYmm,
+      complaint,
+    });
+
+    const normalizedComplaint = complaint.trim().toLowerCase();
+
+    // If there's no actual complaint text, don't suggest anything
+    if (!normalizedComplaint) {
+      return null;
+    }
+
+    // Super-simple heuristic just so this function is "real"
+    let laborHours = 1.0;
+
+    if (normalizedComplaint.includes("engine")) {
+      laborHours = 4.0;
+    } else if (normalizedComplaint.includes("transmission")) {
+      laborHours = 3.0;
+    } else if (
+      normalizedComplaint.includes("brake") ||
+      normalizedComplaint.includes("brakes")
+    ) {
+      laborHours = 1.5;
+    } else if (normalizedComplaint.includes("diagnose")) {
+      laborHours = 1.0;
+    }
+
+    const confidence =
+      normalizedComplaint.length > 40 ? 0.7 : 0.5;
+
+    return {
+      // For now we return no parts – the actual parts will come from
+      // the vector search + training data pipeline.
+      parts: [],
+      laborHours,
+      confidence,
+    };
+  }
+}
+
+export const AI: AIEngine = new ProFixIQAI();
+
+==== FILE: features/integrations/tax/index.ts ====
+/**
+ * Tax Engine Layer
+ * Calculate taxes per province. No external providers yet.
+ */
+
+export type ProvinceCode =
+  | "AB"
+  | "BC"
+  | "MB"
+  | "NB"
+  | "NL"
+  | "NS"
+  | "NT"
+  | "NU"
+  | "ON"
+  | "PE"
+  | "QC"
+  | "SK"
+  | "YT";
+
+export interface TaxLine {
+  label: string;
+  rate: number;   // decimal, e.g. 0.05
+  amount: number; // computed tax amount
+}
+
+export interface TaxResult {
+  subtotal: number;
+  taxes: TaxLine[];
+  total: number;
+}
+
+// All tax components are optional so HST-only / GST-only provinces type-check
+const PROVINCE_TAXES: Record<
+  ProvinceCode,
+  { gst?: number; pst?: number; hst?: number }
+> = {
+  AB: { gst: 0.05 },
+  BC: { gst: 0.05, pst: 0.07 },
+  MB: { gst: 0.05, pst: 0.07 },
+  NB: { hst: 0.15 },
+  NL: { hst: 0.15 },
+  NS: { hst: 0.15 },
+  NT: { gst: 0.05 },
+  NU: { gst: 0.05 },
+  ON: { hst: 0.13 },
+  PE: { hst: 0.15 },
+  QC: { gst: 0.05, pst: 0.09975 }, // QST treated as PST here
+  SK: { gst: 0.05, pst: 0.06 },
+  YT: { gst: 0.05 },
+};
+
+export function calculateTax(
+  amount: number,
+  province: ProvinceCode
+): TaxResult {
+  const rules = PROVINCE_TAXES[province];
+  const taxes: TaxLine[] = [];
+
+  // HST provinces
+  if (rules.hst !== undefined) {
+    const hst = amount * rules.hst;
+    taxes.push({ label: "HST", rate: rules.hst, amount: hst });
+  } else {
+    // GST (most provinces)
+    if (rules.gst !== undefined) {
+      const gst = amount * rules.gst;
+      taxes.push({ label: "GST", rate: rules.gst, amount: gst });
+    }
+
+    // PST / QST (where applicable)
+    if (rules.pst !== undefined) {
+      const pst = amount * rules.pst;
+      taxes.push({ label: "PST", rate: rules.pst, amount: pst });
+    }
+  }
+
+  const total = amount + taxes.reduce((acc, t) => acc + t.amount, 0);
+
+  return { subtotal: amount, taxes, total };
+}
+
+==== FILE: features/integrations/index.ts ====
+// features/integrations/index.ts
+export * as ai from "./ai";
+export * as tax from "./tax";
+export * as parts from "./parts";
+export * as payroll from "./payroll";
+
+==== FILE: features/integrations/parts/index.ts ====
+/**
+ * Parts Integration Layer
+ * Wrapper for PartsTech / WorldPac / NAPA inputs.
+ */
+
+export interface PartsSearchInput {
+  vin?: string;
+  keywords?: string;
+}
+
+export interface PartResult {
+  id: string;
+  supplier: string;
+  description: string;
+  price: number;
+  stock: number;
+}
+
+export interface PartsProvider {
+  search(input: PartsSearchInput): Promise<PartResult[]>;
+}
+
+class MockPartsProvider implements PartsProvider {
+  async search(input: PartsSearchInput): Promise<PartResult[]> {
+    return [
+      {
+        id: "demo-123",
+        supplier: "MockSupplier",
+        description: `Example part for ${input.keywords ?? input.vin}`,
+        price: 42,
+        stock: 3,
+      },
+    ];
+  }
+}
+
+export const Parts = new MockPartsProvider();
+
+
+==== FILE: features/integrations/payroll/index.ts ====
+/**
+ * Payroll Engine
+ * Generates exportable payroll data for Wagepoint / Payworks / Dayforce.
+ */
+
+export interface PayrollEmployee {
+  id: string;
+  name: string;
+  hourlyRate: number;
+}
+
+export interface PayrollEntry {
+  employeeId: string;
+  date: string;
+  hours: number;
+  overtimeHours: number;
+}
+
+export interface PayrollExport {
+  provider: "wagepoint" | "payworks" | "dayforce";
+  periodStart: string;
+  periodEnd: string;
+  entries: PayrollEntry[];
+}
+
+export function generatePayrollExport(payload: PayrollExport) {
+  return JSON.stringify(payload, null, 2);
+}
+
+
+==== FILE: app/api/ai/quote-suggest/route.ts ====
+// /app/api/ai/quote-suggest/route.ts
+import { NextResponse } from "next/server";
+import OpenAI from "openai";
+import { createClient } from "@supabase/supabase-js";
+
+// Keep the response structured and easy to consume
+type AISuggestion = {
+  parts: { name: string; qty?: number; cost?: number; notes?: string }[];
+  laborHours: number;
+  laborRate?: number;
+  summary: string;
+  confidence?: "low" | "medium" | "high";
+};
+
+export async function POST(req: Request) {
+  try {
+    // ✅ also accept vehicle if provided, but keep behavior unchanged otherwise
+    const { item, notes, section, status, vehicle } = await req.json();
+
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+    if (!openaiApiKey) {
+      console.error("Missing OPENAI_API_KEY");
+      return NextResponse.json(
+        { error: "Server not configured (OpenAI)" },
+        { status: 500 }
+      );
+    }
+
+    const openai = new OpenAI({ apiKey: openaiApiKey });
+
+    // ✅ Clear, strict rules:
+    // - If notes exist (non-empty), the summary MUST be EXACTLY the tech's note (verbatim). No paraphrasing.
+    // - If notes are empty/missing, create a concise summary from the item text.
+    // - Do NOT include any "Section: ... • From inspection: ..." header in the summary. The UI handles that.
+    // - Keep suggestions realistic and compact.
+    const system = `You are a repair estimator for commercial vehicles.
+Return ONLY a compact JSON object with keys:
+- parts: array of { name, qty?, cost?, notes? }
+- laborHours: number
+- laborRate?: number
+- summary: short plain text (max 160 chars)
+- confidence?: "low"|"medium"|"high"
+
+STRICT RULES:
+- If "Tech notes" are provided (non-empty), set "summary" to EXACTLY the tech notes text, verbatim, with no paraphrasing or additions.
+- If "Tech notes" are empty or missing, set "summary" using a concise phrase derived from "Item".
+- Do NOT include any "Section: ... • From inspection: ..." header in "summary" — the caller will add that line separately.
+- Use realistic parts and labor. Keep JSON minimal. No extra prose outside JSON.`;
+
+    const vehicleContext = vehicle
+      ? `Vehicle (optional): ${JSON.stringify(vehicle)}`
+      : "Vehicle: unknown";
+
+    const user = `
+Status: ${status}
+Section: ${section}
+Item: ${item}
+Tech notes: ${notes || ""}
+
+${vehicleContext}
+When Tech notes are present, "summary" MUST equal the notes verbatim. Otherwise summarize from Item.
+`;
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.3,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
+      response_format: { type: "json_object" },
+    });
+
+    const raw = completion.choices[0]?.message?.content || "{}";
+    let suggestion: AISuggestion;
+    try {
+      suggestion = JSON.parse(raw) as AISuggestion;
+    } catch {
+      suggestion = { parts: [], laborHours: 0.5, summary: "No suggestion.", confidence: "low" };
+    }
+
+    // ✅ Hard guarantee: if tech notes exist, force summary to be exactly the note (no changes).
+    if (typeof notes === "string" && notes.trim().length > 0) {
+      suggestion.summary = notes.trim();
+    }
+
+    // --- Optional: persist the AI call (skip if envs are missing) ---
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey =
+      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
+
+    if (supabaseUrl && supabaseKey) {
+      try {
+        const supabase = createClient(supabaseUrl, supabaseKey);
+        await supabase.from("ai_requests").insert({
+          kind: "quote_suggestion",
+          input_text: user,
+          output_text: raw,
+          created_at: new Date().toISOString(),
+        });
+      } catch (e) {
+        // Log but don't fail the route
+        console.warn("Supabase logging failed:", e);
       }
+    } else {
+      // Don’t crash the build or request if Supabase is not configured
+      console.warn("Skipping Supabase logging; credentials not provided.");
+    }
+
+    return NextResponse.json({ suggestion });
+  } catch (err) {
+    console.error("quote-suggest error:", err);
+    return NextResponse.json({ error: "AI suggestion failed" }, { status: 500 });
+  }
+}
+
+==== FILE: app/api/quotes/apply-ai/route.ts ====
+import { NextResponse } from "next/server";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@shared/types/types/supabase";
+
+type DB = Database;
+
+/* -------------------------- AI Suggestion Types -------------------------- */
+
+type AISuggestion = {
+  parts: { name: string; qty?: number; cost?: number; notes?: string }[];
+  laborHours: number;
+  laborRate: number;
+  summary: string;
+  confidence: "low" | "medium" | "high";
+  price?: number;
+  notes?: string;
+  title?: string;
+};
+
+interface Body {
+  workOrderLineId: string;
+  suggestion: AISuggestion;
+}
+
+function isBody(x: unknown): x is Body {
+  if (typeof x !== "object" || x === null) return false;
+  const o = x as Record<string, unknown>;
+  return (
+    typeof o.workOrderLineId === "string" &&
+    typeof o.suggestion === "object" &&
+    o.suggestion !== null
+  );
+}
+
+/* ----------------- Resolve a shop's primary inventory location ---------------- */
+
+async function resolvePrimaryLocationId(
+  sb: SupabaseClient<DB>,
+  workOrderLineId: string
+): Promise<string | null> {
+  const { data: line } = await sb
+    .from("work_order_lines")
+    .select("shop_id")
+    .eq("id", workOrderLineId)
+    .maybeSingle();
+
+  if (!line?.shop_id) return null;
+
+  const { data: locs } = await sb
+    .from("inventory_locations")
+    .select("id, is_primary")
+    .eq("shop_id", line.shop_id)
+    .order("is_primary", { ascending: false }) // primary first
+    .limit(1);
+
+  return locs?.[0]?.id ?? null;
+}
+
+/* ---------------------------------- Route ---------------------------------- */
+
+export async function POST(req: Request) {
+  try {
+    const body: unknown = await req.json();
+    if (!isBody(body)) {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
+    const { workOrderLineId, suggestion } = body;
+
+    // Env: server key only (non-null)
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const supabaseKey = (
+      process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY
+    )!;
+
+    if (!supabaseUrl || !supabaseKey) {
+      return NextResponse.json(
+        {
+          error: "Server misconfiguration — Supabase env missing",
+          detail:
+            "Check NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_SERVICE_KEY).",
+        },
+        { status: 500 }
+      );
+    }
+
+    const sb = createClient<DB>(supabaseUrl, supabaseKey);
+
+    // Require an inventory location (prevents FK errors on allocations)
+    const locationId = await resolvePrimaryLocationId(sb, workOrderLineId);
+    if (!locationId) {
+      return NextResponse.json(
+        {
+          error: "This shop has no inventory location configured.",
+          detail: "Create a primary inventory location first.",
+          code: "NO_LOCATION_CONFIGURED",
+        },
+        { status: 422 }
+      );
+    }
+
+    const unmatched: { name: string; qty: number }[] = [];
+
+    // Allocate each AI-suggested part to this line
+    for (const { name, qty = 1 } of suggestion.parts ?? []) {
+      const { data: found, error: pe } = await sb
+        .from("parts")
+        .select("id")
+        // use % for ilike match; if you prefer exact, change to .eq("name", name)
+        .ilike("name", `%${name}%`)
+        .limit(1);
+
+      if (pe) {
+        unmatched.push({ name, qty });
+        continue;
+      }
+
+      const match = found?.[0];
+      if (!match) {
+        unmatched.push({ name, qty });
+        continue;
+      }
+
+      const alloc: DB["public"]["Tables"]["work_order_part_allocations"]["Insert"] =
+        {
+          work_order_line_id: workOrderLineId,
+          part_id: match.id,
+          qty,
+          location_id: locationId, // required by FK; we resolved above
+        };
+
+      const { error: ae } = await sb
+        .from("work_order_part_allocations")
+        .insert(alloc);
+
+      if (ae) {
+        unmatched.push({ name, qty });
+        continue;
+      }
+    }
+
+    // Mark as "quoted" flow started (keep workflow status; set approval_state)
+    const { error: updateErr } = await sb
+      .from("work_order_lines")
+      .update({ approval_state: "pending" })
+      .eq("id", workOrderLineId);
+
+    if (updateErr) {
+      return NextResponse.json(
+        { error: "Failed updating approval state", detail: updateErr.message },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ ok: true, unmatched });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error("apply-ai Quote Error 👉", e);
+    return NextResponse.json(
+      { error: "Failed applying AI quote" },
+      { status: 500 }
+    );
+  }
+}
+
+==== FILE: features/quotes/lib/quote/generateQuoteFromInspection.ts ====
+import type { InspectionItem } from "@inspections/lib/inspection/types";
+import { serviceMenu } from "@shared/lib/menuItems";
+import { generateLaborTimeEstimate } from "@ai/lib/ai/generateLaborTimeEstimate";
+
+/** Shape expected by QuoteViewer (summary page) */
+export interface QuoteLine {
+  description: string;
+  hours: number;
+  rate: number;
+  total: number;
+  job_type: "repair" | "maintenance";
+}
+
+/**
+ * Generate a quote and summary from inspection items
+ */
+export async function generateQuoteFromInspection(
+  results: InspectionItem[],
+): Promise<{ summary: string; quote: QuoteLine[] }> {
+  const failed: InspectionItem[] = [];
+  const recommended: InspectionItem[] = [];
+
+  for (const item of results) {
+    const status =
+      item.status === "fail" || item.status === "recommend"
+        ? item.status
+        : "ok";
+
+    if (status === "fail") {
+      failed.push({ ...item, status });
+    } else if (status === "recommend") {
+      recommended.push({ ...item, status });
+    }
+    // "ok" items are not included in the quote
+  }
+
+  const summary = [
+    "Completed Vehicle Inspection.",
+    failed.length > 0 ? `⚠️ Failed Items:\n` : null,
+    ...failed.map(
+      (item) => `- ${item.item}: ${item.notes || ""} *Requires attention*`,
+    ),
+    recommended.length > 0 ? `\n🟠 Recommended Items:\n` : null,
+    ...recommended.map(
+      (item) => `- ${item.item}: ${item.notes || ""} *Suggested repair*`,
+    ),
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const quote: QuoteLine[] = [];
+  const RATE = 120;
+
+  for (const itm of [...failed, ...recommended]) {
+    const term = (itm.item ?? itm.name ?? "").toString();
+
+    // 1) Try to match a known service menu item
+    const menuMatch = serviceMenu.find((m) =>
+      term.toLowerCase().includes(m.name.toLowerCase()),
+    );
+
+    if (menuMatch) {
+      const hours = menuMatch.laborHours ?? 1;
+      const partsCost = menuMatch.partCost ?? 0;
+      const total = Number((hours * RATE + partsCost).toFixed(2));
+
+      quote.push({
+        description: menuMatch.name,
+        hours,
+        rate: RATE,
+        total,
+        job_type: "repair",
+      });
+      continue;
+    }
+
+    // 2) Fall back to AI labor estimate
+    const labor = await generateLaborTimeEstimate(term, "repair");
+    if (labor && labor > 0) {
+      quote.push({
+        description: term,
+        hours: labor,
+        rate: RATE,
+        total: Number((labor * RATE).toFixed(2)),
+        job_type: "repair",
+      });
+    }
+  }
+
+  return { summary, quote };
+}
+
+==== FILE: features/quotes/lib/quote/mapItemToQuote.ts ====
+// features/quotes/lib/quote/mapItemToQuote.ts
+import type { InspectionItem, QuoteLineItem } from "@inspections/lib/inspection/types";
+
+export function toQuoteLineItem(item: InspectionItem): QuoteLineItem {
+  const name = item.item ?? item.name ?? "Inspection Item";
+  return {
+    id: crypto.randomUUID(),
+    item: name,
+    name,
+    description: item.notes || name,
+    status: (item.status ?? "fail"),
+    notes: item.notes,
+    price: 0,          // let UI or service lookup fill these
+    laborHours: 0.5,
+    photoUrls: item.photoUrls ?? [],
+    part: { name: "", price: 0 },
+    partName: "",
+    partPrice: null,
+  };
+}
+
+==== FILE: features/quotes/lib/quote/matchToMenuItem.ts ====
+import type { InspectionItem } from "@inspections/lib/inspection/types";
+import { serviceMenu } from "@shared/lib/menuItems";
+import { generateLaborTimeEstimate } from "@ai/lib/ai/generateLaborTimeEstimate";
+
+/** Shape expected by QuoteViewer (summary page) */
+export interface QuoteLine {
+  description: string;
+  hours: number;
+  rate: number;
+  total: number;
+  job_type: "repair" | "maintenance";
+}
+
+/** Narrower filter to satisfy TS when collapsing optional strings */
+const isNonEmptyString = (v: unknown): v is string =>
+  typeof v === "string" && v.length > 0;
+
+/**
+ * Generate a quote and summary from inspection items
+ */
+export async function generateQuoteFromInspection(
+  results: InspectionItem[],
+): Promise<{ summary: string; quote: QuoteLine[] }> {
+  const failed: InspectionItem[] = [];
+  const recommended: InspectionItem[] = [];
+
+  for (const item of results) {
+    const status =
+      item.status === "fail" || item.status === "recommend"
+        ? item.status
+        : "ok";
+
+    if (status === "fail") {
+      failed.push({ ...item, status });
+    } else if (status === "recommend") {
+      recommended.push({ ...item, status });
+    }
+  }
+
+  const summary = [
+    "Completed Vehicle Inspection.",
+    failed.length > 0 ? `⚠️ Failed Items:\n` : undefined,
+    ...failed.map(
+      (item) => `- ${item.item}: ${item.notes || ""} *Requires attention*`,
+    ),
+    recommended.length > 0 ? `\n🟠 Recommended Items:\n` : undefined,
+    ...recommended.map(
+      (item) => `- ${item.item}: ${item.notes || ""} *Suggested repair*`,
+    ),
+  ]
+    .filter(isNonEmptyString)
+    .join("\n");
+
+  const quote: QuoteLine[] = [];
+  const RATE = 120;
+
+  for (const itm of [...failed, ...recommended]) {
+    const term = String(itm.item ?? itm.name ?? "");
+
+    // 1) Try to match a known service menu item
+    const menuMatch = serviceMenu.find((m) =>
+      term.toLowerCase().includes(m.name.toLowerCase()),
+    );
+
+    if (menuMatch) {
+      const hours = menuMatch.laborHours ?? 1;
+      const partsCost = menuMatch.partCost ?? 0;
+      const total = Number((hours * RATE + partsCost).toFixed(2));
+
+      quote.push({
+        description: menuMatch.name,
+        hours,
+        rate: RATE,
+        total,
+        job_type: "repair",
+      });
+      continue;
+    }
+
+    // 2) Fall back to AI labor estimate
+    const labor = await generateLaborTimeEstimate(term, "repair");
+    if (typeof labor === "number" && labor > 0) {
+      quote.push({
+        description: term,
+        hours: labor,
+        rate: RATE,
+        total: Number((labor * RATE).toFixed(2)),
+        job_type: "repair",
+      });
+    }
+  }
+
+  return { summary, quote };
+}
+
+==== FILE: features/quotes/lib/quote/normalizeQuoteLine.ts ====
+import { QuoteLineItem } from "@inspections/lib/inspection/types";
+import { QuoteLine } from "./generateQuoteFromInspection";
+import { inferPartName } from "@ai/lib/ai/inferPartName";
+
+/**
+ * Normalize a QuoteLine into a QuoteLineItem with inferred part info.
+ */
+export async function normalizeQuoteLine(
+  quote: QuoteLine,
+): Promise<QuoteLineItem> {
+  let partName: string | null = null;
+
+  try {
+    // Try to infer part name using AI based on the description
+    partName = await inferPartName(quote.description);
+  } catch (err) {
+    console.warn("AI inference failed:", err);
+  }
+
+  const fallbackPartName = quote.description.toLowerCase().includes("brake")
+    ? "Brake Pad"
+    : quote.description.toLowerCase().includes("oil")
+      ? "Oil Filter"
+      : quote.description.toLowerCase().includes("battery")
+        ? "Battery"
+        : "General Replacement Part";
+
+  const name = partName?.trim() || fallbackPartName;
+
+  return {
+    id: crypto.randomUUID(), // ✅ Required unique ID
+    item: quote.description,
+    name: quote.description,
+    description: quote.description,
+    status: "fail", // Default; override if needed
+    price: quote.total,
+    partName: name,
+    partPrice: 0,
+    part: {
+      name,
+      price: 0,
+    },
+    laborHours: quote.hours,
+    photoUrls: [],
+    notes: "",
+  };
+}
+
+
+==== FILE: features/quotes/lib/quote/quoteMenu.ts ====
+export interface QuoteMenuItem {
+  triggerPhrases: string[];
+  parts: {
+    name: string;
+    sku?: string;
+    supplier?: string;
+    cost: number;
+  }[];
+  laborHours: number;
+  category: "diagnose" | "repair" | "maintenance";
+  notes?: string;
+}
+
+export const quoteMenu: QuoteMenuItem[] = [
+  {
+    triggerPhrases: [
+      "front brakes worn",
+      "brakes pads low",
+      "brakes squealing",
+      "brake pad thin",
+      "brake pad fail",
+      "brake pads 2mm",
+    ],
+    parts: [
+      {
+        name: "Front Brake Pads",
+        sku: "FORD-BRKPAD5-F",
+        supplier: "Ford OEM",
+        cost: 85,
+      },
+    ],
+    laborHours: 1.5,
+    category: "repair",
+    notes: "Typical replacement includes pads, rotor inspection.",
+  },
+  {
+    triggerPhrases: [
+      "check engine light",
+      "CEL on",
+      "engine light is on",
+      "trouble code",
+    ],
+    parts: [],
+    laborHours: 0.5,
+    category: "diagnose",
+    notes: "Initial scan and diagnosis of engine light causes.",
+  },
+  {
+    triggerPhrases: ["oil change", "needs an oil change", "engine oil service"],
+    parts: [
+      {
+        name: "5W-20 Synthetic Blend Oil",
+        supplier: "Ford OEM",
+        cost: 40,
+      },
+      {
+        name: "Oil Filter",
+        supplier: "Ford OEM",
+        cost: 12,
+      },
+    ],
+    laborHours: 0.3,
+    category: "maintenance",
+    notes: "Includes oil, filter, and disposal.",
+  },
+];
+
+
+==== FILE: app/api/work-orders/[id]/ai-review/route.ts ====
+import { NextResponse } from "next/server";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { cookies } from "next/headers";
+import type { Database } from "@shared/types/types/supabase";
+
+type DB = Database;
+
+function getIdFromUrl(url: string): string | null {
+  const parts = new URL(url).pathname.split("/"); // ["", "api", "work-orders", "<id>", "ai-review"]
+  return parts.length >= 5 ? parts[3] : null;
+}
+
+function isError(x: unknown): x is Error {
+  return typeof x === "object" && x !== null && "message" in x;
+}
+
+export async function POST(req: Request) {
+  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const woId = getIdFromUrl(req.url);
+  if (!woId) {
+    return NextResponse.json({ ok: false, issues: [{ kind: "bad_request", message: "Missing work order id" }] }, { status: 400 });
+  }
+
+  try {
+    const { data: wo, error: woErr } = await supabase.from("work_orders").select("*").eq("id", woId).maybeSingle();
+    if (woErr) throw woErr;
+    if (!wo) {
+      return NextResponse.json({ ok: false, issues: [{ kind: "missing_wo", message: "WO not found" }] }, { status: 404 });
+    }
+
+    const { data: lines, error: lnErr } = await supabase
+      .from("work_order_lines")
+      .select("*")
+      .eq("work_order_id", wo.id);
+    if (lnErr) throw lnErr;
+
+    const issues: { kind: string; lineId?: string; message: string }[] = [];
+
+    for (const ln of lines ?? []) {
+      const st = String(ln.status ?? "awaiting");
+      if (st !== "completed") {
+        issues.push({ kind: "line_not_completed", lineId: ln.id, message: `Line not completed: ${ln.description ?? ln.complaint ?? "job"}` });
+      }
+      // optional “marked N/A” booleans if you add them later; kept narrow without any
+      const causeNA = (ln as Record<string, unknown>)["cause_marked_na"] === true;
+      const correctionNA = (ln as Record<string, unknown>)["correction_marked_na"] === true;
+      if (!ln.cause && !causeNA) {
+        issues.push({ kind: "missing_cause", lineId: ln.id, message: `Missing cause: ${ln.description ?? "job"}` });
+      }
+      if (!ln.correction && !correctionNA) {
+        issues.push({ kind: "missing_correction", lineId: ln.id, message: `Missing correction: ${ln.description ?? "job"}` });
+      }
+      if (!(typeof ln.labor_time === "number" && ln.labor_time > 0)) {
+        issues.push({ kind: "no_labor_time", lineId: ln.id, message: `No labor time set: ${ln.description ?? "job"}` });
+      }
+    }
+
+    if (!wo.customer_id) {
+      issues.push({ kind: "missing_customer", message: "Missing customer on WO" });
+    } else {
+      const { data: cust } = await supabase.from("customers").select("email").eq("id", wo.customer_id).maybeSingle();
+      if (!cust?.email) issues.push({ kind: "missing_email", message: "Customer has no email" });
+    }
+
+    return NextResponse.json({ ok: issues.length === 0, issues });
+  } catch (e: unknown) {
+    const msg = isError(e) ? e.message : "AI review failed";
+    return NextResponse.json({ ok: false, issues: [{ kind: "error", message: msg }] }, { status: 500 });
+  }
+}
+
+==== FILE: features/inspections/lib/inspection/aiQuote.ts ====
+// features/inspections/lib/inspection/aiQuote.ts
+export type AISuggestion = {
+  parts: { name: string; qty?: number; cost?: number; notes?: string }[];
+  laborHours: number;
+  laborRate?: number;
+  summary: string;
+  confidence?: "low" | "medium" | "high";
+  price?: number;
+  notes?: string;
+  title?: string;
+};
+
+export async function requestQuoteSuggestion(args: {
+  item: string;
+  notes?: string;
+  section: string;
+  status: string;
+  value?: string;
+  unit?: string;
+  vehicle?: Record<string, any>;
+}): Promise<AISuggestion | null> {
+  try {
+    const res = await fetch("/api/ai/quote-suggest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(args),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return (data?.suggestion ?? null) as AISuggestion | null;
+  } catch (e) {
+    console.error("requestQuoteSuggestion error:", e);
+    return null;
+  }
+}
+
+==== FILE: features/inspections/lib/inspection/matchToMenuItem.ts ====
+// features/inspections/lib/inspection/matchToMenuItem.ts
+import type {
+  InspectionSession,
+  InspectionItem,
+  QuoteLineItem,
+} from "./types";
+import { serviceMenu } from "@shared/lib/menuItems";
+import { v4 as uuidv4 } from "uuid";
+
+export default function matchToMenuItem(
+  session: InspectionSession,
+  item: InspectionItem,
+): InspectionSession {
+  // Only create quote lines for actionable statuses
+  if (!item || !item.status || !["fail", "recommend"].includes(item.status)) {
+    return session;
+  }
+
+  const newQuoteLines: QuoteLineItem[] = [];
+
+  // Try the primary name + any recommended follow-ups
+  const namesToMatch = [item.name, ...(item.recommend ?? [])];
+
+  namesToMatch.forEach((term) => {
+    if (!term) return;
+
+    const match = serviceMenu.find((menuItem) =>
+      term.toLowerCase().includes(menuItem.name.toLowerCase()),
+    );
+
+    if (match) {
+      // Guard the status to the allowed set
+      const statusSafe: QuoteLineItem["status"] =
+        item.status === "ok" ||
+        item.status === "fail" ||
+        item.status === "na" ||
+        item.status === "recommend"
+          ? item.status
+          : "ok";
+
+      const quoteLine: QuoteLineItem = {
+        id: uuidv4(),
+        // display + identifiers
+        item: match.name,
+        name: "", // optional helper field in some UIs
+        description: match.name,
+
+        // status/notes
+        status: statusSafe,
+        notes: item.notes ?? "",
+
+        // pricing (total can be computed elsewhere; keep price present)
+        price: 0,
+        laborTime: match.laborHours || 1,
+        parts: [
+          {
+            name: match.name,
+            price: match.partCost || 0,
+          },
+        ],
+        totalCost:
+          (match.partCost ?? 0) + (match.laborHours ?? 1) * 120,
+
+        // provenance + misc helpers used around the app
+        source: "inspection",
+        partName: "",
+      };
+
+      newQuoteLines.push(quoteLine);
+    }
+  });
+
+  return {
+    ...session,
+    quote: [...(session.quote ?? []), ...newQuoteLines],
+  };
+}
+
+==== FILE: features/shared/lib/formatCurrency.ts ====
+// features/shared/lib/formatCurrency.ts
+
+/**
+ * Format a number as localized currency.
+ *
+ * @param value - The numeric value (example: 1234.5)
+ * @param locale - Locale string (default: "en-US")
+ * @param currency - ISO currency code (default: "USD")
+ * @returns A formatted string (example: "$1,234.50")
+ */
+export function formatCurrency(
+  value: number,
+  locale: string = "en-US",
+  currency: string = "USD"
+): string {
+  if (typeof value !== "number" || isNaN(value)) return "";
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+==== FILE: features/shared/lib/formatters.ts ====
+// utils/formatters.ts
+export function formatCurrency(value: number | null | undefined): string {
+  if (value === undefined || value === null) return "-";
+  return `$${value.toFixed(2)}`;
+}
+
+
+==== FILE: features/shared/lib/stats/getShopStats.ts ====
+import {
+  startOfMonth,
+  endOfMonth,
+  startOfWeek,
+  endOfWeek,
+  startOfQuarter,
+  endOfQuarter,
+  startOfYear,
+  endOfYear,
+  eachDayOfInterval,
+  eachMonthOfInterval,
+  eachQuarterOfInterval,
+  format,
+} from "date-fns";
+
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+
+import type { Database } from "@shared/types/types/supabase";
+
+type TimeRange = "weekly" | "monthly" | "quarterly" | "yearly";
+
+interface Filters {
+  technicianId?: string;
+  invoiceId?: string;
+}
+
+export async function getShopStats(
+  shopId: string,
+  timeRange: TimeRange,
+  filters: Filters = {},
+) {
+    const supabase = createClientComponentClient<Database>();
+
+  const now = new Date();
+  let start: Date;
+  let end: Date;
+  let intervals: Date[];
+
+  switch (timeRange) {
+    case "weekly":
+      start = startOfWeek(now, { weekStartsOn: 1 });
+      end = endOfWeek(now, { weekStartsOn: 1 });
+      intervals = eachDayOfInterval({ start, end });
+      break;
+    case "quarterly":
+      start = startOfQuarter(now);
+      end = endOfQuarter(now);
+      intervals = eachMonthOfInterval({ start, end });
+      break;
+    case "yearly":
+      start = startOfYear(now);
+      end = endOfYear(now);
+      intervals = eachQuarterOfInterval({ start, end });
+      break;
+    default:
+      start = startOfMonth(now);
+      end = endOfMonth(now);
+      intervals = eachDayOfInterval({ start, end });
+      break;
+  }
+
+  // Apply base filters
+  let invoiceQuery = supabase
+    .from("invoices")
+    .select("*")
+    .eq("shop_id", shopId)
+    .gte("created_at", start.toISOString())
+    .lte("created_at", end.toISOString());
+
+  if (filters.invoiceId) {
+    invoiceQuery = invoiceQuery.eq("id", filters.invoiceId);
+  }
+  if (filters.technicianId) {
+    invoiceQuery = invoiceQuery.eq("tech_id", filters.technicianId);
+  }
+
+  const [invoicesRes, expensesRes] = await Promise.all([
+    invoiceQuery,
+    supabase
+      .from("expenses")
+      .select("*")
+      .eq("shop_id", shopId)
+      .gte("created_at", start.toISOString())
+      .lte("created_at", end.toISOString()),
+  ]);
+
+  const invoices = invoicesRes.data || [];
+  const expenses = expensesRes.data || [];
+
+  const total = {
+    revenue: 0,
+    profit: 0,
+    labor: 0,
+    expenses: 0,
+    jobs: invoices.length,
+    techEfficiency: 0,
+  };
+
+  invoices.forEach((inv) => {
+    total.revenue += inv.total || 0;
+    total.labor += inv.labor_cost || 0;
+  });
+
+  expenses.forEach((exp) => {
+    total.expenses += exp.amount || 0;
+  });
+
+  total.profit = total.revenue - total.labor - total.expenses;
+  total.techEfficiency =
+    total.labor > 0 ? (total.revenue / total.labor) * 100 : 0;
+
+  const periods = intervals.map((date) => {
+    const label =
+      timeRange === "weekly"
+        ? format(date, "EEE") // e.g. Mon, Tue
+        : timeRange === "quarterly"
+          ? format(date, "MMM") // e.g. Jan, Feb
+          : format(date, "Q"); // e.g. 1, 2, 3
+
+    const periodInvoices = invoices.filter((inv) => {
+      const created = new Date(inv.created_at);
+      return format(created, "yyyy-MM-dd") === format(date, "yyyy-MM-dd");
+    });
+
+    const periodRevenue = periodInvoices.reduce(
+      (sum, inv) => sum + (inv.total || 0),
+      0,
+    );
+    const periodLabor = periodInvoices.reduce(
+      (sum, inv) => sum + (inv.labor_cost || 0),
+      0,
+    );
+    const periodJobs = periodInvoices.length;
+
+    const periodExpenses = expenses
+      .filter(
+        (exp) =>
+          format(new Date(exp.created_at), "yyyy-MM-dd") ===
+          format(date, "yyyy-MM-dd"),
+      )
+      .reduce((sum, exp) => sum + (exp.amount || 0), 0);
+
+    const periodProfit = periodRevenue - periodLabor - periodExpenses;
+
+    return {
+      label,
+      revenue: periodRevenue,
+      labor: periodLabor,
+      expenses: periodExpenses,
+      profit: periodProfit,
+      jobs: periodJobs,
+    };
+  });
+
+  return {
+    shop_id: shopId,
+    range: timeRange,
+    start: start.toISOString(),
+    end: end.toISOString(),
+    total,
+    periods,
+  };
+}
+
+
+==== FILE: app/api/work-orders/[id]/invoice/route.ts ====
+import { NextResponse } from "next/server";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { cookies } from "next/headers";
+import Stripe from "stripe";
+import type { Database } from "@shared/types/types/supabase";
+
+type DB = Database;
+
+function getIdFromUrl(url: string): string | null {
+  const parts = new URL(url).pathname.split("/"); // ["", "api", "work-orders", "<id>", "invoice"]
+  return parts.length >= 5 ? parts[3] : null;
+}
+
+function isError(x: unknown): x is Error {
+  return typeof x === "object" && x !== null && "message" in x;
+}
+
+export async function POST(req: Request) {
+  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const woId = getIdFromUrl(req.url);
+  if (!woId) return NextResponse.json({ ok: false, error: "Missing work order id" }, { status: 400 });
+
+  try {
+    const key = process.env.STRIPE_SECRET_KEY;
+    if (!key) throw new Error("Missing STRIPE_SECRET_KEY");
+    const stripe = new Stripe(key, { apiVersion: "2024-04-10" as Stripe.LatestApiVersion });
+
+    // Work order
+    const { data: wo, error: woErr } = await supabase.from("work_orders").select("*").eq("id", woId).maybeSingle();
+    if (woErr) throw woErr;
+    if (!wo) return NextResponse.json({ ok: false, error: "Work order not found" }, { status: 404 });
+
+    // Customer
+    if (!wo.customer_id) {
+      return NextResponse.json({ ok: false, error: "Work order has no customer" }, { status: 400 });
+    }
+    const { data: cust, error: custErr } = await supabase
+      .from("customers")
+      .select("first_name,last_name,email")
+      .eq("id", wo.customer_id)
+      .maybeSingle();
+    if (custErr) throw custErr;
+    if (!cust?.email) {
+      return NextResponse.json({ ok: false, error: "Customer email required" }, { status: 400 });
+    }
+
+    // Lines
+    const { data: lines, error: lnErr } = await supabase
+      .from("work_order_lines")
+      .select("*")
+      .eq("work_order_id", wo.id);
+    if (lnErr) throw lnErr;
+
+    // Build labor items
+    const laborRate = 120;
+    const laborItems: { description: string; unit_amount: number; quantity: number }[] = [];
+    for (const ln of lines ?? []) {
+      const hours = typeof ln.labor_time === "number" ? ln.labor_time : 0;
+      if (hours > 0) {
+        laborItems.push({
+          description: `${String(ln.job_type ?? "job").replaceAll("_", " ")} — ${ln.description ?? ln.complaint ?? "labor"}`,
+          unit_amount: Math.round(laborRate * 100),
+          quantity: hours,
+        });
+      }
+    }
+    if (laborItems.length === 0) {
+      return NextResponse.json({ ok: false, error: "No billable labor found. Add hours to at least one line." }, { status: 400 });
+    }
+
+    // Stripe customer
+    const customer = await stripe.customers.create({
+      email: cust.email,
+      name: [cust.first_name ?? "", cust.last_name ?? ""].filter(Boolean).join(" ") || undefined,
+      metadata: { profix_work_order_id: wo.id },
+    });
+
+    // Draft invoice
+    const invoice = await stripe.invoices.create({
+      customer: customer.id,
+      auto_advance: true,
+      collection_method: "send_invoice",
+      days_until_due: 7,
+      metadata: { profix_work_order_id: wo.id },
+    });
+
+    // Attach items
+    for (const item of laborItems) {
+      await stripe.invoiceItems.create({
+        currency: "usd",
+        customer: customer.id,
+        description: item.description,
+        unit_amount: item.unit_amount,
+        quantity: item.quantity,
+      });
+    }
+
+    // Finalize + email
+    const finalized = await stripe.invoices.finalizeInvoice(invoice.id);
+    await stripe.invoices.sendInvoice(finalized.id);
+
+    // Persist state
+    const { error: updErr } = await supabase
+      .from("work_orders")
+      .update({ status: "invoiced", stripe_invoice_id: finalized.id })
+      .eq("id", wo.id);
+    if (updErr) throw updErr;
+
+    return NextResponse.json({ ok: true, stripeInvoiceId: finalized.id });
+  } catch (e: unknown) {
+    const msg = isError(e) ? e.message : "Failed to create/send invoice";
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+  }
+}
+
+==== FILE: features/work-orders/components/WorkOrderInvoicePDF.tsx ====
+"use client";
+
+import {
+  Document,
+  Page,
+  Text,
+  View,
+  StyleSheet,
+  Font,
+  Image,
+} from "@react-pdf/renderer";
+import type { RepairLine } from "@ai/lib/parseRepairOutput";
+
+Font.register({
+  family: "Helvetica-Bold",
+  fonts: [
+    {
+      // You can swap this for a local font if you prefer
+      src: "https://fonts.gstatic.com/s/helveticaneue/v11/q4UO_Hp7rjNMrQkpAgEFqx1GDk.jpg",
+    },
+  ],
+});
+
+const styles = StyleSheet.create({
+  page: {
+    padding: 40,
+    fontSize: 12,
+    fontFamily: "Helvetica",
+    lineHeight: 1.5,
+  },
+  header: {
+    fontSize: 20,
+    marginBottom: 10,
+    textAlign: "center",
+    fontFamily: "Helvetica-Bold",
+  },
+  section: {
+    marginBottom: 20,
+  },
+  label: {
+    fontWeight: "bold",
+  },
+  lineItem: {
+    marginBottom: 8,
+  },
+  signature: {
+    marginTop: 32,
+    alignItems: "center",
+  },
+});
+
+type Props = {
+  workOrderId: string;
+  vehicleInfo?: {
+    year?: string;
+    make?: string;
+    model?: string;
+    vin?: string;
+  };
+  customerInfo?: {
+    name?: string;
+    phone?: string;
+    email?: string;
+  };
+  lines: RepairLine[];
+  summary?: string;
+  signatureImage?: string;
+};
+
+export function WorkOrderInvoicePDF({
+  workOrderId,
+  vehicleInfo,
+  customerInfo,
+  lines,
+  summary,
+  signatureImage,
+}: Props): JSX.Element {
+  return (
+    <Document>
+      <Page size="A4" style={styles.page}>
+        <Text style={styles.header}>Invoice - Work Order #{workOrderId}</Text>
+
+        <View style={styles.section}>
+          <Text style={styles.label}>Customer Info:</Text>
+          <Text>Name: {customerInfo?.name || "N/A"}</Text>
+          <Text>Phone: {customerInfo?.phone || "N/A"}</Text>
+          <Text>Email: {customerInfo?.email || "N/A"}</Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.label}>Vehicle Info:</Text>
+          <Text>
+            {(vehicleInfo?.year ?? "----") as string} {vehicleInfo?.make ?? ""}{" "}
+            {vehicleInfo?.model ?? ""}
+          </Text>
+          <Text>VIN: {vehicleInfo?.vin || "N/A"}</Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.label}>Repair Summary:</Text>
+          <Text>{summary || "N/A"}</Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.label}>Work Performed:</Text>
+          {lines.map((line, idx) => (
+            <View key={idx} style={styles.lineItem}>
+              <Text>• Complaint: {line.complaint}</Text>
+              <Text>  Cause: {line.cause}</Text>
+              <Text>  Correction: {line.correction}</Text>
+              <Text>  Labor Time: {line.labor_time} hrs</Text>
+            </View>
+          ))}
+        </View>
+
+        {signatureImage && (
+          <View style={styles.signature}>
+            <Text style={{ fontSize: 12, marginBottom: 4 }}>
+              Customer Signature:
+            </Text>
+            <Image
+              src={signatureImage}
+              style={{ width: 200, height: 80, border: "1pt solid #ccc" }}
+            />
+          </View>
+        )}
+      </Page>
+    </Document>
+  );
+}
+
+==== FILE: features/work-orders/components/WorkOrderInvoiceDownloadButton.tsx ====
+"use client";
+
+import { useRef, useEffect } from "react";
+import { BlobProvider } from "@react-pdf/renderer";
+import { WorkOrderInvoicePDF } from "./WorkOrderInvoicePDF";
+import type { RepairLine } from "@ai/lib/parseRepairOutput";
+
+type Props = {
+  workOrderId: string;
+  lines: RepairLine[];
+  summary?: string;
+  vehicleInfo?: {
+    year?: string;
+    make?: string;
+    model?: string;
+    vin?: string;
+  };
+  customerInfo?: {
+    name?: string;
+    phone?: string;
+    email?: string;
+  };
+  autoTrigger?: boolean;
+};
+
+export function WorkOrderInvoiceDownloadButton({
+  workOrderId,
+  lines,
+  summary,
+  vehicleInfo,
+  customerInfo,
+  autoTrigger = false,
+}: Props) {
+  const linkRef = useRef<HTMLAnchorElement>(null);
+  const fileName = `Invoice_WorkOrder_${workOrderId}.pdf`;
+
+  useEffect(() => {
+    if (autoTrigger && linkRef.current) {
+      const t = setTimeout(() => linkRef.current?.click(), 500);
+      return () => clearTimeout(t);
+    }
+  }, [autoTrigger]);
+
+  return (
+    <BlobProvider
+      document={
+        <WorkOrderInvoicePDF
+          workOrderId={workOrderId}
+          lines={lines}
+          summary={summary}
+          vehicleInfo={vehicleInfo}
+          customerInfo={customerInfo}
+        />
+      }
+    >
+      {({ url, loading, error }) => {
+        if (loading) {
+          return (
+            <button className="px-4 py-2 bg-gray-400 text-white rounded">
+              Generating…
+            </button>
+          );
+        }
+
+        if (error) {
+          return (
+            <span className="text-red-600">
+              Failed to generate PDF: {String(error)}
+            </span>
+          );
+        }
+
+        // No URL yet (should be rare if not loading)
+        if (!url) {
+          return (
+            <button className="px-4 py-2 bg-gray-400 text-white rounded" disabled>
+              Preparing…
+            </button>
+          );
+        }
+
+        if (autoTrigger) {
+          return (
+            <>
+              <a
+                ref={linkRef}
+                href={url}
+                download={fileName}
+                style={{ display: "none" }}
+              >
+                Download
+              </a>
+              <button className="px-4 py-2 bg-blue-700 text-white rounded hover:bg-blue-800">
+                Download Invoice PDF
+              </button>
+            </>
+          );
+        }
+
+        return (
+          <a
+            href={url}
+            download={fileName}
+            className="px-4 py-2 bg-blue-700 text-white rounded hover:bg-blue-800"
+          >
+            Download Invoice PDF
+          </a>
+        );
+      }}
+    </BlobProvider>
+  );
+}
+
+==== FILE: features/shared/types/types/supabase.ts ====
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
+
+export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "12.2.3 (519615d)"
+  }
+  public: {
+    Tables: {
+      activity_logs: {
+        Row: {
+          action: string | null
+          context: Json | null
+          id: string
+          target_id: string | null
+          target_table: string | null
+          timestamp: string | null
+          user_id: string | null
+        }
+        Insert: {
+          action?: string | null
+          context?: Json | null
+          id?: string
+          target_id?: string | null
+          target_table?: string | null
+          timestamp?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          action?: string | null
+          context?: Json | null
+          id?: string
+          target_id?: string | null
+          target_table?: string | null
+          timestamp?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      agent_events: {
+        Row: {
+          content: Json
+          created_at: string
+          id: string
+          kind: string
+          run_id: string
+          step: number
+        }
+        Insert: {
+          content: Json
+          created_at?: string
+          id?: string
+          kind: string
+          run_id: string
+          step: number
+        }
+        Update: {
+          content?: Json
+          created_at?: string
+          id?: string
+          kind?: string
+          run_id?: string
+          step?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_events_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "agent_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_requests: {
+        Row: {
+          created_at: string
+          description: string
+          github_branch: string | null
+          github_commit_sha: string | null
+          github_issue_number: number | null
+          github_issue_url: string | null
+          github_pr_number: number | null
+          github_pr_url: string | null
+          id: string
+          intent: Database["public"]["Enums"]["agent_request_intent"] | null
+          llm_confidence: number | null
+          llm_model: string | null
+          llm_notes: string | null
+          normalized_json: Json | null
+          reporter_id: string | null
+          reporter_role: string | null
+          shop_id: string | null
+          status: Database["public"]["Enums"]["agent_request_status"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          github_branch?: string | null
+          github_commit_sha?: string | null
+          github_issue_number?: number | null
+          github_issue_url?: string | null
+          github_pr_number?: number | null
+          github_pr_url?: string | null
+          id?: string
+          intent?: Database["public"]["Enums"]["agent_request_intent"] | null
+          llm_confidence?: number | null
+          llm_model?: string | null
+          llm_notes?: string | null
+          normalized_json?: Json | null
+          reporter_id?: string | null
+          reporter_role?: string | null
+          shop_id?: string | null
+          status?: Database["public"]["Enums"]["agent_request_status"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          github_branch?: string | null
+          github_commit_sha?: string | null
+          github_issue_number?: number | null
+          github_issue_url?: string | null
+          github_pr_number?: number | null
+          github_pr_url?: string | null
+          id?: string
+          intent?: Database["public"]["Enums"]["agent_request_intent"] | null
+          llm_confidence?: number | null
+          llm_model?: string | null
+          llm_notes?: string | null
+          normalized_json?: Json | null
+          reporter_id?: string | null
+          reporter_role?: string | null
+          shop_id?: string | null
+          status?: Database["public"]["Enums"]["agent_request_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_requests_reporter_id_fkey"
+            columns: ["reporter_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_requests_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_requests_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_runs: {
+        Row: {
+          created_at: string
+          goal: string
+          id: string
+          idempotency_key: string | null
+          shop_id: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          goal: string
+          id?: string
+          idempotency_key?: string | null
+          shop_id: string
+          status: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          goal?: string
+          id?: string
+          idempotency_key?: string | null
+          shop_id?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      ai_events: {
+        Row: {
+          created_at: string
+          entity_id: string | null
+          entity_table: string | null
+          event_type: string
+          id: string
+          payload: Json
+          shop_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          entity_id?: string | null
+          entity_table?: string | null
+          event_type: string
+          id?: string
+          payload: Json
+          shop_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          entity_id?: string | null
+          entity_table?: string | null
+          event_type?: string
+          id?: string
+          payload?: Json
+          shop_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_requests: {
+        Row: {
+          created_at: string | null
+          id: string
+          prompt: string | null
+          response: string | null
+          tool_used: string | null
+          user_id: string | null
+          vehicle_id: string | null
+          work_order_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          prompt?: string | null
+          response?: string | null
+          tool_used?: string | null
+          user_id?: string | null
+          vehicle_id?: string | null
+          work_order_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          prompt?: string | null
+          response?: string | null
+          tool_used?: string | null
+          user_id?: string | null
+          vehicle_id?: string | null
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_requests_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_training_data: {
+        Row: {
+          content: string
+          created_at: string
+          embedding: string | null
+          id: string
+          shop_id: string | null
+          source_event_id: string | null
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          embedding?: string | null
+          id?: string
+          shop_id?: string | null
+          source_event_id?: string | null
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          embedding?: string | null
+          id?: string
+          shop_id?: string | null
+          source_event_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_training_data_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_training_data_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_training_data_source_event_id_fkey"
+            columns: ["source_event_id"]
+            isOneToOne: false
+            referencedRelation: "ai_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      api_keys: {
+        Row: {
+          api_key: string | null
+          created_at: string | null
+          id: string
+          label: string | null
+          user_id: string | null
+        }
+        Insert: {
+          api_key?: string | null
+          created_at?: string | null
+          id?: string
+          label?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          api_key?: string | null
+          created_at?: string | null
+          id?: string
+          label?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      apps: {
+        Row: {
+          default_route: string
+          icon_url: string | null
+          id: string
+          is_enabled: boolean
+          name: string
+          slug: string
+        }
+        Insert: {
+          default_route: string
+          icon_url?: string | null
+          id?: string
+          is_enabled?: boolean
+          name: string
+          slug: string
+        }
+        Update: {
+          default_route?: string
+          icon_url?: string | null
+          id?: string
+          is_enabled?: boolean
+          name?: string
+          slug?: string
+        }
+        Relationships: []
+      }
+      audit_logs: {
+        Row: {
+          action: string
+          actor_id: string | null
+          created_at: string
+          id: string
+          metadata: Json | null
+          target: string | null
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          target?: string | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          target?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_logs_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bookings: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          customer_id: string | null
+          ends_at: string
+          id: string
+          notes: string | null
+          shop_id: string | null
+          starts_at: string
+          status: string
+          vehicle_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string | null
+          ends_at: string
+          id?: string
+          notes?: string | null
+          shop_id?: string | null
+          starts_at: string
+          status?: string
+          vehicle_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string | null
+          ends_at?: string
+          id?: string
+          notes?: string | null
+          shop_id?: string | null
+          starts_at?: string
+          status?: string
+          vehicle_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bookings_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookings_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookings_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookings_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chat_participants: {
+        Row: {
+          chat_id: string | null
+          id: string
+          joined_at: string | null
+          profile_id: string | null
+          role: string | null
+        }
+        Insert: {
+          chat_id?: string | null
+          id?: string
+          joined_at?: string | null
+          profile_id?: string | null
+          role?: string | null
+        }
+        Update: {
+          chat_id?: string | null
+          id?: string
+          joined_at?: string | null
+          profile_id?: string | null
+          role?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_participants_chat_id_fkey"
+            columns: ["chat_id"]
+            isOneToOne: false
+            referencedRelation: "chats"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chats: {      }
       fleet_programs: {
         Row: {
           base_template_slug: string | null
@@ -3419,7 +4892,6 @@ export type Database = {
       }
       profiles: {
         Row: {
-          agent_role: string | null
           business_name: string | null
           city: string | null
           completed_onboarding: boolean
@@ -3443,7 +4915,6 @@ export type Database = {
           username: string | null
         }
         Insert: {
-          agent_role?: string | null
           business_name?: string | null
           city?: string | null
           completed_onboarding?: boolean
@@ -3467,7 +4938,6 @@ export type Database = {
           username?: string | null
         }
         Update: {
-          agent_role?: string | null
           business_name?: string | null
           city?: string | null
           completed_onboarding?: boolean
@@ -6802,13 +8272,6 @@ export type Database = {
         | "rejected"
         | "failed"
         | "merged"
-      ai_training_source:
-        | "quote"
-        | "appointment"
-        | "inspection"
-        | "work_order"
-        | "customer"
-        | "vehicle"
       fleet_program_cadence:
         | "monthly"
         | "quarterly"
@@ -7000,14 +8463,6 @@ export const Constants = {
         "failed",
         "merged",
       ],
-      ai_training_source: [
-        "quote",
-        "appointment",
-        "inspection",
-        "work_order",
-        "customer",
-        "vehicle",
-      ],
       fleet_program_cadence: [
         "monthly",
         "quarterly",
@@ -7065,3 +8520,141 @@ export const Constants = {
     },
   },
 } as const
+
+
+==== FILE: features/shared/types/types.ts ====
+"use client";
+
+import { supabaseBrowser } from "@/features/shared/lib/supabase/client";
+import type { Database } from "@shared/types/types/supabase";
+
+// Shape of the joined row we get back from Supabase for this query
+type WorkOrderLineWithJoins =
+  Database["public"]["Tables"]["work_order_lines"]["Row"] & {
+    vehicles?: { year: number | null; make: string | null; model: string | null } | null;
+    profiles?: { full_name: string | null } | null;
+  };
+
+// Public JobLine shape that UI code consumes
+type JobLine = {
+  id: string;
+  status: Database["public"]["Tables"]["work_order_lines"]["Row"]["status"];
+  complaint: string | null;
+  punched_in_at: string | null;
+  punched_out_at: string | null;
+  hold_reason: string | null;
+  created_at: string;
+  vehicle?: { year: number | null; make: string | null; model: string | null };
+  assigned_to?: { full_name: string | null };
+};
+
+// Reusable select with the two joins we need
+const SELECT_WITH_JOINS = `
+  id,
+  status,
+  complaint,
+  punched_in_at,
+  punched_out_at,
+  hold_reason,
+  created_at,
+  vehicles:vehicle_id ( year, make, model ),
+  profiles:assigned_to ( full_name )
+`;
+
+export async function fetchAllJobLines(): Promise<JobLine[]> {
+  const supabase = supabaseBrowser;
+
+  const { data, error } = await supabase
+    .from("work_order_lines")
+    .select(SELECT_WITH_JOINS)
+    .order("created_at", { ascending: true });
+
+  if (error || !data) {
+    console.error("❌ Error fetching job lines:", error);
+    return [];
+  }
+
+  const rows = data as unknown as WorkOrderLineWithJoins[];
+
+  return rows.map((row): JobLine => ({
+    id: row.id!,
+    status: row.status!,
+    complaint: row.complaint ?? null,
+    punched_in_at: row.punched_in_at ?? null,
+    punched_out_at: row.punched_out_at ?? null,
+    hold_reason: row.hold_reason ?? null,
+    created_at: row.created_at!,
+    vehicle: row.vehicles
+      ? { year: row.vehicles.year ?? null, make: row.vehicles.make ?? null, model: row.vehicles.model ?? null }
+      : undefined,
+    assigned_to: row.profiles ? { full_name: row.profiles.full_name ?? null } : undefined,
+  }));
+}
+
+==== FILE: features/shared/lib/supabase/server.ts ====
+// features/shared/lib/supabase/server.ts
+import { cookies } from "next/headers";
+import {
+  createServerComponentClient,
+  createRouteHandlerClient,
+  createPagesServerClient,
+} from "@supabase/auth-helpers-nextjs";
+import { createClient } from "@supabase/supabase-js";
+import type { NextApiRequest, NextApiResponse } from "next";
+import type { Database } from "@shared/types/types/supabase";
+
+/**
+ * App Router – Server Components (RSC)
+ */
+export function createServerSupabaseRSC() {
+  const cookieStore = cookies(); // sync in App Router
+  return createServerComponentClient<Database>({ cookies: () => cookieStore });
+}
+
+/**
+ * App Router – Route Handlers (app/api/*)
+ */
+export function createServerSupabaseRoute() {
+  const cookieStore = cookies();
+  return createRouteHandlerClient<Database>({ cookies: () => cookieStore });
+}
+
+/**
+ * Pages API routes (pages/api/*)
+ */
+export function createServerSupabaseApi(req: NextApiRequest, res: NextApiResponse) {
+  return createPagesServerClient<Database>({ req, res });
+}
+
+/**
+ * Admin client for server-only tasks (cron, webhooks, workers).
+ * Never import this into client bundles.
+ */
+export function createAdminSupabase() {
+  return createClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
+}
+
+==== FILE: features/shared/lib/supabase/client.ts ====
+"use client";
+
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
+
+let _client: ReturnType<typeof createClientComponentClient<Database>> | null = null;
+
+export function createBrowserSupabase() {
+  if (_client) return _client;
+  _client = createClientComponentClient<Database>();
+  return _client;
+}
+
+// Optional ready-to-use singleton
+export const supabaseBrowser = createBrowserSupabase();
+
+==== FILE NOT FOUND: src/profixiq/knowledge/base.ts ====
+(missing)
+
+
