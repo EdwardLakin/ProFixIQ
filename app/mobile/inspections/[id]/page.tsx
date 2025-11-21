@@ -67,7 +67,7 @@ export default function MobileInspectionDetailPage({
           setErr("Inspection not found.");
           setInspection(null);
         } else {
-          setInspection((data as unknown) as InspectionDetail);
+          setInspection(data as InspectionDetail);
         }
       } catch (e) {
         const msg =
@@ -169,7 +169,7 @@ export default function MobileInspectionDetailPage({
               </div>
             </div>
 
-            {/* Summary / notes */}
+            {/* Summary */}
             <div className="rounded-lg border border-neutral-800 bg-neutral-950/80 px-3 py-3 text-sm">
               <div className="mb-1 text-[0.7rem] uppercase tracking-[0.16em] text-neutral-500">
                 Summary
