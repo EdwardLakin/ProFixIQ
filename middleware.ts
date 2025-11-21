@@ -41,7 +41,8 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/confirm") ||
     pathname.startsWith("/signup") ||
     pathname.startsWith("/sign-in") ||
-    pathname.startsWith("/portal");
+    pathname.startsWith("/portal") ||
+    pathname.startsWith("/mobile/sign-in"); // ✅ mobile companion sign-in is public
 
   // treat EITHER completed_onboarding = true OR shop_id IS NOT NULL
   // as "this user is allowed into the app"
@@ -74,15 +75,27 @@ export async function middleware(req: NextRequest) {
     );
   }
 
-  // Public routes (marketing / auth / portal)
+  // ---------------------- PUBLIC ROUTES ----------------------
   if (isPublic) {
-    // If you're signed in and try to hit /sign-in or /signup → bounce to app
-    if (
-      session?.user &&
-      (pathname.startsWith("/sign-in") || pathname.startsWith("/signup"))
-    ) {
+    const isMainSignIn =
+      pathname.startsWith("/sign-in") || pathname.startsWith("/signup");
+    const isMobileSignIn = pathname.startsWith("/mobile/sign-in");
+
+    // If you're signed in and try to hit any sign-in route → bounce
+    if (session?.user && (isMainSignIn || isMobileSignIn)) {
       const redirectParam = req.nextUrl.searchParams.get("redirect");
-      const to = redirectParam || (completed ? "/dashboard" : "/onboarding");
+
+      let to: string;
+      if (redirectParam) {
+        to = redirectParam;
+      } else if (isMobileSignIn) {
+        // mobile companion goes to mobile dashboard once onboarded
+        to = completed ? "/mobile" : "/onboarding";
+      } else {
+        // normal sign-in keeps existing behavior
+        to = completed ? "/dashboard" : "/onboarding";
+      }
+
       return withSupabaseCookies(
         res,
         NextResponse.redirect(new URL(to, req.url)),
@@ -132,10 +145,11 @@ export const config = {
     "/signup",
     "/sign-in",
     "/portal",
+    "/mobile/sign-in",     // ✅ explicitly run middleware here too
     "/onboarding/:path*",
     "/dashboard/:path*",
     "/work-orders/:path*",
     "/inspections/:path*",
-    "/mobile/:path*",      // 🔹 NEW: protect mobile app routes
+    "/mobile/:path*",      // protected mobile companion routes
   ],
 };
