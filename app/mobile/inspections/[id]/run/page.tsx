@@ -1,15 +1,14 @@
 "use client";
 
-import type { FC } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { MobileShell } from "components/layout/MobileShell";
 
-type PageProps = {
+type RunnerProps = {
   params: { id: string };
 };
 
-const MobileInspectionRunnerPage: FC<PageProps> = ({ params }) => {
+export default function MobileInspectionRunnerPage({ params }: RunnerProps) {
   const router = useRouter();
   const { id } = params;
 
@@ -55,6 +54,4 @@ const MobileInspectionRunnerPage: FC<PageProps> = ({ params }) => {
       </div>
     </MobileShell>
   );
-};
-
-export default MobileInspectionRunnerPage;
+}
