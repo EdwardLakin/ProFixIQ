@@ -1,15 +1,12 @@
+// app/mobile/work-orders/[id]/page.tsx
 "use client";
 
-import React from "react";
-import type { FC } from "react";
+import { useParams } from "next/navigation";
 import MobileWorkOrderClient from "@/features/work-orders/mobile/MobileWorkOrderClient";
 
-type Props = {
-  params: { id: string };
-};
+export default function MobileWorkOrderDetailsPage() {
+  const params = useParams<{ id: string }>();
+  const id = params.id;
 
-const MobileWorkOrderDetailsPage: FC<Props> = ({ params }) => {
-  return <MobileWorkOrderClient routeId={params.id} />;
-};
-
-export default MobileWorkOrderDetailsPage;
+  return <MobileWorkOrderClient routeId={id} />;
+}
