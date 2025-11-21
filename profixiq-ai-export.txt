@@ -1,0 +1,6078 @@
+==== FILE: features/integrations/ai/index.ts ====
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+
+/**
+ * Narrow string sources so we don't end up with random ad-hoc values.
+ * These map roughly to the things we care about training:
+ * - apply_ai_quote: AI suggestion applied to a quote/line
+ * - invoice_review: AI work-order / invoice review
+ * - inspection_to_quote: inspection → quote pipeline
+ * - menu_learning: future menu-learning events
+ * - chat: future TechBot / InspectionBot chat turns
+ */
+export type AIRecordSource =
+  | "apply_ai_quote"
+  | "invoice_review"
+  | "inspection_to_quote"
+  | "menu_learning"
+  | "chat";
+
+/**
+ * Minimal, DB-agnostic training event shape that callers work with.
+ * We intentionally keep the DB mapping small & generic and push
+ * most of the rich context into `payload`.
+ */
+export interface AITrainingEvent {
+  /** Optional: let DB auto-generate if omitted */
+  id?: string;
+
+  /** High-level source / use-case for this training sample */
+  source: AIRecordSource;
+
+  /** Shop this sample belongs to (multi-tenant boundary) */
+  shopId: string;
+
+  /** Optional "YMM" string for grouping vehicle-specific training */
+  vehicleYmm?: string | null;
+
+  /** Arbitrary structured payload describing the event */
+  payload: Record<string, unknown>;
+
+  /** Optional: defaults to now() if omitted */
+  createdAt?: string;
+}
+
+/**
+ * Internal helper that knows how to actually write to ai_training_events.
+ * We keep the column usage deliberately small so schema tweaks are cheap:
+ *   - source        (text)
+ *   - shop_id       (uuid)
+ *   - vehicle_ymm   (text, nullable)
+ *   - payload       (jsonb)
+ *   - created_at    (timestamptz, default now())
+ *   - id            (uuid, optional – DB can default)
+ *
+ * Any extra context (quoteId, workOrderId, sessionId, etc) lives in payload.
+ */
+async function insertTrainingEvent(event: AITrainingEvent): Promise<void> {
+  const supabase = createAdminSupabase();
+
+  const { id, source, shopId, vehicleYmm, payload, createdAt } = event;
+
+  const { error } = await supabase.from("ai_training_events").insert({
+    id,
+    source,
+    shop_id: shopId,
+    vehicle_ymm: vehicleYmm ?? null,
+    payload,
+    created_at: createdAt ?? new Date().toISOString(),
+    // NOTE: we deliberately avoid strict typing here because the
+    // generated Database types may not yet include ai_training_events.
+  } as any);
+
+  if (error) {
+    // Never block the user flow on training errors; just log.
+    // eslint-disable-next-line no-console
+    console.error("[AI] Failed to insert training event", {
+      source,
+      shopId,
+      error,
+    });
+  }
+}
+
+/* ======================================================================== */
+/*  QUOTE TRAINING – APPLY AI QUOTE                                         */
+/* ======================================================================== */
+
+export type RecordQuoteTrainingInput = {
+  /** Quote or line id that the AI suggestion was applied to */
+  quoteId: string;
+
+  /** Tenant boundary */
+  shopId: string;
+
+  /** Optional "YMM" string (e.g. "2017 Ford F-150") */
+  vehicleYmm?: string | null;
+
+  /** Optional: parent work order context (for analytics only) */
+  workOrderId?: string | null;
+
+  /** Optional: specific line id (for analytics only) */
+  workOrderLineId?: string | null;
+
+  /**
+   * Caller-specific payload. We will automatically wrap this so we
+   * always know this came from apply_ai_quote.
+   */
+  payload: Record<string, unknown>;
+
+  createdAt?: string;
+};
+
+/**
+ * Called when a user applies an AI quote suggestion.
+ *
+ * Example payload (caller decides fields):
+ * {
+ *   suggestion: {...raw AISuggestion from model...},
+ *   unmatched: [...items user declined / edited...],
+ *   complaint: "Customer states vibration at 100km/h",
+ *   description: "Front brake inspection / road test"
+ * }
+ */
+export async function recordQuoteTraining(
+  input: RecordQuoteTrainingInput,
+): Promise<void> {
+  const {
+    quoteId,
+    shopId,
+    vehicleYmm,
+    workOrderId,
+    workOrderLineId,
+    payload,
+    createdAt,
+  } = input;
+
+  await insertTrainingEvent({
+    source: "apply_ai_quote",
+    shopId,
+    vehicleYmm: vehicleYmm ?? null,
+    createdAt,
+    payload: {
+      kind: "apply_ai_quote",
+      quoteId,
+      workOrderId: workOrderId ?? null,
+      workOrderLineId: workOrderLineId ?? null,
+      ...(payload ?? {}),
+    },
+  });
+}
+
+/* ======================================================================== */
+/*  WORK ORDER TRAINING – INVOICE / JOB REVIEW                              */
+/* ======================================================================== */
+
+export type RecordWorkOrderTrainingInput = {
+  workOrderId: string;
+  workOrderLineId?: string | null;
+
+  shopId: string;
+  vehicleYmm?: string | null;
+
+  /**
+   * Caller payload, e.g.:
+   * {
+   *   lineItems: [...],
+   *   totals: {...},
+   *   technicianFindings: "...",
+   *   aiSummary: "...",
+   *   corrections: {...}   // how human changed AI suggestion
+   * }
+   */
+  payload: Record<string, unknown>;
+
+  createdAt?: string;
+};
+
+export async function recordWorkOrderTraining(
+  input: RecordWorkOrderTrainingInput,
+): Promise<void> {
+  const {
+    workOrderId,
+    workOrderLineId,
+    shopId,
+    vehicleYmm,
+    payload,
+    createdAt,
+  } = input;
+
+  await insertTrainingEvent({
+    source: "invoice_review",
+    shopId,
+    vehicleYmm: vehicleYmm ?? null,
+    createdAt,
+    payload: {
+      kind: "invoice_review",
+      workOrderId,
+      workOrderLineId: workOrderLineId ?? null,
+      ...(payload ?? {}),
+    },
+  });
+}
+
+/* ======================================================================== */
+/*  INSPECTION → QUOTE TRAINING                                             */
+/* ======================================================================== */
+
+export type RecordInspectionToQuoteTrainingInput = {
+  shopId: string;
+  vehicleYmm?: string | null;
+
+  /**
+   * Caller payload, e.g.:
+   * {
+   *   inspectionSessionId: "...",
+   *   inspectionId: "...",
+   *   workOrderId: "...",
+   *   workOrderLineId: "...",
+   *   templateName: "Full CVIP",
+   *   sections: [...raw inspection sections...],
+   *   generatedQuote: {...quote object / lines...},
+   *   userAdjustments: {...diff between AI quote & final quote...}
+   * }
+   */
+  payload: Record<string, unknown>;
+
+  createdAt?: string;
+};
+
+/**
+ * Single, generic logger for the inspection → quote pipeline.
+ * We'll call this from the inspection quote generator + any future
+ * refinement UIs so the model can learn how humans edit its output.
+ */
+export async function recordInspectionToQuoteTraining(
+  input: RecordInspectionToQuoteTrainingInput,
+): Promise<void> {
+  const { shopId, vehicleYmm, payload, createdAt } = input;
+
+  await insertTrainingEvent({
+    source: "inspection_to_quote",
+    shopId,
+    vehicleYmm: vehicleYmm ?? null,
+    createdAt,
+    payload: {
+      kind: "inspection_to_quote",
+      ...(payload ?? {}),
+    },
+  });
+}
+
+==== FILE: features/integrations/parts/index.ts ====
+/**
+ * Parts Integration Layer
+ * Wrapper for PartsTech / WorldPac / NAPA inputs.
+ */
+
+export interface PartsSearchInput {
+  vin?: string;
+  keywords?: string;
+}
+
+export interface PartResult {
+  id: string;
+  supplier: string;
+  description: string;
+  price: number;
+  stock: number;
+}
+
+export interface PartsProvider {
+  search(input: PartsSearchInput): Promise<PartResult[]>;
+}
+
+class MockPartsProvider implements PartsProvider {
+  async search(input: PartsSearchInput): Promise<PartResult[]> {
+    return [
+      {
+        id: "demo-123",
+        supplier: "MockSupplier",
+        description: `Example part for ${input.keywords ?? input.vin}`,
+        price: 42,
+        stock: 3,
+      },
+    ];
+  }
+}
+
+export const Parts = new MockPartsProvider();
+
+
+==== FILE: features/integrations/payroll/index.ts ====
+/**
+ * Payroll Engine
+ * Generates exportable payroll data for Wagepoint / Payworks / Dayforce.
+ */
+
+export interface PayrollEmployee {
+  id: string;
+  name: string;
+  hourlyRate: number;
+}
+
+export interface PayrollEntry {
+  employeeId: string;
+  date: string;
+  hours: number;
+  overtimeHours: number;
+}
+
+export interface PayrollExport {
+  provider: "wagepoint" | "payworks" | "dayforce";
+  periodStart: string;
+  periodEnd: string;
+  entries: PayrollEntry[];
+}
+
+export function generatePayrollExport(payload: PayrollExport) {
+  return JSON.stringify(payload, null, 2);
+}
+
+
+==== FILE: features/integrations/tax/index.ts ====
+/**
+ * Tax Engine Layer
+ * Calculate taxes per province. No external providers yet.
+ */
+
+export type ProvinceCode =
+  | "AB"
+  | "BC"
+  | "MB"
+  | "NB"
+  | "NL"
+  | "NS"
+  | "NT"
+  | "NU"
+  | "ON"
+  | "PE"
+  | "QC"
+  | "SK"
+  | "YT";
+
+export interface TaxLine {
+  label: string;
+  rate: number;   // decimal, e.g. 0.05
+  amount: number; // computed tax amount
+}
+
+export interface TaxResult {
+  subtotal: number;
+  taxes: TaxLine[];
+  total: number;
+}
+
+// All tax components are optional so HST-only / GST-only provinces type-check
+const PROVINCE_TAXES: Record<
+  ProvinceCode,
+  { gst?: number; pst?: number; hst?: number }
+> = {
+  AB: { gst: 0.05 },
+  BC: { gst: 0.05, pst: 0.07 },
+  MB: { gst: 0.05, pst: 0.07 },
+  NB: { hst: 0.15 },
+  NL: { hst: 0.15 },
+  NS: { hst: 0.15 },
+  NT: { gst: 0.05 },
+  NU: { gst: 0.05 },
+  ON: { hst: 0.13 },
+  PE: { hst: 0.15 },
+  QC: { gst: 0.05, pst: 0.09975 }, // QST treated as PST here
+  SK: { gst: 0.05, pst: 0.06 },
+  YT: { gst: 0.05 },
+};
+
+export function calculateTax(
+  amount: number,
+  province: ProvinceCode
+): TaxResult {
+  const rules = PROVINCE_TAXES[province];
+  const taxes: TaxLine[] = [];
+
+  // HST provinces
+  if (rules.hst !== undefined) {
+    const hst = amount * rules.hst;
+    taxes.push({ label: "HST", rate: rules.hst, amount: hst });
+  } else {
+    // GST (most provinces)
+    if (rules.gst !== undefined) {
+      const gst = amount * rules.gst;
+      taxes.push({ label: "GST", rate: rules.gst, amount: gst });
+    }
+
+    // PST / QST (where applicable)
+    if (rules.pst !== undefined) {
+      const pst = amount * rules.pst;
+      taxes.push({ label: "PST", rate: rules.pst, amount: pst });
+    }
+  }
+
+  const total = amount + taxes.reduce((acc, t) => acc + t.amount, 0);
+
+  return { subtotal: amount, taxes, total };
+}
+
+==== FILE: app/api/ai/quote-suggest/route.ts ====
+import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import type { Database, Json } from "@shared/types/types/supabase";
+import { ProFixAI, type QuoteEnginePart } from "@/features/integrations/ai";
+
+type DB = Database;
+
+type ConfidenceLevel = "low" | "medium" | "high";
+
+// Keep the response structured and easy to consume
+export type AISuggestion = {
+  parts: { name: string; qty?: number; cost?: number; notes?: string }[];
+  laborHours: number;
+  laborRate?: number;
+  summary: string;
+  confidence?: ConfidenceLevel;
+  price?: number;
+  notes?: string;
+  title?: string;
+};
+
+interface VehicleInput {
+  year?: string | number | null;
+  make?: string | null;
+  model?: string | null;
+  vin?: string | null;
+}
+
+interface RequestBody {
+  item: string;
+  notes?: string;
+  section: string;
+  status: string;
+  value?: string;
+  unit?: string;
+  vehicle?: VehicleInput | null;
+}
+
+function isRequestBody(value: unknown): value is RequestBody {
+  if (typeof value !== "object" || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  return (
+    typeof obj.item === "string" &&
+    typeof obj.section === "string" &&
+    typeof obj.status === "string"
+  );
+}
+
+function mapConfidence(score: number): ConfidenceLevel {
+  if (score >= 0.75) return "high";
+  if (score >= 0.5) return "medium";
+  return "low";
+}
+
+function buildVehicleYmm(vehicle?: VehicleInput | null): string | null {
+  if (!vehicle) return null;
+
+  const year =
+    vehicle.year !== undefined && vehicle.year !== null
+      ? String(vehicle.year)
+      : "";
+  const make = vehicle.make ?? "";
+  const model = vehicle.model ?? "";
+
+  const combined = [year, make, model].join(" ").trim();
+  return combined.length > 0 ? combined : null;
+}
+
+function buildComplaint(input: RequestBody): string {
+  const parts: string[] = [];
+
+  if (input.section) {
+    parts.push(`[${input.section}]`);
+  }
+
+  if (input.status) {
+    parts.push(`Status: ${input.status}`);
+  }
+
+  parts.push(input.item);
+
+  if (typeof input.notes === "string" && input.notes.trim().length > 0) {
+    parts.push(`Notes: ${input.notes.trim()}`);
+  }
+
+  if (input.value) {
+    const valuePart = input.unit ? `${input.value} ${input.unit}` : input.value;
+    parts.push(`Value: ${valuePart}`);
+  }
+
+  return parts.join(" | ");
+}
+
+export async function POST(req: Request) {
+  const supabase = createRouteHandlerClient<DB>({ cookies });
+
+  try {
+    const rawBody: unknown = await req.json();
+    if (!isRequestBody(rawBody)) {
+      return NextResponse.json(
+        { error: "Invalid request body" },
+        { status: 400 },
+      );
+    }
+
+    const body: RequestBody = rawBody;
+    const { item, notes, section, status, vehicle } = body;
+
+    // Resolve shopId from the authenticated user (if available)
+    let shopId: string | null = null;
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const userId = session?.user?.id ?? null;
+      if (userId) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("shop_id")
+          .eq("user_id", userId)
+          .maybeSingle();
+
+        if (profile?.shop_id) {
+          shopId = profile.shop_id;
+        }
+      }
+    } catch (resolveErr) {
+      // Do not block suggestion if shop resolution fails
+      console.warn(
+        "[AI] Failed to resolve shopId for quote-suggest:",
+        resolveErr,
+      );
+    }
+
+    const complaint = buildComplaint(body);
+    const vehicleYmm = buildVehicleYmm(vehicle);
+
+    // Call central AI engine
+    const aiResult = await ProFixAI.suggestQuote({
+      shopId: shopId ?? "unknown_shop",
+      vehicleYmm,
+      complaint,
+    });
+
+    const baseSummary =
+      typeof notes === "string" && notes.trim().length > 0
+        ? notes.trim()
+        : item;
+
+    let suggestion: AISuggestion;
+
+    if (aiResult) {
+      suggestion = {
+        parts: aiResult.parts.map((p: QuoteEnginePart) => ({
+          name: p.description || "Suggested part",
+          qty: p.qty,
+          cost: p.price,
+          notes: p.partId ? `Part ID: ${p.partId}` : undefined,
+        })),
+        laborHours: aiResult.laborHours,
+        summary: baseSummary,
+        confidence: mapConfidence(aiResult.confidence),
+      };
+    } else {
+      // Fallback: minimal but valid suggestion
+      suggestion = {
+        parts: [],
+        laborHours: 0.5,
+        summary: baseSummary,
+        confidence: "low",
+      };
+    }
+
+    // Persist the inference into ai_events (best-effort; ignore failures)
+    try {
+      const vehiclePayload =
+        vehicle !== undefined && vehicle !== null
+          ? {
+              year: vehicle.year ?? null,
+              make: vehicle.make ?? null,
+              model: vehicle.model ?? null,
+              vin: vehicle.vin ?? null,
+            }
+          : null;
+
+      const payload: Json = {
+        input: {
+          item,
+          notes: notes ?? null,
+          section,
+          status,
+          value: body.value ?? null,
+          unit: body.unit ?? null,
+          vehicle: vehiclePayload,
+          complaint,
+        },
+        output: suggestion,
+      } as unknown as Json;
+
+      await supabase.from("ai_events").insert({
+        event_type: "quote_suggest",
+        payload,
+        shop_id: shopId,
+        entity_id: null,
+        entity_table: "inspection_results",
+      });
+    } catch (logErr) {
+      console.warn("[AI] Failed to log quote-suggest event:", logErr);
+    }
+
+    return NextResponse.json({ suggestion });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("quote-suggest error:", err);
+    return NextResponse.json(
+      { error: "AI suggestion failed" },
+      { status: 500 },
+    );
+  }
+}
+
+
+==== FILE: app/api/ai/apply-ai/route.ts (MISSING) ====
+
+==== FILE: app/api/quotes/apply-ai/route.ts ====
+import { NextResponse } from "next/server";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@shared/types/types/supabase";
+import { recordQuoteTraining } from "@/features/integrations/ai";
+
+type DB = Database;
+
+/* -------------------------- AI Suggestion Types -------------------------- */
+
+type AISuggestion = {
+  parts: { name: string; qty?: number; cost?: number; notes?: string }[];
+  laborHours: number;
+  laborRate: number;
+  summary: string;
+  confidence: "low" | "medium" | "high";
+  price?: number;
+  notes?: string;
+  title?: string;
+};
+
+interface Body {
+  workOrderLineId: string;
+  suggestion: AISuggestion;
+}
+
+function isBody(x: unknown): x is Body {
+  if (typeof x !== "object" || x === null) return false;
+  const o = x as Record<string, unknown>;
+  return (
+    typeof o.workOrderLineId === "string" &&
+    typeof o.suggestion === "object" &&
+    o.suggestion !== null
+  );
+}
+
+/* ----------------- Resolve a shop's primary inventory location ---------------- */
+
+async function resolvePrimaryLocationId(
+  sb: SupabaseClient<DB>,
+  workOrderLineId: string,
+): Promise<string | null> {
+  const { data: line } = await sb
+    .from("work_order_lines")
+    .select("shop_id")
+    .eq("id", workOrderLineId)
+    .maybeSingle();
+
+  if (!line?.shop_id) return null;
+
+  const { data: locs } = await sb
+    .from("inventory_locations")
+    .select("id, is_primary")
+    .eq("shop_id", line.shop_id)
+    .order("is_primary", { ascending: false }) // primary first
+    .limit(1);
+
+  return locs?.[0]?.id ?? null;
+}
+
+/* ---------------------------------- Route ---------------------------------- */
+
+export async function POST(req: Request) {
+  try {
+    const body: unknown = await req.json();
+    if (!isBody(body)) {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
+    const { workOrderLineId, suggestion } = body;
+
+    // Env: server key only (non-null)
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const supabaseKey =
+      (process.env.SUPABASE_SERVICE_ROLE_KEY ??
+        process.env.SUPABASE_SERVICE_KEY)!;
+
+    if (!supabaseUrl || !supabaseKey) {
+      return NextResponse.json(
+        {
+          error: "Server misconfiguration — Supabase env missing",
+          detail:
+            "Check NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_SERVICE_KEY).",
+        },
+        { status: 500 },
+      );
+    }
+
+    const sb = createClient<DB>(supabaseUrl, supabaseKey);
+
+    // Require an inventory location (prevents FK errors on allocations)
+    const locationId = await resolvePrimaryLocationId(sb, workOrderLineId);
+    if (!locationId) {
+      return NextResponse.json(
+        {
+          error: "This shop has no inventory location configured.",
+          detail: "Create a primary inventory location first.",
+          code: "NO_LOCATION_CONFIGURED",
+        },
+        { status: 422 },
+      );
+    }
+
+    const unmatched: { name: string; qty: number }[] = [];
+
+    // Allocate each AI-suggested part to this line
+    for (const { name, qty = 1 } of suggestion.parts ?? []) {
+      const { data: found, error: pe } = await sb
+        .from("parts")
+        .select("id")
+        // use % for ilike match; if you prefer exact, change to .eq("name", name)
+        .ilike("name", `%${name}%`)
+        .limit(1);
+
+      if (pe) {
+        unmatched.push({ name, qty });
+        continue;
+      }
+
+      const match = found?.[0];
+      if (!match) {
+        unmatched.push({ name, qty });
+        continue;
+      }
+
+      const alloc: DB["public"]["Tables"]["work_order_part_allocations"]["Insert"] =
+        {
+          work_order_line_id: workOrderLineId,
+          part_id: match.id,
+          qty,
+          location_id: locationId, // required by FK; we resolved above
+        };
+
+      const { error: ae } = await sb
+        .from("work_order_part_allocations")
+        .insert(alloc);
+
+      if (ae) {
+        unmatched.push({ name, qty });
+        continue;
+      }
+    }
+
+    // Mark as "quoted" flow started (keep workflow status; set approval_state)
+    const { error: updateErr } = await sb
+      .from("work_order_lines")
+      .update({ approval_state: "pending" })
+      .eq("id", workOrderLineId);
+
+    if (updateErr) {
+      return NextResponse.json(
+        { error: "Failed updating approval state", detail: updateErr.message },
+        { status: 500 },
+      );
+    }
+
+    // ------------------------ AI TRAINING: APPLIED QUOTE ------------------------
+    try {
+      const { data: line } = await sb
+        .from("work_order_lines")
+        .select("id, work_order_id, shop_id, description, complaint")
+        .eq("id", workOrderLineId)
+        .maybeSingle();
+
+      if (line?.shop_id) {
+        await recordQuoteTraining({
+          quoteId: workOrderLineId, // treat the line as the "quote" record
+          shopId: line.shop_id,
+          workOrderId: line.work_order_id ?? null,
+          workOrderLineId,
+          vehicleYmm: null, // TODO: hydrate via vehicles table
+          payload: {
+            complaint: line.complaint,
+            description: line.description,
+            suggestion,
+            unmatched,
+          },
+        });
+      }
+    } catch (trainErr) {
+      // Never block user flow on training errors
+      // eslint-disable-next-line no-console
+      console.warn("AI training for apply-ai quote failed:", trainErr);
+    }
+
+    return NextResponse.json({ ok: true, unmatched });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error("apply-ai Quote Error 👉", e);
+    return NextResponse.json(
+      { error: "Failed applying AI quote" },
+      { status: 500 },
+    );
+  }
+}
+
+==== FILE: app/api/work-orders/[id]/invoice/route.ts ====
+import { NextResponse } from "next/server";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { cookies } from "next/headers";
+import Stripe from "stripe";
+import type { Database } from "@shared/types/types/supabase";
+import { recordWorkOrderTraining } from "@/features/integrations/ai";
+
+type DB = Database;
+
+function getIdFromUrl(url: string): string | null {
+  const parts = new URL(url).pathname.split("/"); // ["", "api", "work-orders", "<id>", "invoice"]
+  return parts.length >= 5 ? parts[3] : null;
+}
+
+function isError(x: unknown): x is Error {
+  return typeof x === "object" && x !== null && "message" in x;
+}
+
+export async function POST(req: Request) {
+  const supabase = createRouteHandlerClient<DB>({ cookies });
+  const woId = getIdFromUrl(req.url);
+
+  if (!woId) {
+    return NextResponse.json(
+      { ok: false, error: "Missing work order id" },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const key = process.env.STRIPE_SECRET_KEY;
+    if (!key) throw new Error("Missing STRIPE_SECRET_KEY");
+
+    const stripe = new Stripe(key, {
+      apiVersion: "2024-04-10" as Stripe.LatestApiVersion,
+    });
+
+    // Work order
+    const { data: wo, error: woErr } = await supabase
+      .from("work_orders")
+      .select("*")
+      .eq("id", woId)
+      .maybeSingle();
+
+    if (woErr) throw woErr;
+    if (!wo) {
+      return NextResponse.json(
+        { ok: false, error: "Work order not found" },
+        { status: 404 }
+      );
+    }
+
+    // Customer
+    if (!wo.customer_id) {
+      return NextResponse.json(
+        { ok: false, error: "Work order has no customer" },
+        { status: 400 }
+      );
+    }
+
+    const { data: cust, error: custErr } = await supabase
+      .from("customers")
+      .select("first_name,last_name,email")
+      .eq("id", wo.customer_id)
+      .maybeSingle();
+
+    if (custErr) throw custErr;
+    if (!cust?.email) {
+      return NextResponse.json(
+        { ok: false, error: "Customer email required" },
+        { status: 400 }
+      );
+    }
+
+    // Lines
+    const { data: lines, error: lnErr } = await supabase
+      .from("work_order_lines")
+      .select("*")
+      .eq("work_order_id", wo.id);
+
+    if (lnErr) throw lnErr;
+
+    // Build labor items
+    const laborRate = 120;
+    const laborItems: {
+      description: string;
+      unit_amount: number;
+      quantity: number;
+    }[] = [];
+
+    for (const ln of lines ?? []) {
+      const hours = typeof ln.labor_time === "number" ? ln.labor_time : 0;
+      if (hours > 0) {
+        laborItems.push({
+          description: `${String(ln.job_type ?? "job").replaceAll(
+            "_",
+            " "
+          )} — ${ln.description ?? ln.complaint ?? "labor"}`,
+          unit_amount: Math.round(laborRate * 100),
+          quantity: hours,
+        });
+      }
+    }
+
+    if (laborItems.length === 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "No billable labor found. Add hours to at least one line before invoicing.",
+        },
+        { status: 400 }
+      );
+    }
+
+    // Stripe customer
+    const customer = await stripe.customers.create({
+      email: cust.email,
+      name:
+        [cust.first_name ?? "", cust.last_name ?? ""]
+          .filter(Boolean)
+          .join(" ") || undefined,
+      metadata: { profix_work_order_id: wo.id },
+    });
+
+    // Draft invoice
+    const invoice = await stripe.invoices.create({
+      customer: customer.id,
+      auto_advance: true,
+      collection_method: "send_invoice",
+      days_until_due: 7,
+      metadata: { profix_work_order_id: wo.id },
+    });
+
+    // Attach items
+    for (const item of laborItems) {
+      await stripe.invoiceItems.create({
+        currency: "usd",
+        customer: customer.id,
+        description: item.description,
+        unit_amount: item.unit_amount,
+        quantity: item.quantity,
+      });
+    }
+
+    // Finalize + email
+    const finalized = await stripe.invoices.finalizeInvoice(invoice.id);
+    await stripe.invoices.sendInvoice(finalized.id);
+
+    const amountTotal =
+      "amount_total" in finalized ? finalized.amount_total : null;
+    const amountDue =
+      "amount_due" in finalized ? finalized.amount_due : null;
+
+    // Persist state
+    const { error: updErr } = await supabase
+      .from("work_orders")
+      .update({ status: "invoiced", stripe_invoice_id: finalized.id })
+      .eq("id", wo.id);
+
+    if (updErr) throw updErr;
+
+    // AI training: record that this WO was invoiced
+    if (wo.shop_id) {
+      try {
+        await recordWorkOrderTraining({
+          shopId: wo.shop_id,
+          workOrderId: wo.id,
+          vehicleYmm: null, // TODO: hydrate from vehicles table if needed
+          payload: {
+            kind: "invoice_sent",
+            stripeInvoiceId: finalized.id,
+            amount_total: amountTotal,
+            amount_due: amountDue,
+            currency: finalized.currency ?? "usd",
+            customer_email: cust.email,
+          },
+        });
+      } catch (trainErr) {
+        console.warn("AI training (invoice) failed:", trainErr);
+      }
+    }
+
+    return NextResponse.json({
+      ok: true,
+      stripeInvoiceId: finalized.id,
+      amountTotal,
+      amountDue,
+    });
+  } catch (e: unknown) {
+    const msg = isError(e) ? e.message : "Failed to create/send invoice";
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+  }
+}
+
+==== FILE: shared/types/types/supabase.ts ====
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
+
+export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "12.2.3 (519615d)"
+  }
+  public: {
+    Tables: {
+      activity_logs: {
+        Row: {
+          action: string | null
+          context: Json | null
+          id: string
+          target_id: string | null
+          target_table: string | null
+          timestamp: string | null
+          user_id: string | null
+        }
+        Insert: {
+          action?: string | null
+          context?: Json | null
+          id?: string
+          target_id?: string | null
+          target_table?: string | null
+          timestamp?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          action?: string | null
+          context?: Json | null
+          id?: string
+          target_id?: string | null
+          target_table?: string | null
+          timestamp?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      agent_events: {
+        Row: {
+          content: Json
+          created_at: string
+          id: string
+          kind: string
+          run_id: string
+          step: number
+        }
+        Insert: {
+          content: Json
+          created_at?: string
+          id?: string
+          kind: string
+          run_id: string
+          step: number
+        }
+        Update: {
+          content?: Json
+          created_at?: string
+          id?: string
+          kind?: string
+          run_id?: string
+          step?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_events_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "agent_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_runs: {
+        Row: {
+          created_at: string
+          goal: string
+          id: string
+          idempotency_key: string | null
+          shop_id: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          goal: string
+          id?: string
+          idempotency_key?: string | null
+          shop_id: string
+          status: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          goal?: string
+          id?: string
+          idempotency_key?: string | null
+          shop_id?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      ai_requests: {
+        Row: {
+          created_at: string | null
+          id: string
+          prompt: string | null
+          response: string | null
+          tool_used: string | null
+          user_id: string | null
+          vehicle_id: string | null
+          work_order_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          prompt?: string | null
+          response?: string | null
+          tool_used?: string | null
+          user_id?: string | null
+          vehicle_id?: string | null
+          work_order_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          prompt?: string | null
+          response?: string | null
+          tool_used?: string | null
+          user_id?: string | null
+          vehicle_id?: string | null
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_requests_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      api_keys: {
+        Row: {
+          api_key: string | null
+          created_at: string | null
+          id: string
+          label: string | null
+          user_id: string | null
+        }
+        Insert: {
+          api_key?: string | null
+          created_at?: string | null
+          id?: string
+          label?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          api_key?: string | null
+          created_at?: string | null
+          id?: string
+          label?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      apps: {
+        Row: {
+          default_route: string
+          icon_url: string | null
+          id: string
+          is_enabled: boolean
+          name: string
+          slug: string
+        }
+        Insert: {
+          default_route: string
+          icon_url?: string | null
+          id?: string
+          is_enabled?: boolean
+          name: string
+          slug: string
+        }
+        Update: {
+          default_route?: string
+          icon_url?: string | null
+          id?: string
+          is_enabled?: boolean
+          name?: string
+          slug?: string
+        }
+        Relationships: []
+      }
+      audit_logs: {
+        Row: {
+          action: string
+          actor_id: string | null
+          created_at: string
+          id: string
+          metadata: Json | null
+          target: string | null
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          target?: string | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          target?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_logs_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bookings: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          customer_id: string | null
+          ends_at: string
+          id: string
+          notes: string | null
+          shop_id: string | null
+          starts_at: string
+          status: string
+          vehicle_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string | null
+          ends_at: string
+          id?: string
+          notes?: string | null
+          shop_id?: string | null
+          starts_at: string
+          status?: string
+          vehicle_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          customer_id?: string | null
+          ends_at?: string
+          id?: string
+          notes?: string | null
+          shop_id?: string | null
+          starts_at?: string
+          status?: string
+          vehicle_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bookings_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookings_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookings_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookings_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chat_participants: {
+        Row: {
+          chat_id: string | null
+          id: string
+          joined_at: string | null
+          profile_id: string | null
+          role: string | null
+        }
+        Insert: {
+          chat_id?: string | null
+          id?: string
+          joined_at?: string | null
+          profile_id?: string | null
+          role?: string | null
+        }
+        Update: {
+          chat_id?: string | null
+          id?: string
+          joined_at?: string | null
+          profile_id?: string | null
+          role?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_participants_chat_id_fkey"
+            columns: ["chat_id"]
+            isOneToOne: false
+            referencedRelation: "chats"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chats: {
+        Row: {
+          context_id: string | null
+          created_at: string | null
+          created_by: string | null
+          id: string
+          title: string | null
+          type: string
+        }
+        Insert: {
+          context_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          title?: string | null
+          type: string
+        }
+        Update: {
+          context_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          title?: string | null
+          type?: string
+        }
+        Relationships: []
+      }
+      conversation_participants: {
+        Row: {
+          added_at: string | null
+          conversation_id: string | null
+          id: string
+          role: string | null
+          user_id: string | null
+        }
+        Insert: {
+          added_at?: string | null
+          conversation_id?: string | null
+          id?: string
+          role?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          added_at?: string | null
+          conversation_id?: string | null
+          id?: string
+          role?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_participants_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      conversations: {
+        Row: {
+          context_id: string | null
+          context_type: string | null
+          created_at: string | null
+          created_by: string | null
+          id: string
+          is_group: boolean | null
+          title: string | null
+        }
+        Insert: {
+          context_id?: string | null
+          context_type?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_group?: boolean | null
+          title?: string | null
+        }
+        Update: {
+          context_id?: string | null
+          context_type?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_group?: boolean | null
+          title?: string | null
+        }
+        Relationships: []
+      }
+      customer_bookings: {
+        Row: {
+          created_at: string | null
+          customer_email: string | null
+          customer_name: string | null
+          customer_phone: string | null
+          id: string
+          labor_hours_estimated: number | null
+          preferred_date: string | null
+          preferred_time: string | null
+          selected_services: Json | null
+          shop_id: string | null
+          status: string | null
+          vehicle_make: string | null
+          vehicle_model: string | null
+          vehicle_year: string | null
+          vin: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          customer_email?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          id?: string
+          labor_hours_estimated?: number | null
+          preferred_date?: string | null
+          preferred_time?: string | null
+          selected_services?: Json | null
+          shop_id?: string | null
+          status?: string | null
+          vehicle_make?: string | null
+          vehicle_model?: string | null
+          vehicle_year?: string | null
+          vin?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          customer_email?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          id?: string
+          labor_hours_estimated?: number | null
+          preferred_date?: string | null
+          preferred_time?: string | null
+          selected_services?: Json | null
+          shop_id?: string | null
+          status?: string | null
+          vehicle_make?: string | null
+          vehicle_model?: string | null
+          vehicle_year?: string | null
+          vin?: string | null
+        }
+        Relationships: []
+      }
+      customer_portal_invites: {
+        Row: {
+          created_at: string | null
+          customer_id: string
+          email: string
+          id: string
+          token: string
+        }
+        Insert: {
+          created_at?: string | null
+          customer_id: string
+          email: string
+          id?: string
+          token: string
+        }
+        Update: {
+          created_at?: string | null
+          customer_id?: string
+          email?: string
+          id?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_portal_invites_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_quotes: {
+        Row: {
+          created_at: string | null
+          customer_email: string | null
+          customer_name: string | null
+          estimated_total: number | null
+          id: string
+          preferred_date: string | null
+          selected_services: Json | null
+          shop_id: string | null
+          vehicle_make: string | null
+          vehicle_model: string | null
+          vehicle_year: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          customer_email?: string | null
+          customer_name?: string | null
+          estimated_total?: number | null
+          id?: string
+          preferred_date?: string | null
+          selected_services?: Json | null
+          shop_id?: string | null
+          vehicle_make?: string | null
+          vehicle_model?: string | null
+          vehicle_year?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          customer_email?: string | null
+          customer_name?: string | null
+          estimated_total?: number | null
+          id?: string
+          preferred_date?: string | null
+          selected_services?: Json | null
+          shop_id?: string | null
+          vehicle_make?: string | null
+          vehicle_model?: string | null
+          vehicle_year?: number | null
+        }
+        Relationships: []
+      }
+      customer_settings: {
+        Row: {
+          comm_email_enabled: boolean
+          comm_sms_enabled: boolean
+          customer_id: string
+          language: string | null
+          marketing_opt_in: boolean
+          preferred_contact: string | null
+          timezone: string | null
+          units: string | null
+          updated_at: string
+        }
+        Insert: {
+          comm_email_enabled?: boolean
+          comm_sms_enabled?: boolean
+          customer_id: string
+          language?: string | null
+          marketing_opt_in?: boolean
+          preferred_contact?: string | null
+          timezone?: string | null
+          units?: string | null
+          updated_at?: string
+        }
+        Update: {
+          comm_email_enabled?: boolean
+          comm_sms_enabled?: boolean
+          customer_id?: string
+          language?: string | null
+          marketing_opt_in?: boolean
+          preferred_contact?: string | null
+          timezone?: string | null
+          units?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_settings_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: true
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customers: {
+        Row: {
+          address: string | null
+          city: string | null
+          created_at: string | null
+          email: string | null
+          first_name: string | null
+          id: string
+          last_name: string | null
+          name: string | null
+          notes: string | null
+          phone: string | null
+          phone_number: string | null
+          postal_code: string | null
+          province: string | null
+          shop_id: string | null
+          street: string | null
+          user_id: string | null
+          vehicle: string | null
+        }
+        Insert: {
+          address?: string | null
+          city?: string | null
+          created_at?: string | null
+          email?: string | null
+          first_name?: string | null
+          id?: string
+          last_name?: string | null
+          name?: string | null
+          notes?: string | null
+          phone?: string | null
+          phone_number?: string | null
+          postal_code?: string | null
+          province?: string | null
+          shop_id?: string | null
+          street?: string | null
+          user_id?: string | null
+          vehicle?: string | null
+        }
+        Update: {
+          address?: string | null
+          city?: string | null
+          created_at?: string | null
+          email?: string | null
+          first_name?: string | null
+          id?: string
+          last_name?: string | null
+          name?: string | null
+          notes?: string | null
+          phone?: string | null
+          phone_number?: string | null
+          postal_code?: string | null
+          province?: string | null
+          shop_id?: string | null
+          street?: string | null
+          user_id?: string | null
+          vehicle?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customers_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customers_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      decoded_vins: {
+        Row: {
+          created_at: string | null
+          decoded: Json | null
+          id: string
+          user_id: string | null
+          vin: string
+        }
+        Insert: {
+          created_at?: string | null
+          decoded?: Json | null
+          id?: string
+          user_id?: string | null
+          vin: string
+        }
+        Update: {
+          created_at?: string | null
+          decoded?: Json | null
+          id?: string
+          user_id?: string | null
+          vin?: string
+        }
+        Relationships: []
+      }
+      defective_parts: {
+        Row: {
+          id: string
+          part_id: string | null
+          quantity: number
+          reason: string | null
+          reported_at: string | null
+          reported_by: string | null
+          shop_id: string | null
+        }
+        Insert: {
+          id?: string
+          part_id?: string | null
+          quantity?: number
+          reason?: string | null
+          reported_at?: string | null
+          reported_by?: string | null
+          shop_id?: string | null
+        }
+        Update: {
+          id?: string
+          part_id?: string | null
+          quantity?: number
+          reason?: string | null
+          reported_at?: string | null
+          reported_by?: string | null
+          shop_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "defective_parts_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dtc_logs: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          dtc_code: string | null
+          id: string
+          severity: string | null
+          user_id: string | null
+          vehicle_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          dtc_code?: string | null
+          id?: string
+          severity?: string | null
+          user_id?: string | null
+          vehicle_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          dtc_code?: string | null
+          id?: string
+          severity?: string | null
+          user_id?: string | null
+          vehicle_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dtc_logs_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_logs: {
+        Row: {
+          created_at: string | null
+          email: string
+          error: string | null
+          event_type: string
+          id: string
+          sg_event_id: string | null
+          status: string | null
+          timestamp: string
+        }
+        Insert: {
+          created_at?: string | null
+          email: string
+          error?: string | null
+          event_type: string
+          id?: string
+          sg_event_id?: string | null
+          status?: string | null
+          timestamp: string
+        }
+        Update: {
+          created_at?: string | null
+          email?: string
+          error?: string | null
+          event_type?: string
+          id?: string
+          sg_event_id?: string | null
+          status?: string | null
+          timestamp?: string
+        }
+        Relationships: []
+      }
+      email_suppressions: {
+        Row: {
+          email: string
+          reason: string | null
+          suppressed: boolean | null
+          updated_at: string | null
+        }
+        Insert: {
+          email: string
+          reason?: string | null
+          suppressed?: boolean | null
+          updated_at?: string | null
+        }
+        Update: {
+          email?: string
+          reason?: string | null
+          suppressed?: boolean | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      employee_documents: {
+        Row: {
+          bucket_id: string
+          doc_type: string
+          expires_at: string | null
+          file_path: string
+          id: string
+          shop_id: string
+          status: string
+          uploaded_at: string
+          user_id: string
+        }
+        Insert: {
+          bucket_id?: string
+          doc_type: string
+          expires_at?: string | null
+          file_path: string
+          id?: string
+          shop_id: string
+          status?: string
+          uploaded_at?: string
+          user_id: string
+        }
+        Update: {
+          bucket_id?: string
+          doc_type?: string
+          expires_at?: string | null
+          file_path?: string
+          id?: string
+          shop_id?: string
+          status?: string
+          uploaded_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_documents_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_documents_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_documents_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      feature_reads: {
+        Row: {
+          feature_slug: string
+          id: string
+          last_read_at: string
+          user_id: string
+        }
+        Insert: {
+          feature_slug: string
+          id?: string
+          last_read_at?: string
+          user_id: string
+        }
+        Update: {
+          feature_slug?: string
+          id?: string
+          last_read_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      followups: {
+        Row: {
+          created_at: string | null
+          customer_id: string | null
+          feature: string | null
+          id: string
+          send_at: string | null
+          sent: boolean | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          customer_id?: string | null
+          feature?: string | null
+          id?: string
+          send_at?: string | null
+          sent?: boolean | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          customer_id?: string | null
+          feature?: string | null
+          id?: string
+          send_at?: string | null
+          sent?: boolean | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "followups_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      history: {
+        Row: {
+          created_at: string | null
+          customer_id: string
+          description: string | null
+          id: string
+          notes: string | null
+          service_date: string
+          vehicle_id: string | null
+          work_order_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          customer_id: string
+          description?: string | null
+          id?: string
+          notes?: string | null
+          service_date?: string
+          vehicle_id?: string | null
+          work_order_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          customer_id?: string
+          description?: string | null
+          id?: string
+          notes?: string | null
+          service_date?: string
+          vehicle_id?: string | null
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "history_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "history_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "history_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inspection_items: {
+        Row: {
+          created_at: string | null
+          id: string
+          inspection_id: string | null
+          label: string | null
+          notes: string | null
+          section: string | null
+          status: string | null
+          value: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          inspection_id?: string | null
+          label?: string | null
+          notes?: string | null
+          section?: string | null
+          status?: string | null
+          value?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          inspection_id?: string | null
+          label?: string | null
+          notes?: string | null
+          section?: string | null
+          status?: string | null
+          value?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inspection_items_inspection_id_fkey"
+            columns: ["inspection_id"]
+            isOneToOne: false
+            referencedRelation: "inspections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inspection_photos: {
+        Row: {
+          created_at: string | null
+          id: string
+          image_url: string
+          inspection_id: string | null
+          item_name: string | null
+          notes: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          image_url: string
+          inspection_id?: string | null
+          item_name?: string | null
+          notes?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          image_url?: string
+          inspection_id?: string | null
+          item_name?: string | null
+          notes?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      inspection_sessions: {
+        Row: {
+          completed_at: string | null
+          created_by: string | null
+          customer_id: string | null
+          id: string
+          state: Json | null
+          status: string
+          template: string | null
+          updated_at: string | null
+          user_id: string | null
+          vehicle_id: string | null
+          work_order_id: string | null
+          work_order_line_id: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_by?: string | null
+          customer_id?: string | null
+          id?: string
+          state?: Json | null
+          status?: string
+          template?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          vehicle_id?: string | null
+          work_order_id?: string | null
+          work_order_line_id?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_by?: string | null
+          customer_id?: string | null
+          id?: string
+          state?: Json | null
+          status?: string
+          template?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          vehicle_id?: string | null
+          work_order_id?: string | null
+          work_order_line_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inspection_sessions_created_by_fk"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspection_sessions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspection_sessions_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspection_sessions_work_order_fk"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspection_sessions_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspection_sessions_work_order_line_fk"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspection_sessions_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_lines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inspection_templates: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          is_public: boolean | null
+          sections: Json
+          tags: string[] | null
+          template_name: string
+          updated_at: string | null
+          user_id: string | null
+          vehicle_type: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_public?: boolean | null
+          sections: Json
+          tags?: string[] | null
+          template_name: string
+          updated_at?: string | null
+          user_id?: string | null
+          vehicle_type?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_public?: boolean | null
+          sections?: Json
+          tags?: string[] | null
+          template_name?: string
+          updated_at?: string | null
+          user_id?: string | null
+          vehicle_type?: string | null
+        }
+        Relationships: []
+      }
+      inspections: {
+        Row: {
+          ai_summary: string | null
+          completed: boolean | null
+          created_at: string | null
+          id: string
+          inspection_type: string | null
+          is_draft: boolean | null
+          location: string | null
+          notes: string | null
+          pdf_url: string | null
+          photo_urls: string[] | null
+          quote_id: string | null
+          shop_id: string | null
+          started_at: string | null
+          status: string | null
+          summary: Json | null
+          template_id: string | null
+          updated_at: string | null
+          user_id: string | null
+          vehicle_id: string | null
+          work_order_id: string | null
+        }
+        Insert: {
+          ai_summary?: string | null
+          completed?: boolean | null
+          created_at?: string | null
+          id?: string
+          inspection_type?: string | null
+          is_draft?: boolean | null
+          location?: string | null
+          notes?: string | null
+          pdf_url?: string | null
+          photo_urls?: string[] | null
+          quote_id?: string | null
+          shop_id?: string | null
+          started_at?: string | null
+          status?: string | null
+          summary?: Json | null
+          template_id?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          vehicle_id?: string | null
+          work_order_id?: string | null
+        }
+        Update: {
+          ai_summary?: string | null
+          completed?: boolean | null
+          created_at?: string | null
+          id?: string
+          inspection_type?: string | null
+          is_draft?: boolean | null
+          location?: string | null
+          notes?: string | null
+          pdf_url?: string | null
+          photo_urls?: string[] | null
+          quote_id?: string | null
+          shop_id?: string | null
+          started_at?: string | null
+          status?: string | null
+          summary?: Json | null
+          template_id?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          vehicle_id?: string | null
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inspections_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "inspection_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspections_user_fk"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspections_vehicle_fk"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspections_work_order_fk"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspections_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      media_uploads: {
+        Row: {
+          analysis_summary: string | null
+          audio_url: string | null
+          created_at: string | null
+          file_type: string | null
+          file_url: string | null
+          id: string
+          inspection_id: string | null
+          user_id: string | null
+          work_order_id: string | null
+        }
+        Insert: {
+          analysis_summary?: string | null
+          audio_url?: string | null
+          created_at?: string | null
+          file_type?: string | null
+          file_url?: string | null
+          id?: string
+          inspection_id?: string | null
+          user_id?: string | null
+          work_order_id?: string | null
+        }
+        Update: {
+          analysis_summary?: string | null
+          audio_url?: string | null
+          created_at?: string | null
+          file_type?: string | null
+          file_url?: string | null
+          id?: string
+          inspection_id?: string | null
+          user_id?: string | null
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "media_uploads_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      menu_item_parts: {
+        Row: {
+          created_at: string | null
+          id: string
+          menu_item_id: string
+          name: string
+          quantity: number
+          unit_cost: number
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          menu_item_id: string
+          name: string
+          quantity?: number
+          unit_cost?: number
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          menu_item_id?: string
+          name?: string
+          quantity?: number
+          unit_cost?: number
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "menu_item_parts_menu_item_id_fkey"
+            columns: ["menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      menu_items: {
+        Row: {
+          category: string | null
+          cause: string | null
+          complaint: string | null
+          correction: string | null
+          created_at: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          labor_hours: number | null
+          labor_time: number | null
+          name: string | null
+          part_cost: number | null
+          shop_id: string | null
+          tools: string | null
+          total_price: number | null
+          user_id: string | null
+        }
+        Insert: {
+          category?: string | null
+          cause?: string | null
+          complaint?: string | null
+          correction?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          labor_hours?: number | null
+          labor_time?: number | null
+          name?: string | null
+          part_cost?: number | null
+          shop_id?: string | null
+          tools?: string | null
+          total_price?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          category?: string | null
+          cause?: string | null
+          complaint?: string | null
+          correction?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          labor_hours?: number | null
+          labor_time?: number | null
+          name?: string | null
+          part_cost?: number | null
+          shop_id?: string | null
+          tools?: string | null
+          total_price?: number | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "menu_items_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "menu_items_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      menu_pricing: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          estimated_labor_minutes: number | null
+          id: string
+          labor_rate: number | null
+          part_cost: number | null
+          service_name: string | null
+          user_id: string | null
+          vehicle_make: string | null
+          vehicle_model: string | null
+          vehicle_year: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          estimated_labor_minutes?: number | null
+          id?: string
+          labor_rate?: number | null
+          part_cost?: number | null
+          service_name?: string | null
+          user_id?: string | null
+          vehicle_make?: string | null
+          vehicle_model?: string | null
+          vehicle_year?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          estimated_labor_minutes?: number | null
+          id?: string
+          labor_rate?: number | null
+          part_cost?: number | null
+          service_name?: string | null
+          user_id?: string | null
+          vehicle_make?: string | null
+          vehicle_model?: string | null
+          vehicle_year?: number | null
+        }
+        Relationships: []
+      }
+      message_reads: {
+        Row: {
+          conversation_id: string
+          id: string
+          last_read_at: string
+          user_id: string
+        }
+        Insert: {
+          conversation_id: string
+          id?: string
+          last_read_at?: string
+          user_id: string
+        }
+        Update: {
+          conversation_id?: string
+          id?: string
+          last_read_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      messages: {
+        Row: {
+          attachments: Json
+          chat_id: string | null
+          content: string
+          conversation_id: string | null
+          created_at: string
+          deleted_at: string | null
+          edited_at: string | null
+          id: string
+          metadata: Json
+          recipients: string[]
+          reply_to: string | null
+          sender_id: string | null
+          sent_at: string | null
+        }
+        Insert: {
+          attachments?: Json
+          chat_id?: string | null
+          content: string
+          conversation_id?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          edited_at?: string | null
+          id?: string
+          metadata?: Json
+          recipients?: string[]
+          reply_to?: string | null
+          sender_id?: string | null
+          sent_at?: string | null
+        }
+        Update: {
+          attachments?: Json
+          chat_id?: string | null
+          content?: string
+          conversation_id?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          edited_at?: string | null
+          id?: string
+          metadata?: Json
+          recipients?: string[]
+          reply_to?: string | null
+          sender_id?: string | null
+          sent_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_chat_id_fkey"
+            columns: ["chat_id"]
+            isOneToOne: false
+            referencedRelation: "chats"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_reply_to_fkey"
+            columns: ["reply_to"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_sender_id_fkey"
+            columns: ["sender_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notifications: {
+        Row: {
+          body: string | null
+          created_at: string | null
+          data: Json | null
+          id: string
+          is_read: boolean | null
+          kind: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string | null
+          data?: Json | null
+          id?: string
+          is_read?: boolean | null
+          kind: string
+          title: string
+          user_id: string
+        }
+        Update: {
+          body?: string | null
+          created_at?: string | null
+          data?: Json | null
+          id?: string
+          is_read?: boolean | null
+          kind?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      part_barcodes: {
+        Row: {
+          barcode: string
+          id: string
+          kind: string | null
+          part_id: string
+        }
+        Insert: {
+          barcode: string
+          id?: string
+          kind?: string | null
+          part_id: string
+        }
+        Update: {
+          barcode?: string
+          id?: string
+          kind?: string | null
+          part_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "part_barcodes_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      part_compatibility: {
+        Row: {
+          created_at: string | null
+          id: string
+          make: string
+          model: string
+          part_id: string | null
+          shop_id: string | null
+          year_range: unknown | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          make: string
+          model: string
+          part_id?: string | null
+          shop_id?: string | null
+          year_range?: unknown | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          make?: string
+          model?: string
+          part_id?: string | null
+          shop_id?: string | null
+          year_range?: unknown | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "part_compatibility_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      part_purchases: {
+        Row: {
+          id: string
+          part_id: string | null
+          purchase_price: number | null
+          purchased_at: string | null
+          quantity: number
+          shop_id: string | null
+          supplier_id: string | null
+        }
+        Insert: {
+          id?: string
+          part_id?: string | null
+          purchase_price?: number | null
+          purchased_at?: string | null
+          quantity: number
+          shop_id?: string | null
+          supplier_id?: string | null
+        }
+        Update: {
+          id?: string
+          part_id?: string | null
+          purchase_price?: number | null
+          purchased_at?: string | null
+          quantity?: number
+          shop_id?: string | null
+          supplier_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "part_purchases_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_purchases_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "part_suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      part_returns: {
+        Row: {
+          id: string
+          part_id: string | null
+          quantity: number
+          reason: string | null
+          returned_at: string | null
+          returned_by: string | null
+          shop_id: string | null
+        }
+        Insert: {
+          id?: string
+          part_id?: string | null
+          quantity?: number
+          reason?: string | null
+          returned_at?: string | null
+          returned_by?: string | null
+          shop_id?: string | null
+        }
+        Update: {
+          id?: string
+          part_id?: string | null
+          quantity?: number
+          reason?: string | null
+          returned_at?: string | null
+          returned_by?: string | null
+          shop_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "part_returns_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      part_stock: {
+        Row: {
+          id: string
+          location_id: string
+          part_id: string
+          qty_on_hand: number
+          qty_reserved: number
+          reorder_point: number | null
+          reorder_qty: number | null
+        }
+        Insert: {
+          id?: string
+          location_id: string
+          part_id: string
+          qty_on_hand?: number
+          qty_reserved?: number
+          reorder_point?: number | null
+          reorder_qty?: number | null
+        }
+        Update: {
+          id?: string
+          location_id?: string
+          part_id?: string
+          qty_on_hand?: number
+          qty_reserved?: number
+          reorder_point?: number | null
+          reorder_qty?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "part_stock_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_stock_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      part_stock_summary: {
+        Row: {
+          location_id: string
+          part_id: string
+          qty_available: number | null
+          qty_on_hand: number
+          qty_reserved: number
+          shop_id: string
+        }
+        Insert: {
+          location_id: string
+          part_id: string
+          qty_available?: number | null
+          qty_on_hand?: number
+          qty_reserved?: number
+          shop_id: string
+        }
+        Update: {
+          location_id?: string
+          part_id?: string
+          qty_available?: number | null
+          qty_on_hand?: number
+          qty_reserved?: number
+          shop_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "part_stock_summary_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_stock_summary_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_stock_summary_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_stock_summary_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      part_suppliers: {
+        Row: {
+          contact_info: string | null
+          created_at: string | null
+          id: string
+          name: string
+          shop_id: string | null
+        }
+        Insert: {
+          contact_info?: string | null
+          created_at?: string | null
+          id?: string
+          name: string
+          shop_id?: string | null
+        }
+        Update: {
+          contact_info?: string | null
+          created_at?: string | null
+          id?: string
+          name?: string
+          shop_id?: string | null
+        }
+        Relationships: []
+      }
+      part_warranties: {
+        Row: {
+          coverage_details: string | null
+          created_at: string | null
+          id: string
+          part_id: string | null
+          shop_id: string | null
+          warranty_period_months: number | null
+          warranty_provider: string | null
+        }
+        Insert: {
+          coverage_details?: string | null
+          created_at?: string | null
+          id?: string
+          part_id?: string | null
+          shop_id?: string | null
+          warranty_period_months?: number | null
+          warranty_provider?: string | null
+        }
+        Update: {
+          coverage_details?: string | null
+          created_at?: string | null
+          id?: string
+          part_id?: string | null
+          shop_id?: string | null
+          warranty_period_months?: number | null
+          warranty_provider?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "part_warranties_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      parts: {
+        Row: {
+          category: string | null
+          cost: number | null
+          created_at: string | null
+          description: string | null
+          id: string
+          name: string
+          part_number: string | null
+          price: number | null
+          shop_id: string | null
+          sku: string | null
+          supplier: string | null
+          warranty_months: number | null
+        }
+        Insert: {
+          category?: string | null
+          cost?: number | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          name: string
+          part_number?: string | null
+          price?: number | null
+          shop_id?: string | null
+          sku?: string | null
+          supplier?: string | null
+          warranty_months?: number | null
+        }
+        Update: {
+          category?: string | null
+          cost?: number | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+          part_number?: string | null
+          price?: number | null
+          shop_id?: string | null
+          sku?: string | null
+          supplier?: string | null
+          warranty_months?: number | null
+        }
+        Relationships: []
+      }
+      parts_barcodes: {
+        Row: {
+          barcode: string
+          created_at: string
+          id: string
+          part_id: string
+          shop_id: string
+        }
+        Insert: {
+          barcode: string
+          created_at?: string
+          id?: string
+          part_id: string
+          shop_id: string
+        }
+        Update: {
+          barcode?: string
+          created_at?: string
+          id?: string
+          part_id?: string
+          shop_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "parts_barcodes_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      parts_messages: {
+        Row: {
+          created_at: string | null
+          id: string
+          message: string
+          recipient_role: string | null
+          request_id: string | null
+          sender_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          message: string
+          recipient_role?: string | null
+          request_id?: string | null
+          sender_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          message?: string
+          recipient_role?: string | null
+          request_id?: string | null
+          sender_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "parts_messages_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "parts_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      parts_quotes: {
+        Row: {
+          created_at: string | null
+          id: string
+          part_name: string | null
+          part_number: string | null
+          price: number | null
+          quantity: number | null
+          source: string | null
+          work_order_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          part_name?: string | null
+          part_number?: string | null
+          price?: number | null
+          quantity?: number | null
+          source?: string | null
+          work_order_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          part_name?: string | null
+          part_number?: string | null
+          price?: number | null
+          quantity?: number | null
+          source?: string | null
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "parts_quotes_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      parts_request_messages: {
+        Row: {
+          created_at: string | null
+          id: string
+          message: string
+          request_id: string | null
+          sender_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          message: string
+          request_id?: string | null
+          sender_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          message?: string
+          request_id?: string | null
+          sender_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "parts_request_messages_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "parts_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      parts_requests: {
+        Row: {
+          archived: boolean | null
+          created_at: string | null
+          fulfilled_at: string | null
+          id: string
+          job_id: string | null
+          notes: string | null
+          part_name: string
+          photo_url: string | null
+          photo_urls: string[] | null
+          quantity: number
+          requested_by: string | null
+          sent_at: string | null
+          urgency: string | null
+          viewed: boolean | null
+          viewed_at: string | null
+          work_order_id: string | null
+        }
+        Insert: {
+          archived?: boolean | null
+          created_at?: string | null
+          fulfilled_at?: string | null
+          id?: string
+          job_id?: string | null
+          notes?: string | null
+          part_name: string
+          photo_url?: string | null
+          photo_urls?: string[] | null
+          quantity?: number
+          requested_by?: string | null
+          sent_at?: string | null
+          urgency?: string | null
+          viewed?: boolean | null
+          viewed_at?: string | null
+          work_order_id?: string | null
+        }
+        Update: {
+          archived?: boolean | null
+          created_at?: string | null
+          fulfilled_at?: string | null
+          id?: string
+          job_id?: string | null
+          notes?: string | null
+          part_name?: string
+          photo_url?: string | null
+          photo_urls?: string[] | null
+          quantity?: number
+          requested_by?: string | null
+          sent_at?: string | null
+          urgency?: string | null
+          viewed?: boolean | null
+          viewed_at?: string | null
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "parts_requests_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parts_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          business_name: string | null
+          city: string | null
+          completed_onboarding: boolean
+          created_at: string | null
+          created_by: string | null
+          email: string | null
+          full_name: string | null
+          id: string
+          last_active_at: string | null
+          phone: string | null
+          plan: Database["public"]["Enums"]["plan_t"] | null
+          postal_code: string | null
+          province: string | null
+          role: string | null
+          shop_id: string | null
+          shop_name: string | null
+          street: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          business_name?: string | null
+          city?: string | null
+          completed_onboarding?: boolean
+          created_at?: string | null
+          created_by?: string | null
+          email?: string | null
+          full_name?: string | null
+          id: string
+          last_active_at?: string | null
+          phone?: string | null
+          plan?: Database["public"]["Enums"]["plan_t"] | null
+          postal_code?: string | null
+          province?: string | null
+          role?: string | null
+          shop_id?: string | null
+          shop_name?: string | null
+          street?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          business_name?: string | null
+          city?: string | null
+          completed_onboarding?: boolean
+          created_at?: string | null
+          created_by?: string | null
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          last_active_at?: string | null
+          phone?: string | null
+          plan?: Database["public"]["Enums"]["plan_t"] | null
+          postal_code?: string | null
+          province?: string | null
+          role?: string | null
+          shop_id?: string | null
+          shop_name?: string | null
+          street?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiles_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profiles_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      punch_events: {
+        Row: {
+          created_at: string | null
+          event_type: string
+          id: string
+          note: string | null
+          profile_id: string | null
+          shift_id: string | null
+          timestamp: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          event_type: string
+          id?: string
+          note?: string | null
+          profile_id?: string | null
+          shift_id?: string | null
+          timestamp?: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          event_type?: string
+          id?: string
+          note?: string | null
+          profile_id?: string | null
+          shift_id?: string | null
+          timestamp?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "punch_events_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "tech_shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "punch_events_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purchase_order_items: {
+        Row: {
+          description: string | null
+          id: string
+          location_id: string | null
+          part_id: string
+          po_id: string
+          qty_ordered: number
+          qty_received: number
+          unit_cost: number
+        }
+        Insert: {
+          description?: string | null
+          id?: string
+          location_id?: string | null
+          part_id: string
+          po_id: string
+          qty_ordered: number
+          qty_received?: number
+          unit_cost?: number
+        }
+        Update: {
+          description?: string | null
+          id?: string
+          location_id?: string | null
+          part_id?: string
+          po_id?: string
+          qty_ordered?: number
+          qty_received?: number
+          unit_cost?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_order_items_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_order_items_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_order_items_po_id_fkey"
+            columns: ["po_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purchase_order_lines: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          location_id: string | null
+          part_id: string | null
+          po_id: string
+          qty: number
+          received_qty: number
+          sku: string | null
+          unit_cost: number | null
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          location_id?: string | null
+          part_id?: string | null
+          po_id: string
+          qty: number
+          received_qty?: number
+          sku?: string | null
+          unit_cost?: number | null
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          location_id?: string | null
+          part_id?: string | null
+          po_id?: string
+          qty?: number
+          received_qty?: number
+          sku?: string | null
+          unit_cost?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_order_lines_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_order_lines_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_order_lines_po_id_fkey"
+            columns: ["po_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purchase_orders: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          expected_at: string | null
+          id: string
+          ordered_at: string | null
+          received_at: string | null
+          shipping_total: number | null
+          shop_id: string
+          status: string
+          subtotal: number | null
+          supplier_id: string
+          tax_total: number | null
+          total: number | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          expected_at?: string | null
+          id?: string
+          ordered_at?: string | null
+          received_at?: string | null
+          shipping_total?: number | null
+          shop_id: string
+          status?: string
+          subtotal?: number | null
+          supplier_id: string
+          tax_total?: number | null
+          total?: number | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          expected_at?: string | null
+          id?: string
+          ordered_at?: string | null
+          received_at?: string | null
+          shipping_total?: number | null
+          shop_id?: string
+          status?: string
+          subtotal?: number | null
+          supplier_id?: string
+          tax_total?: number | null
+          total?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_orders_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quote_lines: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          item: string | null
+          labor_rate: number | null
+          labor_time: number | null
+          name: string | null
+          notes: string | null
+          part: Json | null
+          part_name: string | null
+          part_price: number | null
+          parts_cost: number | null
+          photo_urls: string[] | null
+          price: number | null
+          quantity: number | null
+          status: string | null
+          title: string
+          total: number | null
+          updated_at: string | null
+          user_id: string | null
+          work_order_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          item?: string | null
+          labor_rate?: number | null
+          labor_time?: number | null
+          name?: string | null
+          notes?: string | null
+          part?: Json | null
+          part_name?: string | null
+          part_price?: number | null
+          parts_cost?: number | null
+          photo_urls?: string[] | null
+          price?: number | null
+          quantity?: number | null
+          status?: string | null
+          title: string
+          total?: number | null
+          updated_at?: string | null
+          user_id?: string | null
+          work_order_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          item?: string | null
+          labor_rate?: number | null
+          labor_time?: number | null
+          name?: string | null
+          notes?: string | null
+          part?: Json | null
+          part_name?: string | null
+          part_price?: number | null
+          parts_cost?: number | null
+          photo_urls?: string[] | null
+          price?: number | null
+          quantity?: number | null
+          status?: string | null
+          title?: string
+          total?: number | null
+          updated_at?: string | null
+          user_id?: string | null
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quote_lines_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shop_hours: {
+        Row: {
+          close_time: string
+          id: string
+          open_time: string
+          shop_id: string | null
+          weekday: number
+        }
+        Insert: {
+          close_time: string
+          id?: string
+          open_time: string
+          shop_id?: string | null
+          weekday: number
+        }
+        Update: {
+          close_time?: string
+          id?: string
+          open_time?: string
+          shop_id?: string | null
+          weekday?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_hours_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_hours_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shop_parts: {
+        Row: {
+          created_at: string | null
+          id: string
+          location: string | null
+          part_id: string | null
+          quantity: number
+          restock_threshold: number | null
+          shop_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          location?: string | null
+          part_id?: string | null
+          quantity?: number
+          restock_threshold?: number | null
+          shop_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          location?: string | null
+          part_id?: string | null
+          quantity?: number
+          restock_threshold?: number | null
+          shop_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_parts_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shop_profiles: {
+        Row: {
+          address_line1: string | null
+          address_line2: string | null
+          city: string | null
+          country: string | null
+          created_at: string
+          description: string | null
+          email: string | null
+          hours: Json | null
+          images: string[] | null
+          latitude: number | null
+          longitude: number | null
+          phone: string | null
+          postal_code: string | null
+          province: string | null
+          shop_id: string
+          tagline: string | null
+          updated_at: string
+          website: string | null
+        }
+        Insert: {
+          address_line1?: string | null
+          address_line2?: string | null
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          description?: string | null
+          email?: string | null
+          hours?: Json | null
+          images?: string[] | null
+          latitude?: number | null
+          longitude?: number | null
+          phone?: string | null
+          postal_code?: string | null
+          province?: string | null
+          shop_id: string
+          tagline?: string | null
+          updated_at?: string
+          website?: string | null
+        }
+        Update: {
+          address_line1?: string | null
+          address_line2?: string | null
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          description?: string | null
+          email?: string | null
+          hours?: Json | null
+          images?: string[] | null
+          latitude?: number | null
+          longitude?: number | null
+          phone?: string | null
+          postal_code?: string | null
+          province?: string | null
+          shop_id?: string
+          tagline?: string | null
+          updated_at?: string
+          website?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_profiles_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: true
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_profiles_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: true
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shop_ratings: {
+        Row: {
+          comment: string | null
+          created_at: string
+          customer_id: string
+          id: string
+          score: number
+          shop_id: string
+          updated_at: string
+        }
+        Insert: {
+          comment?: string | null
+          created_at?: string
+          customer_id: string
+          id?: string
+          score: number
+          shop_id: string
+          updated_at?: string
+        }
+        Update: {
+          comment?: string | null
+          created_at?: string
+          customer_id?: string
+          id?: string
+          score?: number
+          shop_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_ratings_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_ratings_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_ratings_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shop_reviews: {
+        Row: {
+          comment: string | null
+          created_at: string
+          customer_id: string | null
+          id: string
+          rating: number
+          replied_at: string | null
+          reviewer_user_id: string
+          shop_id: string
+          shop_owner_reply: string | null
+          updated_at: string
+        }
+        Insert: {
+          comment?: string | null
+          created_at?: string
+          customer_id?: string | null
+          id?: string
+          rating: number
+          replied_at?: string | null
+          reviewer_user_id: string
+          shop_id: string
+          shop_owner_reply?: string | null
+          updated_at?: string
+        }
+        Update: {
+          comment?: string | null
+          created_at?: string
+          customer_id?: string | null
+          id?: string
+          rating?: number
+          replied_at?: string | null
+          reviewer_user_id?: string
+          shop_id?: string
+          shop_owner_reply?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_reviews_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_reviews_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_reviews_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shop_schedules: {
+        Row: {
+          booked_by: string | null
+          created_at: string | null
+          date: string
+          id: string
+          is_booked: boolean | null
+          shop_id: string | null
+          time_slot: string
+        }
+        Insert: {
+          booked_by?: string | null
+          created_at?: string | null
+          date: string
+          id?: string
+          is_booked?: boolean | null
+          shop_id?: string | null
+          time_slot: string
+        }
+        Update: {
+          booked_by?: string | null
+          created_at?: string | null
+          date?: string
+          id?: string
+          is_booked?: boolean | null
+          shop_id?: string | null
+          time_slot?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_schedules_booked_by_fkey"
+            columns: ["booked_by"]
+            isOneToOne: false
+            referencedRelation: "customer_bookings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shop_settings: {
+        Row: {
+          allow_customer_quotes: boolean | null
+          allow_self_booking: boolean | null
+          created_at: string | null
+          id: string
+          province: string | null
+          timezone: string | null
+          user_id: string | null
+        }
+        Insert: {
+          allow_customer_quotes?: boolean | null
+          allow_self_booking?: boolean | null
+          created_at?: string | null
+          id?: string
+          province?: string | null
+          timezone?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          allow_customer_quotes?: boolean | null
+          allow_self_booking?: boolean | null
+          created_at?: string | null
+          id?: string
+          province?: string | null
+          timezone?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      shop_time_off: {
+        Row: {
+          ends_at: string
+          id: string
+          reason: string | null
+          shop_id: string | null
+          starts_at: string
+        }
+        Insert: {
+          ends_at: string
+          id?: string
+          reason?: string | null
+          shop_id?: string | null
+          starts_at: string
+        }
+        Update: {
+          ends_at?: string
+          id?: string
+          reason?: string | null
+          shop_id?: string | null
+          starts_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_time_off_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_time_off_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shop_time_slots: {
+        Row: {
+          created_at: string | null
+          end_time: string
+          id: string
+          is_booked: boolean | null
+          shop_id: string | null
+          start_time: string
+        }
+        Insert: {
+          created_at?: string | null
+          end_time: string
+          id?: string
+          is_booked?: boolean | null
+          shop_id?: string | null
+          start_time: string
+        }
+        Update: {
+          created_at?: string | null
+          end_time?: string
+          id?: string
+          is_booked?: boolean | null
+          shop_id?: string | null
+          start_time?: string
+        }
+        Relationships: []
+      }
+      shops: {
+        Row: {
+          accepts_online_booking: boolean | null
+          active_user_count: number | null
+          address: string | null
+          auto_generate_pdf: boolean | null
+          auto_send_quote_email: boolean | null
+          business_name: string | null
+          city: string | null
+          created_at: string | null
+          created_by: string | null
+          diagnostic_fee: number | null
+          email: string | null
+          email_on_complete: boolean | null
+          geo_lat: number | null
+          geo_lng: number | null
+          id: string
+          images: string[] | null
+          invoice_footer: string | null
+          invoice_terms: string | null
+          labor_rate: number | null
+          logo_url: string | null
+          max_lead_days: number | null
+          min_notice_minutes: number | null
+          name: string | null
+          owner_id: string
+          owner_pin: string | null
+          owner_pin_hash: string | null
+          phone_number: string | null
+          pin: string | null
+          plan: string | null
+          postal_code: string | null
+          province: string | null
+          rating: number | null
+          require_authorization: boolean | null
+          require_cause_correction: boolean | null
+          shop_name: string | null
+          slug: string | null
+          street: string | null
+          supplies_percent: number | null
+          tax_rate: number | null
+          timezone: string | null
+          updated_at: string | null
+          use_ai: boolean | null
+          user_limit: number | null
+        }
+        Insert: {
+          accepts_online_booking?: boolean | null
+          active_user_count?: number | null
+          address?: string | null
+          auto_generate_pdf?: boolean | null
+          auto_send_quote_email?: boolean | null
+          business_name?: string | null
+          city?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          diagnostic_fee?: number | null
+          email?: string | null
+          email_on_complete?: boolean | null
+          geo_lat?: number | null
+          geo_lng?: number | null
+          id?: string
+          images?: string[] | null
+          invoice_footer?: string | null
+          invoice_terms?: string | null
+          labor_rate?: number | null
+          logo_url?: string | null
+          max_lead_days?: number | null
+          min_notice_minutes?: number | null
+          name?: string | null
+          owner_id: string
+          owner_pin?: string | null
+          owner_pin_hash?: string | null
+          phone_number?: string | null
+          pin?: string | null
+          plan?: string | null
+          postal_code?: string | null
+          province?: string | null
+          rating?: number | null
+          require_authorization?: boolean | null
+          require_cause_correction?: boolean | null
+          shop_name?: string | null
+          slug?: string | null
+          street?: string | null
+          supplies_percent?: number | null
+          tax_rate?: number | null
+          timezone?: string | null
+          updated_at?: string | null
+          use_ai?: boolean | null
+          user_limit?: number | null
+        }
+        Update: {
+          accepts_online_booking?: boolean | null
+          active_user_count?: number | null
+          address?: string | null
+          auto_generate_pdf?: boolean | null
+          auto_send_quote_email?: boolean | null
+          business_name?: string | null
+          city?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          diagnostic_fee?: number | null
+          email?: string | null
+          email_on_complete?: boolean | null
+          geo_lat?: number | null
+          geo_lng?: number | null
+          id?: string
+          images?: string[] | null
+          invoice_footer?: string | null
+          invoice_terms?: string | null
+          labor_rate?: number | null
+          logo_url?: string | null
+          max_lead_days?: number | null
+          min_notice_minutes?: number | null
+          name?: string | null
+          owner_id?: string
+          owner_pin?: string | null
+          owner_pin_hash?: string | null
+          phone_number?: string | null
+          pin?: string | null
+          plan?: string | null
+          postal_code?: string | null
+          province?: string | null
+          rating?: number | null
+          require_authorization?: boolean | null
+          require_cause_correction?: boolean | null
+          shop_name?: string | null
+          slug?: string | null
+          street?: string | null
+          supplies_percent?: number | null
+          tax_rate?: number | null
+          timezone?: string | null
+          updated_at?: string | null
+          use_ai?: boolean | null
+          user_limit?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shops_owner_fk"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stock_locations: {
+        Row: {
+          code: string
+          id: string
+          name: string
+          shop_id: string
+        }
+        Insert: {
+          code: string
+          id?: string
+          name: string
+          shop_id: string
+        }
+        Update: {
+          code?: string
+          id?: string
+          name?: string
+          shop_id?: string
+        }
+        Relationships: []
+      }
+      stock_moves: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          location_id: string
+          part_id: string
+          qty_change: number
+          reason: Database["public"]["Enums"]["stock_move_reason"]
+          reference_id: string | null
+          reference_kind: string | null
+          shop_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          location_id: string
+          part_id: string
+          qty_change: number
+          reason: Database["public"]["Enums"]["stock_move_reason"]
+          reference_id?: string | null
+          reference_kind?: string | null
+          shop_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          location_id?: string
+          part_id?: string
+          qty_change?: number
+          reason?: Database["public"]["Enums"]["stock_move_reason"]
+          reference_id?: string | null
+          reference_kind?: string | null
+          shop_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_moves_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_moves_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_moves_shop_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_moves_shop_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      suppliers: {
+        Row: {
+          account_no: string | null
+          created_at: string
+          created_by: string | null
+          email: string | null
+          id: string
+          is_active: boolean
+          name: string
+          notes: string | null
+          phone: string | null
+          shop_id: string
+        }
+        Insert: {
+          account_no?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          notes?: string | null
+          phone?: string | null
+          shop_id: string
+        }
+        Update: {
+          account_no?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          shop_id?: string
+        }
+        Relationships: []
+      }
+      tech_sessions: {
+        Row: {
+          ended_at: string | null
+          id: string
+          inspection_id: string | null
+          started_at: string | null
+          user_id: string | null
+          work_order_id: string | null
+        }
+        Insert: {
+          ended_at?: string | null
+          id?: string
+          inspection_id?: string | null
+          started_at?: string | null
+          user_id?: string | null
+          work_order_id?: string | null
+        }
+        Update: {
+          ended_at?: string | null
+          id?: string
+          inspection_id?: string | null
+          started_at?: string | null
+          user_id?: string | null
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tech_sessions_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tech_shifts: {
+        Row: {
+          created_at: string | null
+          end_time: string | null
+          id: string
+          start_time: string
+          status: string
+          type: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          end_time?: string | null
+          id?: string
+          start_time?: string
+          status?: string
+          type?: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          end_time?: string | null
+          id?: string
+          start_time?: string
+          status?: string
+          type?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tech_shifts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      template_items: {
+        Row: {
+          id: string
+          input_type: string | null
+          label: string | null
+          section: string | null
+          template_id: string | null
+        }
+        Insert: {
+          id?: string
+          input_type?: string | null
+          label?: string | null
+          section?: string | null
+          template_id?: string | null
+        }
+        Update: {
+          id?: string
+          input_type?: string | null
+          label?: string | null
+          section?: string | null
+          template_id?: string | null
+        }
+        Relationships: []
+      }
+      usage_logs: {
+        Row: {
+          feature: string | null
+          id: string
+          used_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          feature?: string | null
+          id?: string
+          used_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          feature?: string | null
+          id?: string
+          used_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      user_app_layouts: {
+        Row: {
+          id: string
+          layout: Json
+          updated_at: string | null
+          user_id: string
+          wallpaper: string | null
+        }
+        Insert: {
+          id?: string
+          layout: Json
+          updated_at?: string | null
+          user_id: string
+          wallpaper?: string | null
+        }
+        Update: {
+          id?: string
+          layout?: Json
+          updated_at?: string | null
+          user_id?: string
+          wallpaper?: string | null
+        }
+        Relationships: []
+      }
+      user_plans: {
+        Row: {
+          created_at: string | null
+          features: Json | null
+          id: string
+          plan_name: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          features?: Json | null
+          id?: string
+          plan_name: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          features?: Json | null
+          id?: string
+          plan_name?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      user_widget_layouts: {
+        Row: {
+          id: string
+          layout: Json
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          layout: Json
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          id?: string
+          layout?: Json
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      vehicle_media: {
+        Row: {
+          created_at: string | null
+          filename: string | null
+          id: string
+          shop_id: string | null
+          storage_path: string
+          type: string
+          uploaded_by: string | null
+          url: string | null
+          vehicle_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          filename?: string | null
+          id?: string
+          shop_id?: string | null
+          storage_path: string
+          type: string
+          uploaded_by?: string | null
+          url?: string | null
+          vehicle_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          filename?: string | null
+          id?: string
+          shop_id?: string | null
+          storage_path?: string
+          type?: string
+          uploaded_by?: string | null
+          url?: string | null
+          vehicle_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_media_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_media_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_media_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_media_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vehicle_photos: {
+        Row: {
+          caption: string | null
+          created_at: string | null
+          id: string
+          shop_id: string | null
+          uploaded_by: string | null
+          url: string
+          vehicle_id: string
+        }
+        Insert: {
+          caption?: string | null
+          created_at?: string | null
+          id?: string
+          shop_id?: string | null
+          uploaded_by?: string | null
+          url: string
+          vehicle_id: string
+        }
+        Update: {
+          caption?: string | null
+          created_at?: string | null
+          id?: string
+          shop_id?: string | null
+          uploaded_by?: string | null
+          url?: string
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_photos_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_photos_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_photos_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_photos_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vehicle_recalls: {
+        Row: {
+          campaign_number: string
+          component: string | null
+          consequence: string | null
+          created_at: string
+          id: string
+          make: string | null
+          manufacturer: string | null
+          model: string | null
+          model_year: string | null
+          nhtsa_campaign: string | null
+          notes: string | null
+          remedy: string | null
+          report_date: string | null
+          report_received_date: string | null
+          shop_id: string | null
+          summary: string | null
+          user_id: string | null
+          vehicle_id: string | null
+          vin: string
+        }
+        Insert: {
+          campaign_number: string
+          component?: string | null
+          consequence?: string | null
+          created_at?: string
+          id?: string
+          make?: string | null
+          manufacturer?: string | null
+          model?: string | null
+          model_year?: string | null
+          nhtsa_campaign?: string | null
+          notes?: string | null
+          remedy?: string | null
+          report_date?: string | null
+          report_received_date?: string | null
+          shop_id?: string | null
+          summary?: string | null
+          user_id?: string | null
+          vehicle_id?: string | null
+          vin: string
+        }
+        Update: {
+          campaign_number?: string
+          component?: string | null
+          consequence?: string | null
+          created_at?: string
+          id?: string
+          make?: string | null
+          manufacturer?: string | null
+          model?: string | null
+          model_year?: string | null
+          nhtsa_campaign?: string | null
+          notes?: string | null
+          remedy?: string | null
+          report_date?: string | null
+          report_received_date?: string | null
+          shop_id?: string | null
+          summary?: string | null
+          user_id?: string | null
+          vehicle_id?: string | null
+          vin?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_recalls_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_recalls_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_recalls_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vehicles: {
+        Row: {
+          color: string | null
+          created_at: string | null
+          customer_id: string | null
+          engine_hours: number | null
+          id: string
+          license_plate: string | null
+          make: string | null
+          mileage: string | null
+          model: string | null
+          shop_id: string | null
+          unit_number: string | null
+          user_id: string | null
+          vin: string | null
+          year: number | null
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string | null
+          customer_id?: string | null
+          engine_hours?: number | null
+          id?: string
+          license_plate?: string | null
+          make?: string | null
+          mileage?: string | null
+          model?: string | null
+          shop_id?: string | null
+          unit_number?: string | null
+          user_id?: string | null
+          vin?: string | null
+          year?: number | null
+        }
+        Update: {
+          color?: string | null
+          created_at?: string | null
+          customer_id?: string | null
+          engine_hours?: number | null
+          id?: string
+          license_plate?: string | null
+          make?: string | null
+          mileage?: string | null
+          model?: string | null
+          shop_id?: string | null
+          unit_number?: string | null
+          user_id?: string | null
+          vin?: string | null
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicles_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicles_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicles_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vendor_part_numbers: {
+        Row: {
+          id: string
+          part_id: string
+          shop_id: string
+          supplier_id: string | null
+          vendor_sku: string
+        }
+        Insert: {
+          id?: string
+          part_id: string
+          shop_id: string
+          supplier_id?: string | null
+          vendor_sku: string
+        }
+        Update: {
+          id?: string
+          part_id?: string
+          shop_id?: string
+          supplier_id?: string | null
+          vendor_sku?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendor_part_numbers_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_part_numbers_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vin_decodes: {
+        Row: {
+          created_at: string | null
+          decoded_data: Json | null
+          engine: string | null
+          id: string
+          make: string | null
+          model: string | null
+          trim: string | null
+          user_id: string | null
+          vin: string
+          year: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          decoded_data?: Json | null
+          engine?: string | null
+          id?: string
+          make?: string | null
+          model?: string | null
+          trim?: string | null
+          user_id?: string | null
+          vin: string
+          year?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          decoded_data?: Json | null
+          engine?: string | null
+          id?: string
+          make?: string | null
+          model?: string | null
+          trim?: string | null
+          user_id?: string | null
+          vin?: string
+          year?: string | null
+        }
+        Relationships: []
+      }
+      warranties: {
+        Row: {
+          created_at: string
+          customer_id: string | null
+          expires_at: string
+          id: string
+          installed_at: string
+          notes: string | null
+          part_id: string
+          shop_id: string
+          supplier_id: string | null
+          vehicle_id: string | null
+          warranty_months: number
+          work_order_id: string | null
+          work_order_line_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          customer_id?: string | null
+          expires_at: string
+          id: string
+          installed_at: string
+          notes?: string | null
+          part_id: string
+          shop_id: string
+          supplier_id?: string | null
+          vehicle_id?: string | null
+          warranty_months?: number
+          work_order_id?: string | null
+          work_order_line_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string | null
+          expires_at?: string
+          id?: string
+          installed_at?: string
+          notes?: string | null
+          part_id?: string
+          shop_id?: string
+          supplier_id?: string | null
+          vehicle_id?: string | null
+          warranty_months?: number
+          work_order_id?: string | null
+          work_order_line_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "warranties_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "warranties_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "warranties_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "warranties_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "warranties_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "warranties_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "warranties_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "warranties_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_lines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      warranty_claims: {
+        Row: {
+          created_at: string
+          id: string
+          notes: string | null
+          opened_at: string
+          status: string
+          supplier_rma: string | null
+          warranty_id: string
+        }
+        Insert: {
+          created_at?: string
+          id: string
+          notes?: string | null
+          opened_at?: string
+          status: string
+          supplier_rma?: string | null
+          warranty_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          opened_at?: string
+          status?: string
+          supplier_rma?: string | null
+          warranty_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "warranty_claims_warranty_id_fkey"
+            columns: ["warranty_id"]
+            isOneToOne: false
+            referencedRelation: "warranties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      widget_instances: {
+        Row: {
+          config: Json
+          created_at: string | null
+          id: string
+          user_id: string
+          widget_slug: string
+        }
+        Insert: {
+          config?: Json
+          created_at?: string | null
+          id?: string
+          user_id: string
+          widget_slug: string
+        }
+        Update: {
+          config?: Json
+          created_at?: string | null
+          id?: string
+          user_id?: string
+          widget_slug?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "widget_instances_widget_slug_fkey"
+            columns: ["widget_slug"]
+            isOneToOne: false
+            referencedRelation: "widgets"
+            referencedColumns: ["slug"]
+          },
+        ]
+      }
+      widgets: {
+        Row: {
+          allowed_sizes: string[]
+          default_route: string
+          default_size: string
+          id: string
+          name: string
+          slug: string
+        }
+        Insert: {
+          allowed_sizes?: string[]
+          default_route: string
+          default_size?: string
+          id?: string
+          name: string
+          slug: string
+        }
+        Update: {
+          allowed_sizes?: string[]
+          default_route?: string
+          default_size?: string
+          id?: string
+          name?: string
+          slug?: string
+        }
+        Relationships: []
+      }
+      work_order_approvals: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          id: string
+          method: string | null
+          work_order_id: string | null
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          id?: string
+          method?: string | null
+          work_order_id?: string | null
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          id?: string
+          method?: string | null
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_order_approvals_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      work_order_line_history: {
+        Row: {
+          created_at: string
+          id: string
+          line_id: string | null
+          reason: string
+          snapshot: Json
+          status: string | null
+          work_order_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          line_id?: string | null
+          reason?: string
+          snapshot: Json
+          status?: string | null
+          work_order_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          line_id?: string | null
+          reason?: string
+          snapshot?: Json
+          status?: string | null
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_order_line_history_line_id_fkey"
+            columns: ["line_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_line_history_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      work_order_lines: {
+        Row: {
+          approval_at: string | null
+          approval_by: string | null
+          approval_note: string | null
+          approval_state: string | null
+          assigned_tech_id: string | null
+          assigned_to: string | null
+          cause: string | null
+          complaint: string | null
+          correction: string | null
+          created_at: string | null
+          description: string | null
+          hold_reason: string | null
+          id: string
+          inspection_session_id: string | null
+          job_type: string | null
+          labor_time: number | null
+          line_status: string | null
+          notes: string | null
+          on_hold_since: string | null
+          parts: string | null
+          parts_needed: Json | null
+          parts_received: Json | null
+          parts_required: Json | null
+          priority: number | null
+          punched_in_at: string | null
+          punched_out_at: string | null
+          shop_id: string | null
+          status: string | null
+          template_id: string | null
+          tools: string | null
+          updated_at: string | null
+          urgency: string | null
+          user_id: string | null
+          vehicle_id: string | null
+          work_order_id: string | null
+        }
+        Insert: {
+          approval_at?: string | null
+          approval_by?: string | null
+          approval_note?: string | null
+          approval_state?: string | null
+          assigned_tech_id?: string | null
+          assigned_to?: string | null
+          cause?: string | null
+          complaint?: string | null
+          correction?: string | null
+          created_at?: string | null
+          description?: string | null
+          hold_reason?: string | null
+          id?: string
+          inspection_session_id?: string | null
+          job_type?: string | null
+          labor_time?: number | null
+          line_status?: string | null
+          notes?: string | null
+          on_hold_since?: string | null
+          parts?: string | null
+          parts_needed?: Json | null
+          parts_received?: Json | null
+          parts_required?: Json | null
+          priority?: number | null
+          punched_in_at?: string | null
+          punched_out_at?: string | null
+          shop_id?: string | null
+          status?: string | null
+          template_id?: string | null
+          tools?: string | null
+          updated_at?: string | null
+          urgency?: string | null
+          user_id?: string | null
+          vehicle_id?: string | null
+          work_order_id?: string | null
+        }
+        Update: {
+          approval_at?: string | null
+          approval_by?: string | null
+          approval_note?: string | null
+          approval_state?: string | null
+          assigned_tech_id?: string | null
+          assigned_to?: string | null
+          cause?: string | null
+          complaint?: string | null
+          correction?: string | null
+          created_at?: string | null
+          description?: string | null
+          hold_reason?: string | null
+          id?: string
+          inspection_session_id?: string | null
+          job_type?: string | null
+          labor_time?: number | null
+          line_status?: string | null
+          notes?: string | null
+          on_hold_since?: string | null
+          parts?: string | null
+          parts_needed?: Json | null
+          parts_received?: Json | null
+          parts_required?: Json | null
+          priority?: number | null
+          punched_in_at?: string | null
+          punched_out_at?: string | null
+          shop_id?: string | null
+          status?: string | null
+          template_id?: string | null
+          tools?: string | null
+          updated_at?: string | null
+          urgency?: string | null
+          user_id?: string | null
+          vehicle_id?: string | null
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_order_lines_assigned_tech_id_fkey"
+            columns: ["assigned_tech_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_lines_inspection_session_fk"
+            columns: ["inspection_session_id"]
+            isOneToOne: false
+            referencedRelation: "inspection_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_lines_inspection_session_id_fkey"
+            columns: ["inspection_session_id"]
+            isOneToOne: false
+            referencedRelation: "inspection_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_lines_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_lines_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_lines_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_lines_work_order_fk"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_lines_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      work_order_media: {
+        Row: {
+          created_at: string | null
+          id: string
+          kind: string | null
+          shop_id: string
+          url: string
+          user_id: string | null
+          work_order_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          kind?: string | null
+          shop_id: string
+          url: string
+          user_id?: string | null
+          work_order_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          kind?: string | null
+          shop_id?: string
+          url?: string
+          user_id?: string | null
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_order_media_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_media_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_media_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      work_order_part_allocations: {
+        Row: {
+          id: string
+          location_id: string
+          part_id: string
+          qty: number
+          stock_move_id: string | null
+          unit_cost: number
+          work_order_line_id: string
+        }
+        Insert: {
+          id?: string
+          location_id: string
+          part_id: string
+          qty: number
+          stock_move_id?: string | null
+          unit_cost?: number
+          work_order_line_id: string
+        }
+        Update: {
+          id?: string
+          location_id?: string
+          part_id?: string
+          qty?: number
+          stock_move_id?: string | null
+          unit_cost?: number
+          work_order_line_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_order_part_allocations_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_part_allocations_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_part_allocations_stock_move_id_fkey"
+            columns: ["stock_move_id"]
+            isOneToOne: false
+            referencedRelation: "stock_moves"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_part_allocations_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_lines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      work_order_parts: {
+        Row: {
+          created_at: string | null
+          id: string
+          part_id: string | null
+          quantity: number
+          shop_id: string | null
+          total_price: number | null
+          unit_price: number | null
+          work_order_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          part_id?: string | null
+          quantity?: number
+          shop_id?: string | null
+          total_price?: number | null
+          unit_price?: number | null
+          work_order_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          part_id?: string | null
+          quantity?: number
+          shop_id?: string | null
+          total_price?: number | null
+          unit_price?: number | null
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_order_parts_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_parts_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      work_orders: {
+        Row: {
+          approval_state: string | null
+          assigned_tech: string | null
+          created_at: string | null
+          custom_id: string | null
+          customer_approval_at: string | null
+          customer_approval_signature_path: string | null
+          customer_approval_signature_url: string | null
+          customer_approved_by: string | null
+          customer_id: string | null
+          customer_name: string | null
+          id: string
+          inspection_id: string | null
+          inspection_pdf_url: string | null
+          inspection_type: string | null
+          invoice_total: number | null
+          invoice_url: string | null
+          labor_total: number | null
+          notes: string | null
+          parts_total: number | null
+          quote: Json | null
+          quote_url: string | null
+          shop_id: string | null
+          status: string | null
+          type: string | null
+          updated_at: string | null
+          user_id: string | null
+          vehicle_color: string | null
+          vehicle_engine_hours: number | null
+          vehicle_id: string | null
+          vehicle_info: string | null
+          vehicle_mileage: number | null
+          vehicle_unit_number: string | null
+        }
+        Insert: {
+          approval_state?: string | null
+          assigned_tech?: string | null
+          created_at?: string | null
+          custom_id?: string | null
+          customer_approval_at?: string | null
+          customer_approval_signature_path?: string | null
+          customer_approval_signature_url?: string | null
+          customer_approved_by?: string | null
+          customer_id?: string | null
+          customer_name?: string | null
+          id?: string
+          inspection_id?: string | null
+          inspection_pdf_url?: string | null
+          inspection_type?: string | null
+          invoice_total?: number | null
+          invoice_url?: string | null
+          labor_total?: number | null
+          notes?: string | null
+          parts_total?: number | null
+          quote?: Json | null
+          quote_url?: string | null
+          shop_id?: string | null
+          status?: string | null
+          type?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          vehicle_color?: string | null
+          vehicle_engine_hours?: number | null
+          vehicle_id?: string | null
+          vehicle_info?: string | null
+          vehicle_mileage?: number | null
+          vehicle_unit_number?: string | null
+        }
+        Update: {
+          approval_state?: string | null
+          assigned_tech?: string | null
+          created_at?: string | null
+          custom_id?: string | null
+          customer_approval_at?: string | null
+          customer_approval_signature_path?: string | null
+          customer_approval_signature_url?: string | null
+          customer_approved_by?: string | null
+          customer_id?: string | null
+          customer_name?: string | null
+          id?: string
+          inspection_id?: string | null
+          inspection_pdf_url?: string | null
+          inspection_type?: string | null
+          invoice_total?: number | null
+          invoice_url?: string | null
+          labor_total?: number | null
+          notes?: string | null
+          parts_total?: number | null
+          quote?: Json | null
+          quote_url?: string | null
+          shop_id?: string | null
+          status?: string | null
+          type?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          vehicle_color?: string | null
+          vehicle_engine_hours?: number | null
+          vehicle_id?: string | null
+          vehicle_info?: string | null
+          vehicle_mileage?: number | null
+          vehicle_unit_number?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_orders_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_orders_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_orders_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_orders_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+    }
+    Views: {
+      shop_public_profiles: {
+        Row: {
+          city: string | null
+          geo_lat: number | null
+          geo_lng: number | null
+          id: string | null
+          images: string[] | null
+          logo_url: string | null
+          name: string | null
+          province: string | null
+          rating: number | null
+        }
+        Insert: {
+          city?: string | null
+          geo_lat?: number | null
+          geo_lng?: number | null
+          id?: string | null
+          images?: string[] | null
+          logo_url?: string | null
+          name?: string | null
+          province?: string | null
+          rating?: number | null
+        }
+        Update: {
+          city?: string | null
+          geo_lat?: number | null
+          geo_lng?: number | null
+          id?: string | null
+          images?: string[] | null
+          logo_url?: string | null
+          name?: string | null
+          province?: string | null
+          rating?: number | null
+        }
+        Relationships: []
+      }
+      shop_reviews_public: {
+        Row: {
+          comment: string | null
+          created_at: string | null
+          id: string | null
+          rating: number | null
+          replied_at: string | null
+          shop_id: string | null
+          shop_owner_reply: string | null
+        }
+        Insert: {
+          comment?: string | null
+          created_at?: string | null
+          id?: string | null
+          rating?: number | null
+          replied_at?: string | null
+          shop_id?: string | null
+          shop_owner_reply?: never
+        }
+        Update: {
+          comment?: string | null
+          created_at?: string | null
+          id?: string | null
+          rating?: number | null
+          replied_at?: string | null
+          shop_id?: string | null
+          shop_owner_reply?: never
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_reviews_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_reviews_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      v_part_stock: {
+        Row: {
+          location_id: string | null
+          part_id: string | null
+          qty_available: number | null
+          qty_on_hand: number | null
+          qty_reserved: number | null
+        }
+        Insert: {
+          location_id?: string | null
+          part_id?: string | null
+          qty_available?: never
+          qty_on_hand?: number | null
+          qty_reserved?: number | null
+        }
+        Update: {
+          location_id?: string | null
+          part_id?: string | null
+          qty_available?: never
+          qty_on_hand?: number | null
+          qty_reserved?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "part_stock_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "stock_locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "part_stock_part_id_fkey"
+            columns: ["part_id"]
+            isOneToOne: false
+            referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      v_shift_rollups: {
+        Row: {
+          shift_id: string | null
+          user_id: string | null
+          worked_seconds: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "punch_events_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "tech_shifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "punch_events_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+    }
+    Functions: {
+      _ensure_same_shop: {
+        Args: { _wo: string }
+        Returns: boolean
+      }
+      agent_can_start: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      apply_stock_move: {
+        Args:
+          | {
+              p_loc: string
+              p_part: string
+              p_qty: number
+              p_reason: Database["public"]["Enums"]["stock_move_reason"]
+              p_ref_id?: string
+              p_ref_kind?: string
+            }
+          | {
+              p_loc: string
+              p_part: string
+              p_qty: number
+              p_reason: string
+              p_ref_id: string
+              p_ref_kind: string
+            }
+        Returns: string
+      }
+      approve_lines: {
+        Args: {
+          _approved_ids: string[]
+          _approver?: string
+          _decline_unchecked?: boolean
+          _declined_ids?: string[]
+          _wo: string
+        }
+        Returns: undefined
+      }
+      can_manage_profile: {
+        Args: { target_profile_id: string }
+        Returns: boolean
+      }
+      chat_participants_key: {
+        Args: { _recipients: string[]; _sender: string }
+        Returns: string
+      }
+      chat_post_message: {
+        Args: { _chat_id?: string; _content: string; _recipients: string[] }
+        Returns: string
+      }
+      check_plan_limit: {
+        Args: { _feature: string }
+        Returns: boolean
+      }
+      clear_auth: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      current_shop_id: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      first_segment_uuid: {
+        Args: { p: string }
+        Returns: string
+      }
+      gtrgm_compress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gtrgm_decompress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gtrgm_in: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gtrgm_options: {
+        Args: { "": unknown }
+        Returns: undefined
+      }
+      gtrgm_out: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      has_column: {
+        Args: { _col: string; _table: unknown }
+        Returns: boolean
+      }
+      increment_user_limit: {
+        Args: { increment_by?: number; input_shop_id: string }
+        Returns: undefined
+      }
+      is_customer: {
+        Args: { _customer: string }
+        Returns: boolean
+      }
+      is_shop_member: {
+        Args: { p_shop: string }
+        Returns: boolean
+      }
+      is_staff_for_shop: {
+        Args: { _shop: string }
+        Returns: boolean
+      }
+      mark_active: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      seed_default_hours: {
+        Args: { shop_id: string }
+        Returns: undefined
+      }
+      send_for_approval: {
+        Args: { _line_ids: string[]; _set_wo_status?: boolean; _wo: string }
+        Returns: undefined
+      }
+      set_authenticated: {
+        Args: { uid: string }
+        Returns: undefined
+      }
+      set_current_shop_id: {
+        Args: { p_shop_id: string }
+        Returns: undefined
+      }
+      set_last_active_now: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      set_limit: {
+        Args: { "": number }
+        Returns: number
+      }
+      shop_id_for: {
+        Args: { uid: string }
+        Returns: string
+      }
+      show_limit: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      show_trgm: {
+        Args: { "": string }
+        Returns: string[]
+      }
+    }
+    Enums: {
+      job_type_enum: "diagnosis" | "inspection" | "maintenance" | "repair"
+      plan_t: "free" | "diy" | "pro" | "pro_plus"
+      punch_event_type:
+        | "start"
+        | "break_start"
+        | "break_end"
+        | "lunch_start"
+        | "lunch_end"
+        | "end"
+      shift_status: "active" | "ended"
+      stock_move_reason:
+        | "receive"
+        | "adjust"
+        | "consume"
+        | "return"
+        | "transfer_out"
+        | "transfer_in"
+        | "wo_allocate"
+        | "wo_release"
+        | "seed"
+      user_role_enum:
+        | "owner"
+        | "admin"
+        | "manager"
+        | "mechanic"
+        | "advisor"
+        | "parts"
+        | "customer"
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
+
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {
+      job_type_enum: ["diagnosis", "inspection", "maintenance", "repair"],
+      plan_t: ["free", "diy", "pro", "pro_plus"],
+      punch_event_type: [
+        "start",
+        "break_start",
+        "break_end",
+        "lunch_start",
+        "lunch_end",
+        "end",
+      ],
+      shift_status: ["active", "ended"],
+      stock_move_reason: [
+        "receive",
+        "adjust",
+        "consume",
+        "return",
+        "transfer_out",
+        "transfer_in",
+        "wo_allocate",
+        "wo_release",
+        "seed",
+      ],
+      user_role_enum: [
+        "owner",
+        "admin",
+        "manager",
+        "mechanic",
+        "advisor",
+        "parts",
+        "customer",
+      ],
+    },
+  },
+} as const
+
+

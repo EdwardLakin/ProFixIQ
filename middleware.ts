@@ -1,3 +1,4 @@
+// middleware.ts
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
@@ -25,6 +26,8 @@ export async function middleware(req: NextRequest) {
   const supabase = createMiddlewareClient<Database>({ req, res });
 
   const { pathname, search } = req.nextUrl;
+
+  // Skip static assets + API routes
   if (isAssetPath(pathname) || pathname.startsWith("/api")) return res;
 
   const {
@@ -40,7 +43,7 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/sign-in") ||
     pathname.startsWith("/portal");
 
-  // we will treat EITHER completed_onboarding = true OR shop_id IS NOT NULL
+  // treat EITHER completed_onboarding = true OR shop_id IS NOT NULL
   // as "this user is allowed into the app"
   let completed = false;
   if (session?.user) {
@@ -55,14 +58,13 @@ export async function middleware(req: NextRequest) {
       const hasShop = !!profile?.shop_id;
       const didOnboarding = !!profile?.completed_onboarding;
 
-      // 👇 THIS is the key change
       completed = didOnboarding || hasShop;
     } catch {
       completed = false;
     }
   }
 
-  // Signed-in user on landing → go to dashboard or onboarding
+  // Signed-in user hits landing → redirect to dashboard or onboarding
   if (pathname === "/" && session?.user) {
     return withSupabaseCookies(
       res,
@@ -72,9 +74,9 @@ export async function middleware(req: NextRequest) {
     );
   }
 
-  // Public routes
+  // Public routes (marketing / auth / portal)
   if (isPublic) {
-    // if you're signed in and try to hit /sign-in, bump to dashboard/onboarding
+    // If you're signed in and try to hit /sign-in or /signup → bounce to app
     if (
       session?.user &&
       (pathname.startsWith("/sign-in") || pathname.startsWith("/signup"))
@@ -87,7 +89,7 @@ export async function middleware(req: NextRequest) {
       );
     }
 
-    // don't let already-complete users sit on /onboarding
+    // Don't let already-complete users sit on /onboarding
     if (pathname.startsWith("/onboarding") && session?.user && completed) {
       return withSupabaseCookies(
         res,
@@ -98,14 +100,18 @@ export async function middleware(req: NextRequest) {
     return res;
   }
 
-  // Protected from here
+  // ---------------------------------------------------------------------------
+  // Protected routes from here (dashboard, work orders, inspections, mobile…)
+  // ---------------------------------------------------------------------------
+
+  // Not signed in → send to sign-in with redirect
   if (!session?.user) {
     const login = new URL("/sign-in", req.url);
     login.searchParams.set("redirect", pathname + search);
     return withSupabaseCookies(res, NextResponse.redirect(login));
   }
 
-  // force onboarding ONLY if we know they are NOT completed and they have no shop_id
+  // Force onboarding if they are NOT completed and have no shop_id
   if (completed === false && !pathname.startsWith("/onboarding")) {
     return withSupabaseCookies(
       res,
@@ -113,6 +119,7 @@ export async function middleware(req: NextRequest) {
     );
   }
 
+  // Normal case: authed + completed → continue
   return res;
 }
 
@@ -129,5 +136,6 @@ export const config = {
     "/dashboard/:path*",
     "/work-orders/:path*",
     "/inspections/:path*",
+    "/mobile/:path*",      // 🔹 NEW: protect mobile app routes
   ],
 };
