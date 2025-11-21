@@ -43,70 +43,80 @@ export default function PortalSignInPage() {
   };
 
   return (
-    <div className="mx-auto flex max-w-md flex-col gap-6 rounded-2xl border border-neutral-800 bg-neutral-950/80 p-6 shadow-xl shadow-black/40">
-      <header className="space-y-1 text-center">
-        <h1 className="text-2xl font-blackops text-orange-400">
-          Sign in to your portal
-        </h1>
-        <p className="text-sm text-neutral-400">
-          Use the email and password you created when you signed up.
-        </p>
-      </header>
+    <div className="min-h-screen bg-gradient-to-b from-black via-neutral-950 to-black px-4 text-white">
+      <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center">
+        <div className="w-full rounded-2xl border border-neutral-800 bg-neutral-950/90 p-6 shadow-xl shadow-black/40 sm:p-8">
+          {/* Header */}
+          <header className="mb-6 space-y-2 text-center">
+            <div className="inline-flex items-center rounded-full border border-neutral-800 bg-neutral-900 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-neutral-400">
+              Customer Portal
+            </div>
+            <h1 className="mt-2 text-3xl font-blackops text-orange-400 sm:text-4xl">
+              Portal sign in
+            </h1>
+            <p className="text-xs text-neutral-400 sm:text-sm">
+              Use the email and password you created when you signed up.
+            </p>
+          </header>
 
-      <form onSubmit={handleSignIn} className="space-y-4">
-        <div>
-          <label className="mb-1 block text-xs font-medium uppercase tracking-[0.14em] text-neutral-400">
-            Email
-          </label>
-          <input
-            type="email"
-            autoComplete="email"
-            placeholder="you@example.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="input w-full"
-            required
-          />
+          {/* Error */}
+          {error && (
+            <p className="mb-3 rounded-lg border border-red-500/60 bg-red-950/60 px-3 py-2 text-xs text-red-100">
+              {error}
+            </p>
+          )}
+
+          {/* Form */}
+          <form onSubmit={handleSignIn} className="space-y-4">
+            <div className="space-y-1 text-sm">
+              <label className="block text-xs font-medium text-neutral-300">
+                Email
+              </label>
+              <input
+                type="email"
+                autoComplete="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-0"
+                required
+              />
+            </div>
+
+            <div className="space-y-1 text-sm">
+              <label className="block text-xs font-medium text-neutral-300">
+                Password
+              </label>
+              <input
+                type="password"
+                autoComplete="current-password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none focus:ring-0"
+                required
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="mt-2 w-full rounded-md bg-orange-500 py-2.5 text-center text-sm font-blackops text-black tracking-wide transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {loading ? "Signing in…" : "Sign in"}
+            </button>
+          </form>
+
+          <div className="mt-6 flex items-center justify-between text-[11px] text-neutral-500">
+            <span>Need an account?</span>
+            <Link
+              href="/portal/signup"
+              className="font-medium text-orange-400 hover:text-orange-300 hover:underline"
+            >
+              Sign up
+            </Link>
+          </div>
         </div>
-
-        <div>
-          <label className="mb-1 block text-xs font-medium uppercase tracking-[0.14em] text-neutral-400">
-            Password
-          </label>
-          <input
-            type="password"
-            autoComplete="current-password"
-            placeholder="••••••••"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="input w-full"
-            required
-          />
-        </div>
-
-        {error && (
-          <p className="rounded border border-red-600/50 bg-red-900/30 px-3 py-2 text-xs text-red-200">
-            {error}
-          </p>
-        )}
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="btn mt-2 w-full justify-center bg-orange-600 text-sm font-semibold text-white hover:bg-orange-500 disabled:opacity-60"
-        >
-          {loading ? "Signing in…" : "Sign In"}
-        </button>
-      </form>
-
-      <div className="flex items-center justify-between text-xs text-neutral-400">
-        <span>Need an account?</span>
-        <Link
-          href="/portal/signup"
-          className="font-medium text-orange-400 hover:text-orange-300"
-        >
-          Sign up
-        </Link>
       </div>
     </div>
   );

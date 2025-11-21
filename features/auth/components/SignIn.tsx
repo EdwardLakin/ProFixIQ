@@ -293,6 +293,23 @@ export default function AuthPage() {
             </button>
           </form>
 
+          {/* NEW: Companion sign-in link (only for sign-in mode) */}
+          {isSignIn && (
+            <div className="mt-4 text-center">
+              <button
+                type="button"
+                onClick={() => router.push("/sign-in?redirect=/mobile")}
+                className="text-[11px] font-medium text-orange-400 hover:text-orange-300 hover:underline underline-offset-2"
+                disabled={loading}
+              >
+                Sign in to mobile companion
+              </button>
+              <p className="mt-1 text-[10px] text-neutral-500">
+                Opens the tech-friendly mobile layout for phones and tablets.
+              </p>
+            </div>
+          )}
+
           <div className="mt-6 text-center text-[11px] text-neutral-500">
             <p>
               By continuing you agree to our{" "}
