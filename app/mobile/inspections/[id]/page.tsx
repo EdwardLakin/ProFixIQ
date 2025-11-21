@@ -180,6 +180,14 @@ export default function MobileInspectionDetailPage({
                   "Mobile inspection editing is coming soon. Use the desktop view to complete this inspection."}
               </p>
             </div>
+
+            {/* Run inspection (mobile runner) */}
+            <Link
+              href={`/mobile/inspections/${id}/run`}
+              className="block w-full rounded-lg bg-accent px-4 py-2 text-center text-sm font-semibold text-black hover:bg-accent/90"
+            >
+              Run inspection
+            </Link>
           </div>
         )}
       </div>
