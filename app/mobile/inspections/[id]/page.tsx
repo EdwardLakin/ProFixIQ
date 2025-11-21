@@ -10,7 +10,7 @@ import { MobileShell } from "components/layout/MobileShell";
 
 type DB = Database;
 
-type InspectionDetail = {
+type InspectionDetailRow = {
   id: string;
   custom_id?: string | null;
   status?: string | null;
@@ -45,7 +45,8 @@ export default function MobileInspectionDetailPage({
   const { id } = params;
   const router = useRouter();
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
-  const [inspection, setInspection] = useState<InspectionDetail | null>(null);
+
+  const [inspection, setInspection] = useState<InspectionDetailRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
@@ -64,10 +65,10 @@ export default function MobileInspectionDetailPage({
 
         if (error) throw error;
         if (!data) {
-          setErr("Inspection not found.");
           setInspection(null);
+          setErr("Inspection not found.");
         } else {
-          setInspection(data as InspectionDetail);
+          setInspection(data as InspectionDetailRow);
         }
       } catch (e) {
         const msg =
@@ -148,7 +149,7 @@ export default function MobileInspectionDetailPage({
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Basic context */}
+            {/* Context */}
             <div className="rounded-lg border border-neutral-800 bg-neutral-950/80 px-3 py-3 text-sm">
               <div className="mb-1 text-[0.7rem] uppercase tracking-[0.16em] text-neutral-500">
                 Context
@@ -169,12 +170,12 @@ export default function MobileInspectionDetailPage({
               </div>
             </div>
 
-            {/* Summary */}
+            {/* Summary / notes */}
             <div className="rounded-lg border border-neutral-800 bg-neutral-950/80 px-3 py-3 text-sm">
               <div className="mb-1 text-[0.7rem] uppercase tracking-[0.16em] text-neutral-500">
                 Summary
               </div>
-              <p className="text-xs text-neutral-200 whitespace-pre-line">
+              <p className="whitespace-pre-line text-xs text-neutral-200">
                 {inspection.notes_summary ??
                   "Mobile inspection editing is coming soon. Use the desktop view to complete this inspection."}
               </p>
