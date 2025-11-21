@@ -293,6 +293,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <NavItem href="/work-orders" label="Work Orders" />
               <NavItem href="/inspections" label="Inspections" />
               <NavItem href="/chat" label="Messages" />
+              <NavItem href="/mobile/planner" label="Planner" />
 
               {/* Mobile sign-out */}
               <button
