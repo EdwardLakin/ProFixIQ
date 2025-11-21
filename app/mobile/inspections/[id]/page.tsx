@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { format } from "date-fns";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
@@ -37,13 +37,11 @@ function statusChip(status: string | null | undefined): string {
   return `${BADGE_BASE} ${extra}`;
 }
 
-export default function MobileInspectionDetailPage({
-  params,
-}: {
-  params: { id: string };
-}) {
-  const { id } = params;
+export default function MobileInspectionDetailPage() {
   const router = useRouter();
+  const params = useParams<{ id: string }>();
+  const id = params.id;
+
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   const [inspection, setInspection] = useState<InspectionDetailRow | null>(null);
@@ -51,6 +49,8 @@ export default function MobileInspectionDetailPage({
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!id) return;
+
     (async () => {
       setLoading(true);
       setErr(null);
