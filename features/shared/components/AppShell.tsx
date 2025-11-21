@@ -19,6 +19,7 @@ const NON_APP_ROUTES = [
   "/sign-up",
   "/coming-soon",
   "/auth",
+  "/mobile",
 ];
 
 const ActionButton = ({

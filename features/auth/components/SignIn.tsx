@@ -293,12 +293,12 @@ export default function AuthPage() {
             </button>
           </form>
 
-          {/* NEW: Companion sign-in link (only for sign-in mode) */}
+          {/* Companion sign-in link (only for sign-in mode) */}
           {isSignIn && (
             <div className="mt-4 text-center">
               <button
                 type="button"
-                onClick={() => router.push("/sign-in?redirect=/mobile")}
+                onClick={() => router.push("/mobile/sign-in")}
                 className="text-[11px] font-medium text-orange-400 hover:text-orange-300 hover:underline underline-offset-2"
                 disabled={loading}
               >
