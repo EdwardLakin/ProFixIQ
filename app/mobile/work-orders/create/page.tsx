@@ -8,63 +8,72 @@
  * - Vertical-first flow
  * - Large tap targets
  * - No modals
- * - Image-first / VIN-first quick actions
+ * - Quick customer/vehicle capture
  */
 
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { v4 as uuidv4 } from "uuid";
 
-import { MobileShell } from "components/layout/MobileShell";
+import type {
+  MobileCustomer,
+  MobileVehicle,
+} from "@/features/work-orders/mobile/types";
 
-// Mobile components (stubs you’ll fill next)
+import { MobileShell } from "components/layout/MobileShell";
 import { MobileCustomerVehicleForm } from "@/features/work-orders/mobile/MobileCustomerVehicleForm";
-import { MobileJobLineAdd } from "@/features/work-orders/mobile/MobileJobLineAdd";
 import { MobileWorkOrderLines } from "@/features/work-orders/mobile/MobileWorkOrderLines";
+import { MobileJobLineAdd } from "@/features/work-orders/mobile/MobileJobLineAdd";
 
 import { useWorkOrderDraft } from "app/work-orders/state/useWorkOrderDraft";
-import { useCustomerVehicleDraft } from "app/work-orders/state/useCustomerVehicleDraft";
 
 type DB = Database;
+type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
+type WorkOrderLineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
 
 export default function MobileCreateWorkOrderPage() {
   const router = useRouter();
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
-
   const draft = useWorkOrderDraft();
-  const cvDraft = useCustomerVehicleDraft();
 
-  const [wo, setWo] = useState<any>(null);
-  const [customer, setCustomer] = useState<any>({
+  const [wo, setWo] = useState<WorkOrderRow | null>(null);
+
+  const [customer, setCustomer] = useState<MobileCustomer>({
+    id: null,
     first_name: null,
     last_name: null,
     phone: null,
     email: null,
   });
 
-  const [vehicle, setVehicle] = useState<any>({
+  const [vehicle, setVehicle] = useState<MobileVehicle>({
+    id: null,
     vin: null,
     year: null,
     make: null,
     model: null,
     license_plate: null,
     mileage: null,
+    color: null,
   });
 
-  const [lines, setLines] = useState<any[]>([]);
+  const [lines, setLines] = useState<WorkOrderLineRow[]>([]);
   const [loading, setLoading] = useState(false);
 
   // ---------------------------------------------------------------------------
-  // Auto-create placeholder WO (same logic as desktop)
+  // Auto-create placeholder WO (same logic as desktop Create page)
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    const createAuto = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+    void (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
       if (!user?.id) return;
 
-      // 1. get or create placeholder customer
+      // Get shop_id
       const { data: shopProfile } = await supabase
         .from("profiles")
         .select("shop_id")
@@ -74,6 +83,7 @@ export default function MobileCreateWorkOrderPage() {
       const shopId = shopProfile?.shop_id ?? null;
       if (!shopId) return;
 
+      // Placeholder customer
       const { data: customers } = await supabase
         .from("customers")
         .select("*")
@@ -96,7 +106,9 @@ export default function MobileCreateWorkOrderPage() {
             .single()
         ).data;
 
-      // 2. placeholder vehicle
+      if (!placeholderCustomer) return;
+
+      // Placeholder vehicle
       const { data: vehicles } = await supabase
         .from("vehicles")
         .select("*")
@@ -119,7 +131,9 @@ export default function MobileCreateWorkOrderPage() {
             .single()
         ).data;
 
-      // 3. auto-create WO
+      if (!placeholderVehicle) return;
+
+      // Auto-create WO
       const initials = "WO";
       const newId = uuidv4();
 
@@ -138,40 +152,56 @@ export default function MobileCreateWorkOrderPage() {
         .select("*")
         .single();
 
-      setWo(inserted);
-    };
+      if (inserted) {
+        setWo(inserted);
 
-    createAuto();
+        setCustomer((prev) => ({
+          ...prev,
+          id: placeholderCustomer.id,
+          first_name: placeholderCustomer.first_name ?? prev.first_name,
+          last_name: placeholderCustomer.last_name ?? prev.last_name,
+        }));
+
+        setVehicle((prev) => ({
+          ...prev,
+          id: placeholderVehicle.id,
+          make: placeholderVehicle.make ?? prev.make,
+          model: placeholderVehicle.model ?? prev.model,
+        }));
+      }
+    })();
   }, [supabase]);
 
-  // Fetch lines
+  // ---------------------------------------------------------------------------
+  // Fetch lines for this WO
+  // ---------------------------------------------------------------------------
   const fetchLines = useCallback(async () => {
     if (!wo?.id) return;
+
     const { data } = await supabase
       .from("work_order_lines")
       .select("*")
       .eq("work_order_id", wo.id)
       .order("created_at");
-    setLines(data ?? []);
+
+    setLines((data ?? []) as WorkOrderLineRow[]);
   }, [wo?.id, supabase]);
 
   useEffect(() => {
     if (!wo?.id) return;
-    fetchLines();
+    void fetchLines();
   }, [wo?.id, fetchLines]);
 
   // ---------------------------------------------------------------------------
-  // Form submission
+  // Submit (go to full WO details)
   // ---------------------------------------------------------------------------
   const handleSubmit = async () => {
     if (!wo?.id) return;
     setLoading(true);
 
     try {
-      // Reuse desktop logic: draft → DB sync
       if (draft?.customer || draft?.vehicle) {
-        // apply draft to WO
-        // (desktop logic here reused)
+        // TODO: replicate desktop logic here if needed
       }
 
       router.push(`/mobile/work-orders/${wo.id}`);
@@ -181,26 +211,22 @@ export default function MobileCreateWorkOrderPage() {
   };
 
   // ---------------------------------------------------------------------------
-  // UI — mobile flow (vertical stack)
+  // UI
   // ---------------------------------------------------------------------------
-
   return (
     <MobileShell>
       <div className="px-4 py-4 space-y-6">
-
         {/* Header */}
         <div>
           <h1 className="text-xl font-blackops text-orange-400">
             Create Work Order
           </h1>
           {wo?.custom_id && (
-            <p className="text-xs text-neutral-400 mt-1">
-              WO#: {wo.custom_id}
-            </p>
+            <p className="mt-1 text-xs text-neutral-400">WO#: {wo.custom_id}</p>
           )}
         </div>
 
-        {/* Customer + Vehicle */}
+        {/* Customer + Vehicle Form */}
         <MobileCustomerVehicleForm
           wo={wo}
           customer={customer}
@@ -210,32 +236,33 @@ export default function MobileCreateWorkOrderPage() {
           supabase={supabase}
         />
 
-        {/* Lines */}
+        {/* Job Lines */}
         <MobileWorkOrderLines
           lines={lines}
-          workOrderId={wo?.id}
-          onOpenInspection={() => {}}
+          workOrderId={wo?.id ?? null}
           onDelete={async (lineId) => {
             await supabase
               .from("work_order_lines")
               .delete()
               .eq("id", lineId);
-            fetchLines();
+
+            await fetchLines();
           }}
         />
 
-        {/* Add Line */}
+        {/* Add a Line */}
         <MobileJobLineAdd
-          workOrderId={wo?.id}
-          vehicleId={vehicle?.id ?? null}
+          workOrderId={wo?.id ?? null}
+          vehicleId={vehicle.id}
+          defaultJobType="diagnosis"
           onCreated={fetchLines}
         />
 
-        {/* Submit */}
+        {/* Continue */}
         <button
           disabled={loading}
           onClick={handleSubmit}
-          className="w-full bg-orange-500 text-black font-semibold py-3 rounded-lg active:opacity-80"
+          className="w-full rounded-lg bg-orange-500 py-3 font-semibold text-black active:opacity-80"
         >
           {loading ? "Saving..." : "Approve & Continue"}
         </button>
