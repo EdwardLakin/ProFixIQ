@@ -4,11 +4,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { MobileShell } from "components/layout/MobileShell";
 
-type RunnerProps = {
+export default function MobileInspectionRunnerPage({
+  params,
+}: {
   params: { id: string };
-};
-
-export default function MobileInspectionRunnerPage({ params }: RunnerProps) {
+}) {
   const router = useRouter();
   const { id } = params;
 
