@@ -21,112 +21,52 @@ import type {
   InspectionStatus,
   InspectionSection,
   InspectionSession,
-  SessionCustomer,
-  SessionVehicle,
   QuoteLineItem,
 } from "@inspections/lib/inspection/types";
 
-import AirCornerGrid from "@inspections/lib/inspection/ui/AirCornerGrid";
+import CornerGrid from "@inspections/lib/inspection/ui/CornerGrid";
 import SectionDisplay from "@inspections/lib/inspection/SectionDisplay";
 import { InspectionFormCtx } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import { SaveInspectionButton } from "@inspections/components/inspection/SaveInspectionButton";
 import FinishInspectionButton from "@inspections/components/inspection/FinishInspectionButton";
-import CustomerVehicleHeader from "@inspections/lib/inspection/ui/CustomerVehicleHeader";
-
-import { buildAirAxleItems } from "@inspections/lib/inspection/builders/addAxleHelpers";
 import { startVoiceRecognition } from "@inspections/lib/inspection/voiceControl";
 import PageShell from "@/features/shared/components/PageShell";
 import { Button } from "@shared/components/ui/Button";
 
-/* ------------------------------ Header adapters ------------------------------ */
-type HeaderCustomer = {
-  first_name: string;
-  last_name: string;
-  phone: string;
-  email: string;
-  address: string;
-  city: string;
-  province: string;
-  postal_code: string;
+/* ---------- Props for screen usage (modal + page) ---------- */
+type ScreenProps = {
+  embed?: boolean;
+  template?: string;
+  params?: Record<string, string | number | boolean | null | undefined>;
 };
 
-type HeaderVehicle = {
-  year: string;
-  make: string;
-  model: string;
-  vin: string;
-  license_plate: string;
-  mileage: string;
-  color: string;
-  unit_number: string;
-  engine_hours: string;
-};
-
-function toHeaderCustomer(c?: SessionCustomer | null): HeaderCustomer {
+/* ---------- Sections ---------- */
+function buildHydraulicMeasurementsSection(): InspectionSection {
   return {
-    first_name: c?.first_name ?? "",
-    last_name: c?.last_name ?? "",
-    phone: c?.phone ?? "",
-    email: c?.email ?? "",
-    address: c?.address ?? "",
-    city: c?.city ?? "",
-    province: c?.province ?? "",
-    postal_code: c?.postal_code ?? "",
-  };
-}
-
-function toHeaderVehicle(v?: SessionVehicle | null): HeaderVehicle {
-  return {
-    year: v?.year ?? "",
-    make: v?.make ?? "",
-    model: v?.model ?? "",
-    vin: v?.vin ?? "",
-    license_plate: v?.license_plate ?? "",
-    mileage: v?.mileage ?? "",
-    color: v?.color ?? "",
-    unit_number: v?.unit_number ?? "",
-    engine_hours: v?.engine_hours ?? "",
-  };
-}
-
-/* ------------------------------ Section builders (AIR) ------------------------------ */
-function buildAirCornerMeasurementsSection(): InspectionSection {
-  return {
-    title: "Measurements (Air – Corner Checks)",
+    title: "Measurements (Hydraulic)",
     items: [
-      { item: "Steer 1 Left Tire Pressure", unit: "psi", value: "" },
-      { item: "Steer 1 Right Tire Pressure", unit: "psi", value: "" },
-
-      { item: "Steer 1 Left Tread Depth", unit: "mm", value: "" },
-      { item: "Steer 1 Right Tread Depth", unit: "mm", value: "" },
-
-      { item: "Steer 1 Left Lining/Shoe Thickness", unit: "mm", value: "" },
-      { item: "Steer 1 Right Lining/Shoe Thickness", unit: "mm", value: "" },
-
-      { item: "Steer 1 Left Drum/Rotor Condition", unit: "", value: "" },
-      { item: "Steer 1 Right Drum/Rotor Condition", unit: "", value: "" },
-
-      { item: "Steer 1 Left Push Rod Travel", unit: "in", value: "" },
-      { item: "Steer 1 Right Push Rod Travel", unit: "in", value: "" },
+      { item: "LF Tire Pressure", unit: "psi", value: "" },
+      { item: "RF Tire Pressure", unit: "psi", value: "" },
+      { item: "LR Tire Pressure", unit: "psi", value: "" },
+      { item: "RR Tire Pressure", unit: "psi", value: "" },
+      { item: "LF Tire Tread", unit: "mm", value: "" },
+      { item: "RF Tire Tread", unit: "mm", value: "" },
+      { item: "LR Tire Tread (Outer)", unit: "mm", value: "" },
+      { item: "LR Tire Tread (Inner)", unit: "mm", value: "" },
+      { item: "RR Tire Tread (Outer)", unit: "mm", value: "" },
+      { item: "RR Tire Tread (Inner)", unit: "mm", value: "" },
+      { item: "LF Brake Pad Thickness", unit: "mm", value: "" },
+      { item: "RF Brake Pad Thickness", unit: "mm", value: "" },
+      { item: "LR Brake Pad Thickness", unit: "mm", value: "" },
+      { item: "RR Brake Pad Thickness", unit: "mm", value: "" },
+      { item: "LF Rotor Condition / Thickness", unit: "mm", value: "" },
+      { item: "RF Rotor Condition / Thickness", unit: "mm", value: "" },
+      { item: "LR Rotor Condition / Thickness", unit: "mm", value: "" },
+      { item: "RR Rotor Condition / Thickness", unit: "mm", value: "" },
+      { item: "Wheel Torque (after road test)", unit: "ft·lb", value: "" },
     ],
   };
 }
-
-function buildAirSystemMeasurementsSection(): InspectionSection {
-  return {
-    title: "Air System Measurements",
-    items: [
-      { item: "Air Build Time (90→120)", unit: "sec", value: "" },
-      { item: "Gov Cut-In", unit: "psi", value: "" },
-      { item: "Gov Cut-Out", unit: "psi", value: "" },
-      { item: "Leak Rate @ Cut-Out", unit: "psi/min", value: "" },
-      { item: "Low Air Warning Activates", unit: "psi", value: "" },
-      { item: "Compressor Cut-Out Ref", unit: "psi", value: "" },
-      { item: "Torque Reference", unit: "ft·lb", value: "" },
-    ],
-  };
-}
-
 function buildLightsSection(): InspectionSection {
   return {
     title: "Lighting & Reflectors",
@@ -143,27 +83,40 @@ function buildLightsSection(): InspectionSection {
     ],
   };
 }
-
+function buildBrakesSection(): InspectionSection {
+  return {
+    title: "Brakes",
+    items: [
+      { item: "Front brake pads" },
+      { item: "Rear brake pads" },
+      { item: "Brake fluid level" },
+      { item: "Brake lines and hoses" },
+      { item: "ABS wiring / sensors" },
+      { item: "Brake warning lights" },
+    ],
+  };
+}
 function buildSuspensionSection(): InspectionSection {
   return {
-    title: "Suspension / Steering",
+    title: "Suspension",
     items: [
       { item: "Front springs (coil/leaf)" },
       { item: "Rear springs (coil/leaf)" },
       { item: "Shocks / struts" },
       { item: "Control arms / ball joints" },
       { item: "Sway bar bushings / links" },
-      { item: "Tie-rods / drag link / steering gear leaks" },
     ],
   };
 }
-
 function buildDrivelineSection(): InspectionSection {
   return {
-    title: "Driveline / Axles",
+    title: "Driveline",
     items: [
       { item: "Driveshaft / U-joints" },
       { item: "Center support bearing" },
+      { item: "CV shafts / joints" },
+      { item: "Transmission leaks / mounts" },
+      { item: "Transfer case leaks / mounts" },
       { item: "Slip yokes / seals" },
       { item: "Axle seals / leaks" },
       { item: "Differential leaks / play" },
@@ -171,72 +124,59 @@ function buildDrivelineSection(): InspectionSection {
   };
 }
 
-/* ------------------------------ Units helpers (AIR) ------------------------------ */
-function unitForAir(label: string, mode: "metric" | "imperial"): string {
+/* ---------- Units helpers ---------- */
+function unitForHydraulic(label: string, mode: "metric" | "imperial"): string {
   const l = label.toLowerCase();
-  if (l.includes("tire pressure")) return mode === "imperial" ? "psi" : "kPa";
-  if (l.includes("tread")) return mode === "metric" ? "mm" : "in";
-  if (l.includes("lining") || l.includes("shoe")) return mode === "metric" ? "mm" : "in";
-  if (l.includes("drum") || l.includes("rotor")) return mode === "metric" ? "mm" : "in";
-  if (l.includes("push rod")) return mode === "metric" ? "mm" : "in";
+  if (l.includes("pressure")) return mode === "imperial" ? "psi" : "kPa";
+  if (l.includes("tire tread")) return mode === "metric" ? "mm" : "in";
+  if (l.includes("pad thickness")) return mode === "metric" ? "mm" : "in";
+  if (l.includes("rotor")) return mode === "metric" ? "mm" : "in";
   if (l.includes("torque")) return mode === "metric" ? "N·m" : "ft·lb";
   return "";
 }
-
-function applyUnitsAir(
+function applyUnitsHydraulic(
   sections: InspectionSection[],
   mode: "metric" | "imperial"
 ): InspectionSection[] {
   return sections.map((s) => {
-    const isCorner = (s.title || "").toLowerCase().includes("corner");
-    const isAirMeas = (s.title || "").toLowerCase().includes("air system");
-
-    if (isCorner) {
+    if ((s.title || "").toLowerCase().includes("measurements")) {
       const items = s.items.map((it) => ({
         ...it,
-        unit: unitForAir(it.item ?? "", mode) || it.unit || "",
+        unit: unitForHydraulic(it.item ?? "", mode) || it.unit || "",
       }));
       return { ...s, items };
     }
-
-    if (isAirMeas) {
-      const items = s.items.map((it) => {
-        const label = (it.item ?? "").toLowerCase();
-        if (label.includes("build time")) return { ...it, unit: "sec" };
-        if (label.includes("leak"))
-          return { ...it, unit: mode === "metric" ? "kPa/min" : "psi/min" };
-        if (label.includes("gov") || label.includes("warning") || label.includes("compressor"))
-          return { ...it, unit: mode === "metric" ? "kPa" : "psi" };
-        if (label.includes("torque")) return { ...it, unit: mode === "metric" ? "N·m" : "ft·lb" };
-        return it;
-      });
-      return { ...s, items };
-    }
-
     return s;
   });
 }
 
-/* ------------------------------ Page (Screen) ------------------------------ */
-export default function Maintenance50AirPage(): JSX.Element {
+/* ---------- Screen (component) ---------- */
+export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
   const searchParams = useSearchParams();
+  const p = props.params ?? {};
   const rootRef = useRef<HTMLDivElement | null>(null);
 
-  const isEmbed = useMemo(() => {
-    const flag =
-      ["1", "true", "yes"].includes(
-        (searchParams.get("embed") || searchParams.get("compact") || "").toLowerCase()
-      );
-    const inIframe =
-      typeof window !== "undefined" && window.self !== window.top;
-    return flag || inIframe;
-  }, [searchParams]);
+  const get = (k: string): string => {
+    const v = p[k];
+    if (v !== undefined && v !== null) return String(v);
+    return searchParams.get(k) ?? "";
+  };
 
-  const workOrderLineId = searchParams.get("workOrderLineId") || null;
-  const workOrderId = searchParams.get("workOrderId") || null;
+  // 🔸 only mobile companion gets voice
+  const isMobileView =
+    (get("view") || "").toLowerCase() === "mobile";
 
+  const isEmbed =
+    !!props.embed ||
+    ["1", "true", "yes"].includes(
+      (get("embed") || get("compact")).toLowerCase()
+    );
+
+  const workOrderLineId = get("workOrderLineId") || null;
+  const workOrderId = get("workOrderId") || null;
   const inspectionId = useMemo<string>(
-    () => searchParams.get("inspectionId") || uuidv4(),
+    () => get("inspectionId") || uuidv4(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [searchParams]
   );
 
@@ -245,31 +185,7 @@ export default function Maintenance50AirPage(): JSX.Element {
   const [isPaused, setIsPaused] = useState<boolean>(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
-  const templateName: string =
-    searchParams.get("template") || "Maintenance 50 (Air Brake CVIP)";
-
-  const customer: SessionCustomer = {
-    first_name: searchParams.get("first_name") || "",
-    last_name: searchParams.get("last_name") || "",
-    phone: searchParams.get("phone") || "",
-    email: searchParams.get("email") || "",
-    address: searchParams.get("address") || "",
-    city: searchParams.get("city") || "",
-    province: searchParams.get("province") || "",
-    postal_code: searchParams.get("postal_code") || "",
-  };
-
-  const vehicle: SessionVehicle = {
-    year: searchParams.get("year") || "",
-    make: searchParams.get("make") || "",
-    model: searchParams.get("model") || "",
-    vin: searchParams.get("vin") || "",
-    license_plate: searchParams.get("license_plate") || "",
-    mileage: searchParams.get("mileage") || "",
-    color: searchParams.get("color") || "",
-    unit_number: searchParams.get("unit_number") || "",
-    engine_hours: searchParams.get("engine_hours") || "",
-  };
+  const templateName: string = props.template || get("template") || "Maintenance 50";
 
   const initialSession = useMemo<Partial<InspectionSession>>(
     () => ({
@@ -280,11 +196,9 @@ export default function Maintenance50AirPage(): JSX.Element {
       isListening: false,
       transcript: "",
       quote: [],
-      customer,
-      vehicle,
       sections: [],
     }),
-    [inspectionId, templateName, customer, vehicle]
+    [inspectionId, templateName]
   );
 
   const {
@@ -300,7 +214,7 @@ export default function Maintenance50AirPage(): JSX.Element {
     updateQuoteLine,
   } = useInspectionSession(initialSession);
 
-  /* ---------- AI submit flow ---------- */
+  // ---- AI submit guarding ----
   const inFlightRef = useRef<Set<string>>(new Set());
   const isSubmittingAI = (secIdx: number, itemIdx: number): boolean =>
     inFlightRef.current.has(`${secIdx}:${itemIdx}`);
@@ -349,7 +263,6 @@ export default function Maintenance50AirPage(): JSX.Element {
         notes: it.notes ?? "",
         section: session.sections[secIdx].title,
         status,
-        vehicle: session.vehicle ?? undefined,
       });
 
       if (!suggestion) {
@@ -399,7 +312,7 @@ export default function Maintenance50AirPage(): JSX.Element {
     }
   };
 
-  /* ---------- hydrate / persist ---------- */
+  // ---- boot/restore ----
   useEffect(() => {
     const key = `inspection-${inspectionId}`;
     const saved = typeof window !== "undefined" ? localStorage.getItem(key) : null;
@@ -416,6 +329,7 @@ export default function Maintenance50AirPage(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // persist
   useEffect(() => {
     if (session) {
       const key = `inspection-${inspectionId}`;
@@ -423,23 +337,20 @@ export default function Maintenance50AirPage(): JSX.Element {
     }
   }, [session, inspectionId]);
 
+  // persist on unload
   useEffect(() => {
     const key = `inspection-${inspectionId}`;
     const persistNow = () => {
       try {
-        const payload = session ?? initialSession;
-        localStorage.setItem(key, JSON.stringify(payload));
+        localStorage.setItem(key, JSON.stringify(session ?? initialSession));
       } catch {}
     };
-
     const onVisibility = () => {
       if (document.visibilityState === "hidden") persistNow();
     };
-
     window.addEventListener("beforeunload", persistNow);
     window.addEventListener("pagehide", persistNow);
     document.addEventListener("visibilitychange", onVisibility);
-
     return () => {
       window.removeEventListener("beforeunload", persistNow);
       window.removeEventListener("pagehide", persistNow);
@@ -447,37 +358,36 @@ export default function Maintenance50AirPage(): JSX.Element {
     };
   }, [session, inspectionId, initialSession]);
 
-  /* ---------- sections + unit toggle ---------- */
+  // build sections once
   useEffect(() => {
     if (!session) return;
     if ((session.sections?.length ?? 0) > 0) return;
-
     const next: InspectionSection[] = [
-      buildAirCornerMeasurementsSection(),
-      buildAirSystemMeasurementsSection(),
+      buildHydraulicMeasurementsSection(),
       buildLightsSection(),
+      buildBrakesSection(),
       buildSuspensionSection(),
       buildDrivelineSection(),
     ];
     updateInspection({
-      sections: applyUnitsAir(next, unit) as typeof session.sections,
+      sections: applyUnitsHydraulic(next, unit) as typeof session.sections,
     });
   }, [session, updateInspection, unit]);
 
+  // re-apply units
   useEffect(() => {
     if (!session?.sections?.length) return;
     updateInspection({
-      sections: applyUnitsAir(session.sections, unit) as typeof session.sections,
+      sections: applyUnitsHydraulic(session.sections, unit) as typeof session.sections,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unit]);
 
-  /* ---------- speech → commands ---------- */
+  // transcript → commands
   const handleTranscript = async (text: string): Promise<void> => {
     const commands: ParsedCommand[] = await interpretCommand(text);
     const sess: InspectionSession | undefined = session ?? undefined;
     if (!sess) return;
-
     for (const command of commands) {
       await handleTranscriptFn({
         command,
@@ -490,6 +400,7 @@ export default function Maintenance50AirPage(): JSX.Element {
     }
   };
 
+  // speech
   const startListening = (): void => {
     if (recognitionRef.current) {
       try {
@@ -501,7 +412,6 @@ export default function Maintenance50AirPage(): JSX.Element {
     });
     setIsListening(true);
   };
-
   useEffect(() => {
     return () => {
       try {
@@ -510,7 +420,7 @@ export default function Maintenance50AirPage(): JSX.Element {
     };
   }, []);
 
-  /* 🧹 embed-safe scrubber */
+  /* 🧹 embed-safe scrubber (remove full-screen / overflow locks) */
   useEffect(() => {
     if (!isEmbed) return;
     const root = rootRef.current;
@@ -570,7 +480,7 @@ export default function Maintenance50AirPage(): JSX.Element {
     return () => obs.disconnect();
   }, [isEmbed]);
 
-  /* 🔐 focus trap when embedded */
+  /* 🔐 focus trap while embedded (keep Tab inside) */
   useEffect(() => {
     if (!isEmbed) return;
     const root = rootRef.current;
@@ -621,11 +531,11 @@ export default function Maintenance50AirPage(): JSX.Element {
   }, [isEmbed]);
 
   if (!session || !session.sections || session.sections.length === 0) {
-    return <div className="p-4 text-white">Loading inspection…</div>;
+    return <div className="p-4 text-sm text-neutral-300">Loading inspection…</div>;
   }
 
-  const isCorner = (t?: string): boolean =>
-    (t || "").toLowerCase().includes("corner");
+  const isMeasurements = (t?: string): boolean =>
+    (t || "").toLowerCase().includes("measurements");
 
   const shell = isEmbed
     ? "mx-auto max-w-[1100px] px-3 pb-8"
@@ -662,49 +572,51 @@ export default function Maintenance50AirPage(): JSX.Element {
             Inspection
           </div>
           <div className="mt-1 text-xl font-blackops text-white">
-            {session?.templateitem || templateName || "Maintenance 50 – Air Brake CVIP"}
+            {session?.templateitem || templateName || "Maintenance 50"}
           </div>
         </div>
-        <CustomerVehicleHeader
-          templateName=""
-          customer={toHeaderCustomer(session.customer ?? null)}
-          vehicle={toHeaderVehicle(session.vehicle ?? null)}
-        />
       </div>
 
       {/* Controls */}
       <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
-        <StartListeningButton
-          isListening={isListening}
-          setIsListening={setIsListening}
-          onStart={startListening}
-        />
-        <PauseResumeButton
-          isPaused={isPaused}
-          isListening={isListening}
-          setIsListening={setIsListening}
-          onPause={(): void => {
-            setIsPaused(true);
-            pauseSession();
-            try {
-              recognitionRef.current?.stop();
-            } catch {}
-          }}
-          onResume={(): void => {
-            setIsPaused(false);
-            resumeSession();
-            recognitionRef.current = startVoiceRecognition(handleTranscript);
-          }}
-          recognitionInstance={
-            recognitionRef.current as unknown as SpeechRecognition | null
-          }
-          onTranscript={handleTranscript}
-          setRecognitionRef={(instance: SpeechRecognition | null): void => {
-            (
-              recognitionRef as React.MutableRefObject<SpeechRecognition | null>
-            ).current = instance ?? null;
-          }}
-        />
+        {isMobileView && (
+          <StartListeningButton
+            isListening={isListening}
+            setIsListening={setIsListening}
+            onStart={startListening}
+          />
+        )}
+
+        {isMobileView && (
+          <PauseResumeButton
+            isPaused={isPaused}
+            isListening={isListening}
+            setIsListening={setIsListening}
+            onPause={(): void => {
+              setIsPaused(true);
+              pauseSession();
+              try {
+                recognitionRef.current?.stop();
+              } catch {}
+            }}
+            onResume={(): void => {
+              setIsPaused(false);
+              resumeSession();
+              recognitionRef.current = startVoiceRecognition(handleTranscript);
+            }}
+            recognitionInstance={
+              recognitionRef.current as unknown as SpeechRecognition | null
+            }
+            onTranscript={handleTranscript}
+            setRecognitionRef={(instance: SpeechRecognition | null): void => {
+              (
+                recognitionRef as React.MutableRefObject<SpeechRecognition | null>
+              ).current = instance ?? null;
+            }}
+          />
+        )}
+
+        {/* Unit toggle on all views */}
         <Button
           type="button"
           variant="outline"
@@ -734,7 +646,7 @@ export default function Maintenance50AirPage(): JSX.Element {
         {session.sections.map((section: InspectionSection, sectionIndex: number) => (
           <div key={`${section.title}-${sectionIndex}`} className={sectionCard}>
             <h2 className={sectionTitle}>{section.title}</h2>
-            {isCorner(section.title) && (
+            {isMeasurements(section.title) && (
               <span className={hint}>
                 {unit === "metric"
                   ? "Enter mm / kPa / N·m"
@@ -743,18 +655,8 @@ export default function Maintenance50AirPage(): JSX.Element {
             )}
 
             <div className="mt-4">
-              {isCorner(section.title) ? (
-                <AirCornerGrid
-                  sectionIndex={sectionIndex}
-                  items={section.items}
-                  unitHint={(label: string) => unitForAir(label, unit)}
-                  onAddAxle={(axleLabel: string) => {
-                    const extra = buildAirAxleItems(axleLabel);
-                    updateSection(sectionIndex, {
-                      items: [...section.items, ...extra],
-                    });
-                  }}
-                />
+              {isMeasurements(section.title) ? (
+                <CornerGrid sectionIndex={sectionIndex} items={section.items} />
               ) : (
                 <SectionDisplay
                   title=""
@@ -788,9 +690,9 @@ export default function Maintenance50AirPage(): JSX.Element {
                     });
                   }}
                   requireNoteForAI
-                  onSubmitAI={(secIdx, itemIdx) => {
-                    void submitAIForItem(secIdx, itemIdx);
-                  }}
+                  onSubmitAI={(secIdx, itemIdx) =>
+                    void submitAIForItem(secIdx, itemIdx)
+                  }
                   isSubmittingAI={isSubmittingAI}
                 />
               )}
@@ -829,8 +731,8 @@ export default function Maintenance50AirPage(): JSX.Element {
 
   return (
     <PageShell
-      title={session?.templateitem || templateName || "Maintenance 50 – Air Brake CVIP"}
-      description="Air-brake CVIP multi-axle inspection."
+      title={session?.templateitem || templateName || "Maintenance 50"}
+      description="Quick 50-point hydraulic brake maintenance inspection."
     >
       {Body}
     </PageShell>

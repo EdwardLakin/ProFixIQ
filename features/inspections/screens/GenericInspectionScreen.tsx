@@ -196,6 +196,10 @@ export default function GenericInspectionScreen(): JSX.Element {
   const sp = useSearchParams();
   const rootRef = useRef<HTMLDivElement | null>(null);
 
+  // 🔸 only the mobile companion should use voice
+  const isMobileView =
+    (sp.get("view") || "").toLowerCase() === "mobile";
+
   // Embed for iframe/modal
   const isEmbed = useMemo(
     () =>
@@ -403,7 +407,7 @@ export default function GenericInspectionScreen(): JSX.Element {
     return raw;
   }
 
-  // 🔊 openai realtime start
+  // 🔊 openai realtime start (used only when mobile buttons are visible)
   const startListening = async (): Promise<void> => {
     if (isListening) return;
     try {
@@ -769,31 +773,39 @@ export default function GenericInspectionScreen(): JSX.Element {
 
       {/* Controls row */}
       <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
-        <StartListeningButton
-          isListening={isListening}
-          setIsListening={setIsListening}
-          onStart={startListening}
-        />
-        <PauseResumeButton
-          isPaused={isPaused}
-          isListening={isListening}
-          setIsListening={setIsListening}
-          onPause={(): void => {
-            setIsPaused(true);
-            pauseSession();
-            stopListening();
-          }}
-          onResume={(): void => {
-            setIsPaused(false);
-            resumeSession();
-            void startListening();
-          }}
-          recognitionInstance={null}
-          onTranscript={handleTranscript}
-          setRecognitionRef={(): void => {
-            /* noop – using OpenAI now */
-          }}
-        />
+        {/* Voice only in mobile companion */}
+        {isMobileView && (
+          <StartListeningButton
+            isListening={isListening}
+            setIsListening={setIsListening}
+            onStart={startListening}
+          />
+        )}
+
+        {isMobileView && (
+          <PauseResumeButton
+            isPaused={isPaused}
+            isListening={isListening}
+            setIsListening={setIsListening}
+            onPause={(): void => {
+              setIsPaused(true);
+              pauseSession();
+              stopListening();
+            }}
+            onResume={(): void => {
+              setIsPaused(false);
+              resumeSession();
+              void startListening();
+            }}
+            recognitionInstance={null}
+            onTranscript={handleTranscript}
+            setRecognitionRef={(): void => {
+              /* noop – using OpenAI now */
+            }}
+          />
+        )}
+
+        {/* Unit toggle stays on both desktop + mobile */}
         <Button
           type="button"
           variant="outline"

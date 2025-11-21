@@ -162,6 +162,10 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
     return searchParams.get(k) ?? "";
   };
 
+  // 🔸 only mobile companion gets voice
+  const isMobileView =
+    (get("view") || "").toLowerCase() === "mobile";
+
   const isEmbed =
     !!props.embed ||
     ["1", "true", "yes"].includes(
@@ -575,37 +579,44 @@ export default function Maintenance50Screen(props: ScreenProps): JSX.Element {
 
       {/* Controls */}
       <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
-        <StartListeningButton
-          isListening={isListening}
-          setIsListening={setIsListening}
-          onStart={startListening}
-        />
-        <PauseResumeButton
-          isPaused={isPaused}
-          isListening={isListening}
-          setIsListening={setIsListening}
-          onPause={(): void => {
-            setIsPaused(true);
-            pauseSession();
-            try {
-              recognitionRef.current?.stop();
-            } catch {}
-          }}
-          onResume={(): void => {
-            setIsPaused(false);
-            resumeSession();
-            recognitionRef.current = startVoiceRecognition(handleTranscript);
-          }}
-          recognitionInstance={
-            recognitionRef.current as unknown as SpeechRecognition | null
-          }
-          onTranscript={handleTranscript}
-          setRecognitionRef={(instance: SpeechRecognition | null): void => {
-            (
-              recognitionRef as React.MutableRefObject<SpeechRecognition | null>
-            ).current = instance ?? null;
-          }}
-        />
+        {isMobileView && (
+          <StartListeningButton
+            isListening={isListening}
+            setIsListening={setIsListening}
+            onStart={startListening}
+          />
+        )}
+
+        {isMobileView && (
+          <PauseResumeButton
+            isPaused={isPaused}
+            isListening={isListening}
+            setIsListening={setIsListening}
+            onPause={(): void => {
+              setIsPaused(true);
+              pauseSession();
+              try {
+                recognitionRef.current?.stop();
+              } catch {}
+            }}
+            onResume={(): void => {
+              setIsPaused(false);
+              resumeSession();
+              recognitionRef.current = startVoiceRecognition(handleTranscript);
+            }}
+            recognitionInstance={
+              recognitionRef.current as unknown as SpeechRecognition | null
+            }
+            onTranscript={handleTranscript}
+            setRecognitionRef={(instance: SpeechRecognition | null): void => {
+              (
+                recognitionRef as React.MutableRefObject<SpeechRecognition | null>
+              ).current = instance ?? null;
+            }}
+          />
+        )}
+
+        {/* Unit toggle on all views */}
         <Button
           type="button"
           variant="outline"
