@@ -1,19 +1,16 @@
 "use client";
 
-import React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import MobileFocusedJob from "@/features/work-orders/mobile/MobileFocusedJob";
 
-type Props = {
-  params: { lineId: string };
-};
-
-export default function MobileJobPage({ params }: Props) {
+export default function MobileJobPage() {
   const router = useRouter();
+  const params = useParams<{ lineId: string }>();
+  const lineId = params.lineId;
 
   return (
     <MobileFocusedJob
-      workOrderLineId={params.lineId}
+      workOrderLineId={lineId}
       onBack={() => {
         // Prefer going back, but if there's no history, go to WO list
         if (window.history.length > 1) router.back();
