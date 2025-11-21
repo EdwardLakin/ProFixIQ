@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { MobileShell } from "@/components/layout/MobileShell";
+import { MobileShell } from "components/layout/MobileShell";
 
 export default function MobileLayout({
   children,
