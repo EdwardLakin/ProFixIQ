@@ -1,17 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { MobileShell } from "components/layout/MobileShell";
 
-type RunnerProps = {
-  params: { id: string };
-};
-
-export default function MobileInspectionRunnerPage({ params }: RunnerProps) {
+export default function MobileInspectionRunnerPage() {
   const router = useRouter();
-  const { id } = params;
+  const params = useParams<{ id: string }>();
+  const id = params.id;
 
+  // Re-use the existing desktop inspection route.
+  // You can add any query params you want for mobile-specific behavior.
   const src = `/inspections/${id}?view=mobile`;
 
   return (
