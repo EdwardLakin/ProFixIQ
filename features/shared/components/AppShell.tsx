@@ -1,4 +1,3 @@
-// app/(app)/AppShell.tsx
 "use client";
 
 import Link from "next/link";
@@ -55,7 +54,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const punchRef = useRef<HTMLDivElement | null>(null);
 
   const isAppRoute = !NON_APP_ROUTES.some(
-    (p) => pathname === p || pathname.startsWith(p + "/")
+    (p) => pathname === p || pathname.startsWith(p + "/"),
   );
 
   // load session user once, load role, & subscribe to messages
@@ -113,7 +112,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             // ok, this is for me – open modal on top
             setIncomingConvoId(msg.conversation_id);
             setChatOpen(true);
-          }
+          },
         )
         .subscribe();
 
@@ -163,12 +162,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <div className="min-h-screen bg-background text-foreground">
         {children}
         {/* Global toaster even on non-app routes if you want */}
-        <Toaster
-          closeButton
-          richColors
-          position="top-right"
-          theme="dark"
-        />
+        <Toaster closeButton richColors position="top-right" theme="dark" />
       </div>
     );
   }
@@ -299,6 +293,18 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <NavItem href="/work-orders" label="Work Orders" />
               <NavItem href="/inspections" label="Inspections" />
               <NavItem href="/chat" label="Messages" />
+
+              {/* Mobile sign-out */}
+              <button
+                type="button"
+                onClick={async () => {
+                  await supabase.auth.signOut();
+                  router.replace("/sign-in");
+                }}
+                className="flex-1 text-center py-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Sign Out
+              </button>
             </div>
           </nav>
         </div>
@@ -326,12 +332,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       )}
 
       {/* Global toaster for the entire app shell (agent modal, etc.) */}
-      <Toaster
-        closeButton
-        richColors
-        position="top-right"
-        theme="dark"
-      />
+      <Toaster closeButton richColors position="top-right" theme="dark" />
     </>
   );
 }
