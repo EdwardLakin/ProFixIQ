@@ -148,9 +148,9 @@ export default function PortalBookingPage() {
       try {
         const res = await fetch(
           `/api/portal/availability?shop=${encodeURIComponent(
-            shopSlug
+            shopSlug,
           )}&start=${range.start}&end=${range.end}&slotMins=30`,
-          { cache: "no-store" }
+          { cache: "no-store" },
         );
 
         if (!res.ok) throw new Error("Failed to load availability.");
@@ -184,7 +184,7 @@ export default function PortalBookingPage() {
       map.set(k, arr);
     });
     map.forEach((arr) =>
-      arr.sort((a, b) => +new Date(a.start) - +new Date(b.start))
+      arr.sort((a, b) => +new Date(a.start) - +new Date(b.start)),
     );
     return map;
   }, [slots]);
@@ -212,7 +212,7 @@ export default function PortalBookingPage() {
       if (!res.ok) throw new Error(j?.error || "Booking failed");
 
       toast.success(
-        "Appointment requested! We’ll email you when it’s confirmed."
+        "Appointment requested! We’ll email you when it’s confirmed.",
       );
       setSlots((prev) => prev.filter((s) => s.start !== startIso));
     } catch (e: unknown) {

@@ -8,8 +8,8 @@ export const runtime = "nodejs";
 
 type PatchBody = {
   status?: "pending" | "confirmed" | "completed" | "cancelled";
-  startsAt?: string;
-  endsAt?: string;
+  starts_at?: string;
+  ends_at?: string;
   notes?: string | null;
 };
 
@@ -18,7 +18,7 @@ function bad(msg: string, code = 400) {
 }
 
 export async function PATCH(req: Request): Promise<Response> {
-  // 👇 derive the [id] from the URL — no context param needed
+  // derive [id] from URL
   const { pathname } = new URL(req.url);
   const bookingId = pathname.split("/").pop() ?? "";
   if (!bookingId) return bad("Missing booking id");
@@ -38,7 +38,7 @@ export async function PATCH(req: Request): Promise<Response> {
     return bad("Invalid JSON body");
   }
 
-  const { status: nextStatus, startsAt, endsAt, notes } = payload ?? {};
+  const { status: nextStatus, starts_at, ends_at, notes } = payload ?? {};
 
   const { data: booking, error: bErr } = await supabase
     .from("bookings")
@@ -54,7 +54,15 @@ export async function PATCH(req: Request): Promise<Response> {
     .eq("id", user.id)
     .single();
 
-  const staffRoles = ["owner", "admin", "manager", "advisor", "mechanic", "parts"] as const;
+  const staffRoles = [
+    "owner",
+    "admin",
+    "manager",
+    "advisor",
+    "mechanic",
+    "parts",
+  ] as const;
+
   const isStaff =
     !!profile?.role &&
     (staffRoles as readonly string[]).includes(profile.role) &&
@@ -84,20 +92,30 @@ export async function PATCH(req: Request): Promise<Response> {
   if (isCustomerOwner && nextStatus && nextStatus !== "cancelled") {
     return bad("Customers may only cancel their own booking", 403);
   }
-  if (nextStatus && (!curr || !allowedTransitions[curr].includes(nextStatus))) {
+  if (
+    nextStatus &&
+    (!curr || !allowedTransitions[curr].includes(nextStatus))
+  ) {
     return bad(`Invalid status transition: ${curr} → ${nextStatus}`);
   }
 
-  const newStart = startsAt ? new Date(startsAt) : null;
-  const newEnd = endsAt ? new Date(endsAt) : null;
+  const newStart = starts_at ? new Date(starts_at) : null;
+  const newEnd = ends_at ? new Date(ends_at) : null;
+
   if (newStart || newEnd) {
     if (!isStaff) return bad("Only staff can reschedule", 403);
-    if (!newStart || !newEnd || isNaN(newStart.getTime()) || isNaN(newEnd.getTime()) || newEnd <= newStart) {
-      return bad("Invalid startsAt/endsAt");
+    if (
+      !newStart ||
+      !newEnd ||
+      Number.isNaN(newStart.getTime()) ||
+      Number.isNaN(newEnd.getTime()) ||
+      newEnd <= newStart
+    ) {
+      return bad("Invalid starts_at/ends_at");
     }
 
     const { data: shop } = await supabase
-      .from("shop")
+      .from("shops")
       .select("id, min_notice_minutes, max_lead_days")
       .eq("id", booking.shop_id)
       .single();
@@ -106,32 +124,55 @@ export async function PATCH(req: Request): Promise<Response> {
     const minNotice = shop?.min_notice_minutes ?? 120;
     const maxLead = shop?.max_lead_days ?? 30;
 
-    const minutesUntil = Math.floor((newStart.getTime() - now.getTime()) / 60000);
-    if (minutesUntil < minNotice) return bad(`Reschedule requires at least ${minNotice} minutes notice`);
+    const minutesUntil = Math.floor(
+      (newStart.getTime() - now.getTime()) / 60000,
+    );
+    if (minutesUntil < minNotice) {
+      return bad(
+        `Reschedule requires at least ${minNotice} minutes notice`,
+      );
+    }
 
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const daysUntil = Math.floor((newStart.getTime() - startOfToday) / 86400000);
-    if (daysUntil > maxLead) return bad(`Cannot schedule more than ${maxLead} days ahead`);
+    const startOfToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+    ).getTime();
+    const daysUntil = Math.floor(
+      (newStart.getTime() - startOfToday) / 86400000,
+    );
+    if (daysUntil > maxLead) {
+      return bad(
+        `Cannot schedule more than ${maxLead} days ahead`,
+      );
+    }
 
     const { data: overlaps, error: ovErr } = await supabase
       .from("bookings")
       .select("id")
       .eq("shop_id", booking.shop_id)
       .neq("id", booking.id)
-      .or(`and(starts_at.lt.${newEnd.toISOString()},ends_at.gt.${newStart.toISOString()})`)
+      .or(
+        `and(starts_at.lt.${newEnd.toISOString()},ends_at.gt.${newStart.toISOString()})`,
+      )
       .limit(1);
 
     if (ovErr) return bad("Failed to check overlaps", 500);
-    if (overlaps && overlaps.length > 0) return bad("Selected time overlaps another booking", 409);
+    if (overlaps && overlaps.length > 0) {
+      return bad("Selected time overlaps another booking", 409);
+    }
   }
 
-  const patch: Partial<Database["public"]["Tables"]["bookings"]["Update"]> = {};
+  const patch: Partial<Database["public"]["Tables"]["bookings"]["Update"]> =
+    {};
+
   if (nextStatus) patch.status = nextStatus;
   if (typeof notes !== "undefined") patch.notes = notes;
   if (newStart && newEnd) {
     patch.starts_at = newStart.toISOString();
     patch.ends_at = newEnd.toISOString();
   }
+
   if (Object.keys(patch).length === 0) return bad("Nothing to update");
 
   const { data: updated, error: upErr } = await supabase
