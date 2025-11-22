@@ -22,21 +22,13 @@ type BookingPayload = {
   status: string | null;
 };
 
-type BookingRow =
-  Db["public"]["Tables"]["bookings"]["Row"] & {
-    customers?: {
-      full_name?: string | null;
-      first_name?: string | null;
-      last_name?: string | null;
-      email?: string | null;
-      contact_email?: string | null;
-      phone?: string | null;
-      mobile?: string | null;
-    } | null;
-    shops?: {
-      slug?: string | null;
-    } | null;
-  };
+type BookingRow = Db["public"]["Tables"]["bookings"]["Row"] & {
+  customers?: Pick<
+    Db["public"]["Tables"]["customers"]["Row"],
+    "first_name" | "last_name" | "email" | "phone"
+  > | null;
+  shops?: Pick<Db["public"]["Tables"]["shops"]["Row"], "slug"> | null;
+};
 
 function bad(msg: string, status = 400): NextResponse {
   return NextResponse.json({ error: msg }, { status });
@@ -119,13 +111,10 @@ export async function GET(req: Request): Promise<Response> {
         status,
         notes,
         customers:customer_id (
-          full_name,
           first_name,
           last_name,
           email,
-          contact_email,
-          phone,
-          mobile
+          phone
         ),
         shops:shop_id (
           slug
@@ -141,25 +130,19 @@ export async function GET(req: Request): Promise<Response> {
     return bad("Failed to load bookings", 500);
   }
 
-  // Ensure we always have an array and safely assert to BookingRow[]
-  const joinedRows: BookingRow[] = (Array.isArray(rows) ? rows : []) as unknown as BookingRow[];
+  const bookings = rows as unknown as BookingRow[];
 
-  const payload: BookingPayload[] = joinedRows.map((row) => {
+  const payload: BookingPayload[] = bookings.map((row) => {
     const customer = row.customers ?? null;
     const shopRel = row.shops ?? null;
 
     const nameFromCustomer =
-      customer?.full_name ??
       [customer?.first_name, customer?.last_name]
         .filter((part) => !!part && part.trim().length > 0)
-        .join(" ")
-        .trim();
+        .join(" ") || null;
 
-    const emailFromCustomer =
-      customer?.email ?? customer?.contact_email ?? null;
-
-    const phoneFromCustomer =
-      customer?.phone ?? customer?.mobile ?? null;
+    const emailFromCustomer = customer?.email ?? null;
+    const phoneFromCustomer = customer?.phone ?? null;
 
     return {
       id: row.id,
@@ -167,10 +150,7 @@ export async function GET(req: Request): Promise<Response> {
       starts_at: row.starts_at,
       ends_at: row.ends_at,
       customer_id: row.customer_id ?? null,
-      customer_name:
-        nameFromCustomer && nameFromCustomer.length > 0
-          ? nameFromCustomer
-          : null,
+      customer_name: nameFromCustomer,
       customer_email: emailFromCustomer,
       customer_phone: phoneFromCustomer,
       notes: row.notes ?? null,
