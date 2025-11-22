@@ -65,12 +65,13 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  // 🔁 Signed-in user hits landing → redirect to *mobile* console (NOT dashboard)
+  // Signed-in user hits landing → redirect to dashboard or onboarding
   if (pathname === "/" && session?.user) {
-    const to = completed ? "/mobile" : "/onboarding";
     return withSupabaseCookies(
       res,
-      NextResponse.redirect(new URL(to, req.url)),
+      NextResponse.redirect(
+        new URL(completed ? "/dashboard" : "/onboarding", req.url),
+      ),
     );
   }
 
@@ -88,10 +89,10 @@ export async function middleware(req: NextRequest) {
       if (redirectParam) {
         to = redirectParam;
       } else if (isMobileSignIn) {
-        // ✅ mobile companion always lands on mobile console after sign-in
+        // mobile companion goes to mobile dashboard once onboarded
         to = completed ? "/mobile" : "/onboarding";
       } else {
-        // normal sign-in keeps desktop behavior
+        // normal sign-in keeps existing behavior
         to = completed ? "/dashboard" : "/onboarding";
       }
 
@@ -116,10 +117,15 @@ export async function middleware(req: NextRequest) {
   // Protected routes from here (dashboard, work orders, inspections, mobile…)
   // ---------------------------------------------------------------------------
 
-  // Not signed in → send to sign-in with redirect
+  // Not signed in → send to correct sign-in with redirect
   if (!session?.user) {
-    const login = new URL("/sign-in", req.url);
+    const isMobileRoute = pathname.startsWith("/mobile");
+
+    // Use mobile sign-in for mobile companion routes, desktop sign-in for everything else
+    const loginPath = isMobileRoute ? "/mobile/sign-in" : "/sign-in";
+    const login = new URL(loginPath, req.url);
     login.searchParams.set("redirect", pathname + search);
+
     return withSupabaseCookies(res, NextResponse.redirect(login));
   }
 
