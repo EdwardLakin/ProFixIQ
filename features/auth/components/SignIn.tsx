@@ -7,7 +7,6 @@ import type { Database } from "@shared/types/types/supabase";
 
 type Mode = "sign-in" | "sign-up";
 
-// domain used by /api/admin/create-user
 const SHOP_USER_DOMAIN = "local.profix-internal";
 
 export default function AuthPage() {
@@ -21,6 +20,11 @@ export default function AuthPage() {
   const [error, setError] = useState<string>("");
   const [notice, setNotice] = useState<string>("");
   const [loading, setLoading] = useState(false);
+
+  // are we in "mobile companion" sign-in mode?
+  const isMobileMode =
+    (sp.get("mode") || "").toLowerCase() === "mobile" ||
+    (sp.get("redirect") || "") === "/mobile";
 
   const origin = useMemo(() => {
     if (typeof window !== "undefined") return window.location.origin;
@@ -36,16 +40,22 @@ export default function AuthPage() {
     return `${origin}/auth/callback${tail}`;
   }, [origin, sp]);
 
-  // helper: decide where to go based on profile
+  // where to go *after* auth, based on profile + mode
   const routeAfterAuth = async (
     profile: { completed_onboarding?: boolean | null; shop_id?: string | null } | null,
   ) => {
-    const redirect = sp.get("redirect");
+    const redirectParam = sp.get("redirect");
     const hasShop = !!profile?.shop_id;
     const isOnboarded = !!profile?.completed_onboarding || hasShop;
 
-    if (redirect && isOnboarded) {
-      router.replace(redirect);
+    // special case: mobile mode always wins if user is allowed in
+    if (isMobileMode && isOnboarded) {
+      router.replace("/mobile");
+      return;
+    }
+
+    if (redirectParam && isOnboarded) {
+      router.replace(redirectParam);
       return;
     }
 
@@ -56,7 +66,7 @@ export default function AuthPage() {
     }
   };
 
-  // If user is already signed in and visits /sign-in, kick them out
+  // already signed in → kick out of sign-in
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getSession();
@@ -97,7 +107,6 @@ export default function AuthPage() {
     const raw = identifier.trim();
     let emailToUse = raw;
 
-    // shop-created username → synthetic email
     if (!raw.includes("@")) {
       emailToUse = `${raw.toLowerCase()}@${SHOP_USER_DOMAIN}`;
     }
@@ -113,10 +122,8 @@ export default function AuthPage() {
       return;
     }
 
-    // 🔴 important: refresh session so next profile read is up to date
     await supabase.auth.refreshSession();
 
-    // fetch profile to decide where to go
     const { data: u } = await supabase.auth.getUser();
     if (!u.user) {
       setError("Signed in, but no session is visible yet. Try again.");
@@ -130,14 +137,15 @@ export default function AuthPage() {
       .eq("id", u.user.id)
       .maybeSingle();
 
-    const redirect = sp.get("redirect");
     const hasShop = !!profile?.shop_id;
     const isOnboarded = !!profile?.completed_onboarding || hasShop;
 
-    if (redirect && isOnboarded) {
-      await go(redirect);
+    // explicit handling for mobile mode
+    if (isMobileMode && isOnboarded) {
+      await go("/mobile");
     } else if (isOnboarded) {
-      await go("/dashboard");
+      const redirectParam = sp.get("redirect");
+      await go(redirectParam || "/dashboard");
     } else {
       await go("/onboarding");
     }
@@ -151,7 +159,6 @@ export default function AuthPage() {
     setError("");
     setNotice("");
 
-    // normal email-based self-signup
     const { data, error: signUpErr } = await supabase.auth.signUp({
       email: identifier,
       password,
@@ -183,7 +190,7 @@ export default function AuthPage() {
           {/* Brand / title */}
           <div className="mb-6 space-y-2 text-center">
             <div className="inline-flex items-center rounded-full border border-neutral-800 bg-neutral-900 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-neutral-400">
-              ProFixIQ Portal
+              ProFixIQ Portal{isMobileMode ? " • Mobile" : ""}
             </div>
             <h1 className="mt-2 text-3xl font-blackops text-orange-500 sm:text-4xl">
               {isSignIn ? "Sign in" : "Create your account"}
@@ -248,7 +255,9 @@ export default function AuthPage() {
               </label>
               <input
                 type={isSignIn ? "text" : "email"}
-                placeholder={isSignIn ? "jane@shop.com or shop username" : "you@example.com"}
+                placeholder={
+                  isSignIn ? "jane@shop.com or shop username" : "you@example.com"
+                }
                 autoComplete={isSignIn ? "username" : "email"}
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
@@ -293,12 +302,12 @@ export default function AuthPage() {
             </button>
           </form>
 
-          {/* Companion sign-in link (only for sign-in mode) */}
-          {isSignIn && (
+          {/* Mobile companion link – just sets mode=mobile */}
+          {isSignIn && !isMobileMode && (
             <div className="mt-4 text-center">
               <button
                 type="button"
-                onClick={() => router.push("/mobile/sign-in")}
+                onClick={() => router.push("/sign-in?mode=mobile")}
                 className="text-[11px] font-medium text-orange-400 hover:text-orange-300 hover:underline underline-offset-2"
                 disabled={loading}
               >
