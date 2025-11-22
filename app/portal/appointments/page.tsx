@@ -78,7 +78,7 @@ export default function PortalAppointmentsPage() {
         const first = rows[0].slug as string;
         setShopSlug(first);
         router.replace(
-          `/portal/appointments?shop=${encodeURIComponent(first)}`
+          `/portal/appointments?shop=${encodeURIComponent(first)}`,
         );
       }
     })();
@@ -88,7 +88,7 @@ export default function PortalAppointmentsPage() {
   // get selected shop row
   const selectedShop = useMemo(
     () => shops.find((s) => (s.slug as string | null) === shopSlug) ?? null,
-    [shops, shopSlug]
+    [shops, shopSlug],
   );
 
   // load customers for selected shop
@@ -139,10 +139,13 @@ export default function PortalAppointmentsPage() {
         const end = isoDate(weekEnd);
         const res = await fetch(
           `/api/portal/bookings?shop=${encodeURIComponent(
-            shopSlug
+            shopSlug,
           )}&start=${start}&end=${end}`,
-          { cache: "no-store" }
+          { cache: "no-store" },
         );
+        if (!res.ok) {
+          throw new Error("Failed to load appointments.");
+        }
         const j = (await res.json().catch(() => [])) as Booking[];
         setBookings(j ?? []);
       } catch (err: unknown) {
@@ -173,6 +176,7 @@ export default function PortalAppointmentsPage() {
     try {
       const startIso = new Date(`${form.date}T${form.startsAt}`).toISOString();
       const endIso = new Date(`${form.date}T${form.endsAt}`).toISOString();
+
       const res = await fetch("/api/portal/book", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -188,26 +192,29 @@ export default function PortalAppointmentsPage() {
         }),
       });
 
-      const j = (await res.json().catch(() => ({}))) as { error?: string };
+      const j = (await res
+        .json()
+        .catch(() => ({}))) as { booking?: Booking; error?: string };
 
-      if (!res.ok) {
+      if (!res.ok || !j.booking) {
         throw new Error(j?.error || "Unable to create appointment.");
       }
+
+      // optimistic UI update so calendar + list update immediately
+      setBookings((prev) => [...prev, j.booking as Booking]);
 
       toast.success("Appointment created.");
       setCreatingDate(null);
 
-      // reload week from server so calendar + list both update
+      // sync with server (in case of computed fields)
       await refreshBookings(shopSlug, weekStart, weekEnd, setBookings);
     } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Create failed";
+      const message = err instanceof Error ? err.message : "Create failed";
       toast.error(message);
     }
   }
 
   async function handleUpdate(id: string, patch: Partial<Booking>) {
-    if (!shopSlug) return;
     try {
       const res = await fetch(`/api/portal/bookings/${id}`, {
         method: "PATCH",
@@ -221,14 +228,12 @@ export default function PortalAppointmentsPage() {
       setEditing(null);
       await refreshBookings(shopSlug, weekStart, weekEnd, setBookings);
     } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Update failed";
+      const message = err instanceof Error ? err.message : "Update failed";
       toast.error(message);
     }
   }
 
   async function handleDelete(id: string) {
-    if (!shopSlug) return;
     if (!confirm("Delete this appointment?")) return;
     try {
       const res = await fetch(`/api/portal/bookings/${id}`, {
@@ -236,10 +241,9 @@ export default function PortalAppointmentsPage() {
       });
       if (!res.ok) throw new Error("Delete failed.");
       toast.success("Appointment deleted.");
-      await refreshBookings(shopSlug, weekStart, weekEnd, setBookings);
+      setBookings((prev) => prev.filter((b) => b.id !== id));
     } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Delete failed";
+      const message = err instanceof Error ? err.message : "Delete failed";
       toast.error(message);
     }
   }
@@ -270,10 +274,8 @@ export default function PortalAppointmentsPage() {
             onChange={(e) => {
               const slug = e.target.value;
               setShopSlug(slug);
-              setEditing(null);
-              setCreatingDate(null);
               router.replace(
-                `/portal/appointments?shop=${encodeURIComponent(slug)}`
+                `/portal/appointments?shop=${encodeURIComponent(slug)}`,
               );
             }}
             className="min-w-[180px] rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
@@ -295,7 +297,7 @@ export default function PortalAppointmentsPage() {
         </div>
       </div>
 
-      {/* main layout: stacked (calendar → form → list) */}
+      {/* main layout: calendar → form → list */}
       <div className="space-y-6">
         {/* calendar */}
         <div className="rounded-2xl border border-white/10 bg-black/30 p-4 overflow-hidden backdrop-blur-md shadow-card">
@@ -402,7 +404,7 @@ export default function PortalAppointmentsPage() {
                 .slice()
                 .sort(
                   (a, b) =>
-                    +new Date(a.starts_at) - +new Date(b.starts_at)
+                    +new Date(a.starts_at) - +new Date(b.starts_at),
                 )
                 .map((b) => (
                   <li
@@ -459,34 +461,23 @@ async function refreshBookings(
   shopSlug: string,
   weekStart: Date,
   weekEnd: Date,
-  setBookings: (b: Booking[]) => void
+  setBookings: (b: Booking[]) => void,
 ) {
   const start = isoDate(weekStart);
   const end = isoDate(weekEnd);
   const res = await fetch(
     `/api/portal/bookings?shop=${encodeURIComponent(
-      shopSlug
+      shopSlug,
     )}&start=${start}&end=${end}`,
-    { cache: "no-store" }
+    { cache: "no-store" },
   );
   const refreshed = (await res.json().catch(() => [])) as Booking[];
-  setBookings(refreshed);
+  setBookings(refreshed ?? []);
 }
 
 /* -------------------------------------------------------------------------- */
 /* Forms                                                                      */
 /* -------------------------------------------------------------------------- */
-
-type CreateFormValues = {
-  date: string;
-  startsAt: string;
-  endsAt: string;
-  customerId?: string;
-  customerName: string;
-  customerEmail: string;
-  customerPhone: string;
-  notes: string;
-};
 
 function customerLabel(c: CustomerRow): string {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -509,7 +500,16 @@ function CreateForm({
   defaultDate: string;
   customers: CustomerRow[];
   loadingCustomers: boolean;
-  onSubmit: (form: CreateFormValues) => void;
+  onSubmit: (form: {
+    date: string;
+    startsAt: string;
+    endsAt: string;
+    customerId?: string;
+    customerName: string;
+    customerEmail: string;
+    customerPhone: string;
+    notes: string;
+  }) => void;
 }) {
   const [date, setDate] = useState(defaultDate);
   const [startsAt, setStartsAt] = useState("09:00");
@@ -556,9 +556,7 @@ function CreateForm({
         });
       }}
     >
-      <h3 className="text-sm font-semibold text-white">
-        Create appointment
-      </h3>
+      <h3 className="text-sm font-semibold text-white">Create appointment</h3>
 
       <div className="grid gap-2 sm:grid-cols-2">
         <label className="text-xs text-neutral-300">
@@ -599,7 +597,9 @@ function CreateForm({
           onChange={(e) => handleSelectCustomer(e.target.value)}
           className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
         >
-          <option value="">{loadingCustomers ? "Loading…" : "Select…"}</option>
+          <option value="">
+            {loadingCustomers ? "Loading…" : "Select…"}
+          </option>
           {customers.map((c) => (
             <option key={c.id} value={c.id}>
               {customerLabel(c)}
@@ -676,16 +676,16 @@ function EditForm({
   const [endsAt, setEndsAt] = useState(end.toISOString().slice(11, 16));
 
   const [customerId, setCustomerId] = useState<string>(
-    booking.customer_id ?? ""
+    booking.customer_id ?? "",
   );
   const [customerName, setCustomerName] = useState(
-    booking.customer_name ?? ""
+    booking.customer_name ?? "",
   );
   const [customerEmail, setCustomerEmail] = useState(
-    booking.customer_email ?? ""
+    booking.customer_email ?? "",
   );
   const [customerPhone, setCustomerPhone] = useState(
-    booking.customer_phone ?? ""
+    booking.customer_phone ?? "",
   );
   const [notes, setNotes] = useState(booking.notes ?? "");
   const [status, setStatus] = useState(booking.status ?? "pending");
@@ -765,7 +765,9 @@ function EditForm({
           onChange={(e) => handleSelectCustomer(e.target.value)}
           className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-white"
         >
-          <option value="">{loadingCustomers ? "Loading…" : "Select…"}</option>
+          <option value="">
+            {loadingCustomers ? "Loading…" : "Select…"}
+          </option>
           {customers.map((c) => (
             <option key={c.id} value={c.id}>
               {customerLabel(c)}

@@ -302,7 +302,7 @@ export default function PortalBookingPage() {
               </p>
             ) : (
               <p className="text-sm text-neutral-400">
-                No times available for this date.
+                Shop is closed or fully booked for this date.
               </p>
             )
           ) : (

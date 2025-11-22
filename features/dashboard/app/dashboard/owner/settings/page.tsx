@@ -30,7 +30,7 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 export default function OwnerSettingsPage() {
   const supabase = useMemo(
     () => createClientComponentClient<Database>(),
-    []
+    [],
   );
 
   const [loading, setLoading] = useState(true);
@@ -77,8 +77,8 @@ export default function OwnerSettingsPage() {
       weekday: i,
       open_time: "08:00",
       close_time: "17:00",
-      closed: false,
-    }))
+      closed: i === 0 || i === 6, // default: closed on weekend
+    })),
   );
   const [timeOff, setTimeOff] = useState<TimeOffRow[]>([]);
   const [newOffStart, setNewOffStart] = useState("");
@@ -164,36 +164,29 @@ export default function OwnerSettingsPage() {
         setAutoSendQuoteEmail(!!shop.auto_send_quote_email);
       }
 
-      // hours (from shop_hours via API)
+      // hours (from shop_hours)
       try {
         const res = await fetch(`/api/settings/hours?shopId=${sid}`, {
           cache: "no-store",
         });
         if (res.ok) {
           const j = await res.json();
-          if (Array.isArray(j?.hours) && j.hours.length) {
+          if (Array.isArray(j?.hours)) {
             const byDay = new Map<number, HourRow>();
-            j.hours.forEach(
-              (h: { weekday: number; open_time: string; close_time: string }) => {
-                const open = h.open_time || "08:00";
-                const close = h.close_time || "17:00";
-                const closed = open === close;
-                byDay.set(h.weekday, {
-                  weekday: h.weekday,
-                  open_time: open,
-                  close_time: close,
-                  closed,
-                });
-              }
+            (j.hours as HourRow[]).forEach((h) =>
+              byDay.set(h.weekday, { ...h, closed: false }),
             );
-            const normalized = Array.from({ length: 7 }, (_, i) =>
-              byDay.get(i) || {
+            const normalized = Array.from({ length: 7 }, (_, i) => {
+              const existing = byDay.get(i);
+              if (existing) return existing;
+              // no row in DB ⇒ treat as closed by default
+              return {
                 weekday: i,
                 open_time: "08:00",
                 close_time: "17:00",
-                closed: false,
-              }
-            );
+                closed: true,
+              };
+            });
             setHours(normalized);
           }
         }
@@ -276,7 +269,7 @@ export default function OwnerSettingsPage() {
   };
 
   const handleLogoUpload = async (
-    e: React.ChangeEvent<HTMLInputElement>
+    e: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -305,16 +298,13 @@ export default function OwnerSettingsPage() {
     if (!shopId) return;
     if (!guardUnlock()) return;
 
-    const payloadHours = hours.map((h) => ({
-      weekday: h.weekday,
-      open_time: h.closed ? "00:00" : h.open_time,
-      close_time: h.closed ? "00:00" : h.close_time,
-    }));
+    // only send OPEN days to the API; closed days are omitted
+    const openDays = hours.filter((h) => !h.closed);
 
     const res = await fetch("/api/settings/hours", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ shopId, hours: payloadHours }),
+      body: JSON.stringify({ shopId, hours: openDays }),
     });
 
     if (!res.ok) {
@@ -428,9 +418,6 @@ export default function OwnerSettingsPage() {
       <div className="flex flex-col gap-6 lg:flex-row">
         {/* LEFT COLUMN */}
         <div className="flex-1 space-y-6">
-          {/* Shop info */}
-          {/* (unchanged sections: shop info, billing, workflow, communication, automation) */}
-
           {/* Shop info */}
           <section className="space-y-3 rounded-xl border border-border bg-card p-4">
             <h2 className="text-sm font-semibold text-neutral-50">
@@ -640,11 +627,11 @@ export default function OwnerSettingsPage() {
             </label>
           </section>
 
-          {/* Hours with Closed toggle */}
+          {/* Hours */}
           <section className="space-y-3 rounded-xl border border-border bg-card p-4">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-sm font-semibold text-neutral-50">
-                Hours (used for booking time slots)
+                Hours (controls public booking slots)
               </h2>
               <Button onClick={saveHours} disabled={!isUnlocked} size="sm">
                 Save hours
@@ -653,68 +640,37 @@ export default function OwnerSettingsPage() {
 
             <div className="grid gap-2 md:grid-cols-7">
               {hours.map((row, idx) => {
-                const isClosed = !!row.closed;
+                const closed = !!row.closed;
                 return (
                   <div
                     key={row.weekday}
                     className="rounded border border-neutral-800 bg-neutral-900 p-2 text-xs"
                   >
-                    <div className="mb-1 text-center text-[11px] font-semibold text-orange-300">
-                      {WEEKDAYS[row.weekday]}
+                    <div className="mb-1 flex items-center justify-between text-[11px] font-semibold text-orange-300">
+                      <span>{WEEKDAYS[row.weekday]}</span>
+                      <label className="flex items-center gap-1 text-[10px] text-neutral-300">
+                        <input
+                          type="checkbox"
+                          checked={closed}
+                          onChange={(e) => {
+                            const isClosed = e.target.checked;
+                            setHours((prev) => {
+                              const copy = [...prev];
+                              copy[idx] = { ...copy[idx], closed: isClosed };
+                              return copy;
+                            });
+                          }}
+                          disabled={!isUnlocked}
+                        />
+                        Closed
+                      </label>
                     </div>
-
-                    <button
-                      type="button"
-                      disabled={!isUnlocked}
-                      onClick={() => {
-                        setHours((prev) => {
-                          const copy = [...prev];
-                          const current = copy[idx];
-                          const willClose = !current.closed;
-
-                          if (willClose) {
-                            copy[idx] = {
-                              ...current,
-                              closed: true,
-                              open_time: "00:00",
-                              close_time: "00:00",
-                            };
-                          } else {
-                            const open =
-                              current.open_time === "00:00"
-                                ? "08:00"
-                                : current.open_time;
-                            const close =
-                              current.close_time === "00:00"
-                                ? "17:00"
-                                : current.close_time;
-                            copy[idx] = {
-                              ...current,
-                              closed: false,
-                              open_time: open,
-                              close_time: close,
-                            };
-                          }
-                          return copy;
-                        });
-                      }}
-                      className={`mb-2 w-full rounded px-2 py-1 text-[11px] ${
-                        isClosed
-                          ? "border border-neutral-700 bg-neutral-950 text-neutral-400"
-                          : "border border-green-600/60 bg-green-900/40 text-green-300"
-                      }`}
-                    >
-                      {isClosed ? "Closed" : "Open"}
-                    </button>
-
                     <label className="mb-1 block text-[10px] text-neutral-400">
                       Open
                     </label>
                     <input
                       type="time"
-                      className={`mb-2 w-full rounded bg-neutral-950 px-2 py-1 text-xs ${
-                        isClosed ? "opacity-40" : ""
-                      }`}
+                      className="mb-2 w-full rounded bg-neutral-950 px-2 py-1 text-xs disabled:opacity-40"
                       value={row.open_time}
                       onChange={(e) => {
                         const v = e.target.value;
@@ -724,16 +680,14 @@ export default function OwnerSettingsPage() {
                           return copy;
                         });
                       }}
-                      disabled={!isUnlocked || isClosed}
+                      disabled={!isUnlocked || closed}
                     />
                     <label className="mb-1 block text-[10px] text-neutral-400">
                       Close
                     </label>
                     <input
                       type="time"
-                      className={`w-full rounded bg-neutral-950 px-2 py-1 text-xs ${
-                        isClosed ? "opacity-40" : ""
-                      }`}
+                      className="w-full rounded bg-neutral-950 px-2 py-1 text-xs disabled:opacity-40"
                       value={row.close_time}
                       onChange={(e) => {
                         const v = e.target.value;
@@ -743,7 +697,7 @@ export default function OwnerSettingsPage() {
                           return copy;
                         });
                       }}
-                      disabled={!isUnlocked || isClosed}
+                      disabled={!isUnlocked || closed}
                     />
                   </div>
                 );
