@@ -44,8 +44,9 @@ export default function DashboardPage() {
   useEffect(() => {
     (async () => {
       const [appt, wo, parts] = await Promise.all([
+        // 🔁 appointments → bookings
         supabase
-          .from("appointments")
+          .from("bookings")
           .select("id", { count: "exact", head: true }),
         supabase
           .from("work_orders")
