@@ -1,0 +1,35 @@
+app/mobile
+├── customers
+│   └── [id]
+│       └── page.tsx
+├── inspections
+│   ├── [id]
+│   │   ├── page.tsx
+│   │   └── run
+│   │       └── page.tsx
+│   ├── maintenance-50
+│   │   └── page.tsx
+│   ├── maintenance-50-air
+│   │   └── page.tsx
+│   └── page.tsx
+├── jobs
+│   └── [lineId]
+│       └── page.tsx
+├── layout.tsx
+├── messages
+│   ├── [chatId]
+│   │   └── page.tsx
+│   └── page.tsx
+├── page.tsx
+├── planner
+│   └── page.tsx
+├── sign-in
+│   └── page.tsx
+└── work-orders
+    ├── create
+    │   └── page.tsx
+    ├── [id]
+    │   └── page.tsx
+    └── page.tsx
+
+17 directories, 16 files

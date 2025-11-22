@@ -1,14 +1,13 @@
+// app/mobile/work-orders/create/page.tsx
 "use client";
 
 /**
  * Mobile Create Work Order (Companion App)
  * ---------------------------------------------------------------------------
- * Same logic as desktop Create page, but with a mobile-first layout:
- * - Full screen
- * - Vertical-first flow
- * - Large tap targets
- * - No modals
- * - Quick customer/vehicle capture
+ * Mobile-first create flow:
+ * - Auto-creates a placeholder WO tied to Walk-in Customer / Unassigned vehicle
+ * - Lets you capture customer + vehicle + lines
+ * - Sends you to the mobile WO detail view on submit
  */
 
 import { useEffect, useMemo, useState, useCallback } from "react";
@@ -32,6 +31,88 @@ import { useWorkOrderDraft } from "app/work-orders/state/useWorkOrderDraft";
 type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
 type WorkOrderLineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
+type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
+type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
+
+/* -------------------------------------------------------------------------- */
+/* Helpers (mirrored from desktop create page)                                */
+/* -------------------------------------------------------------------------- */
+
+function getInitials(
+  first?: string | null,
+  last?: string | null,
+  fallback?: string | null,
+): string {
+  const f = (first ?? "").trim();
+  const l = (last ?? "").trim();
+  if (f || l) return `${f[0] ?? ""}${l[0] ?? ""}`.toUpperCase() || "WO";
+  const fb = (fallback ?? "").trim();
+  if (fb.includes("@"))
+    return fb.split("@")[0].slice(0, 2).toUpperCase() || "WO";
+  return fb.slice(0, 2).toUpperCase() || "WO";
+}
+
+async function generateCustomId(
+  supabase: ReturnType<typeof createClientComponentClient<DB>>,
+  prefix: string,
+): Promise<string> {
+  const p = prefix.replace(/[^A-Z]/g, "").slice(0, 3) || "WO";
+  const { data } = await supabase
+    .from("work_orders")
+    .select("custom_id")
+    .ilike("custom_id", `${p}%`)
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  let max = 0;
+  (data ?? []).forEach((r) => {
+    const cid = r.custom_id ?? "";
+    const m = cid.match(/^([A-Z]+)(\d{1,})$/i);
+    if (m && m[1].toUpperCase() === p) {
+      const n = parseInt(m[2], 10);
+      if (!Number.isNaN(n)) max = Math.max(max, n);
+    }
+  });
+
+  const next = (max + 1).toString().padStart(4, "0");
+  return `${p}${next}`;
+}
+
+/**
+ * Resolve the user's shop_id.
+ * - First tries profiles.id = userId
+ * - If none, tries shops.owner_id = userId and writes back to profile
+ */
+async function getOrLinkShopId(
+  supabase: ReturnType<typeof createClientComponentClient<DB>>,
+  userId: string,
+): Promise<string | null> {
+  const { data: profileById, error: profErr } = await supabase
+    .from("profiles")
+    .select("shop_id")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (profErr) throw profErr;
+  if (profileById?.shop_id) return profileById.shop_id;
+
+  const { data: ownedShop, error: shopErr } = await supabase
+    .from("shops")
+    .select("id")
+    .eq("owner_id", userId)
+    .maybeSingle();
+
+  if (shopErr) throw shopErr;
+  if (!ownedShop?.id) return null;
+
+  const { error: updErr } = await supabase
+    .from("profiles")
+    .update({ shop_id: ownedShop.id })
+    .eq("id", userId);
+
+  if (updErr) throw updErr;
+  return ownedShop.id;
+}
 
 export default function MobileCreateWorkOrderPage() {
   const router = useRouter();
@@ -61,41 +142,38 @@ export default function MobileCreateWorkOrderPage() {
 
   const [lines, setLines] = useState<WorkOrderLineRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // ---------------------------------------------------------------------------
-  // Auto-create placeholder WO (same logic as desktop Create page)
-  // ---------------------------------------------------------------------------
+  /* ------------------------------------------------------------------------ */
+  /* Auto-create placeholder WO (aligned with desktop Create)                */
+  /* ------------------------------------------------------------------------ */
   useEffect(() => {
     void (async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
 
-      if (!user?.id) return;
+        if (!user?.id) return;
 
-      // Get shop_id
-      const { data: shopProfile } = await supabase
-        .from("profiles")
-        .select("shop_id")
-        .eq("id", user.id)
-        .maybeSingle();
+        const shopId = await getOrLinkShopId(supabase, user.id);
+        if (!shopId) return;
 
-      const shopId = shopProfile?.shop_id ?? null;
-      if (!shopId) return;
+        // Ensure Walk-in Customer
+        let placeholderCustomer: CustomerRow | null = null;
 
-      // Placeholder customer
-      const { data: customers } = await supabase
-        .from("customers")
-        .select("*")
-        .eq("shop_id", shopId)
-        .ilike("first_name", "Walk-in")
-        .ilike("last_name", "Customer")
-        .limit(1);
+        const { data: customers } = await supabase
+          .from("customers")
+          .select("*")
+          .eq("shop_id", shopId)
+          .ilike("first_name", "Walk-in")
+          .ilike("last_name", "Customer")
+          .limit(1);
 
-      const placeholderCustomer =
-        customers?.[0] ??
-        (
-          await supabase
+        if (customers && customers.length > 0) {
+          placeholderCustomer = customers[0] as CustomerRow;
+        } else {
+          const { data } = await supabase
             .from("customers")
             .insert({
               first_name: "Walk-in",
@@ -103,23 +181,26 @@ export default function MobileCreateWorkOrderPage() {
               shop_id: shopId,
             })
             .select("*")
-            .single()
-        ).data;
+            .single();
+          placeholderCustomer = (data as CustomerRow) ?? null;
+        }
 
-      if (!placeholderCustomer) return;
+        if (!placeholderCustomer) return;
 
-      // Placeholder vehicle
-      const { data: vehicles } = await supabase
-        .from("vehicles")
-        .select("*")
-        .eq("customer_id", placeholderCustomer.id)
-        .ilike("model", "Unassigned")
-        .limit(1);
+        // Ensure Unassigned vehicle
+        let placeholderVehicle: VehicleRow | null = null;
+        const { data: vehicles } = await supabase
+          .from("vehicles")
+          .select("*")
+          .eq("customer_id", placeholderCustomer.id)
+          .eq("shop_id", shopId)
+          .ilike("model", "Unassigned")
+          .limit(1);
 
-      const placeholderVehicle =
-        vehicles?.[0] ??
-        (
-          await supabase
+        if (vehicles && vehicles.length > 0) {
+          placeholderVehicle = vehicles[0] as VehicleRow;
+        } else {
+          const { data } = await supabase
             .from("vehicles")
             .insert({
               customer_id: placeholderCustomer.id,
@@ -128,53 +209,71 @@ export default function MobileCreateWorkOrderPage() {
               model: "Unassigned",
             })
             .select("*")
-            .single()
-        ).data;
+            .single();
+          placeholderVehicle = (data as VehicleRow) ?? null;
+        }
 
-      if (!placeholderVehicle) return;
+        if (!placeholderVehicle) return;
 
-      // Auto-create WO
-      const initials = "WO";
-      const newId = uuidv4();
+        // Generate custom_id like desktop
+        const initials = getInitials(
+          placeholderCustomer.first_name,
+          placeholderCustomer.last_name,
+          user.email,
+        );
+        const customId = await generateCustomId(supabase, initials);
 
-      const { data: inserted } = await supabase
-        .from("work_orders")
-        .insert({
-          id: newId,
-          custom_id: `${initials}${Math.floor(Math.random() * 9000 + 1000)}`,
-          user_id: user.id,
-          shop_id: shopId,
-          customer_id: placeholderCustomer.id,
-          vehicle_id: placeholderVehicle.id,
-          status: "awaiting_approval",
-          priority: 3,
-        })
-        .select("*")
-        .single();
+        const newId = uuidv4();
 
-      if (inserted) {
-        setWo(inserted);
+        const { data: inserted, error: insertErr } = await supabase
+          .from("work_orders")
+          .insert({
+            id: newId,
+            custom_id: customId,
+            user_id: user.id,
+            shop_id: shopId,
+            customer_id: placeholderCustomer.id,
+            vehicle_id: placeholderVehicle.id,
+            status: "awaiting_approval",
+            priority: 3,
+          })
+          .select("*")
+          .single();
 
+        if (insertErr || !inserted) {
+          throw new Error(insertErr?.message ?? "Failed to create work order.");
+        }
+
+        setWo(inserted as WorkOrderRow);
+
+        // Seed local state
         setCustomer((prev) => ({
           ...prev,
-          id: placeholderCustomer.id,
-          first_name: placeholderCustomer.first_name ?? prev.first_name,
-          last_name: placeholderCustomer.last_name ?? prev.last_name,
+          id: placeholderCustomer!.id,
+          first_name: placeholderCustomer!.first_name ?? prev.first_name,
+          last_name: placeholderCustomer!.last_name ?? prev.last_name,
         }));
 
         setVehicle((prev) => ({
           ...prev,
-          id: placeholderVehicle.id,
-          make: placeholderVehicle.make ?? prev.make,
-          model: placeholderVehicle.model ?? prev.model,
+          id: placeholderVehicle!.id,
+          make: placeholderVehicle!.make ?? prev.make,
+          model: placeholderVehicle!.model ?? prev.model,
+          license_plate: placeholderVehicle!.license_plate ?? prev.license_plate,
         }));
+      } catch (e) {
+        const msg =
+          e instanceof Error
+            ? e.message
+            : "Failed to auto-create mobile work order.";
+        setError(msg);
       }
     })();
   }, [supabase]);
 
-  // ---------------------------------------------------------------------------
-  // Fetch lines for this WO
-  // ---------------------------------------------------------------------------
+  /* ------------------------------------------------------------------------ */
+  /* Fetch lines for this WO                                                  */
+  /* ------------------------------------------------------------------------ */
   const fetchLines = useCallback(async () => {
     if (!wo?.id) return;
 
@@ -190,29 +289,60 @@ export default function MobileCreateWorkOrderPage() {
   useEffect(() => {
     if (!wo?.id) return;
     void fetchLines();
-  }, [wo?.id, fetchLines]);
 
-  // ---------------------------------------------------------------------------
-  // Submit (go to full WO details)
-  // ---------------------------------------------------------------------------
+    // basic realtime refresh when lines change (optional, lightweight)
+    const ch = supabase
+      .channel(`m:create-wo:${wo.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "work_order_lines",
+          filter: `work_order_id=eq.${wo.id}`,
+        },
+        () => {
+          void fetchLines();
+        },
+      )
+      .subscribe();
+
+  return () => {
+      try {
+        supabase.removeChannel(ch);
+      } catch {
+        /* noop */
+      }
+    };
+  }, [wo?.id, supabase, fetchLines]);
+
+  /* ------------------------------------------------------------------------ */
+  /* Submit → go to mobile WO detail                                          */
+  /* ------------------------------------------------------------------------ */
   const handleSubmit = async () => {
     if (!wo?.id) return;
     setLoading(true);
+    setError(null);
 
     try {
+      // If the VIN / OCR draft has anything, you could mirror desktop persistence here.
       if (draft?.customer || draft?.vehicle) {
-        // TODO: replicate desktop logic here if needed
+        // For now we just ignore; desktop create handles this more deeply.
       }
 
       router.push(`/mobile/work-orders/${wo.id}`);
+    } catch (e) {
+      const msg =
+        e instanceof Error ? e.message : "Failed to continue to work order.";
+      setError(msg);
     } finally {
       setLoading(false);
     }
   };
 
-  // ---------------------------------------------------------------------------
-  // UI
-  // ---------------------------------------------------------------------------
+  /* ------------------------------------------------------------------------ */
+  /* UI                                                                       */
+  /* ------------------------------------------------------------------------ */
   return (
     <MobileShell>
       <div className="px-4 py-4 space-y-6">
@@ -222,7 +352,14 @@ export default function MobileCreateWorkOrderPage() {
             Create Work Order
           </h1>
           {wo?.custom_id && (
-            <p className="mt-1 text-xs text-neutral-400">WO#: {wo.custom_id}</p>
+            <p className="mt-1 text-xs text-neutral-400">
+              WO#: {wo.custom_id}
+            </p>
+          )}
+          {error && (
+            <p className="mt-2 rounded border border-red-500/50 bg-red-950/60 px-3 py-2 text-xs text-red-100">
+              {error}
+            </p>
           )}
         </div>
 
@@ -241,11 +378,12 @@ export default function MobileCreateWorkOrderPage() {
           lines={lines}
           workOrderId={wo?.id ?? null}
           onDelete={async (lineId) => {
+            if (!wo?.id) return;
             await supabase
               .from("work_order_lines")
               .delete()
-              .eq("id", lineId);
-
+              .eq("id", lineId)
+              .eq("work_order_id", wo.id);
             await fetchLines();
           }}
         />
@@ -260,9 +398,9 @@ export default function MobileCreateWorkOrderPage() {
 
         {/* Continue */}
         <button
-          disabled={loading}
+          disabled={loading || !wo?.id}
           onClick={handleSubmit}
-          className="w-full rounded-lg bg-orange-500 py-3 font-semibold text-black active:opacity-80"
+          className="w-full rounded-lg bg-orange-500 py-3 font-semibold text-black disabled:opacity-60 active:opacity-80"
         >
           {loading ? "Saving..." : "Approve & Continue"}
         </button>

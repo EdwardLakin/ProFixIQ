@@ -65,13 +65,12 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  // Signed-in user hits landing → redirect to dashboard or onboarding
+  // 🔁 Signed-in user hits landing → redirect to *mobile* console (NOT dashboard)
   if (pathname === "/" && session?.user) {
+    const to = completed ? "/mobile" : "/onboarding";
     return withSupabaseCookies(
       res,
-      NextResponse.redirect(
-        new URL(completed ? "/dashboard" : "/onboarding", req.url),
-      ),
+      NextResponse.redirect(new URL(to, req.url)),
     );
   }
 
@@ -89,10 +88,10 @@ export async function middleware(req: NextRequest) {
       if (redirectParam) {
         to = redirectParam;
       } else if (isMobileSignIn) {
-        // mobile companion goes to mobile dashboard once onboarded
+        // ✅ mobile companion always lands on mobile console after sign-in
         to = completed ? "/mobile" : "/onboarding";
       } else {
-        // normal sign-in keeps existing behavior
+        // normal sign-in keeps desktop behavior
         to = completed ? "/dashboard" : "/onboarding";
       }
 
