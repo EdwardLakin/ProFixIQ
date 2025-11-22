@@ -17,8 +17,6 @@ import { supabaseBrowser as supabase } from "@/features/shared/lib/supabase/clie
 import type { Database } from "@shared/types/types/supabase";
 
 import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
-import VehiclePhotoUploader from "@parts/components/VehiclePhotoUploader";
-import VehiclePhotoGallery from "@parts/components/VehiclePhotoGallery";
 import { UsePartButton } from "@work-orders/components/UsePartButton";
 import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
 import VoiceButton from "@/features/shared/voice/VoiceButton";
@@ -725,10 +723,10 @@ export default function MobileWorkOrderClient({
       {!currentUserId && (
         <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-900/10 p-3 text-xs text-amber-100">
           You appear signed out on this tab. If actions fail, open{" "}
-          <Link href="/sign-in" className="underline hover:text-white">
-            Sign In
-          </Link>{" "}
-          and return here.
+            <Link href="/sign-in" className="underline hover:text-white">
+              Sign In
+            </Link>{" "}
+            and return here.
         </div>
       )}
 
@@ -1220,20 +1218,6 @@ export default function MobileWorkOrderClient({
               </div>
             )}
           </div>
-
-          {/* Vehicle photos */}
-          {vehicle?.id && (
-            <div className="space-y-4">
-              <h2 className="text-base font-semibold text-white sm:text-lg">
-                Vehicle photos
-              </h2>
-              <VehiclePhotoUploader vehicleId={vehicle.id} />
-              <VehiclePhotoGallery
-                vehicleId={vehicle.id}
-                currentUserId={currentUserId || "anon"}
-              />
-            </div>
-          )}
         </div>
       )}
 
