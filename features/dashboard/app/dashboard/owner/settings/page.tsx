@@ -12,7 +12,12 @@ import OwnerPinBadge from "@shared/components/OwnerPinBadge";
 import ShopPublicProfileSection from "@/features/shops/components/ShopPublicProfileSection";
 import ReviewsList from "@shared/components/reviews/ReviewsList";
 
-type HourRow = { weekday: number; open_time: string; close_time: string };
+type HourRow = {
+  weekday: number;
+  open_time: string;
+  close_time: string;
+  closed?: boolean;
+};
 type TimeOffRow = {
   id: string;
   starts_at: string;
@@ -72,6 +77,7 @@ export default function OwnerSettingsPage() {
       weekday: i,
       open_time: "08:00",
       close_time: "17:00",
+      closed: false,
     }))
   );
   const [timeOff, setTimeOff] = useState<TimeOffRow[]>([]);
@@ -158,7 +164,7 @@ export default function OwnerSettingsPage() {
         setAutoSendQuoteEmail(!!shop.auto_send_quote_email);
       }
 
-      // hours
+      // hours (from shop_hours via API)
       try {
         const res = await fetch(`/api/settings/hours?shopId=${sid}`, {
           cache: "no-store",
@@ -167,12 +173,25 @@ export default function OwnerSettingsPage() {
           const j = await res.json();
           if (Array.isArray(j?.hours) && j.hours.length) {
             const byDay = new Map<number, HourRow>();
-            j.hours.forEach((h: HourRow) => byDay.set(h.weekday, h));
+            j.hours.forEach(
+              (h: { weekday: number; open_time: string; close_time: string }) => {
+                const open = h.open_time || "08:00";
+                const close = h.close_time || "17:00";
+                const closed = open === close;
+                byDay.set(h.weekday, {
+                  weekday: h.weekday,
+                  open_time: open,
+                  close_time: close,
+                  closed,
+                });
+              }
+            );
             const normalized = Array.from({ length: 7 }, (_, i) =>
               byDay.get(i) || {
                 weekday: i,
                 open_time: "08:00",
                 close_time: "17:00",
+                closed: false,
               }
             );
             setHours(normalized);
@@ -281,15 +300,21 @@ export default function OwnerSettingsPage() {
     toast.info("AI Logo generation coming soon…");
   };
 
-  // save hours
+  // save hours → /api/settings/hours → shop_hours
   const saveHours = async () => {
     if (!shopId) return;
     if (!guardUnlock()) return;
 
+    const payloadHours = hours.map((h) => ({
+      weekday: h.weekday,
+      open_time: h.closed ? "00:00" : h.open_time,
+      close_time: h.closed ? "00:00" : h.close_time,
+    }));
+
     const res = await fetch("/api/settings/hours", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ shopId, hours }),
+      body: JSON.stringify({ shopId, hours: payloadHours }),
     });
 
     if (!res.ok) {
@@ -403,6 +428,9 @@ export default function OwnerSettingsPage() {
       <div className="flex flex-col gap-6 lg:flex-row">
         {/* LEFT COLUMN */}
         <div className="flex-1 space-y-6">
+          {/* Shop info */}
+          {/* (unchanged sections: shop info, billing, workflow, communication, automation) */}
+
           {/* Shop info */}
           <section className="space-y-3 rounded-xl border border-border bg-card p-4">
             <h2 className="text-sm font-semibold text-neutral-50">
@@ -612,11 +640,11 @@ export default function OwnerSettingsPage() {
             </label>
           </section>
 
-          {/* Hours */}
+          {/* Hours with Closed toggle */}
           <section className="space-y-3 rounded-xl border border-border bg-card p-4">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-sm font-semibold text-neutral-50">
-                Hours
+                Hours (used for booking time slots)
               </h2>
               <Button onClick={saveHours} disabled={!isUnlocked} size="sm">
                 Save hours
@@ -624,50 +652,102 @@ export default function OwnerSettingsPage() {
             </div>
 
             <div className="grid gap-2 md:grid-cols-7">
-              {hours.map((row, idx) => (
-                <div
-                  key={row.weekday}
-                  className="rounded border border-neutral-800 bg-neutral-900 p-2 text-xs"
-                >
-                  <div className="mb-1 text-center text-[11px] font-semibold text-orange-300">
-                    {WEEKDAYS[row.weekday]}
+              {hours.map((row, idx) => {
+                const isClosed = !!row.closed;
+                return (
+                  <div
+                    key={row.weekday}
+                    className="rounded border border-neutral-800 bg-neutral-900 p-2 text-xs"
+                  >
+                    <div className="mb-1 text-center text-[11px] font-semibold text-orange-300">
+                      {WEEKDAYS[row.weekday]}
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={!isUnlocked}
+                      onClick={() => {
+                        setHours((prev) => {
+                          const copy = [...prev];
+                          const current = copy[idx];
+                          const willClose = !current.closed;
+
+                          if (willClose) {
+                            copy[idx] = {
+                              ...current,
+                              closed: true,
+                              open_time: "00:00",
+                              close_time: "00:00",
+                            };
+                          } else {
+                            const open =
+                              current.open_time === "00:00"
+                                ? "08:00"
+                                : current.open_time;
+                            const close =
+                              current.close_time === "00:00"
+                                ? "17:00"
+                                : current.close_time;
+                            copy[idx] = {
+                              ...current,
+                              closed: false,
+                              open_time: open,
+                              close_time: close,
+                            };
+                          }
+                          return copy;
+                        });
+                      }}
+                      className={`mb-2 w-full rounded px-2 py-1 text-[11px] ${
+                        isClosed
+                          ? "border border-neutral-700 bg-neutral-950 text-neutral-400"
+                          : "border border-green-600/60 bg-green-900/40 text-green-300"
+                      }`}
+                    >
+                      {isClosed ? "Closed" : "Open"}
+                    </button>
+
+                    <label className="mb-1 block text-[10px] text-neutral-400">
+                      Open
+                    </label>
+                    <input
+                      type="time"
+                      className={`mb-2 w-full rounded bg-neutral-950 px-2 py-1 text-xs ${
+                        isClosed ? "opacity-40" : ""
+                      }`}
+                      value={row.open_time}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setHours((prev) => {
+                          const copy = [...prev];
+                          copy[idx] = { ...copy[idx], open_time: v };
+                          return copy;
+                        });
+                      }}
+                      disabled={!isUnlocked || isClosed}
+                    />
+                    <label className="mb-1 block text-[10px] text-neutral-400">
+                      Close
+                    </label>
+                    <input
+                      type="time"
+                      className={`w-full rounded bg-neutral-950 px-2 py-1 text-xs ${
+                        isClosed ? "opacity-40" : ""
+                      }`}
+                      value={row.close_time}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setHours((prev) => {
+                          const copy = [...prev];
+                          copy[idx] = { ...copy[idx], close_time: v };
+                          return copy;
+                        });
+                      }}
+                      disabled={!isUnlocked || isClosed}
+                    />
                   </div>
-                  <label className="mb-1 block text-[10px] text-neutral-400">
-                    Open
-                  </label>
-                  <input
-                    type="time"
-                    className="mb-2 w-full rounded bg-neutral-950 px-2 py-1 text-xs"
-                    value={row.open_time}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setHours((prev) => {
-                        const copy = [...prev];
-                        copy[idx] = { ...copy[idx], open_time: v };
-                        return copy;
-                      });
-                    }}
-                    disabled={!isUnlocked}
-                  />
-                  <label className="mb-1 block text-[10px] text-neutral-400">
-                    Close
-                  </label>
-                  <input
-                    type="time"
-                    className="w-full rounded bg-neutral-950 px-2 py-1 text-xs"
-                    value={row.close_time}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setHours((prev) => {
-                        const copy = [...prev];
-                        copy[idx] = { ...copy[idx], close_time: v };
-                        return copy;
-                      });
-                    }}
-                    disabled={!isUnlocked}
-                  />
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
 
@@ -759,9 +839,15 @@ export default function OwnerSettingsPage() {
             </h2>
             <div className="space-y-2 rounded bg-white p-3 text-xs text-black shadow">
               {logoUrl && (
-                <img src={logoUrl} alt="Logo" className="h-12 object-contain" />
+                <img
+                  src={logoUrl}
+                  alt="Logo"
+                  className="h-12 object-contain"
+                />
               )}
-              <div className="font-semibold">{shopName || "Your shop name"}</div>
+              <div className="font-semibold">
+                {shopName || "Your shop name"}
+              </div>
               <div>
                 {address}
                 {address && ","} {city} {province} {postalCode}

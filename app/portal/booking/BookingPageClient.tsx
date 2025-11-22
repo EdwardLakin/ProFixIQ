@@ -20,6 +20,10 @@ type ShopOption = Pick<
   "id" | "name" | "slug" | "accepts_online_booking"
 >;
 
+type HourRow = { weekday: number; open_time: string; close_time: string };
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
 const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
 const toYMD = (d: Date) =>
   `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -46,6 +50,9 @@ export default function PortalBookingPage() {
   const [shopSlug, setShopSlug] = useState<string>(search.get("shop") || "");
   const [tz, setTz] = useState<string>("UTC");
   const [slots, setSlots] = useState<Slot[]>([]);
+
+  // shop hours / closed days
+  const [hours, setHours] = useState<HourRow[]>([]);
 
   // Load shops that accept online booking
   useEffect(() => {
@@ -83,6 +90,55 @@ export default function PortalBookingPage() {
     return { start: toYMD(first), end: toYMD(last) };
   }, [month]);
 
+  // Fetch shop hours for the selected shop → used for closed days label/logic
+  useEffect(() => {
+    const shop = shops.find((s) => (s.slug as string) === shopSlug);
+    if (!shop) return;
+
+    (async () => {
+      try {
+        const res = await fetch(`/api/settings/hours?shopId=${shop.id}`, {
+          cache: "no-store",
+        });
+        if (!res.ok) {
+          setHours([]);
+          return;
+        }
+        const j = await res.json();
+        const raw: HourRow[] = Array.isArray(j?.hours) ? j.hours : [];
+
+        const normalized = Array.from({ length: 7 }, (_, i) => {
+          const found = raw.find((h) => h.weekday === i);
+          const open = found?.open_time ?? "08:00";
+          const close = found?.close_time ?? "17:00";
+          return { weekday: i, open_time: open, close_time: close };
+        });
+
+        setHours(normalized);
+      } catch {
+        setHours([]);
+      }
+    })();
+  }, [shops, shopSlug]);
+
+  const closedWeekdays = useMemo(() => {
+    const set = new Set<number>();
+    hours.forEach((h) => {
+      if (h.open_time === h.close_time) {
+        set.add(h.weekday);
+      }
+    });
+    return set;
+  }, [hours]);
+
+  const closedLabel = useMemo(() => {
+    if (closedWeekdays.size === 0) return "";
+    const names = Array.from(closedWeekdays)
+      .sort()
+      .map((d) => WEEKDAYS[d]);
+    return names.join(", ");
+  }, [closedWeekdays]);
+
   // Fetch availability whenever shop or month changes
   useEffect(() => {
     if (!shopSlug) return;
@@ -92,9 +148,9 @@ export default function PortalBookingPage() {
       try {
         const res = await fetch(
           `/api/portal/availability?shop=${encodeURIComponent(
-            shopSlug,
+            shopSlug
           )}&start=${range.start}&end=${range.end}&slotMins=30`,
-          { cache: "no-store" },
+          { cache: "no-store" }
         );
 
         if (!res.ok) throw new Error("Failed to load availability.");
@@ -128,7 +184,7 @@ export default function PortalBookingPage() {
       map.set(k, arr);
     });
     map.forEach((arr) =>
-      arr.sort((a, b) => +new Date(a.start) - +new Date(b.start)),
+      arr.sort((a, b) => +new Date(a.start) - +new Date(b.start))
     );
     return map;
   }, [slots]);
@@ -156,7 +212,7 @@ export default function PortalBookingPage() {
       if (!res.ok) throw new Error(j?.error || "Booking failed");
 
       toast.success(
-        "Appointment requested! We’ll email you when it’s confirmed.",
+        "Appointment requested! We’ll email you when it’s confirmed."
       );
       setSlots((prev) => prev.filter((s) => s.start !== startIso));
     } catch (e: unknown) {
@@ -165,7 +221,14 @@ export default function PortalBookingPage() {
     }
   }
 
-  const disabledDate = (d: Date) => !slotsByDay.has(toYMD(d));
+  const disabledDate = (d: Date) => {
+    const weekday = d.getDay();
+    if (closedWeekdays.has(weekday)) return true;
+    return !slotsByDay.has(toYMD(d));
+  };
+
+  const isSelectedClosed =
+    selectedDate && closedWeekdays.has(selectedDate.getDay());
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -215,6 +278,11 @@ export default function PortalBookingPage() {
           <h2 className="mb-1 font-semibold text-white">Available Times</h2>
           <p className="mb-3 text-xs text-neutral-400">
             Times shown in <span className="font-medium">{tz}</span>.
+            {closedLabel && (
+              <span className="mt-1 block text-[0.7rem] text-neutral-500">
+                Closed: {closedLabel}
+              </span>
+            )}
           </p>
 
           {!shopSlug ? (
@@ -228,9 +296,15 @@ export default function PortalBookingPage() {
           ) : loading ? (
             <p className="text-sm text-neutral-400">Loading…</p>
           ) : daySlots.length === 0 ? (
-            <p className="text-sm text-neutral-400">
-              No times available for this date.
-            </p>
+            isSelectedClosed ? (
+              <p className="text-sm text-neutral-400">
+                Shop is closed on this day.
+              </p>
+            ) : (
+              <p className="text-sm text-neutral-400">
+                No times available for this date.
+              </p>
+            )
           ) : (
             <ul className="grid grid-cols-2 gap-2">
               {daySlots.map((s, i) => (
@@ -249,8 +323,8 @@ export default function PortalBookingPage() {
       </div>
 
       <p className="mt-6 text-xs text-neutral-500">
-        * Times reflect shop hours and blackout dates. Your request is pending
-        until confirmed by the shop.
+        * Times reflect shop hours, closed days, and blackout dates. Your
+        request is pending until confirmed by the shop.
       </p>
     </div>
   );

@@ -11,7 +11,6 @@ import { Button } from "@shared/components/ui/Button";
 
 type ShopRow = Database["public"]["Tables"]["shops"]["Row"];
 type CustomerRow = Database["public"]["Tables"]["customers"]["Row"];
-type BookingRow = Database["public"]["Tables"]["bookings"]["Row"];
 
 export type Booking = {
   id: string;
@@ -24,11 +23,6 @@ export type Booking = {
   customer_phone?: string | null;
   notes?: string | null;
   status?: string | null; // pending, confirmed, cancelled...
-};
-
-type BookPostResponse = {
-  error?: string;
-  booking?: BookingRow;
 };
 
 const isoDate = (d: Date) => d.toISOString().slice(0, 10);
@@ -108,7 +102,6 @@ export default function PortalAppointmentsPage() {
           .from("customers")
           .select("*")
           .eq("shop_id", selectedShop.id)
-          // order by real columns instead of non-existent full_name
           .order("last_name", { ascending: true })
           .order("first_name", { ascending: true });
 
@@ -195,41 +188,17 @@ export default function PortalAppointmentsPage() {
         }),
       });
 
-      const raw = (await res.json().catch(() => ({}))) as BookPostResponse;
-      if (!res.ok) throw new Error(raw?.error || "Unable to create appointment.");
+      const j = (await res.json().catch(() => ({}))) as { error?: string };
 
-      // Map the DB row into our Booking shape and push into state
-      if (raw.booking) {
-        const createdRow = raw.booking;
-
-        const createdBooking: Booking = {
-          id: createdRow.id,
-          shop_slug: shopSlug,
-          starts_at: createdRow.starts_at,
-          ends_at: createdRow.ends_at,
-          customer_id: createdRow.customer_id ?? null,
-          // use the form values for display; DB may not store these denormalised
-          customer_name: form.customerName || null,
-          customer_email: form.customerEmail || null,
-          customer_phone: form.customerPhone || null,
-          notes: createdRow.notes ?? (form.notes || null),
-          status: createdRow.status ?? "pending",
-        };
-
-        setBookings((prev) => [...prev, createdBooking]);
-      } else {
-        // Fallback: if API stopped returning booking, still refetch
-        await refreshBookings(shopSlug, weekStart, weekEnd, setBookings);
+      if (!res.ok) {
+        throw new Error(j?.error || "Unable to create appointment.");
       }
 
-      const who =
-        form.customerName || form.customerEmail || form.customerPhone;
-      toast.success(
-        who
-          ? `Appointment created for ${who}.`
-          : "Appointment created."
-      );
+      toast.success("Appointment created.");
       setCreatingDate(null);
+
+      // reload week from server so calendar + list both update
+      await refreshBookings(shopSlug, weekStart, weekEnd, setBookings);
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Create failed";
@@ -238,6 +207,7 @@ export default function PortalAppointmentsPage() {
   }
 
   async function handleUpdate(id: string, patch: Partial<Booking>) {
+    if (!shopSlug) return;
     try {
       const res = await fetch(`/api/portal/bookings/${id}`, {
         method: "PATCH",
@@ -258,6 +228,7 @@ export default function PortalAppointmentsPage() {
   }
 
   async function handleDelete(id: string) {
+    if (!shopSlug) return;
     if (!confirm("Delete this appointment?")) return;
     try {
       const res = await fetch(`/api/portal/bookings/${id}`, {
@@ -265,7 +236,7 @@ export default function PortalAppointmentsPage() {
       });
       if (!res.ok) throw new Error("Delete failed.");
       toast.success("Appointment deleted.");
-      setBookings((prev) => prev.filter((b) => b.id !== id));
+      await refreshBookings(shopSlug, weekStart, weekEnd, setBookings);
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Delete failed";
@@ -299,6 +270,8 @@ export default function PortalAppointmentsPage() {
             onChange={(e) => {
               const slug = e.target.value;
               setShopSlug(slug);
+              setEditing(null);
+              setCreatingDate(null);
               router.replace(
                 `/portal/appointments?shop=${encodeURIComponent(slug)}`
               );
@@ -504,6 +477,17 @@ async function refreshBookings(
 /* Forms                                                                      */
 /* -------------------------------------------------------------------------- */
 
+type CreateFormValues = {
+  date: string;
+  startsAt: string;
+  endsAt: string;
+  customerId?: string;
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  notes: string;
+};
+
 function customerLabel(c: CustomerRow): string {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const anyC: any = c;
@@ -525,16 +509,7 @@ function CreateForm({
   defaultDate: string;
   customers: CustomerRow[];
   loadingCustomers: boolean;
-  onSubmit: (form: {
-    date: string;
-    startsAt: string;
-    endsAt: string;
-    customerId?: string;
-    customerName: string;
-    customerEmail: string;
-    customerPhone: string;
-    notes: string;
-  }) => void;
+  onSubmit: (form: CreateFormValues) => void;
 }) {
   const [date, setDate] = useState(defaultDate);
   const [startsAt, setStartsAt] = useState("09:00");
@@ -569,25 +544,6 @@ function CreateForm({
       className="space-y-3"
       onSubmit={(e) => {
         e.preventDefault();
-
-        // basic validation with toasts
-        if (!startsAt || !endsAt || startsAt >= endsAt) {
-          toast.error("End time must be after start time.");
-          return;
-        }
-
-        if (
-          !customerId &&
-          !customerName.trim() &&
-          !customerEmail.trim() &&
-          !customerPhone.trim()
-        ) {
-          toast.error(
-            "Add at least a customer name, email, or phone before saving."
-          );
-          return;
-        }
-
         onSubmit({
           date,
           startsAt,
@@ -754,24 +710,6 @@ function EditForm({
       className="space-y-3"
       onSubmit={(e) => {
         e.preventDefault();
-
-        if (!startsAt || !endsAt || startsAt >= endsAt) {
-          toast.error("End time must be after start time.");
-          return;
-        }
-
-        if (
-          !customerId &&
-          !customerName.trim() &&
-          !customerEmail.trim() &&
-          !customerPhone.trim()
-        ) {
-          toast.error(
-            "Add at least a customer name, email, or phone before saving."
-          );
-          return;
-        }
-
         const starts_at = new Date(`${date}T${startsAt}`).toISOString();
         const ends_at = new Date(`${date}T${endsAt}`).toISOString();
         onSave({
