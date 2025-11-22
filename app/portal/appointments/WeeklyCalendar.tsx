@@ -16,16 +16,9 @@ type Props = {
 const dayKey = (d: Date) => d.toISOString().slice(0, 10);
 
 function displayCustomerName(b: Booking): string {
-  // Expect `customer_name` to come from DB (join on customers)
-  // You can extend this if Booking has customer_id, etc.
-  // e.g., customer_name is filled in page.tsx from Supabase.
-  // @ts-expect-error – if you add extra fields like customer_full_name
+  // @ts-expect-error – optional extra field if you ever add it
   const fromExtra = b.customer_full_name as string | undefined;
-  return (
-    b.customer_name ||
-    fromExtra ||
-    "Customer"
-  );
+  return b.customer_name || fromExtra || "Customer";
 }
 
 export default function WeeklyCalendar({
@@ -35,13 +28,15 @@ export default function WeeklyCalendar({
   onSelectBooking,
   loading = false,
 }: Props) {
-  const days = useMemo(() => {
-    return Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(weekStart);
-      d.setDate(d.getDate() + i);
-      return d;
-    });
-  }, [weekStart]);
+  const days = useMemo(
+    () =>
+      Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(weekStart);
+        d.setDate(d.getDate() + i);
+        return d;
+      }),
+    [weekStart],
+  );
 
   const grouped = useMemo(() => {
     const map = new Map<string, Booking[]>();
@@ -53,8 +48,7 @@ export default function WeeklyCalendar({
     }
     map.forEach((arr) => {
       arr.sort(
-        (a, b) =>
-          +new Date(a.starts_at) - +new Date(b.starts_at)
+        (a, b) => +new Date(a.starts_at) - +new Date(b.starts_at),
       );
     });
     return map;
@@ -72,7 +66,7 @@ export default function WeeklyCalendar({
         return (
           <div
             key={k}
-            className="flex min-h-[130px] flex-col gap-2 rounded-2xl border border-white/10 bg-black/40 p-3 text-xs text-neutral-100 shadow-card backdrop-blur-md"
+            className="flex min-h-[140px] flex-col gap-2 rounded-2xl border border-white/10 bg-black/40 p-3 text-xs text-neutral-100 shadow-card backdrop-blur-md overflow-hidden"
           >
             {/* Day header */}
             <Button
