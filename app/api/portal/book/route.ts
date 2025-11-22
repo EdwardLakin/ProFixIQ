@@ -44,7 +44,7 @@ export async function POST(req: Request) {
 
     // 3) Load shop (NOTE: using 'shop' table name to match your types)
     const { data: shop, error: shopErr } = await supabase
-      .from("shop")
+      .from("shops")
       .select(
         "id, slug, accepts_online_booking, min_notice_minutes, max_lead_days, timezone",
       )
