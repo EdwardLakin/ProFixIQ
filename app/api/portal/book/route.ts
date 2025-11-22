@@ -12,6 +12,12 @@ type Body = {
   endsAt: string;   // ISO
   notes?: string;
   vehicleId?: string | null;
+
+  // Optional: when internal staff creates a booking for a specific / new customer
+  customerId?: string | null;
+  customerName?: string;
+  customerEmail?: string;
+  customerPhone?: string;
 };
 
 function bad(msg: string, code = 400) {
@@ -31,18 +37,29 @@ export async function POST(req: Request) {
 
     // 2) Parse body
     const body = (await req.json()) as Body;
-    const { shopSlug, startsAt, endsAt, notes = "", vehicleId = null } = body || {};
+    const {
+      shopSlug,
+      startsAt,
+      endsAt,
+      notes = "",
+      vehicleId = null,
+      customerId: rawCustomerId = null,
+      customerName = "",
+      customerEmail = "",
+      customerPhone = "",
+    } = body || {};
+
     if (!shopSlug || !startsAt || !endsAt) {
       return bad("Missing shopSlug, startsAt, or endsAt");
     }
 
     const start = new Date(startsAt);
     const end = new Date(endsAt);
-    if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) {
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
       return bad("Invalid start/end");
     }
 
-    // 3) Load shop (NOTE: using 'shop' table name to match your types)
+    // 3) Load shop (correct table = shops)
     const { data: shop, error: shopErr } = await supabase
       .from("shops")
       .select(
@@ -56,18 +73,88 @@ export async function POST(req: Request) {
       return bad("Shop is not accepting online bookings", 403);
     }
 
-    // 4) Get customer row for this user
-    const { data: customer, error: custErr } = await supabase
-      .from("customers")
-      .select("id, shop_id")
-      .eq("user_id", user.id)
-      .single();
+    // 4) Resolve customer
+    const hasExplicitCustomer =
+      !!rawCustomerId && rawCustomerId.trim().length > 0;
+    const hasInlineCustomerFields =
+      !!customerName.trim() ||
+      !!customerEmail.trim() ||
+      !!customerPhone.trim();
 
-    if (custErr || !customer) {
-      return bad("Customer profile not found for this user", 404);
+    let customerId: string | null = null;
+    let customerShopId: string | null = null;
+
+    if (hasExplicitCustomer) {
+      // 4a. Existing customer chosen in appointments UI
+      const { data: customerRow, error: customerRowErr } = await supabase
+        .from("customers")
+        .select("id, shop_id")
+        .eq("id", rawCustomerId)
+        .maybeSingle();
+
+      if (customerRowErr || !customerRow) {
+        return bad("Selected customer not found", 404);
+      }
+
+      if (customerRow.shop_id && customerRow.shop_id !== shop.id) {
+        return bad("Customer belongs to a different shop", 403);
+      }
+
+      customerId = customerRow.id;
+      customerShopId = customerRow.shop_id;
+    } else if (hasInlineCustomerFields) {
+      // 4b. NEW customer created from appointments UI (no customerId, but name/email/phone entered)
+      const trimmedName = customerName.trim();
+      let firstName: string | null = null;
+      let lastName: string | null = null;
+
+      if (trimmedName) {
+        const parts = trimmedName.split(" ");
+        firstName = parts[0] || null;
+        lastName = parts.slice(1).join(" ") || null;
+      }
+
+      const insertCustomer: Database["public"]["Tables"]["customers"]["Insert"] = {
+        shop_id: shop.id,
+        first_name: firstName,
+        last_name: lastName,
+        email: customerEmail.trim() || null,
+        phone: customerPhone.trim() || null,
+      };
+
+      const { data: newCustomer, error: newCustErr } = await supabase
+        .from("customers")
+        .insert(insertCustomer)
+        .select("id, shop_id")
+        .single();
+
+      if (newCustErr || !newCustomer) {
+        return bad("Failed to create customer for booking", 500);
+      }
+
+      customerId = newCustomer.id;
+      customerShopId = newCustomer.shop_id;
+    } else {
+      // 4c. Portal self-serve: use the logged-in portal user → customers.user_id = auth.id
+      const { data: customerRow, error: custErr } = await supabase
+        .from("customers")
+        .select("id, shop_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (custErr || !customerRow) {
+        return bad("Customer profile not found for this user", 404);
+      }
+
+      customerId = customerRow.id;
+      customerShopId = customerRow.shop_id;
     }
 
-    // 5) Enforce notice/max lead
+    if (!customerId) {
+      return bad("Could not resolve customer for booking", 500);
+    }
+
+    // 5) Enforce notice / max lead
     const now = new Date();
     const minutesUntil = Math.floor((start.getTime() - now.getTime()) / 60000);
     const minNotice = shop.min_notice_minutes ?? 120;
@@ -75,9 +162,9 @@ export async function POST(req: Request) {
       return bad(`Bookings require at least ${minNotice} minutes notice`);
     }
 
+    const midnightToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const daysUntil = Math.floor(
-      (start.getTime() - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) /
-        86400000,
+      (start.getTime() - midnightToday.getTime()) / 86400000,
     );
     const maxLead = shop.max_lead_days ?? 30;
     if (daysUntil > maxLead) {
@@ -89,10 +176,7 @@ export async function POST(req: Request) {
       .from("bookings")
       .select("id")
       .eq("shop_id", shop.id)
-      .or(
-        // (existing.starts_at < requested.end) AND (existing.ends_at > requested.start)
-        `and(starts_at.lt.${endsAt},ends_at.gt.${startsAt})`,
-      )
+      .or(`and(starts_at.lt.${endsAt},ends_at.gt.${startsAt})`)
       .limit(1);
 
     if (ovErr) return bad("Failed to check availability", 500);
@@ -101,9 +185,9 @@ export async function POST(req: Request) {
     }
 
     // 7) Insert booking
-    const insertPayload: Database["public"]["Tables"]["bookings"]["Insert"] = {
+    const insertBooking: Database["public"]["Tables"]["bookings"]["Insert"] = {
       shop_id: shop.id,
-      customer_id: customer.id,
+      customer_id: customerId,
       vehicle_id: vehicleId ?? null,
       starts_at: startsAt,
       ends_at: endsAt,
@@ -113,20 +197,21 @@ export async function POST(req: Request) {
 
     const { data: created, error: insErr } = await supabase
       .from("bookings")
-      .insert(insertPayload)
+      .insert(insertBooking)
       .select("*")
       .single();
 
     if (insErr || !created) return bad("Failed to create booking", 500);
 
-    // 8) OPTIONAL: attach customer to shop if not already set
-    if (!customer.shop_id) {
+    // 8) If this came from portal (no explicit customer & no inline fields) and customer
+    // isn't linked to a shop yet, attach it. For staff-created customers we already set shop_id.
+    const cameFromPortal = !hasExplicitCustomer && !hasInlineCustomerFields;
+    if (cameFromPortal && !customerShopId) {
       const { error: attachErr } = await supabase
         .from("customers")
         .update({ shop_id: shop.id })
-        .eq("id", customer.id);
+        .eq("id", customerId);
 
-      // Not fatal if RLS blocks this; booking is already created.
       if (attachErr) {
         console.warn("Could not link customer to shop:", attachErr.message);
       }

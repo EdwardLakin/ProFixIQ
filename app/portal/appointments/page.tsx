@@ -192,7 +192,12 @@ export default function PortalAppointmentsPage() {
       const j = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(j?.error || "Unable to create appointment.");
 
-      toast.success("Appointment created.");
+      const who = form.customerName || form.customerEmail || form.customerPhone;
+      toast.success(
+        who
+          ? `Appointment created for ${who}.`
+          : "Appointment created."
+      );
       setCreatingDate(null);
       await refreshBookings(shopSlug, weekStart, weekEnd, setBookings);
     } catch (err: unknown) {
@@ -534,6 +539,25 @@ function CreateForm({
       className="space-y-3"
       onSubmit={(e) => {
         e.preventDefault();
+
+        // basic validation with toasts
+        if (!startsAt || !endsAt || startsAt >= endsAt) {
+          toast.error("End time must be after start time.");
+          return;
+        }
+
+        if (
+          !customerId &&
+          !customerName.trim() &&
+          !customerEmail.trim() &&
+          !customerPhone.trim()
+        ) {
+          toast.error(
+            "Add at least a customer name, email, or phone before saving."
+          );
+          return;
+        }
+
         onSubmit({
           date,
           startsAt,
@@ -700,6 +724,24 @@ function EditForm({
       className="space-y-3"
       onSubmit={(e) => {
         e.preventDefault();
+
+        if (!startsAt || !endsAt || startsAt >= endsAt) {
+          toast.error("End time must be after start time.");
+          return;
+        }
+
+        if (
+          !customerId &&
+          !customerName.trim() &&
+          !customerEmail.trim() &&
+          !customerPhone.trim()
+        ) {
+          toast.error(
+            "Add at least a customer name, email, or phone before saving."
+          );
+          return;
+        }
+
         const starts_at = new Date(`${date}T${startsAt}`).toISOString();
         const ends_at = new Date(`${date}T${endsAt}`).toISOString();
         onSave({
