@@ -11,6 +11,7 @@ import { Button } from "@shared/components/ui/Button";
 
 type ShopRow = Database["public"]["Tables"]["shops"]["Row"];
 type CustomerRow = Database["public"]["Tables"]["customers"]["Row"];
+type BookingRow = Database["public"]["Tables"]["bookings"]["Row"];
 
 export type Booking = {
   id: string;
@@ -23,6 +24,11 @@ export type Booking = {
   customer_phone?: string | null;
   notes?: string | null;
   status?: string | null; // pending, confirmed, cancelled...
+};
+
+type BookPostResponse = {
+  error?: string;
+  booking?: BookingRow;
 };
 
 const isoDate = (d: Date) => d.toISOString().slice(0, 10);
@@ -189,17 +195,41 @@ export default function PortalAppointmentsPage() {
         }),
       });
 
-      const j = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) throw new Error(j?.error || "Unable to create appointment.");
+      const raw = (await res.json().catch(() => ({}))) as BookPostResponse;
+      if (!res.ok) throw new Error(raw?.error || "Unable to create appointment.");
 
-      const who = form.customerName || form.customerEmail || form.customerPhone;
+      // Map the DB row into our Booking shape and push into state
+      if (raw.booking) {
+        const createdRow = raw.booking;
+
+        const createdBooking: Booking = {
+          id: createdRow.id,
+          shop_slug: shopSlug,
+          starts_at: createdRow.starts_at,
+          ends_at: createdRow.ends_at,
+          customer_id: createdRow.customer_id ?? null,
+          // use the form values for display; DB may not store these denormalised
+          customer_name: form.customerName || null,
+          customer_email: form.customerEmail || null,
+          customer_phone: form.customerPhone || null,
+          notes: createdRow.notes ?? (form.notes || null),
+          status: createdRow.status ?? "pending",
+        };
+
+        setBookings((prev) => [...prev, createdBooking]);
+      } else {
+        // Fallback: if API stopped returning booking, still refetch
+        await refreshBookings(shopSlug, weekStart, weekEnd, setBookings);
+      }
+
+      const who =
+        form.customerName || form.customerEmail || form.customerPhone;
       toast.success(
         who
           ? `Appointment created for ${who}.`
           : "Appointment created."
       );
       setCreatingDate(null);
-      await refreshBookings(shopSlug, weekStart, weekEnd, setBookings);
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Create failed";
