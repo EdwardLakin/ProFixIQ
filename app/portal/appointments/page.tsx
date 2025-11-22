@@ -1,4 +1,3 @@
-// app/portal/appointments/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -103,7 +102,9 @@ export default function PortalAppointmentsPage() {
           .from("customers")
           .select("*")
           .eq("shop_id", selectedShop.id)
-          .order("full_name", { ascending: true }); // adjust field if needed
+          // order by real columns instead of non-existent full_name
+          .order("last_name", { ascending: true })
+          .order("first_name", { ascending: true });
 
         if (error) {
           console.error(error);
@@ -187,6 +188,7 @@ export default function PortalAppointmentsPage() {
           customerPhone: form.customerPhone,
         }),
       });
+
       const j = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(j?.error || "Unable to create appointment.");
 
@@ -236,10 +238,7 @@ export default function PortalAppointmentsPage() {
     }
   }
 
-  const totalForWeek = useMemo(
-    () => bookings.length,
-    [bookings]
-  );
+  const totalForWeek = useMemo(() => bookings.length, [bookings]);
 
   return (
     <div className="mx-auto max-w-6xl px-3 py-6 text-white">
@@ -288,9 +287,9 @@ export default function PortalAppointmentsPage() {
         </div>
       </div>
 
-      {/* main layout: calendar + list + form */}
-      <div className="grid gap-6 lg:grid-cols-[1.1fr,0.9fr]">
-        {/* left: 7-day calendar */}
+      {/* main layout: stacked (calendar → form → list) */}
+      <div className="space-y-6">
+        {/* calendar */}
         <div className="rounded-2xl border border-white/10 bg-black/30 p-4 overflow-hidden backdrop-blur-md shadow-card">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-sm font-semibold text-white">
@@ -332,13 +331,15 @@ export default function PortalAppointmentsPage() {
             </div>
           </div>
 
-          <WeeklyCalendar
-            weekStart={weekStart}
-            bookings={bookings}
-            onSelectDay={(dayIso) => setCreatingDate(dayIso)}
-            onSelectBooking={(b) => setEditing(b)}
-            loading={loadingBookings}
-          />
+          <div className="overflow-x-auto pb-2">
+            <WeeklyCalendar
+              weekStart={weekStart}
+              bookings={bookings}
+              onSelectDay={(dayIso) => setCreatingDate(dayIso)}
+              onSelectBooking={(b) => setEditing(b)}
+              loading={loadingBookings}
+            />
+          </div>
 
           <p className="mt-3 text-[0.7rem] text-neutral-500">
             Tip: click a day to start a new appointment on that day. Click an
@@ -346,102 +347,100 @@ export default function PortalAppointmentsPage() {
           </p>
         </div>
 
-        {/* right: list + form */}
-        <div className="space-y-4">
-          {/* list */}
-          <div className="rounded-2xl border border-white/10 bg-black/30 p-4 backdrop-blur-md shadow-card">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-white">
-                Appointments ({bookings.length})
-              </h2>
-              {loadingBookings && (
-                <span className="text-[0.7rem] text-neutral-400">
-                  Loading…
-                </span>
-              )}
-            </div>
-            {loadingBookings ? (
-              <p className="text-sm text-neutral-400">
-                Fetching appointments…
-              </p>
-            ) : bookings.length === 0 ? (
-              <p className="text-sm text-neutral-400">
-                No appointments for this week.
-              </p>
-            ) : (
-              <ul className="divide-y divide-neutral-800">
-                {bookings
-                  .slice()
-                  .sort(
-                    (a, b) =>
-                      +new Date(a.starts_at) - +new Date(b.starts_at)
-                  )
-                  .map((b) => (
-                    <li
-                      key={b.id}
-                      className="flex items-center gap-3 py-3 text-sm"
-                    >
-                      <div className="flex-1">
-                        <div className="font-medium text-white">
-                          {b.customer_name || "Customer"}
-                        </div>
-                        <div className="text-[0.7rem] text-neutral-400">
-                          {new Date(b.starts_at).toLocaleString()} –{" "}
-                          {new Date(b.ends_at).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </div>
-                        {b.notes ? (
-                          <div className="mt-1 text-[0.7rem] text-neutral-500">
-                            {b.notes}
-                          </div>
-                        ) : null}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          type="button"
-                          size="xs"
-                          variant="outline"
-                          onClick={() => setEditing(b)}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          type="button"
-                          size="xs"
-                          variant="ghost"
-                          className="text-red-300 hover:bg-red-900/25"
-                          onClick={() => void handleDelete(b.id)}
-                        >
-                          Delete
-                        </Button>
-                      </div>
-                    </li>
-                  ))}
-              </ul>
+        {/* create / edit form */}
+        <div className="rounded-2xl border border-white/10 bg-black/30 p-4 backdrop-blur-md shadow-card">
+          {editing ? (
+            <EditForm
+              booking={editing}
+              customers={customers}
+              loadingCustomers={loadingCustomers}
+              onCancel={() => setEditing(null)}
+              onSave={(patch) => void handleUpdate(editing.id, patch)}
+            />
+          ) : (
+            <CreateForm
+              defaultDate={creatingDate ?? isoDate(weekStart)}
+              customers={customers}
+              loadingCustomers={loadingCustomers}
+              onSubmit={handleCreate}
+            />
+          )}
+        </div>
+
+        {/* appointments list */}
+        <div className="rounded-2xl border border-white/10 bg-black/30 p-4 backdrop-blur-md shadow-card">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-white">
+              Appointments this week ({bookings.length})
+            </h2>
+            {loadingBookings && (
+              <span className="text-[0.7rem] text-neutral-400">
+                Loading…
+              </span>
             )}
           </div>
 
-          {/* create / edit form */}
-          <div className="rounded-2xl border border-white/10 bg-black/30 p-4 backdrop-blur-md shadow-card">
-            {editing ? (
-              <EditForm
-                booking={editing}
-                customers={customers}
-                loadingCustomers={loadingCustomers}
-                onCancel={() => setEditing(null)}
-                onSave={(patch) => void handleUpdate(editing.id, patch)}
-              />
-            ) : (
-              <CreateForm
-                defaultDate={creatingDate ?? isoDate(weekStart)}
-                customers={customers}
-                loadingCustomers={loadingCustomers}
-                onSubmit={handleCreate}
-              />
-            )}
-          </div>
+          {loadingBookings ? (
+            <p className="text-sm text-neutral-400">
+              Fetching appointments…
+            </p>
+          ) : bookings.length === 0 ? (
+            <p className="text-sm text-neutral-400">
+              No appointments for this week.
+            </p>
+          ) : (
+            <ul className="divide-y divide-neutral-800">
+              {bookings
+                .slice()
+                .sort(
+                  (a, b) =>
+                    +new Date(a.starts_at) - +new Date(b.starts_at)
+                )
+                .map((b) => (
+                  <li
+                    key={b.id}
+                    className="flex flex-wrap items-center gap-3 py-3 text-sm"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium text-white">
+                        {b.customer_name || "Customer"}
+                      </div>
+                      <div className="text-[0.7rem] text-neutral-400">
+                        {new Date(b.starts_at).toLocaleString()} –{" "}
+                        {new Date(b.ends_at).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </div>
+                      {b.notes ? (
+                        <div className="mt-1 text-[0.7rem] text-neutral-500">
+                          {b.notes}
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="outline"
+                        onClick={() => setEditing(b)}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="ghost"
+                        className="text-red-300 hover:bg-red-900/25"
+                        onClick={() => void handleDelete(b.id)}
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+            </ul>
+          )}
         </div>
       </div>
     </div>
@@ -471,7 +470,6 @@ async function refreshBookings(
 /* -------------------------------------------------------------------------- */
 
 function customerLabel(c: CustomerRow): string {
-  // Adjust fields if your customers table differs
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const anyC: any = c;
   const name =
@@ -640,11 +638,7 @@ function CreateForm({
         />
       </label>
 
-      <Button
-        type="submit"
-        size="sm"
-        className="mt-1 font-semibold"
-      >
+      <Button type="submit" size="sm" className="mt-1 font-semibold">
         Save appointment
       </Button>
     </form>
