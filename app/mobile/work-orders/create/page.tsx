@@ -7,15 +7,16 @@
  * Mobile-first create flow:
  * - Auto-creates a placeholder WO tied to Walk-in Customer / Unassigned vehicle
  * - Lets you capture customer + vehicle + lines
+ * - VIN scan support
  * - Sends you to the mobile WO detail view on submit
  */
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
 import { v4 as uuidv4 } from "uuid";
 
+import type { Database } from "@shared/types/types/supabase";
 import type {
   MobileCustomer,
   MobileVehicle,
@@ -25,8 +26,8 @@ import { MobileShell } from "components/layout/MobileShell";
 import { MobileCustomerVehicleForm } from "@/features/work-orders/mobile/MobileCustomerVehicleForm";
 import { MobileWorkOrderLines } from "@/features/work-orders/mobile/MobileWorkOrderLines";
 import { MobileJobLineAdd } from "@/features/work-orders/mobile/MobileJobLineAdd";
-
 import { useWorkOrderDraft } from "app/work-orders/state/useWorkOrderDraft";
+import VinCaptureModal from "app/vehicle/VinCaptureModal";
 
 type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -47,8 +48,9 @@ function getInitials(
   const l = (last ?? "").trim();
   if (f || l) return `${f[0] ?? ""}${l[0] ?? ""}`.toUpperCase() || "WO";
   const fb = (fallback ?? "").trim();
-  if (fb.includes("@"))
+  if (fb.includes("@")) {
     return fb.split("@")[0].slice(0, 2).toUpperCase() || "WO";
+  }
   return fb.slice(0, 2).toUpperCase() || "WO";
 }
 
@@ -143,6 +145,19 @@ export default function MobileCreateWorkOrderPage() {
   const [lines, setLines] = useState<WorkOrderLineRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  /* ------------------------------------------------------------------------ */
+  /* Resolve current user id (for VIN modal)                                  */
+  /* ------------------------------------------------------------------------ */
+  useEffect(() => {
+    void (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      setCurrentUserId(user?.id ?? null);
+    })();
+  }, [supabase]);
 
   /* ------------------------------------------------------------------------ */
   /* Auto-create placeholder WO (aligned with desktop Create)                */
@@ -290,7 +305,7 @@ export default function MobileCreateWorkOrderPage() {
     if (!wo?.id) return;
     void fetchLines();
 
-    // basic realtime refresh when lines change (optional, lightweight)
+    // realtime refresh when lines change
     const ch = supabase
       .channel(`m:create-wo:${wo.id}`)
       .on(
@@ -307,7 +322,7 @@ export default function MobileCreateWorkOrderPage() {
       )
       .subscribe();
 
-  return () => {
+    return () => {
       try {
         supabase.removeChannel(ch);
       } catch {
@@ -325,9 +340,9 @@ export default function MobileCreateWorkOrderPage() {
     setError(null);
 
     try {
-      // If the VIN / OCR draft has anything, you could mirror desktop persistence here.
+      // If the VIN / OCR draft has anything, it is already reflected in vehicle state.
       if (draft?.customer || draft?.vehicle) {
-        // For now we just ignore; desktop create handles this more deeply.
+        // Mobile create currently relies on the detail page to finish deep persistence.
       }
 
       router.push(`/mobile/work-orders/${wo.id}`);
@@ -345,7 +360,7 @@ export default function MobileCreateWorkOrderPage() {
   /* ------------------------------------------------------------------------ */
   return (
     <MobileShell>
-      <div className="px-4 py-4 space-y-6">
+      <div className="space-y-6 px-4 py-4">
         {/* Header */}
         <div>
           <h1 className="text-xl font-blackops text-orange-400">
@@ -353,7 +368,7 @@ export default function MobileCreateWorkOrderPage() {
           </h1>
           {wo?.custom_id && (
             <p className="mt-1 text-xs text-neutral-400">
-              WO#: {wo.custom_id}
+              WO#: <span className="font-mono">{wo.custom_id}</span>
             </p>
           )}
           {error && (
@@ -372,6 +387,36 @@ export default function MobileCreateWorkOrderPage() {
           onVehicleChange={setVehicle}
           supabase={supabase}
         />
+
+        {/* VIN scan (reads decoded VIN and patches local + draft state) */}
+        <div className="mt-2 flex flex-wrap gap-2">
+          <VinCaptureModal
+            userId={currentUserId ?? "anon"}
+            action="/api/vin"
+            onDecoded={(decoded) => {
+              // store in shared draft (used by desktop + other flows)
+              draft.setVehicle({
+                vin: decoded.vin ?? null,
+                year: decoded.year ?? null,
+                make: decoded.make ?? null,
+                model: decoded.model ?? null,
+              });
+
+              // patch local mobile vehicle state
+              setVehicle((prev) => ({
+                ...prev,
+                vin: decoded.vin ?? prev.vin,
+                year: decoded.year ?? prev.year,
+                make: decoded.make ?? prev.make,
+                model: decoded.model ?? prev.model,
+              }));
+            }}
+          >
+            <span className="cursor-pointer rounded border border-orange-500/80 px-3 py-1.5 text-xs text-orange-300 hover:bg-orange-500/10">
+              Add by VIN / Scan
+            </span>
+          </VinCaptureModal>
+        </div>
 
         {/* Job Lines */}
         <MobileWorkOrderLines
