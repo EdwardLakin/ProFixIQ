@@ -46,20 +46,15 @@ const RANGE_LABELS: Record<Range, string> = {
   yearly: "This year",
 };
 
-const OWNER_ROLES: Array<DB["public"]["Tables"]["profiles"]["Row"]["role"]> = [
-  "owner",
-  "admin",
-  "manager",
-];
+type ProfileRole = DB["public"]["Tables"]["profiles"]["Row"]["role"];
+
+const OWNER_ROLES: ProfileRole[] = ["owner", "admin", "manager"];
 
 export default function MobileReportsPage() {
-  const supabase = useMemo(
-    () => createClientComponentClient<DB>(),
-    [],
-  );
+  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   const [shopId, setShopId] = useState<string | null>(null);
-  const [role, setRole] = useState<string | null>(null);
+  const [role, setRole] = useState<ProfileRole | null>(null);
   const [range, setRange] = useState<Range>("monthly");
   const [stats, setStats] = useState<ShopStats | null>(null);
   const [aiSummary, setAiSummary] = useState<string | null>(null);
@@ -117,10 +112,7 @@ export default function MobileReportsPage() {
       setAiSummary(null);
 
       try {
-        const fetched = (await getShopStats(
-          shopId,
-          range,
-        )) as ShopStats;
+        const fetched = (await getShopStats(shopId, range)) as ShopStats;
 
         setStats(fetched);
 
@@ -137,7 +129,7 @@ export default function MobileReportsPage() {
             throw new Error(`AI summary failed (${res.status})`);
           }
 
-          const json = await res.json();
+          const json = (await res.json()) as { summary?: string };
           if (json?.summary) setAiSummary(json.summary);
         } catch (e) {
           console.error(e);
@@ -156,7 +148,7 @@ export default function MobileReportsPage() {
     })();
   }, [shopId, range]);
 
-  const hasAccess = role && OWNER_ROLES.includes(role as any);
+  const hasAccess = !!role && OWNER_ROLES.includes(role);
   const hasData = !!stats;
 
   const dateRangeLabel =
@@ -196,7 +188,7 @@ export default function MobileReportsPage() {
         </header>
 
         {/* Range selector */}
-        <section className="rounded-2xl border border-white/10 bg-black/40 px-3 py-3 shadow-card space-y-2">
+        <section className="space-y-2 rounded-2xl border border-white/10 bg-black/40 px-3 py-3 shadow-card">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[0.7rem] uppercase tracking-[0.18em] text-neutral-400">
               Time range
@@ -280,7 +272,7 @@ export default function MobileReportsPage() {
             </section>
 
             {/* Optional compact AI summary */}
-            <section className="rounded-2xl border border-white/10 bg-black/40 px-3 py-3 text-xs text-neutral-200 space-y-1">
+            <section className="space-y-1 rounded-2xl border border-white/10 bg-black/40 px-3 py-3 text-xs text-neutral-200">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[0.65rem] uppercase tracking-[0.18em] text-orange-300">
                   AI summary
