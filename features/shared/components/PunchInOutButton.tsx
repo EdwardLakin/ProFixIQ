@@ -1,3 +1,4 @@
+// features/mobile/components/PunchInOutButton.tsx
 "use client";
 
 import React from "react";
@@ -24,21 +25,18 @@ const PunchInOutButton: React.FC<PunchInOutButtonProps> = ({
   const isPunchedIn = !!activeJob;
 
   return (
-    <div className="w-full text-center mt-4">
+    <div className="w-full mt-4">
       <Button
-        className={`w-full text-lg ${
-          isPunchedIn
-            ? "bg-orange-600 hover:bg-orange-700"
-            : "bg-blue-600 hover:bg-blue-700"
-        }`}
+        type="button"
+        size="lg"
+        variant={isPunchedIn ? "outline" : "orange"}
+        className="w-full text-sm justify-center"
         onClick={isPunchedIn ? onPunchOut : onPunchIn}
-        disabled={isLoading}
+        isLoading={isLoading}
       >
-        {isLoading
-          ? "Loading..."
-          : isPunchedIn
-            ? `Punch Out of ${activeJob?.vehicle}`
-            : "Punch In to Job"}
+        {isPunchedIn
+          ? `Punch Out of ${activeJob?.vehicle}`
+          : "Punch In to Job"}
       </Button>
     </div>
   );

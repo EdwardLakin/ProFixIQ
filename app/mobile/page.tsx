@@ -8,41 +8,56 @@ import { MobileShell } from "components/layout/MobileShell";
 
 type DB = Database;
 
+type Profile = DB["public"]["Tables"]["profiles"]["Row"];
+type Shop = DB["public"]["Tables"]["shops"]["Row"];
+
+// Later: import the dedicated tech dashboard
+// import MobileTechDashboard from "@/features/mobile/tech/MobileTechDashboard";
+
 export default function MobileHome() {
   const supabase = createClientComponentClient<DB>();
-  const [shopName, setShopName] = useState<string | null>(null);
-  const [userName, setUserName] = useState<string | null>(null);
 
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [shop, setShop] = useState<Shop | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Load profile + shop
   useEffect(() => {
     (async () => {
       try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (!user) return;
+        const { data: sessionData } = await supabase.auth.getUser();
+        if (!sessionData?.user) {
+          setLoading(false);
+          return;
+        }
 
-        const { data: profile } = await supabase
+        const uid = sessionData.user.id;
+
+        const { data: profileRow } = await supabase
           .from("profiles")
-          .select("full_name, shop_id")
-          .eq("id", user.id)
+          .select("*")
+          .eq("id", uid)
           .maybeSingle();
 
-        setUserName(profile?.full_name ?? null);
+        setProfile(profileRow ?? null);
 
-        if (profile?.shop_id) {
-          const { data: shop } = await supabase
+        if (profileRow?.shop_id) {
+          const { data: shopRow } = await supabase
             .from("shops")
-            .select("name")
-            .eq("id", profile.shop_id)
+            .select("*")
+            .eq("id", profileRow.shop_id)
             .maybeSingle();
 
-          setShopName(shop?.name ?? null);
+          setShop(shopRow ?? null);
         }
-      } catch {
-        // mobile home still works without this
+      } finally {
+        setLoading(false);
       }
     })();
   }, [supabase]);
+
+  const userName = profile?.full_name ?? null;
+  const shopName = shop?.name ?? null;
 
   return (
     <MobileShell>
@@ -53,26 +68,44 @@ export default function MobileHome() {
             <div className="text-[0.7rem] uppercase tracking-[0.25em] text-neutral-500">
               ProFixIQ • Mobile
             </div>
+
             <h1 className="font-blackops text-xl uppercase tracking-[0.18em] text-orange-400">
               Shop Console
             </h1>
-            <p className="text-[0.8rem] text-neutral-400">
-              {userName ? (
-                <>
-                  Hi,{" "}
-                  <span className="font-medium text-neutral-100">
-                    {userName}
-                  </span>
-                  .
-                </>
-              ) : (
-                "Stay on top of jobs from your phone."
-              )}{" "}
-              {shopName && (
-                <span className="ml-1 text-neutral-300">({shopName})</span>
-              )}
-            </p>
+
+            {loading ? (
+              <p className="text-[0.8rem] text-neutral-400">Loading…</p>
+            ) : userName ? (
+              <p className="text-[0.8rem] text-neutral-400">
+                Hi,{" "}
+                <span className="font-medium text-neutral-100">{userName}</span>.
+                {shopName && (
+                  <span className="ml-1 text-neutral-300">({shopName})</span>
+                )}
+              </p>
+            ) : (
+              <p className="text-[0.8rem] text-neutral-400">
+                Stay on top of jobs from your phone.
+              </p>
+            )}
           </header>
+
+          {/* 🚧 LATER: Mechanic-only dashboard override
+          
+          if (profile?.role === "mechanic") {
+            return (
+              <MobileShell>
+                <MobileTechDashboard
+                  userId={profile.id}
+                  fullName={profile.full_name}
+                  shopId={profile.shop_id}
+                />
+              </MobileShell>
+            );
+          }
+
+          For now we show the tiles for all roles (mechanic, advisor, etc.)
+          */}
 
           {/* App tiles */}
           <section className="grid grid-cols-2 gap-3">
@@ -94,7 +127,7 @@ export default function MobileHome() {
               </div>
             </Link>
 
-            {/* New work order (mobile create flow) */}
+            {/* New work order */}
             <Link
               href="/mobile/work-orders/create"
               className="flex h-28 flex-col justify-between rounded-2xl border border-neutral-700 bg-gradient-to-br from-neutral-900 via-black to-black p-3"
@@ -130,7 +163,7 @@ export default function MobileHome() {
               </div>
             </Link>
 
-            {/* AI / Messages */}
+            {/* AI & Messages */}
             <Link
               href="/mobile/messages"
               className="flex h-28 flex-col justify-between rounded-2xl border border-neutral-700 bg-gradient-to-br from-neutral-900 via-black to-black p-3"
@@ -151,7 +184,7 @@ export default function MobileHome() {
             {/* Planner */}
             <Link
               href="/mobile/planner"
-              className="flex h-28 flex-col justify-between rounded-2xl border border-neutral-700 bg-gradient-to-br from-neutral-900 via-black to-black p-3 col-span-2"
+              className="col-span-2 flex h-28 flex-col justify-between rounded-2xl border border-neutral-700 bg-gradient-to-br from-neutral-900 via-black to-black p-3"
             >
               <div className="text-[0.7rem] uppercase tracking-[0.18em] text-neutral-400">
                 Planner
