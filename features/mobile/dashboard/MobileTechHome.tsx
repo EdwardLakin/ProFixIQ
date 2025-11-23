@@ -1,38 +1,62 @@
-// features/mobile/dashboard/MobileTechHome.tsx
 "use client";
 
 import React from "react";
 import type { MobileRole } from "@/features/mobile/config/mobile-tiles";
 import { MobileRoleHub } from "@/features/mobile/components/MobileRoleHub";
 
+export type PeriodStats = {
+  workedHours: number;
+  billedHours: number;
+  /** 0–100, null if not computable */
+  efficiencyPct: number | null;
+};
+
 export type MobileTechStats = {
   openJobs: number;
+  assignedJobs: number;
   jobsCompletedToday: number;
-  hoursWorkedToday: number;
-  hoursBookedToday: number;
+  today: PeriodStats;
+  week: PeriodStats;
 };
 
 export type MobileTechJob = {
   id: string;
   label: string; // e.g. "2018 F-150 – Brakes"
-  status: string; // e.g. "In progress"
+  status: string; // e.g. "in_progress"
   href: string;   // e.g. "/mobile/work-orders/123"
 };
 
 type Props = {
   techName: string;
   role: MobileRole;
-  stats: MobileTechStats;
+  stats: MobileTechStats | null;
   jobs: MobileTechJob[];
+  loadingStats?: boolean;
 };
 
-export function MobileTechHome({ techName, role, stats, jobs }: Props) {
+export function MobileTechHome({
+  techName,
+  role,
+  stats,
+  jobs,
+  loadingStats = false,
+}: Props) {
   const firstName = techName?.split(" ")[0] ?? techName ?? "Tech";
 
-  const efficiency =
-    stats.hoursBookedToday > 0
-      ? Math.round((stats.hoursWorkedToday / stats.hoursBookedToday) * 100)
-      : null;
+  const today = stats?.today ?? {
+    workedHours: 0,
+    billedHours: 0,
+    efficiencyPct: null,
+  };
+  const week = stats?.week ?? {
+    workedHours: 0,
+    billedHours: 0,
+    efficiencyPct: null,
+  };
+
+  const openJobs = stats?.openJobs ?? 0;
+  const assignedJobs = stats?.assignedJobs ?? 0;
+  const jobsCompletedToday = stats?.jobsCompletedToday ?? 0;
 
   return (
     <div className="px-4 py-4 space-y-6">
@@ -46,24 +70,33 @@ export function MobileTechHome({ techName, role, stats, jobs }: Props) {
         </p>
       </section>
 
-      {/* stat cards */}
-      <section className="grid grid-cols-2 gap-3">
-        <StatCard label="Open jobs" value={stats.openJobs} />
-        <StatCard label="Jobs done" value={stats.jobsCompletedToday} />
+      {/* summary cards – worked vs billed */}
+      <section className="space-y-3">
+        <SummaryCard
+          label="Today"
+          stats={today}
+          loading={loadingStats}
+        />
+        <SummaryCard
+          label="This week"
+          stats={week}
+          loading={loadingStats}
+        />
+      </section>
+
+      {/* stat chips */}
+      <section className="grid grid-cols-3 gap-3">
         <StatCard
-          label="Hours worked"
-          value={stats.hoursWorkedToday.toFixed(1)}
-          suffix="h"
+          label="Open jobs"
+          value={loadingStats ? "…" : openJobs}
         />
         <StatCard
-          label="Hours billed"
-          value={stats.hoursBookedToday.toFixed(1)}
-          suffix="h"
+          label="Assigned"
+          value={loadingStats ? "…" : assignedJobs}
         />
         <StatCard
-          label="Efficiency"
-          value={efficiency !== null ? efficiency : "–"}
-          suffix={efficiency !== null ? "%" : ""}
+          label="Jobs done"
+          value={loadingStats ? "…" : jobsCompletedToday}
         />
       </section>
 
@@ -91,7 +124,7 @@ export function MobileTechHome({ techName, role, stats, jobs }: Props) {
                   <div className="flex items-center justify-between gap-2">
                     <div className="truncate font-medium">{job.label}</div>
                     <span className="rounded-full border border-orange-400/60 px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-orange-200">
-                      {job.status}
+                      {job.status.replace(/_/g, " ")}
                     </span>
                   </div>
                 </a>
@@ -115,11 +148,9 @@ export function MobileTechHome({ techName, role, stats, jobs }: Props) {
 function StatCard({
   label,
   value,
-  suffix,
 }: {
   label: string;
   value: number | string;
-  suffix?: string;
 }) {
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 shadow-card">
@@ -128,11 +159,49 @@ function StatCard({
       </div>
       <div className="mt-1 flex items-baseline gap-1 text-lg font-semibold text-white">
         <span>{value}</span>
-        {suffix && (
-          <span className="text-[0.7rem] font-normal text-neutral-400">
-            {suffix}
-          </span>
-        )}
+      </div>
+    </div>
+  );
+}
+
+function SummaryCard({
+  label,
+  stats,
+  loading,
+}: {
+  label: string;
+  stats: PeriodStats;
+  loading?: boolean;
+}) {
+  const worked = stats.workedHours;
+  const billed = stats.billedHours;
+  const eff = stats.efficiencyPct;
+
+  const workedText = loading ? "…" : `${worked.toFixed(1)} h`;
+  const billedText = loading ? "…" : `${billed.toFixed(1)} h`;
+  const effText =
+    loading || eff === null ? "–" : `${eff.toFixed(0)}%`;
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 shadow-card">
+      <div className="flex items-center justify-between">
+        <div className="text-[0.65rem] uppercase tracking-[0.18em] text-neutral-400">
+          {label} – Worked vs Billed
+        </div>
+        <div className="text-[0.7rem] text-neutral-400">
+          Efficiency:{" "}
+          <span className="font-semibold text-orange-200">{effText}</span>
+        </div>
+      </div>
+      <div className="mt-2 flex items-baseline gap-4 text-sm text-neutral-100">
+        <div>
+          <span className="text-neutral-400">Worked</span>{" "}
+          <span className="font-semibold text-white">{workedText}</span>
+        </div>
+        <div>
+          <span className="text-neutral-400">Billed</span>{" "}
+          <span className="font-semibold text-white">{billedText}</span>
+        </div>
       </div>
     </div>
   );

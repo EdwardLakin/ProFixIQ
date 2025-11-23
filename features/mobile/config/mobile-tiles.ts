@@ -54,9 +54,18 @@ export const MOBILE_TILES: MobileTile[] = [
   },
   {
     href: "/mobile/settings",
-    title: "Settings & Time",
-    subtitle: "Punch in/out, account",
+    title: "Settings",
+    subtitle: "Account & mobile options",
     roles: ["mechanic", "advisor", "manager", "owner", "admin", "parts"],
     scopes: ["home", "settings"],
+  },
+
+  // 🔶 Mobile owner/manager reports
+  {
+    href: "/mobile/reports",
+    title: "Reports",
+    subtitle: "Revenue & tech efficiency",
+    roles: ["owner", "admin", "manager"],
+    scopes: ["home"],
   },
 ];

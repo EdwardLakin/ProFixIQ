@@ -2,22 +2,18 @@
 "use client";
 
 import React from "react";
-import PunchInOutButton, {
-  type JobLine,
-} from "@/features/shared/components/PunchInOutButton";
+import type { JobLine } from "@/features/shared/components/PunchInOutButton";
 
 type Props = {
   techName: string;
   activeJob: JobLine | null;
-  onPunchIn: () => void;
-  onPunchOut: () => void;
+  onPunchIn: () => void;  // kept for compatibility; unused for now
+  onPunchOut: () => void; // kept for compatibility; unused for now
 };
 
 export function MobileSettingsScreen({
   techName,
   activeJob,
-  onPunchIn,
-  onPunchOut,
 }: Props) {
   const firstName = techName?.split(" ")[0] ?? techName ?? "Tech";
 
@@ -28,7 +24,7 @@ export function MobileSettingsScreen({
           {firstName}&apos;s Settings
         </h1>
         <p className="mt-1 text-xs text-neutral-400">
-          Time tracking & personal options for the companion app.
+          Personal options for the companion app.
         </p>
       </section>
 
@@ -38,15 +34,14 @@ export function MobileSettingsScreen({
         </h2>
         <p className="text-[0.75rem] text-neutral-300">
           {activeJob
-            ? `Currently punched in on ${activeJob.vehicle}.`
+            ? `You are currently punched in on ${activeJob.vehicle}.`
             : "You are currently punched out."}
         </p>
 
-        <PunchInOutButton
-          activeJob={activeJob}
-          onPunchIn={onPunchIn}
-          onPunchOut={onPunchOut}
-        />
+        <p className="text-[0.7rem] text-neutral-500">
+          Punch in/out is now available from the bottom bar so you can toggle
+          from anywhere in the mobile companion.
+        </p>
       </section>
 
       {/* space for more mobile-only settings later */}

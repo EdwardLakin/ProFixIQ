@@ -122,7 +122,12 @@ export default function ReportsPage() {
       setAiSummary(null);
 
       try {
-        const fetchedStats = await getShopStats(shopId, range, filters);
+        // 🔧 Map local filters { techId, invoiceId } → getShopStats Filters
+        const fetchedStats = await getShopStats(shopId, range, {
+          technicianId: filters.techId || undefined,
+          invoiceId: filters.invoiceId || undefined,
+        });
+
         setStats(fetchedStats);
 
         // Kick AI summary – don’t block main stats on this

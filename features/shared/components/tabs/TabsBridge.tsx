@@ -1,12 +1,12 @@
 // features/shared/components/tabs/TabsBridge.tsx
 "use client";
 
-import { useEffect, useMemo, } from "react";
+import { useEffect, useMemo } from "react";
 import { useSession } from "@supabase/auth-helpers-react";
 import { usePathname } from "next/navigation";
 import { TabsProvider } from "./TabsProvider";
 import TabsBar from "./TabsBar";
-import { metaFor } from "@/features/shared/lib/routeMeta"; // adjust path if different
+import { metaFor } from "@/features/shared/lib/routeMeta";
 
 /**
  * Build a stable, user-scoped storage prefix for the current route.
@@ -29,20 +29,29 @@ export function useTabsScopedStorageKey(subkey: string) {
   return `${prefix}:${subkey}`;
 }
 
-export default function TabsBridge({ children }: { children: React.ReactNode }) {
+export default function TabsBridge({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const session = useSession();
   const userId = session?.user?.id ?? null;
   const pathname = usePathname() || "/";
   const prefix = useStoragePrefix(userId);
 
+  const isMobileRoute =
+    pathname === "/mobile" || pathname.startsWith("/mobile/");
+
   // Ask routeMeta what the persistence policy is (defaults: inputs+scroll true for all).
   const persist = useMemo(() => metaFor(pathname).persist, [pathname]);
 
-  // ---------- INPUT PERSISTENCE (universal, opt-out per route in routeMeta) ----------
+  // ---------- INPUT PERSISTENCE (skip on mobile, opt-out per route in routeMeta) ----------
   useEffect(() => {
+    if (isMobileRoute) return; // ✅ no input persistence on mobile companion
     if (!persist?.inputs) return;
 
     const STORAGE_KEY = `${prefix}:inputs`;
+
     // Try to restore once on mount/route-change
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -51,14 +60,21 @@ export default function TabsBridge({ children }: { children: React.ReactNode }) 
         // Match by name or id only (avoid type=password/file)
         for (const [k, v] of Object.entries(map)) {
           const el =
-            (document.querySelector(`input[name="${k}"]`) as HTMLInputElement | null) ||
+            (document.querySelector(
+              `input[name="${k}"]`,
+            ) as HTMLInputElement | null) ||
             (document.getElementById(k) as HTMLInputElement | null) ||
-            (document.querySelector(`textarea[name="${k}"]`) as HTMLTextAreaElement | null) ||
-            (document.querySelector(`select[name="${k}"]`) as HTMLSelectElement | null);
+            (document.querySelector(
+              `textarea[name="${k}"]`,
+            ) as HTMLTextAreaElement | null) ||
+            (document.querySelector(
+              `select[name="${k}"]`,
+            ) as HTMLSelectElement | null);
           if (!el) continue;
           const tag = el.tagName.toLowerCase();
           const type = (el as HTMLInputElement).type?.toLowerCase?.() || "";
-          if (tag === "input" && (type === "password" || type === "file")) continue;
+          if (tag === "input" && (type === "password" || type === "file"))
+            continue;
 
           if (tag === "input" || tag === "textarea") {
             (el as HTMLInputElement | HTMLTextAreaElement).value = v;
@@ -81,14 +97,15 @@ export default function TabsBridge({ children }: { children: React.ReactNode }) 
         try {
           const map: Record<string, string> = {};
           const fields = Array.from(
-            document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
-              "input, textarea, select",
-            ),
+            document.querySelectorAll<
+              HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+            >("input, textarea, select"),
           );
           fields.forEach((el, idx) => {
             const tag = el.tagName.toLowerCase();
             const type = (el as HTMLInputElement).type?.toLowerCase?.() || "";
-            if (tag === "input" && (type === "password" || type === "file")) return;
+            if (tag === "input" && (type === "password" || type === "file"))
+              return;
 
             const key = el.getAttribute("name") || el.id || `__idx_${idx}`;
             // Only store if we have a stable key
@@ -98,7 +115,9 @@ export default function TabsBridge({ children }: { children: React.ReactNode }) 
             const val =
               tag === "select"
                 ? (el as HTMLSelectElement).value ?? ""
-                : (el as HTMLInputElement | HTMLTextAreaElement).value ?? "";
+                : (
+                    el as HTMLInputElement | HTMLTextAreaElement
+                  ).value ?? "";
 
             map[key] = val;
           });
@@ -126,10 +145,11 @@ export default function TabsBridge({ children }: { children: React.ReactNode }) 
       window.removeEventListener("beforeunload", save);
       if (t) clearTimeout(t);
     };
-  }, [persist?.inputs, prefix]);
+  }, [persist?.inputs, prefix, isMobileRoute]);
 
-  // ---------- SCROLL PERSISTENCE (window scroll only, opt-out per route) ----------
+  // ---------- SCROLL PERSISTENCE (skip on mobile, window scroll only, opt-out per route) ----------
   useEffect(() => {
+    if (isMobileRoute) return; // ✅ no scroll persistence on mobile companion
     if (!persist?.scroll) return;
 
     const SCROLL_KEY = `${prefix}:scrollY`;
@@ -150,7 +170,10 @@ export default function TabsBridge({ children }: { children: React.ReactNode }) 
       if (t) clearTimeout(t);
       t = setTimeout(() => {
         try {
-          sessionStorage.setItem(SCROLL_KEY, String(window.scrollY || 0));
+          sessionStorage.setItem(
+            SCROLL_KEY,
+            String(window.scrollY || 0),
+          );
         } catch {
           /* noop */
         }
@@ -164,12 +187,13 @@ export default function TabsBridge({ children }: { children: React.ReactNode }) 
       window.removeEventListener("scroll", onScroll);
       if (t) clearTimeout(t);
     };
-  }, [persist?.scroll, prefix]);
+  }, [persist?.scroll, prefix, isMobileRoute]);
 
   // ---------- Tabs UI + children ----------
   return (
     <TabsProvider userId={userId ?? undefined}>
-      <TabsBar />
+      {/* No tab bar on the mobile companion routes */}
+      {!isMobileRoute && <TabsBar />}
       {children}
     </TabsProvider>
   );

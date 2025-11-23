@@ -12,9 +12,7 @@ import {
   eachQuarterOfInterval,
   format,
 } from "date-fns";
-
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-
 import type { Database } from "@shared/types/types/supabase";
 
 type TimeRange = "weekly" | "monthly" | "quarterly" | "yearly";
@@ -29,7 +27,7 @@ export async function getShopStats(
   timeRange: TimeRange,
   filters: Filters = {},
 ) {
-    const supabase = createClientComponentClient<Database>();
+  const supabase = createClientComponentClient<Database>();
 
   const now = new Date();
   let start: Date;
@@ -37,29 +35,34 @@ export async function getShopStats(
   let intervals: Date[];
 
   switch (timeRange) {
-    case "weekly":
+    case "weekly": {
       start = startOfWeek(now, { weekStartsOn: 1 });
       end = endOfWeek(now, { weekStartsOn: 1 });
       intervals = eachDayOfInterval({ start, end });
       break;
-    case "quarterly":
+    }
+    case "quarterly": {
       start = startOfQuarter(now);
       end = endOfQuarter(now);
       intervals = eachMonthOfInterval({ start, end });
       break;
-    case "yearly":
+    }
+    case "yearly": {
       start = startOfYear(now);
       end = endOfYear(now);
       intervals = eachQuarterOfInterval({ start, end });
       break;
-    default:
+    }
+    case "monthly":
+    default: {
       start = startOfMonth(now);
       end = endOfMonth(now);
       intervals = eachDayOfInterval({ start, end });
       break;
+    }
   }
 
-  // Apply base filters
+  // Base invoice query
   let invoiceQuery = supabase
     .from("invoices")
     .select("*")
@@ -109,17 +112,55 @@ export async function getShopStats(
   total.techEfficiency =
     total.labor > 0 ? (total.revenue / total.labor) * 100 : 0;
 
+  // Helper: figure out the "bucket key" for a given date based on the timeRange
+  const bucketKeyFor = (d: Date): string => {
+    switch (timeRange) {
+      case "weekly":
+      case "monthly":
+        // Group by day
+        return format(d, "yyyy-MM-dd");
+      case "quarterly":
+        // Group by month within the quarter
+        return format(d, "yyyy-MM");
+      case "yearly":
+        // Group by quarter in the year, e.g. "2025-Q1"
+        return `${format(d, "yyyy")}-Q${format(d, "Q")}`;
+      default:
+        return format(d, "yyyy-MM-dd");
+    }
+  };
+
   const periods = intervals.map((date) => {
-    const label =
-      timeRange === "weekly"
-        ? format(date, "EEE") // e.g. Mon, Tue
-        : timeRange === "quarterly"
-          ? format(date, "MMM") // e.g. Jan, Feb
-          : format(date, "Q"); // e.g. 1, 2, 3
+    let label: string;
+
+    switch (timeRange) {
+      case "weekly":
+        label = format(date, "EEE"); // Mon, Tue
+        break;
+      case "monthly":
+        label = format(date, "d"); // 1, 2, ..., 31
+        break;
+      case "quarterly":
+        label = format(date, "MMM"); // Jan, Feb, ...
+        break;
+      case "yearly":
+        label = `Q${format(date, "Q")}`; // Q1, Q2, ...
+        break;
+      default:
+        label = format(date, "d");
+        break;
+    }
+
+    const bucketKey = bucketKeyFor(date);
 
     const periodInvoices = invoices.filter((inv) => {
       const created = new Date(inv.created_at);
-      return format(created, "yyyy-MM-dd") === format(date, "yyyy-MM-dd");
+      return bucketKeyFor(created) === bucketKey;
+    });
+
+    const periodExpenses = expenses.filter((exp) => {
+      const created = new Date(exp.created_at);
+      return bucketKeyFor(created) === bucketKey;
     });
 
     const periodRevenue = periodInvoices.reduce(
@@ -132,21 +173,19 @@ export async function getShopStats(
     );
     const periodJobs = periodInvoices.length;
 
-    const periodExpenses = expenses
-      .filter(
-        (exp) =>
-          format(new Date(exp.created_at), "yyyy-MM-dd") ===
-          format(date, "yyyy-MM-dd"),
-      )
-      .reduce((sum, exp) => sum + (exp.amount || 0), 0);
+    const periodExpensesTotal = periodExpenses.reduce(
+      (sum, exp) => sum + (exp.amount || 0),
+      0,
+    );
 
-    const periodProfit = periodRevenue - periodLabor - periodExpenses;
+    const periodProfit =
+      periodRevenue - periodLabor - periodExpensesTotal;
 
     return {
       label,
       revenue: periodRevenue,
       labor: periodLabor,
-      expenses: periodExpenses,
+      expenses: periodExpensesTotal,
       profit: periodProfit,
       jobs: periodJobs,
     };
