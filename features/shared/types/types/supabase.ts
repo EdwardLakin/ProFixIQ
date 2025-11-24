@@ -2844,42 +2844,60 @@ export type Database = {
           category: string | null
           cost: number | null
           created_at: string | null
+          default_cost: number | null
+          default_price: number | null
           description: string | null
           id: string
+          low_stock_threshold: number | null
           name: string
           part_number: string | null
           price: number | null
           shop_id: string | null
           sku: string | null
+          subcategory: string | null
           supplier: string | null
+          taxable: boolean | null
+          unit: string | null
           warranty_months: number | null
         }
         Insert: {
           category?: string | null
           cost?: number | null
           created_at?: string | null
+          default_cost?: number | null
+          default_price?: number | null
           description?: string | null
           id?: string
+          low_stock_threshold?: number | null
           name: string
           part_number?: string | null
           price?: number | null
           shop_id?: string | null
           sku?: string | null
+          subcategory?: string | null
           supplier?: string | null
+          taxable?: boolean | null
+          unit?: string | null
           warranty_months?: number | null
         }
         Update: {
           category?: string | null
           cost?: number | null
           created_at?: string | null
+          default_cost?: number | null
+          default_price?: number | null
           description?: string | null
           id?: string
+          low_stock_threshold?: number | null
           name?: string
           part_number?: string | null
           price?: number | null
           shop_id?: string | null
           sku?: string | null
+          subcategory?: string | null
           supplier?: string | null
+          taxable?: boolean | null
+          unit?: string | null
           warranty_months?: number | null
         }
         Relationships: []
@@ -2887,24 +2905,30 @@ export type Database = {
       parts_barcodes: {
         Row: {
           barcode: string
+          code: string | null
           created_at: string
           id: string
           part_id: string
           shop_id: string
+          supplier_id: string | null
         }
         Insert: {
           barcode: string
+          code?: string | null
           created_at?: string
           id?: string
           part_id: string
           shop_id: string
+          supplier_id?: string | null
         }
         Update: {
           barcode?: string
+          code?: string | null
           created_at?: string
           id?: string
           part_id?: string
           shop_id?: string
+          supplier_id?: string | null
         }
         Relationships: [
           {
@@ -2919,6 +2943,13 @@ export type Database = {
             columns: ["part_id"]
             isOneToOne: false
             referencedRelation: "parts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parts_barcodes_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
             referencedColumns: ["id"]
           },
         ]
@@ -3856,6 +3887,39 @@ export type Database = {
           year_bucket?: string
         }
         Relationships: []
+      }
+      shop_ai_profiles: {
+        Row: {
+          last_refreshed_at: string
+          shop_id: string
+          summary: Json
+        }
+        Insert: {
+          last_refreshed_at?: string
+          shop_id: string
+          summary: Json
+        }
+        Update: {
+          last_refreshed_at?: string
+          shop_id?: string
+          summary?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_ai_profiles_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: true
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_ai_profiles_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: true
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       shop_hours: {
         Row: {
@@ -6067,6 +6131,7 @@ export type Database = {
           qty: number
           stock_move_id: string | null
           unit_cost: number
+          work_order_id: string | null
           work_order_line_id: string
         }
         Insert: {
@@ -6077,6 +6142,7 @@ export type Database = {
           qty: number
           stock_move_id?: string | null
           unit_cost?: number
+          work_order_id?: string | null
           work_order_line_id: string
         }
         Update: {
@@ -6087,9 +6153,17 @@ export type Database = {
           qty?: number
           stock_move_id?: string | null
           unit_cost?: number
+          work_order_id?: string | null
           work_order_line_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "wopa_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "work_order_part_allocations_location_id_fkey"
             columns: ["location_id"]
