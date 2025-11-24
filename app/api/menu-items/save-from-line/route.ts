@@ -12,6 +12,11 @@ type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
 type ProfileRow = DB["public"]["Tables"]["profiles"]["Row"];
 type MenuInsert = DB["public"]["Tables"]["menu_items"]["Insert"];
 
+// optional helper type in case labor_hours is newly added
+type WorkOrderLineWithLaborHours = WorkOrderLineRow & {
+  labor_hours?: number | null;
+};
+
 export async function POST(req: NextRequest) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
@@ -24,7 +29,11 @@ export async function POST(req: NextRequest) {
   if (userErr || !user) {
     console.error("[menu-items/save-from-line] auth error:", userErr);
     return NextResponse.json(
-      { ok: false, error: "auth_error", detail: userErr?.message ?? "Not signed in" },
+      {
+        ok: false,
+        error: "auth_error",
+        detail: userErr?.message ?? "Not signed in",
+      },
       { status: 401 },
     );
   }
@@ -88,7 +97,10 @@ export async function POST(req: NextRequest) {
     .maybeSingle<WorkOrderRow>();
 
   if (woErr) {
-    console.error("[menu-items/save-from-line] load work order error:", woErr.message);
+    console.error(
+      "[menu-items/save-from-line] load work order error:",
+      woErr.message,
+    );
     return NextResponse.json(
       { ok: false, error: "order_load_failed", detail: woErr.message },
       { status: 500 },
@@ -131,19 +143,27 @@ export async function POST(req: NextRequest) {
       ? wol.description.trim()
       : "Service item";
 
+  // safely read labor_hours if present
+  const wolWithLabor = wol as WorkOrderLineWithLaborHours;
+  const laborHoursValue =
+    typeof wolWithLabor.labor_hours === "number" &&
+    Number.isFinite(wolWithLabor.labor_hours)
+      ? wolWithLabor.labor_hours
+      : null;
+
   const itemInsert: MenuInsert = {
     name,
     description: wol.description ?? null,
     labor_time: null, // keep legacy field null if you’re using labor_hours
-    labor_hours: (wol as any).labor_hours ?? null, // if you have labor_hours column on lines
-    part_cost: null, // can be filled later from parts if you want
+    labor_hours: laborHoursValue,
+    part_cost: null,
     total_price: null,
     inspection_template_id: null,
     user_id: user.id,
     is_active: true,
     shop_id: shopId,
-    // new “link back to line” field we added in the migration:
-    work_order_line_id: wol.id as any,
+    // link back to the originating line
+    work_order_line_id: wol.id,
   };
 
   console.log("[menu-items/save-from-line] inserting menu item:", itemInsert);
