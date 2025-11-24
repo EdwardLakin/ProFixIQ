@@ -2167,12 +2167,16 @@ export type Database = {
       }
       menu_items: {
         Row: {
+          base_labor_hours: number | null
+          base_price: number | null
           category: string | null
           cause: string | null
           complaint: string | null
           correction: string | null
           created_at: string | null
           description: string | null
+          drivetrain: string | null
+          engine_type: string | null
           id: string
           inspection_template_id: string | null
           is_active: boolean | null
@@ -2181,17 +2185,28 @@ export type Database = {
           name: string | null
           part_cost: number | null
           shop_id: string | null
+          source: string | null
+          submodel: string | null
           tools: string | null
           total_price: number | null
+          transmission_type: string | null
           user_id: string | null
+          vehicle_make: string | null
+          vehicle_model: string | null
+          vehicle_year: number | null
+          work_order_line_id: string | null
         }
         Insert: {
+          base_labor_hours?: number | null
+          base_price?: number | null
           category?: string | null
           cause?: string | null
           complaint?: string | null
           correction?: string | null
           created_at?: string | null
           description?: string | null
+          drivetrain?: string | null
+          engine_type?: string | null
           id?: string
           inspection_template_id?: string | null
           is_active?: boolean | null
@@ -2200,17 +2215,28 @@ export type Database = {
           name?: string | null
           part_cost?: number | null
           shop_id?: string | null
+          source?: string | null
+          submodel?: string | null
           tools?: string | null
           total_price?: number | null
+          transmission_type?: string | null
           user_id?: string | null
+          vehicle_make?: string | null
+          vehicle_model?: string | null
+          vehicle_year?: number | null
+          work_order_line_id?: string | null
         }
         Update: {
+          base_labor_hours?: number | null
+          base_price?: number | null
           category?: string | null
           cause?: string | null
           complaint?: string | null
           correction?: string | null
           created_at?: string | null
           description?: string | null
+          drivetrain?: string | null
+          engine_type?: string | null
           id?: string
           inspection_template_id?: string | null
           is_active?: boolean | null
@@ -2219,9 +2245,16 @@ export type Database = {
           name?: string | null
           part_cost?: number | null
           shop_id?: string | null
+          source?: string | null
+          submodel?: string | null
           tools?: string | null
           total_price?: number | null
+          transmission_type?: string | null
           user_id?: string | null
+          vehicle_make?: string | null
+          vehicle_model?: string | null
+          vehicle_year?: number | null
+          work_order_line_id?: string | null
         }
         Relationships: [
           {
@@ -5378,13 +5411,17 @@ export type Database = {
           color: string | null
           created_at: string | null
           customer_id: string | null
+          drivetrain: string | null
           engine_hours: number | null
+          engine_type: string | null
           id: string
           license_plate: string | null
           make: string | null
           mileage: string | null
           model: string | null
           shop_id: string | null
+          submodel: string | null
+          transmission_type: string | null
           unit_number: string | null
           user_id: string | null
           vin: string | null
@@ -5394,13 +5431,17 @@ export type Database = {
           color?: string | null
           created_at?: string | null
           customer_id?: string | null
+          drivetrain?: string | null
           engine_hours?: number | null
+          engine_type?: string | null
           id?: string
           license_plate?: string | null
           make?: string | null
           mileage?: string | null
           model?: string | null
           shop_id?: string | null
+          submodel?: string | null
+          transmission_type?: string | null
           unit_number?: string | null
           user_id?: string | null
           vin?: string | null
@@ -5410,13 +5451,17 @@ export type Database = {
           color?: string | null
           created_at?: string | null
           customer_id?: string | null
+          drivetrain?: string | null
           engine_hours?: number | null
+          engine_type?: string | null
           id?: string
           license_plate?: string | null
           make?: string | null
           mileage?: string | null
           model?: string | null
           shop_id?: string | null
+          submodel?: string | null
+          transmission_type?: string | null
           unit_number?: string | null
           user_id?: string | null
           vin?: string | null
@@ -5905,6 +5950,7 @@ export type Database = {
           labor_time: number | null
           line_no: number | null
           line_status: string | null
+          menu_item_id: string | null
           notes: string | null
           on_hold_since: string | null
           parts: string | null
@@ -5947,6 +5993,7 @@ export type Database = {
           labor_time?: number | null
           line_no?: number | null
           line_status?: string | null
+          menu_item_id?: string | null
           notes?: string | null
           on_hold_since?: string | null
           parts?: string | null
@@ -5989,6 +6036,7 @@ export type Database = {
           labor_time?: number | null
           line_no?: number | null
           line_status?: string | null
+          menu_item_id?: string | null
           notes?: string | null
           on_hold_since?: string | null
           parts?: string | null
@@ -6038,6 +6086,13 @@ export type Database = {
             columns: ["inspection_template_id"]
             isOneToOne: false
             referencedRelation: "inspection_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_lines_menu_item_id_fkey"
+            columns: ["menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
             referencedColumns: ["id"]
           },
           {

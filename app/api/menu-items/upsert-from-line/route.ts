@@ -1,129 +1,150 @@
-import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+// app/api/menu-items/upsert-from-line/route.ts
+import "server-only";
+import { NextResponse, type NextRequest } from "next/server";
+import { cookies } from "next/headers";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
+export const runtime = "nodejs";
+
 type DB = Database;
+type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
+type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
+type MenuItemInsert = DB["public"]["Tables"]["menu_items"]["Insert"];
+type MenuItemUpdate = DB["public"]["Tables"]["menu_items"]["Update"];
 
-/*
--- Suggested table
-create table if not exists saved_menu_items (
-  id uuid primary key default gen_random_uuid(),
-  make text not null,
-  model text not null,
-  year_bucket text not null, -- e.g. "2015-2018" or "2019-2021"
-  title text not null,       -- normalized job title
-  labor_time numeric,        -- default hours
-  parts jsonb not null default '[]',  -- [{part_id, qty}]
-  created_at timestamptz default now(),
-  updated_at timestamptz default now()
-);
-create unique index if not exists saved_menu_items_uq
-  on saved_menu_items(make, model, year_bucket, title);
-*/
+export async function POST(req: NextRequest) {
+  const supabase = createRouteHandlerClient<DB>({ cookies });
 
-interface Body {
-  workOrderLineId: string;
-}
+  const body = (await req.json().catch(() => null)) as
+    | { workOrderLineId?: string }
+    | null;
 
-function isBody(x: unknown): x is Body {
-  if (typeof x !== "object" || x === null) return false;
-  const o = x as Record<string, unknown>;
-  return typeof o.workOrderLineId === "string";
-}
-
-function yearBucket(y?: number | null): string {
-  if (!y || Number.isNaN(y)) return "unknown";
-  // e.g. 2015-2018, 2019-2021, etc. (3-year buckets)
-  const start = y - ((y - 1) % 3);
-  const end = start + 2;
-  return `${start}-${end}`;
-}
-
-export async function POST(req: Request) {
-  try {
-    const bUnknown: unknown = await req.json();
-    if (!isBody(bUnknown)) {
-      return NextResponse.json({ error: "Invalid body" }, { status: 400 });
-    }
-    const { workOrderLineId } = bUnknown;
-
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const serviceKey =
-      process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY;
-    if (!supabaseUrl || !serviceKey) {
-      return NextResponse.json({ error: "Server not configured" }, { status: 500 });
-    }
-    const sb = createClient<DB>(supabaseUrl, serviceKey);
-
-    // Line
-    const { data: line, error: le } = await sb
-      .from("work_order_lines").select("*")
-      .eq("id", workOrderLineId)
-      .maybeSingle<DB["public"]["Tables"]["work_order_lines"]["Row"]>();
-    if (le || !line) {
-      return NextResponse.json({ error: le?.message ?? "Line not found" }, { status: 404 });
-    }
-
-    // Parent WO => vehicle
-    const { data: wo } = await sb
-      .from("work_orders").select("*")
-      .eq("id", line.work_order_id)
-      .maybeSingle<DB["public"]["Tables"]["work_orders"]["Row"]>();
-    const { data: vehicle } = wo?.vehicle_id
-      ? await sb.from("vehicles").select("*").eq("id", wo.vehicle_id)
-          .maybeSingle<DB["public"]["Tables"]["vehicles"]["Row"]>()
-      : { data: null };
-
-    const make = (vehicle?.make ?? "").trim();
-    const model = (vehicle?.model ?? "").trim();
-    const year = typeof vehicle?.year === "number"
-      ? vehicle?.year
-      : Number((vehicle?.year as unknown as string) ?? NaN);
-    const yBucket = yearBucket(year);
-
-    // Sanity: “fully quoted” = has labor_time OR has at least one allocation
-    const { data: allocs } = await sb
-      .from("work_order_part_allocations")
-      .select("part_id, qty")
-      .eq("work_order_line_id", workOrderLineId);
-
-    const fullyQuoted = (line.labor_time !== null && line.labor_time !== undefined)
-      || ((allocs ?? []).length > 0);
-
-    if (!make || !model || !fullyQuoted) {
-      return NextResponse.json({ error: "Line not fully quoted or vehicle missing" }, { status: 400 });
-    }
-
-    // Normalize a job title
-    const rawTitle = (line.description ?? line.complaint ?? "Repair").trim();
-    const title = rawTitle.replace(/\s+/g, " ").replace(/\.$/, "");
-
-    // Upsert saved_menu_items
-    const partsJson = (allocs ?? []).map(a => ({ part_id: a.part_id, qty: a.qty }));
-    const insert = {
-      make,
-      model,
-      year_bucket: yBucket,
-      title,
-      labor_time: line.labor_time ?? null,
-      parts: partsJson as unknown as NonNullable<DB["public"]["Tables"]["saved_menu_items"]["Row"]["parts"]>,
-      updated_at: new Date().toISOString(),
-    };
-
-    // NOTE: upsert based on the unique index (make, model, year_bucket, title)
-    const { data, error } = await sb
-      .from("saved_menu_items")
-      .upsert(insert, { onConflict: "make,model,year_bucket,title" })
-      .select("id")
-      .single();
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    return NextResponse.json({ id: data?.id ?? null, ok: true });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Unknown error";
-    return NextResponse.json({ error: msg }, { status: 500 });
+  const lineId = body?.workOrderLineId;
+  if (!lineId) {
+    return NextResponse.json(
+      { error: "Missing workOrderLineId" },
+      { status: 400 },
+    );
   }
+
+  // 1) Fetch the work order line
+  const { data: wol, error: wolErr } = await supabase
+    .from("work_order_lines")
+    .select("id, description, work_order_id, status, menu_item_id")
+    .eq("id", lineId)
+    .maybeSingle<Pick<
+      WorkOrderLine,
+      "id" | "description" | "work_order_id" | "status" | "menu_item_id"
+    >>();
+
+  if (wolErr) {
+    return NextResponse.json({ error: wolErr.message }, { status: 500 });
+  }
+
+  if (!wol) {
+    return NextResponse.json(
+      { error: "Work order line not found" },
+      { status: 404 },
+    );
+  }
+
+  if (!wol.work_order_id) {
+    return NextResponse.json(
+      { error: "Cannot save menu item — missing work order" },
+      { status: 400 },
+    );
+  }
+
+  // 2) Fetch the parent work order to get shop_id
+  const { data: wo, error: woErr } = await supabase
+    .from("work_orders")
+    .select("id, shop_id")
+    .eq("id", wol.work_order_id)
+    .maybeSingle<Pick<WorkOrder, "id" | "shop_id">>();
+
+  if (woErr) {
+    return NextResponse.json({ error: woErr.message }, { status: 500 });
+  }
+
+  const shopId = wo?.shop_id ?? null;
+  if (!shopId) {
+    return NextResponse.json(
+      { error: "Cannot save menu item — missing shop for work order" },
+      { status: 400 },
+    );
+  }
+
+  const name = wol.description?.trim();
+  if (!name) {
+    return NextResponse.json(
+      { error: "Cannot save menu item — missing description" },
+      { status: 400 },
+    );
+  }
+
+  // TODO: if you have a definitive "sell_price" / "line_total" column on the line,
+  // compute and attach it here. For now we'll just upsert the name + shop.
+
+  // 3) Update existing menu item if already linked
+  if (wol.menu_item_id) {
+    const { error: updErr } = await supabase
+      .from("menu_items")
+      .update({
+        name,
+        is_active: true,
+      } satisfies MenuItemUpdate)
+      .eq("id", wol.menu_item_id);
+
+    if (updErr) {
+      return NextResponse.json({ error: updErr.message }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      ok: true,
+      menuItemId: wol.menu_item_id,
+      updated: true,
+    });
+  }
+
+  // 4) Create a new menu item
+  const { data: inserted, error: insErr } = await supabase
+    .from("menu_items")
+    .insert({
+      shop_id: shopId,
+      name,
+      is_active: true,
+    } satisfies MenuItemInsert)
+    .select("id")
+    .maybeSingle();
+
+  if (insErr || !inserted) {
+    return NextResponse.json(
+      { error: insErr?.message ?? "Failed to create menu item" },
+      { status: 500 },
+    );
+  }
+
+  const menuItemId = inserted.id as string;
+
+  // 5) Link the line back to the new menu item
+  const { error: linkErr } = await supabase
+    .from("work_order_lines")
+    .update({
+      menu_item_id: menuItemId,
+    } satisfies DB["public"]["Tables"]["work_order_lines"]["Update"])
+    .eq("id", wol.id);
+
+  if (linkErr) {
+    return NextResponse.json(
+      { error: linkErr.message },
+      { status: 500 },
+    );
+  }
+
+  return NextResponse.json({
+    ok: true,
+    menuItemId,
+    updated: false,
+  });
 }
