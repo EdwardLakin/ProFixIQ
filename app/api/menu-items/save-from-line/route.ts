@@ -12,22 +12,27 @@ type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
 type ProfileRow = DB["public"]["Tables"]["profiles"]["Row"];
 type MenuInsert = DB["public"]["Tables"]["menu_items"]["Insert"];
 
-// optional helper type in case labor_hours is newly added
-type WorkOrderLineWithLaborHours = WorkOrderLineRow & {
+interface RequestBody {
+  workOrderLineId?: string;
+}
+
+// allow reading labor_hours safely whether it exists in your schema or not
+type WorkOrderLineMaybeLabor = WorkOrderLineRow & {
   labor_hours?: number | null;
 };
 
 export async function POST(req: NextRequest) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
-  // 1) Auth
+  /* ---------------------------------------------------------------------- */
+  /* 1) AUTH                                                                */
+  /* ---------------------------------------------------------------------- */
   const {
     data: { user },
     error: userErr,
   } = await supabase.auth.getUser();
 
   if (userErr || !user) {
-    console.error("[menu-items/save-from-line] auth error:", userErr);
     return NextResponse.json(
       {
         ok: false,
@@ -38,12 +43,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 2) Parse body
-  const body = (await req.json().catch(() => null)) as {
-    workOrderLineId?: string;
-  } | null;
+  /* ---------------------------------------------------------------------- */
+  /* 2) Parse Body                                                          */
+  /* ---------------------------------------------------------------------- */
+  const json = await req.json().catch(() => null) as RequestBody | null;
+  const lineId = json?.workOrderLineId;
 
-  const lineId = body?.workOrderLineId;
   if (!lineId) {
     return NextResponse.json(
       { ok: false, error: "bad_request", detail: "workOrderLineId is required" },
@@ -51,7 +56,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 3) Load the work order line
+  /* ---------------------------------------------------------------------- */
+  /* 3) Load work_order_line                                                 */
+  /* ---------------------------------------------------------------------- */
   const { data: wol, error: wolErr } = await supabase
     .from("work_order_lines")
     .select("*")
@@ -59,7 +66,6 @@ export async function POST(req: NextRequest) {
     .maybeSingle<WorkOrderLineRow>();
 
   if (wolErr) {
-    console.error("[menu-items/save-from-line] load line error:", wolErr.message);
     return NextResponse.json(
       { ok: false, error: "line_load_failed", detail: wolErr.message },
       { status: 500 },
@@ -73,7 +79,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // If it already has a menu_item_id, nothing to do
   if (wol.menu_item_id) {
     return NextResponse.json({ ok: true, alreadyLinked: true });
   }
@@ -89,7 +94,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 4) Load the work order to get shop_id
+  /* ---------------------------------------------------------------------- */
+  /* 4) Load work_order → determine shop_id                                 */
+  /* ---------------------------------------------------------------------- */
   const { data: wo, error: woErr } = await supabase
     .from("work_orders")
     .select("*")
@@ -97,33 +104,25 @@ export async function POST(req: NextRequest) {
     .maybeSingle<WorkOrderRow>();
 
   if (woErr) {
-    console.error(
-      "[menu-items/save-from-line] load work order error:",
-      woErr.message,
-    );
     return NextResponse.json(
       { ok: false, error: "order_load_failed", detail: woErr.message },
       { status: 500 },
     );
   }
 
-  // 5) Resolve shop_id (order first, then profile)
-  let shopId: string | null = (wo?.shop_id as string | null) ?? null;
+  let shopId: string | null = wo?.shop_id ?? null;
 
+  // fallback to profile
   if (!shopId) {
     const { data: prof, error: profErr } = await supabase
       .from("profiles")
       .select("shop_id")
       .eq("id", user.id)
-      .maybeSingle<ProfileRow>();
+      .maybeSingle<Pick<ProfileRow, "shop_id">>();
 
-    if (profErr) {
-      console.warn(
-        "[menu-items/save-from-line] profile lookup failed:",
-        profErr.message,
-      );
+    if (!profErr && prof?.shop_id) {
+      shopId = prof.shop_id;
     }
-    shopId = (prof?.shop_id as string | null) ?? null;
   }
 
   if (!shopId) {
@@ -137,24 +136,24 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 6) Build menu_items insert from the line
-  const name =
-    wol.description && wol.description.trim().length > 0
-      ? wol.description.trim()
-      : "Service item";
+  /* ---------------------------------------------------------------------- */
+  /* 5) Build MenuInsert                                                    */
+  /* ---------------------------------------------------------------------- */
+  const wolExtended = wol as WorkOrderLineMaybeLabor;
 
-  // safely read labor_hours if present
-  const wolWithLabor = wol as WorkOrderLineWithLaborHours;
-  const laborHoursValue =
-    typeof wolWithLabor.labor_hours === "number" &&
-    Number.isFinite(wolWithLabor.labor_hours)
-      ? wolWithLabor.labor_hours
+  const laborHoursValue: number | null =
+    typeof wolExtended.labor_hours === "number" &&
+    Number.isFinite(wolExtended.labor_hours)
+      ? wolExtended.labor_hours
       : null;
 
   const itemInsert: MenuInsert = {
-    name,
+    name:
+      wol.description && wol.description.trim().length > 0
+        ? wol.description.trim()
+        : "Service item",
     description: wol.description ?? null,
-    labor_time: null, // keep legacy field null if you’re using labor_hours
+    labor_time: null,
     labor_hours: laborHoursValue,
     part_cost: null,
     total_price: null,
@@ -162,13 +161,12 @@ export async function POST(req: NextRequest) {
     user_id: user.id,
     is_active: true,
     shop_id: shopId,
-    // link back to the originating line
     work_order_line_id: wol.id,
   };
 
-  console.log("[menu-items/save-from-line] inserting menu item:", itemInsert);
-
-  // 7) Insert menu item
+  /* ---------------------------------------------------------------------- */
+  /* 6) Insert into menu_items                                              */
+  /* ---------------------------------------------------------------------- */
   const { data: created, error: itemErr } = await supabase
     .from("menu_items")
     .insert(itemInsert)
@@ -176,32 +174,25 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (itemErr || !created) {
-    console.error(
-      "[menu-items/save-from-line] menu_items insert failed:",
-      itemErr?.message,
-    );
     return NextResponse.json(
       {
         ok: false,
         error: "insert_failed",
-        detail: itemErr?.message ?? "Insert into menu_items failed",
+        detail: itemErr?.message ?? "Insert failed",
       },
       { status: 400 },
     );
   }
 
-  // 8) Attach new menu_item_id back to the line
+  /* ---------------------------------------------------------------------- */
+  /* 7) Attach menu_item_id back to work_order_lines                        */
+  /* ---------------------------------------------------------------------- */
   const { error: linkErr } = await supabase
     .from("work_order_lines")
     .update({ menu_item_id: created.id })
     .eq("id", wol.id);
 
   if (linkErr) {
-    console.error(
-      "[menu-items/save-from-line] failed to link line to menu item:",
-      linkErr.message,
-    );
-    // we still created the menu item, but the link failed
     return NextResponse.json(
       {
         ok: false,
