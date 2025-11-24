@@ -21,6 +21,16 @@ type WorkOrderLineMaybeLabor = WorkOrderLineRow & {
   labor_hours?: number | null;
 };
 
+interface SaveFromLineResponse {
+  ok: boolean;
+  menuItemId?: string;
+  alreadyLinked?: boolean;
+  linkFailed?: boolean;
+  linkError?: string;
+  error?: string;
+  detail?: string;
+}
+
 export async function POST(req: NextRequest) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
@@ -33,31 +43,31 @@ export async function POST(req: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (userErr || !user) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "auth_error",
-        detail: userErr?.message ?? "Not signed in",
-      },
-      { status: 401 },
-    );
+    const body: SaveFromLineResponse = {
+      ok: false,
+      error: "auth_error",
+      detail: userErr?.message ?? "Not signed in",
+    };
+    return NextResponse.json(body, { status: 401 });
   }
 
   /* ---------------------------------------------------------------------- */
   /* 2) Parse Body                                                          */
   /* ---------------------------------------------------------------------- */
-  const json = await req.json().catch(() => null) as RequestBody | null;
+  const json = (await req.json().catch(() => null)) as RequestBody | null;
   const lineId = json?.workOrderLineId;
 
   if (!lineId) {
-    return NextResponse.json(
-      { ok: false, error: "bad_request", detail: "workOrderLineId is required" },
-      { status: 400 },
-    );
+    const body: SaveFromLineResponse = {
+      ok: false,
+      error: "bad_request",
+      detail: "workOrderLineId is required",
+    };
+    return NextResponse.json(body, { status: 400 });
   }
 
   /* ---------------------------------------------------------------------- */
-  /* 3) Load work_order_line                                                 */
+  /* 3) Load work_order_line                                                */
   /* ---------------------------------------------------------------------- */
   const { data: wol, error: wolErr } = await supabase
     .from("work_order_lines")
@@ -66,32 +76,39 @@ export async function POST(req: NextRequest) {
     .maybeSingle<WorkOrderLineRow>();
 
   if (wolErr) {
-    return NextResponse.json(
-      { ok: false, error: "line_load_failed", detail: wolErr.message },
-      { status: 500 },
-    );
+    const body: SaveFromLineResponse = {
+      ok: false,
+      error: "line_load_failed",
+      detail: wolErr.message,
+    };
+    return NextResponse.json(body, { status: 500 });
   }
 
   if (!wol) {
-    return NextResponse.json(
-      { ok: false, error: "not_found", detail: "Work order line not found" },
-      { status: 404 },
-    );
+    const body: SaveFromLineResponse = {
+      ok: false,
+      error: "not_found",
+      detail: "Work order line not found",
+    };
+    return NextResponse.json(body, { status: 404 });
   }
 
   if (wol.menu_item_id) {
-    return NextResponse.json({ ok: true, alreadyLinked: true });
+    const body: SaveFromLineResponse = {
+      ok: true,
+      alreadyLinked: true,
+      menuItemId: wol.menu_item_id,
+    };
+    return NextResponse.json(body, { status: 200 });
   }
 
   if (!wol.work_order_id) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "bad_state",
-        detail: "Work order line is not linked to a work order",
-      },
-      { status: 400 },
-    );
+    const body: SaveFromLineResponse = {
+      ok: false,
+      error: "bad_state",
+      detail: "Work order line is not linked to a work order",
+    };
+    return NextResponse.json(body, { status: 400 });
   }
 
   /* ---------------------------------------------------------------------- */
@@ -104,10 +121,12 @@ export async function POST(req: NextRequest) {
     .maybeSingle<WorkOrderRow>();
 
   if (woErr) {
-    return NextResponse.json(
-      { ok: false, error: "order_load_failed", detail: woErr.message },
-      { status: 500 },
-    );
+    const body: SaveFromLineResponse = {
+      ok: false,
+      error: "order_load_failed",
+      detail: woErr.message,
+    };
+    return NextResponse.json(body, { status: 500 });
   }
 
   let shopId: string | null = wo?.shop_id ?? null;
@@ -126,14 +145,12 @@ export async function POST(req: NextRequest) {
   }
 
   if (!shopId) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "missing_shop",
-        detail: "Cannot save menu item — missing shop for work order line",
-      },
-      { status: 400 },
-    );
+    const body: SaveFromLineResponse = {
+      ok: false,
+      error: "missing_shop",
+      detail: "Cannot save menu item — missing shop for work order line",
+    };
+    return NextResponse.json(body, { status: 400 });
   }
 
   /* ---------------------------------------------------------------------- */
@@ -174,14 +191,12 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (itemErr || !created) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "insert_failed",
-        detail: itemErr?.message ?? "Insert failed",
-      },
-      { status: 400 },
-    );
+    const body: SaveFromLineResponse = {
+      ok: false,
+      error: "insert_failed",
+      detail: itemErr?.message ?? "Insert failed",
+    };
+    return NextResponse.json(body, { status: 400 });
   }
 
   /* ---------------------------------------------------------------------- */
@@ -193,16 +208,21 @@ export async function POST(req: NextRequest) {
     .eq("id", wol.id);
 
   if (linkErr) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "link_failed",
-        detail: linkErr.message,
-        menuItemId: created.id,
-      },
-      { status: 500 },
-    );
+    // 🔸 IMPORTANT: do NOT treat as fatal anymore.
+    // Menu item is created; linking failed (likely RLS). We expose it but keep ok=true.
+    const body: SaveFromLineResponse = {
+      ok: true,
+      menuItemId: created.id,
+      linkFailed: true,
+      linkError: linkErr.message,
+    };
+    return NextResponse.json(body, { status: 200 });
   }
 
-  return NextResponse.json({ ok: true, menuItemId: created.id });
+  const body: SaveFromLineResponse = {
+    ok: true,
+    menuItemId: created.id,
+    linkFailed: false,
+  };
+  return NextResponse.json(body, { status: 200 });
 }
