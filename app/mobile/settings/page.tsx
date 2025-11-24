@@ -5,10 +5,6 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { MobileShell } from "components/layout/MobileShell";
 import { Button } from "@shared/components/ui/Button";
-import { toast } from "sonner";
-import PunchInOutButton, {
-  JobLine,
-} from "@/features/shared/components/PunchInOutButton";
 
 type Db = Database;
 type ProfileRow = Db["public"]["Tables"]["profiles"]["Row"];
@@ -18,10 +14,6 @@ export default function MobileSettingsPage() {
 
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<ProfileRow | null>(null);
-
-  // Local stand-in for an "active job" until we wire real punch APIs
-  const [activeJob, setActiveJob] = useState<JobLine | null>(null);
-  const [punchLoading, setPunchLoading] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -48,40 +40,6 @@ export default function MobileSettingsPage() {
 
     void load();
   }, [supabase]);
-
-  const handlePunchIn = async () => {
-    try {
-      setPunchLoading(true);
-
-      // TODO: call your real API route here instead of fake data
-      // e.g. await fetch("/api/mobile/punch", { method: "POST", body: ... })
-
-      const fakeJob: JobLine = {
-        id: "demo-job-id",
-        vehicle: "Current assigned vehicle",
-      };
-      setActiveJob(fakeJob);
-      toast.success("Punched in (demo). Wire this to a real job next.");
-    } catch {
-      toast.error("Failed to punch in.");
-    } finally {
-      setPunchLoading(false);
-    }
-  };
-
-  const handlePunchOut = async () => {
-    try {
-      setPunchLoading(true);
-
-      // TODO: call your real API route here
-      setActiveJob(null);
-      toast.success("Punched out (demo).");
-    } catch {
-      toast.error("Failed to punch out.");
-    } finally {
-      setPunchLoading(false);
-    }
-  };
 
   if (loading) {
     return (
@@ -117,6 +75,7 @@ export default function MobileSettingsPage() {
   return (
     <MobileShell>
       <div className="flex flex-col gap-4 p-4">
+        {/* Who's signed in */}
         <div className="rounded-xl border border-border bg-card px-4 py-3">
           <p className="text-xs text-neutral-400">Signed in as</p>
           <p className="text-sm font-semibold text-neutral-50">
@@ -127,13 +86,15 @@ export default function MobileSettingsPage() {
           </p>
         </div>
 
+        {/* Time & attendance copy only – punch bar lives in the shell */}
         <div className="rounded-xl border border-border bg-card px-4 py-3">
           <h2 className="text-sm font-semibold text-neutral-50">
             Time & attendance
           </h2>
           <p className="mt-1 text-xs text-neutral-400">
-            Quick punch in / out for bench use. We&apos;ll wire this to real
-            jobs and payroll next.
+            Use the orange bar at the bottom of the mobile screen to start /
+            end your shift, breaks, and lunch. That punch bar is always
+            available in the mobile shell.
           </p>
 
           {!isMechanic && (
@@ -142,13 +103,6 @@ export default function MobileSettingsPage() {
               <span className="font-semibold">{role || "n/a"}</span>.
             </p>
           )}
-
-          <PunchInOutButton
-            activeJob={activeJob}
-            onPunchIn={handlePunchIn}
-            onPunchOut={handlePunchOut}
-            isLoading={punchLoading}
-          />
         </div>
 
         {/* Placeholder for more mobile settings later */}

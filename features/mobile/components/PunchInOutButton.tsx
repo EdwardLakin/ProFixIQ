@@ -1,4 +1,3 @@
-// features/mobile/components/PunchInOutButton.tsx
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -16,22 +15,6 @@ type PunchEventType =
   | "break_end"
   | "lunch_start"
   | "lunch_end";
-
-/**
- * Exported so app/mobile/settings/page.tsx can import it as:
- *   import PunchInOutButton, { JobLine } from "@/features/shared/components/PunchInOutButton";
- *
- * This is intentionally very loose so it can be used with any
- * work-order line shape that has an `id`.
- */
-export type JobLine = {
-  id: string;
-  description?: string | null;
-  status?: string | null;
-  punchedInAt?: string | null;
-  punchedOutAt?: string | null;
-  [key: string]: unknown;
-};
 
 export default function PunchInOutButton() {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
@@ -234,11 +217,9 @@ export default function PunchInOutButton() {
     }
   })();
 
-  const primaryLabel =
-    status === "none" || status === "ended" ? "Start Shift" : "End Shift";
+  const primaryLabel = status === "none" || status === "ended" ? "Start Shift" : "End Shift";
 
-  const canBreakOrLunch =
-    status === "active" || status === "break" || status === "lunch";
+  const canBreakOrLunch = status === "active" || status === "break" || status === "lunch";
 
   return (
     <div className="border-t border-black/60 bg-orange-500 text-black">
