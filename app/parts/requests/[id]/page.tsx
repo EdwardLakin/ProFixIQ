@@ -123,7 +123,7 @@ export default function PartsRequestDetail() {
 
         // save to menu items
         try {
-          const res = await fetch("/api/menu-items/save-from-line", {
+          const res = await fetch("/api/menu-items/upsert-from-line", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ workOrderLineId: lineId }),
