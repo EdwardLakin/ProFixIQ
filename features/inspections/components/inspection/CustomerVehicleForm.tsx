@@ -34,6 +34,10 @@ type VehicleRow = {
   unit_number?: string | null;
   color?: string | null;
   engine_hours?: number | null;
+  engine?: string | null;
+  transmission?: string | null;
+  fuel_type?: string | null;
+  drivetrain?: string | null;
   customer_id?: string | null;
   created_at?: string | null;
 };
@@ -240,7 +244,7 @@ function UnitNumberAutocomplete({
         const { data, error } = await supabase
           .from("vehicles")
           .select(
-            "id, unit_number, license_plate, vin, year, make, model, mileage, color, engine_hours, created_at"
+            "id, unit_number, license_plate, vin, year, make, model, mileage, color, engine_hours, engine, transmission, fuel_type, drivetrain, created_at"
           )
           .eq("shop_id", shopId)
           .eq("customer_id", customerId)
@@ -402,7 +406,7 @@ export default function CustomerVehicleForm({
       const { data: vehs } = await supabase
         .from("vehicles")
         .select(
-          "id, vin, year, make, model, license_plate, mileage, unit_number, color, engine_hours, created_at"
+          "id, vin, year, make, model, license_plate, mileage, unit_number, color, engine_hours, engine, transmission, fuel_type, drivetrain, created_at"
         )
         .eq("customer_id", c.id)
         .eq("shop_id", shopId)
@@ -427,6 +431,10 @@ export default function CustomerVehicleForm({
           "engine_hours",
           v.engine_hours != null ? String(v.engine_hours) : null
         );
+        (onVehicleChange as any)("engine", v.engine ?? null);
+        (onVehicleChange as any)("transmission", v.transmission ?? null);
+        (onVehicleChange as any)("fuel_type", v.fuel_type ?? null);
+        (onVehicleChange as any)("drivetrain", v.drivetrain ?? null);
         onVehicleSelected?.(v.id);
       }
     } catch {
@@ -652,6 +660,13 @@ export default function CustomerVehicleForm({
                   "engine_hours",
                   v.engine_hours != null ? String(v.engine_hours) : null
                 );
+                (onVehicleChange as any)("engine", v.engine ?? null);
+                (onVehicleChange as any)(
+                  "transmission",
+                  v.transmission ?? null
+                );
+                (onVehicleChange as any)("fuel_type", v.fuel_type ?? null);
+                (onVehicleChange as any)("drivetrain", v.drivetrain ?? null);
                 onVehicleSelected?.(v.id);
               }}
             />
@@ -762,6 +777,91 @@ export default function CustomerVehicleForm({
                 onVehicleChange("engine_hours", e.target.value || null)
               }
             />
+          </div>
+
+          {/* Engine / trim */}
+          <div className="space-y-1">
+            <label className="text-xs text-neutral-300">
+              Engine / Trim
+            </label>
+            <input
+              className="input"
+              placeholder="e.g. 3.5L EcoBoost"
+              value={(vehicle as any).engine ?? ""}
+              onChange={(e) =>
+                (onVehicleChange as any)(
+                  "engine",
+                  e.target.value || null
+                )
+              }
+            />
+          </div>
+
+          {/* Transmission */}
+          <div className="space-y-1">
+            <label className="text-xs text-neutral-300">Transmission</label>
+            <select
+              className="input"
+              value={(vehicle as any).transmission ?? ""}
+              onChange={(e) =>
+                (onVehicleChange as any)(
+                  "transmission",
+                  e.target.value || null
+                )
+              }
+            >
+              <option value="">Select transmission</option>
+              <option value="automatic">Automatic</option>
+              <option value="manual">Manual</option>
+              <option value="cvt">CVT</option>
+              <option value="dct">Dual-clutch</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+
+          {/* Fuel type */}
+          <div className="space-y-1">
+            <label className="text-xs text-neutral-300">Fuel type</label>
+            <select
+              className="input"
+              value={(vehicle as any).fuel_type ?? ""}
+              onChange={(e) =>
+                (onVehicleChange as any)(
+                  "fuel_type",
+                  e.target.value || null
+                )
+              }
+            >
+              <option value="">Select fuel type</option>
+              <option value="gasoline">Gasoline</option>
+              <option value="diesel">Diesel</option>
+              <option value="hybrid">Hybrid</option>
+              <option value="phev">Plug-in hybrid</option>
+              <option value="ev">Electric (BEV)</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+
+          {/* Drivetrain */}
+          <div className="space-y-1">
+            <label className="text-xs text-neutral-300">Drivetrain</label>
+            <select
+              className="input"
+              value={(vehicle as any).drivetrain ?? ""}
+              onChange={(e) =>
+                (onVehicleChange as any)(
+                  "drivetrain",
+                  e.target.value || null
+                )
+              }
+            >
+              <option value="">Select drivetrain</option>
+              <option value="fwd">FWD</option>
+              <option value="rwd">RWD</option>
+              <option value="awd">AWD</option>
+              <option value="4x4">4x4</option>
+              <option value="other">Other</option>
+            </select>
           </div>
         </div>
       </div>

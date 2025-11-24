@@ -1,4 +1,3 @@
-// features/work-orders/components/SuggestedQuickAdd.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -11,6 +10,13 @@ type Suggestion = {
   aiComplaint?: string;
   aiCause?: string;
   aiCorrection?: string;
+};
+
+type VehicleLite = {
+  id: string | null;
+  year: string | null;
+  make: string | null;
+  model: string | null;
 };
 
 function asSuggestions(input: unknown): Suggestion[] {
@@ -43,28 +49,35 @@ function asSuggestions(input: unknown): Suggestion[] {
   });
 }
 
-export default function SuggestedQuickAdd(props: {
-  jobId: string;
+export function WorkOrderSuggestionsPanel(props: {
   workOrderId: string;
-  vehicleId?: string | null;
+  vehicleId: string | null;
+  vehicleMeta: { year: string | null; make: string | null; model: string | null };
   onAdded?: () => void | Promise<void>;
 }) {
-  const { jobId, workOrderId, vehicleId, onAdded } = props;
+  const { workOrderId, vehicleId, vehicleMeta, onAdded } = props;
 
   const [loading, setLoading] = useState(false);
   const [adding, setAdding] = useState<string | null>(null);
   const [items, setItems] = useState<Suggestion[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  const vehicleLite: VehicleLite | null = vehicleId
+    ? {
+        id: vehicleId,
+        year: vehicleMeta.year,
+        make: vehicleMeta.make,
+        model: vehicleMeta.model,
+      }
+    : null;
+
   async function fetchSuggestions() {
+    if (!workOrderId) return;
     setLoading(true);
     setError(null);
     try {
-      const body: any = { jobId };
-      if (vehicleId) {
-        // simple string for now – your API already accepts VehicleLite | string | null
-        body.vehicleId = vehicleId;
-      }
+      const body: any = { workOrderId };
+      if (vehicleLite) body.vehicleId = vehicleLite;
 
       const res = await fetch("/api/work-orders/suggest-lines", {
         method: "POST",
@@ -86,9 +99,10 @@ export default function SuggestedQuickAdd(props: {
   }
 
   useEffect(() => {
-    if (jobId) void fetchSuggestions();
+    // auto-run once we actually have a WO and vehicle
+    if (workOrderId) void fetchSuggestions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobId]);
+  }, [workOrderId, vehicleId]);
 
   async function addQuote(s: Suggestion) {
     setAdding(s.name);
@@ -116,7 +130,6 @@ export default function SuggestedQuickAdd(props: {
         const j = await res.json().catch(() => ({}));
         throw new Error(j?.error || "Failed to add quote line");
       }
-
       await onAdded?.();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Failed to add quote line");
@@ -126,24 +139,32 @@ export default function SuggestedQuickAdd(props: {
   }
 
   return (
-    <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
-      <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-orange-400">AI Suggestions</h3>
+    <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 sm:p-5">
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-orange-300">
+          Suggested jobs (AI + service rules)
+        </h2>
         <button
+          type="button"
           onClick={fetchSuggestions}
           disabled={loading}
           className="text-xs px-2 py-1 rounded border border-neutral-700 hover:bg-neutral-800 disabled:opacity-60"
         >
-          {loading ? "Thinking…" : "Regenerate"}
+          {loading ? "Thinking…" : "Refresh"}
         </button>
       </div>
 
-      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+      {error && (
+        <p className="mb-2 text-xs text-red-400">
+          {error}
+        </p>
+      )}
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      <div className="grid gap-2 sm:grid-cols-2">
         {items.map((s) => (
           <button
             key={s.name}
+            type="button"
             onClick={() => addQuote(s)}
             disabled={adding === s.name}
             className="text-left border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 rounded p-3 disabled:opacity-60"
@@ -157,13 +178,17 @@ export default function SuggestedQuickAdd(props: {
               h
             </div>
             {s.notes && (
-              <div className="text-xs text-neutral-500 mt-1">{s.notes}</div>
+              <div className="text-xs text-neutral-500 mt-1">
+                {s.notes}
+              </div>
             )}
           </button>
         ))}
 
         {!loading && items.length === 0 && (
-          <div className="text-xs text-neutral-400">No suggestions yet.</div>
+          <div className="text-xs text-neutral-400">
+            No suggestions yet. Save customer & vehicle first.
+          </div>
         )}
       </div>
     </div>

@@ -1821,6 +1821,13 @@ export type Database = {
             foreignKeyName: "inspection_sessions_work_order_line_fk"
             columns: ["work_order_line_id"]
             isOneToOne: true
+            referencedRelation: "v_vehicle_service_history"
+            referencedColumns: ["work_order_line_id"]
+          },
+          {
+            foreignKeyName: "inspection_sessions_work_order_line_fk"
+            columns: ["work_order_line_id"]
+            isOneToOne: true
             referencedRelation: "work_order_lines"
             referencedColumns: ["id"]
           },
@@ -1830,6 +1837,13 @@ export type Database = {
             isOneToOne: true
             referencedRelation: "v_quote_queue"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspection_sessions_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: true
+            referencedRelation: "v_vehicle_service_history"
+            referencedColumns: ["work_order_line_id"]
           },
           {
             foreignKeyName: "inspection_sessions_work_order_line_id_fkey"
@@ -2168,6 +2182,7 @@ export type Database = {
       menu_items: {
         Row: {
           base_labor_hours: number | null
+          base_part_cost: number | null
           base_price: number | null
           category: string | null
           cause: string | null
@@ -2176,6 +2191,7 @@ export type Database = {
           created_at: string | null
           description: string | null
           drivetrain: string | null
+          engine_code: string | null
           engine_type: string | null
           id: string
           inspection_template_id: string | null
@@ -2184,11 +2200,13 @@ export type Database = {
           labor_time: number | null
           name: string | null
           part_cost: number | null
+          service_key: string | null
           shop_id: string | null
           source: string | null
           submodel: string | null
           tools: string | null
           total_price: number | null
+          transmission_code: string | null
           transmission_type: string | null
           user_id: string | null
           vehicle_make: string | null
@@ -2198,6 +2216,7 @@ export type Database = {
         }
         Insert: {
           base_labor_hours?: number | null
+          base_part_cost?: number | null
           base_price?: number | null
           category?: string | null
           cause?: string | null
@@ -2206,6 +2225,7 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           drivetrain?: string | null
+          engine_code?: string | null
           engine_type?: string | null
           id?: string
           inspection_template_id?: string | null
@@ -2214,11 +2234,13 @@ export type Database = {
           labor_time?: number | null
           name?: string | null
           part_cost?: number | null
+          service_key?: string | null
           shop_id?: string | null
           source?: string | null
           submodel?: string | null
           tools?: string | null
           total_price?: number | null
+          transmission_code?: string | null
           transmission_type?: string | null
           user_id?: string | null
           vehicle_make?: string | null
@@ -2228,6 +2250,7 @@ export type Database = {
         }
         Update: {
           base_labor_hours?: number | null
+          base_part_cost?: number | null
           base_price?: number | null
           category?: string | null
           cause?: string | null
@@ -2236,6 +2259,7 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           drivetrain?: string | null
+          engine_code?: string | null
           engine_type?: string | null
           id?: string
           inspection_template_id?: string | null
@@ -2244,11 +2268,13 @@ export type Database = {
           labor_time?: number | null
           name?: string | null
           part_cost?: number | null
+          service_key?: string | null
           shop_id?: string | null
           source?: string | null
           submodel?: string | null
           tools?: string | null
           total_price?: number | null
+          transmission_code?: string | null
           transmission_type?: string | null
           user_id?: string | null
           vehicle_make?: string | null
@@ -2668,6 +2694,13 @@ export type Database = {
             foreignKeyName: "part_request_lines_work_order_line_id_fkey"
             columns: ["work_order_line_id"]
             isOneToOne: false
+            referencedRelation: "v_vehicle_service_history"
+            referencedColumns: ["work_order_line_id"]
+          },
+          {
+            foreignKeyName: "part_request_lines_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
             referencedRelation: "work_order_lines"
             referencedColumns: ["id"]
           },
@@ -3072,6 +3105,13 @@ export type Database = {
             foreignKeyName: "parts_quote_requests_work_order_line_id_fkey"
             columns: ["work_order_line_id"]
             isOneToOne: false
+            referencedRelation: "v_vehicle_service_history"
+            referencedColumns: ["work_order_line_id"]
+          },
+          {
+            foreignKeyName: "parts_quote_requests_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
             referencedRelation: "work_order_lines"
             referencedColumns: ["id"]
           },
@@ -3212,6 +3252,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_quote_queue"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parts_requests_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "v_vehicle_service_history"
+            referencedColumns: ["work_order_line_id"]
           },
           {
             foreignKeyName: "parts_requests_job_id_fkey"
@@ -5412,8 +5459,10 @@ export type Database = {
           created_at: string | null
           customer_id: string | null
           drivetrain: string | null
+          engine: string | null
           engine_hours: number | null
           engine_type: string | null
+          fuel_type: string | null
           id: string
           license_plate: string | null
           make: string | null
@@ -5421,6 +5470,7 @@ export type Database = {
           model: string | null
           shop_id: string | null
           submodel: string | null
+          transmission: string | null
           transmission_type: string | null
           unit_number: string | null
           user_id: string | null
@@ -5432,8 +5482,10 @@ export type Database = {
           created_at?: string | null
           customer_id?: string | null
           drivetrain?: string | null
+          engine?: string | null
           engine_hours?: number | null
           engine_type?: string | null
+          fuel_type?: string | null
           id?: string
           license_plate?: string | null
           make?: string | null
@@ -5441,6 +5493,7 @@ export type Database = {
           model?: string | null
           shop_id?: string | null
           submodel?: string | null
+          transmission?: string | null
           transmission_type?: string | null
           unit_number?: string | null
           user_id?: string | null
@@ -5452,8 +5505,10 @@ export type Database = {
           created_at?: string | null
           customer_id?: string | null
           drivetrain?: string | null
+          engine?: string | null
           engine_hours?: number | null
           engine_type?: string | null
+          fuel_type?: string | null
           id?: string
           license_plate?: string | null
           make?: string | null
@@ -5461,6 +5516,7 @@ export type Database = {
           model?: string | null
           shop_id?: string | null
           submodel?: string | null
+          transmission?: string | null
           transmission_type?: string | null
           unit_number?: string | null
           user_id?: string | null
@@ -5690,6 +5746,13 @@ export type Database = {
             foreignKeyName: "warranties_work_order_line_id_fkey"
             columns: ["work_order_line_id"]
             isOneToOne: false
+            referencedRelation: "v_vehicle_service_history"
+            referencedColumns: ["work_order_line_id"]
+          },
+          {
+            foreignKeyName: "warranties_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
             referencedRelation: "work_order_lines"
             referencedColumns: ["id"]
           },
@@ -5864,6 +5927,13 @@ export type Database = {
             foreignKeyName: "work_order_line_history_line_id_fkey"
             columns: ["line_id"]
             isOneToOne: false
+            referencedRelation: "v_vehicle_service_history"
+            referencedColumns: ["work_order_line_id"]
+          },
+          {
+            foreignKeyName: "work_order_line_history_line_id_fkey"
+            columns: ["line_id"]
+            isOneToOne: false
             referencedRelation: "work_order_lines"
             referencedColumns: ["id"]
           },
@@ -5919,6 +5989,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_quote_queue"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_line_technicians_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_vehicle_service_history"
+            referencedColumns: ["work_order_line_id"]
           },
           {
             foreignKeyName: "work_order_line_technicians_work_order_line_id_fkey"
@@ -6253,6 +6330,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_quote_queue"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_part_allocations_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_vehicle_service_history"
+            referencedColumns: ["work_order_line_id"]
           },
           {
             foreignKeyName: "work_order_part_allocations_work_order_line_id_fkey"
@@ -6805,6 +6889,44 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      v_vehicle_service_history: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          make: string | null
+          menu_item_id: string | null
+          menu_name: string | null
+          model: string | null
+          status: string | null
+          vehicle_id: string | null
+          work_order_id: string | null
+          work_order_line_id: string | null
+          year: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_order_lines_menu_item_id_fkey"
+            columns: ["menu_item_id"]
+            isOneToOne: false
+            referencedRelation: "menu_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_lines_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_lines_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
         ]
