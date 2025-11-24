@@ -87,39 +87,24 @@ export default function MenuItemsPage() {
     [partsTotal, laborTotal],
   );
 
-  // --------- fetch menu items ----------
+  // --------- fetch menu items (always full list you can see) ----------
   const fetchItems = useCallback(
-    async (opts?: { all?: boolean }) => {
-      // 1st try: user-owned
-      if (!opts?.all && user?.id) {
-        const { data, error } = await supabase
-          .from("menu_items")
-          .select("*")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false });
-
-        if (!error && data && data.length) {
-          setMenuItems(data);
-          return;
-        }
-      }
-
-      // fallback: whole table (you said no RLS here)
-      const { data: allData, error: allErr } = await supabase
+    async () => {
+      const { data, error } = await supabase
         .from("menu_items")
         .select("*")
         .order("created_at", { ascending: false })
-        .limit(50);
+        .limit(100);
 
-      if (allErr) {
-        console.error("Failed to fetch menu items:", allErr);
+      if (error) {
+        console.error("Failed to fetch menu items:", error);
         toast.error("Could not load menu items");
         return;
       }
 
-      setMenuItems(allData ?? []);
+      setMenuItems(data ?? []);
     },
-    [supabase, user?.id],
+    [supabase],
   );
 
   // --------- fetch templates ----------
@@ -157,7 +142,6 @@ export default function MenuItemsPage() {
     void fetchItems();
     void fetchTemplates();
 
-    // keep the realtime you already had
     const channel = supabase
       .channel("menu-items-sync")
       .on(
@@ -166,16 +150,17 @@ export default function MenuItemsPage() {
           event: "*",
           schema: "public",
           table: "menu_items",
-          ...(user?.id ? { filter: `user_id=eq.${user.id}` } : {}),
         },
-        () => void fetchItems(),
+        () => {
+          void fetchItems();
+        },
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [supabase, user?.id, fetchItems, fetchTemplates]);
+  }, [supabase, fetchItems, fetchTemplates]);
 
   // --------- parts helpers ----------
   const setPartField = (
@@ -247,7 +232,7 @@ export default function MenuItemsPage() {
     });
   };
 
-  // --------- SAVE (now goes through /api/menu/save) ----------
+  // --------- SAVE (still uses /api/menu/save) ----------
   const handleSubmit = useCallback(async () => {
     if (!form.name.trim()) {
       toast.error("Service name is required");
@@ -256,14 +241,12 @@ export default function MenuItemsPage() {
 
     setSaving(true);
     try {
-      // clean parts for the API
       const cleanedParts: InsertMenuItemPart[] = parts
         .filter(
           (p) => p.name.trim().length > 0 && toNum(p.quantityStr) > 0,
         )
         .map<InsertMenuItemPart>((p) => ({
-          // id will be generated in DB
-          menu_item_id: "placeholder", // backend will rewrite this
+          menu_item_id: "placeholder",
           name: p.name.trim(),
           quantity: toNum(p.quantityStr),
           unit_cost: toNum(p.unitCostStr),
@@ -275,7 +258,6 @@ export default function MenuItemsPage() {
           name: form.name.trim(),
           description: form.description.trim() || null,
           labor_time: toNum(form.laborTimeStr),
-          // leave hours null, we’re using labor_time
           labor_hours: null,
           part_cost: partsTotal,
           total_price: grandTotal,
@@ -305,7 +287,6 @@ export default function MenuItemsPage() {
 
       toast.success("Menu item created");
 
-      // reset form (keep rate sticky)
       setForm((f) => ({
         ...f,
         name: "",
@@ -315,7 +296,7 @@ export default function MenuItemsPage() {
       }));
       setParts([{ name: "", quantityStr: "", unitCostStr: "", part_id: null }]);
 
-      await fetchItems({ all: true });
+      await fetchItems();
     } catch (err) {
       console.error("[menu] unexpected save error", err);
       toast.error("Could not save menu item.");
@@ -345,7 +326,7 @@ export default function MenuItemsPage() {
 
       {/* form */}
       <div className="mb-8 grid max-w-2xl gap-3">
-        {/* Service name (selector + input, the style you liked) */}
+        {/* Service name (selector + input) */}
         <div className="grid gap-2">
           <label className="text-sm text-neutral-300">Service name</label>
           <div className="flex gap-2">

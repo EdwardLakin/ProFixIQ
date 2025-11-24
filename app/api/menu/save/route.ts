@@ -68,23 +68,43 @@ export async function POST(req: Request) {
     }
   }
 
-  // 4) build row to insert
+  // 4) normalize numeric fields
+  const laborHours =
+    typeof body.item.labor_time === "number" &&
+    Number.isFinite(body.item.labor_time)
+      ? body.item.labor_time
+      : null;
+
+  const partCost =
+    typeof body.item.part_cost === "number" &&
+    Number.isFinite(body.item.part_cost)
+      ? body.item.part_cost
+      : null;
+
+  const totalPrice =
+    typeof body.item.total_price === "number" &&
+    Number.isFinite(body.item.total_price)
+      ? body.item.total_price
+      : null;
+
+  // 5) build row to insert (full info)
   const itemInsert: MenuInsert = {
     name: body.item.name,
     description: body.item.description,
-    labor_time: body.item.labor_time,
-    labor_hours: null,
-    part_cost: body.item.part_cost,
-    total_price: body.item.total_price,
+    // keep legacy field + new field in sync
+    labor_time: laborHours,
+    labor_hours: laborHours,
+    part_cost: partCost,
+    total_price: totalPrice,
     inspection_template_id: body.item.inspection_template_id,
     user_id: user?.id ?? null,
     is_active: true,
-    shop_id: shopId, // <-- important for RLS
+    shop_id: shopId,
   };
 
   console.log("[API menu/save] inserting", itemInsert);
 
-  // 5) insert menu item
+  // 6) insert menu item
   const { data: created, error: itemErr } = await supabase
     .from("menu_items")
     .insert(itemInsert)
@@ -93,7 +113,6 @@ export async function POST(req: Request) {
 
   if (itemErr || !created) {
     console.error("[API menu/save] insert failed:", itemErr);
-    // Send the actual Supabase error back so you see it in the UI
     return NextResponse.json(
       {
         ok: false,
@@ -104,7 +123,7 @@ export async function POST(req: Request) {
     );
   }
 
-  // 6) insert parts (respect RLS on menu_item_parts: it wants user_id = auth.uid())
+  // 7) insert parts (respect RLS on menu_item_parts: it wants user_id = auth.uid())
   if (Array.isArray(body.parts) && body.parts.length > 0) {
     const partsInsert = body.parts
       .filter((p) => p.name && p.quantity > 0)
@@ -126,7 +145,7 @@ export async function POST(req: Request) {
           "[API menu/save] parts insert failed:",
           partsErr.message,
         );
-        // we won't hard-fail for parts; item was created already
+        // item is still created; we don't hard-fail on parts
       }
     }
   }

@@ -16,9 +16,15 @@ interface RequestBody {
   workOrderLineId?: string;
 }
 
-// allow reading labor_hours safely whether it exists in your schema or not
-type WorkOrderLineMaybeLabor = WorkOrderLineRow & {
+// extend with optional numeric fields your line might have
+type WorkOrderLineMaybeTotals = WorkOrderLineRow & {
   labor_hours?: number | null;
+  labor_time?: number | null;
+  labor_total?: number | null;
+  parts_total?: number | null;
+  part_total?: number | null;
+  line_total?: number | null;
+  total?: number | null;
 };
 
 interface SaveFromLineResponse {
@@ -29,6 +35,15 @@ interface SaveFromLineResponse {
   linkError?: string;
   error?: string;
   detail?: string;
+}
+
+function pickFirstNumber(
+  ...values: Array<number | null | undefined>
+): number | null {
+  for (const v of values) {
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+  }
+  return null;
 }
 
 export async function POST(req: NextRequest) {
@@ -69,7 +84,7 @@ export async function POST(req: NextRequest) {
   /* ---------------------------------------------------------------------- */
   /* 3) Load work_order_line                                                */
   /* ---------------------------------------------------------------------- */
-  const { data: wol, error: wolErr } = await supabase
+  const { data: wolRaw, error: wolErr } = await supabase
     .from("work_order_lines")
     .select("*")
     .eq("id", lineId)
@@ -84,7 +99,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(body, { status: 500 });
   }
 
-  if (!wol) {
+  if (!wolRaw) {
     const body: SaveFromLineResponse = {
       ok: false,
       error: "not_found",
@@ -92,6 +107,8 @@ export async function POST(req: NextRequest) {
     };
     return NextResponse.json(body, { status: 404 });
   }
+
+  const wol = wolRaw as WorkOrderLineMaybeTotals;
 
   if (wol.menu_item_id) {
     const body: SaveFromLineResponse = {
@@ -154,26 +171,32 @@ export async function POST(req: NextRequest) {
   }
 
   /* ---------------------------------------------------------------------- */
-  /* 5) Build MenuInsert                                                    */
+  /* 5) Normalize line → MenuInsert numeric fields                          */
   /* ---------------------------------------------------------------------- */
-  const wolExtended = wol as WorkOrderLineMaybeLabor;
+  const laborHours = pickFirstNumber(wol.labor_hours, wol.labor_time);
 
-  const laborHoursValue: number | null =
-    typeof wolExtended.labor_hours === "number" &&
-    Number.isFinite(wolExtended.labor_hours)
-      ? wolExtended.labor_hours
-      : null;
+  const partCost = pickFirstNumber(
+    wol.parts_total,
+    wol.part_total,
+  );
+
+  const totalPrice = pickFirstNumber(
+    wol.line_total,
+    wol.total,
+  );
+
+  const name =
+    wol.description && wol.description.trim().length > 0
+      ? wol.description.trim()
+      : "Service item";
 
   const itemInsert: MenuInsert = {
-    name:
-      wol.description && wol.description.trim().length > 0
-        ? wol.description.trim()
-        : "Service item",
+    name,
     description: wol.description ?? null,
-    labor_time: null,
-    labor_hours: laborHoursValue,
-    part_cost: null,
-    total_price: null,
+    labor_time: laborHours,
+    labor_hours: laborHours,
+    part_cost: partCost,
+    total_price: totalPrice,
     inspection_template_id: null,
     user_id: user.id,
     is_active: true,
@@ -208,8 +231,6 @@ export async function POST(req: NextRequest) {
     .eq("id", wol.id);
 
   if (linkErr) {
-    // 🔸 IMPORTANT: do NOT treat as fatal anymore.
-    // Menu item is created; linking failed (likely RLS). We expose it but keep ok=true.
     const body: SaveFromLineResponse = {
       ok: true,
       menuItemId: created.id,
