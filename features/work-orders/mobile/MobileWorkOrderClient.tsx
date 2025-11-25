@@ -1,7 +1,6 @@
 "use client";
 
-import React,
-{
+import React, {
   useCallback,
   useEffect,
   useMemo,
@@ -18,19 +17,17 @@ import { supabaseBrowser as supabase } from "@/features/shared/lib/supabase/clie
 import type { Database } from "@shared/types/types/supabase";
 
 import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
-import { UsePartButton } from "@work-orders/components/UsePartButton";
 import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
 import VoiceButton from "@/features/shared/voice/VoiceButton";
 import { useTabState } from "@/features/shared/hooks/useTabState";
 import PartsDrawer from "@/features/parts/components/PartsDrawer";
-
-// assign-mechanic modal
 import AssignTechModal from "@/features/work-orders/components/workorders/extras/AssignTechModal";
+import { JobCard } from "@/features/work-orders/components/JobCard";
 
 // inspection modal
 const InspectionModal = dynamic(
   () => import("@/features/inspections/components/InspectionModal"),
-  { ssr: false }
+  { ssr: false },
 );
 
 type DB = Database;
@@ -57,7 +54,7 @@ function splitCustomId(raw: string): { prefix: string; n: number | null } {
   return { prefix: m[1], n: Number.isFinite(n!) ? n : null };
 }
 
-/* ---------------------------- Badges & Row Tints ---------------------------- */
+/* ---------------------------- Badges ---------------------------- */
 
 type KnownStatus =
   | "awaiting_approval"
@@ -94,28 +91,6 @@ const chip = (s: string | null | undefined): string => {
   return `${BASE_BADGE} ${BADGE[key] ?? BADGE.awaiting}`;
 };
 
-const statusBorder: Record<string, string> = {
-  awaiting: "border-l-4 border-slate-400",
-  queued: "border-l-4 border-indigo-400",
-  in_progress: "border-l-4 border-orange-500",
-  on_hold: "border-l-4 border-amber-500",
-  completed: "border-l-4 border-green-500",
-  awaiting_approval: "border-l-4 border-blue-500",
-  planned: "border-l-4 border-purple-500",
-  new: "border-l-4 border-gray-400",
-};
-
-const statusRowTint: Record<string, string> = {
-  awaiting: "bg-neutral-950",
-  queued: "bg-neutral-950",
-  in_progress: "bg-neutral-950",
-  on_hold: "bg-amber-900/30",
-  completed: "bg-green-900/30",
-  awaiting_approval: "bg-neutral-950",
-  planned: "bg-neutral-950",
-  new: "bg-neutral-950",
-};
-
 // roles allowed to assign
 const ASSIGN_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
 
@@ -131,19 +106,19 @@ export default function MobileWorkOrderClient({
   const [wo, setWo] = useTabState<WorkOrder | null>("m:wo:id:wo", null);
   const [lines, setLines] = useTabState<WorkOrderLine[]>(
     "m:wo:id:lines",
-    []
+    [],
   );
   const [quoteLines, setQuoteLines] = useTabState<WorkOrderQuoteLine[]>(
     "m:wo:id:quoteLines",
-    []
+    [],
   );
   const [vehicle, setVehicle] = useTabState<Vehicle | null>(
     "m:wo:id:veh",
-    null
+    null,
   );
   const [customer, setCustomer] = useTabState<Customer | null>(
     "m:wo:id:cust",
-    null
+    null,
   );
 
   const [allocsByLine, setAllocsByLine] = useState<
@@ -154,17 +129,17 @@ export default function MobileWorkOrderClient({
 
   const [currentUserId, setCurrentUserId] = useTabState<string | null>(
     "m:wo:id:uid",
-    null
+    null,
   );
   const [, setUserId] = useTabState<string | null>(
     "m:wo:id:effectiveUid",
-    null
+    null,
   );
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
 
   const [showDetails, setShowDetails] = useTabState<boolean>(
     "m:wo:showDetails",
-    true
+    true,
   );
   const [warnedMissing, setWarnedMissing] = useState(false);
 
@@ -306,7 +281,7 @@ export default function MobileWorkOrderClient({
                 (r) =>
                   (r.custom_id ?? "")
                     .toUpperCase()
-                    .replace(/^([A-Z]+)0+/, "$1") === wanted
+                    .replace(/^([A-Z]+)0+/, "$1") === wanted,
               );
               if (match) woRow = match as WorkOrder;
             }
@@ -334,7 +309,7 @@ export default function MobileWorkOrderClient({
 
         if (!warnedMissing && (!woRow.vehicle_id || !woRow.customer_id)) {
           toast.error(
-            "This work order is missing vehicle and/or customer. Open the Create form to set them."
+            "This work order is missing vehicle and/or customer. Open the Create form to set them.",
           );
           setWarnedMissing(true);
         }
@@ -372,7 +347,7 @@ export default function MobileWorkOrderClient({
 
         if (quotesRes.error) throw quotesRes.error;
         setQuoteLines(
-          (quotesRes.data as WorkOrderQuoteLine[] | null) ?? []
+          (quotesRes.data as WorkOrderQuoteLine[] | null) ?? [],
         );
 
         if (vehRes?.error) throw vehRes.error;
@@ -389,14 +364,14 @@ export default function MobileWorkOrderClient({
               .select("*, parts(name)")
               .in(
                 "work_order_line_id",
-                lineRows.map((l) => l.id)
+                lineRows.map((l) => l.id),
               ),
             supabase
               .from("work_order_line_technicians")
               .select("work_order_line_id, technician_id")
               .in(
                 "work_order_line_id",
-                lineRows.map((l) => l.id)
+                lineRows.map((l) => l.id),
               ),
           ]);
 
@@ -426,12 +401,13 @@ export default function MobileWorkOrderClient({
         const msg =
           e instanceof Error ? e.message : "Failed to load work order.";
         setViewError(msg);
+        // eslint-disable-next-line no-console
         console.error("[Mobile WO id page] load error:", e);
       } finally {
         setLoading(false);
       }
     },
-    [routeId, warnedMissing, setWo, setLines, setQuoteLines, setVehicle, setCustomer]
+    [routeId, warnedMissing, setWo, setLines, setQuoteLines, setVehicle, setCustomer],
   );
 
   useEffect(() => {
@@ -453,7 +429,7 @@ export default function MobileWorkOrderClient({
           table: "work_orders",
           filter: `id=eq.${wo.id}`,
         },
-        () => fetchAll()
+        () => fetchAll(),
       )
       .on(
         "postgres_changes",
@@ -463,7 +439,7 @@ export default function MobileWorkOrderClient({
           table: "work_order_lines",
           filter: `work_order_id=eq.${wo.id}`,
         },
-        () => fetchAll()
+        () => fetchAll(),
       )
       .on(
         "postgres_changes",
@@ -472,7 +448,7 @@ export default function MobileWorkOrderClient({
           schema: "public",
           table: "work_order_part_allocations",
         },
-        () => fetchAll()
+        () => fetchAll(),
       )
       .on(
         "postgres_changes",
@@ -481,7 +457,7 @@ export default function MobileWorkOrderClient({
           schema: "public",
           table: "work_order_line_technicians",
         },
-        () => fetchAll()
+        () => fetchAll(),
       )
       .on(
         "postgres_changes",
@@ -491,7 +467,7 @@ export default function MobileWorkOrderClient({
           table: "work_order_quote_lines",
           filter: `work_order_id=eq.${wo.id}`,
         },
-        () => fetchAll()
+        () => fetchAll(),
       )
       .subscribe();
 
@@ -501,7 +477,9 @@ export default function MobileWorkOrderClient({
     return () => {
       try {
         supabase.removeChannel(ch);
-      } catch {}
+      } catch {
+        //
+      }
       window.removeEventListener("wo:parts-used", local);
     };
   }, [wo?.id, fetchAll]);
@@ -518,18 +496,18 @@ export default function MobileWorkOrderClient({
   /* ----------------------- Derived data ----------------------- */
   const approvalPending = useMemo(
     () => lines.filter((l) => (l.approval_state ?? null) === "pending"),
-    [lines]
+    [lines],
   );
 
   // Quote lines that are still “active” (not converted to real jobs)
   const quotePending = useMemo(
     () => quoteLines.filter((q) => q.status !== "converted"),
-    [quoteLines]
+    [quoteLines],
   );
 
   const activeJobLines = useMemo(
     () => lines.filter((l) => (l.approval_state ?? null) !== "pending"),
-    [lines]
+    [lines],
   );
 
   const sortedLines = useMemo(() => {
@@ -551,7 +529,7 @@ export default function MobileWorkOrderClient({
 
   const createdAt = wo?.created_at ? new Date(wo.created_at) : null;
   const createdAtText =
-    createdAt && !isNaN(createdAt.getTime())
+    createdAt && !Number.isNaN(createdAt.getTime())
       ? format(createdAt, "PPpp")
       : "—";
 
@@ -584,7 +562,7 @@ export default function MobileWorkOrderClient({
       toast.success("Line approved");
       void fetchAll();
     },
-    [fetchAll]
+    [fetchAll],
   );
 
   const declineLine = useCallback(
@@ -601,7 +579,7 @@ export default function MobileWorkOrderClient({
       toast.success("Line declined");
       void fetchAll();
     },
-    [fetchAll]
+    [fetchAll],
   );
 
   const sendToParts = useCallback(async (lineId: string) => {
@@ -656,11 +634,11 @@ export default function MobileWorkOrderClient({
         toast.error(
           e instanceof Error
             ? e.message
-            : "Failed to authorize quote line"
+            : "Failed to authorize quote line",
         );
       }
     },
-    [fetchAll]
+    [fetchAll],
   );
 
   // Decline a quote line
@@ -678,7 +656,7 @@ export default function MobileWorkOrderClient({
       toast.success("Quote declined");
       void fetchAll();
     },
-    [fetchAll]
+    [fetchAll],
   );
 
   // open inspection
@@ -689,7 +667,7 @@ export default function MobileWorkOrderClient({
       const desc = String(ln.description ?? "").toLowerCase();
       const isAir = /\bair\b|cvip|push\s*rod|air\s*brake/.test(desc);
       const isCustom = /\bcustom\b|\bbuilder\b|\bprompt\b|\bad[-\s]?hoc\b/.test(
-        desc
+        desc,
       );
 
       let templateSlug = isAir ? "maintenance50-air" : "maintenance50";
@@ -741,7 +719,7 @@ export default function MobileWorkOrderClient({
         toast.error(err?.message ?? "Unable to open inspection");
       }
     },
-    [wo?.id, vehicle?.id, customer?.id]
+    [wo?.id, vehicle?.id, customer?.id],
   );
 
   // parts drawer close / bulk
@@ -780,7 +758,7 @@ export default function MobileWorkOrderClient({
   const hasAnyPending = approvalPending.length > 0 || quotePending.length > 0;
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-4xl flex-col px-3 py-4 bg-background text-foreground">
+    <div className="mx-auto flex min-h-screen max-w-4xl flex-col bg-background px-3 py-4 text-foreground">
       <VoiceContextSetter
         currentView="work_order_page_mobile"
         workOrderId={wo?.id}
@@ -1022,7 +1000,7 @@ export default function MobileWorkOrderClient({
                               <div className="mt-0.5 text-[11px] text-neutral-400">
                                 {String(ln.job_type ?? "job").replaceAll(
                                   "_",
-                                  " "
+                                  " ",
                                 )}{" "}
                                 •{" "}
                                 {typeof ln.labor_time === "number"
@@ -1031,12 +1009,12 @@ export default function MobileWorkOrderClient({
                                 • Status:{" "}
                                 {(ln.status ?? "awaiting").replaceAll(
                                   "_",
-                                  " "
+                                  " ",
                                 )}{" "}
                                 • Approval:{" "}
                                 {(ln.approval_state ?? "pending").replaceAll(
                                   "_",
-                                  " "
+                                  " ",
                                 )}
                               </div>
                               {ln.notes && (
@@ -1107,7 +1085,7 @@ export default function MobileWorkOrderClient({
                             <div className="mt-0.5 text-[11px] text-neutral-400">
                               {String(q.job_type ?? "job").replaceAll(
                                 "_",
-                                " "
+                                " ",
                               )}{" "}
                               •{" "}
                               {typeof q.est_labor_hours === "number"
@@ -1116,7 +1094,7 @@ export default function MobileWorkOrderClient({
                               • Quote status:{" "}
                               {(q.status ?? "pending_parts").replaceAll(
                                 "_",
-                                " "
+                                " ",
                               )}
                             </div>
                             {q.notes && (
@@ -1169,14 +1147,6 @@ export default function MobileWorkOrderClient({
             ) : (
               <div className="space-y-2">
                 {sortedLines.map((ln, idx) => {
-                  const statusKey = (ln.status ?? "awaiting")
-                    .toLowerCase()
-                    .replaceAll(" ", "_");
-                  const borderCls =
-                    statusBorder[statusKey] ||
-                    "border-l-4 border-gray-400";
-                  const tintCls =
-                    statusRowTint[statusKey] || "bg-neutral-950";
                   const punchedIn =
                     !!ln.punched_in_at && !ln.punched_out_at;
 
@@ -1196,173 +1166,47 @@ export default function MobileWorkOrderClient({
                     }
                   });
 
+                  const technicians = orderedTechIds.map((tid) => {
+                    const info = assignablesById[tid];
+                    return {
+                      id: tid,
+                      full_name: info?.full_name ?? null,
+                      role: info?.role ?? null,
+                    };
+                  });
+
                   return (
-                    <button
+                    <JobCard
                       key={ln.id}
-                      type="button"
-                      className={`group block w-full rounded-lg border border-neutral-800 ${tintCls} p-3 text-left transition hover:border-orange-500/70 hover:bg-neutral-900/80 ${borderCls} ${
-                        punchedIn ? "ring-2 ring-orange-500/80" : ""
-                      }`}
-                      title="Open focused job"
-                      onClick={() => {
+                      index={idx}
+                      line={ln}
+                      parts={partsForLine}
+                      technicians={technicians}
+                      canAssign={canAssign}
+                      isPunchedIn={punchedIn}
+                      onOpen={() => {
                         router.push(`/mobile/jobs/${ln.id}`);
                       }}
-                    >
-                      <div className="flex flex-col gap-2">
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <div className="truncate text-sm font-medium text-white">
-                                {idx + 1}.{" "}
-                                {ln.description ||
-                                  ln.complaint ||
-                                  "Untitled job"}
-                              </div>
-                              {ln.job_type === "inspection" && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    void openInspectionForLine(ln);
-                                  }}
-                                  className={`rounded-md border px-2 py-0.5 text-[11px] font-medium ${
-                                    ln.status === "completed"
-                                      ? "border-green-400 text-green-200"
-                                      : "border-orange-400 text-orange-200 hover:bg-orange-500/10"
-                                  }`}
-                                >
-                                  {ln.status === "completed"
-                                    ? "View inspection"
-                                    : "Open inspection"}
-                                </button>
-                              )}
-                              {canAssign && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setAssignLineId(ln.id);
-                                    setAssignOpen(true);
-                                  }}
-                                  className="rounded-md border border-sky-500/70 px-2 py-0.5 text-[11px] font-medium text-sky-200 hover:bg-sky-900/25"
-                                  title="Assign mechanic to this line"
-                                >
-                                  Assign mechanic
-                                </button>
-                              )}
-                            </div>
-                            <div className="mt-0.5 text-[11px] text-neutral-400">
-                              {String(ln.job_type ?? "job").replaceAll(
-                                "_",
-                                " "
-                              )}{" "}
-                              •{" "}
-                              {typeof ln.labor_time === "number"
-                                ? `${ln.labor_time}h`
-                                : "—"}{" "}
-                              • Status:{" "}
-                              {(ln.status ?? "awaiting").replaceAll(
-                                "_",
-                                " "
-                              )}
-                            </div>
-
-                            {orderedTechIds.length > 0 && (
-                              <div className="mt-1 flex flex-wrap gap-1">
-                                {orderedTechIds.map((tid) => {
-                                  const info = assignablesById[tid];
-                                  const label =
-                                    info?.full_name ?? "Mechanic";
-                                  return (
-                                    <span
-                                      key={tid}
-                                      className="inline-flex items-center gap-1 rounded-full bg-sky-900/40 px-2 py-0.5 text-[10px] text-sky-100"
-                                    >
-                                      <span className="h-1.5 w-1.5 rounded-full bg-sky-300" />
-                                      {label}
-                                    </span>
-                                  );
-                                })}
-                              </div>
-                            )}
-
-                            {(ln.complaint ||
-                              ln.cause ||
-                              ln.correction) && (
-                              <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-neutral-400">
-                                {ln.complaint ? (
-                                  <span>Cmpl: {ln.complaint}</span>
-                                ) : null}
-                                {ln.cause ? (
-                                  <span>| Cause: {ln.cause}</span>
-                                ) : null}
-                                {ln.correction ? (
-                                  <span>| Corr: {ln.correction}</span>
-                                ) : null}
-                              </div>
-                            )}
-
-                            {/* Parts used */}
-                            <div className="mt-2 rounded-lg border border-neutral-800 bg-neutral-950/80 p-2">
-                              <div className="mb-1 flex items-center justify-between gap-2">
-                                <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-300">
-                                  Parts used
-                                </div>
-                                <div className="shrink-0">
-                                  <UsePartButton
-                                    workOrderLineId={ln.id}
-                                    onApplied={() =>
-                                      window.dispatchEvent(
-                                        new CustomEvent("wo:parts-used")
-                                      )
-                                    }
-                                    label="Add part"
-                                  />
-                                </div>
-                              </div>
-                              {partsForLine.length ? (
-                                <ul className="mt-1 divide-y divide-neutral-800 rounded border border-neutral-800 text-sm">
-                                  {partsForLine.map((a) => (
-                                    <li
-                                      key={a.id}
-                                      className="flex items-center justify-between bg-neutral-900/70 p-2"
-                                    >
-                                      <div className="min-w-0">
-                                        <div className="truncate text-sm text-white">
-                                          {a.parts?.name ?? "Part"}
-                                        </div>
-                                        <div className="text-[11px] text-neutral-500">
-                                          loc{" "}
-                                          {String(a.location_id).slice(
-                                            0,
-                                            6
-                                          )}
-                                          …
-                                        </div>
-                                      </div>
-                                      <div className="pl-3 text-sm font-semibold text-neutral-100">
-                                        × {a.qty}
-                                      </div>
-                                    </li>
-                                  ))}
-                                </ul>
-                              ) : (
-                                <div className="mt-1 text-[11px] text-neutral-500">
-                                  No parts used yet.
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          <span className={chip(ln.status)}>
-                            {(ln.status ?? "awaiting").replaceAll(
-                              "_",
-                              " "
-                            )}
-                          </span>
-                        </div>
-                      </div>
-                    </button>
+                      onAssign={
+                        canAssign
+                          ? () => {
+                              setAssignLineId(ln.id);
+                              setAssignOpen(true);
+                            }
+                          : undefined
+                      }
+                      onOpenInspection={
+                        ln.job_type === "inspection"
+                          ? () => {
+                              void openInspectionForLine(ln);
+                            }
+                          : undefined
+                      }
+                      onAddPart={() => {
+                        setPartsLineId(ln.id);
+                      }}
+                      // pricing props can be wired later if needed
+                    />
                   );
                 })}
               </div>
