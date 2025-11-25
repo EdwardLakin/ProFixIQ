@@ -89,7 +89,7 @@ export const TILES: Tile[] = [
 
   // --- Appointments (new admin page you wanted) ---
   {
-    href: "/dashboard/admin/appointments",
+    href: "/portal/appointments",
     title: "Appointments",
     subtitle: "Schedule & manage",
     roles: ["owner", "admin", "manager", "advisor"],
