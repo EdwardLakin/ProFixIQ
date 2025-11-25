@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import type { Database } from "@shared/types/types/supabase";
 import { UsePartButton } from "@work-orders/components/UsePartButton";
 import { PartsUsedList } from "@work-orders/components/PartsUsedList";
@@ -103,8 +103,6 @@ const statusRowTint: Record<string, string> = {
   new: "bg-neutral-950",
 };
 
-/* ----------------------------------------------------------------------- */
-
 export function JobCard({
   index,
   line,
@@ -124,6 +122,8 @@ export function JobCard({
   const borderCls =
     statusBorder[statusKey] ?? "border-l-4 border-gray-400";
   const tintCls = statusRowTint[statusKey] ?? "bg-neutral-950";
+
+  const [partsOpen, setPartsOpen] = useState(false);
 
   const jobLabel =
     line.description || line.complaint || "Untitled job";
@@ -159,6 +159,12 @@ export function JobCard({
     return `${currency ?? "$"}${n.toFixed(2)}`;
   };
 
+  const partsCount = parts.length;
+  const partsSummary =
+    partsCount === 0
+      ? "No parts yet"
+      : `${partsCount} part${partsCount === 1 ? "" : "s"}`;
+
   return (
     <div
       className={`group cursor-pointer rounded-lg border border-neutral-800 ${tintCls} p-3 transition hover:border-orange-500/70 hover:bg-neutral-900/80 ${borderCls} ${
@@ -167,48 +173,84 @@ export function JobCard({
       title="Open focused job"
       onClick={onOpen}
     >
-      {/* TOP ROW: title + status + actions */}
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex flex-1 flex-col gap-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="truncate text-sm font-medium text-white">
-              {index + 1}. {jobLabel}
+        {/* LEFT CONTENT */}
+        <div className="min-w-0 space-y-1.5">
+          {/* Top row: title + buttons */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+              <div className="truncate text-sm font-medium text-white">
+                {index + 1}. {jobLabel}
+              </div>
+
+              {line.job_type === "inspection" && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenInspection?.();
+                  }}
+                  className={`rounded-md border px-2 py-0.5 text-[11px] font-medium ${
+                    line.status === "completed"
+                      ? "border-green-400 text-green-200"
+                      : "border-orange-400 text-orange-200 hover:bg-orange-500/10"
+                  }`}
+                >
+                  {line.status === "completed"
+                    ? "View inspection"
+                    : "Open inspection"}
+                </button>
+              )}
+
+              {canAssign && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAssign?.();
+                  }}
+                  className="rounded-md border border-sky-500/70 px-2 py-0.5 text-[11px] font-medium text-sky-200 hover:bg-sky-900/25"
+                  title="Assign mechanic to this line"
+                >
+                  Assign mechanic
+                </button>
+              )}
             </div>
 
-            <span className={statusChip(line.status)}>{statusText}</span>
+            {/* Right side: (desktop) add part button + status pill */}
+            <div className="flex shrink-0 flex-col items-end gap-1">
+              <div className="flex items-center gap-2">
+                {/* Desktop add-part button */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAddPart?.();
+                  }}
+                  className="hidden rounded-md border border-neutral-600 px-2 py-1 text-[11px] font-medium text-neutral-100 hover:border-orange-500 hover:text-orange-100 sm:inline-flex"
+                  title="Add / use part on this job"
+                >
+                  Add part
+                </button>
 
-            {line.job_type === "inspection" && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onOpenInspection?.();
-                }}
-                className={`rounded-md border px-2 py-0.5 text-[11px] font-medium ${
-                  line.status === "completed"
-                    ? "border-green-400 text-green-200"
-                    : "border-orange-400 text-orange-200 hover:bg-orange-500/10"
-                }`}
-              >
-                {line.status === "completed"
-                  ? "View inspection"
-                  : "Open inspection"}
-              </button>
-            )}
+                {/* keep existing UsePartButton behavior for safety (esp. mobile) */}
+                <div className="sm:hidden">
+                  <UsePartButton
+                    workOrderLineId={line.id}
+                    onApplied={() =>
+                      window.dispatchEvent(
+                        new CustomEvent("wo:parts-used"),
+                      )
+                    }
+                    label="Add part"
+                  />
+                </div>
 
-            {canAssign && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onAssign?.();
-                }}
-                className="rounded-md border border-sky-500/70 px-2 py-0.5 text-[11px] font-medium text-sky-200 hover:bg-sky-900/25"
-                title="Assign mechanic to this line"
-              >
-                Assign mechanic
-              </button>
-            )}
+                <span className={statusChip(line.status)}>
+                  {statusText}
+                </span>
+              </div>
+            </div>
           </div>
 
           {/* Meta line */}
@@ -239,89 +281,90 @@ export function JobCard({
               {line.correction && <span>| Corr: {line.correction}</span>}
             </div>
           )}
-        </div>
 
-        {/* RIGHT: Add part controls (desktop & mobile) */}
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          {/* Desktop: trigger page-level PartsDrawer via onAddPart */}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onAddPart?.();
-            }}
-            className="hidden rounded-md border border-neutral-600 px-2 py-1 text-[11px] font-medium text-neutral-100 hover:border-orange-500 hover:text-orange-100 sm:inline-flex"
-            title="Add / use part on this job"
-          >
-            Add part
-          </button>
+          {/* Parts accordion */}
+          <div className="mt-2 rounded-lg border border-neutral-800 bg-neutral-950/80">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left"
+              onClick={(e) => {
+                e.stopPropagation();
+                setPartsOpen((open) => !open);
+              }}
+            >
+              <div className="flex flex-col">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-neutral-300">
+                  Parts used
+                </span>
+                <span className="text-[10px] text-neutral-500">
+                  {partsSummary}
+                </span>
+              </div>
 
-          {/* Mobile / very small viewports: keep existing UsePartButton flow */}
-          <div className="sm:hidden">
-            <UsePartButton
-              workOrderLineId={line.id}
-              onApplied={() =>
-                window.dispatchEvent(
-                  new CustomEvent("wo:parts-used"),
-                )
-              }
-              label="Add part"
-            />
+              <div className="flex items-center gap-2">
+                {/* small inline add-part on mobile + tablet */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAddPart?.();
+                  }}
+                  className="inline-flex items-center rounded-md border border-neutral-700 px-2 py-0.5 text-[11px] font-medium text-neutral-200 hover:border-orange-500 hover:text-orange-100 sm:hidden"
+                >
+                  Add part
+                </button>
+
+                <span
+                  className={`text-[10px] text-neutral-400 transition-transform ${
+                    partsOpen ? "rotate-90" : ""
+                  }`}
+                >
+                  ▶
+                </span>
+              </div>
+            </button>
+
+            {partsOpen && (
+              <div
+                className="border-t border-neutral-800 px-2 pb-2 pt-1.5"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <PartsUsedList allocations={parts} />
+              </div>
+            )}
           </div>
+
+          {/* Pricing summary row (optional, only if provided) */}
+          {showPricingRow && (
+            <div className="mt-2 flex flex-wrap items-center justify-end gap-3 text-[11px] text-neutral-300">
+              {pricing?.partsTotal != null && (
+                <span className="flex items-center gap-1">
+                  <span className="text-neutral-500">Parts</span>
+                  <span className="font-semibold">
+                    {formatMoney(pricing.partsTotal)}
+                  </span>
+                </span>
+              )}
+              {pricing?.laborTotal != null && (
+                <span className="flex items-center gap-1">
+                  <span className="text-neutral-500">Labor</span>
+                  <span className="font-semibold">
+                    {formatMoney(pricing.laborTotal)}
+                  </span>
+                </span>
+              )}
+              {pricing?.lineTotal != null && (
+                <span className="flex items-center gap-1">
+                  <span className="text-neutral-500">Line total</span>
+                  <span className="font-semibold text-orange-300">
+                    {formatMoney(pricing.lineTotal)}
+                  </span>
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
-
-      {/* Parts list (compact) */}
-      <div className="mt-3 rounded-lg border border-neutral-800 bg-neutral-950/80 p-2">
-        <div className="mb-1 flex items-center justify-between gap-2">
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-300">
-            Parts used
-          </div>
-          {/* Quick access add-part on very small screens */}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onAddPart?.();
-            }}
-            className="inline-flex items-center rounded-md border border-neutral-700 px-2 py-0.5 text-[11px] font-medium text-neutral-200 hover:border-orange-500 hover:text-orange-100 sm:hidden"
-          >
-            Add part
-          </button>
-        </div>
-
-        <PartsUsedList allocations={parts} />
-      </div>
-
-      {/* Pricing summary row (optional, only if provided) */}
-      {showPricingRow && (
-        <div className="mt-2 flex flex-wrap items-center justify-end gap-3 text-[11px] text-neutral-300">
-          {pricing?.partsTotal != null && (
-            <span className="flex items-center gap-1">
-              <span className="text-neutral-500">Parts</span>
-              <span className="font-semibold">
-                {formatMoney(pricing.partsTotal)}
-              </span>
-            </span>
-          )}
-          {pricing?.laborTotal != null && (
-            <span className="flex items-center gap-1">
-              <span className="text-neutral-500">Labor</span>
-              <span className="font-semibold">
-                {formatMoney(pricing.laborTotal)}
-              </span>
-            </span>
-          )}
-          {pricing?.lineTotal != null && (
-            <span className="flex items-center gap-1">
-              <span className="text-neutral-500">Line total</span>
-              <span className="font-semibold text-orange-300">
-                {formatMoney(pricing.lineTotal)}
-              </span>
-            </span>
-          )}
-        </div>
-      )}
     </div>
   );
 }
