@@ -8,22 +8,22 @@ import type { Database } from "@shared/types/types/supabase";
 export const runtime = "nodejs";
 
 type DB = Database;
-type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
-type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
+
+
+type ProfileRow = DB["public"]["Tables"]["profiles"]["Row"];
+type AllocationRow =
+  DB["public"]["Tables"]["work_order_part_allocations"]["Row"];
+type PartRow = DB["public"]["Tables"]["parts"]["Row"];
 type MenuItemInsert = DB["public"]["Tables"]["menu_items"]["Insert"];
 type MenuItemUpdate = DB["public"]["Tables"]["menu_items"]["Update"];
 
-type WorkOrderLineMaybeTotals = WorkOrderLine & {
-  labor_hours?: number | null;
-  labor_time?: number | null;
-  labor_total?: number | null;
-  parts_total?: number | null;
-  part_total?: number | null;
-  line_total?: number | null;
-  total?: number | null;
-};
+type MenuItemPartInsert = DB["public"]["Tables"]["menu_item_parts"]["Insert"];
 
-interface UpsertFromLineResponse {
+interface RequestBody {
+  workOrderLineId?: string;
+}
+
+interface UpsertResponse {
   ok: boolean;
   menuItemId?: string;
   updated?: boolean;
@@ -31,197 +31,346 @@ interface UpsertFromLineResponse {
   detail?: string;
 }
 
-function pickFirstNumber(
-  ...values: Array<number | null | undefined>
-): number | null {
-  for (const v of values) {
-    if (typeof v === "number" && Number.isFinite(v)) return v;
-  }
-  return null;
-}
+type AllocationJoined = {
+  qty: AllocationRow["qty"];
+  unit_cost: AllocationRow["unit_cost"];
+  part_id: AllocationRow["part_id"];
+  parts: { name: PartRow["name"] }[] | null;
+};
 
 export async function POST(req: NextRequest) {
   const supabase = createRouteHandlerClient<DB>({ cookies });
 
-  const body = (await req.json().catch(() => null)) as
-    | { workOrderLineId?: string }
-    | null;
+  /* ---------------------------------------------------------------------- */
+  /* 1) AUTH                                                                */
+  /* ---------------------------------------------------------------------- */
+  const {
+    data: { user },
+    error: userErr,
+  } = await supabase.auth.getUser();
 
-  const lineId = body?.workOrderLineId;
-  if (!lineId) {
-    const resp: UpsertFromLineResponse = {
+  if (userErr || !user) {
+    const body: UpsertResponse = {
       ok: false,
-      error: "bad_request",
-      detail: "Missing workOrderLineId",
+      error: "auth_error",
+      detail: userErr?.message ?? "Not signed in",
     };
-    return NextResponse.json(resp, { status: 400 });
+    return NextResponse.json(body, { status: 401 });
   }
 
-  // 1) Fetch the full work order line so we can read totals if present
-  const { data: wolRaw, error: wolErr } = await supabase
+  /* ---------------------------------------------------------------------- */
+  /* 2) Parse Body                                                          */
+  /* ---------------------------------------------------------------------- */
+  const json = (await req.json().catch(() => null)) as RequestBody | null;
+  const lineId = json?.workOrderLineId;
+
+  if (!lineId) {
+    const body: UpsertResponse = {
+      ok: false,
+      error: "bad_request",
+      detail: "workOrderLineId is required",
+    };
+    return NextResponse.json(body, { status: 400 });
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* 3) Load work_order_line                                                */
+  /* ---------------------------------------------------------------------- */
+  const { data: wol, error: wolErr } = await supabase
     .from("work_order_lines")
-    .select("*")
+    .select(
+      "id, description, work_order_id, labor_time, price_estimate, template_id, notes",
+    )
     .eq("id", lineId)
-    .maybeSingle<WorkOrderLine>();
+    .maybeSingle();
 
   if (wolErr) {
-    const resp: UpsertFromLineResponse = {
+    const body: UpsertResponse = {
       ok: false,
       error: "line_load_failed",
       detail: wolErr.message,
     };
-    return NextResponse.json(resp, { status: 500 });
+    return NextResponse.json(body, { status: 500 });
   }
 
-  if (!wolRaw) {
-    const resp: UpsertFromLineResponse = {
+  if (!wol) {
+    const body: UpsertResponse = {
       ok: false,
       error: "not_found",
       detail: "Work order line not found",
     };
-    return NextResponse.json(resp, { status: 404 });
+    return NextResponse.json(body, { status: 404 });
   }
-
-  const wol = wolRaw as WorkOrderLineMaybeTotals;
 
   if (!wol.work_order_id) {
-    const resp: UpsertFromLineResponse = {
+    const body: UpsertResponse = {
       ok: false,
       error: "bad_state",
-      detail: "Cannot save menu item — missing work order",
+      detail: "Work order line is not linked to a work order",
     };
-    return NextResponse.json(resp, { status: 400 });
+    return NextResponse.json(body, { status: 400 });
   }
 
-  // 2) Fetch the parent work order to get shop_id
+  /* ---------------------------------------------------------------------- */
+  /* 4) Load work_order → determine shop_id                                 */
+  /* ---------------------------------------------------------------------- */
   const { data: wo, error: woErr } = await supabase
     .from("work_orders")
     .select("id, shop_id")
     .eq("id", wol.work_order_id)
-    .maybeSingle<Pick<WorkOrder, "id" | "shop_id">>();
+    .maybeSingle();
 
   if (woErr) {
-    const resp: UpsertFromLineResponse = {
+    const body: UpsertResponse = {
       ok: false,
       error: "order_load_failed",
       detail: woErr.message,
     };
-    return NextResponse.json(resp, { status: 500 });
+    return NextResponse.json(body, { status: 500 });
   }
 
-  const shopId = wo?.shop_id ?? null;
+  let shopId: string | null = wo?.shop_id ?? null;
+
   if (!shopId) {
-    const resp: UpsertFromLineResponse = {
+    const { data: prof, error: profErr } = await supabase
+      .from("profiles")
+      .select("shop_id")
+      .eq("id", user.id)
+      .maybeSingle<Pick<ProfileRow, "shop_id">>();
+
+    if (!profErr && prof?.shop_id) {
+      shopId = prof.shop_id;
+    }
+  }
+
+  if (!shopId) {
+    const body: UpsertResponse = {
       ok: false,
       error: "missing_shop",
       detail: "Cannot save menu item — missing shop for work order",
     };
-    return NextResponse.json(resp, { status: 400 });
+    return NextResponse.json(body, { status: 400 });
   }
 
-  const name = wol.description?.trim();
+  const name =
+    wol.description && wol.description.trim().length > 0
+      ? wol.description.trim()
+      : null;
+
   if (!name) {
-    const resp: UpsertFromLineResponse = {
+    const body: UpsertResponse = {
       ok: false,
       error: "missing_description",
-      detail: "Cannot save menu item — missing description",
+      detail: "Cannot save menu item — missing description on line",
     };
-    return NextResponse.json(resp, { status: 400 });
+    return NextResponse.json(body, { status: 400 });
   }
 
-  // 3) Normalize numeric fields from the line
-  const laborHours = pickFirstNumber(wol.labor_hours, wol.labor_time);
-  const partCost = pickFirstNumber(wol.parts_total, wol.part_total);
-  const totalPrice = pickFirstNumber(wol.line_total, wol.total);
+  /* ---------------------------------------------------------------------- */
+  /* 5) Load line parts from allocations                                    */
+  /* ---------------------------------------------------------------------- */
+  const { data: rawAllocations, error: allocErr } = await supabase
+    .from("work_order_part_allocations")
+    .select("qty, unit_cost, part_id, parts(name)")
+    .eq("work_order_line_id", wol.id);
 
-  // 4) Update existing menu item if already linked
-  if (wol.menu_item_id) {
+  if (allocErr) {
+    const body: UpsertResponse = {
+      ok: false,
+      error: "parts_load_failed",
+      detail: allocErr.message,
+    };
+    return NextResponse.json(body, { status: 500 });
+  }
+
+  const allocations = (rawAllocations ?? []) as AllocationJoined[];
+
+  const partsForMenu: Omit<MenuItemPartInsert, "menu_item_id">[] = [];
+  let partCost = 0;
+
+  allocations.forEach((a) => {
+    const quantity = a.qty ?? 0;
+    const unitCost = a.unit_cost ?? 0;
+    if (quantity <= 0) return;
+
+    const rawName =
+      a.parts && a.parts.length > 0 ? a.parts[0]?.name ?? null : null;
+
+    const partName =
+      rawName && rawName.trim().length > 0 ? rawName.trim() : "Part";
+
+    partsForMenu.push({
+      name: partName,
+      quantity,
+      unit_cost: unitCost,
+      user_id: user.id,
+    });
+
+    partCost += quantity * unitCost;
+  });
+
+  const laborTime =
+    typeof wol.labor_time === "number" && Number.isFinite(wol.labor_time)
+      ? wol.labor_time
+      : null;
+
+  const totalPrice =
+    typeof wol.price_estimate === "number" &&
+    Number.isFinite(wol.price_estimate)
+      ? wol.price_estimate
+      : partCost || null;
+
+  /* ---------------------------------------------------------------------- */
+  /* 6) Look for existing menu item (shop_id + name)                        */
+  /* ---------------------------------------------------------------------- */
+  const { data: existingMenu, error: existingErr } = await supabase
+    .from("menu_items")
+    .select("id")
+    .eq("shop_id", shopId)
+    .eq("name", name)
+    .maybeSingle();
+
+  if (existingErr) {
+    const body: UpsertResponse = {
+      ok: false,
+      error: "existing_load_failed",
+      detail: existingErr.message,
+    };
+    return NextResponse.json(body, { status: 500 });
+  }
+
+  // If exists → update + replace parts
+  if (existingMenu) {
+    const menuItemId = existingMenu.id;
+
     const updatePayload: MenuItemUpdate = {
       name,
-      description: wol.description ?? null,
-      labor_time: laborHours,
-      labor_hours: laborHours,
-      part_cost: partCost,
+      description: wol.notes ?? wol.description ?? null,
+      labor_time: laborTime,
+      labor_hours: null,
+      part_cost: partCost || null,
       total_price: totalPrice,
+      inspection_template_id: wol.template_id ?? null,
       is_active: true,
-      shop_id: shopId,
     };
 
     const { error: updErr } = await supabase
       .from("menu_items")
       .update(updatePayload)
-      .eq("id", wol.menu_item_id);
+      .eq("id", menuItemId);
 
     if (updErr) {
-      const resp: UpsertFromLineResponse = {
+      const body: UpsertResponse = {
         ok: false,
         error: "update_failed",
         detail: updErr.message,
       };
-      return NextResponse.json(resp, { status: 500 });
+      return NextResponse.json(body, { status: 500 });
     }
 
-    const resp: UpsertFromLineResponse = {
+    // Replace parts: delete old → insert new
+    const { error: delErr } = await supabase
+      .from("menu_item_parts")
+      .delete()
+      .eq("menu_item_id", menuItemId);
+
+    if (delErr) {
+      const body: UpsertResponse = {
+        ok: false,
+        error: "parts_delete_failed",
+        detail: delErr.message,
+      };
+      return NextResponse.json(body, { status: 500 });
+    }
+
+    if (partsForMenu.length > 0) {
+      const partsInsert: MenuItemPartInsert[] = partsForMenu.map(
+        (p): MenuItemPartInsert => ({
+          ...p,
+          menu_item_id: menuItemId,
+        }),
+      );
+
+      const { error: partsInsertErr } = await supabase
+        .from("menu_item_parts")
+        .insert(partsInsert);
+
+      if (partsInsertErr) {
+        const body: UpsertResponse = {
+          ok: false,
+          error: "parts_insert_failed",
+          detail: partsInsertErr.message,
+        };
+        return NextResponse.json(body, { status: 500 });
+      }
+    }
+
+    const body: UpsertResponse = {
       ok: true,
-      menuItemId: wol.menu_item_id,
+      menuItemId,
       updated: true,
     };
-    return NextResponse.json(resp, { status: 200 });
+    return NextResponse.json(body, { status: 200 });
   }
 
-  // 5) Create a new menu item
+  /* ---------------------------------------------------------------------- */
+  /* 7) No existing menu item → create new                                  */
+  /* ---------------------------------------------------------------------- */
   const insertPayload: MenuItemInsert = {
-    shop_id: shopId,
     name,
-    description: wol.description ?? null,
-    labor_time: laborHours,
-    labor_hours: laborHours,
-    part_cost: partCost,
+    description: wol.notes ?? wol.description ?? null,
+    labor_time: laborTime,
+    labor_hours: null,
+    part_cost: partCost || null,
     total_price: totalPrice,
+    inspection_template_id: wol.template_id ?? null,
+    user_id: user.id,
     is_active: true,
-    user_id: null, // if you want to associate to the current user, we can add auth here later
-    inspection_template_id: null,
+    shop_id: shopId,
     work_order_line_id: wol.id,
   };
 
-  const { data: inserted, error: insErr } = await supabase
+  const { data: created, error: insErr } = await supabase
     .from("menu_items")
     .insert(insertPayload)
     .select("id")
-    .maybeSingle();
+    .single();
 
-  if (insErr || !inserted) {
-    const resp: UpsertFromLineResponse = {
+  if (insErr || !created) {
+    const body: UpsertResponse = {
       ok: false,
       error: "insert_failed",
       detail: insErr?.message ?? "Failed to create menu item",
     };
-    return NextResponse.json(resp, { status: 500 });
+    return NextResponse.json(body, { status: 500 });
   }
 
-  const menuItemId = inserted.id as string;
+  if (partsForMenu.length > 0) {
+    const partsInsert: MenuItemPartInsert[] = partsForMenu.map(
+      (p): MenuItemPartInsert => ({
+        ...p,
+        menu_item_id: created.id,
+      }),
+    );
 
-  // 6) Link the line back to the new menu item
-  const { error: linkErr } = await supabase
-    .from("work_order_lines")
-    .update({
-      menu_item_id: menuItemId,
-    } satisfies DB["public"]["Tables"]["work_order_lines"]["Update"])
-    .eq("id", wol.id);
+    const { error: partsInsertErr } = await supabase
+      .from("menu_item_parts")
+      .insert(partsInsert);
 
-  if (linkErr) {
-    const resp: UpsertFromLineResponse = {
-      ok: false,
-      error: "link_failed",
-      detail: linkErr.message,
-    };
-    return NextResponse.json(resp, { status: 500 });
+    if (partsInsertErr) {
+      const body: UpsertResponse = {
+        ok: false,
+        error: "parts_insert_failed",
+        detail: partsInsertErr.message,
+      };
+      return NextResponse.json(body, { status: 500 });
+    }
   }
 
-  const resp: UpsertFromLineResponse = {
+  const body: UpsertResponse = {
     ok: true,
-    menuItemId,
+    menuItemId: created.id,
     updated: false,
   };
-  return NextResponse.json(resp, { status: 200 });
+  return NextResponse.json(body, { status: 200 });
 }

@@ -1,3 +1,4 @@
+// app/menu/page.tsx
 "use client";
 
 import React, {
@@ -88,24 +89,21 @@ export default function MenuItemsPage() {
   );
 
   // --------- fetch menu items (always full list you can see) ----------
-  const fetchItems = useCallback(
-    async () => {
-      const { data, error } = await supabase
-        .from("menu_items")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(100);
+  const fetchItems = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("menu_items")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(100);
 
-      if (error) {
-        console.error("Failed to fetch menu items:", error);
-        toast.error("Could not load menu items");
-        return;
-      }
+    if (error) {
+      console.error("Failed to fetch menu items:", error);
+      toast.error("Could not load menu items");
+      return;
+    }
 
-      setMenuItems(data ?? []);
-    },
-    [supabase],
-  );
+    setMenuItems(data ?? []);
+  }, [supabase]);
 
   // --------- fetch templates ----------
   const fetchTemplates = useCallback(async () => {
@@ -303,14 +301,7 @@ export default function MenuItemsPage() {
     } finally {
       setSaving(false);
     }
-  }, [
-    form,
-    parts,
-    partsTotal,
-    grandTotal,
-    user,
-    fetchItems,
-  ]);
+  }, [form, parts, partsTotal, grandTotal, user, fetchItems]);
 
   if (isLoading) return <div className="p-4 text-white">Loading…</div>;
 

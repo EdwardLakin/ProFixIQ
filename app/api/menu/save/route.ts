@@ -91,7 +91,6 @@ export async function POST(req: Request) {
   const itemInsert: MenuInsert = {
     name: body.item.name,
     description: body.item.description,
-    // keep legacy field + new field in sync
     labor_time: laborHours,
     labor_hours: laborHours,
     part_cost: partCost,
@@ -145,7 +144,6 @@ export async function POST(req: Request) {
           "[API menu/save] parts insert failed:",
           partsErr.message,
         );
-        // item is still created; we don't hard-fail on parts
       }
     }
   }
