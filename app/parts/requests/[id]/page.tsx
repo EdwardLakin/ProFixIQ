@@ -19,6 +19,14 @@ type Part = DB["public"]["Tables"]["parts"]["Row"];
 
 const DEFAULT_MARKUP = 30; // %
 
+type UpsertResponse = {
+  ok: boolean;
+  menuItemId?: string;
+  updated?: boolean;
+  error?: string;
+  detail?: string;
+};
+
 export default function PartsRequestDetail() {
   const { id } = useParams<{ id: string }>();
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
@@ -110,7 +118,7 @@ export default function PartsRequestDetail() {
     if (s === "quoted") {
       const lineId = getLineIdFromItems(items);
       if (lineId) {
-        // mark line quoted
+        // mark line quoted so it shows as "quoted" in Awaiting Customer Approval
         const { error: wolErr } = await supabase
           .from("work_order_lines")
           .update({
@@ -121,28 +129,37 @@ export default function PartsRequestDetail() {
           console.warn("could not set line to quoted:", wolErr.message);
         }
 
-        // save to menu items
+        // save to menu items (grow Saved Menu)
         try {
           const res = await fetch("/api/menu-items/upsert-from-line", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ workOrderLineId: lineId }),
           });
-          const j = (await res.json().catch(() => null)) as {
-            ok?: boolean;
-            error?: string;
-          } | null;
-          if (!res.ok) {
-            console.warn("menu save failed:", j?.error);
-            toast.warning("Quoted, but couldn’t save to menu items.");
+
+          const j = (await res.json().catch(() => null)) as UpsertResponse | null;
+
+          if (!res.ok || !j?.ok) {
+            console.warn("menu save failed:", j);
+            const msg =
+              j?.detail ||
+              j?.error ||
+              "Quoted, but couldn’t save to menu items (see server logs / RLS).";
+            toast.warning(msg);
           } else {
-            toast.success("Quoted and saved to menu items.");
+            const suffix = j.updated ? "updated" : "saved";
+            toast.success(`Quoted and ${suffix} to menu items.`);
           }
         } catch (e) {
           console.warn("menu save error:", e);
-          toast.warning("Quoted, but couldn’t save to menu items.");
+          const msg =
+            e instanceof Error
+              ? `Quoted, but couldn’t save to menu items: ${e.message}`
+              : "Quoted, but couldn’t save to menu items (network error).";
+          toast.warning(msg);
         }
       } else {
+        // no linked work_order_line_id → can’t grow menu, just mark quoted
         toast.success("Parts request marked as quoted.");
       }
     } else {
