@@ -1,6 +1,7 @@
 "use client";
 
-import React, {
+import React,
+{
   useCallback,
   useEffect,
   useMemo,
@@ -44,6 +45,8 @@ type AllocationRow =
   };
 type LineTechRow =
   DB["public"]["Tables"]["work_order_line_technicians"]["Row"];
+type WorkOrderQuoteLine =
+  DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
 
 const looksLikeUuid = (s: string) => s.includes("-") && s.length >= 36;
 
@@ -128,6 +131,10 @@ export default function MobileWorkOrderClient({
   const [wo, setWo] = useTabState<WorkOrder | null>("m:wo:id:wo", null);
   const [lines, setLines] = useTabState<WorkOrderLine[]>(
     "m:wo:id:lines",
+    []
+  );
+  const [quoteLines, setQuoteLines] = useTabState<WorkOrderQuoteLine[]>(
+    "m:wo:id:quoteLines",
     []
   );
   const [vehicle, setVehicle] = useTabState<Vehicle | null>(
@@ -314,6 +321,7 @@ export default function MobileWorkOrderClient({
           setViewError("Work order not visible / not found.");
           setWo(null);
           setLines([]);
+          setQuoteLines([]);
           setVehicle(null);
           setCustomer(null);
           setAllocsByLine({});
@@ -331,7 +339,7 @@ export default function MobileWorkOrderClient({
           setWarnedMissing(true);
         }
 
-        const [linesRes, vehRes, custRes] = await Promise.all([
+        const [linesRes, vehRes, custRes, quotesRes] = await Promise.all([
           supabase
             .from("work_order_lines")
             .select("*")
@@ -351,11 +359,21 @@ export default function MobileWorkOrderClient({
                 .eq("id", woRow.customer_id)
                 .maybeSingle()
             : Promise.resolve({ data: null, error: null } as const),
+          supabase
+            .from("work_order_quote_lines")
+            .select("*")
+            .eq("work_order_id", woRow.id)
+            .order("created_at", { ascending: true }),
         ]);
 
         if (linesRes.error) throw linesRes.error;
         const lineRows = (linesRes.data ?? []) as WorkOrderLine[];
         setLines(lineRows);
+
+        if (quotesRes.error) throw quotesRes.error;
+        setQuoteLines(
+          (quotesRes.data as WorkOrderQuoteLine[] | null) ?? []
+        );
 
         if (vehRes?.error) throw vehRes.error;
         setVehicle((vehRes?.data as Vehicle | null) ?? null);
@@ -413,7 +431,7 @@ export default function MobileWorkOrderClient({
         setLoading(false);
       }
     },
-    [routeId, warnedMissing, setWo, setLines, setVehicle, setCustomer]
+    [routeId, warnedMissing, setWo, setLines, setQuoteLines, setVehicle, setCustomer]
   );
 
   useEffect(() => {
@@ -465,6 +483,16 @@ export default function MobileWorkOrderClient({
         },
         () => fetchAll()
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "work_order_quote_lines",
+          filter: `work_order_id=eq.${wo.id}`,
+        },
+        () => fetchAll()
+      )
       .subscribe();
 
     const local = () => fetchAll();
@@ -491,6 +519,12 @@ export default function MobileWorkOrderClient({
   const approvalPending = useMemo(
     () => lines.filter((l) => (l.approval_state ?? null) === "pending"),
     [lines]
+  );
+
+  // Quote lines that are still “active” (not converted to real jobs)
+  const quotePending = useMemo(
+    () => quoteLines.filter((q) => q.status !== "converted"),
+    [quoteLines]
   );
 
   const activeJobLines = useMemo(
@@ -534,7 +568,7 @@ export default function MobileWorkOrderClient({
     return m;
   }, [assignables]);
 
-  /* ----------------------- line actions ----------------------- */
+  /* ----------------------- line & quote actions ----------------------- */
 
   const approveLine = useCallback(
     async (lineId: string) => {
@@ -603,6 +637,49 @@ export default function MobileWorkOrderClient({
     setPartsLineId(ids[0] ?? null);
     toast.success("Queued all pending lines for parts quoting");
   }, [approvalPending]);
+
+  // Approve / convert a quote line → real job line
+  const authorizeQuote = useCallback(
+    async (quoteId: string) => {
+      if (!quoteId) return;
+      try {
+        const res = await fetch(`/api/work-orders/quotes/${quoteId}/authorize`, {
+          method: "POST",
+        });
+        const j = await res.json().catch(() => null);
+        if (!res.ok) {
+          throw new Error(j?.error || "Failed to authorize quote line");
+        }
+        toast.success("Quote authorized and added as job line");
+        void fetchAll();
+      } catch (e) {
+        toast.error(
+          e instanceof Error
+            ? e.message
+            : "Failed to authorize quote line"
+        );
+      }
+    },
+    [fetchAll]
+  );
+
+  // Decline a quote line
+  const declineQuote = useCallback(
+    async (quoteId: string) => {
+      if (!quoteId) return;
+      const { error } = await supabase
+        .from("work_order_quote_lines")
+        .update({ status: "declined" })
+        .eq("id", quoteId);
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+      toast.success("Quote declined");
+      void fetchAll();
+    },
+    [fetchAll]
+  );
 
   // open inspection
   const openInspectionForLine = useCallback(
@@ -700,6 +777,8 @@ export default function MobileWorkOrderClient({
     <div className={`animate-pulse rounded-lg bg-neutral-800/60 ${className}`} />
   );
 
+  const hasAnyPending = approvalPending.length > 0 || quotePending.length > 0;
+
   return (
     <div className="mx-auto flex min-h-screen max-w-4xl flex-col px-3 py-4 bg-background text-foreground">
       <VoiceContextSetter
@@ -723,10 +802,10 @@ export default function MobileWorkOrderClient({
       {!currentUserId && (
         <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-900/10 p-3 text-xs text-amber-100">
           You appear signed out on this tab. If actions fail, open{" "}
-            <Link href="/sign-in" className="underline hover:text-white">
-              Sign In
-            </Link>{" "}
-            and return here.
+          <Link href="/sign-in" className="underline hover:text-white">
+            Sign In
+          </Link>{" "}
+          and return here.
         </div>
       )}
 
@@ -905,98 +984,169 @@ export default function MobileWorkOrderClient({
               )}
             </div>
 
-            {approvalPending.length === 0 ? (
+            {!hasAnyPending ? (
               <p className="text-xs text-neutral-400">
                 No lines waiting for approval.
               </p>
             ) : (
-              <div className="space-y-2">
-                {approvalPending.map((ln, idx) => {
-                  const isAwaitingParts =
-                    (ln.status === "on_hold" &&
-                      (ln.hold_reason ?? "")
-                        .toLowerCase()
-                        .includes("part")) ||
-                    (ln.hold_reason ?? "")
-                      .toLowerCase()
-                      .includes("quote");
+              <div className="space-y-4">
+                {/* Job lines needing approval */}
+                {approvalPending.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-blue-300/80">
+                      Jobs awaiting approval
+                    </div>
+                    {approvalPending.map((ln, idx) => {
+                      const isAwaitingParts =
+                        (ln.status === "on_hold" &&
+                          (ln.hold_reason ?? "")
+                            .toLowerCase()
+                            .includes("part")) ||
+                        (ln.hold_reason ?? "")
+                          .toLowerCase()
+                          .includes("quote");
 
-                  return (
-                    <div
-                      key={ln.id}
-                      className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3"
-                    >
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-medium text-white">
-                            {idx + 1}.{" "}
-                            {ln.description ||
-                              ln.complaint ||
-                              "Untitled job"}
+                      return (
+                        <div
+                          key={ln.id}
+                          className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3"
+                        >
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-medium text-white">
+                                {idx + 1}.{" "}
+                                {ln.description ||
+                                  ln.complaint ||
+                                  "Untitled job"}
+                              </div>
+                              <div className="mt-0.5 text-[11px] text-neutral-400">
+                                {String(ln.job_type ?? "job").replaceAll(
+                                  "_",
+                                  " "
+                                )}{" "}
+                                •{" "}
+                                {typeof ln.labor_time === "number"
+                                  ? `${ln.labor_time}h`
+                                  : "—"}{" "}
+                                • Status:{" "}
+                                {(ln.status ?? "awaiting").replaceAll(
+                                  "_",
+                                  " "
+                                )}{" "}
+                                • Approval:{" "}
+                                {(ln.approval_state ?? "pending").replaceAll(
+                                  "_",
+                                  " "
+                                )}
+                              </div>
+                              {ln.notes && (
+                                <div className="mt-1 text-[11px] text-neutral-400">
+                                  Notes: {ln.notes}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2">
+                              <button
+                                type="button"
+                                className="rounded-md border border-green-700 px-2 py-1 text-[11px] font-medium text-green-200 hover:bg-green-900/25"
+                                onClick={() => approveLine(ln.id)}
+                              >
+                                Approve
+                              </button>
+                              <button
+                                type="button"
+                                className="rounded-md border border-red-700 px-2 py-1 text-[11px] font-medium text-red-200 hover:bg-red-900/30"
+                                onClick={() => declineLine(ln.id)}
+                              >
+                                Decline
+                              </button>
+
+                              {isAwaitingParts ? (
+                                <button
+                                  type="button"
+                                  disabled
+                                  className="cursor-not-allowed rounded-md border border-neutral-700 px-2 py-1 text-[11px] text-neutral-400"
+                                >
+                                  Sent to parts
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="rounded-md border border-blue-700 px-2 py-1 text-[11px] font-medium text-blue-200 hover:bg-blue-900/25"
+                                  onClick={() => sendToParts(ln.id)}
+                                  title="Send to parts for quoting"
+                                >
+                                  Send to parts
+                                </button>
+                              )}
+                            </div>
                           </div>
-                          <div className="mt-0.5 text-[11px] text-neutral-400">
-                            {String(ln.job_type ?? "job").replaceAll(
-                              "_",
-                              " "
-                            )}{" "}
-                            •{" "}
-                            {typeof ln.labor_time === "number"
-                              ? `${ln.labor_time}h`
-                              : "—"}{" "}
-                            • Status:{" "}
-                            {(ln.status ?? "awaiting").replaceAll("_", " ")}{" "}
-                            • Approval:{" "}
-                            {(ln.approval_state ?? "pending").replaceAll(
-                              "_",
-                              " "
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Quote lines created from AI suggestions etc. */}
+                {quotePending.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-orange-300/80">
+                      Quote lines / AI suggestions
+                    </div>
+                    {quotePending.map((q, idx) => (
+                      <div
+                        key={q.id}
+                        className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3"
+                      >
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-medium text-white">
+                              {idx + 1}. {q.description}
+                            </div>
+                            <div className="mt-0.5 text-[11px] text-neutral-400">
+                              {String(q.job_type ?? "job").replaceAll(
+                                "_",
+                                " "
+                              )}{" "}
+                              •{" "}
+                              {typeof q.est_labor_hours === "number"
+                                ? `${q.est_labor_hours}h`
+                                : "—"}{" "}
+                              • Quote status:{" "}
+                              {(q.status ?? "pending_parts").replaceAll(
+                                "_",
+                                " "
+                              )}
+                            </div>
+                            {q.notes && (
+                              <div className="mt-1 text-[11px] text-neutral-400">
+                                Notes: {q.notes}
+                              </div>
                             )}
                           </div>
-                          {ln.notes && (
-                            <div className="mt-1 text-[11px] text-neutral-400">
-                              Notes: {ln.notes}
-                            </div>
-                          )}
-                        </div>
 
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            className="rounded-md border border-green-700 px-2 py-1 text-[11px] font-medium text-green-200 hover:bg-green-900/25"
-                            onClick={() => approveLine(ln.id)}
-                          >
-                            Approve
-                          </button>
-                          <button
-                            type="button"
-                            className="rounded-md border border-red-700 px-2 py-1 text-[11px] font-medium text-red-200 hover:bg-red-900/30"
-                            onClick={() => declineLine(ln.id)}
-                          >
-                            Decline
-                          </button>
-
-                          {isAwaitingParts ? (
+                          <div className="flex flex-wrap items-center gap-2">
                             <button
                               type="button"
-                              disabled
-                              className="cursor-not-allowed rounded-md border border-neutral-700 px-2 py-1 text-[11px] text-neutral-400"
+                              className="rounded-md border border-green-700 px-2 py-1 text-[11px] font-medium text-green-200 hover:bg-green-900/25"
+                              onClick={() => authorizeQuote(q.id)}
                             >
-                              Sent to parts
+                              Approve &amp; add job
                             </button>
-                          ) : (
                             <button
                               type="button"
-                              className="rounded-md border border-blue-700 px-2 py-1 text-[11px] font-medium text-blue-200 hover:bg-blue-900/25"
-                              onClick={() => sendToParts(ln.id)}
-                              title="Send to parts for quoting"
+                              className="rounded-md border border-red-700 px-2 py-1 text-[11px] font-medium text-red-200 hover:bg-red-900/30"
+                              onClick={() => declineQuote(q.id)}
                             >
-                              Send to parts
+                              Decline
                             </button>
-                          )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -6402,6 +6402,72 @@ export type Database = {
           },
         ]
       }
+      work_order_quote_lines: {
+        Row: {
+          ai_cause: string | null
+          ai_complaint: string | null
+          ai_correction: string | null
+          created_at: string
+          description: string
+          est_labor_hours: number | null
+          id: string
+          job_type: string
+          notes: string | null
+          status: string
+          suggested_by: string | null
+          updated_at: string
+          vehicle_id: string | null
+          work_order_id: string
+        }
+        Insert: {
+          ai_cause?: string | null
+          ai_complaint?: string | null
+          ai_correction?: string | null
+          created_at?: string
+          description: string
+          est_labor_hours?: number | null
+          id?: string
+          job_type?: string
+          notes?: string | null
+          status?: string
+          suggested_by?: string | null
+          updated_at?: string
+          vehicle_id?: string | null
+          work_order_id: string
+        }
+        Update: {
+          ai_cause?: string | null
+          ai_complaint?: string | null
+          ai_correction?: string | null
+          created_at?: string
+          description?: string
+          est_labor_hours?: number | null
+          id?: string
+          job_type?: string
+          notes?: string | null
+          status?: string
+          suggested_by?: string | null
+          updated_at?: string
+          vehicle_id?: string | null
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_order_quote_lines_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_quote_lines_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       work_orders: {
         Row: {
           approval_state: string | null

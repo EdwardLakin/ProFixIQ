@@ -1,3 +1,5 @@
+// app/work-orders/[id]/page.client.tsx (patched)
+
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -26,12 +28,14 @@ import AssignTechModal from "@/features/work-orders/components/workorders/extras
 // inspection modal
 const InspectionModal = dynamic(
   () => import("@/features/inspections/components/InspectionModal"),
-  { ssr: false }
+  { ssr: false },
 );
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
+type WorkOrderQuoteLine =
+  DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
 type Profile = DB["public"]["Tables"]["profiles"]["Row"];
@@ -119,6 +123,10 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   const [wo, setWo] = useTabState<WorkOrder | null>("wo:id:wo", null);
   const [lines, setLines] = useTabState<WorkOrderLine[]>("wo:id:lines", []);
+  const [quoteLines, setQuoteLines] = useTabState<WorkOrderQuoteLine[]>(
+    "wo:id:quoteLines",
+    [],
+  );
   const [vehicle, setVehicle] = useTabState<Vehicle | null>("wo:id:veh", null);
   const [customer, setCustomer] = useTabState<Customer | null>("wo:id:cust", null);
 
@@ -192,8 +200,10 @@ export default function WorkOrderIdClient(): JSX.Element {
 
       try {
         const res = await fetch("/api/assignables");
-        const json = await res.json();
-        if (res.ok && Array.isArray(json.data)) {
+        const json = (await res.json().catch(() => null)) as
+          | { data?: Array<Pick<Profile, "id" | "full_name" | "role">> }
+          | null;
+        if (res.ok && Array.isArray(json?.data)) {
           setAssignables(json.data);
         }
       } catch {
@@ -218,7 +228,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       mounted = false;
       sub?.subscription?.unsubscribe?.();
     };
-  }, [supabase, routeId, setCurrentUserId, setUserId]);
+  }, [routeId, setCurrentUserId, setUserId]);
 
   /* ---------------------- FETCH ---------------------- */
   const fetchAll = useCallback(
@@ -271,7 +281,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                 (r) =>
                   (r.custom_id ?? "")
                     .toUpperCase()
-                    .replace(/^([A-Z]+)0+/, "$1") === wanted
+                    .replace(/^([A-Z]+)0+/, "$1") === wanted,
               );
               if (match) woRow = match as WorkOrder;
             }
@@ -286,6 +296,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           setViewError("Work order not visible / not found.");
           setWo(null);
           setLines([]);
+          setQuoteLines([]);
           setVehicle(null);
           setCustomer(null);
           setAllocsByLine({});
@@ -298,14 +309,19 @@ export default function WorkOrderIdClient(): JSX.Element {
 
         if (!warnedMissing && (!woRow.vehicle_id || !woRow.customer_id)) {
           toast.error(
-            "This work order is missing vehicle and/or customer. Open the Create form to set them."
+            "This work order is missing vehicle and/or customer. Open the Create form to set them.",
           );
           setWarnedMissing(true);
         }
 
-        const [linesRes, vehRes, custRes] = await Promise.all([
+        const [linesRes, quoteRes, vehRes, custRes] = await Promise.all([
           supabase
             .from("work_order_lines")
+            .select("*")
+            .eq("work_order_id", woRow.id)
+            .order("created_at", { ascending: true }),
+          supabase
+            .from("work_order_quote_lines")
             .select("*")
             .eq("work_order_id", woRow.id)
             .order("created_at", { ascending: true }),
@@ -329,6 +345,10 @@ export default function WorkOrderIdClient(): JSX.Element {
         const lineRows = (linesRes.data ?? []) as WorkOrderLine[];
         setLines(lineRows);
 
+        if (quoteRes.error) throw quoteRes.error;
+        const quoteRows = (quoteRes.data ?? []) as WorkOrderQuoteLine[];
+        setQuoteLines(quoteRows);
+
         if (vehRes?.error) throw vehRes.error;
         setVehicle((vehRes?.data as Vehicle | null) ?? null);
 
@@ -343,22 +363,23 @@ export default function WorkOrderIdClient(): JSX.Element {
               .select("*, parts(name)")
               .in(
                 "work_order_line_id",
-                lineRows.map((l) => l.id)
+                lineRows.map((l) => l.id),
               ),
             supabase
               .from("work_order_line_technicians")
               .select("work_order_line_id, technician_id")
               .in(
                 "work_order_line_id",
-                lineRows.map((l) => l.id)
+                lineRows.map((l) => l.id),
               ),
           ]);
 
           const byLine: Record<string, AllocationRow[]> = {};
           (allocsQuery.data ?? []).forEach((a) => {
-            const key = (a as AllocationRow).work_order_line_id;
+            const row = a as AllocationRow;
+            const key = row.work_order_line_id;
             if (!byLine[key]) byLine[key] = [];
-            byLine[key].push(a as AllocationRow);
+            byLine[key].push(row);
           });
           setAllocsByLine(byLine);
 
@@ -380,20 +401,21 @@ export default function WorkOrderIdClient(): JSX.Element {
         const msg =
           e instanceof Error ? e.message : "Failed to load work order.";
         setViewError(msg);
+        // eslint-disable-next-line no-console
         console.error("[WO id page] load error:", e);
       } finally {
         setLoading(false);
       }
     },
     [
-      supabase,
       routeId,
       warnedMissing,
       setWo,
       setLines,
+      setQuoteLines,
       setVehicle,
       setCustomer,
-    ]
+    ],
   );
 
   useEffect(() => {
@@ -410,7 +432,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "work_orders", filter: `id=eq.${wo.id}` },
-        () => fetchAll()
+        () => fetchAll(),
       )
       .on(
         "postgres_changes",
@@ -420,7 +442,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           table: "work_order_lines",
           filter: `work_order_id=eq.${wo.id}`,
         },
-        () => fetchAll()
+        () => fetchAll(),
       )
       .on(
         "postgres_changes",
@@ -429,7 +451,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           schema: "public",
           table: "work_order_part_allocations",
         },
-        () => fetchAll()
+        () => fetchAll(),
       )
       .on(
         "postgres_changes",
@@ -438,7 +460,17 @@ export default function WorkOrderIdClient(): JSX.Element {
           schema: "public",
           table: "work_order_line_technicians",
         },
-        () => fetchAll()
+        () => fetchAll(),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "work_order_quote_lines",
+          filter: `work_order_id=eq.${wo.id}`,
+        },
+        () => fetchAll(),
       )
       .subscribe();
 
@@ -448,10 +480,12 @@ export default function WorkOrderIdClient(): JSX.Element {
     return () => {
       try {
         supabase.removeChannel(ch);
-      } catch {}
+      } catch {
+        //
+      }
       window.removeEventListener("wo:parts-used", local);
     };
-  }, [supabase, wo?.id, fetchAll]);
+  }, [wo?.id, fetchAll]);
 
   // ---------- listen for inspection finish ----------
   useEffect(() => {
@@ -476,7 +510,7 @@ export default function WorkOrderIdClient(): JSX.Element {
             cause: d.cause ?? "",
             correction: d.correction ?? "",
           },
-        })
+        }),
       );
     };
 
@@ -498,13 +532,26 @@ export default function WorkOrderIdClient(): JSX.Element {
   /* ----------------------- Derived data ----------------------- */
   const approvalPending = useMemo(
     () => lines.filter((l) => (l.approval_state ?? null) === "pending"),
-    [lines]
+    [lines],
   );
 
   const activeJobLines = useMemo(
     () => lines.filter((l) => (l.approval_state ?? null) !== "pending"),
-    [lines]
+    [lines],
   );
+
+  // Quote lines that are still in play (not converted/declined)
+  const approvalPendingQuotes = useMemo(
+    () =>
+      quoteLines.filter((q) => {
+        const status = (q.status ?? "").toLowerCase();
+        return status !== "converted" && status !== "declined";
+      }),
+    [quoteLines],
+  );
+
+  const hasAnyApprovalItems =
+    approvalPending.length > 0 || approvalPendingQuotes.length > 0;
 
   const sortedLines = useMemo(() => {
     const pr: Record<string, number> = {
@@ -525,14 +572,15 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   const createdAt = wo?.created_at ? new Date(wo.created_at) : null;
   const createdAtText =
-    createdAt && !isNaN(createdAt.getTime())
+    createdAt && !Number.isNaN(createdAt.getTime())
       ? format(createdAt, "PPpp")
       : "—";
 
   const canAssign = currentUserRole ? ASSIGN_ROLES.has(currentUserRole) : false;
 
   const assignablesById = useMemo(() => {
-    const m: Record<string, { full_name: string | null; role: string | null }> = {};
+    const m: Record<string, { full_name: string | null; role: string | null }> =
+      {};
     assignables.forEach((a) => {
       m[a.id] = { full_name: a.full_name, role: a.role };
     });
@@ -555,7 +603,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       toast.success("Line approved");
       void fetchAll();
     },
-    [supabase, fetchAll]
+    [fetchAll],
   );
 
   const declineLine = useCallback(
@@ -572,7 +620,50 @@ export default function WorkOrderIdClient(): JSX.Element {
       toast.success("Line declined");
       void fetchAll();
     },
-    [supabase, fetchAll]
+    [fetchAll],
+  );
+
+  const approveQuoteLine = useCallback(
+    async (quoteId: string) => {
+      if (!quoteId) return;
+      try {
+        const res = await fetch(`/api/work-orders/quotes/${quoteId}/authorize`, {
+          method: "POST",
+        });
+        const j = (await res.json().catch(() => null)) as
+          | { ok?: boolean; error?: string }
+          | null;
+
+        if (!res.ok || j?.error) {
+          throw new Error(j?.error || "Failed to authorize quote");
+        }
+
+        toast.success("Quote authorized");
+        void fetchAll();
+      } catch (e) {
+        const msg =
+          e instanceof Error ? e.message : "Failed to authorize quote";
+        toast.error(msg);
+      }
+    },
+    [fetchAll],
+  );
+
+  const declineQuoteLine = useCallback(
+    async (quoteId: string) => {
+      if (!quoteId) return;
+      const { error } = await supabase
+        .from("work_order_quote_lines")
+        .update({ status: "declined" })
+        .eq("id", quoteId);
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+      toast.success("Quote declined");
+      void fetchAll();
+    },
+    [fetchAll],
   );
 
   const sendToParts = useCallback(
@@ -589,7 +680,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       setPartsLineId(lineId);
       toast.success("Sent to parts for quoting");
     },
-    [supabase]
+    [],
   );
 
   const sendAllPendingToParts = useCallback(async () => {
@@ -610,7 +701,7 @@ export default function WorkOrderIdClient(): JSX.Element {
     setBulkActive(true);
     setPartsLineId(ids[0] ?? null);
     toast.success("Queued all pending lines for parts quoting");
-  }, [approvalPending, supabase]);
+  }, [approvalPending]);
 
   // open inspection
   const openInspectionForLine = useCallback(
@@ -620,7 +711,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       const desc = String(ln.description ?? "").toLowerCase();
       const isAir = /\bair\b|cvip|push\s*rod|air\s*brake/.test(desc);
       const isCustom = /\bcustom\b|\bbuilder\b|\bprompt\b|\bad[-\s]?hoc\b/.test(
-        desc
+        desc,
       );
 
       let templateSlug = isAir ? "maintenance50-air" : "maintenance50";
@@ -672,7 +763,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         toast.error(err?.message ?? "Unable to open inspection");
       }
     },
-    [wo?.id, vehicle?.id, customer?.id]
+    [wo?.id, vehicle?.id, customer?.id],
   );
 
   // parts drawer close / bulk
@@ -697,7 +788,8 @@ export default function WorkOrderIdClient(): JSX.Element {
     };
 
     window.addEventListener(evtName, handler as EventListener);
-    return () => window.removeEventListener(evtName, handler as EventListener);
+    return () =>
+      window.removeEventListener(evtName, handler as EventListener);
   }, [partsLineId, bulkActive, bulkQueue, fetchAll]);
 
   /* -------------------------- UI -------------------------- */
@@ -709,7 +801,7 @@ export default function WorkOrderIdClient(): JSX.Element {
   );
 
   return (
-    <div className="mx-auto max-w-6xl px-3 py-6 bg-background text-foreground">
+    <div className="mx-auto max-w-6xl bg-background px-3 py-6 text-foreground">
       <VoiceContextSetter
         currentView="work_order_page"
         workOrderId={wo?.id}
@@ -914,94 +1006,169 @@ export default function WorkOrderIdClient(): JSX.Element {
                 )}
               </div>
 
-              {approvalPending.length === 0 ? (
+              {!hasAnyApprovalItems ? (
                 <p className="text-xs text-neutral-400">
                   No lines waiting for approval.
                 </p>
               ) : (
-                <div className="space-y-2">
-                  {approvalPending.map((ln, idx) => {
-                    const isAwaitingParts =
-                      (ln.status === "on_hold" &&
-                        (ln.hold_reason ?? "")
-                          .toLowerCase()
-                          .includes("part")) ||
-                      (ln.hold_reason ?? "")
-                        .toLowerCase()
-                        .includes("quote");
+                <>
+                  {approvalPending.length > 0 && (
+                    <div className="space-y-2">
+                      {approvalPending.map((ln, idx) => {
+                        const isAwaitingParts =
+                          (ln.status === "on_hold" &&
+                            (ln.hold_reason ?? "")
+                              .toLowerCase()
+                              .includes("part")) ||
+                          (ln.hold_reason ?? "")
+                            .toLowerCase()
+                            .includes("quote");
 
-                    return (
-                      <div
-                        key={ln.id}
-                        className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-medium text-white">
-                              {idx + 1}.{" "}
-                              {ln.description || ln.complaint || "Untitled job"}
+                        return (
+                          <div
+                            key={ln.id}
+                            className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="truncate text-sm font-medium text-white">
+                                  {idx + 1}.{" "}
+                                  {ln.description ||
+                                    ln.complaint ||
+                                    "Untitled job"}
+                                </div>
+                                <div className="mt-0.5 text-[11px] text-neutral-400">
+                                  {String(ln.job_type ?? "job").replaceAll(
+                                    "_",
+                                    " ",
+                                  )}{" "}
+                                  •{" "}
+                                  {typeof ln.labor_time === "number"
+                                    ? `${ln.labor_time}h`
+                                    : "—"}{" "}
+                                  • Status:{" "}
+                                  {(ln.status ?? "awaiting").replaceAll(
+                                    "_",
+                                    " ",
+                                  )}{" "}
+                                  • Approval:{" "}
+                                  {(ln.approval_state ?? "pending").replaceAll(
+                                    "_",
+                                    " ",
+                                  )}
+                                </div>
+                                {ln.notes && (
+                                  <div className="mt-1 text-[11px] text-neutral-400">
+                                    Notes: {ln.notes}
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                                <button
+                                  type="button"
+                                  className="rounded-md border border-green-700 px-2 py-1 text-[11px] font-medium text-green-200 hover:bg-green-900/25"
+                                  onClick={() => approveLine(ln.id)}
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  type="button"
+                                  className="rounded-md border border-red-700 px-2 py-1 text-[11px] font-medium text-red-200 hover:bg-red-900/30"
+                                  onClick={() => declineLine(ln.id)}
+                                >
+                                  Decline
+                                </button>
+
+                                {isAwaitingParts ? (
+                                  <button
+                                    type="button"
+                                    disabled
+                                    className="cursor-not-allowed rounded-md border border-neutral-700 px-2 py-1 text-[11px] text-neutral-400"
+                                  >
+                                    Sent to parts
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="rounded-md border border-blue-700 px-2 py-1 text-[11px] font-medium text-blue-200 hover:bg-blue-900/25"
+                                    onClick={() => sendToParts(ln.id)}
+                                    title="Send to parts for quoting"
+                                  >
+                                    Send to parts
+                                  </button>
+                                )}
+                              </div>
                             </div>
-                            <div className="mt-0.5 text-[11px] text-neutral-400">
-                              {String(ln.job_type ?? "job").replaceAll("_", " ")}{" "}
-                              •{" "}
-                              {typeof ln.labor_time === "number"
-                                ? `${ln.labor_time}h`
-                                : "—"}{" "}
-                              • Status:{" "}
-                              {(ln.status ?? "awaiting").replaceAll("_", " ")}{" "}
-                              • Approval:{" "}
-                              {(ln.approval_state ?? "pending").replaceAll(
-                                "_",
-                                " "
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {approvalPendingQuotes.length > 0 && (
+                    <div
+                      className={
+                        approvalPending.length > 0 ? "mt-4 space-y-2" : "space-y-2"
+                      }
+                    >
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-blue-300">
+                        Quote suggestions
+                      </div>
+                      {approvalPendingQuotes.map((q, idx) => (
+                        <div
+                          key={q.id}
+                          className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-medium text-white">
+                                {idx + 1}. {q.description || "Quoted item"}
+                              </div>
+                              <div className="mt-0.5 text-[11px] text-neutral-400">
+                                {String(q.job_type ?? "job").replaceAll(
+                                  "_",
+                                  " ",
+                                )}{" "}
+                                •{" "}
+                                {typeof q.est_labor_hours === "number"
+                                  ? `${q.est_labor_hours}h`
+                                  : "—"}{" "}
+                                • Status:{" "}
+                                {(q.status ?? "pending_parts").replaceAll(
+                                  "_",
+                                  " ",
+                                )}
+                              </div>
+                              {q.notes && (
+                                <div className="mt-1 text-[11px] text-neutral-400">
+                                  Notes: {q.notes}
+                                </div>
                               )}
                             </div>
-                            {ln.notes && (
-                              <div className="mt-1 text-[11px] text-neutral-400">
-                                Notes: {ln.notes}
-                              </div>
-                            )}
-                          </div>
 
-                          <div className="flex shrink-0 flex-wrap items-center gap-2">
-                            <button
-                              type="button"
-                              className="rounded-md border border-green-700 px-2 py-1 text-[11px] font-medium text-green-200 hover:bg-green-900/25"
-                              onClick={() => approveLine(ln.id)}
-                            >
-                              Approve
-                            </button>
-                            <button
-                              type="button"
-                              className="rounded-md border border-red-700 px-2 py-1 text-[11px] font-medium text-red-200 hover:bg-red-900/30"
-                              onClick={() => declineLine(ln.id)}
-                            >
-                              Decline
-                            </button>
-
-                            {isAwaitingParts ? (
+                            <div className="flex shrink-0 flex-wrap items-center gap-2">
                               <button
                                 type="button"
-                                disabled
-                                className="cursor-not-allowed rounded-md border border-neutral-700 px-2 py-1 text-[11px] text-neutral-400"
+                                className="rounded-md border border-green-700 px-2 py-1 text-[11px] font-medium text-green-200 hover:bg-green-900/25"
+                                onClick={() => approveQuoteLine(q.id)}
                               >
-                                Sent to parts
+                                Approve
                               </button>
-                            ) : (
                               <button
                                 type="button"
-                                className="rounded-md border border-blue-700 px-2 py-1 text-[11px] font-medium text-blue-200 hover:bg-blue-900/25"
-                                onClick={() => sendToParts(ln.id)}
-                                title="Send to parts for quoting"
+                                className="rounded-md border border-red-700 px-2 py-1 text-[11px] font-medium text-red-200 hover:bg-red-900/30"
+                                onClick={() => declineQuoteLine(q.id)}
                               >
-                                Send to parts
+                                Decline
                               </button>
-                            )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
@@ -1105,13 +1272,19 @@ export default function WorkOrderIdClient(): JSX.Element {
                               )}
                             </div>
                             <div className="mt-0.5 text-[11px] text-neutral-400">
-                              {String(ln.job_type ?? "job").replaceAll("_", " ")}{" "}
+                              {String(ln.job_type ?? "job").replaceAll(
+                                "_",
+                                " ",
+                              )}{" "}
                               •{" "}
                               {typeof ln.labor_time === "number"
                                 ? `${ln.labor_time}h`
                                 : "—"}{" "}
                               • Status:{" "}
-                              {(ln.status ?? "awaiting").replaceAll("_", " ")}
+                              {(ln.status ?? "awaiting").replaceAll(
+                                "_",
+                                " ",
+                              )}
                             </div>
 
                             {orderedTechIds.length > 0 && (
@@ -1157,7 +1330,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                                     workOrderLineId={ln.id}
                                     onApplied={() =>
                                       window.dispatchEvent(
-                                        new CustomEvent("wo:parts-used")
+                                        new CustomEvent("wo:parts-used"),
                                       )
                                     }
                                     label="Add part"
