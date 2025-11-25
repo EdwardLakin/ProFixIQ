@@ -1,4 +1,4 @@
-// app/work-orders/[id]/page.client.tsx (patched)
+// app/work-orders/[id]/page.client.tsx (refactored to use JobCard)
 
 "use client";
 
@@ -16,14 +16,12 @@ import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
 import VehiclePhotoUploader from "@parts/components/VehiclePhotoUploader";
 import VehiclePhotoGallery from "@parts/components/VehiclePhotoGallery";
 import FocusedJobModal from "@/features/work-orders/components/workorders/FocusedJobModal";
-import { UsePartButton } from "@work-orders/components/UsePartButton";
 import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
 import VoiceButton from "@/features/shared/voice/VoiceButton";
 import { useTabState } from "@/features/shared/hooks/useTabState";
 import PartsDrawer from "@/features/parts/components/PartsDrawer";
-
-// assign-mechanic modal
 import AssignTechModal from "@/features/work-orders/components/workorders/extras/AssignTechModal";
+import { JobCard } from "@/features/work-orders/components/JobCard";
 
 // inspection modal
 const InspectionModal = dynamic(
@@ -55,7 +53,7 @@ function splitCustomId(raw: string): { prefix: string; n: number | null } {
   return { prefix: m[1], n: Number.isFinite(n!) ? n : null };
 }
 
-/* ---------------------------- Badges & Row Tints ---------------------------- */
+/* ---------------------------- Badges ---------------------------- */
 
 type KnownStatus =
   | "awaiting_approval"
@@ -88,28 +86,6 @@ const BADGE: Record<KnownStatus, string> = {
 const chip = (s: string | null | undefined): string => {
   const key = (s ?? "awaiting").toLowerCase().replaceAll(" ", "_") as KnownStatus;
   return `${BASE_BADGE} ${BADGE[key] ?? BADGE.awaiting}`;
-};
-
-const statusBorder: Record<string, string> = {
-  awaiting: "border-l-4 border-slate-400",
-  queued: "border-l-4 border-indigo-400",
-  in_progress: "border-l-4 border-orange-500",
-  on_hold: "border-l-4 border-amber-500",
-  completed: "border-l-4 border-green-500",
-  awaiting_approval: "border-l-4 border-blue-500",
-  planned: "border-l-4 border-purple-500",
-  new: "border-l-4 border-gray-400",
-};
-
-const statusRowTint: Record<string, string> = {
-  awaiting: "bg-neutral-950",
-  queued: "bg-neutral-950",
-  in_progress: "bg-neutral-950",
-  on_hold: "bg-amber-900/30",
-  completed: "bg-green-900/30",
-  awaiting_approval: "bg-neutral-950",
-  planned: "bg-neutral-950",
-  new: "bg-neutral-950",
 };
 
 // roles allowed to assign
@@ -999,7 +975,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                     type="button"
                     className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-500"
                     onClick={sendAllPendingToParts}
-                    title="Queue all lines for parts quoting"
+                    title="Queue all pending lines for parts quoting"
                   >
                     Quote all pending lines
                   </button>
@@ -1190,14 +1166,6 @@ export default function WorkOrderIdClient(): JSX.Element {
               ) : (
                 <div className="space-y-2">
                   {sortedLines.map((ln, idx) => {
-                    const statusKey = (ln.status ?? "awaiting")
-                      .toLowerCase()
-                      .replaceAll(" ", "_");
-                    const borderCls =
-                      statusBorder[statusKey] ||
-                      "border-l-4 border-gray-400";
-                    const tintCls =
-                      statusRowTint[statusKey] || "bg-neutral-950";
                     const punchedIn =
                       !!ln.punched_in_at && !ln.punched_out_at;
 
@@ -1217,161 +1185,48 @@ export default function WorkOrderIdClient(): JSX.Element {
                       }
                     });
 
+                    const technicians = orderedTechIds.map((tid) => {
+                      const info = assignablesById[tid];
+                      return {
+                        id: tid,
+                        full_name: info?.full_name ?? null,
+                        role: info?.role ?? null,
+                      };
+                    });
+
                     return (
-                      <div
+                      <JobCard
                         key={ln.id}
-                        className={`group rounded-lg border border-neutral-800 ${tintCls} p-3 transition hover:border-orange-500/70 hover:bg-neutral-900/80 ${borderCls} ${
-                          punchedIn ? "ring-2 ring-orange-500/80" : ""
-                        }`}
-                        title="Open focused job"
-                        onClick={() => {
+                        index={idx}
+                        line={ln}
+                        parts={partsForLine}
+                        technicians={technicians}
+                        canAssign={canAssign}
+                        isPunchedIn={punchedIn}
+                        onOpen={() => {
                           setFocusedJobId(ln.id);
                           setFocusedOpen(true);
                         }}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <div className="truncate text-sm font-medium text-white">
-                                {idx + 1}.{" "}
-                                {ln.description ||
-                                  ln.complaint ||
-                                  "Untitled job"}
-                              </div>
-                              {ln.job_type === "inspection" && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    void openInspectionForLine(ln);
-                                  }}
-                                  className={`rounded-md border px-2 py-0.5 text-[11px] font-medium ${
-                                    ln.status === "completed"
-                                      ? "border-green-400 text-green-200"
-                                      : "border-orange-400 text-orange-200 hover:bg-orange-500/10"
-                                  }`}
-                                >
-                                  {ln.status === "completed"
-                                    ? "View inspection"
-                                    : "Open inspection"}
-                                </button>
-                              )}
-                              {canAssign && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setAssignLineId(ln.id);
-                                    setAssignOpen(true);
-                                  }}
-                                  className="rounded-md border border-sky-500/70 px-2 py-0.5 text-[11px] font-medium text-sky-200 hover:bg-sky-900/25"
-                                  title="Assign mechanic to this line"
-                                >
-                                  Assign mechanic
-                                </button>
-                              )}
-                            </div>
-                            <div className="mt-0.5 text-[11px] text-neutral-400">
-                              {String(ln.job_type ?? "job").replaceAll(
-                                "_",
-                                " ",
-                              )}{" "}
-                              •{" "}
-                              {typeof ln.labor_time === "number"
-                                ? `${ln.labor_time}h`
-                                : "—"}{" "}
-                              • Status:{" "}
-                              {(ln.status ?? "awaiting").replaceAll(
-                                "_",
-                                " ",
-                              )}
-                            </div>
-
-                            {orderedTechIds.length > 0 && (
-                              <div className="mt-1 flex flex-wrap gap-1">
-                                {orderedTechIds.map((tid) => {
-                                  const info = assignablesById[tid];
-                                  const label = info?.full_name ?? "Mechanic";
-                                  return (
-                                    <span
-                                      key={tid}
-                                      className="inline-flex items-center gap-1 rounded-full bg-sky-900/40 px-2 py-0.5 text-[10px] text-sky-100"
-                                    >
-                                      <span className="h-1.5 w-1.5 rounded-full bg-sky-300" />
-                                      {label}
-                                    </span>
-                                  );
-                                })}
-                              </div>
-                            )}
-
-                            {(ln.complaint || ln.cause || ln.correction) && (
-                              <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-neutral-400">
-                                {ln.complaint ? (
-                                  <span>Cmpl: {ln.complaint}</span>
-                                ) : null}
-                                {ln.cause ? (
-                                  <span>| Cause: {ln.cause}</span>
-                                ) : null}
-                                {ln.correction ? (
-                                  <span>| Corr: {ln.correction}</span>
-                                ) : null}
-                              </div>
-                            )}
-
-                            {/* Parts used */}
-                            <div className="mt-2 rounded-lg border border-neutral-800 bg-neutral-950/80 p-2">
-                              <div className="mb-1 flex items-center justify-between gap-2">
-                                <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-300">
-                                  Parts used
-                                </div>
-                                <div className="shrink-0">
-                                  <UsePartButton
-                                    workOrderLineId={ln.id}
-                                    onApplied={() =>
-                                      window.dispatchEvent(
-                                        new CustomEvent("wo:parts-used"),
-                                      )
-                                    }
-                                    label="Add part"
-                                  />
-                                </div>
-                              </div>
-                              {partsForLine.length ? (
-                                <ul className="mt-1 divide-y divide-neutral-800 rounded border border-neutral-800 text-sm">
-                                  {partsForLine.map((a) => (
-                                    <li
-                                      key={a.id}
-                                      className="flex items-center justify-between bg-neutral-900/70 p-2"
-                                    >
-                                      <div className="min-w-0">
-                                        <div className="truncate text-sm text-white">
-                                          {a.parts?.name ?? "Part"}
-                                        </div>
-                                        <div className="text-[11px] text-neutral-500">
-                                          loc {String(a.location_id).slice(0, 6)}
-                                          …
-                                        </div>
-                                      </div>
-                                      <div className="pl-3 text-sm font-semibold text-neutral-100">
-                                        × {a.qty}
-                                      </div>
-                                    </li>
-                                  ))}
-                                </ul>
-                              ) : (
-                                <div className="mt-1 text-[11px] text-neutral-500">
-                                  No parts used yet.
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          <span className={chip(ln.status)}>
-                            {(ln.status ?? "awaiting").replaceAll("_", " ")}
-                          </span>
-                        </div>
-                      </div>
+                        onAssign={
+                          canAssign
+                            ? () => {
+                                setAssignLineId(ln.id);
+                                setAssignOpen(true);
+                              }
+                            : undefined
+                        }
+                        onOpenInspection={
+                          ln.job_type === "inspection"
+                            ? () => {
+                                void openInspectionForLine(ln);
+                              }
+                            : undefined
+                        }
+                        onAddPart={() => {
+                          setPartsLineId(ln.id);
+                        }}
+                        // pricing is optional – we’ll wire this later from line + parts data
+                      />
                     );
                   })}
                 </div>

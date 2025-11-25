@@ -18,7 +18,8 @@ import { masterServicesList } from "@inspections/lib/inspection/masterServicesLi
 type DB = Database;
 
 type MenuItemRow = DB["public"]["Tables"]["menu_items"]["Row"];
-type InsertMenuItemPart = DB["public"]["Tables"]["menu_item_parts"]["Insert"];
+type InsertMenuItemPart =
+  DB["public"]["Tables"]["menu_item_parts"]["Insert"];
 type TemplateRow = DB["public"]["Tables"]["inspection_templates"]["Row"] & {
   labor_hours?: number | null;
 };
@@ -46,7 +47,9 @@ export default function MenuItemsPage() {
   const [menuItems, setMenuItems] = useState<MenuItemRow[]>([]);
   const [saving, setSaving] = useState(false);
 
-  const [pickerOpenForRow, setPickerOpenForRow] = useState<number | null>(null);
+  const [pickerOpenForRow, setPickerOpenForRow] = useState<number | null>(
+    null,
+  );
   const [parts, setParts] = useState<PartFormRow[]>([
     { name: "", quantityStr: "", unitCostStr: "", part_id: null },
   ]);
@@ -88,7 +91,7 @@ export default function MenuItemsPage() {
     [partsTotal, laborTotal],
   );
 
-  // --------- fetch menu items (always full list you can see) ----------
+  // --------- fetch menu items ----------
   const fetchItems = useCallback(async () => {
     const { data, error } = await supabase
       .from("menu_items")
@@ -116,7 +119,10 @@ export default function MenuItemsPage() {
           .select("*")
           .eq("user_id", uid)
           .order("created_at", { ascending: false })
-      : Promise.resolve({ data: [] as TemplateRow[], error: null });
+      : Promise.resolve({
+          data: [] as TemplateRow[],
+          error: null,
+        });
 
     const sharedPromise = supabase
       .from("inspection_templates")
@@ -198,39 +204,51 @@ export default function MenuItemsPage() {
     setParts((rows) => rows.filter((_, i) => i !== idx));
   };
 
-  const handlePickPart = (rowIdx: number) => (sel: PickedPart) => {
-    (async () => {
-      const { data } = await supabase
-        .from("parts")
-        .select("name, sku")
-        .eq("id", sel.part_id)
-        .maybeSingle();
+  const handlePickPart =
+    (rowIdx: number) =>
+    (sel: PickedPart): void => {
+      (async () => {
+        const { data } = await supabase
+          .from("parts")
+          .select("name, sku")
+          .eq("id", sel.part_id)
+          .maybeSingle();
 
-      const label = data?.name ?? "Part";
-      setParts((rows) =>
-        rows.map((r, i) =>
-          i === rowIdx
-            ? {
-                ...r,
-                part_id: sel.part_id,
-                name: label,
-                quantityStr: r.quantityStr || (sel.qty ? String(sel.qty) : ""),
-              }
-            : r,
-        ),
-      );
+        const label = data?.name ?? "Part";
+        const qtyFromSel =
+          sel.qty && sel.qty > 0 ? String(sel.qty) : "";
 
-      toast.success(`Added ${label} to row`);
-    })().catch(() => {
-      setParts((rows) =>
-        rows.map((r, i) =>
-          i === rowIdx ? { ...r, part_id: sel.part_id } : r,
-        ),
-      );
-    });
-  };
+        // NEW: if the picker gave us a unit_cost, prefill the Unit cost field
+        const unitCostFromSel =
+          sel.unit_cost != null && !Number.isNaN(sel.unit_cost)
+            ? String(sel.unit_cost)
+            : "";
 
-  // --------- SAVE (still uses /api/menu/save) ----------
+        setParts((rows) =>
+          rows.map((r, i) =>
+            i === rowIdx
+              ? {
+                  ...r,
+                  part_id: sel.part_id,
+                  name: label,
+                  quantityStr: r.quantityStr || qtyFromSel,
+                  unitCostStr: r.unitCostStr || unitCostFromSel,
+                }
+              : r,
+          ),
+        );
+
+        toast.success(`Added ${label} to row`);
+      })().catch(() => {
+        setParts((rows) =>
+          rows.map((r, i) =>
+            i === rowIdx ? { ...r, part_id: sel.part_id } : r,
+          ),
+        );
+      });
+    };
+
+  // --------- SAVE ----------
   const handleSubmit = useCallback(async () => {
     if (!form.name.trim()) {
       toast.error("Service name is required");
@@ -261,7 +279,8 @@ export default function MenuItemsPage() {
           total_price: grandTotal,
           inspection_template_id: form.inspectionTemplateId || null,
           shop_id:
-            (user as unknown as { shop_id?: string | null })?.shop_id ?? null,
+            (user as unknown as { shop_id?: string | null })?.shop_id ??
+            null,
         },
         parts: cleanedParts,
       };
@@ -292,7 +311,9 @@ export default function MenuItemsPage() {
         laborTimeStr: "",
         inspectionTemplateId: "",
       }));
-      setParts([{ name: "", quantityStr: "", unitCostStr: "", part_id: null }]);
+      setParts([
+        { name: "", quantityStr: "", unitCostStr: "", part_id: null },
+      ]);
 
       await fetchItems();
     } catch (err) {
@@ -317,9 +338,11 @@ export default function MenuItemsPage() {
 
       {/* form */}
       <div className="mb-8 grid max-w-2xl gap-3">
-        {/* Service name (selector + input) */}
+        {/* Service name */}
         <div className="grid gap-2">
-          <label className="text-sm text-neutral-300">Service name</label>
+          <label className="text-sm text-neutral-300">
+            Service name
+          </label>
           <div className="flex gap-2">
             <select
               value={form.source}
@@ -340,7 +363,9 @@ export default function MenuItemsPage() {
               onChange={(e) =>
                 setForm((f) => ({ ...f, name: e.target.value }))
               }
-              list={form.source === "master" ? "master-services" : undefined}
+              list={
+                form.source === "master" ? "master-services" : undefined
+              }
               autoComplete="off"
               className="flex-1 rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
             />
@@ -383,7 +408,9 @@ export default function MenuItemsPage() {
 
         {/* description */}
         <div className="grid gap-2">
-          <label className="text-sm text-neutral-300">Description</label>
+          <label className="text-sm text-neutral-300">
+            Description
+          </label>
           <textarea
             placeholder="Optional details visible to customer"
             value={form.description}
@@ -498,10 +525,16 @@ export default function MenuItemsPage() {
         {/* totals */}
         <div className="flex items-center justify-end gap-6 text-sm">
           <div className="text-neutral-300">
-            Parts: <span className="text-white">${partsTotal.toFixed(2)}</span>
+            Parts:{" "}
+            <span className="text-white">
+              ${partsTotal.toFixed(2)}
+            </span>
           </div>
           <div className="text-neutral-300">
-            Labor: <span className="text-white">${laborTotal.toFixed(2)}</span>
+            Labor:{" "}
+            <span className="text-white">
+              ${laborTotal.toFixed(2)}
+            </span>
           </div>
           <div className="text-neutral-300">
             Total:{" "}
@@ -531,7 +564,9 @@ export default function MenuItemsPage() {
           >
             <div className="flex items-center justify-between">
               <div>
-                <strong className="text-orange-400">{item.name}</strong>
+                <strong className="text-orange-400">
+                  {item.name}
+                </strong>
                 {item.description ? (
                   <span className="block text-xs text-neutral-400">
                     {item.description}

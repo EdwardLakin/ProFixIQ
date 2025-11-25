@@ -3,7 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import { useAiPartSuggestions, AiPartSuggestion } from "@/features/parts/hooks/useAiPartSuggestions";
+import {
+  useAiPartSuggestions,
+  type AiPartSuggestion,
+} from "@/features/parts/hooks/useAiPartSuggestions";
 
 type DB = Database;
 type UUID = string;
@@ -19,7 +22,19 @@ type VStock = {
   qty_reserved: number;
 };
 
-export type PickedPart = { part_id: UUID; location_id?: UUID; qty: number };
+export type AvailabilityFlag =
+  | "in_stock"
+  | "low_stock"
+  | "out_of_stock"
+  | "unknown";
+
+export type PickedPart = {
+  part_id: UUID;
+  location_id?: UUID;
+  qty: number;
+  unit_cost: number | null;
+  availability?: AvailabilityFlag | null;
+};
 
 type Props = {
   open: boolean;
@@ -27,7 +42,13 @@ type Props = {
   initialSearch?: string;
   workOrderId?: string;
   workOrderLineId?: string | null;
-  vehicleSummary?: { year?: number | string | null; make?: string | null; model?: string | null } | null;
+  vehicleSummary?:
+    | {
+        year?: number | string | null;
+        make?: string | null;
+        model?: string | null;
+      }
+    | null;
   jobDescription?: string | null;
   jobNotes?: string | null;
   onClose?: () => void;
@@ -58,8 +79,14 @@ export function PartPicker({
   const [selectedPartId, setSelectedPartId] = useState<UUID | null>(null);
   const [selectedLocId, setSelectedLocId] = useState<UUID | null>(null);
   const [qty, setQty] = useState<number>(1);
+  const [unitCostStr, setUnitCostStr] = useState<string>("");
 
-  const { loading: aiLoading, items: aiItems, error: aiErr, suggest } = useAiPartSuggestions();
+  const {
+    loading: aiLoading,
+    items: aiItems,
+    error: aiErr,
+    suggest,
+  } = useAiPartSuggestions();
 
   const mainLocId = useMemo(() => {
     const m = locs.find((l) => (l.code ?? "").toUpperCase() === "MAIN");
@@ -110,7 +137,15 @@ export function PartPicker({
       notes: jobNotes ?? null,
       topK: 5,
     });
-  }, [open, workOrderId, workOrderLineId, vehicleSummary, jobDescription, jobNotes, suggest]);
+  }, [
+    open,
+    workOrderId,
+    workOrderLineId,
+    vehicleSummary,
+    jobDescription,
+    jobNotes,
+    suggest,
+  ]);
 
   useEffect(() => {
     if (!open || !shopId) return;
@@ -128,7 +163,9 @@ export function PartPicker({
 
         const term = search.trim();
         if (term) {
-          q = q.or(`name.ilike.%${term}%,sku.ilike.%${term}%,category.ilike.%${term}%`);
+          q = q.or(
+            `name.ilike.%${term}%,sku.ilike.%${term}%,category.ilike.%${term}%`,
+          );
         }
 
         const { data: rows, error } = await q;
@@ -142,7 +179,9 @@ export function PartPicker({
         if (ids.length) {
           const { data: vs, error: ve } = await supabase
             .from("v_part_stock")
-            .select("part_id, location_id, qty_available, qty_on_hand, qty_reserved")
+            .select(
+              "part_id, location_id, qty_available, qty_on_hand, qty_reserved",
+            )
             .in("part_id", ids);
           if (ve) throw ve;
 
@@ -163,7 +202,8 @@ export function PartPicker({
           setStock({});
         }
       } catch (e: unknown) {
-        if (!cancelled) setErr(e instanceof Error ? e.message : "Search failed");
+        if (!cancelled)
+          setErr(e instanceof Error ? e.message : "Search failed");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -178,6 +218,7 @@ export function PartPicker({
     setSelectedPartId(null);
     setSelectedLocId(null);
     setQty(1);
+    setUnitCostStr("");
     setSearch(initialSearch);
   }, [open, initialSearch]);
 
@@ -196,19 +237,51 @@ export function PartPicker({
     emit("close");
   };
 
+  const parsedUnitCost = useMemo(() => {
+    const n = parseFloat(unitCostStr);
+    return Number.isFinite(n) ? n : 0;
+  }, [unitCostStr]);
+
+  const availabilityLabel = useMemo(() => {
+    if (!selectedPartId) return "—";
+    if (!selectedStocks.length) return "No stock records";
+    const totalAvail = selectedStocks.reduce(
+      (sum, s) => sum + Number(s.qty_available || 0),
+      0,
+    );
+    if (totalAvail <= 0) return "Out of stock";
+    if (totalAvail < qty) return "Low / partial stock";
+    return "In stock";
+  }, [selectedPartId, selectedStocks, qty]);
+
+  const computeAvailabilityFlag = (): AvailabilityFlag | null => {
+    if (!selectedPartId || !selectedStocks.length) return "unknown";
+    const totalAvail = selectedStocks.reduce(
+      (sum, s) => sum + Number(s.qty_available || 0),
+      0,
+    );
+    if (totalAvail <= 0) return "out_of_stock";
+    if (totalAvail < qty) return "low_stock";
+    return "in_stock";
+  };
+
   const confirmPick = () => {
     if (!selectedPartId || qty <= 0) return;
     const payload: PickedPart = {
       part_id: selectedPartId,
       location_id: selectedLocId ?? undefined,
       qty,
+      unit_cost: parsedUnitCost || null,
+      availability: computeAvailabilityFlag(),
     };
     onPick?.(payload);
     emit("pick", payload);
     close();
   };
 
-  async function resolveSuggestionToPartId(s: AiPartSuggestion): Promise<string | null> {
+  async function resolveSuggestionToPartId(
+    s: AiPartSuggestion,
+  ): Promise<string | null> {
     if (!shopId) return null;
     if (s.sku) {
       const { data } = await supabase
@@ -272,7 +345,9 @@ export function PartPicker({
         <div className="mb-3 rounded border border-neutral-800">
           <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-2">
             <div className="text-sm font-semibold">AI suggestions</div>
-            {aiLoading && <div className="text-xs text-neutral-400">Thinking…</div>}
+            {aiLoading && (
+              <div className="text-xs text-neutral-400">Thinking…</div>
+            )}
           </div>
           <div className="p-2">
             {aiErr ? (
@@ -296,7 +371,8 @@ export function PartPicker({
                       }
                     }}
                   >
-                    {(s.sku ? `${s.sku} • ` : "") + s.name} {s.qty ? `×${s.qty}` : ""}
+                    {(s.sku ? `${s.sku} • ` : "") + s.name}{" "}
+                    {s.qty ? `×${s.qty}` : ""}
                   </button>
                 ))}
               </div>
@@ -322,17 +398,23 @@ export function PartPicker({
           <div className="grid gap-3 md:grid-cols-2">
             {/* left */}
             <div className="rounded-xl border border-neutral-800">
-              <div className="border-b border-neutral-800 p-2 text-sm font-semibold">Results</div>
+              <div className="border-b border-neutral-800 p-2 text-sm font-semibold">
+                Results
+              </div>
               <div className="max-h-72 overflow-auto">
                 {parts.length === 0 ? (
-                  <div className="p-3 text-sm text-neutral-400">No parts found.</div>
+                  <div className="p-3 text-sm text-neutral-400">
+                    No parts found.
+                  </div>
                 ) : (
                   parts.map((p) => (
                     <button
                       key={p.id as UUID}
                       onClick={() => setSelectedPartId(p.id as UUID)}
                       className={`block w-full border-b border-neutral-800 px-3 py-2 text-left hover:bg-neutral-900 ${
-                        selectedPartId === (p.id as UUID) ? "bg-neutral-900" : ""
+                        selectedPartId === (p.id as UUID)
+                          ? "bg-neutral-900"
+                          : ""
                       }`}
                     >
                       <div className="truncate font-medium">{p.name}</div>
@@ -347,28 +429,41 @@ export function PartPicker({
 
             {/* right */}
             <div className="rounded-xl border border-neutral-800 p-3">
-              <div className="mb-2 text-sm font-semibold">Stock by location</div>
+              <div className="mb-2 text-sm font-semibold">
+                Stock & pricing
+              </div>
               {!selectedPartId ? (
-                <div className="text-sm text-neutral-400">Select a part to view stock.</div>
+                <div className="text-sm text-neutral-400">
+                  Select a part to view stock.
+                </div>
               ) : selectedStocks.length === 0 ? (
-                <div className="text-sm text-neutral-400">No stock entries yet (you can still use/consume).</div>
+                <div className="text-sm text-neutral-400">
+                  No stock entries yet (you can still use/consume).
+                </div>
               ) : (
                 <div className="grid gap-2">
                   {selectedStocks
                     .slice()
-                    .sort((a, b) => Number(b.qty_available) - Number(a.qty_available))
+                    .sort(
+                      (a, b) =>
+                        Number(b.qty_available) - Number(a.qty_available),
+                    )
                     .map((s) => {
                       const l = locMap.get(s.location_id as UUID);
-                      const checked = (selectedLocId ?? defaultLocId) === s.location_id;
+                      const checked =
+                        (selectedLocId ?? defaultLocId) === s.location_id;
                       return (
                         <label
                           key={s.location_id}
                           className="flex items-center justify-between rounded border border-neutral-800 p-2"
                         >
                           <div className="min-w-0">
-                            <div className="font-medium">{l?.code ?? "LOC"}</div>
+                            <div className="font-medium">
+                              {l?.code ?? "LOC"}
+                            </div>
                             <div className="truncate text-xs text-neutral-500">
-                              {l?.name ?? String(s.location_id).slice(0, 6) + "…"}
+                              {l?.name ??
+                                String(s.location_id).slice(0, 6) + "…"}
                             </div>
                           </div>
                           <div className="tabular-nums text-sm font-semibold">
@@ -379,7 +474,9 @@ export function PartPicker({
                             name="loc"
                             className="ml-2"
                             checked={!!checked}
-                            onChange={() => setSelectedLocId(s.location_id as UUID)}
+                            onChange={() =>
+                              setSelectedLocId(s.location_id as UUID)
+                            }
                           />
                         </label>
                       );
@@ -395,7 +492,9 @@ export function PartPicker({
                     min={0}
                     step="0.01"
                     value={qty}
-                    onChange={(e) => setQty(Math.max(0, Number(e.target.value || 0)))}
+                    onChange={(e) =>
+                      setQty(Math.max(0, Number(e.target.value || 0)))
+                    }
                     className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
                   />
                 </div>
@@ -403,7 +502,11 @@ export function PartPicker({
                   <div className="mb-1 text-xs text-neutral-500">Location</div>
                   <select
                     value={defaultLocId ?? ""}
-                    onChange={(e) => setSelectedLocId((e.target.value || null) as UUID | null)}
+                    onChange={(e) =>
+                      setSelectedLocId(
+                        (e.target.value || null) as UUID | null,
+                      )
+                    }
                     className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
                   >
                     <option value="">Auto</option>
@@ -413,6 +516,35 @@ export function PartPicker({
                       </option>
                     ))}
                   </select>
+                </div>
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <div>
+                  <div className="mb-1 text-xs text-neutral-500">
+                    Unit cost
+                  </div>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={unitCostStr}
+                    onChange={(e) =>
+                      setUnitCostStr(
+                        e.target.value.replace(/[^\d.]/g, ""),
+                      )
+                    }
+                    className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
+                    placeholder="e.g. 45.00"
+                  />
+                </div>
+                <div>
+                  <div className="mb-1 text-xs text-neutral-500">
+                    Availability
+                  </div>
+                  <div className="flex items-center rounded border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200">
+                    {availabilityLabel}
+                  </div>
                 </div>
               </div>
 

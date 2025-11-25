@@ -8,13 +8,21 @@ import { ensureMainLocation } from "@parts/lib/locations";
 
 type DB = Database;
 
-export async function consumePart(input: {
+export type ConsumePartInput = {
   work_order_line_id: string;
   part_id: string;
-  qty: number;                 // positive number means "consume qty"
-  location_id?: string;        // optional; defaults to MAIN for the WO's shop
-}) {
+  qty: number; // positive number means "consume qty"
+  location_id?: string; // optional; defaults to MAIN for the WO's shop
+  unit_cost?: number | null; // optional override from UI
+  availability?: string | null; // accepted but not stored yet (option A)
+};
+
+export async function consumePart(input: ConsumePartInput) {
   const supabase = createServerActionClient<DB>({ cookies });
+
+  if (!input.qty || input.qty <= 0) {
+    throw new Error("Quantity must be greater than 0");
+  }
 
   // 1) Look up WO + shop_id from the line
   const { data: woLine, error: wlErr } = await supabase
@@ -34,14 +42,34 @@ export async function consumePart(input: {
     locationId = loc.id;
   }
 
-  // 3) (Optional) get a unit cost from part default for audit
-  const { data: part, error: partErr } = await supabase
-    .from("parts")
-    .select("default_cost")
-    .eq("id", input.part_id)
-    .single();
-  if (partErr) throw partErr;
-  const unit_cost = Number(part?.default_cost ?? 0);
+  // 3) Determine effective unit_cost:
+  //    - prefer the explicit value from the picker
+  //    - otherwise fall back to parts.default_cost (old behaviour)
+  let effectiveUnitCost: number | null = null;
+
+  if (
+    typeof input.unit_cost === "number" &&
+    !Number.isNaN(input.unit_cost)
+  ) {
+    effectiveUnitCost = input.unit_cost;
+  } else {
+    const { data: part, error: partErr } = await supabase
+      .from("parts")
+      .select("default_cost")
+      .eq("id", input.part_id)
+      .single();
+    if (partErr) throw partErr;
+
+    if (
+      part?.default_cost !== null &&
+      part?.default_cost !== undefined &&
+      !Number.isNaN(Number(part.default_cost))
+    ) {
+      effectiveUnitCost = Number(part.default_cost);
+    } else {
+      effectiveUnitCost = null;
+    }
+  }
 
   // 4) Create allocation row (without stock_move_id yet)
   const { data: alloc, error: aErr } = await supabase
@@ -51,21 +79,26 @@ export async function consumePart(input: {
       part_id: input.part_id,
       location_id: locationId!,
       qty: Math.abs(input.qty),
-      unit_cost,
+      unit_cost: effectiveUnitCost,
+      // if you later add an "availability" column, wire:
+      // availability: input.availability ?? null,
     })
     .select("id")
     .single();
   if (aErr) throw aErr;
 
   // 5) Create stock move (consume = negative)
-  const { data: moveId, error: mErr } = await supabase.rpc("apply_stock_move", {
-    p_part: input.part_id,
-    p_loc: locationId!,
-    p_qty: -Math.abs(input.qty),
-    p_reason: "consume",
-    p_ref_kind: "WO",
-    p_ref_id: workOrderId,
-  });
+  const { data: moveId, error: mErr } = await supabase.rpc(
+    "apply_stock_move",
+    {
+      p_part: input.part_id,
+      p_loc: locationId!,
+      p_qty: -Math.abs(input.qty),
+      p_reason: "consume",
+      p_ref_kind: "WO",
+      p_ref_id: workOrderId,
+    },
+  );
   if (mErr) throw mErr;
 
   // 6) Link stock move back to allocation

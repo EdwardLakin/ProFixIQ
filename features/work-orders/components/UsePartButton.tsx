@@ -26,6 +26,8 @@ export function UsePartButton({
           part_id: sel.part_id,
           qty: sel.qty,
           location_id: sel.location_id,
+          unit_cost: sel.unit_cost ?? null,
+          availability: sel.availability ?? null,
         });
         onApplied?.();
       } catch (e: any) {
@@ -49,7 +51,11 @@ export function UsePartButton({
         {pending ? "Applying…" : label}
       </button>
       {err && <span className="ml-2 text-xs text-red-500">{err}</span>}
-      <PartPicker open={open} onClose={() => setOpen(false)} onPick={handlePick} />
+      <PartPicker
+        open={open}
+        onClose={() => setOpen(false)}
+        onPick={handlePick}
+      />
     </>
   );
 }
