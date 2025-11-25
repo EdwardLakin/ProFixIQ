@@ -176,12 +176,27 @@ export function JobCard({
       <div className="flex items-start justify-between gap-3">
         {/* LEFT CONTENT */}
         <div className="min-w-0 space-y-1.5">
-          {/* Top row: title + buttons */}
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          {/* Top row: title + controls */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Left side: title + assign + inspection */}
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
               <div className="truncate text-sm font-medium text-white">
                 {index + 1}. {jobLabel}
               </div>
+
+              {canAssign && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAssign?.();
+                  }}
+                  className="rounded-md border border-sky-500/70 px-2 py-0.5 text-[11px] font-medium text-sky-200 hover:bg-sky-900/25"
+                  title="Assign mechanic to this line"
+                >
+                  Assign mechanic
+                </button>
+              )}
 
               {line.job_type === "inspection" && (
                 <button
@@ -201,55 +216,39 @@ export function JobCard({
                     : "Open inspection"}
                 </button>
               )}
-
-              {canAssign && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onAssign?.();
-                  }}
-                  className="rounded-md border border-sky-500/70 px-2 py-0.5 text-[11px] font-medium text-sky-200 hover:bg-sky-900/25"
-                  title="Assign mechanic to this line"
-                >
-                  Assign mechanic
-                </button>
-              )}
             </div>
 
-            {/* Right side: (desktop) add part button + status pill */}
-            <div className="flex shrink-0 flex-col items-end gap-1">
-              <div className="flex items-center gap-2">
-                {/* Desktop add-part button */}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onAddPart?.();
-                  }}
-                  className="hidden rounded-md border border-neutral-600 px-2 py-1 text-[11px] font-medium text-neutral-100 hover:border-orange-500 hover:text-orange-100 sm:inline-flex"
-                  title="Add / use part on this job"
-                >
-                  Add part
-                </button>
+            {/* Right side: add part button + status pill (always right-aligned) */}
+            <div className="ml-auto flex items-center gap-2">
+              {/* Desktop add-part button */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddPart?.();
+                }}
+                className="hidden rounded-md border border-neutral-600 px-2 py-1 text-[11px] font-medium text-neutral-100 hover:border-orange-500 hover:text-orange-100 sm:inline-flex"
+                title="Add / use part on this job"
+              >
+                Add part
+              </button>
 
-                {/* keep existing UsePartButton behavior for safety (esp. mobile) */}
-                <div className="sm:hidden">
-                  <UsePartButton
-                    workOrderLineId={line.id}
-                    onApplied={() =>
-                      window.dispatchEvent(
-                        new CustomEvent("wo:parts-used"),
-                      )
-                    }
-                    label="Add part"
-                  />
-                </div>
-
-                <span className={statusChip(line.status)}>
-                  {statusText}
-                </span>
+              {/* keep existing UsePartButton behavior for safety (esp. mobile) */}
+              <div className="sm:hidden">
+                <UsePartButton
+                  workOrderLineId={line.id}
+                  onApplied={() =>
+                    window.dispatchEvent(
+                      new CustomEvent("wo:parts-used"),
+                    )
+                  }
+                  label="Add part"
+                />
               </div>
+
+              <span className={statusChip(line.status)}>
+                {statusText}
+              </span>
             </div>
           </div>
 
