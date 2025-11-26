@@ -22,6 +22,7 @@ import { useTabState } from "@/features/shared/hooks/useTabState";
 import PartsDrawer from "@/features/parts/components/PartsDrawer";
 import AssignTechModal from "@/features/work-orders/components/workorders/extras/AssignTechModal";
 import { JobCard } from "@/features/work-orders/components/JobCard";
+import { WorkOrderSuggestionsPanel } from "@/features/work-orders/components/WorkOrderSuggestionsPanel";
 
 // inspection modal
 const InspectionModal = dynamic(
@@ -798,7 +799,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       {!currentUserId && (
         <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-900/10 p-3 text-sm text-amber-100">
           You appear signed out on this tab. If actions fail, open{" "}
-          <Link href="/sign-in" className="underline hover:text-white">
+            <Link href="/sign-in" className="underline hover:text-white">
             Sign In
           </Link>{" "}
           and return here.
@@ -1225,7 +1226,6 @@ export default function WorkOrderIdClient(): JSX.Element {
                         onAddPart={() => {
                           setPartsLineId(ln.id);
                         }}
-                        // pricing is optional – we’ll wire this later from line + parts data
                       />
                     );
                   })}
@@ -1236,6 +1236,14 @@ export default function WorkOrderIdClient(): JSX.Element {
 
           {/* RIGHT rail */}
           <aside className="space-y-4 lg:space-y-6">
+            {/* Suggested maintenance / quick add */}
+            <WorkOrderSuggestionsPanel
+              workOrderId={wo.id}
+              vehicleId={vehicle?.id ?? null}
+              odometerKm={wo.odometer_km ?? null}
+              onAdded={fetchAll}
+            />
+
             <div className="rounded-xl border border-border bg-card/95 p-4 text-sm text-neutral-300">
               <p>
                 Select a job card on the left to open the focused job panel with

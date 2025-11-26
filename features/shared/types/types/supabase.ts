@@ -2097,6 +2097,137 @@ export type Database = {
           },
         ]
       }
+      maintenance_rules: {
+        Row: {
+          distance_km_normal: number | null
+          distance_km_severe: number | null
+          engine_family: string | null
+          first_due_km: number | null
+          first_due_months: number | null
+          id: string
+          is_critical: boolean
+          make: string | null
+          model: string | null
+          service_code: string
+          time_months_normal: number | null
+          time_months_severe: number | null
+          year_from: number | null
+          year_to: number | null
+        }
+        Insert: {
+          distance_km_normal?: number | null
+          distance_km_severe?: number | null
+          engine_family?: string | null
+          first_due_km?: number | null
+          first_due_months?: number | null
+          id?: string
+          is_critical?: boolean
+          make?: string | null
+          model?: string | null
+          service_code: string
+          time_months_normal?: number | null
+          time_months_severe?: number | null
+          year_from?: number | null
+          year_to?: number | null
+        }
+        Update: {
+          distance_km_normal?: number | null
+          distance_km_severe?: number | null
+          engine_family?: string | null
+          first_due_km?: number | null
+          first_due_months?: number | null
+          id?: string
+          is_critical?: boolean
+          make?: string | null
+          model?: string | null
+          service_code?: string
+          time_months_normal?: number | null
+          time_months_severe?: number | null
+          year_from?: number | null
+          year_to?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maintenance_rules_service_code_fkey"
+            columns: ["service_code"]
+            isOneToOne: false
+            referencedRelation: "maintenance_services"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
+      maintenance_services: {
+        Row: {
+          code: string
+          default_job_type: string
+          default_labor_hours: number | null
+          default_notes: string | null
+          label: string
+        }
+        Insert: {
+          code: string
+          default_job_type?: string
+          default_labor_hours?: number | null
+          default_notes?: string | null
+          label: string
+        }
+        Update: {
+          code?: string
+          default_job_type?: string
+          default_labor_hours?: number | null
+          default_notes?: string | null
+          label?: string
+        }
+        Relationships: []
+      }
+      maintenance_suggestions: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          mileage_km: number | null
+          status: string
+          suggestions: Json | null
+          updated_at: string
+          vehicle_id: string | null
+          work_order_id: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          mileage_km?: number | null
+          status?: string
+          suggestions?: Json | null
+          updated_at?: string
+          vehicle_id?: string | null
+          work_order_id: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          mileage_km?: number | null
+          status?: string
+          suggestions?: Json | null
+          updated_at?: string
+          vehicle_id?: string | null
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maintenance_suggestions_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maintenance_suggestions_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: true
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       media_uploads: {
         Row: {
           analysis_summary: string | null
@@ -5306,6 +5437,56 @@ export type Database = {
           },
         ]
       }
+      vehicle_menus: {
+        Row: {
+          created_at: string
+          default_labor_hours: number | null
+          default_parts: Json
+          engine_family: string | null
+          id: string
+          make: string
+          model: string
+          service_code: string
+          updated_at: string
+          year_from: number
+          year_to: number
+        }
+        Insert: {
+          created_at?: string
+          default_labor_hours?: number | null
+          default_parts: Json
+          engine_family?: string | null
+          id?: string
+          make: string
+          model: string
+          service_code: string
+          updated_at?: string
+          year_from: number
+          year_to: number
+        }
+        Update: {
+          created_at?: string
+          default_labor_hours?: number | null
+          default_parts?: Json
+          engine_family?: string | null
+          id?: string
+          make?: string
+          model?: string
+          service_code?: string
+          updated_at?: string
+          year_from?: number
+          year_to?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_menus_service_code_fkey"
+            columns: ["service_code"]
+            isOneToOne: false
+            referencedRelation: "maintenance_services"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
       vehicle_photos: {
         Row: {
           caption: string | null
@@ -5460,6 +5641,7 @@ export type Database = {
           customer_id: string | null
           drivetrain: string | null
           engine: string | null
+          engine_family: string | null
           engine_hours: number | null
           engine_type: string | null
           fuel_type: string | null
@@ -5483,6 +5665,7 @@ export type Database = {
           customer_id?: string | null
           drivetrain?: string | null
           engine?: string | null
+          engine_family?: string | null
           engine_hours?: number | null
           engine_type?: string | null
           fuel_type?: string | null
@@ -5506,6 +5689,7 @@ export type Database = {
           customer_id?: string | null
           drivetrain?: string | null
           engine?: string | null
+          engine_family?: string | null
           engine_hours?: number | null
           engine_type?: string | null
           fuel_type?: string | null
@@ -6029,6 +6213,7 @@ export type Database = {
           line_status: string | null
           menu_item_id: string | null
           notes: string | null
+          odometer_km: number | null
           on_hold_since: string | null
           parts: string | null
           parts_needed: Json | null
@@ -6040,6 +6225,7 @@ export type Database = {
           punched_in_at: string | null
           punched_out_at: string | null
           quoted_at: string | null
+          service_code: string | null
           shop_id: string | null
           status: string | null
           template_id: string | null
@@ -6072,6 +6258,7 @@ export type Database = {
           line_status?: string | null
           menu_item_id?: string | null
           notes?: string | null
+          odometer_km?: number | null
           on_hold_since?: string | null
           parts?: string | null
           parts_needed?: Json | null
@@ -6083,6 +6270,7 @@ export type Database = {
           punched_in_at?: string | null
           punched_out_at?: string | null
           quoted_at?: string | null
+          service_code?: string | null
           shop_id?: string | null
           status?: string | null
           template_id?: string | null
@@ -6115,6 +6303,7 @@ export type Database = {
           line_status?: string | null
           menu_item_id?: string | null
           notes?: string | null
+          odometer_km?: number | null
           on_hold_since?: string | null
           parts?: string | null
           parts_needed?: Json | null
@@ -6126,6 +6315,7 @@ export type Database = {
           punched_in_at?: string | null
           punched_out_at?: string | null
           quoted_at?: string | null
+          service_code?: string | null
           shop_id?: string | null
           status?: string | null
           template_id?: string | null
@@ -6489,6 +6679,7 @@ export type Database = {
           invoice_url: string | null
           labor_total: number | null
           notes: string | null
+          odometer_km: number | null
           parts_total: number | null
           priority: number | null
           quote: Json | null
@@ -6525,6 +6716,7 @@ export type Database = {
           invoice_url?: string | null
           labor_total?: number | null
           notes?: string | null
+          odometer_km?: number | null
           parts_total?: number | null
           priority?: number | null
           quote?: Json | null
@@ -6561,6 +6753,7 @@ export type Database = {
           invoice_url?: string | null
           labor_total?: number | null
           notes?: string | null
+          odometer_km?: number | null
           parts_total?: number | null
           priority?: number | null
           quote?: Json | null

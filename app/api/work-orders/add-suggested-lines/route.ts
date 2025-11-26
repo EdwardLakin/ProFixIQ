@@ -11,6 +11,7 @@ type JobType = "diagnosis" | "repair" | "maintenance" | "tech-suggested";
 
 type IncomingItem = {
   description: string;
+  serviceCode?: string;
   jobType?: JobType;
   laborHours?: number | null;
   notes?: string;
@@ -26,10 +27,11 @@ export async function POST(req: Request) {
     const body = (await req.json()) as {
       workOrderId: string;
       vehicleId?: string | null;
+      odometerKm?: number | null;
       items: IncomingItem[];
     };
 
-    const { workOrderId, vehicleId, items } = body;
+    const { workOrderId, vehicleId, odometerKm, items } = body;
 
     if (!workOrderId || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json(
@@ -38,7 +40,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // Ensure user is signed in (for RLS / audit)
     const {
       data: { user },
       error: authError,
@@ -55,10 +56,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Not signed in" }, { status: 401 });
     }
 
-    // Look up the work order to get shop_id (and verify it exists)
     const { data: wo, error: woError } = await supabase
       .from("work_orders")
-      .select("id, shop_id")
+      .select("id, shop_id, odometer_km")
       .eq("id", workOrderId)
       .maybeSingle();
 
@@ -76,22 +76,26 @@ export async function POST(req: Request) {
       );
     }
 
+    const effectiveOdometerKm =
+      odometerKm ?? (wo.odometer_km as number | null) ?? null;
+
     const rows = items.map((i) => ({
       work_order_id: workOrderId,
       vehicle_id: vehicleId ?? null,
-      shop_id: wo.shop_id ?? null, // adjust if shop_id is NOT nullable
+      shop_id: wo.shop_id ?? null,
       description: i.description,
       job_type: i.jobType ?? "maintenance",
       labor_time: i.laborHours ?? 0,
       complaint: i.aiComplaint ?? null,
       cause: i.aiCause ?? null,
       correction: i.aiCorrection ?? null,
-      status: "awaiting_approval" as const, // tweak if your enum differs
+      status: "awaiting_approval" as const,
+      service_code: i.serviceCode ?? null,
+      odometer_km: effectiveOdometerKm,
+      notes: i.notes ?? null,
     }));
 
-    const { error } = await supabase
-      .from("work_order_lines")
-      .insert(rows);
+    const { error } = await supabase.from("work_order_lines").insert(rows);
 
     if (error) {
       return NextResponse.json(
@@ -101,7 +105,7 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ ok: true, inserted: rows.length });
-  } catch (e) {
+  } catch (e: unknown) {
     console.error(e);
     return NextResponse.json(
       { error: "Failed to add suggested lines" },

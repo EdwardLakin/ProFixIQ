@@ -29,7 +29,6 @@ import CustomerVehicleForm from "@/features/inspections/components/inspection/Cu
 import { MenuQuickAdd } from "@work-orders/components/MenuQuickAdd";
 import { NewWorkOrderLineForm } from "@work-orders/components/NewWorkOrderLineForm";
 
-import { WorkOrderSuggestionsPanel } from "@work-orders/components/WorkOrderSuggestionsPanel";
 
 // Session types
 import type {
@@ -1311,18 +1310,7 @@ export default function CreateWorkOrderPage() {
           </section>
         )}
 
-        {wo?.id && (
-          <WorkOrderSuggestionsPanel
-            workOrderId={wo.id}
-            vehicleId={vehicleId ?? null}
-            vehicleMeta={{
-              year: vehicle.year,
-              make: vehicle.make,
-              model: vehicle.model,
-            }}
-              onAdded={fetchLines}
-            />
-          )}
+        
 
         {/* Current Lines */}
         <section className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 sm:p-5">
