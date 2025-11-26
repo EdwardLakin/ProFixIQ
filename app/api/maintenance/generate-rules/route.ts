@@ -1,12 +1,12 @@
+// app/api/maintenance/generate-rules/route.ts
 import "server-only";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import type { DB } from "@shared/types/types/supabase"; // fallback if you have a DB alias
 import { generateMaintenanceRulesForVehicle } from "@/features/maintenance/server/generateMaintenanceRules";
 
-type LocalDB = Database | DB;
+type DB = Database;
 
 export const runtime = "nodejs";
 
@@ -29,17 +29,18 @@ function parseBody(json: unknown): GenerateBody {
 
   const make =
     typeof obj.make === "string" && obj.make.trim().length > 0
-      ? obj.make
+      ? obj.make.trim()
       : undefined;
 
   const model =
     typeof obj.model === "string" && obj.model.trim().length > 0
-      ? obj.model
+      ? obj.model.trim()
       : undefined;
 
   const engineFamily =
-    typeof obj.engineFamily === "string" && obj.engineFamily.trim().length > 0
-      ? obj.engineFamily
+    typeof obj.engineFamily === "string" &&
+    obj.engineFamily.trim().length > 0
+      ? obj.engineFamily.trim()
       : null;
 
   const forceRefresh =
@@ -49,7 +50,7 @@ function parseBody(json: unknown): GenerateBody {
 }
 
 export async function POST(req: Request) {
-  const supabase = createServerComponentClient<LocalDB>({ cookies });
+  const supabase = createServerComponentClient<DB>({ cookies });
 
   try {
     const bodyRaw = await req.json().catch(() => null);
