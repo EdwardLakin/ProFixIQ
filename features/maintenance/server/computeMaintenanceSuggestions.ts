@@ -160,7 +160,7 @@ function isServiceDue(
 /**
  * Core server function:
  * - Reads WO + vehicle + history + maintenance_rules + maintenance_services
- * - Computes due services
+ * - Computes services that should have appeared in the schedule
  * - Upserts into maintenance_suggestions
  * - Returns suggestions for UI
  */
@@ -267,22 +267,55 @@ export async function computeMaintenanceSuggestionsForWorkOrder(opts: {
 
   const mode: "normal" | "severe" = "severe"; // can be made configurable later
 
+  // Helper: should this service have been on the schedule at least once
+  const isEverRecommended = (rule: MaintenanceRuleRow): boolean => {
+    const firstKm =
+      rule.first_due_km ??
+      rule.distance_km_normal ??
+      rule.distance_km_severe;
+    const firstMonths =
+      rule.first_due_months ??
+      rule.time_months_normal ??
+      rule.time_months_severe;
+
+    const hasMileageTrigger =
+      firstKm != null &&
+      currentMileageKm != null &&
+      currentMileageKm >= firstKm;
+
+    const hasTimeTrigger =
+      firstMonths != null &&
+      currentAgeMonths != null &&
+      currentAgeMonths >= firstMonths;
+
+    if (firstKm == null && firstMonths == null) {
+      // No explicit thresholds: if we know either mileage or age, assume
+      // it should have appeared in the schedule at least once by now.
+      return currentMileageKm != null || currentAgeMonths != null;
+    }
+
+    return hasMileageTrigger || hasTimeTrigger;
+  };
+
   for (const rule of rules) {
+    // Must match this vehicle
     if (!ruleAppliesToVehicle(rule, vehicle)) continue;
 
     const service = servicesByCode.get(rule.service_code);
     if (!service) continue;
 
+    // Only include services that should have appeared at least once
+    if (!isEverRecommended(rule)) continue;
+
     const history = historyByCode.get(rule.service_code) ?? null;
 
-    const due = isServiceDue(rule, {
+    // Still compute "due now" using mileage/age + history
+    const dueNow = isServiceDue(rule, {
       mode,
       currentMileageKm,
       currentAgeMonths,
       history,
     });
-
-    if (!due) continue;
 
     const jobType: MaintenanceSuggestionItem["jobType"] =
       service.default_job_type === "diagnosis" ||
@@ -292,12 +325,39 @@ export async function computeMaintenanceSuggestionsForWorkOrder(opts: {
         ? service.default_job_type
         : "maintenance";
 
+    const metaNoteParts: string[] = [];
+
+    if (dueNow) {
+      metaNoteParts.push("Due now based on mileage/age.");
+    } else if (!history) {
+      metaNoteParts.push(
+        "Recommended in schedule; no previous service recorded for this vehicle.",
+      );
+    } else {
+      metaNoteParts.push(
+        "Previously performed; verify interval vs current mileage/age.",
+      );
+      if (history.lastMileage != null) {
+        metaNoteParts.push(`Last recorded at ~${history.lastMileage} km.`);
+      }
+      if (history.lastDate) {
+        metaNoteParts.push(`Last recorded date: ${history.lastDate}.`);
+      }
+    }
+
+    const combinedNotes = [
+      service.default_notes ?? "",
+      ...metaNoteParts,
+    ]
+      .filter((s) => s && s.trim().length > 0)
+      .join(" ");
+
     suggestions.push({
       name: service.label,
       serviceCode: service.code,
       laborHours: service.default_labor_hours ?? 1,
       jobType,
-      notes: service.default_notes ?? "",
+      notes: combinedNotes,
     });
   }
 
