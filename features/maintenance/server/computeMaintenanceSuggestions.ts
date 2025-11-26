@@ -62,13 +62,24 @@ type WorkOrderRow = {
   created_at: string;
 };
 
-function parseMileage(mileage: string | number | null | undefined): number | null {
+type WorkOrderLineHistoryRow = {
+  service_code: string | null;
+  odometer_km: number | null;
+  created_at: string | null;
+};
+
+function parseMileage(
+  mileage: string | number | null | undefined,
+): number | null {
   if (mileage == null) return null;
   const n = Number(mileage);
   return Number.isFinite(n) ? n : null;
 }
 
-function ruleAppliesToVehicle(rule: MaintenanceRuleRow, vehicle: VehicleRow): boolean {
+function ruleAppliesToVehicle(
+  rule: MaintenanceRuleRow,
+  vehicle: VehicleRow,
+): boolean {
   const make = (vehicle.make ?? "").trim().toLowerCase();
   const model = (vehicle.model ?? "").trim().toLowerCase();
   const year = vehicle.year ?? null;
@@ -135,9 +146,13 @@ function isServiceDue(
   }
 
   const distanceDue =
-    distanceInterval != null && kmSince != null ? kmSince >= distanceInterval : false;
+    distanceInterval != null && kmSince != null
+      ? kmSince >= distanceInterval
+      : false;
   const timeDue =
-    timeInterval != null && monthsSince != null ? monthsSince >= timeInterval : false;
+    timeInterval != null && monthsSince != null
+      ? monthsSince >= timeInterval
+      : false;
 
   return distanceDue || timeDue;
 }
@@ -188,7 +203,7 @@ export async function computeMaintenanceSuggestionsForWorkOrder(opts: {
   const now = new Date();
   const currentAgeMonths =
     vehicleYear != null
-      ? (now.getFullYear() - vehicleYear) * 12 + now.getMonth() + 1
+      ? (now.getFullYear() - vehicleYear) * 12 + (now.getMonth() + 1)
       : null;
 
   // 4) Load rules & services (small tables, safe to filter in memory)
@@ -212,7 +227,7 @@ export async function computeMaintenanceSuggestionsForWorkOrder(opts: {
   const rules = (rulesData ?? []) as MaintenanceRuleRow[];
 
   // 5) Load service history for this vehicle
-  const { data: historyLines, error: historyError } = await supabase
+  const { data: historyData, error: historyError } = await supabase
     .from("work_order_lines")
     .select("service_code, odometer_km, created_at")
     .eq("vehicle_id", vehicle.id)
@@ -220,10 +235,13 @@ export async function computeMaintenanceSuggestionsForWorkOrder(opts: {
 
   if (historyError) throw historyError;
 
+  const historyLines: WorkOrderLineHistoryRow[] =
+    (historyData as WorkOrderLineHistoryRow[]) ?? [];
+
   const historyByCode = new Map<string, ServiceHistory>();
 
-  for (const row of historyLines ?? []) {
-    const code = row.service_code as string | null;
+  for (const row of historyLines) {
+    const code = row.service_code;
     if (!code) continue;
 
     const prev = historyByCode.get(code) ?? {
@@ -231,8 +249,8 @@ export async function computeMaintenanceSuggestionsForWorkOrder(opts: {
       lastDate: null,
     };
 
-    const thisMileage = row.odometer_km as number | null;
-    const createdAt = row.created_at as string | null;
+    const thisMileage = row.odometer_km;
+    const createdAt = row.created_at;
 
     if (!createdAt) continue;
 
@@ -247,7 +265,7 @@ export async function computeMaintenanceSuggestionsForWorkOrder(opts: {
   // 6) Evaluate rules → suggestions
   const suggestions: MaintenanceSuggestionItem[] = [];
 
-  const mode: "normal" | "severe" = "severe"; // Canada / fleet default, can be made configurable later.
+  const mode: "normal" | "severe" = "severe"; // can be made configurable later
 
   for (const rule of rules) {
     if (!ruleAppliesToVehicle(rule, vehicle)) continue;
