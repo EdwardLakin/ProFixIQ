@@ -62,10 +62,10 @@ interface Props {
 type Handlers = {
   onCustomerChange?: (
     field: keyof CustomerInfo | "business_name",
-    value: string | null
+    value: string | null,
   ) => void;
   onVehicleChange?: (field: keyof VehicleInfo, value: string | null) => void;
-  onSave?: () => void;
+  onSave?: () => void | Promise<void>;
   onClear?: () => void;
   onCustomerSelected?: (customerId: string) => void;
   onVehicleSelected?: (vehicleId: string) => void;
@@ -73,7 +73,7 @@ type Handlers = {
 
 /* Small helper to split a single "name" into first/last */
 function splitNamefallback(
-  n?: string | null
+  n?: string | null,
 ): { first: string | null; last: string | null } {
   const s = (n ?? "").trim();
   if (!s) return { first: null, last: null };
@@ -122,11 +122,11 @@ function CustomerAutocomplete({
         const { data, error } = await supabase
           .from("customers")
           .select(
-            "id, business_name, first_name, last_name, phone, email, created_at"
+            "id, business_name, first_name, last_name, phone, email, created_at",
           )
           .eq("shop_id", shopId)
           .or(
-            `business_name.ilike.${like},first_name.ilike.${like},last_name.ilike.${like}`
+            `business_name.ilike.${like},first_name.ilike.${like},last_name.ilike.${like}`,
           )
           .order("created_at", { ascending: false })
           .limit(12);
@@ -244,12 +244,12 @@ function UnitNumberAutocomplete({
         const { data, error } = await supabase
           .from("vehicles")
           .select(
-            "id, unit_number, license_plate, vin, year, make, model, mileage, color, engine_hours, engine, transmission, fuel_type, drivetrain, created_at"
+            "id, unit_number, license_plate, vin, year, make, model, mileage, color, engine_hours, engine, transmission, fuel_type, drivetrain, created_at",
           )
           .eq("shop_id", shopId)
           .eq("customer_id", customerId)
           .or(
-            `unit_number.ilike.${like},license_plate.ilike.${like},vin.ilike.${like},model.ilike.${like}`
+            `unit_number.ilike.${like},license_plate.ilike.${like},vin.ilike.${like},model.ilike.${like}`,
           )
           .order("created_at", { ascending: false })
           .limit(12);
@@ -356,7 +356,7 @@ export default function CustomerVehicleForm({
   } = (handlers as Handlers) ?? {};
 
   const [currentCustomerId, setCurrentCustomerId] = useState<string | null>(
-    null
+    null,
   );
 
   async function handlePickedCustomer(c: CustomerRow) {
@@ -364,10 +364,7 @@ export default function CustomerVehicleForm({
 
     // Fill immediate customer fields (fallback to "name" when needed)
     (onCustomerChange as any)("business_name", c.business_name ?? null);
-    onCustomerChange(
-      "first_name",
-      (c.first_name ?? fallback.first) ?? null
-    );
+    onCustomerChange("first_name", (c.first_name ?? fallback.first) ?? null);
     onCustomerChange("last_name", (c.last_name ?? fallback.last) ?? null);
     onCustomerChange("phone", c.phone ?? null);
     onCustomerChange("email", c.email ?? null);
@@ -383,10 +380,7 @@ export default function CustomerVehicleForm({
         const d = data as CustomerRow;
         const fb = splitNamefallback(d.name);
         (onCustomerChange as any)("business_name", d.business_name ?? null);
-        onCustomerChange(
-          "first_name",
-          (d.first_name ?? fb.first) ?? null
-        );
+        onCustomerChange("first_name", (d.first_name ?? fb.first) ?? null);
         onCustomerChange("last_name", (d.last_name ?? fb.last) ?? null);
         onCustomerChange("address", d.address ?? null);
         onCustomerChange("city", d.city ?? null);
@@ -406,7 +400,7 @@ export default function CustomerVehicleForm({
       const { data: vehs } = await supabase
         .from("vehicles")
         .select(
-          "id, vin, year, make, model, license_plate, mileage, unit_number, color, engine_hours, engine, transmission, fuel_type, drivetrain, created_at"
+          "id, vin, year, make, model, license_plate, mileage, unit_number, color, engine_hours, engine, transmission, fuel_type, drivetrain, created_at",
         )
         .eq("customer_id", c.id)
         .eq("shop_id", shopId)
@@ -417,10 +411,7 @@ export default function CustomerVehicleForm({
       if (arr.length === 1) {
         const v = arr[0];
         onVehicleChange("vin", (v.vin ?? "") || null);
-        onVehicleChange(
-          "year",
-          v.year != null ? String(v.year) : null
-        );
+        onVehicleChange("year", v.year != null ? String(v.year) : null);
         onVehicleChange("make", v.make ?? null);
         onVehicleChange("model", v.model ?? null);
         onVehicleChange("license_plate", v.license_plate ?? null);
@@ -429,7 +420,7 @@ export default function CustomerVehicleForm({
         onVehicleChange("color", v.color ?? null);
         onVehicleChange(
           "engine_hours",
-          v.engine_hours != null ? String(v.engine_hours) : null
+          v.engine_hours != null ? String(v.engine_hours) : null,
         );
         (onVehicleChange as any)("engine", v.engine ?? null);
         (onVehicleChange as any)("transmission", v.transmission ?? null);
@@ -441,6 +432,51 @@ export default function CustomerVehicleForm({
       /* ignore */
     }
   }
+
+  /**
+   * Save & Continue handler:
+   * - Runs the parent onSave (can be sync or async)
+   * - Then triggers rule generation for this YMM (+ engine) in the background
+   */
+  const handleSaveClick = async () => {
+    try {
+      if (onSave) {
+        const maybePromise = onSave();
+        if (maybePromise && typeof (maybePromise as any).then === "function") {
+          await (maybePromise as Promise<void>);
+        }
+      }
+
+      // After save: fire-and-forget rule generation for this YMM
+      const yearStr = vehicle.year ?? null;
+      const year = yearStr ? parseInt(yearStr, 10) : null;
+      const make = vehicle.make?.trim() || "";
+      const model = vehicle.model?.trim() || "";
+      const engineFamily = ((vehicle as any).engine as string | null) ?? null;
+
+      if (!year || !make || !model) {
+        // Not enough info to generate a schedule; skip silently
+        return;
+      }
+
+      void fetch("/api/maintenance/generate-rules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          year,
+          make,
+          model,
+          engineFamily,
+        }),
+      }).catch(() => {
+        // Swallow errors; rule generation shouldn't block UX
+      });
+    } catch (err) {
+      // Just log to console; we don't want to blow up the form UX
+      // eslint-disable-next-line no-console
+      console.error("Save & rule generation failed", err);
+    }
+  };
 
   return (
     <div className="w-full max-w-4xl mx-auto space-y-8 text-white">
@@ -486,7 +522,7 @@ export default function CustomerVehicleForm({
               onChange={(e) =>
                 (onCustomerChange as any)(
                   "business_name",
-                  e.target.value || null
+                  e.target.value || null,
                 )
               }
             />
@@ -646,24 +682,21 @@ export default function CustomerVehicleForm({
                 onVehicleChange("vin", (v.vin ?? "") || null);
                 onVehicleChange(
                   "year",
-                  v.year != null ? String(v.year) : null
+                  v.year != null ? String(v.year) : null,
                 );
                 onVehicleChange("make", v.make ?? null);
                 onVehicleChange("model", v.model ?? null);
-                onVehicleChange(
-                  "license_plate",
-                  v.license_plate ?? null
-                );
+                onVehicleChange("license_plate", v.license_plate ?? null);
                 onVehicleChange("mileage", (v.mileage ?? "") || null);
                 onVehicleChange("color", v.color ?? null);
                 onVehicleChange(
                   "engine_hours",
-                  v.engine_hours != null ? String(v.engine_hours) : null
+                  v.engine_hours != null ? String(v.engine_hours) : null,
                 );
                 (onVehicleChange as any)("engine", v.engine ?? null);
                 (onVehicleChange as any)(
                   "transmission",
-                  v.transmission ?? null
+                  v.transmission ?? null,
                 );
                 (onVehicleChange as any)("fuel_type", v.fuel_type ?? null);
                 (onVehicleChange as any)("drivetrain", v.drivetrain ?? null);
@@ -791,7 +824,7 @@ export default function CustomerVehicleForm({
               onChange={(e) =>
                 (onVehicleChange as any)(
                   "engine",
-                  e.target.value || null
+                  e.target.value || null,
                 )
               }
             />
@@ -806,7 +839,7 @@ export default function CustomerVehicleForm({
               onChange={(e) =>
                 (onVehicleChange as any)(
                   "transmission",
-                  e.target.value || null
+                  e.target.value || null,
                 )
               }
             >
@@ -828,7 +861,7 @@ export default function CustomerVehicleForm({
               onChange={(e) =>
                 (onVehicleChange as any)(
                   "fuel_type",
-                  e.target.value || null
+                  e.target.value || null,
                 )
               }
             >
@@ -851,7 +884,7 @@ export default function CustomerVehicleForm({
               onChange={(e) =>
                 (onVehicleChange as any)(
                   "drivetrain",
-                  e.target.value || null
+                  e.target.value || null,
                 )
               }
             >
@@ -872,7 +905,7 @@ export default function CustomerVehicleForm({
           {onSave && (
             <button
               type="button"
-              onClick={onSave}
+              onClick={handleSaveClick}
               disabled={saving}
               className="btn btn-orange disabled:opacity-60"
               title={
@@ -930,14 +963,14 @@ export default function CustomerVehicleForm({
                       form_shop_id: shopId ?? null,
                     },
                     null,
-                    2
-                  )
+                    2,
+                  ),
                 );
               } catch (err) {
                 alert(
                   `Debug failed: ${
                     (err as Error)?.message || "unknown error"
-                  }`
+                  }`,
                 );
               }
             }}
