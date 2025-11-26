@@ -1,183 +1,209 @@
-# Supabase CLI
+Here is a single self-contained card you can paste directly into your ProFixIQ repo README.
+It summarizes the entire architecture, structure, conventions, and systems of the platform – desktop + mobile companion + AI + Agent service.
 
-[![Coverage Status](https://coveralls.io/repos/github/supabase/cli/badge.svg?branch=main)](https://coveralls.io/github/supabase/cli?branch=main) [![Bitbucket Pipelines](https://img.shields.io/bitbucket/pipelines/supabase-cli/setup-cli/master?style=flat-square&label=Bitbucket%20Canary)](https://bitbucket.org/supabase-cli/setup-cli/pipelines) [![Gitlab Pipeline Status](https://img.shields.io/gitlab/pipeline-status/sweatybridge%2Fsetup-cli?label=Gitlab%20Canary)
-](https://gitlab.com/sweatybridge/setup-cli/-/pipelines)
+⸻
 
-[Supabase](https://supabase.io) is an open source Firebase alternative. We're building the features of Firebase using enterprise-grade open source tools.
+🧰 ProFixIQ – Developer Overview Card
 
-This repository contains all the functionality for Supabase CLI.
+(Paste this block into your README)
 
-- [x] Running Supabase locally
-- [x] Managing database migrations
-- [x] Creating and deploying Supabase Functions
-- [x] Generating types directly from your database schema
-- [x] Making authenticated HTTP requests to [Management API](https://supabase.com/docs/reference/api/introduction)
+⸻
 
-## Getting started
+🚀 ProFixIQ: Full System Overview
 
-### Install the CLI
+ProFixIQ is an AI-native automotive repair shop operating system built on Next.js (App Router) + TypeScript + Supabase with a parallel Mobile Companion App and an external ProFixIQ Agent integration service.
 
-Available via [NPM](https://www.npmjs.com) as dev dependency. To install:
+This document summarizes the full structure, conventions, and architecture of the codebase.
 
-```bash
-npm i supabase --save-dev
-```
+⸻
 
-To install the beta release channel:
+📦 Tech Stack
+	•	Next.js App Router, React Server Components
+	•	TypeScript (strict, no any)
+	•	Supabase (Postgres + Auth + RLS)
+	•	TailwindCSS + shared UI component library
+	•	OpenAI for AI features (quotes, suggestions, summaries, diagnostics)
+	•	External ProFixIQ Agent (Node + Express + GitHub App for automated PRs)
 
-```bash
-npm i supabase@beta --save-dev
-```
+⸻
 
-When installing with yarn 4, you need to disable experimental fetch with the following nodejs config.
+🏗️ Application Structure
 
-```
-NODE_OPTIONS=--no-experimental-fetch yarn add supabase
-```
+1. Desktop App (Main OS)
 
-> **Note**
-For Bun versions below v1.0.17, you must add `supabase` as a [trusted dependency](https://bun.sh/guides/install/trusted) before running `bun add -D supabase`.
+Located in standard Next.js app/* routes.
 
-<details>
-  <summary><b>macOS</b></summary>
+Shell & Layout
+	•	app/layout.tsx – global Providers and AppShell
+	•	AppShell includes:
+	•	RoleSidebar (owner/admin/manager/advisor/mechanic)
+	•	Top navigation
+	•	TabsBridge (input & scroll persistence)
+	•	Global modals (AI chat, Agent requests)
+	•	ShiftTracker popup
+	•	TabsBridge
+	•	Per-user, per-route persistence of inputs + scroll
+	•	Uses localStorage/sessionStorage
 
-  Available via [Homebrew](https://brew.sh). To install:
+Core Modules
+	•	Work Orders
+	•	Work order CRUD
+	•	work_order_lines with punch-in/out, parts allocations, AI suggestions
+	•	Inspections
+	•	Grid-based form builder + sessions
+	•	Parts
+	•	Parts inventory + allocations
+	•	Messages
+	•	AI assistant threads, mechanic/manager messaging
+	•	Planner
+	•	Calendar-based workflow planning
+	•	Reports
+	•	Revenue, labor, expenses, profit, tech efficiency
+	•	PDF export (jsPDF)
+	•	AI narrative summaries
 
-  ```sh
-  brew install supabase/tap/supabase
-  ```
+⸻
 
-  To install the beta release channel:
-  
-  ```sh
-  brew install supabase/tap/supabase-beta
-  brew link --overwrite supabase-beta
-  ```
-  
-  To upgrade:
+2. Mobile Companion App
 
-  ```sh
-  brew upgrade supabase
-  ```
-</details>
+Standalone app under /app/mobile/* with its own shell (not wrapped by AppShell).
 
-<details>
-  <summary><b>Windows</b></summary>
+Structure
+	•	app/mobile/layout.tsx → MobileShell
+	•	MobileShell → header + content + MobileBottomNav
+	•	MobileBottomNav → Home / Jobs / Messages / Settings
+	•	Role-aware hub
+	•	MobileRoleHub.tsx renders shortcut tiles per role/scope
+	•	Mobile dashboards
+	•	MobileTechHome.tsx (tech bench view)
+	•	Job list
+	•	Efficiency stats
+	•	Punch status
+	•	Quick tools
+	•	Owner/Admin “Shop Console”
 
-  Available via [Scoop](https://scoop.sh). To install:
+Mobile Modules
+	•	Jobs (Mobile Work Orders)
+	•	/mobile/work-orders
+	•	MobileFocusedJob.tsx → punch controls, parts, notes, AI
+	•	Punch / Time Tracking
+	•	Shared DB: tech_shifts, punch_events
+	•	Job punch: JobPunchButton
+	•	Shift punch: PunchInOutButton
+	•	Reports (Owner/Admin)
+	•	/mobile/reports
+	•	Uses getShopStats
+	•	AI summary only (no heavy charts, no PDF)
+	•	Messages
+	•	Mobile chat UI (simplified)
 
-  ```powershell
-  scoop bucket add supabase https://github.com/supabase/scoop-bucket.git
-  scoop install supabase
-  ```
+⸻
 
-  To upgrade:
+🗂️ Database Overview (Supabase)
 
-  ```powershell
-  scoop update supabase
-  ```
-</details>
+Multi-Tenant Model
+	•	Every shop is isolated by shop_id
+	•	Profiles linked to Supabase auth user
+	•	RLS enforced across all major tables
 
-<details>
-  <summary><b>Linux</b></summary>
+Key Tables
+	•	profiles – role, shop, user identity
+	•	shops – tenant root
+	•	work_orders
+	•	work_order_lines – labor, status, punch, AI fields
+	•	work_order_part_allocations
+	•	vehicles, customers
+	•	inspections, inspection_sessions, inspection_items
+	•	punch_events, tech_shifts
+	•	invoices, expenses
+	•	messages (AI + user threads)
 
-  Available via [Homebrew](https://brew.sh) and Linux packages.
+RLS
+	•	Fully applied across:
+	•	work orders / lines
+	•	messages
+	•	inspections
+	•	profiles
+	•	agent endpoints
+	•	Uses shop_id matching + role permissions
 
-  #### via Homebrew
+⸻
 
-  To install:
+⚙️ Time Tracking & Punch System
+	•	Shift-based punching
+	•	tech_shifts logs on/off/break/lunch
+	•	Aggregated for daily/weekly hours worked
+	•	Job punching
+	•	JobPunchButton writes to work_order_lines
+	•	Tracks punched_in_at, punched_out_at, labor_time
+	•	Metrics (planned & partially implemented)
+	•	Hours worked
+	•	Hours billed
+	•	Tech efficiency = billed ÷ worked
+	•	Stats rendered on tech dashboard + reports
 
-  ```sh
-  brew install supabase/tap/supabase
-  ```
+⸻
 
-  To upgrade:
+🧠 AI Integration
 
-  ```sh
-  brew upgrade supabase
-  ```
+AI Quote Engine
+	•	Located in features/integrations/ai
+	•	Suggests:
+	•	Parts
+	•	Labor
+	•	Estimated job totals
+	•	Confidence score
 
-  #### via Linux packages
+Work Order AI
+	•	Suggest additional jobs
+	•	Summaries
+	•	Cause/Correction help
+	•	AIAssistantModal for full conversation
 
-  Linux packages are provided in [Releases](https://github.com/supabase/cli/releases). To install, download the `.apk`/`.deb`/`.rpm`/`.pkg.tar.zst` file depending on your package manager and run the respective commands.
+Reports AI
+	•	/api/ai/summarize-stats
+	•	Generates readable narratives from financial data
 
-  ```sh
-  sudo apk add --allow-untrusted <...>.apk
-  ```
+Image Diagnostics (planned)
+	•	Photo uploads in work orders
+	•	Vehicle inspection photo analysis
 
-  ```sh
-  sudo dpkg -i <...>.deb
-  ```
+⸻
 
-  ```sh
-  sudo rpm -i <...>.rpm
-  ```
+🤖 ProFixIQ Agent (External Microservice)
 
-  ```sh
-  sudo pacman -U <...>.pkg.tar.zst
-  ```
-</details>
+Standalone service used for repo automation.
 
-<details>
-  <summary><b>Other Platforms</b></summary>
+Stack
+	•	Node 20 + Express
+	•	TypeScript
+	•	Octokit GitHub App integration
+	•	OpenAI LLM for code analysis
 
-  You can also install the CLI via [go modules](https://go.dev/ref/mod#go-install) without the help of package managers.
+Capabilities
+	•	Accept feature requests from the app
+	•	Accept refactor requests
+	•	Analyze codebase
+	•	Open GitHub Pull Requests automatically
+	•	Used for:
+	•	RLS policy fixes
+	•	Component refactors
+	•	Inspection grid fixes
+	•	File layout migrations
 
-  ```sh
-  go install github.com/supabase/cli@latest
-  ```
+⸻
 
-  Add a symlink to the binary in `$PATH` for easier access:
+🎨 Design Language
+	•	Dark neutral background (#0c0c0c family)
+	•	Orange accent (#ff6b1a / #f97316)
+	•	UI Components in @shared/components + features/shared/components
+	•	Fonts:
+	•	Black Ops One for headings
+	•	Inter for body
+	•	Cards with soft borders, minimal shadows
+	•	Mobile has simplified “app-like” card layout
+	•	Icons consistent with Lucide / HeroIcons
 
-  ```sh
-  ln -s "$(go env GOPATH)/bin/cli" /usr/bin/supabase
-  ```
+⸻
 
-  This works on other non-standard Linux distros.
-</details>
-
-<details>
-  <summary><b>Community Maintained Packages</b></summary>
-
-  Available via [pkgx](https://pkgx.sh/). Package script [here](https://github.com/pkgxdev/pantry/blob/main/projects/supabase.com/cli/package.yml).
-  To install in your working directory:
-
-  ```bash
-  pkgx install supabase
-  ```
-
-  Available via [Nixpkgs](https://nixos.org/). Package script [here](https://github.com/NixOS/nixpkgs/blob/master/pkgs/development/tools/supabase-cli/default.nix).
-</details>
-
-### Run the CLI
-
-```bash
-supabase bootstrap
-```
-
-Or using npx:
-
-```bash
-npx supabase bootstrap
-```
-
-The bootstrap command will guide you through the process of setting up a Supabase project using one of the [starter](https://github.com/supabase-community/supabase-samples/blob/main/samples.json) templates.
-
-## Docs
-
-Command & config reference can be found [here](https://supabase.com/docs/reference/cli/about).
-
-## Breaking changes
-
-We follow semantic versioning for changes that directly impact CLI commands, flags, and configurations.
-
-However, due to dependencies on other service images, we cannot guarantee that schema migrations, seed.sql, and generated types will always work for the same CLI major version. If you need such guarantees, we encourage you to pin a specific version of CLI in package.json.
-
-## Developing
-
-To run from source:
-
-```sh
-# Go >= 1.22
-go run . help
-```
+📁 Folder Structure (High-Level)

@@ -1,6 +1,8 @@
+// features/work-orders/components/WorkOrderSuggestionsPanel.tsx
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 type Suggestion = {
   name: string;
@@ -104,10 +106,13 @@ export function WorkOrderSuggestionsPanel(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workOrderId, vehicleId]);
 
-  async function addQuote(s: Suggestion) {
+  async function addSuggestedLine(s: Suggestion) {
+    if (!workOrderId) return;
     setAdding(s.name);
+    setError(null);
+
     try {
-      const res = await fetch("/api/work-orders/quotes/add", {
+      const res = await fetch("/api/work-orders/add-suggested-lines", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -117,7 +122,7 @@ export function WorkOrderSuggestionsPanel(props: {
             {
               description: s.name,
               jobType: s.jobType,
-              estLaborHours: s.laborHours ?? 0,
+              laborHours: s.laborHours ?? 0,
               notes: s.notes,
               aiComplaint: s.aiComplaint,
               aiCause: s.aiCause,
@@ -126,13 +131,19 @@ export function WorkOrderSuggestionsPanel(props: {
           ],
         }),
       });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error(j?.error || "Failed to add quote line");
+
+      const j = await res.json().catch(() => null);
+      if (!res.ok || !j?.ok) {
+        throw new Error(j?.error || "Failed to add job line");
       }
+
+      toast.success("Added job to current lines");
       await onAdded?.();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to add quote line");
+      console.error(e);
+      toast.error(
+        e instanceof Error ? e.message : "Failed to add job line",
+      );
     } finally {
       setAdding(null);
     }
@@ -148,7 +159,7 @@ export function WorkOrderSuggestionsPanel(props: {
           type="button"
           onClick={fetchSuggestions}
           disabled={loading}
-          className="text-xs px-2 py-1 rounded border border-neutral-700 hover:bg-neutral-800 disabled:opacity-60"
+          className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800 disabled:opacity-60"
         >
           {loading ? "Thinking…" : "Refresh"}
         </button>
@@ -165,9 +176,9 @@ export function WorkOrderSuggestionsPanel(props: {
           <button
             key={s.name}
             type="button"
-            onClick={() => addQuote(s)}
+            onClick={() => addSuggestedLine(s)}
             disabled={adding === s.name}
-            className="text-left border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 rounded p-3 disabled:opacity-60"
+            className="rounded border border-neutral-800 bg-neutral-900 p-3 text-left hover:bg-neutral-800 disabled:opacity-60"
           >
             <div className="font-medium">{s.name}</div>
             <div className="text-xs text-neutral-400">
@@ -178,7 +189,7 @@ export function WorkOrderSuggestionsPanel(props: {
               h
             </div>
             {s.notes && (
-              <div className="text-xs text-neutral-500 mt-1">
+              <div className="mt-1 text-xs text-neutral-500">
                 {s.notes}
               </div>
             )}
