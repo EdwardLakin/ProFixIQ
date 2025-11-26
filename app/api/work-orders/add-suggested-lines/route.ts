@@ -26,6 +26,17 @@ function normalizeVehicleId(v?: string | null): string | null {
   return trimmed.length === 0 ? null : trimmed;
 }
 
+// --- parts request types (same shape as your parts route) ---
+type PRInsert = DB["public"]["Tables"]["part_requests"]["Insert"];
+type PRIInsert = DB["public"]["Tables"]["part_request_items"]["Insert"];
+
+type PartRequestItemInsertWithExtras = PRIInsert & {
+  markup_pct: number;
+  work_order_line_id: string | null;
+};
+
+const DEFAULT_MARKUP = 30; // %
+
 export async function POST(req: Request) {
   const supabase = createServerComponentClient<DB>({ cookies });
 
@@ -87,8 +98,8 @@ export async function POST(req: Request) {
 
     const normalizedVehicleId = normalizeVehicleId(vehicleId ?? null);
 
-    // 👇 AI-added lines go straight into "awaiting parts" state
-    const rows = items.map((i) => ({
+    // 1) Insert work_order_lines in "awaiting parts" state
+    const lineRows = items.map((i) => ({
       work_order_id: workOrderId,
       vehicle_id: normalizedVehicleId,
       shop_id: wo.shop_id ?? null,
@@ -106,16 +117,80 @@ export async function POST(req: Request) {
       notes: i.notes ?? null,
     }));
 
-    const { error } = await supabase.from("work_order_lines").insert(rows);
+    const {
+      data: insertedLines,
+      error: insertError,
+    } = await supabase
+      .from("work_order_lines")
+      .insert(lineRows)
+      .select("id, description");
 
-    if (error) {
+    if (insertError || !insertedLines) {
       return NextResponse.json(
-        { error: error.message },
+        { error: insertError?.message ?? "Failed to insert lines" },
         { status: 500 },
       );
     }
 
-    return NextResponse.json({ ok: true, inserted: rows.length });
+    // 2) Auto-create a single part_request + items for these lines
+    if (!wo.shop_id) {
+      // if shop_id is missing we just skip PR creation, but lines are still there
+      return NextResponse.json({ ok: true, inserted: lineRows.length });
+    }
+
+    const header: PRInsert = {
+      work_order_id: workOrderId,
+      shop_id: wo.shop_id,
+      requested_by: user.id,
+      status: "requested",
+      notes: "Auto-created from AI suggested services",
+    };
+
+    const {
+      data: pr,
+      error: prErr,
+    } = await supabase
+      .from("part_requests")
+      .insert(header)
+      .select("id")
+      .single();
+
+    if (prErr || !pr?.id) {
+      return NextResponse.json(
+        { error: prErr?.message ?? "Failed to create part request" },
+        { status: 500 },
+      );
+    }
+
+    const itemRows: PartRequestItemInsertWithExtras[] = insertedLines.map((ln) => ({
+      request_id: pr.id,
+      description: (ln.description ?? "Service").trim(),
+      qty: 1,
+      approved: false,
+      part_id: null,
+      quoted_price: null,
+      vendor: null,
+      markup_pct: DEFAULT_MARKUP,
+      work_order_line_id: ln.id,
+    }));
+
+    const { error: itemsErr } = await supabase
+      .from("part_request_items")
+      .insert(itemRows);
+
+    if (itemsErr) {
+      return NextResponse.json(
+        { error: itemsErr.message ?? "Failed to insert part request items" },
+        { status: 500 },
+      );
+    }
+
+    return NextResponse.json({
+      ok: true,
+      inserted: lineRows.length,
+      partRequestId: pr.id,
+      partItems: itemRows.length,
+    });
   } catch (e: unknown) {
     console.error(e);
     return NextResponse.json(

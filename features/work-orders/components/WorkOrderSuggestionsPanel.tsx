@@ -162,40 +162,49 @@ export function WorkOrderSuggestionsPanel({
     }
   }, [workOrderId, fetchSuggestions]);
 
-  async function addToQuote(s: Suggestion) {
+  // 🔁 now uses add-suggested-lines, which can also fan out to parts
+  async function addSuggestedJob(s: Suggestion) {
     if (!workOrderId) return;
-    setAddingKey(s.serviceCode || s.label);
+
+    const key = s.serviceCode || s.label;
+    setAddingKey(key);
+
     try {
-      const res = await fetch("/api/work-orders/quotes/add", {
+      const res = await fetch("/api/work-orders/add-suggested-lines", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           workOrderId,
           vehicleId: vehicleId ?? null,
+          odometerKm: effectiveOdo ?? null,
           items: [
             {
               description: s.label,
+              serviceCode: s.serviceCode ?? undefined,
               jobType: s.jobType,
-              estLaborHours: s.laborHours ?? 1,
-              notes: s.notes,
-              // You could also pass serviceCode here if your backend
-              // wants to store a link back to maintenance_services.
-              serviceCode: s.serviceCode,
+              laborHours: s.laborHours ?? null,
+              notes: s.notes || undefined,
+              // aiComplaint / aiCause / aiCorrection not used for these
             },
           ],
         }),
       });
 
       const json = await res.json().catch(() => ({} as any));
-      if (!res.ok) {
-        throw new Error(json?.error || "Failed to add quote line");
+
+      if (!res.ok || json?.error) {
+        throw new Error(json?.error || "Failed to add maintenance job");
       }
 
-      toast.success("Maintenance item added to quote");
+      // Your add-suggested-lines route is responsible for:
+      // - creating work_order_lines
+      // - marking them as awaiting parts / on_hold
+      // - creating part_requests (if you wired that in there)
+      toast.success("Maintenance job added and queued for parts quote");
       await onAdded?.();
     } catch (e) {
       const msg =
-        e instanceof Error ? e.message : "Failed to add maintenance quote line";
+        e instanceof Error ? e.message : "Failed to add maintenance job";
       toast.error(msg);
     } finally {
       setAddingKey(null);
@@ -212,8 +221,8 @@ export function WorkOrderSuggestionsPanel({
             Maintenance suggestions
           </h2>
           <p className="text-[11px] text-neutral-500">
-            Based on this vehicle&apos;s profile and mileage, add items to the
-            quote instead of directly to jobs.
+            Based on this vehicle&apos;s profile and mileage, add items as jobs
+            and send them for parts quoting.
           </p>
         </div>
         <button
@@ -304,11 +313,11 @@ export function WorkOrderSuggestionsPanel({
                   <div className="flex shrink-0 flex-col items-end gap-1">
                     <button
                       type="button"
-                      onClick={() => void addToQuote(s)}
+                      onClick={() => void addSuggestedJob(s)}
                       disabled={addingKey === key}
                       className="rounded-md border border-blue-600 px-3 py-1 text-[11px] font-medium text-blue-200 hover:bg-blue-900/25 disabled:opacity-60"
                     >
-                      {addingKey === key ? "Adding…" : "Add to quote"}
+                      {addingKey === key ? "Adding…" : "Add & send to parts"}
                     </button>
                   </div>
                 </div>
