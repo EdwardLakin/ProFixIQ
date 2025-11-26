@@ -10,7 +10,6 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import dynamic from "next/dynamic";
@@ -29,7 +28,6 @@ import CustomerVehicleForm from "@/features/inspections/components/inspection/Cu
 import { MenuQuickAdd } from "@work-orders/components/MenuQuickAdd";
 import { NewWorkOrderLineForm } from "@work-orders/components/NewWorkOrderLineForm";
 
-
 // Session types
 import type {
   SessionCustomer,
@@ -39,7 +37,7 @@ import type {
 // 👇 new: inspection modal, client-only
 const InspectionModal = dynamic(
   () => import("@/features/inspections/components/InspectionModal"),
-  { ssr: false }
+  { ssr: false },
 );
 
 /* =============================================================================
@@ -77,7 +75,6 @@ const numOrNull = (v: string | number | null | undefined) => {
   return Number.isFinite(n) ? n : null;
 };
 
-const AUTO_CREATE_ON_MOUNT = true;
 
 export default function CreateWorkOrderPage() {
   const router = useRouter();
@@ -91,11 +88,11 @@ export default function CreateWorkOrderPage() {
   // Prefill ids from URL
   const [prefillVehicleId, setPrefillVehicleId] = useTabState<string | null>(
     "prefillVehicleId",
-    null
+    null,
   );
   const [prefillCustomerId, setPrefillCustomerId] = useTabState<string | null>(
     "prefillCustomerId",
-    null
+    null,
   );
 
   // Keep state (not shown in UI now)
@@ -134,11 +131,11 @@ export default function CreateWorkOrderPage() {
 
   const [customer, setCustomer] = useTabState<SessionCustomer>(
     "__cv_customer",
-    defaultCustomer
+    defaultCustomer,
   );
   const [vehicle, setVehicle] = useTabState<SessionVehicle>(
     "__cv_vehicle",
-    defaultVehicle
+    defaultVehicle,
   );
 
   // CV draft (session persisted)
@@ -159,7 +156,7 @@ export default function CreateWorkOrderPage() {
           Object.entries(d.customer).map(([k, v]) => [
             k as keyof SessionCustomer,
             (prev as any)[k] ?? v ?? null,
-          ])
+          ]),
         ),
       }));
     }
@@ -170,7 +167,7 @@ export default function CreateWorkOrderPage() {
           Object.entries(d.vehicle).map(([k, v]) => [
             k as keyof SessionVehicle,
             (prev as any)[k] ?? v ?? null,
-          ])
+          ]),
         ),
       }));
     }
@@ -179,7 +176,7 @@ export default function CreateWorkOrderPage() {
 
   const onCustomerChange = (
     field: keyof SessionCustomer | "business_name",
-    value: string | null
+    value: string | null,
   ) => {
     if (field === "business_name") {
       // store extra field alongside SessionCustomer shape
@@ -193,7 +190,7 @@ export default function CreateWorkOrderPage() {
 
   const onVehicleChange = (
     field: keyof SessionVehicle,
-    value: string | null
+    value: string | null,
   ) => {
     setVehicle((v) => ({ ...v, [field]: value }));
     cvDraft.setVehicleField(field as any, value);
@@ -202,11 +199,11 @@ export default function CreateWorkOrderPage() {
   // Captured ids
   const [customerId, setCustomerId] = useTabState<string | null>(
     "customerId",
-    null
+    null,
   );
   const [vehicleId, setVehicleId] = useTabState<string | null>(
     "vehicleId",
-    null
+    null,
   );
 
   // Work order + lines
@@ -227,7 +224,7 @@ export default function CreateWorkOrderPage() {
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [docFiles, setDocFiles] = useState<File[]>([]);
   const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(
-    null
+    null,
   );
 
   // UI state
@@ -272,7 +269,7 @@ export default function CreateWorkOrderPage() {
     })();
   }, [supabase]);
 
-  const isMounted = useRef(false);
+  
 
   // VIN / OCR draft hydration
   const draft = useWorkOrderDraft();
@@ -324,7 +321,7 @@ export default function CreateWorkOrderPage() {
   function getInitials(
     first?: string | null,
     last?: string | null,
-    fallback?: string | null
+    fallback?: string | null,
   ) {
     const f = (first ?? "").trim();
     const l = (last ?? "").trim();
@@ -410,7 +407,7 @@ export default function CreateWorkOrderPage() {
   const buildVehicleInsert = (
     v: SessionVehicle,
     customerId: string,
-    shopId: string | null
+    shopId: string | null,
   ) => ({
     customer_id: customerId,
     vin: strOrNull(v.vin),
@@ -477,7 +474,7 @@ export default function CreateWorkOrderPage() {
           const { data } = await supabase
             .from("vehicles")
             .select(
-              "id, vin, year, make, model, license_plate, mileage, unit_number, color, engine_hours, customer_id"
+              "id, vin, year, make, model, license_plate, mileage, unit_number, color, engine_hours, customer_id",
             )
             .eq("id", prefillVehicleId)
             .single();
@@ -560,7 +557,7 @@ export default function CreateWorkOrderPage() {
 
   async function ensureVehicleRow(
     cust: CustomerRow,
-    shopId: string | null
+    shopId: string | null,
   ): Promise<VehicleRow> {
     if (vehicleId) {
       const { data } = await supabase
@@ -617,7 +614,7 @@ export default function CreateWorkOrderPage() {
     try {
       if (!customer.first_name && !customer.phone && !customer.email) {
         throw new Error(
-          "Please enter at least a name, phone, or email for the customer."
+          "Please enter at least a name, phone, or email for the customer.",
         );
       }
 
@@ -674,10 +671,11 @@ export default function CreateWorkOrderPage() {
         return;
       }
 
+      // 🔑 Only here do we create a new work order now
       const initials = getInitials(
         cust.first_name ?? customer.first_name,
         cust.last_name ?? customer.last_name,
-        user.email ?? currentUserEmail
+        user.email ?? currentUserEmail,
       );
       const customId = await generateCustomId(initials);
       const newId = uuidv4();
@@ -706,9 +704,7 @@ export default function CreateWorkOrderPage() {
       await fetchLines();
     } catch (e) {
       const msg =
-        e instanceof Error
-          ? e.message
-          : "Failed to save customer/vehicle.";
+        e instanceof Error ? e.message : "Failed to save customer/vehicle.";
       setError(msg);
     } finally {
       setSavingCv(false);
@@ -768,7 +764,7 @@ export default function CreateWorkOrderPage() {
     const upOne = async (
       bucket: "vehicle-photos" | "vehicle-docs",
       f: File,
-      mediaType: "photo" | "document"
+      mediaType: "photo" | "document",
     ) => {
       const key = `veh_${vId}/${Date.now()}_${f.name}`;
       const up = await supabase.storage.from(bucket).upload(key, f, {
@@ -794,8 +790,7 @@ export default function CreateWorkOrderPage() {
     return { uploaded, failed };
   }
 
-  // Delete line
-  const handleDeleteLine = useCallback(
+    const handleDeleteLine = useCallback(
     async (lineId: string) => {
       if (!wo?.id) return;
 
@@ -821,7 +816,7 @@ export default function CreateWorkOrderPage() {
         }
         if (!deleted) {
           alert(
-            "Could not delete the line (no matching row). Check permissions/policies."
+            "Could not delete the line (no matching row). Check permissions/policies.",
           );
           return;
         }
@@ -833,7 +828,7 @@ export default function CreateWorkOrderPage() {
         alert(msg);
       }
     },
-    [supabase, wo?.id, wo?.shop_id, fetchLines, setLines]
+    [supabase, wo?.id, wo?.shop_id, fetchLines, setLines],
   );
 
   // ✅ open inspection for a given line
@@ -844,7 +839,7 @@ export default function CreateWorkOrderPage() {
       // simple template picker
       const desc = (line.description || "").toLowerCase();
       const isAir = /\bair\b|cvip|push\s*rod|air\s*brake/.test(desc);
-      let templateSlug = isAir ? "maintenance50-air" : "maintenance50";
+      const templateSlug = isAir ? "maintenance50-air" : "maintenance50";
 
       try {
         const res = await fetch("/api/inspections/session/create", {
@@ -881,7 +876,7 @@ export default function CreateWorkOrderPage() {
         alert(err?.message || "Unable to open inspection");
       }
     },
-    [wo?.id, vehicleId, customerId]
+    [wo?.id, vehicleId, customerId],
   );
 
   // Submit → Review & Sign
@@ -894,6 +889,7 @@ export default function CreateWorkOrderPage() {
     setUploadSummary(null);
 
     try {
+      // Make sure customer & vehicle (and WO) are persisted first
       await handleSaveCustomerVehicle();
 
       const woId = wo?.id;
@@ -932,19 +928,19 @@ export default function CreateWorkOrderPage() {
                 customer_id: latest.customer_id,
                 portal_url: portalUrl,
               },
-            }
+            },
           );
           if (fnErr)
             setInviteNotice(
-              "Work order created. Failed to send invite email (logged)."
+              "Work order created. Failed to send invite email (logged).",
             );
           else
             setInviteNotice(
-              "Work order created. Invite email queued to the customer."
+              "Work order created. Invite email queued to the customer.",
             );
         } catch {
           setInviteNotice(
-            "Work order created. Failed to send invite email (caught)."
+            "Work order created. Failed to send invite email (caught).",
           );
         }
       }
@@ -973,7 +969,7 @@ export default function CreateWorkOrderPage() {
           table: "work_order_lines",
           filter: `work_order_id=eq.${wo.id}`,
         },
-        () => fetchLines()
+        () => fetchLines(),
       )
       .subscribe();
     return () => {
@@ -992,128 +988,6 @@ export default function CreateWorkOrderPage() {
     window.addEventListener("wo:line-added", h);
     return () => window.removeEventListener("wo:line-added", h);
   }, [fetchLines]);
-
-  // Auto-create WO on mount
-  useEffect(() => {
-    if (!AUTO_CREATE_ON_MOUNT) return;
-    if (isMounted.current) return;
-    isMounted.current = true;
-
-    if (wo?.id) return;
-    setSourceFlags((s) => ({ ...s, autoWO: true }));
-
-    void (async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user?.id) return;
-
-      const shopId = await getOrLinkShopId(user.id);
-      if (!shopId) return;
-
-      // Ensure placeholder customer
-      let placeholderCustomer: CustomerRow | null = null;
-      try {
-        const { data } = await supabase
-          .from("customers")
-          .select("*")
-          .eq("shop_id", shopId)
-          .ilike("first_name", "Walk-in")
-          .ilike("last_name", "Customer")
-          .limit(1);
-        if (data?.length) placeholderCustomer = data[0] as CustomerRow;
-      } catch {
-        /* noop */
-      }
-
-      if (!placeholderCustomer) {
-        const { data } = await supabase
-          .from("customers")
-          .insert({ first_name: "Walk-in", last_name: "Customer", shop_id: shopId })
-          .select("*")
-          .single();
-        placeholderCustomer = (data as CustomerRow) ?? null;
-      }
-      if (!placeholderCustomer) {
-        setError("Could not ensure a placeholder customer for auto-create.");
-        return;
-      }
-
-      // Ensure placeholder vehicle
-      const { data: maybeVeh } = await supabase
-        .from("vehicles")
-        .select("*")
-        .eq("customer_id", placeholderCustomer.id)
-        .eq("shop_id", shopId)
-        .ilike("model", "Unassigned")
-        .limit(1);
-      let placeholderVehicle: VehicleRow | null = maybeVeh?.length
-        ? (maybeVeh[0] as VehicleRow)
-        : null;
-
-      if (!placeholderVehicle) {
-        const { data } = await supabase
-          .from("vehicles")
-          .insert({
-            customer_id: placeholderCustomer.id,
-            shop_id: shopId,
-            make: "—",
-            model: "Unassigned",
-            mileage: null,
-            unit_number: null,
-            color: null,
-            engine_hours: null,
-          })
-          .select("*")
-          .single();
-        placeholderVehicle = (data as VehicleRow) ?? null;
-      }
-      if (!placeholderVehicle) {
-        setError("Could not ensure a placeholder vehicle for auto-create.");
-        return;
-      }
-
-      const initials = getInitials(
-        placeholderCustomer.first_name ?? customer.first_name,
-        placeholderCustomer.last_name ?? customer.last_name,
-        user.email ?? currentUserEmail
-      );
-      const customId = await generateCustomId(initials);
-
-      const newId = uuidv4();
-      const { data: inserted, error } = await supabase
-        .from("work_orders")
-        .insert({
-          id: newId,
-          custom_id: customId,
-          user_id: user.id,
-          shop_id: shopId,
-          customer_id: placeholderCustomer.id,
-          vehicle_id: placeholderVehicle.id,
-          status: "awaiting_approval",
-          priority: 3,
-        })
-        .select("*")
-        .single();
-
-      if (!error && inserted) {
-        setWo(inserted);
-        await fetchLines();
-      } else if (error) {
-        setError(error.message ?? "Failed to auto-create work order.");
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    supabase,
-    wo?.id,
-    setWo,
-    fetchLines,
-    setError,
-    currentUserEmail,
-    customer.first_name,
-    customer.last_name,
-  ]);
 
   /* UI */
   return (
@@ -1309,8 +1183,6 @@ export default function CreateWorkOrderPage() {
             />
           </section>
         )}
-
-        
 
         {/* Current Lines */}
         <section className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 sm:p-5">
