@@ -1,3 +1,4 @@
+// app/mobile/work-orders/[id]/page.client.tsx
 "use client";
 
 import React, {
@@ -8,10 +9,8 @@ import React, {
   type JSX,
 } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import dynamic from "next/dynamic";
 
 import { supabaseBrowser as supabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
@@ -20,28 +19,14 @@ import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
 import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
 import VoiceButton from "@/features/shared/voice/VoiceButton";
 import { useTabState } from "@/features/shared/hooks/useTabState";
-import PartsDrawer from "@/features/parts/components/PartsDrawer";
-import AssignTechModal from "@/features/work-orders/components/workorders/extras/AssignTechModal";
 import { JobCard } from "@/features/work-orders/components/JobCard";
-
-// inspection modal
-const InspectionModal = dynamic(
-  () => import("@/features/inspections/components/InspectionModal"),
-  { ssr: false },
-);
+import FocusedJobModal from "@/features/work-orders/components/workorders/FocusedJobModal";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
-type Profile = DB["public"]["Tables"]["profiles"]["Row"];
-type AllocationRow =
-  DB["public"]["Tables"]["work_order_part_allocations"]["Row"] & {
-    parts?: { name: string | null } | null;
-  };
-type LineTechRow =
-  DB["public"]["Tables"]["work_order_line_technicians"]["Row"];
 type WorkOrderQuoteLine =
   DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
 
@@ -91,9 +76,6 @@ const chip = (s: string | null | undefined): string => {
   return `${BASE_BADGE} ${BADGE[key] ?? BADGE.awaiting}`;
 };
 
-// roles allowed to assign
-const ASSIGN_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
-
 /* ------------------------------------------------------------------------- */
 
 export default function MobileWorkOrderClient({
@@ -101,8 +83,6 @@ export default function MobileWorkOrderClient({
 }: {
   routeId: string;
 }): JSX.Element {
-  const router = useRouter();
-
   const [wo, setWo] = useTabState<WorkOrder | null>("m:wo:id:wo", null);
   const [lines, setLines] = useTabState<WorkOrderLine[]>(
     "m:wo:id:lines",
@@ -121,9 +101,6 @@ export default function MobileWorkOrderClient({
     null,
   );
 
-  const [allocsByLine, setAllocsByLine] = useState<
-    Record<string, AllocationRow[]>
-  >({});
   const [loading, setLoading] = useState<boolean>(false);
   const [viewError, setViewError] = useState<string | null>(null);
 
@@ -135,7 +112,7 @@ export default function MobileWorkOrderClient({
     "m:wo:id:effectiveUid",
     null,
   );
-  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
+  const [, setCurrentUserRole] = useState<string | null>(null);
 
   const [showDetails, setShowDetails] = useTabState<boolean>(
     "m:wo:showDetails",
@@ -143,28 +120,11 @@ export default function MobileWorkOrderClient({
   );
   const [warnedMissing, setWarnedMissing] = useState(false);
 
-  // parts
-  const [partsLineId, setPartsLineId] = useState<string | null>(null);
-  const [bulkQueue, setBulkQueue] = useState<string[]>([]);
-  const [bulkActive, setBulkActive] = useState<boolean>(false);
+  // focused job modal
+  const [focusedJobId, setFocusedJobId] = useState<string | null>(null);
+  const [focusedOpen, setFocusedOpen] = useState(false);
 
-  // inspection
-  const [inspectionOpen, setInspectionOpen] = useState(false);
-  const [inspectionSrc, setInspectionSrc] = useState<string | null>(null);
-
-  // assign mechanic
-  const [assignOpen, setAssignOpen] = useState(false);
-  const [assignLineId, setAssignLineId] = useState<string | null>(null);
-  const [assignables, setAssignables] = useState<
-    Array<Pick<Profile, "id" | "full_name" | "role">>
-  >([]);
-
-  // per-line technicians
-  const [lineTechsByLine, setLineTechsByLine] = useState<
-    Record<string, string[]>
-  >({});
-
-  /* ---------------------- AUTH + assignables ---------------------- */
+  /* ---------------------- AUTH ---------------------- */
   useEffect(() => {
     let mounted = true;
 
@@ -198,16 +158,6 @@ export default function MobileWorkOrderClient({
           .eq("id", uid)
           .maybeSingle();
         setCurrentUserRole(prof?.role ?? null);
-      }
-
-      try {
-        const res = await fetch("/api/assignables");
-        const json = await res.json();
-        if (res.ok && Array.isArray(json.data)) {
-          setAssignables(json.data);
-        }
-      } catch {
-        // ignore
       }
 
       if (!uid) setLoading(false);
@@ -299,8 +249,6 @@ export default function MobileWorkOrderClient({
           setQuoteLines([]);
           setVehicle(null);
           setCustomer(null);
-          setAllocsByLine({});
-          setLineTechsByLine({});
           setLoading(false);
           return;
         }
@@ -355,48 +303,6 @@ export default function MobileWorkOrderClient({
 
         if (custRes?.error) throw custRes.error;
         setCustomer((custRes?.data as Customer | null) ?? null);
-
-        // allocations + line techs
-        if (lineRows.length) {
-          const [allocsQuery, lineTechsQuery] = await Promise.all([
-            supabase
-              .from("work_order_part_allocations")
-              .select("*, parts(name)")
-              .in(
-                "work_order_line_id",
-                lineRows.map((l) => l.id),
-              ),
-            supabase
-              .from("work_order_line_technicians")
-              .select("work_order_line_id, technician_id")
-              .in(
-                "work_order_line_id",
-                lineRows.map((l) => l.id),
-              ),
-          ]);
-
-          const byLine: Record<string, AllocationRow[]> = {};
-          (allocsQuery.data ?? []).forEach((a) => {
-            const key = (a as AllocationRow).work_order_line_id;
-            if (!byLine[key]) byLine[key] = [];
-            byLine[key].push(a as AllocationRow);
-          });
-          setAllocsByLine(byLine);
-
-          const techMap: Record<string, string[]> = {};
-          (lineTechsQuery.data as LineTechRow[] | null)?.forEach((lt) => {
-            const lnId = lt.work_order_line_id;
-            const techId = lt.technician_id;
-            if (!techMap[lnId]) techMap[lnId] = [];
-            if (!techMap[lnId].includes(techId)) {
-              techMap[lnId].push(techId);
-            }
-          });
-          setLineTechsByLine(techMap);
-        } else {
-          setAllocsByLine({});
-          setLineTechsByLine({});
-        }
       } catch (e: unknown) {
         const msg =
           e instanceof Error ? e.message : "Failed to load work order.";
@@ -407,7 +313,15 @@ export default function MobileWorkOrderClient({
         setLoading(false);
       }
     },
-    [routeId, warnedMissing, setWo, setLines, setQuoteLines, setVehicle, setCustomer],
+    [
+      routeId,
+      warnedMissing,
+      setWo,
+      setLines,
+      setQuoteLines,
+      setVehicle,
+      setCustomer,
+    ],
   );
 
   useEffect(() => {
@@ -446,24 +360,6 @@ export default function MobileWorkOrderClient({
         {
           event: "*",
           schema: "public",
-          table: "work_order_part_allocations",
-        },
-        () => fetchAll(),
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "work_order_line_technicians",
-        },
-        () => fetchAll(),
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
           table: "work_order_quote_lines",
           filter: `work_order_id=eq.${wo.id}`,
         },
@@ -471,26 +367,58 @@ export default function MobileWorkOrderClient({
       )
       .subscribe();
 
-    const local = () => fetchAll();
-    window.addEventListener("wo:parts-used", local);
-
     return () => {
       try {
         supabase.removeChannel(ch);
       } catch {
         //
       }
-      window.removeEventListener("wo:parts-used", local);
     };
   }, [wo?.id, fetchAll]);
 
-  // 🔁 refresh this page when a parts request is submitted from elsewhere
+  // 🔁 refresh when a parts request or inspection completes (FocusedJobModal flow)
   useEffect(() => {
-    const handler = () => {
+    const handleParts = () => {
       void fetchAll();
     };
-    window.addEventListener("parts-request:submitted", handler);
-    return () => window.removeEventListener("parts-request:submitted", handler);
+    const handleInspectionCompleted = (
+      ev: CustomEvent<{
+        workOrderLineId?: string;
+        cause?: string;
+        correction?: string;
+      }>,
+    ) => {
+      const d = ev.detail || {};
+      const lineId = d.workOrderLineId;
+      if (!lineId) return;
+
+      setFocusedJobId(lineId);
+      setFocusedOpen(true);
+
+      window.dispatchEvent(
+        new CustomEvent("wo:prefill-cause-correction", {
+          detail: {
+            lineId,
+            cause: d.cause ?? "",
+            correction: d.correction ?? "",
+          },
+        }),
+      );
+    };
+
+    window.addEventListener("parts-request:submitted", handleParts);
+    window.addEventListener(
+      "inspection:completed",
+      handleInspectionCompleted as EventListener,
+    );
+
+    return () => {
+      window.removeEventListener("parts-request:submitted", handleParts);
+      window.removeEventListener(
+        "inspection:completed",
+        handleInspectionCompleted as EventListener,
+      );
+    };
   }, [fetchAll]);
 
   /* ----------------------- Derived data ----------------------- */
@@ -499,7 +427,6 @@ export default function MobileWorkOrderClient({
     [lines],
   );
 
-  // Quote lines that are still “active” (not converted to real jobs)
   const quotePending = useMemo(
     () => quoteLines.filter((q) => q.status !== "converted"),
     [quoteLines],
@@ -533,18 +460,7 @@ export default function MobileWorkOrderClient({
       ? format(createdAt, "PPpp")
       : "—";
 
-  const canAssign = currentUserRole ? ASSIGN_ROLES.has(currentUserRole) : false;
-
-  const assignablesById = useMemo(() => {
-    const m: Record<
-      string,
-      { full_name: string | null; role: string | null }
-    > = {};
-    assignables.forEach((a) => {
-      m[a.id] = { full_name: a.full_name, role: a.role };
-    });
-    return m;
-  }, [assignables]);
+  const canAssign = false; // stripped-down mobile view: assignments done in FocusedJobModal or desktop
 
   /* ----------------------- line & quote actions ----------------------- */
 
@@ -592,7 +508,6 @@ export default function MobileWorkOrderClient({
       } as DB["public"]["Tables"]["work_order_lines"]["Update"])
       .eq("id", lineId);
     if (error) return toast.error(error.message);
-    setPartsLineId(lineId);
     toast.success("Sent to parts for quoting");
   }, []);
 
@@ -610,13 +525,9 @@ export default function MobileWorkOrderClient({
       toast.error(error.message);
       return;
     }
-    setBulkQueue(ids);
-    setBulkActive(true);
-    setPartsLineId(ids[0] ?? null);
     toast.success("Queued all pending lines for parts quoting");
   }, [approvalPending]);
 
-  // Approve / convert a quote line → real job line
   const authorizeQuote = useCallback(
     async (quoteId: string) => {
       if (!quoteId) return;
@@ -641,7 +552,6 @@ export default function MobileWorkOrderClient({
     [fetchAll],
   );
 
-  // Decline a quote line
   const declineQuote = useCallback(
     async (quoteId: string) => {
       if (!quoteId) return;
@@ -658,94 +568,6 @@ export default function MobileWorkOrderClient({
     },
     [fetchAll],
   );
-
-  // open inspection
-  const openInspectionForLine = useCallback(
-    async (ln: WorkOrderLine) => {
-      if (!ln?.id) return;
-
-      const desc = String(ln.description ?? "").toLowerCase();
-      const isAir = /\bair\b|cvip|push\s*rod|air\s*brake/.test(desc);
-      const isCustom = /\bcustom\b|\bbuilder\b|\bprompt\b|\bad[-\s]?hoc\b/.test(
-        desc,
-      );
-
-      let templateSlug = isAir ? "maintenance50-air" : "maintenance50";
-      if (isCustom) {
-        templateSlug = "custom:pending";
-      }
-
-      try {
-        const res = await fetch("/api/inspections/session/create", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            workOrderId: wo?.id ?? null,
-            workOrderLineId: ln.id,
-            vehicleId: vehicle?.id ?? null,
-            customerId: customer?.id ?? null,
-            template: templateSlug,
-          }),
-        });
-
-        const j = (await res.json().catch(() => null)) as
-          | { sessionId?: string; error?: string }
-          | null;
-
-        if (!res.ok || !j?.sessionId) {
-          throw new Error(j?.error || "Failed to create inspection session");
-        }
-
-        if (isCustom) {
-          templateSlug = `custom:${j.sessionId}`;
-        }
-
-        const sp = new URLSearchParams();
-        if (wo?.id) sp.set("workOrderId", wo.id);
-        sp.set("workOrderLineId", ln.id);
-        sp.set("inspectionId", j.sessionId);
-        sp.set("template", templateSlug);
-        sp.set("embed", "1");
-        if (isCustom && ln.description)
-          sp.set("seed", String(ln.description));
-
-        const url = `/inspection/${templateSlug}?${sp.toString()}`;
-
-        setInspectionSrc(url);
-        setInspectionOpen(true);
-        toast.success("Inspection opened");
-      } catch (e) {
-        const err = e as { message?: string };
-        toast.error(err?.message ?? "Unable to open inspection");
-      }
-    },
-    [wo?.id, vehicle?.id, customer?.id],
-  );
-
-  // parts drawer close / bulk
-  useEffect(() => {
-    if (!partsLineId) return;
-
-    const evtName = `parts-drawer:closed:${partsLineId}`;
-
-    const handler = () => {
-      if (bulkActive && bulkQueue.length > 0) {
-        const [, ...rest] = bulkQueue;
-        setBulkQueue(rest);
-        setPartsLineId(rest[0] ?? null);
-        if (rest.length === 0) {
-          setBulkActive(false);
-          void fetchAll();
-        }
-      } else {
-        setPartsLineId(null);
-        void fetchAll();
-      }
-    };
-
-    window.addEventListener(evtName, handler as EventListener);
-    return () => window.removeEventListener(evtName, handler as EventListener);
-  }, [partsLineId, bulkActive, bulkQueue, fetchAll]);
 
   /* -------------------------- UI -------------------------- */
   if (!routeId)
@@ -1137,7 +959,7 @@ export default function MobileWorkOrderClient({
                   Jobs in this work order
                 </h2>
                 <p className="text-[11px] text-neutral-500">
-                  Tap a job to open its full-screen mobile view.
+                  Tap a job to open the focused job view.
                 </p>
               </div>
             </div>
@@ -1150,62 +972,22 @@ export default function MobileWorkOrderClient({
                   const punchedIn =
                     !!ln.punched_in_at && !ln.punched_out_at;
 
-                  const partsForLine = allocsByLine[ln.id] ?? [];
-
-                  const lineTechIds = lineTechsByLine[ln.id] ?? [];
-                  const primaryId =
-                    typeof ln.assigned_to === "string"
-                      ? (ln.assigned_to as string)
-                      : null;
-
-                  const orderedTechIds: string[] = [];
-                  if (primaryId) orderedTechIds.push(primaryId);
-                  lineTechIds.forEach((tid) => {
-                    if (!orderedTechIds.includes(tid)) {
-                      orderedTechIds.push(tid);
-                    }
-                  });
-
-                  const technicians = orderedTechIds.map((tid) => {
-                    const info = assignablesById[tid];
-                    return {
-                      id: tid,
-                      full_name: info?.full_name ?? null,
-                      role: info?.role ?? null,
-                    };
-                  });
-
                   return (
                     <JobCard
                       key={ln.id}
                       index={idx}
                       line={ln}
-                      parts={partsForLine}
-                      technicians={technicians}
+                      parts={[]} // stripped-down: no parts list on main mobile view
+                      technicians={[]} // assignment handled in focused modal / desktop
                       canAssign={canAssign}
                       isPunchedIn={punchedIn}
                       onOpen={() => {
-                        router.push(`/mobile/jobs/${ln.id}`);
+                        setFocusedJobId(ln.id);
+                        setFocusedOpen(true);
                       }}
-                      onAssign={
-                        canAssign
-                          ? () => {
-                              setAssignLineId(ln.id);
-                              setAssignOpen(true);
-                            }
-                          : undefined
-                      }
-                      onOpenInspection={
-                        ln.job_type === "inspection"
-                          ? () => {
-                              void openInspectionForLine(ln);
-                            }
-                          : undefined
-                      }
-                      onAddPart={() => {
-                        setPartsLineId(ln.id);
-                      }}
-                      // pricing props can be wired later if needed
+                      onAssign={undefined}
+                      onOpenInspection={undefined}
+                      onAddPart={undefined}
                     />
                   );
                 })}
@@ -1215,55 +997,14 @@ export default function MobileWorkOrderClient({
         </div>
       )}
 
-      {/* Parts Drawer */}
-      {partsLineId && wo?.id && (
-        <PartsDrawer
-          open={!!partsLineId}
-          workOrderId={wo.id}
-          workOrderLineId={partsLineId}
-          vehicleSummary={
-            vehicle
-              ? {
-                  year: (
-                    vehicle.year as string | number | null
-                  )?.toString() ?? null,
-                  make: vehicle.make ?? null,
-                  model: vehicle.model ?? null,
-                }
-              : null
-          }
-          jobDescription={
-            lines.find((l) => l.id === partsLineId)?.description ??
-            lines.find((l) => l.id === partsLineId)?.complaint ??
-            null
-          }
-          jobNotes={
-            lines.find((l) => l.id === partsLineId)?.notes ?? null
-          }
-          closeEventName={`parts-drawer:closed:${partsLineId}`}
-        />
-      )}
-
-      {/* Inspection modal */}
-      {inspectionOpen && inspectionSrc && (
-        <InspectionModal
-          open={inspectionOpen}
-          src={inspectionSrc}
-          title="Inspection"
-          onClose={() => setInspectionOpen(false)}
-        />
-      )}
-
-      {/* Assign mechanic modal */}
-      {assignOpen && assignLineId && (
-        <AssignTechModal
-          isOpen={assignOpen}
-          onClose={() => setAssignOpen(false)}
-          workOrderLineId={assignLineId}
-          mechanics={assignables}
-          onAssigned={async () => {
-            await fetchAll();
-          }}
+      {/* Focused job modal (full controls, parts, inspection, etc.) */}
+      {focusedOpen && focusedJobId && (
+        <FocusedJobModal
+          isOpen={focusedOpen}
+          onClose={() => setFocusedOpen(false)}
+          workOrderLineId={focusedJobId}
+          onChanged={fetchAll}
+          mode="tech"
         />
       )}
 
