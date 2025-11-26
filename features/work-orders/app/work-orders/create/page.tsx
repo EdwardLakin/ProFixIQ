@@ -27,6 +27,7 @@ import { useCustomerVehicleDraft } from "app/work-orders/state/useCustomerVehicl
 import CustomerVehicleForm from "@/features/inspections/components/inspection/CustomerVehicleForm";
 import { MenuQuickAdd } from "@work-orders/components/MenuQuickAdd";
 import { NewWorkOrderLineForm } from "@work-orders/components/NewWorkOrderLineForm";
+import { AiSuggestModal } from "@work-orders/components/AiSuggestModal";
 
 // Session types
 import type {
@@ -34,7 +35,7 @@ import type {
   SessionVehicle,
 } from "@/features/inspections/lib/inspection/types";
 
-// 👇 new: inspection modal, client-only
+// 👇 inspection modal, client-only
 const InspectionModal = dynamic(
   () => import("@/features/inspections/components/InspectionModal"),
   { ssr: false },
@@ -74,7 +75,6 @@ const numOrNull = (v: string | number | null | undefined) => {
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
 };
-
 
 export default function CreateWorkOrderPage() {
   const router = useRouter();
@@ -214,6 +214,9 @@ export default function CreateWorkOrderPage() {
   const [inspectionOpen, setInspectionOpen] = useState(false);
   const [inspectionSrc, setInspectionSrc] = useState<string | null>(null);
 
+  // ✅ AI suggest modal state
+  const [aiSuggestOpen, setAiSuggestOpen] = useState(false);
+
   // Defaults / notes
   const [type, setType] = useTabState<WOType>("type", "maintenance");
   const [notes, setNotes] = useTabState("notes", "");
@@ -268,8 +271,6 @@ export default function CreateWorkOrderPage() {
       setCurrentShopId(shop);
     })();
   }, [supabase]);
-
-  
 
   // VIN / OCR draft hydration
   const draft = useWorkOrderDraft();
@@ -790,7 +791,7 @@ export default function CreateWorkOrderPage() {
     return { uploaded, failed };
   }
 
-    const handleDeleteLine = useCallback(
+  const handleDeleteLine = useCallback(
     async (lineId: string) => {
       if (!wo?.id) return;
 
@@ -989,6 +990,16 @@ export default function CreateWorkOrderPage() {
     return () => window.removeEventListener("wo:line-added", h);
   }, [fetchLines]);
 
+  // Vehicle label for AI modal context
+  const vehicleLabel =
+    (vehicle.year || vehicle.make || vehicle.model)
+      ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${
+          vehicle.model ?? ""
+        }`.trim()
+      : vehicle.license_plate
+      ? `Plate ${vehicle.license_plate}`
+      : null;
+
   /* UI */
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 text-white">
@@ -1186,9 +1197,20 @@ export default function CreateWorkOrderPage() {
 
         {/* Current Lines */}
         <section className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 sm:p-5">
-          <h2 className="mb-3 text-sm font-semibold text-white">
-            Current Lines
-          </h2>
+          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-sm font-semibold text-white">
+              Current Lines
+            </h2>
+            {wo?.id && (
+              <button
+                type="button"
+                onClick={() => setAiSuggestOpen(true)}
+                className="inline-flex items-center rounded border border-blue-600 bg-neutral-950 px-3 py-1.5 text-xs sm:text-sm text-blue-300 hover:bg-blue-900/30"
+              >
+                AI: Suggest Jobs
+              </button>
+            )}
+          </div>
           {!wo?.id || lines.length === 0 ? (
             <p className="text-sm text-neutral-400">No lines yet.</p>
           ) : (
@@ -1321,6 +1343,20 @@ export default function CreateWorkOrderPage() {
           src={inspectionSrc}
           title="Inspection"
           onClose={() => setInspectionOpen(false)}
+        />
+      )}
+
+      {/* 👇 AI Suggest modal lives here */}
+      {wo?.id && (
+        <AiSuggestModal
+          open={aiSuggestOpen}
+          onClose={() => setAiSuggestOpen(false)}
+          workOrderId={wo.id}
+          vehicleId={vehicleId}
+          vehicleLabel={vehicleLabel}
+          onAdded={() => {
+            void fetchLines();
+          }}
         />
       )}
     </div>

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { toast } from "sonner";
 import type { Database, TablesInsert } from "@shared/types/types/supabase";
+import { AiSuggestModal } from "@work-orders/components/AiSuggestModal";
 
 type DB = Database;
 type WorkOrderLineInsert = TablesInsert<"work_order_lines">;
@@ -133,16 +134,16 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
   const shopReady = !!shopId;
   const vehicleId = vehicle?.id ?? null;
 
-  // AI modal
+  // AI modal (new, using shared AiSuggestModal)
   const [aiOpen, setAiOpen] = useState(false);
-  const [aiPrompt, setAiPrompt] = useState("");
-  const [aiBusy, setAiBusy] = useState(false);
 
   const lastSetShopId = useRef<string | null>(null);
   async function ensureShopContext(id: string | null) {
     if (!id) return;
     if (lastSetShopId.current === id) return;
-    const { error } = await supabase.rpc("set_current_shop_id", { p_shop_id: id });
+    const { error } = await supabase.rpc("set_current_shop_id", {
+      p_shop_id: id,
+    });
     if (!error) {
       lastSetShopId.current = id;
     } else {
@@ -632,65 +633,6 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     });
   }
 
-  // AI
-  async function runAiSuggest() {
-    if (!aiPrompt.trim()) return;
-    setAiBusy(true);
-    try {
-      const res = await fetch("/api/ai/menu/suggest", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: aiPrompt,
-          vehicle: vehicle
-            ? {
-                year: vehicle.year,
-                make: vehicle.make,
-                model: vehicle.model,
-              }
-            : null,
-        }),
-      });
-      const j = (await res.json()) as {
-        items?: {
-          name: string;
-          jobType: JobType;
-          laborHours?: number | null;
-          notes?: string | null;
-          parts?: PartToAllocate[];
-        }[];
-        error?: string;
-      };
-      if (!res.ok || j.error) throw new Error(j.error || "AI suggestion failed");
-
-      const items = (j.items ?? []).slice(0, 5);
-      if (!items.length) {
-        toast.message("No suggestions returned.");
-        return;
-      }
-
-      for (const it of items) {
-        await addMenuItem({
-          kind: "normal",
-          name: it.name,
-          jobType: it.jobType,
-          laborHours: it.laborHours ?? null,
-          notes: it.notes ?? null,
-          partsToAllocate: Array.isArray(it.parts) ? it.parts : undefined,
-          source: "ai",
-        });
-      }
-      setAiOpen(false);
-      setAiPrompt("");
-    } catch (e: unknown) {
-      const msg =
-        e instanceof Error ? e.message : "Could not get suggestions.";
-      toast.error(msg);
-    } finally {
-      setAiBusy(false);
-    }
-  }
-
   const vehicleLabel =
     vehicle && (vehicle.year || vehicle.make || vehicle.model)
       ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${
@@ -911,72 +853,19 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         </div>
       </div>
 
-      {/* AI modal */}
-      {aiOpen && (
-        <div className="fixed inset-0 z-[300] grid place-items-center">
-          <div
-            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-            onClick={() => setAiOpen(false)}
-          />
-          <div
-            className="relative z-[310] w-full max-w-xl rounded-lg border border-orange-400 bg-neutral-950 p-4 sm:p-5 text-white shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <div>
-                <div className="text-sm font-semibold text-orange-400">
-                  AI: Suggest Services
-                </div>
-                <p className="text-[11px] text-neutral-400">
-                  Describe the concern; we’ll suggest jobs and add them to this
-                  work order.
-                </p>
-              </div>
-              <button
-                type="button"
-                className="rounded-md border border-neutral-700 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-800"
-                onClick={() => setAiOpen(false)}
-              >
-                ✕
-              </button>
-            </div>
-
-            {vehicleLabel && (
-              <div className="mb-2 rounded-md border border-neutral-800 bg-neutral-900/70 px-3 py-1.5 text-[11px] text-neutral-300">
-                Using context for:{" "}
-                <span className="font-medium text-neutral-100">
-                  {vehicleLabel}
-                </span>
-              </div>
-            )}
-
-            <textarea
-              rows={4}
-              className="w-full rounded-md border border-neutral-700 bg-neutral-900 p-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-400 focus:outline-none"
-              placeholder="Example: Customer reports vibration at highway speeds, no dash lights on. Recently replaced front tires."
-              value={aiPrompt}
-              onChange={(e) => setAiPrompt(e.target.value)}
-            />
-            <div className="mt-3 flex justify-end gap-2">
-              <button
-                type="button"
-                className="rounded-md border border-neutral-700 px-3 py-1.5 text-xs sm:text-sm text-neutral-200 hover:bg-neutral-800"
-                onClick={() => setAiOpen(false)}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={aiBusy}
-                className="rounded-md border border-blue-600 bg-neutral-950 px-3 py-1.5 text-xs sm:text-sm text-blue-300 hover:bg-blue-900/30 disabled:opacity-60"
-                onClick={runAiSuggest}
-              >
-                {aiBusy ? "Thinking…" : "Suggest & Add"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* New shared AI Suggest modal */}
+      <AiSuggestModal
+        open={aiOpen}
+        onClose={() => setAiOpen(false)}
+        workOrderId={workOrderId}
+        vehicleId={vehicleId ?? null}
+        vehicleLabel={vehicleLabel ?? null}
+        onAdded={(count) => {
+          setWoLineCount((prev) =>
+            typeof prev === "number" ? prev + count : prev,
+          );
+        }}
+      />
     </div>
   );
 }

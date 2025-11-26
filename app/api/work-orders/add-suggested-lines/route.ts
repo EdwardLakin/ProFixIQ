@@ -20,6 +20,12 @@ type IncomingItem = {
   aiCorrection?: string;
 };
 
+function normalizeVehicleId(v?: string | null): string | null {
+  if (!v) return null;
+  const trimmed = v.trim();
+  return trimmed.length === 0 ? null : trimmed;
+}
+
 export async function POST(req: Request) {
   const supabase = createServerComponentClient<DB>({ cookies });
 
@@ -79,9 +85,11 @@ export async function POST(req: Request) {
     const effectiveOdometerKm =
       odometerKm ?? (wo.odometer_km as number | null) ?? null;
 
+    const normalizedVehicleId = normalizeVehicleId(vehicleId ?? null);
+
     const rows = items.map((i) => ({
       work_order_id: workOrderId,
-      vehicle_id: vehicleId ?? null,
+      vehicle_id: normalizedVehicleId,
       shop_id: wo.shop_id ?? null,
       description: i.description,
       job_type: i.jobType ?? "maintenance",
