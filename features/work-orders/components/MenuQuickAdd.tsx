@@ -150,7 +150,7 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     }
   }
 
-  // bootstrap WO + related
+  // bootstrap WO + related (shop, vehicle, customer, line count)
   useEffect(() => {
     (async () => {
       const { data: wo } = await supabase
@@ -191,23 +191,87 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     })();
   }, [supabase, workOrderId]);
 
-  // load saved menu items
+  // load saved menu items – prefer matches for this vehicle’s YMM
   const loadMenuItems = useCallback(async () => {
+    if (!shopId) return;
+
     setMenuLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("menu_items")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(20);
-      if (error) throw error;
-      setMenuItems(data ?? []);
+      const vYear =
+        typeof vehicle?.year === "number"
+          ? vehicle.year
+          : typeof vehicle?.year === "string"
+          ? parseInt(vehicle.year, 10)
+          : null;
+
+      const vMake =
+        typeof vehicle?.make === "string" && vehicle.make.trim().length
+          ? vehicle.make.trim()
+          : null;
+
+      const vModel =
+        typeof vehicle?.model === "string" && vehicle.model.trim().length
+          ? vehicle.model.trim()
+          : null;
+
+      let preferred: MenuItemRow[] = [];
+      let others: MenuItemRow[] = [];
+
+      if (vYear || vMake || vModel) {
+        // 1) items that match this vehicle’s YMM
+        let q = supabase
+          .from("menu_items")
+          .select("*")
+          .eq("shop_id", shopId)
+          .eq("is_active", true)
+          .order("created_at", { ascending: false });
+
+        if (vYear) q = q.eq("vehicle_year", vYear);
+        if (vMake) q = q.ilike("vehicle_make", vMake);
+        if (vModel) q = q.ilike("vehicle_model", vModel);
+
+        const { data: exact, error: exactErr } = await q.limit(20);
+        if (exactErr) throw exactErr;
+        preferred = (exact ?? []) as MenuItemRow[];
+
+        const excludeIds = preferred.map((mi) => mi.id);
+        // 2) recent active items for this shop, excluding the ones already in preferred
+        let fbQuery = supabase
+          .from("menu_items")
+          .select("*")
+          .eq("shop_id", shopId)
+          .eq("is_active", true)
+          .order("created_at", { ascending: false })
+          .limit(30);
+
+        if (excludeIds.length) {
+          fbQuery = fbQuery.not("id", "in", `(${excludeIds.join(",")})`);
+        }
+
+        const { data: fb, error: fbErr } = await fbQuery;
+        if (fbErr) throw fbErr;
+        others = (fb ?? []) as MenuItemRow[];
+      } else {
+        // No vehicle context yet: just recent active menu items for this shop
+        const { data, error } = await supabase
+          .from("menu_items")
+          .select("*")
+          .eq("shop_id", shopId)
+          .eq("is_active", true)
+          .order("created_at", { ascending: false })
+          .limit(20);
+        if (error) throw error;
+        preferred = (data ?? []) as MenuItemRow[];
+        others = [];
+      }
+
+      setMenuItems([...preferred, ...others]);
     } catch {
-      // ignore
+      // ignore; soft fail
     } finally {
       setMenuLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, shopId, vehicle]);
 
   // load inspection templates (mine + public)
   const loadTemplates = useCallback(async () => {
@@ -248,9 +312,14 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
   // initial loads
   useEffect(() => {
-    void loadMenuItems();
     void loadTemplates();
-  }, [loadMenuItems, loadTemplates]);
+  }, [loadTemplates]);
+
+  useEffect(() => {
+    if (shopId) {
+      void loadMenuItems();
+    }
+  }, [shopId, loadMenuItems]);
 
   // ============================================================
   // add line (menu or template)
@@ -264,7 +333,9 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
       // template-backed line
       if (params.kind === "template") {
-        const line: WorkOrderLineInsert & { inspection_template_id?: string | null } = {
+        const line: WorkOrderLineInsert & {
+          inspection_template_id?: string | null;
+        } = {
           work_order_id: workOrderId,
           vehicle_id: vehicleId,
           description:
@@ -542,7 +613,9 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         typeof mi.labor_time === "number"
           ? mi.labor_time
           : // fallback in case you add labor_hours to menu_items later
-            null,
+            typeof mi.labor_hours === "number"
+          ? mi.labor_hours
+          : null,
       notes: mi.description ?? null,
       source: "menu_item",
       returnLineId: true,
@@ -618,12 +691,11 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // UI
-  // ---------------------------------------------------------------------------
   const vehicleLabel =
     vehicle && (vehicle.year || vehicle.make || vehicle.model)
-      ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim()
+      ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${
+          vehicle.model ?? ""
+        }`.trim()
       : vehicle?.license_plate
       ? `Plate ${vehicle.license_plate}`
       : null;
@@ -772,14 +844,14 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         </div>
       </div>
 
-      {/* From My Menu */}
+      {/* From My Menu (vehicle-matched first) */}
       <div className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3 sm:p-4">
         <div className="mb-2 flex items-center justify-between gap-2">
           <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-300">
             From My Menu
           </h4>
           <p className="text-[10px] text-neutral-500">
-            Saved services — great for repeat jobs.
+            Saved services — best matches for this vehicle are shown first.
           </p>
         </div>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -805,12 +877,25 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
                   <div className="mt-1 text-xs text-neutral-400">
                     {typeof mi.labor_time === "number"
                       ? `${mi.labor_time.toFixed(1)}h`
+                      : typeof mi.labor_hours === "number"
+                      ? `${mi.labor_hours.toFixed(1)}h`
                       : "Labor TBD"}{" "}
                     •{" "}
                     {typeof mi.total_price === "number"
                       ? `$${mi.total_price.toFixed(0)}`
                       : "No price"}
                   </div>
+                  {mi.vehicle_year || mi.vehicle_make || mi.vehicle_model ? (
+                    <div className="mt-1 text-[10px] text-neutral-500">
+                      {[
+                        mi.vehicle_year ?? "",
+                        mi.vehicle_make ?? "",
+                        mi.vehicle_model ?? "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                    </div>
+                  ) : null}
                   {mi.description && (
                     <div className="mt-1 line-clamp-2 text-[11px] text-neutral-500">
                       {mi.description}

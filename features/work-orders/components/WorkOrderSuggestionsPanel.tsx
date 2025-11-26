@@ -1,251 +1,322 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 type JobType = "diagnosis" | "repair" | "maintenance" | "tech-suggested";
 
+type RawSuggestion = any;
+
 type Suggestion = {
-  name: string;
-  serviceCode?: string;
-  laborHours: number | null;
+  serviceCode: string | null;
+  label: string;
   jobType: JobType;
+  laborHours: number | null;
   notes: string;
-  aiComplaint?: string;
-  aiCause?: string;
-  aiCorrection?: string;
+  isCritical: boolean;
+  distanceKmNormal: number | null;
+  timeMonthsNormal: number | null;
 };
 
-function asSuggestions(input: unknown): Suggestion[] {
+type Props = {
+  workOrderId: string;
+  vehicleId: string | null;
+  odometerKm: number | null;
+  onAdded?: () => void | Promise<void>;
+};
+
+function normalizeSuggestions(input: unknown): Suggestion[] {
   if (!Array.isArray(input)) return [];
-  return input.map((raw: any) => {
-    const name =
-      typeof raw?.name === "string" && raw.name.trim()
-        ? raw.name.trim()
-        : "Suggested item";
 
-    const hours = Number(raw?.laborHours);
-    const jobType: JobType =
-      raw?.jobType === "diagnosis" ||
-      raw?.jobType === "repair" ||
-      raw?.jobType === "maintenance" ||
-      raw?.jobType === "tech-suggested"
-        ? raw.jobType
-        : "maintenance";
+  const validJobTypes: JobType[] = [
+    "diagnosis",
+    "repair",
+    "maintenance",
+    "tech-suggested",
+  ];
 
-    const notes = typeof raw?.notes === "string" ? raw.notes : "";
-
-    const serviceCode =
+  return input.map((raw: RawSuggestion): Suggestion => {
+    const serviceCodeRaw =
       typeof raw?.serviceCode === "string" && raw.serviceCode.trim()
-        ? raw.serviceCode.trim()
-        : undefined;
+        ? raw.serviceCode.trim().toUpperCase()
+        : null;
+
+    const labelRaw =
+      typeof raw?.label === "string" && raw.label.trim()
+        ? raw.label.trim()
+        : typeof raw?.name === "string" && raw.name.trim()
+        ? raw.name.trim()
+        : "Maintenance item";
+
+    const jobTypeRaw =
+      typeof raw?.jobType === "string" ? raw.jobType.trim().toLowerCase() : "";
+    const jobType: JobType = validJobTypes.includes(jobTypeRaw as JobType)
+      ? (jobTypeRaw as JobType)
+      : "maintenance";
+
+    const hoursRaw =
+      typeof raw?.default_labor_hours === "number"
+        ? raw.default_labor_hours
+        : typeof raw?.laborHours === "number"
+        ? raw.laborHours
+        : typeof raw?.typicalHours === "number"
+        ? raw.typicalHours
+        : null;
+
+    const notesRaw =
+      typeof raw?.default_notes === "string"
+        ? raw.default_notes
+        : typeof raw?.notes === "string"
+        ? raw.notes
+        : "";
+
+    const isCritical =
+      typeof raw?.is_critical === "boolean"
+        ? raw.is_critical
+        : typeof raw?.isCritical === "boolean"
+        ? raw.isCritical
+        : false;
+
+    const numOrNull = (v: unknown): number | null =>
+      typeof v === "number" && Number.isFinite(v) ? v : null;
 
     return {
-      name,
-      serviceCode,
-      laborHours: Number.isFinite(hours) ? hours : null,
+      serviceCode: serviceCodeRaw,
+      label: labelRaw,
       jobType,
-      notes,
-      aiComplaint:
-        typeof raw?.aiComplaint === "string" ? raw.aiComplaint : undefined,
-      aiCause: typeof raw?.aiCause === "string" ? raw.aiCause : undefined,
-      aiCorrection:
-        typeof raw?.aiCorrection === "string" ? raw.aiCorrection : undefined,
+      laborHours: numOrNull(hoursRaw),
+      notes: notesRaw,
+      isCritical,
+      distanceKmNormal: numOrNull(
+        raw?.distance_km_normal ?? raw?.distanceKmNormal,
+      ),
+      timeMonthsNormal: numOrNull(
+        raw?.time_months_normal ?? raw?.timeMonthsNormal,
+      ),
     };
   });
 }
 
-export function WorkOrderSuggestionsPanel(props: {
-  workOrderId: string;
-  vehicleId: string | null;
-  odometerKm?: number | null;
-  onAdded?: () => void | Promise<void>;
-}) {
-  const { workOrderId, vehicleId, odometerKm, onAdded } = props;
-
+export function WorkOrderSuggestionsPanel({
+  workOrderId,
+  vehicleId,
+  odometerKm,
+  onAdded,
+}: Props) {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [adding, setAdding] = useState<string | null>(null);
-  const [items, setItems] = useState<Suggestion[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [items, setItems] = useState<Suggestion[]>([]);
+  const [addingKey, setAddingKey] = useState<string | null>(null);
 
-  async function loadSuggestions() {
-    if (!workOrderId) return;
-    setLoading(true);
-    setError(null);
-
-    try {
-      const params = new URLSearchParams({ workOrderId });
-      const res = await fetch(
-        `/api/work-orders/maintenance-suggestions?${params.toString()}`
-      );
-      const j = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        throw new Error(j?.error || "Failed to load suggestions");
-      }
-
-      setItems(asSuggestions(j?.suggestions));
-      if (j?.status === "error" && j?.error_message) {
-        setError(j.error_message);
-      }
-    } catch (e) {
-      console.error(e);
-      setError(
-        e instanceof Error ? e.message : "Failed to load suggestions"
-      );
-      setItems([]);
-    } finally {
-      setLoading(false);
+  const effectiveOdo = useMemo(() => {
+    if (typeof odometerKm === "number" && Number.isFinite(odometerKm)) {
+      return odometerKm;
     }
-  }
+    return null;
+  }, [odometerKm]);
 
-  async function refreshSuggestions() {
-    if (!workOrderId) return;
-    setRefreshing(true);
-    setError(null);
+  const fetchSuggestions = useCallback(
+    async (opts?: { isRefresh?: boolean }) => {
+      const isRefresh = opts?.isRefresh ?? false;
+      if (!workOrderId) return;
 
-    try {
-      const res = await fetch("/api/work-orders/maintenance-suggestions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workOrderId }),
-      });
-
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(j?.error || "Failed to recompute suggestions");
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
       }
+      setError(null);
 
-      setItems(asSuggestions(j?.suggestions));
-      toast.success("Maintenance recommendations updated");
-    } catch (e) {
-      console.error(e);
-      setError(
-        e instanceof Error ? e.message : "Failed to recompute suggestions"
-      );
-      toast.error("Could not update maintenance recommendations");
-    } finally {
-      setRefreshing(false);
+      try {
+        const res = await fetch("/api/maintenance/suggestions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workOrderId }),
+        });
+
+        const json = await res.json().catch(() => ({} as any));
+
+        if (!res.ok) {
+          throw new Error(json?.error || "Failed to load suggestions");
+        }
+
+        const suggestions = normalizeSuggestions(json?.suggestions);
+        setItems(suggestions);
+      } catch (e) {
+        const msg =
+          e instanceof Error ? e.message : "Failed to load suggestions";
+        setError(msg);
+        setItems([]);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [workOrderId],
+  );
+
+  useEffect(() => {
+    if (workOrderId) {
+      void fetchSuggestions();
     }
-  }
+  }, [workOrderId, fetchSuggestions]);
 
-  async function addSuggestionAsLine(s: Suggestion) {
+  async function addToQuote(s: Suggestion) {
     if (!workOrderId) return;
-    setAdding(s.name);
+    setAddingKey(s.serviceCode || s.label);
     try {
-      const res = await fetch("/api/work-orders/add-suggested-lines", {
+      const res = await fetch("/api/work-orders/quotes/add", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           workOrderId,
           vehicleId: vehicleId ?? null,
-          odometerKm: odometerKm ?? null,
           items: [
             {
-              description: s.name,
-              serviceCode: s.serviceCode,
+              description: s.label,
               jobType: s.jobType,
-              laborHours: s.laborHours ?? 0,
+              estLaborHours: s.laborHours ?? 1,
               notes: s.notes,
-              aiComplaint: s.aiComplaint,
-              aiCause: s.aiCause,
-              aiCorrection: s.aiCorrection,
+              // You could also pass serviceCode here if your backend
+              // wants to store a link back to maintenance_services.
+              serviceCode: s.serviceCode,
             },
           ],
         }),
       });
 
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok || !j?.ok) {
-        throw new Error(j?.error || "Failed to add job line");
+      const json = await res.json().catch(() => ({} as any));
+      if (!res.ok) {
+        throw new Error(json?.error || "Failed to add quote line");
       }
 
-      // remove just this suggestion
-      setItems((prev) =>
-        prev.filter(
-          (item) =>
-            item.name !== s.name || item.serviceCode !== s.serviceCode
-        )
-      );
-
-      toast.success("Added maintenance job to work order");
-      window.dispatchEvent(new CustomEvent("wo:line-added"));
+      toast.success("Maintenance item added to quote");
       await onAdded?.();
     } catch (e) {
-      console.error(e);
-      toast.error(
-        e instanceof Error ? e.message : "Failed to add job line"
-      );
+      const msg =
+        e instanceof Error ? e.message : "Failed to add maintenance quote line";
+      toast.error(msg);
     } finally {
-      setAdding(null);
+      setAddingKey(null);
     }
   }
 
-  useEffect(() => {
-    if (workOrderId) {
-      void loadSuggestions();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workOrderId]);
+  const hasItems = items.length > 0;
 
   return (
-    <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 sm:p-5">
-      <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-orange-300">
-          Suggested maintenance (AI + history)
-        </h2>
+    <div className="rounded-xl border border-border bg-card/95 p-4 text-sm text-neutral-200">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div>
+          <h2 className="text-sm font-semibold text-orange-300">
+            Maintenance suggestions
+          </h2>
+          <p className="text-[11px] text-neutral-500">
+            Based on this vehicle&apos;s profile and mileage, add items to the
+            quote instead of directly to jobs.
+          </p>
+        </div>
         <button
           type="button"
-          onClick={refreshSuggestions}
-          disabled={refreshing}
-          className="text-xs px-2 py-1 rounded border border-neutral-700 hover:bg-neutral-800 disabled:opacity-60"
+          onClick={() => fetchSuggestions({ isRefresh: true })}
+          disabled={loading || refreshing}
+          className="rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-[11px] text-neutral-200 hover:bg-neutral-800 disabled:opacity-60"
         >
           {refreshing ? "Refreshing…" : "Refresh"}
         </button>
       </div>
 
+      {effectiveOdo !== null && (
+        <div className="mb-2 text-[11px] text-neutral-400">
+          Odometer:&nbsp;
+          <span className="font-mono text-neutral-200">
+            {effectiveOdo.toLocaleString()} km
+          </span>
+        </div>
+      )}
+
+      {loading && !hasItems && !error && (
+        <div className="mt-2 text-xs text-neutral-400">Loading…</div>
+      )}
+
       {error && (
-        <p className="mb-2 text-xs text-red-400">
+        <div className="mt-2 rounded border border-red-500/40 bg-red-950/60 p-2 text-xs text-red-200">
           {error}
-        </p>
+        </div>
       )}
 
-      {loading && !items.length && !error && (
-        <p className="text-xs text-neutral-400">Loading suggestions…</p>
+      {!loading && !error && !hasItems && (
+        <div className="mt-2 text-xs text-neutral-400">
+          No maintenance suggestions recorded for this work order yet.
+        </div>
       )}
 
-      <div className="grid gap-2 sm:grid-cols-2">
-        {items.map((s) => (
-          <button
-            key={`${s.serviceCode ?? "svc"}:${s.name}`}
-            type="button"
-            onClick={() => addSuggestionAsLine(s)}
-            disabled={adding === s.name}
-            className="text-left border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 rounded p-3 disabled:opacity-60"
-          >
-            <div className="font-medium">{s.name}</div>
-            <div className="text-xs text-neutral-400">
-              {s.jobType} •{" "}
-              {typeof s.laborHours === "number"
-                ? s.laborHours.toFixed(1)
-                : "—"}
-              h
-            </div>
-            {s.notes && (
-              <div className="text-xs text-neutral-500 mt-1">
-                {s.notes}
+      {hasItems && (
+        <div className="mt-3 space-y-2">
+          {items.map((s) => {
+            const key = s.serviceCode || s.label;
+            const dueBits: string[] = [];
+
+            if (s.distanceKmNormal != null) {
+              dueBits.push(`${s.distanceKmNormal.toLocaleString()} km`);
+            }
+            if (s.timeMonthsNormal != null) {
+              dueBits.push(`${s.timeMonthsNormal} months`);
+            }
+
+            return (
+              <div
+                key={key}
+                className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="truncate font-medium text-neutral-50">
+                        {s.label}
+                      </div>
+                      {s.serviceCode && (
+                        <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wide text-neutral-300">
+                          {s.serviceCode}
+                        </span>
+                      )}
+                      {s.isCritical && (
+                        <span className="rounded-full border border-red-700/70 bg-red-900/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-200">
+                          Critical
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-0.5 text-[11px] text-neutral-400">
+                      {s.jobType} •{" "}
+                      {typeof s.laborHours === "number"
+                        ? `${s.laborHours.toFixed(1)}h`
+                        : "Labor TBD"}
+                      {dueBits.length > 0 && (
+                        <> • Due around: {dueBits.join(" or ")}</>
+                      )}
+                    </div>
+                    {s.notes && (
+                      <div className="mt-1 text-[11px] text-neutral-400">
+                        {s.notes}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <button
+                      type="button"
+                      onClick={() => void addToQuote(s)}
+                      disabled={addingKey === key}
+                      className="rounded-md border border-blue-600 px-3 py-1 text-[11px] font-medium text-blue-200 hover:bg-blue-900/25 disabled:opacity-60"
+                    >
+                      {addingKey === key ? "Adding…" : "Add to quote"}
+                    </button>
+                  </div>
+                </div>
               </div>
-            )}
-          </button>
-        ))}
-
-        {!loading && items.length === 0 && !error && (
-          <div className="text-xs text-neutral-400">
-            No maintenance items are due right now. Click Refresh to re-check.
-          </div>
-        )}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
