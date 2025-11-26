@@ -1,4 +1,4 @@
-// app/work-orders/[id]/page.client.tsx (refactored to use JobCard)
+// app/work-orders/[id]/page.client.tsx
 
 "use client";
 
@@ -1034,6 +1034,14 @@ export default function WorkOrderIdClient(): JSX.Element {
                                     " ",
                                   )}
                                 </div>
+
+                                {/* 👇 flag AI / parts-queued lines */}
+                                {isAwaitingParts && (
+                                  <div className="mt-1 inline-flex items-center rounded-full border border-blue-500/50 bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-200">
+                                    Awaiting parts quote
+                                  </div>
+                                )}
+
                                 {ln.notes && (
                                   <div className="mt-1 text-[11px] text-neutral-400">
                                     Notes: {ln.notes}

@@ -87,6 +87,7 @@ export async function POST(req: Request) {
 
     const normalizedVehicleId = normalizeVehicleId(vehicleId ?? null);
 
+    // 👇 AI-added lines go straight into "awaiting parts" state
     const rows = items.map((i) => ({
       work_order_id: workOrderId,
       vehicle_id: normalizedVehicleId,
@@ -97,7 +98,9 @@ export async function POST(req: Request) {
       complaint: i.aiComplaint ?? null,
       cause: i.aiCause ?? null,
       correction: i.aiCorrection ?? null,
-      status: "awaiting_approval" as const,
+      status: "on_hold" as const,
+      approval_state: "pending" as const,
+      hold_reason: "Awaiting parts quote",
       service_code: i.serviceCode ?? null,
       odometer_km: effectiveOdometerKm,
       notes: i.notes ?? null,
