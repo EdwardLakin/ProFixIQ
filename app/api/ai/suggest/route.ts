@@ -1,159 +1,297 @@
+// app/api/ai/parts/suggest/route.ts
 import { NextResponse } from "next/server";
-import masterServicesList from "@/features/inspections/lib/inspection/masterServicesList";
+import { openai } from "lib/server/openai";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
-type JobType = "maintenance" | "repair" | "diagnosis" | "inspection";
 
-interface VehicleContext {
+type VehicleContext = {
   year?: string | number | null;
   make?: string | null;
   model?: string | null;
   mileage?: string | number | null;
+};
+
+export type AiPartSuggestion = {
+  name: string;
+  sku?: string | null;
+  qty?: number | null;
+  confidence?: number | null; // 0–1
+  rationale?: string | null;
+};
+
+type SuggestRequestBody = {
+  workOrderId?: string;
+  workOrderLineId?: string | null;
+  vehicle?: VehicleContext | null;
+  description?: string | null; // complaint / job description
+  notes?: string | null;
+  prompt?: string | null; // backward-compat
+  topK?: number;
+};
+
+const MODEL = process.env.OPENAI_MODEL?.trim() || "gpt-5.1-mini";
+
+// Build a single human-readable line for the vehicle.
+function formatVehicle(v: VehicleContext | null | undefined): string {
+  if (!v) return "Unknown vehicle";
+  const year =
+    v.year != null && String(v.year).trim()
+      ? String(v.year).trim()
+      : "Unknown year";
+  const make = v.make?.trim() || "Unknown make";
+  const model = v.model?.trim() || "Unknown model";
+  const mileage =
+    v.mileage != null && String(v.mileage).trim()
+      ? `${v.mileage} km/mi (as entered)`
+      : "Unknown mileage";
+  return `${year} ${make} ${model}, mileage: ${mileage}`;
 }
 
-// ---------------- mileage rules ----------------
-function getMileageRecommendations(mileage: number | null | undefined): string[] {
-  if (mileage == null || Number.isNaN(mileage)) return [];
-  const mi = mileage;
+/**
+ * Core handler – uses WO line complaint/description + vehicle + inventory
+ * to ask the LLM for part suggestions.
+ */
+export async function POST(req: Request) {
+  const supabase = createAdminSupabase();
 
-  const rec: string[] = [];
-  if (mi >= 5_000) rec.push("oil"); // “Engine oil and filter change”
-  if (mi >= 20_000) rec.push("tire rotation", "brake inspection");
-  if (mi >= 50_000) rec.push("transmission", "differential", "transfer case");
-  if (mi >= 100_000) rec.push("coolant", "fuel filter");
-  if (mi >= 150_000) rec.push("timing", "major inspection");
-  return rec;
-}
+  try {
+    const body = (await req.json().catch(() => ({}))) as SuggestRequestBody;
 
-// ---------------- vehicle heuristics ----------------
-function detectKind(v: VehicleContext | null): {
-  isDiesel: boolean;
-  isHeavyDuty: boolean;
-  isCommercial: boolean;
-  hint: string;
-  mileageNumber: number | null;
-} {
-  const make = (v?.make ?? "").toLowerCase();
-  const model = (v?.model ?? "").toLowerCase();
-  const yearStr = v?.year != null ? String(v.year) : "";
-  const hintParts = [yearStr, v?.make, v?.model].filter(Boolean);
-  const hint = hintParts.length ? ` (${hintParts.join(" ")})` : "";
+    const {
+      workOrderId,
+      workOrderLineId,
+      vehicle: vehicleFromBody,
+      description,
+      notes,
+      prompt,
+    } = body;
 
-  // Simple diesel detection
-  const dieselMarkers = ["diesel", "tdi", "power stroke", "duramax", "cummins"];
-  const isDiesel =
-    dieselMarkers.some((m) => model.includes(m) || make.includes(m)) ||
-    /2500|3500|4500|5500/.test(model);
+    const topK =
+      typeof body.topK === "number" && body.topK > 0 && body.topK <= 10
+        ? body.topK
+        : 5;
 
-  // Heavy duty pickup / chassis
-  const isHeavyDuty =
-    /f[- ]?250|f[- ]?350|2500|3500|4500|5500|ram\s?(25|35|45|55)00|silverado\s?(25|35)00|sierra\s?(25|35)00/i.test(
-      `${make} ${model}`,
-    );
+    // ------------------------------------------------------------
+    // 1. Resolve complaint / description from the WO line if needed
+    // ------------------------------------------------------------
+    let complaintText = (description ?? "").trim();
+    let lineNotes = (notes ?? "").trim();
+    let resolvedWorkOrderId: string | null = workOrderId ?? null;
+    let shopId: string | null = null;
 
-  // Commercial vans / fleet
-  const isCommercial =
-    /(sprinter|transit|promaster|express|savanna|nv200|e-?series)/i.test(model) ||
-    /cvip|fleet|cube|cargo/i.test(model);
+    if (workOrderLineId) {
+      const { data: line, error: lineErr } = await supabase
+        .from("work_order_lines")
+        .select("id, work_order_id, description, complaint, notes")
+        .eq("id", workOrderLineId)
+        .maybeSingle();
 
-  const mileageNumber = v?.mileage != null ? Number(v.mileage) : null;
+      if (lineErr) {
+        console.warn("[ai/parts/suggest] line fetch error", lineErr.message);
+      }
 
-  return { isDiesel, isHeavyDuty, isCommercial, hint, mileageNumber };
-}
-
-// helper: fuzzy match into master list
-function pickByKeywords(keywords: string[]): string[] {
-  const picks: string[] = [];
-  for (const cat of masterServicesList) {
-    for (const it of cat.items) {
-      const li = it.item.toLowerCase();
-      if (keywords.some((k) => li.includes(k.toLowerCase()))) {
-        picks.push(it.item);
+      if (line) {
+        if (!complaintText) {
+          complaintText =
+            (line.description ?? "").trim() ||
+            (line.complaint ?? "").trim() ||
+            complaintText;
+        }
+        if (!lineNotes) {
+          lineNotes = (line.notes ?? "").trim() || lineNotes;
+        }
+        if (!resolvedWorkOrderId && line.work_order_id) {
+          resolvedWorkOrderId = line.work_order_id;
+        }
       }
     }
-  }
-  // de-dupe while preserving order
-  return Array.from(new Set(picks));
-}
 
-export async function POST(req: Request) {
-  try {
-    const body = (await req.json()) as {
-      prompt?: string | null;
-      vehicle?: VehicleContext | null;
-    };
+    // Fall back to any free-form prompt we got
+    if (!complaintText && prompt) {
+      complaintText = String(prompt).trim();
+    }
 
-    const v = body.vehicle ?? null;
-    const { isDiesel, isHeavyDuty, isCommercial, hint, mileageNumber } = detectKind(v);
-    const userPrompt = String(body.prompt ?? "").trim().toLowerCase();
+    // ------------------------------------------------------------
+    // 2. Resolve shop + inventory from the work order
+    // ------------------------------------------------------------
+    if (resolvedWorkOrderId) {
+      const { data: wo, error: woErr } = await supabase
+        .from("work_orders")
+        .select("id, shop_id")
+        .eq("id", resolvedWorkOrderId)
+        .maybeSingle();
 
-    // ---------- A/B: build suggestions ----------
-    // 1) Prompt → repair/diagnosis phrasing (very basic contains for now)
-    const promptMatches =
-      userPrompt.length === 0
-        ? []
-        : masterServicesList.flatMap((category) =>
-            category.items
-              .filter((i) => i.item.toLowerCase().includes(userPrompt))
-              .map((i) => ({
-                name: `${i.item}${hint}`,
-                jobType: "repair" as const,
-                laborHours: 1.0,
-                notes: `Based on issue: ${body.prompt}`,
-              })),
-          );
+      if (woErr) {
+        console.warn("[ai/parts/suggest] work_order fetch error", woErr.message);
+      }
+      shopId = (wo?.shop_id as string | null) ?? null;
+    }
 
-    // 2) Mileage rules → maintenance
-    const mileageKeys = getMileageRecommendations(mileageNumber);
-    const mileageItems = pickByKeywords(mileageKeys);
-    const mileageMatches = mileageItems.map((name) => ({
-      name: `${name}${hint}`,
-      jobType: "maintenance" as JobType,
-      laborHours: 1.0,
-      notes: v?.mileage != null ? `Recommended at ~${v.mileage} km/mi` : "Mileage-based recommendation",
-    }));
+    let inventory: { id: string; name: string | null; sku: string | null; category: string | null }[] =
+      [];
 
-    // 3) Diesel / Heavy-duty / Commercial heuristics
-    const dieselKeys = isDiesel ? ["DEF", "DPF", "EGR", "diesel fuel filter", "water separator"] : [];
-    const hdKeys = isHeavyDuty ? ["Grease chassis (heavy-duty)", "Push rod travel", "5th wheel", "brake shoes"] : [];
-    const commKeys = isCommercial ? ["CVIP", "Annual safety inspection"] : [];
-    const kindItems = pickByKeywords([...dieselKeys, ...hdKeys, ...commKeys]);
-    const kindMatches = kindItems.map((name) => ({
-      name: `${name}${hint}`,
-      jobType: name.toLowerCase().includes("inspection") ? ("inspection" as JobType) : ("maintenance" as JobType),
-      laborHours: 1.0,
-      notes: isDiesel
-        ? "Diesel/HD recommendation"
-        : isHeavyDuty
-        ? "Heavy-duty maintenance"
-        : "Commercial/fleet maintenance",
-    }));
+    if (shopId) {
+      const { data: parts, error: partsErr } = await supabase
+        .from("parts")
+        .select("id, name, sku, category")
+        .eq("shop_id", shopId)
+        .order("name", { ascending: true })
+        .limit(200);
 
-    // ---------- D: fallback ----------
-    const fallback =
-      promptMatches.length || mileageMatches.length || kindMatches.length
-        ? []
-        : ([
-            {
-              name: `General inspection${hint}`,
-              jobType: "inspection" as JobType,
-              laborHours: 1.0,
-              notes: "Multi-point inspection",
+      if (partsErr) {
+        console.warn(
+          "[ai/parts/suggest] parts fetch error",
+          partsErr.message,
+        );
+      } else {
+        inventory = (parts ?? []) as typeof inventory;
+      }
+    }
+
+    const vehicleSummary = formatVehicle(vehicleFromBody ?? null);
+
+    // If we somehow have *zero* context, just return empty so UI shows "No suggestions".
+    if (!complaintText && !inventory.length) {
+      return NextResponse.json<{ items: AiPartSuggestion[] }>({
+        items: [],
+      });
+    }
+
+    // ------------------------------------------------------------
+    // 3. Call the model with a structured JSON schema
+    // ------------------------------------------------------------
+    const inventoryLines = inventory
+      .map((p) => {
+        const sku = p.sku ? p.sku : "NO_SKU";
+        const name = p.name ?? "Unnamed";
+        const cat = p.category ?? "Uncategorized";
+        return `${sku} | ${name} | ${cat}`;
+      })
+      .join("\n");
+
+    const systemPrompt = [
+      "You are an automotive parts advisor working inside a repair shop's inventory system.",
+      "Your job is to suggest PARTS (not labor) for a given work order line complaint/description.",
+      "You are given:",
+      "- Vehicle summary",
+      "- Complaint / job description and notes",
+      "- The shop's current parts inventory list (SKU | Name | Category).",
+      "",
+      "Rules:",
+      "- Prefer parts that exist in the inventory list when possible.",
+      "- When you use an inventory part, set its SKU to the exact SKU from the list.",
+      "- If you cannot match the inventory exactly, you may omit SKU or leave it null.",
+      "- Suggest realistic quantities for a single job on one vehicle.",
+      "- Focus on physical parts or fluids, not shop supplies like rags or brake cleaner.",
+      "- Return between 1 and 8 suggestions ordered by usefulness.",
+      "",
+      "Return JSON only, matching the schema, with no extra commentary.",
+    ].join("\n");
+
+    const userPromptText = [
+      `Vehicle: ${vehicleSummary}`,
+      "",
+      "Complaint / job description:",
+      complaintText || "(none)",
+      "",
+      "Additional notes:",
+      lineNotes || "(none)",
+      "",
+      "Parts inventory (SKU | Name | Category):",
+      inventoryLines || "(no inventory rows available)",
+      "",
+      `Suggest up to ${topK} parts for this job.`,
+    ].join("\n");
+
+    const completion = await openai.chat.completions.create({
+      model: MODEL,
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "part_suggestions",
+          schema: {
+            type: "object",
+            properties: {
+              items: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string" },
+                    sku: { type: ["string", "null"], nullable: true },
+                    qty: { type: ["number", "null"], nullable: true },
+                    confidence: {
+                      type: ["number", "null"],
+                      nullable: true,
+                    },
+                    rationale: {
+                      type: ["string", "null"],
+                      nullable: true,
+                    },
+                  },
+                  required: ["name"],
+                  additionalProperties: false,
+                },
+              },
             },
-            {
-              name: `Oil & filter service${hint}`,
-              jobType: "maintenance" as JobType,
-              laborHours: 0.8,
-              notes: "Basic preventative maintenance",
-            },
-          ] satisfies { name: string; jobType: JobType; laborHours: number; notes: string }[]);
+            required: ["items"],
+            additionalProperties: false,
+          },
+        },
+      },
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPromptText },
+      ],
+      temperature: 0.3,
+    });
 
-    const items = [...promptMatches, ...mileageMatches, ...kindMatches, ...fallback].slice(0, 8);
+    const raw = completion.choices[0]?.message?.content || "{}";
+    let parsed: { items?: AiPartSuggestion[] } = {};
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      parsed = {};
+    }
 
-    return NextResponse.json({ items });
+    const itemsRaw = Array.isArray(parsed.items) ? parsed.items : [];
+
+    // Basic sanitization
+    const items: AiPartSuggestion[] = itemsRaw
+      .map((it) => ({
+        name: String(it.name ?? "").trim(),
+        sku:
+          typeof it.sku === "string" && it.sku.trim().length
+            ? it.sku.trim()
+            : null,
+        qty:
+          typeof it.qty === "number" && Number.isFinite(it.qty) && it.qty > 0
+            ? it.qty
+            : null,
+        confidence:
+          typeof it.confidence === "number" && Number.isFinite(it.confidence)
+            ? Math.min(1, Math.max(0, it.confidence))
+            : null,
+        rationale:
+          typeof it.rationale === "string" && it.rationale.trim().length
+            ? it.rationale.trim()
+            : null,
+      }))
+      .filter((it) => it.name.length > 0)
+      .slice(0, topK);
+
+    return NextResponse.json<{ items: AiPartSuggestion[] }>({
+      items,
+    });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "AI Suggest failed" },
-      { status: 400 },
-    );
+    console.warn("[ai/parts/suggest] error", err);
+    // Never break the picker – just show no suggestions.
+    return NextResponse.json<{ items: AiPartSuggestion[]; error?: string }>({
+      items: [],
+      error:
+        err instanceof Error
+          ? err.message
+          : "Unable to generate part suggestions.",
+    });
   }
 }
