@@ -199,11 +199,13 @@ export default function PartsRequestDetail() {
     if (s === "quoted") {
       const lineId = getLineIdFromItems(items);
       if (lineId) {
-        // mark line quoted so it shows as "quoted" in Awaiting Customer Approval
+        // ✅ mark line quoted and pending approval on the WO
         const { error: wolErr } = await supabase
           .from("work_order_lines")
           .update({
             status: "quoted",
+            approval_state: "pending",
+            hold_reason: "Parts quote ready – awaiting customer approval",
           } as DB["public"]["Tables"]["work_order_lines"]["Update"])
           .eq("id", lineId);
         if (wolErr) {

@@ -6597,51 +6597,110 @@ export type Database = {
           ai_cause: string | null
           ai_complaint: string | null
           ai_correction: string | null
+          approved_at: string | null
           created_at: string
+          declined_at: string | null
           description: string
           est_labor_hours: number | null
+          grand_total: number | null
+          group_id: string | null
           id: string
           job_type: string
+          labor_hours: number | null
+          labor_total: number | null
+          metadata: Json | null
           notes: string | null
+          parts_total: number | null
+          qty: number | null
+          sent_to_customer_at: string | null
+          shop_id: string | null
+          stage: string | null
           status: string
+          subtotal: number | null
           suggested_by: string | null
+          tax_total: number | null
           updated_at: string
           vehicle_id: string | null
           work_order_id: string
+          work_order_line_id: string | null
         }
         Insert: {
           ai_cause?: string | null
           ai_complaint?: string | null
           ai_correction?: string | null
+          approved_at?: string | null
           created_at?: string
+          declined_at?: string | null
           description: string
           est_labor_hours?: number | null
+          grand_total?: number | null
+          group_id?: string | null
           id?: string
           job_type?: string
+          labor_hours?: number | null
+          labor_total?: number | null
+          metadata?: Json | null
           notes?: string | null
+          parts_total?: number | null
+          qty?: number | null
+          sent_to_customer_at?: string | null
+          shop_id?: string | null
+          stage?: string | null
           status?: string
+          subtotal?: number | null
           suggested_by?: string | null
+          tax_total?: number | null
           updated_at?: string
           vehicle_id?: string | null
           work_order_id: string
+          work_order_line_id?: string | null
         }
         Update: {
           ai_cause?: string | null
           ai_complaint?: string | null
           ai_correction?: string | null
+          approved_at?: string | null
           created_at?: string
+          declined_at?: string | null
           description?: string
           est_labor_hours?: number | null
+          grand_total?: number | null
+          group_id?: string | null
           id?: string
           job_type?: string
+          labor_hours?: number | null
+          labor_total?: number | null
+          metadata?: Json | null
           notes?: string | null
+          parts_total?: number | null
+          qty?: number | null
+          sent_to_customer_at?: string | null
+          shop_id?: string | null
+          stage?: string | null
           status?: string
+          subtotal?: number | null
           suggested_by?: string | null
+          tax_total?: number | null
           updated_at?: string
           vehicle_id?: string | null
           work_order_id?: string
+          work_order_line_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "woql_shop_fk"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "woql_shop_fk"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "work_order_quote_lines_vehicle_id_fkey"
             columns: ["vehicle_id"]
@@ -6654,6 +6713,27 @@ export type Database = {
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_quote_lines_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_quote_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_order_quote_lines_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "v_vehicle_service_history"
+            referencedColumns: ["work_order_line_id"]
+          },
+          {
+            foreignKeyName: "work_order_quote_lines_work_order_line_id_fkey"
+            columns: ["work_order_line_id"]
+            isOneToOne: false
+            referencedRelation: "work_order_lines"
             referencedColumns: ["id"]
           },
         ]

@@ -13,6 +13,7 @@ type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type Shop = DB["public"]["Tables"]["shops"]["Row"];
+type QuoteLine = DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
 
 const SIGNATURE_BUCKET = "signatures";
 
@@ -71,8 +72,7 @@ function ApprovalsList() {
         const cur = hoursByWO.get(l.work_order_id) ?? 0;
         hoursByWO.set(
           l.work_order_id,
-          cur +
-            (typeof l.labor_time === "number" ? l.labor_time : 0)
+          cur + (typeof l.labor_time === "number" ? l.labor_time : 0),
         );
       });
 
@@ -95,7 +95,7 @@ function ApprovalsList() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "work_orders" },
-        () => void load()
+        () => void load(),
       )
       .subscribe();
 
@@ -175,6 +175,10 @@ function SingleQuoteReview({ woId }: { woId: string }) {
   const [lines, setLines] = useState<Line[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const [quoteLines, setQuoteLines] = useState<QuoteLine[]>([]);
+  const [quoteLoading, setQuoteLoading] = useState(true);
+
+  // Load WO + lines
   useEffect(() => {
     if (!woId) return;
     (async () => {
@@ -207,14 +211,125 @@ function SingleQuoteReview({ woId }: { woId: string }) {
     })();
   }, [woId, supabase]);
 
+  // Load quote lines
+  async function reloadQuotes() {
+    if (!woId) return;
+    setQuoteLoading(true);
+    const { data: qRows, error: qErr } = await supabase
+      .from("work_order_quote_lines")
+      .select("*")
+      .eq("work_order_id", woId)
+      .order("created_at", { ascending: true });
+
+    if (qErr) {
+      setQuoteLines([]);
+    } else {
+      setQuoteLines((qRows ?? []) as QuoteLine[]);
+    }
+    setQuoteLoading(false);
+  }
+
+  useEffect(() => {
+    void reloadQuotes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [woId, supabase]);
+
   const laborRate = 120;
   const totalLaborHours = lines.reduce(
     (sum, l) => sum + (typeof l.labor_time === "number" ? l.labor_time : 0),
-    0
+    0,
   );
   const laborTotal = totalLaborHours * laborRate;
   const partsTotal = 0;
   const grandTotal = laborTotal + partsTotal;
+
+  const advisorPendingQuotes = quoteLines.filter(
+    (q) => ((q as any).stage as string | null) === "advisor_pending",
+  );
+  const customerPendingQuotes = quoteLines.filter(
+    (q) => ((q as any).stage as string | null) === "customer_pending",
+  );
+  const decidedQuotes = quoteLines.filter((q) =>
+    ["customer_approved", "customer_declined"].includes(
+      (((q as any).stage as string | null) ?? "") as string,
+    ),
+  );
+
+  /* ----------------------- quote actions ----------------------- */
+
+  async function sendQuotesToCustomer(linesToSend: QuoteLine[]) {
+    if (!linesToSend.length) return;
+
+    const groupId =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+    const { error } = await supabase
+      .from("work_order_quote_lines")
+      .update({
+        
+        stage: "customer_pending",
+        
+        group_id: groupId,
+        
+        sent_to_customer_at: new Date().toISOString() as any,
+      })
+      .in(
+        "id",
+        linesToSend.map((q) => q.id),
+      );
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    // TODO: trigger customer portal notification / email using groupId
+    alert("Quote sent to customer.");
+    await reloadQuotes();
+  }
+
+  async function approveQuoteLine(q: QuoteLine) {
+    const { error } = await supabase
+      .from("work_order_quote_lines")
+      .update({
+        
+        stage: "customer_approved",
+        
+        approved_at: new Date().toISOString() as any,
+      })
+      .eq("id", q.id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    // Later you can also convert this line into a real work_order_line here.
+    await reloadQuotes();
+  }
+
+  async function declineQuoteLine(q: QuoteLine) {
+    const { error } = await supabase
+      .from("work_order_quote_lines")
+      .update({
+        
+        stage: "customer_declined",
+        
+        declined_at: new Date().toISOString() as any,
+      })
+      .eq("id", q.id);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    await reloadQuotes();
+  }
+
+  /* --------------------- signature + status --------------------- */
 
   async function handleSignatureSave(base64: string) {
     if (!woId) return;
@@ -282,8 +397,12 @@ function SingleQuoteReview({ woId }: { woId: string }) {
       .catch(() => alert(url));
   }
 
-  if (loading) return <div className="mt-6 text-muted-foreground">Loading…</div>;
-  if (!wo) return <div className="mt-6 text-destructive">Work order not found.</div>;
+  if (loading)
+    return <div className="mt-6 text-muted-foreground">Loading…</div>;
+  if (!wo)
+    return (
+      <div className="mt-6 text-destructive">Work order not found.</div>
+    );
 
   return (
     <>
@@ -293,6 +412,121 @@ function SingleQuoteReview({ woId }: { woId: string }) {
         {shop?.name && <div>Shop: {shop.name}</div>}
       </div>
 
+      {/* Quote lines / advisor flow */}
+      <div className="mt-6 rounded-lg border border-border bg-card">
+        <div className="flex items-center justify-between border-b border-border px-4 py-2">
+          <div className="font-semibold">Quote lines</div>
+          {advisorPendingQuotes.length > 0 && (
+            <button
+              onClick={() => void sendQuotesToCustomer(advisorPendingQuotes)}
+              className="rounded border border-orange-500 px-3 py-1 text-sm text-orange-500 hover:bg-orange-500/10"
+            >
+              Send to customer
+            </button>
+          )}
+        </div>
+
+        {quoteLoading ? (
+          <div className="px-4 py-3 text-sm text-muted-foreground">
+            Loading quotes…
+          </div>
+        ) : quoteLines.length === 0 ? (
+          <div className="px-4 py-3 text-sm text-muted-foreground">
+            No quote lines for this work order yet.
+          </div>
+        ) : (
+          <div className="divide-y divide-border">
+            {/* Advisor pending */}
+            {advisorPendingQuotes.length > 0 && (
+              <div className="bg-slate-950/60">
+                <div className="px-4 pt-3 text-xs font-semibold uppercase tracking-wide text-blue-300">
+                  Awaiting advisor review
+                </div>
+                {advisorPendingQuotes.map((q) => (
+                  <div key={q.id} className="px-4 py-3 text-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate font-medium">
+                          {(q as any).description || "Untitled quote line"}
+                        </div>
+                        {(q as any).notes && (
+                          <div className="mt-0.5 text-xs text-muted-foreground">
+                            {(q as any).notes}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 gap-2">
+                        <button
+                          onClick={() => void approveQuoteLine(q)}
+                          className="rounded border border-green-600 px-2 py-1 text-xs text-green-200 hover:bg-green-900/30"
+                        >
+                          Approve now
+                        </button>
+                        <button
+                          onClick={() => void declineQuoteLine(q)}
+                          className="rounded border border-red-600 px-2 py-1 text-xs text-red-200 hover:bg-red-900/40"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Customer pending */}
+            {customerPendingQuotes.length > 0 && (
+              <div>
+                <div className="px-4 pt-3 text-xs font-semibold uppercase tracking-wide text-amber-300">
+                  Sent to customer
+                </div>
+                {customerPendingQuotes.map((q) => (
+                  <div key={q.id} className="px-4 py-3 text-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate font-medium">
+                          {(q as any).description || "Untitled quote line"}
+                        </div>
+                        <div className="mt-0.5 text-xs text-muted-foreground">
+                          Waiting on customer response
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* History */}
+            {decidedQuotes.length > 0 && (
+              <div className="bg-neutral-950/60">
+                <div className="px-4 pt-3 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+                  Customer decisions
+                </div>
+                {decidedQuotes.map((q) => (
+                  <div key={q.id} className="px-4 py-3 text-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate font-medium">
+                          {(q as any).description || "Untitled quote line"}
+                        </div>
+                        <div className="mt-0.5 text-xs text-muted-foreground">
+                          {((q as any).stage as string) === "customer_approved"
+                            ? "Approved"
+                            : "Declined"}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Existing line items + totals */}
       <div className="mt-6 rounded-lg border border-border bg-card">
         <div className="border-b border-border px-4 py-2 font-semibold">
           Line Items
@@ -320,7 +554,7 @@ function SingleQuoteReview({ woId }: { woId: string }) {
                   </div>
                   <div className="text-right text-sm">
                     {typeof l.labor_time === "number"
-                      ? fmt(l.labor_time * 120)
+                      ? fmt(l.labor_time * laborRate)
                       : "—"}
                   </div>
                 </div>
@@ -332,17 +566,19 @@ function SingleQuoteReview({ woId }: { woId: string }) {
         <div className="px-4 py-3 text-sm">
           <div className="flex items-center justify-between">
             <span>
-              Labor ({totalLaborHours.toFixed(1)}h @ {fmt(120)}/hr)
+              Labor ({totalLaborHours.toFixed(1)}h @ {fmt(laborRate)}/hr)
             </span>
             <span className="font-medium">{fmt(laborTotal)}</span>
           </div>
           <div className="mt-1 flex items-center justify-between">
             <span>Parts</span>
-            <span className="font-medium">{fmt(0)}</span>
+            <span className="font-medium">{fmt(partsTotal)}</span>
           </div>
           <div className="mt-2 flex items-center justify-between border-t border-border pt-2">
             <span className="font-semibold">Total</span>
-            <span className="font-bold text-orange-500">{fmt(grandTotal)}</span>
+            <span className="font-bold text-orange-500">
+              {fmt(grandTotal)}
+            </span>
           </div>
         </div>
       </div>
@@ -350,7 +586,9 @@ function SingleQuoteReview({ woId }: { woId: string }) {
       <div className="mt-6 flex flex-wrap gap-2">
         <button
           onClick={async () => {
-            const base64 = await openSignaturePad({ shopName: shop?.name || "" });
+            const base64 = await openSignaturePad({
+              shopName: shop?.name || "",
+            });
             if (!base64) return;
             await handleSignatureSave(base64);
           }}
@@ -416,7 +654,7 @@ export default function QuoteReviewPage() {
           </>
         ) : (
           <>
-            <SingleQuoteReview woId={woId!} />
+            <SingleQuoteReview woId={woId} />
             <SignaturePad />
           </>
         )}
