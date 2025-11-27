@@ -29,6 +29,9 @@ import { MenuQuickAdd } from "@work-orders/components/MenuQuickAdd";
 import { NewWorkOrderLineForm } from "@work-orders/components/NewWorkOrderLineForm";
 import { AiSuggestModal } from "@work-orders/components/AiSuggestModal";
 
+// 🔢 shared custom-id generator
+import { generateWorkOrderCustomId } from "@/features/work-orders/lib/generateCustomId";
+
 // Session types
 import type {
   SessionCustomer,
@@ -237,8 +240,7 @@ export default function CreateWorkOrderPage() {
     useTabState<string>("inviteNotice", "");
   const [sendInvite, setSendInvite] = useTabState<boolean>("sendInvite", false);
 
-  // Current user (email for custom_id prefix fallback)
-  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
+  // Current user id (for VIN modal)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // read profile.shop_id early so autocomplete is scoped before WO exists
@@ -309,51 +311,15 @@ export default function CreateWorkOrderPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // get current user id (for VIN modal)
   useEffect((): void => {
     (async () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      setCurrentUserEmail(user?.email ?? null);
       setCurrentUserId(user?.id ?? null);
     })();
   }, [supabase]);
-
-  function getInitials(
-    first?: string | null,
-    last?: string | null,
-    fallback?: string | null,
-  ) {
-    const f = (first ?? "").trim();
-    const l = (last ?? "").trim();
-    if (f || l) return `${f[0] ?? ""}${l[0] ?? ""}`.toUpperCase() || "WO";
-    const fb = (fallback ?? "").trim();
-    if (fb.includes("@"))
-      return fb.split("@")[0].slice(0, 2).toUpperCase() || "WO";
-    return fb.slice(0, 2).toUpperCase() || "WO";
-  }
-
-  async function generateCustomId(prefix: string): Promise<string> {
-    const p = prefix.replace(/[^A-Z]/g, "").slice(0, 3) || "WO";
-    const { data } = await supabase
-      .from("work_orders")
-      .select("custom_id")
-      .ilike("custom_id", `${p}%`)
-      .order("created_at", { ascending: false })
-      .limit(50);
-
-    let max = 0;
-    (data ?? []).forEach((r) => {
-      const cid = r.custom_id ?? "";
-      const m = cid.match(/^([A-Z]+)(\d{1,})$/i);
-      if (m && m[1].toUpperCase() === p) {
-        const n = parseInt(m[2], 10);
-        if (!Number.isNaN(n)) max = Math.max(max, n);
-      }
-    });
-    const next = (max + 1).toString().padStart(4, "0");
-    return `${p}${next}`;
-  }
 
   async function getOrLinkShopId(userId: string): Promise<string | null> {
     // 1) try to read the profile we actually have (id = auth user id)
@@ -673,17 +639,12 @@ export default function CreateWorkOrderPage() {
       }
 
       // 🔑 Only here do we create a new work order now
-      const initials = getInitials(
-        cust.first_name ?? customer.first_name,
-        cust.last_name ?? customer.last_name,
-        user.email ?? currentUserEmail,
-      );
-      const customId = await generateCustomId(initials);
+      const customId = await generateWorkOrderCustomId(supabase, cust.id);
       const newId = uuidv4();
 
       const insertPayload: WorkOrderInsert = {
         id: newId,
-        custom_id: customId,
+        custom_id: customId ?? null,
         vehicle_id: veh.id,
         customer_id: cust.id,
         notes: strOrNull(notes),
@@ -716,7 +677,6 @@ export default function CreateWorkOrderPage() {
     wo?.id,
     notes,
     customer,
-    currentUserEmail,
     fetchLines,
     cvDraft,
     vehicle,

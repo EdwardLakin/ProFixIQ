@@ -30,7 +30,10 @@ const VISIBLE_STATUSES: Request["status"][] = [
   "approved",
 ];
 
-function makeEmptyBuckets(): Record<Request["status"], (Request & { items: Item[] })[]> {
+function makeEmptyBuckets(): Record<
+  Request["status"],
+  (Request & { items: Item[] })[]
+> {
   return {
     requested: [],
     quoted: [],
@@ -88,7 +91,7 @@ export default function PartsRequestsPage() {
         }
       }
 
-      // 3) fetch work order metadata for display (WC0001 instead of UUID)
+      // 3) fetch work order metadata for display (TU000001 instead of UUID)
       const woIds = Array.from(
         new Set(
           requestList
@@ -105,7 +108,10 @@ export default function PartsRequestsPage() {
           .in("id", woIds);
 
         if (woError) {
-          console.error("load work_orders for parts requests failed:", woError.message);
+          console.error(
+            "load work_orders for parts requests failed:",
+            woError.message,
+          );
         } else {
           for (const wo of workOrders ?? []) {
             woMap[wo.id] = {
@@ -145,9 +151,11 @@ export default function PartsRequestsPage() {
           ? workOrdersById[r.work_order_id]
           : undefined;
 
+        // label used both for display and search
         const woLabel =
           woMeta?.custom_id ||
-          (woMeta?.id ? woMeta.id.slice(0, 8) : "") ||
+          woMeta?.id ||
+          r.work_order_id || // fall back to raw FK if meta missing
           "";
 
         const inWorkOrder = woLabel.toLowerCase().includes(q);
@@ -176,7 +184,10 @@ export default function PartsRequestsPage() {
       .eq("request_id", requestId);
 
     if (itemsError) {
-      console.error("delete part_request_items failed:", itemsError.message);
+      console.error(
+        "delete part_request_items failed:",
+        itemsError.message,
+      );
       toast.error("Unable to delete request items.");
       return;
     }
@@ -196,7 +207,9 @@ export default function PartsRequestsPage() {
     setByStatus((prev) => {
       const next = makeEmptyBuckets();
       (ALL_STATUSES as Request["status"][]).forEach((status) => {
-        next[status] = (prev[status] ?? []).filter((r) => r.id !== requestId);
+        next[status] = (prev[status] ?? []).filter(
+          (r) => r.id !== requestId,
+        );
       });
       return next;
     });
@@ -264,16 +277,24 @@ export default function PartsRequestsPage() {
                 </div>
                 <div className="flex-1 space-y-3 p-3">
                   {list.length === 0 ? (
-                    <div className="text-sm text-neutral-500">No requests</div>
+                    <div className="text-sm text-neutral-500">
+                      No requests
+                    </div>
                   ) : (
                     list.map((r) => {
                       const woMeta = r.work_order_id
                         ? workOrdersById[r.work_order_id]
                         : undefined;
 
+                      // Prefer TU000001-style custom id; otherwise fall back
+                      // to whatever FK we have, shortened.
                       const woDisplayId =
                         woMeta?.custom_id ||
-                        (woMeta?.id ? woMeta.id.slice(0, 8) : null);
+                        (woMeta?.id ??
+                          r.work_order_id ??
+                          "")
+                          .toString()
+                          .slice(0, 8) || null;
 
                       return (
                         <div
@@ -291,7 +312,9 @@ export default function PartsRequestsPage() {
                                 </div>
                                 <div className="text-xs text-neutral-400">
                                   {r.created_at
-                                    ? new Date(r.created_at).toLocaleString()
+                                    ? new Date(
+                                        r.created_at,
+                                      ).toLocaleString()
                                     : "—"}
                                 </div>
                               </div>
