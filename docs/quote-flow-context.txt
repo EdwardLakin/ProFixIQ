@@ -1,0 +1,2569 @@
+===== app/work-orders/[id]/client.tsx =====
+
+
+===== features/work-orders/components/JobCard.tsx =====
+"use client";
+
+import React, { useState } from "react";
+import type { Database } from "@shared/types/types/supabase";
+import { UsePartButton } from "@work-orders/components/UsePartButton";
+import { PartsUsedList } from "@work-orders/components/PartsUsedList";
+
+type DB = Database;
+
+export type WorkOrderLine =
+  DB["public"]["Tables"]["work_order_lines"]["Row"];
+
+export type AllocationRow =
+  DB["public"]["Tables"]["work_order_part_allocations"]["Row"] & {
+    parts?: { name: string | null } | null;
+  };
+
+export type TechnicianInfo = {
+  id: string;
+  full_name: string | null;
+  role: string | null;
+};
+
+export type JobCardPricing = {
+  partsTotal?: number | null;
+  laborTotal?: number | null;
+  lineTotal?: number | null;
+  currency?: string; // e.g. "CAD", "USD"
+};
+
+export type JobCardProps = {
+  index: number;
+  line: WorkOrderLine;
+  parts: AllocationRow[];
+  technicians: TechnicianInfo[];
+  canAssign?: boolean;
+  isPunchedIn?: boolean;
+  onOpen: () => void;
+  onAssign?: () => void;
+  onOpenInspection?: () => void;
+  onAddPart?: () => void;
+  /** Optional pricing info – we’ll wire this from the page later */
+  pricing?: JobCardPricing;
+};
+
+/* ---------------------------- Status visuals ---------------------------- */
+
+type KnownStatus =
+  | "awaiting_approval"
+  | "awaiting"
+  | "queued"
+  | "in_progress"
+  | "on_hold"
+  | "planned"
+  | "new"
+  | "completed"
+  | "ready_to_invoice"
+  | "invoiced";
+
+const BASE_BADGE =
+  "inline-flex items-center whitespace-nowrap rounded border px-2 py-0.5 text-[10px] font-medium";
+
+const BADGE: Record<KnownStatus, string> = {
+  awaiting_approval: "bg-blue-900/20 border-blue-500/40 text-blue-300",
+  awaiting: "bg-sky-900/20  border-sky-500/40  text-sky-300",
+  queued: "bg-indigo-900/20 border-indigo-500/40 text-indigo-300",
+  in_progress: "bg-orange-900/20 border-orange-500/40 text-orange-300",
+  on_hold: "bg-amber-900/20  border-amber-500/40  text-amber-300",
+  planned: "bg-purple-900/20 border-purple-500/40 text-purple-300",
+  new: "bg-neutral-800   border-neutral-600   text-neutral-200",
+  completed: "bg-green-900/20  border-green-500/40 text-green-300",
+  ready_to_invoice:
+    "bg-emerald-900/20 border-emerald-500/40 text-emerald-300",
+  invoiced: "bg-teal-900/20    border-teal-500/40    text-teal-300",
+};
+
+function statusChip(status: string | null | undefined): string {
+  const key = (status ?? "awaiting")
+    .toLowerCase()
+    .replaceAll(" ", "_") as KnownStatus;
+  return `${BASE_BADGE} ${BADGE[key] ?? BADGE.awaiting}`;
+}
+
+const statusBorder: Record<string, string> = {
+  awaiting: "border-l-4 border-slate-400",
+  queued: "border-l-4 border-indigo-400",
+  in_progress: "border-l-4 border-orange-500",
+  on_hold: "border-l-4 border-amber-500",
+  completed: "border-l-4 border-green-500",
+  awaiting_approval: "border-l-4 border-blue-500",
+  planned: "border-l-4 border-purple-500",
+  new: "border-l-4 border-gray-400",
+};
+
+const statusRowTint: Record<string, string> = {
+  awaiting: "bg-neutral-950",
+  queued: "bg-neutral-950",
+  in_progress: "bg-neutral-950",
+  on_hold: "bg-amber-900/30",
+  completed: "bg-green-900/30",
+  awaiting_approval: "bg-neutral-950",
+  planned: "bg-neutral-950",
+  new: "bg-neutral-950",
+};
+
+export function JobCard({
+  index,
+  line,
+  parts,
+  technicians,
+  canAssign,
+  isPunchedIn,
+  onOpen,
+  onAssign,
+  onOpenInspection,
+  onAddPart,
+  pricing,
+}: JobCardProps): JSX.Element {
+  const statusKey = (line.status ?? "awaiting")
+    .toLowerCase()
+    .replaceAll(" ", "_");
+  const borderCls =
+    statusBorder[statusKey] ?? "border-l-4 border-gray-400";
+  const tintCls = statusRowTint[statusKey] ?? "bg-neutral-950";
+
+  const [partsOpen, setPartsOpen] = useState(false);
+
+  const jobLabel =
+    line.description || line.complaint || "Untitled job";
+
+  const laborText =
+    typeof line.labor_time === "number"
+      ? `${line.labor_time}h`
+      : "—";
+
+  const jobTypeText = String(line.job_type ?? "job").replaceAll(
+    "_",
+    " ",
+  );
+  const statusText = String(line.status ?? "awaiting").replaceAll(
+    "_",
+    " ",
+  );
+
+  const showPricingRow =
+    pricing &&
+    (pricing.partsTotal != null ||
+      pricing.laborTotal != null ||
+      pricing.lineTotal != null);
+
+  const currency =
+    pricing?.currency && pricing.currency.trim().length > 0
+      ? pricing.currency
+      : undefined;
+
+  const formatMoney = (v: number | null | undefined): string => {
+    if (v == null || Number.isNaN(v)) return "—";
+    const n = Number(v);
+    return `${currency ?? "$"}${n.toFixed(2)}`;
+  };
+
+  const partsCount = parts.length;
+  const partsSummary =
+    partsCount === 0
+      ? "No parts yet"
+      : `${partsCount} part${partsCount === 1 ? "" : "s"}`;
+
+  return (
+    <div
+      className={`group cursor-pointer rounded-lg border border-neutral-800 ${tintCls} p-3 transition hover:border-orange-500/70 hover:bg-neutral-900/80 ${borderCls} ${
+        isPunchedIn ? "ring-2 ring-orange-500/80" : ""
+      }`}
+      title="Open focused job"
+      onClick={onOpen}
+    >
+      <div className="flex items-start justify-between gap-3">
+        {/* LEFT CONTENT */}
+        <div className="min-w-0 space-y-1.5">
+          {/* Top row: title + controls */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Left side: title + assign + inspection */}
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+              <div className="truncate text-sm font-medium text-white">
+                {index + 1}. {jobLabel}
+              </div>
+
+              {canAssign && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAssign?.();
+                  }}
+                  className="rounded-md border border-sky-500/70 px-2 py-0.5 text-[11px] font-medium text-sky-200 hover:bg-sky-900/25"
+                  title="Assign mechanic to this line"
+                >
+                  Assign mechanic
+                </button>
+              )}
+
+              {line.job_type === "inspection" && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenInspection?.();
+                  }}
+                  className={`rounded-md border px-2 py-0.5 text-[11px] font-medium ${
+                    line.status === "completed"
+                      ? "border-green-400 text-green-200"
+                      : "border-orange-400 text-orange-200 hover:bg-orange-500/10"
+                  }`}
+                >
+                  {line.status === "completed"
+                    ? "View inspection"
+                    : "Open inspection"}
+                </button>
+              )}
+            </div>
+
+            {/* Right side: add part button + status pill (always right-aligned) */}
+            <div className="ml-auto flex items-center gap-2">
+              {/* Desktop add-part button */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddPart?.();
+                }}
+                className="hidden rounded-md border border-neutral-600 px-2 py-1 text-[11px] font-medium text-neutral-100 hover:border-orange-500 hover:text-orange-100 sm:inline-flex"
+                title="Add / use part on this job"
+              >
+                Add part
+              </button>
+
+              {/* keep existing UsePartButton behavior for safety (esp. mobile) */}
+              <div className="sm:hidden">
+                <UsePartButton
+                  workOrderLineId={line.id}
+                  onApplied={() =>
+                    window.dispatchEvent(
+                      new CustomEvent("wo:parts-used"),
+                    )
+                  }
+                  label="Add part"
+                />
+              </div>
+
+              <span className={statusChip(line.status)}>
+                {statusText}
+              </span>
+            </div>
+          </div>
+
+          {/* Meta line */}
+          <div className="text-[11px] text-neutral-400">
+            {jobTypeText} • {laborText} • Status: {statusText}
+          </div>
+
+          {/* Technician chips */}
+          {technicians.length > 0 && (
+            <div className="mt-0.5 flex flex-wrap gap-1">
+              {technicians.map((tech) => (
+                <span
+                  key={tech.id}
+                  className="inline-flex items-center gap-1 rounded-full bg-sky-900/40 px-2 py-0.5 text-[10px] text-sky-100"
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-sky-300" />
+                  {tech.full_name ?? "Mechanic"}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Complaint / cause / correction */}
+          {(line.complaint || line.cause || line.correction) && (
+            <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-neutral-400">
+              {line.complaint && <span>Cmpl: {line.complaint}</span>}
+              {line.cause && <span>| Cause: {line.cause}</span>}
+              {line.correction && <span>| Corr: {line.correction}</span>}
+            </div>
+          )}
+
+          {/* Parts accordion */}
+          <div className="mt-2 rounded-lg border border-neutral-800 bg-neutral-950/80">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left"
+              onClick={(e) => {
+                e.stopPropagation();
+                setPartsOpen((open) => !open);
+              }}
+            >
+              <div className="flex flex-col">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-neutral-300">
+                  Parts used
+                </span>
+                <span className="text-[10px] text-neutral-500">
+                  {partsSummary}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {/* small inline add-part on mobile + tablet */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAddPart?.();
+                  }}
+                  className="inline-flex items-center rounded-md border border-neutral-700 px-2 py-0.5 text-[11px] font-medium text-neutral-200 hover:border-orange-500 hover:text-orange-100 sm:hidden"
+                >
+                  Add part
+                </button>
+
+                <span
+                  className={`text-[10px] text-neutral-400 transition-transform ${
+                    partsOpen ? "rotate-90" : ""
+                  }`}
+                >
+                  ▶
+                </span>
+              </div>
+            </button>
+
+            {partsOpen && (
+              <div
+                className="border-t border-neutral-800 px-2 pb-2 pt-1.5"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <PartsUsedList allocations={parts} />
+              </div>
+            )}
+          </div>
+
+          {/* Pricing summary row (optional, only if provided) */}
+          {showPricingRow && (
+            <div className="mt-2 flex flex-wrap items-center justify-end gap-3 text-[11px] text-neutral-300">
+              {pricing?.partsTotal != null && (
+                <span className="flex items-center gap-1">
+                  <span className="text-neutral-500">Parts</span>
+                  <span className="font-semibold">
+                    {formatMoney(pricing.partsTotal)}
+                  </span>
+                </span>
+              )}
+              {pricing?.laborTotal != null && (
+                <span className="flex items-center gap-1">
+                  <span className="text-neutral-500">Labor</span>
+                  <span className="font-semibold">
+                    {formatMoney(pricing.laborTotal)}
+                  </span>
+                </span>
+              )}
+              {pricing?.lineTotal != null && (
+                <span className="flex items-center gap-1">
+                  <span className="text-neutral-500">Line total</span>
+                  <span className="font-semibold text-orange-300">
+                    {formatMoney(pricing.lineTotal)}
+                  </span>
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+===== features/work-orders/components/workorders/FocusedJobModal.tsx =====
+"use client";
+
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { Dialog } from "@headlessui/react";
+import { format } from "date-fns";
+import { toast } from "sonner";
+import { v4 as uuidv4 } from "uuid";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+
+// existing modals
+import CauseCorrectionModal from "@work-orders/components/workorders/CauseCorrectionModal";
+import PartsRequestModal from "@/features/work-orders/components/workorders/PartsRequestModal";
+
+// extras
+import HoldModal from "@/features/work-orders/components/workorders/HoldModal";
+import StatusPickerModal from "@/features/work-orders/components/workorders/extras/StatusPickerModal";
+import TimeAdjustModal from "@/features/work-orders/components/workorders/extras/TimeAdjustModal";
+import PhotoCaptureModal from "@/features/work-orders/components/workorders/extras/PhotoCaptureModal";
+import AddJobModal from "@work-orders/components/workorders/AddJobModal";
+
+// 🔸 AI assistant modal (the one we just made to look like other modals)
+import AIAssistantModal from "@work-orders/components/workorders/AiAssistantModal";
+
+// voice
+import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
+import VoiceButton from "@/features/shared/voice/VoiceButton";
+
+// chat
+import NewChatModal from "@/features/ai/components/chat/NewChatModal";
+import SuggestedQuickAdd from "@work-orders/components/SuggestedQuickAdd";
+
+// punch
+import JobPunchButton from "@/features/work-orders/components/JobPunchButton";
+
+import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
+import type { Database } from "@shared/types/types/supabase";
+
+type Mode = "tech" | "view";
+
+const statusTextColor: Record<string, string> = {
+  in_progress: "text-sky-200",
+  awaiting: "text-slate-200",
+  queued: "text-indigo-200",
+  on_hold: "text-amber-200",
+  completed: "text-emerald-200",
+  paused: "text-amber-200",
+  assigned: "text-sky-200",
+  unassigned: "text-neutral-200",
+  awaiting_approval: "text-blue-200",
+  declined: "text-red-200",
+};
+
+const chip = (s: string | null) =>
+  statusTextColor[(s ?? "awaiting").toLowerCase().replaceAll(" ", "_")] ??
+  "text-neutral-200";
+
+const btnBase =
+  "rounded-md border text-sm px-3 py-2 transition-colors text-left";
+const btnNeutral =
+  btnBase + " border-neutral-700 text-neutral-100 hover:bg-neutral-800/80";
+const btnWarn =
+  btnBase + " border-amber-500/70 text-amber-100 hover:bg-amber-500/10";
+const btnDanger =
+  btnBase + " border-red-500/70 text-red-100 hover:bg-red-500/10";
+const btnInfo =
+  btnBase + " border-sky-500/70 text-sky-100 hover:bg-sky-500/10";
+const btnAccent =
+  btnBase + " border-accent/80 text-accent hover:bg-accent/10";
+
+type DB = Database;
+type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
+type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
+type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
+type Customer = DB["public"]["Tables"]["customers"]["Row"];
+
+type AllocationRow =
+  DB["public"]["Tables"]["work_order_part_allocations"]["Row"] & {
+    parts?: { name: string | null } | null;
+  };
+
+type WorkflowStatus =
+  | "awaiting"
+  | "awaiting_approval"
+  | "declined"
+  | "queued"
+  | "in_progress"
+  | "on_hold"
+  | "paused"
+  | "completed"
+  | "assigned"
+  | "unassigned";
+
+type ApprovalState = "pending" | "approved" | "declined" | null;
+
+type PickerValue =
+  | `status:${WorkflowStatus}`
+  | "approval:pending"
+  | "approval:approved"
+  | "approval:declined";
+
+export default function FocusedJobModal(props: {
+  isOpen: boolean;
+  onClose: () => void;
+  workOrderLineId: string;
+  onChanged?: () => void | Promise<void>;
+  mode?: Mode;
+}) {
+  const { isOpen, onClose, workOrderLineId, onChanged, mode = "tech" } = props;
+
+  const supabase = useMemo(() => createBrowserSupabase(), []);
+
+  const [busy, setBusy] = useState(false);
+  const [line, setLine] = useState<WorkOrderLine | null>(null);
+  const [workOrder, setWorkOrder] = useState<WorkOrder | null>(null);
+  const [vehicle, setVehicle] = useState<Vehicle | null>(null);
+  const [customer, setCustomer] = useState<Customer | null>(null);
+
+  const [techNotes, setTechNotes] = useState("");
+  const [savingNotes, setSavingNotes] = useState(false);
+
+  // sub-modals
+  const [openComplete, setOpenComplete] = useState(false);
+  const [openParts, setOpenParts] = useState(false);
+  const [openHold, setOpenHold] = useState(false);
+  const [openStatus, setOpenStatus] = useState(false);
+  const [openTime, setOpenTime] = useState(false);
+  const [openPhoto, setOpenPhoto] = useState(false);
+  const [openChat, setOpenChat] = useState(false);
+  const [openAddJob, setOpenAddJob] = useState(false);
+  const [openAi, setOpenAi] = useState(false);
+
+  // prefill
+  const [prefillCause, setPrefillCause] = useState("");
+  const [prefillCorrection, setPrefillCorrection] = useState("");
+
+  // parts used
+  const [allocs, setAllocs] = useState<AllocationRow[]>([]);
+  const [allocsLoading, setAllocsLoading] = useState(false);
+
+  const showErr = (prefix: string, err?: { message?: string } | null) => {
+    toast.error(`${prefix}: ${err?.message ?? "Something went wrong."}`);
+    console.error(prefix, err);
+  };
+
+  const closeAllSubModals = () => {
+    setOpenComplete(false);
+    setOpenParts(false);
+    setOpenHold(false);
+    setOpenStatus(false);
+    setOpenTime(false);
+    setOpenPhoto(false);
+    setOpenChat(false);
+    setOpenAddJob(false);
+    setOpenAi(false);
+  };
+
+  useEffect(() => {
+    if (!isOpen) {
+      closeAllSubModals();
+    }
+  }, [isOpen]);
+
+  // initial load
+  useEffect(() => {
+    if (!isOpen || !workOrderLineId) return;
+    (async () => {
+      setBusy(true);
+      try {
+        const { data: l, error: le } = await supabase
+          .from("work_order_lines")
+          .select("*")
+          .eq("id", workOrderLineId)
+          .maybeSingle<WorkOrderLine>();
+        if (le) throw le;
+        setLine(l ?? null);
+        setTechNotes(l?.notes ?? "");
+
+        if (l?.work_order_id) {
+          const { data: wo, error: we } = await supabase
+            .from("work_orders")
+            .select("*")
+            .eq("id", l.work_order_id)
+            .maybeSingle<WorkOrder>();
+          if (we) throw we;
+          setWorkOrder(wo ?? null);
+
+          if (wo?.vehicle_id) {
+            const { data: v, error: ve } = await supabase
+              .from("vehicles")
+              .select("*")
+              .eq("id", wo.vehicle_id)
+              .maybeSingle<Vehicle>();
+            if (ve) throw ve;
+            setVehicle(v ?? null);
+          } else {
+            setVehicle(null);
+          }
+
+          if (wo?.customer_id) {
+            const { data: c, error: ce } = await supabase
+              .from("customers")
+              .select("*")
+              .eq("id", wo.customer_id)
+              .maybeSingle<Customer>();
+            if (ce) throw ce;
+            setCustomer(c ?? null);
+          } else {
+            setCustomer(null);
+          }
+        }
+      } catch (e) {
+        const err = e as { message?: string };
+        toast.error(err?.message ?? "Failed to load job");
+      } finally {
+        setBusy(false);
+      }
+    })();
+  }, [isOpen, workOrderLineId, supabase]);
+
+  // realtime line
+  useEffect(() => {
+    if (!isOpen || !workOrderLineId) return;
+    const ch = supabase
+      .channel(`wol-${workOrderLineId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "work_order_lines",
+          filter: `id=eq.${workOrderLineId}`,
+        },
+        (payload: RealtimePostgresChangesPayload<WorkOrderLine>) => {
+          const next = payload.new;
+          if (next && typeof (next as Partial<WorkOrderLine>).id === "string") {
+            setLine(next as WorkOrderLine);
+          }
+        }
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(ch);
+    };
+  }, [isOpen, workOrderLineId, supabase]);
+
+  const loadAllocations = useCallback(async () => {
+    if (!workOrderLineId) return;
+    setAllocsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("work_order_part_allocations")
+        .select("*, parts(name)")
+        .eq("work_order_line_id", workOrderLineId)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      setAllocs((data as AllocationRow[]) ?? []);
+    } catch (e) {
+      console.warn("[FocusedJob] load allocations failed", e);
+    } finally {
+      setAllocsLoading(false);
+    }
+  }, [supabase, workOrderLineId]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    void loadAllocations();
+  }, [isOpen, loadAllocations]);
+
+  useEffect(() => {
+    if (!isOpen || !workOrderLineId) return;
+
+    const ch = supabase
+      .channel(`wol-parts-${workOrderLineId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "work_order_part_allocations",
+          filter: `work_order_line_id=eq.${workOrderLineId}`,
+        },
+        () => void loadAllocations()
+      )
+      .subscribe();
+
+    return () => {
+      try {
+        supabase.removeChannel(ch);
+      } catch {
+        //
+      }
+    };
+  }, [isOpen, workOrderLineId, supabase, loadAllocations]);
+
+  const refresh = useCallback(async () => {
+    const { data: l } = await supabase
+      .from("work_order_lines")
+      .select("*")
+      .eq("id", workOrderLineId)
+      .maybeSingle<WorkOrderLine>();
+    setLine(l ?? null);
+    setTechNotes(l?.notes ?? "");
+    await onChanged?.();
+    await loadAllocations();
+  }, [supabase, workOrderLineId, onChanged, loadAllocations]);
+
+  useEffect(() => {
+    const handler = () => void refresh();
+    window.addEventListener("wol:refresh", handler);
+    return () => window.removeEventListener("wol:refresh", handler);
+  }, [refresh]);
+
+  // parts request events
+  useEffect(() => {
+    const handleClose = () => setOpenParts(false);
+    const handleSubmitted = async () => {
+      setOpenParts(false);
+      await refresh();
+    };
+
+    window.addEventListener("parts-request:close", handleClose);
+    window.addEventListener("parts-request:submitted", handleSubmitted);
+    return () => {
+      window.removeEventListener("parts-request:close", handleClose);
+      window.removeEventListener("parts-request:submitted", handleSubmitted);
+    };
+  }, [refresh]);
+
+  // inspection done → open complete
+  useEffect(() => {
+    const onInspectionDone = (evt: Event) => {
+      const e = evt as CustomEvent<{
+        workOrderLineId?: string;
+        cause?: string;
+        correction?: string;
+      }>;
+      const detail = e.detail || {};
+      if (!detail.workOrderLineId) return;
+      if (detail.workOrderLineId !== workOrderLineId) return;
+
+      closeAllSubModals();
+      setPrefillCause(detail.cause ?? "");
+      setPrefillCorrection(detail.correction ?? "");
+      setOpenComplete(true);
+    };
+
+    window.addEventListener("inspection:completed", onInspectionDone);
+    return () => window.removeEventListener("inspection:completed", onInspectionDone);
+  }, [workOrderLineId]);
+
+  const applyHold = async (reason: string, notes?: string) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const { error } = await supabase
+        .from("work_order_lines")
+        .update({
+          hold_reason: reason || "On hold",
+          status: "on_hold",
+          notes: notes ?? line?.notes ?? null,
+        } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+        .eq("id", workOrderLineId);
+      if (error) return showErr("Apply hold failed", error);
+      toast.success("Hold applied");
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const releaseHold = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const { error } = await supabase
+        .from("work_order_lines")
+        .update({
+          hold_reason: null,
+          status: "awaiting",
+        } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+        .eq("id", workOrderLineId);
+      if (error) return showErr("Remove hold failed", error);
+      toast.success("Hold removed");
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const changeStatus = async (next: PickerValue) => {
+    if (next.startsWith("approval:")) {
+      const val = next.split(":")[1] as ApprovalState;
+      if (!line?.id) return;
+      const { error } = await supabase
+        .from("work_order_lines")
+        .update({
+          approval_state: val,
+        } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+        .eq("id", line.id);
+      if (error) return showErr("Update approval failed", error);
+      toast.success("Approval state updated");
+      await refresh();
+      return;
+    }
+
+    const workflow = next.split(":")[1] as WorkflowStatus;
+    const { error } = await supabase
+      .from("work_order_lines")
+      .update({ status: workflow } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+      .eq("id", workOrderLineId);
+    if (error) return showErr("Update status failed", error);
+    toast.success("Status updated");
+    await refresh();
+  };
+
+  const updateTime = async (inAt: string | null, outAt: string | null) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const { error } = await supabase
+        .from("work_order_lines")
+        .update({
+          punched_in_at: inAt,
+          punched_out_at: outAt,
+        } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+        .eq("id", workOrderLineId)
+        .select("id, punched_in_at, punched_out_at")
+        .single();
+      if (error) return showErr("Update time failed", error);
+      toast.success("Time updated");
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const uploadPhoto = async (file: File) => {
+    if (!workOrderLineId || !workOrder?.id) return;
+    const path = `wo/${workOrder.id}/lines/${workOrderLineId}/${uuidv4()}_${file.name}`;
+    const { error } = await supabase.storage
+      .from("job-photos")
+      .upload(path, file, {
+        contentType: file.type || "image/jpeg",
+        upsert: true,
+      });
+    if (error) return showErr("Photo upload failed", error);
+    toast.success("Photo attached");
+  };
+
+  const saveNotes = async () => {
+    setSavingNotes(true);
+    const { error } = await supabase
+      .from("work_order_lines")
+      .update({
+        notes: techNotes,
+      } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+      .eq("id", workOrderLineId);
+    setSavingNotes(false);
+    if (error) return showErr("Update notes failed", error);
+    toast.success("Notes saved");
+    await refresh();
+  };
+
+  const startAt = line?.punched_in_at ?? null;
+  const finishAt = line?.punched_out_at ?? null;
+
+  const titleText =
+    `${line?.line_no ? `#${line.line_no} ` : ""}` +
+    (line?.description || line?.complaint || "Focused Job") +
+    (line?.job_type ? ` — ${String(line.job_type).replaceAll("_", " ")}` : "");
+
+  const createdStart = startAt ? format(new Date(startAt), "PPpp") : "—";
+  const createdFinish = finishAt ? format(new Date(finishAt), "PPpp") : "—";
+
+  return (
+    <>
+      {isOpen && (
+        <VoiceContextSetter
+          currentView="focused_job"
+          workOrderId={workOrder?.id ?? undefined}
+          vehicleId={vehicle?.id ?? undefined}
+          customerId={customer?.id ?? undefined}
+          lineId={line?.id ?? undefined}
+        />
+      )}
+
+      <Dialog
+        open={isOpen}
+        onClose={() => {
+          closeAllSubModals();
+          onClose();
+        }}
+        className="fixed inset-0 z-[100] flex items-center justify-center"
+      >
+        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm" aria-hidden="true" />
+
+        <div
+          className="relative z-[110] mx-4 my-6 w-full max-w-5xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="max-h-[75vh] overflow-y-auto rounded-lg border border-white/10 bg-neutral-950/95 p-5 text-foreground shadow-xl">
+            {/* header */}
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div className="text-lg font-semibold tracking-tight">
+                <span className={chip(line?.status ?? null)}>{titleText}</span>
+                {workOrder ? (
+                  <span className="ml-2 text-xs font-normal text-muted-foreground">
+                    WO #{workOrder.custom_id || workOrder.id?.slice(0, 8)}
+                  </span>
+                ) : null}
+                {line?.status === "awaiting_approval" && (
+                  <span className="ml-2 rounded border border-blue-500/80 px-2 py-0.5 text-[0.65rem] text-blue-100">
+                    Awaiting approval
+                  </span>
+                )}
+                {line?.status === "declined" && (
+                  <span className="ml-2 rounded border border-red-500/80 px-2 py-0.5 text-[0.65rem] text-red-100">
+                    Declined
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                {workOrder?.id && (
+                  <button
+                    type="button"
+                    className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-black hover:bg-accent/90"
+                    onClick={() => {
+                      closeAllSubModals();
+                      setOpenAddJob(true);
+                    }}
+                    disabled={busy}
+                  >
+                    Add Job
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeAllSubModals();
+                    onClose();
+                  }}
+                  className="rounded-md border border-white/10 px-2 py-1 text-xs text-foreground/80 hover:bg-white/5"
+                  title="Close"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* body */}
+            {busy && !line ? (
+              <div className="grid gap-3">
+                <div className="h-6 w-40 animate-pulse rounded bg-neutral-800/60" />
+                <div className="h-24 animate-pulse rounded bg-neutral-800/60" />
+              </div>
+            ) : !line ? (
+              <div className="text-muted-foreground text-sm">No job found.</div>
+            ) : (
+              <div className="space-y-4">
+                {/* meta info */}
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="rounded border border-white/5 bg-neutral-900/70 p-3">
+                    <div className="text-xs text-muted-foreground">Status</div>
+                    <div className={`font-medium ${chip(line.status ?? null)}`}>
+                      {String(line.status || "awaiting").replaceAll("_", " ")}
+                    </div>
+                  </div>
+                  <div className="rounded border border-white/5 bg-neutral-900/70 p-3">
+                    <div className="text-xs text-muted-foreground">Start</div>
+                    <div className="font-medium">{createdStart}</div>
+                  </div>
+                  <div className="rounded border border-white/5 bg-neutral-900/70 p-3">
+                    <div className="text-xs text-muted-foreground">Finish</div>
+                    <div className="font-medium">{createdFinish}</div>
+                  </div>
+                  <div className="rounded border border-white/5 bg-neutral-900/70 p-3">
+                    <div className="text-xs text-muted-foreground">Hold Reason</div>
+                    <div className="font-medium">{line.hold_reason ?? "—"}</div>
+                  </div>
+                </div>
+
+                {/* vehicle & customer */}
+                <div className="rounded border border-white/5 bg-neutral-900/70 p-3 text-sm">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <div className="text-muted-foreground text-xs">Vehicle</div>
+                      <div className="truncate">
+                        {vehicle
+                          ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`
+                              .trim()
+                              .replace(/\s+/g, " ") || "—"
+                          : "—"}
+                      </div>
+                      <div className="text-xs text-muted-foreground/80">
+                        VIN: {vehicle?.vin ?? "—"} • Plate: {vehicle?.license_plate ?? "—"}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground text-xs">Customer</div>
+                      <div className="truncate">
+                        {customer
+                          ? [customer.first_name ?? "", customer.last_name ?? ""]
+                              .filter(Boolean)
+                              .join(" ") || "—"
+                          : "—"}
+                      </div>
+                      <div className="text-xs text-muted-foreground/80">
+                        {customer?.phone ?? "—"}{" "}
+                        {customer?.email ? `• ${customer.email}` : ""}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* punch */}
+                {mode === "tech" && line && (
+                  <div className="grid">
+                    <JobPunchButton
+                      lineId={line.id}
+                      punchedInAt={line.punched_in_at}
+                      punchedOutAt={line.punched_out_at}
+                      status={line.status as WorkflowStatus}
+                      onFinishRequested={() => {
+                        closeAllSubModals();
+                        setPrefillCause(line.cause ?? "");
+                        setPrefillCorrection(line.correction ?? "");
+                        setOpenComplete(true);
+                      }}
+                      onUpdated={refresh}
+                      disabled={
+                        busy ||
+                        line.status === "awaiting_approval" ||
+                        line.status === "declined" ||
+                        (!!line.approval_state &&
+                          line.approval_state !== "approved")
+                      }
+                    />
+                    {(line.status === "awaiting_approval" ||
+                      (line.approval_state &&
+                        line.approval_state !== "approved") ||
+                      line.status === "declined") && (
+                      <div className="mt-1 text-xs text-amber-300">
+                        {line.status === "awaiting_approval"
+                          ? "Awaiting approval — punching disabled"
+                          : line.status === "declined"
+                          ? "Declined — punching disabled"
+                          : "Not approved — punching disabled"}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* controls */}
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {mode === "tech" ? (
+                    <>
+                      <button
+                        type="button"
+                        className={btnAccent}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setPrefillCause(line?.cause ?? "");
+                          setPrefillCorrection(line?.correction ?? "");
+                          setOpenComplete(true);
+                        }}
+                        disabled={busy}
+                      >
+                        Complete (Cause / Correction)
+                      </button>
+
+                      <button
+                        type="button"
+                        className={btnDanger}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenParts(true);
+                        }}
+                        disabled={busy}
+                      >
+                        Request Parts
+                      </button>
+
+                      <button
+                        type="button"
+                        className={btnWarn}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenHold(true);
+                        }}
+                        disabled={busy}
+                      >
+                        {line.status === "on_hold" ? "On Hold" : "Hold"}
+                      </button>
+
+                      <button
+                        type="button"
+                        className={btnInfo}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenStatus(true);
+                        }}
+                        disabled={busy}
+                      >
+                        Change Status
+                      </button>
+
+                      <button
+                        type="button"
+                        className={btnNeutral}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenPhoto(true);
+                        }}
+                        disabled={busy}
+                      >
+                        Add Photo
+                      </button>
+
+                      <button
+                        type="button"
+                        className={btnNeutral}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenChat(true);
+                        }}
+                      >
+                        Chat
+                      </button>
+
+                      <button
+                        type="button"
+                        className={btnInfo}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenAi(true);
+                        }}
+                      >
+                        AI Assist
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className={btnInfo}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenStatus(true);
+                        }}
+                      >
+                        Change Status
+                      </button>
+                      <button
+                        type="button"
+                        className={btnNeutral}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenChat(true);
+                        }}
+                      >
+                        Chat
+                      </button>
+                      <button
+                        type="button"
+                        className={btnInfo}
+                        onClick={() => {
+                          closeAllSubModals();
+                          setOpenAi(true);
+                        }}
+                      >
+                        AI Assist
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                {/* parts used */}
+                <div className="rounded border border-white/5 bg-neutral-900/70 p-3">
+                  <div className="mb-2 text-sm font-medium text-foreground/90">
+                    Parts used
+                  </div>
+
+                  {allocsLoading ? (
+                    <div className="text-sm text-muted-foreground">Loading…</div>
+                  ) : allocs.length === 0 ? (
+                    <div className="text-sm text-muted-foreground">
+                      No parts used yet.
+                    </div>
+                  ) : (
+                    <div className="overflow-hidden rounded border border-white/5">
+                      <div className="grid grid-cols-12 bg-neutral-900/80 px-3 py-2 text-xs text-muted-foreground">
+                        <div className="col-span-7">Part</div>
+                        <div className="col-span-3">Location</div>
+                        <div className="col-span-2 text-right">Qty</div>
+                      </div>
+                      <ul className="max-h-56 overflow-auto divide-y divide-white/5">
+                        {allocs.map((a) => (
+                          <li
+                            key={a.id}
+                            className="grid grid-cols-12 items-center px-3 py-2 text-sm"
+                          >
+                            <div className="col-span-7 truncate">
+                              {a.parts?.name ?? "Part"}
+                            </div>
+                            <div className="col-span-3 truncate text-muted-foreground">
+                              {a.location_id
+                                ? `loc ${String(a.location_id).slice(0, 6)}…`
+                                : "—"}
+                            </div>
+                            <div className="col-span-2 text-right font-semibold">
+                              {a.qty}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+
+                {/* tech notes */}
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-foreground/90">
+                    Tech Notes
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={techNotes}
+                    onChange={(e) => setTechNotes(e.target.value)}
+                    onBlur={saveNotes}
+                    disabled={savingNotes}
+                    className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-400 focus:border-orange-400 focus:ring-2 focus:ring-orange-400 focus:outline-none"
+                    placeholder="Add notes for this job…"
+                  />
+                </div>
+
+                {/* AI suggestions */}
+                <div className="rounded border border-white/5 bg-neutral-900/70 p-3">
+                  <h3 className="mb-2 text-sm font-medium text-foreground/90">
+                    AI Suggested Repairs
+                  </h3>
+                  {line && workOrder ? (
+                    <SuggestedQuickAdd
+                      jobId={line.id}
+                      workOrderId={workOrder.id}
+                      vehicleId={vehicle?.id ?? null}
+                      onAdded={async () => {
+                        toast.success("Suggested line added");
+                        await refresh();
+                      }}
+                    />
+                  ) : (
+                    <div className="text-sm text-muted-foreground">
+                      Vehicle/work order details required.
+                    </div>
+                  )}
+                </div>
+
+                <div className="text-xs text-muted-foreground">
+                  Job ID: {line.id}
+                  {typeof line.labor_time === "number"
+                    ? ` • Labor: ${line.labor_time.toFixed(1)}h`
+                    : ""}
+                  {line.hold_reason ? ` • Hold: ${line.hold_reason}` : ""}
+                  {line.approval_state ? ` • Approval: ${line.approval_state}` : ""}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </Dialog>
+
+      {/* mic */}
+      {isOpen && <VoiceButton />}
+
+      {/* sub-modals */}
+      {openComplete && line && (
+        <CauseCorrectionModal
+          isOpen={openComplete}
+          onClose={() => setOpenComplete(false)}
+          jobId={line.id}
+          initialCause={prefillCause}
+          initialCorrection={prefillCorrection}
+          onSubmit={async (cause: string, correction: string) => {
+            const { error } = await supabase
+              .from("work_order_lines")
+              .update({
+                cause,
+                correction,
+                punched_out_at: new Date().toISOString(),
+                status: "completed",
+              } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+              .eq("id", line.id);
+            if (error) return showErr("Complete job failed", error);
+            toast.success("Job completed");
+            setOpenComplete(false);
+            await refresh();
+          }}
+        />
+      )}
+
+      {openParts && workOrder?.id && line && (
+        <PartsRequestModal
+          isOpen={openParts}
+          workOrderId={workOrder.id}
+          jobId={line.id}
+          requestNote={line.description ?? ""}
+        />
+      )}
+
+      {openHold && line && (
+        <HoldModal
+          isOpen={openHold}
+          onClose={() => setOpenHold(false)}
+          onApply={applyHold}
+          onRelease={line.hold_reason ? releaseHold : undefined}
+          canRelease={!!line.hold_reason}
+          defaultReason={line.hold_reason || "Awaiting parts"}
+        />
+      )}
+
+      {openStatus && line && (
+        <StatusPickerModal
+          isOpen={openStatus}
+          onClose={() => setOpenStatus(false)}
+          current={
+            (line?.status || "awaiting") as Parameters<
+              typeof StatusPickerModal
+            >[0]["current"]
+          }
+          onChange={changeStatus}
+        />
+      )}
+
+      {openTime && line && (
+        <TimeAdjustModal
+          isOpen={openTime}
+          onClose={() => setOpenTime(false)}
+          punchedInAt={line.punched_in_at}
+          punchedOutAt={line.punched_out_at}
+          onApply={updateTime}
+        />
+      )}
+
+      {openPhoto && (
+        <PhotoCaptureModal
+          isOpen={openPhoto}
+          onClose={() => setOpenPhoto(false)}
+          onCapture={uploadPhoto}
+        />
+      )}
+
+      {openChat && (
+        <NewChatModal
+          isOpen={openChat}
+          onClose={() => setOpenChat(false)}
+          created_by="system"
+          onCreated={() => setOpenChat(false)}
+          context_type="work_order_line"
+          context_id={line?.id ?? null}
+        />
+      )}
+
+      {/* 🔸 AI assistant wired in here */}
+      {openAi && (
+        <AIAssistantModal
+          isOpen={openAi}
+          onClose={() => setOpenAi(false)}
+          workOrderLineId={line?.id ?? undefined}
+          defaultVehicle={
+            vehicle
+              ? {
+                  year: vehicle.year ? String(vehicle.year) : undefined,
+                  make: vehicle.make ?? undefined,
+                  model: vehicle.model ?? undefined,
+                }
+              : undefined
+            }
+          />
+      )}
+
+      {openAddJob && workOrder?.id && (
+        <AddJobModal
+          isOpen={openAddJob}
+          onClose={() => setOpenAddJob(false)}
+          workOrderId={workOrder.id}
+          vehicleId={vehicle?.id ?? null}
+          techId={line?.assigned_to || "system"}
+          shopId={workOrder?.shop_id ?? null}
+          onJobAdded={async () => {
+            await refresh();
+            setOpenAddJob(false);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+===== app/api/work-orders/quotes/add/route.ts =====
+import "server-only";
+import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
+
+type DB = Database;
+type QuoteInsert = DB["public"]["Tables"]["work_order_quote_lines"]["Insert"];
+
+export async function POST(req: Request) {
+  const supabase = createServerComponentClient<DB>({ cookies });
+
+  try {
+    const body = (await req.json()) as {
+      workOrderId: string;
+      vehicleId?: string | null;
+      items: Array<{
+        description: string;
+        jobType?: "diagnosis" | "repair" | "maintenance" | "tech-suggested";
+        estLaborHours?: number;
+        notes?: string;
+        aiComplaint?: string;
+        aiCause?: string;
+        aiCorrection?: string;
+      }>;
+    };
+
+    const { workOrderId, vehicleId, items } = body;
+
+    if (!workOrderId || !Array.isArray(items) || items.length === 0) {
+      return NextResponse.json(
+        { error: "Missing workOrderId or items" },
+        { status: 400 }
+      );
+    }
+
+    // Get current user
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const suggested_by = user?.id ?? null;
+
+    // Load work order → for shop_id
+    const { data: wo, error: woErr } = await supabase
+      .from("work_orders")
+      .select("shop_id")
+      .eq("id", workOrderId)
+      .maybeSingle();
+
+    if (woErr) {
+      return NextResponse.json(
+        { error: `Failed to load work order: ${woErr.message}` },
+        { status: 500 }
+      );
+    }
+
+    if (!wo?.shop_id) {
+      return NextResponse.json(
+        { error: "Work order has no shop_id; cannot create quote lines." },
+        { status: 400 }
+      );
+    }
+
+    // Build rows fully typed
+    const rows: QuoteInsert[] = items.map((i) => ({
+      work_order_id: workOrderId,
+      work_order_line_id: null,
+      shop_id: wo.shop_id,
+
+      vehicle_id: vehicleId ?? null,
+      suggested_by,
+      description: i.description,
+      job_type: i.jobType ?? "tech-suggested",
+      est_labor_hours: i.estLaborHours ?? null,
+      notes: i.notes ?? null,
+      status: "pending_parts",
+      ai_complaint: i.aiComplaint ?? null,
+      ai_cause: i.aiCause ?? null,
+      ai_correction: i.aiCorrection ?? null,
+
+      // NEW fields ― now fully typed, no @ts-ignore
+      stage: "advisor_pending",
+      qty: 1,
+
+      labor_hours: null,
+      parts_total: null,
+      labor_total: null,
+      subtotal: null,
+      tax_total: null,
+      grand_total: null,
+      metadata: null,
+      group_id: null,
+      sent_to_customer_at: null,
+      approved_at: null,
+      declined_at: null,
+    }));
+
+    const { error } = await supabase
+      .from("work_order_quote_lines")
+      .insert(rows);
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error("[quotes/add] error:", err);
+    return NextResponse.json(
+      { error: "Failed to add quote items" },
+      { status: 500 }
+    );
+  }
+}
+
+===== app/api/work-orders/quotes/send-for-approval/route.ts =====
+
+
+===== app/api/work-orders/quotes/[id]/mark-quoted/route.ts =====
+// app/api/work-orders/quotes/[id]/mark-quoted/route.ts
+import "server-only";
+import { NextResponse, type NextRequest } from "next/server";
+import { cookies } from "next/headers";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
+
+export const runtime = "nodejs";
+
+type DB = Database;
+
+export async function PATCH(req: NextRequest) {
+  const supabase = createRouteHandlerClient<DB>({ cookies });
+
+  try {
+    // Extract `[id]` from the pathname .../quotes/<id>/mark-quoted
+    const segments = req.nextUrl.pathname.split("/").filter(Boolean);
+    const id = segments[segments.length - 2]; // segment before "mark-quoted"
+
+    if (!id) {
+      return NextResponse.json({ error: "Missing quote line id" }, { status: 400 });
+    }
+
+    // Mark the quote line as quoted
+    const { error: updErr } = await supabase
+      .from("work_order_quote_lines")
+      .update({ status: "quoted", updated_at: new Date().toISOString() })
+      .eq("id", id);
+
+    if (updErr) {
+      return NextResponse.json({ error: updErr.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch {
+    return NextResponse.json({ error: "Failed to mark as quoted" }, { status: 500 });
+  }
+}
+
+===== app/parts/requests/[id]/page.tsx =====
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { toast } from "sonner";
+import type { Database } from "@shared/types/types/supabase";
+
+type DB = Database;
+type Request = DB["public"]["Tables"]["part_requests"]["Row"];
+type Item = DB["public"]["Tables"]["part_request_items"]["Row"] & {
+  // schema is catching up
+  work_order_line_id?: string | null;
+  markup_pct?: number | null;
+  qty?: number | null;
+};
+type Status = Request["status"];
+type Part = DB["public"]["Tables"]["parts"]["Row"];
+
+const DEFAULT_MARKUP = 30; // %
+
+type UpsertResponse = {
+  ok: boolean;
+  menuItemId?: string;
+  updated?: boolean;
+  error?: string;
+  detail?: string;
+};
+
+export default function PartsRequestDetail() {
+  const { id } = useParams<{ id: string }>();
+  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const router = useRouter();
+
+  const [req, setReq] = useState<Request | null>(null);
+  const [items, setItems] = useState<Item[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [addingItem, setAddingItem] = useState(false);
+  const [parts, setParts] = useState<Part[]>([]);
+  const [markupPct, setMarkupPct] = useState<Record<string, number>>({});
+  const [savedRows, setSavedRows] = useState<Record<string, boolean>>({});
+  // per-line manual part inputs
+  const [manualParts, setManualParts] = useState<
+    Record<string, { name: string; sku: string }>
+  >({});
+
+  async function load() {
+    setLoading(true);
+
+    // header
+    const { data: r, error: rErr } = await supabase
+      .from("part_requests")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+    if (rErr) toast.error(rErr.message);
+    setReq(r ?? null);
+
+    // items
+    const { data: its, error: itErr } = await supabase
+      .from("part_request_items")
+      .select("*")
+      .eq("request_id", id);
+    if (itErr) toast.error(itErr.message);
+    const itemsList = (its ?? []) as Item[];
+    setItems(itemsList);
+
+    // inventory
+    if (r?.shop_id) {
+      const { data: ps } = await supabase
+        .from("parts")
+        .select("*")
+        .eq("shop_id", r.shop_id)
+        .order("name")
+        .limit(500);
+      setParts(ps ?? []);
+    } else {
+      setParts([]);
+    }
+
+    // markup init
+    const m: Record<string, number> = {};
+    for (const it of itemsList) {
+      m[it.id] =
+        typeof it.markup_pct === "number" && !Number.isNaN(it.markup_pct)
+          ? it.markup_pct
+          : DEFAULT_MARKUP;
+    }
+    setMarkupPct(m);
+
+    // clear saved flags on fresh load
+    setSavedRows({});
+
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  function getLineIdFromItems(list: Item[]): string | null {
+    for (const it of list) {
+      if (it.work_order_line_id) return it.work_order_line_id;
+    }
+    return null;
+  }
+
+  async function addItem() {
+    if (!req) {
+      toast.error("Request not loaded yet.");
+      return;
+    }
+    setAddingItem(true);
+    try {
+      const lineId = getLineIdFromItems(items);
+
+      const insertPayload: DB["public"]["Tables"]["part_request_items"]["Insert"] =
+        {
+          request_id: req.id,
+          work_order_line_id: lineId ?? null,
+          description: "",
+          qty: 1,
+          quoted_price: 0,
+          vendor: null,
+        };
+
+      const { data, error } = await supabase
+        .from("part_request_items")
+        .insert(insertPayload)
+        .select("*")
+        .maybeSingle<Item>();
+
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+      if (!data) {
+        toast.error("Could not create a new item.");
+        return;
+      }
+
+      // append to local state so it feels instant
+      setItems((prev) => [...prev, data]);
+      setMarkupPct((prev) => ({
+        ...prev,
+        [data.id]: DEFAULT_MARKUP,
+      }));
+      setSavedRows((prev) => ({ ...prev, [data.id]: false }));
+    } finally {
+      setAddingItem(false);
+    }
+  }
+
+  async function deleteLine(itemId: string) {
+    const ok = window.confirm("Remove this item from the request?");
+    if (!ok) return;
+
+    const { error } = await supabase
+      .from("part_request_items")
+      .delete()
+      .eq("id", itemId);
+
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
+    setItems((prev) => prev.filter((it) => it.id !== itemId));
+    setMarkupPct((prev) => {
+      const copy = { ...prev };
+      delete copy[itemId];
+      return copy;
+    });
+    setSavedRows((prev) => {
+      const copy = { ...prev };
+      delete copy[itemId];
+      return copy;
+    });
+    setManualParts((prev) => {
+      const copy = { ...prev };
+      delete copy[itemId];
+      return copy;
+    });
+
+    toast.success("Item removed.");
+  }
+
+  async function setStatus(s: Status) {
+    const { error } = await supabase.rpc("set_part_request_status", {
+      p_request: id,
+      p_status: s,
+    });
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
+    if (s === "quoted") {
+      const lineId = getLineIdFromItems(items);
+      if (lineId) {
+        // ✅ mark line quoted and pending approval on the WO
+        const { error: wolErr } = await supabase
+          .from("work_order_lines")
+          .update({
+            status: "quoted",
+            approval_state: "pending",
+            hold_reason: "Parts quote ready – awaiting customer approval",
+          } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+          .eq("id", lineId);
+        if (wolErr) {
+          console.warn("could not set line to quoted:", wolErr.message);
+        }
+
+        // save to menu items (grow Saved Menu)
+        try {
+          const res = await fetch("/api/menu-items/upsert-from-line", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ workOrderLineId: lineId }),
+          });
+
+          const j = (await res.json().catch(() => null)) as UpsertResponse | null;
+
+          if (!res.ok || !j?.ok) {
+            console.warn("menu save failed:", j);
+            const msg =
+              j?.detail ||
+              j?.error ||
+              "Quoted, but couldn’t save to menu items (see server logs / RLS).";
+            toast.warning(msg);
+          } else {
+            const suffix = j.updated ? "updated" : "saved";
+            toast.success(`Quoted and ${suffix} to menu items.`);
+          }
+        } catch (e) {
+          console.warn("menu save error:", e);
+          const msg =
+            e instanceof Error
+              ? `Quoted, but couldn’t save to menu items: ${e.message}`
+              : "Quoted, but couldn’t save to menu items (network error).";
+          toast.warning(msg);
+        }
+      } else {
+        // no linked work_order_line_id → can’t grow menu, just mark quoted
+        toast.success("Parts request marked as quoted.");
+      }
+    } else {
+      toast.success(`Parts request marked as ${s}.`);
+    }
+
+    await load();
+  }
+
+  async function saveLine(it: Item) {
+    const qty =
+      typeof it.qty === "number" && !Number.isNaN(it.qty) ? it.qty : null;
+    if (!qty || qty <= 0) {
+      toast.error("Enter a quantity greater than 0 before saving.");
+      return;
+    }
+
+    const cost =
+      typeof it.quoted_price === "number" && !Number.isNaN(it.quoted_price)
+        ? it.quoted_price
+        : 0;
+    const m = markupPct[it.id] ?? DEFAULT_MARKUP;
+
+    const { error } = await supabase
+      .from("part_request_items")
+      .update({
+        vendor: it.vendor ?? null,
+        quoted_price: cost,
+        qty,
+        markup_pct: m,
+      })
+      .eq("id", it.id);
+
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
+    setSavedRows((prev) => ({ ...prev, [it.id]: true }));
+    toast.success("Line saved");
+  }
+
+  async function attachPartToItem(itemId: string, partId: string) {
+    const p = parts.find((x) => x.id === partId);
+    const desc = p?.name ?? "Part";
+
+    const { error } = await supabase
+      .from("part_request_items")
+      .update({
+        part_id: partId,
+        description: desc,
+      })
+      .eq("id", itemId);
+
+    if (error) {
+      console.warn("attachPartToItem failed:", error.message);
+      toast.error("Cannot attach part — check RLS.");
+    } else {
+      // change → unsave
+      setSavedRows((prev) => ({ ...prev, [itemId]: false }));
+      await load();
+    }
+  }
+
+  // manual: create part in inventory, then attach
+  async function createManualPartAndAttach(
+    itemId: string,
+    name: string,
+    sku: string,
+  ) {
+    const item = items.find((x) => x.id === itemId);
+    if (!item) return;
+    if (!req?.shop_id) {
+      toast.error("Cannot create part — missing shop.");
+      return;
+    }
+    if (!name.trim()) {
+      toast.error("Enter a name for the part.");
+      return;
+    }
+
+    // create part in inventory
+    const { data: inserted, error } = await supabase
+      .from("parts")
+      .insert({
+        shop_id: req.shop_id,
+        name: name.trim(),
+        sku: sku.trim() || null,
+      })
+      .select("*")
+      .maybeSingle<Part>();
+
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
+    if (!inserted) {
+      toast.error("Unable to create part.");
+      return;
+    }
+
+    // attach to item
+    const { error: attachErr } = await supabase
+      .from("part_request_items")
+      .update({
+        part_id: inserted.id,
+        description: inserted.name ?? name.trim(),
+      })
+      .eq("id", itemId);
+
+    if (attachErr) {
+      toast.error(attachErr.message);
+      return;
+    }
+
+    toast.success("Part created and attached.");
+    // clear manual fields for that line
+    setManualParts((prev) => {
+      const copy = { ...prev };
+      delete copy[itemId];
+      return copy;
+    });
+
+    // reload so the new part shows up in the select too
+    await load();
+  }
+
+  const grandTotals = (() => {
+    let sum = 0;
+    for (const it of items) {
+      const cost =
+        typeof it.quoted_price === "number" && !Number.isNaN(it.quoted_price)
+          ? it.quoted_price
+          : 0;
+      const m = markupPct[it.id] ?? DEFAULT_MARKUP;
+      const unitSell = cost * (1 + m / 100);
+      const qty =
+        typeof it.qty === "number" && it.qty > 0 ? Number(it.qty) : 0;
+      sum += unitSell * qty;
+    }
+    return sum;
+  })();
+
+  return (
+    <div className="space-y-4 p-6 text-white">
+      <button
+        className="rounded border border-neutral-700 px-2 py-1 text-sm hover:bg-neutral-800"
+        onClick={() => router.back()}
+      >
+        ← Back
+      </button>
+
+      {loading || !req ? (
+        <div className="rounded border border-neutral-800 bg-neutral-900 p-3 text-neutral-400">
+          Loading…
+        </div>
+      ) : (
+        <>
+          {/* header */}
+          <div className="rounded border border-neutral-800 bg-neutral-900 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="text-xl font-semibold">
+                  Request #{req.id.slice(0, 8)}
+                </div>
+                <div className="text-sm text-neutral-400">
+                  WO: {req.work_order_id ?? "—"} ·{" "}
+                  {req.created_at
+                    ? new Date(req.created_at).toLocaleString()
+                    : "—"}
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-neutral-700 bg-neutral-950 px-3 py-1 text-xs capitalize text-neutral-200">
+                  Status: {req.status}
+                </span>
+                {req.status !== "approved" && (
+                  <button
+                    className="rounded border border-blue-600 px-3 py-1.5 text-sm text-blue-300 hover:bg-blue-900/20"
+                    onClick={() => void setStatus("approved")}
+                  >
+                    Mark Approved
+                  </button>
+                )}
+                {req.status !== "quoted" && (
+                  <button
+                    className="rounded border border-orange-500 px-3 py-1.5 text-sm text-orange-300 hover:bg-orange-500/10"
+                    onClick={() => void setStatus("quoted")}
+                  >
+                    Mark Quoted
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* items + table */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-neutral-200">
+                Items in this request
+              </h2>
+              <button
+                type="button"
+                className="inline-flex items-center rounded border border-neutral-600 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-neutral-100 hover:bg-neutral-800 disabled:opacity-60"
+                onClick={() => void addItem()}
+                disabled={addingItem}
+              >
+                {addingItem ? "Adding…" : "＋ Add item"}
+              </button>
+            </div>
+
+            <div className="overflow-hidden rounded border border-neutral-800">
+              <table className="w-full text-sm">
+                <thead className="bg-neutral-900 text-neutral-400">
+                  <tr>
+                    <th className="p-2 text-left">Inventory</th>
+                    <th className="p-2 text-left">Description</th>
+                    <th className="p-2 text-right">Qty</th>
+                    <th className="p-2 text-left">Vendor</th>
+                    <th className="p-2 text-right">Cost (unit)</th>
+                    <th className="p-2 text-right">Markup %</th>
+                    <th className="p-2 text-right">Sell (unit)</th>
+                    <th className="p-2 text-right">Line total</th>
+                    <th className="w-32 p-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((it) => {
+                    const cost =
+                      typeof it.quoted_price === "number" &&
+                      !Number.isNaN(it.quoted_price)
+                        ? it.quoted_price
+                        : 0;
+                    const m = markupPct[it.id] ?? DEFAULT_MARKUP;
+                    const qty =
+                      typeof it.qty === "number" && it.qty > 0 ? it.qty : null;
+                    const unitSell = cost * (1 + m / 100);
+                    const lineTotal = unitSell * (qty ?? 0);
+                    const isSaved = savedRows[it.id] === true;
+
+                    const manual = manualParts[it.id] || {
+                      name: "",
+                      sku: "",
+                    };
+
+                    return (
+                      <tr
+                        key={it.id}
+                        className={`border-t border-neutral-800 ${
+                          isSaved ? "bg-neutral-900/50 text-neutral-400" : ""
+                        }`}
+                      >
+                        <td className="p-2 align-top">
+                          <div className="flex flex-col gap-1">
+                            <select
+                              className="w-40 rounded border border-neutral-700 bg-neutral-900 p-1 text-xs disabled:opacity-50"
+                              value={it.part_id ?? ""}
+                              onChange={(e) => {
+                                setSavedRows((prev) => ({
+                                  ...prev,
+                                  [it.id]: false,
+                                }));
+                                void attachPartToItem(it.id, e.target.value);
+                              }}
+                              disabled={isSaved}
+                            >
+                              <option value="">— select —</option>
+                              {parts.map((p) => (
+                                <option key={p.id} value={p.id as string}>
+                                  {p.sku ? `${p.sku} — ${p.name}` : p.name}
+                                </option>
+                              ))}
+                            </select>
+
+                            {/* manual entry */}
+                            <div className="flex gap-1">
+                              <input
+                                className="flex-1 rounded border border-neutral-700 bg-neutral-900 p-1 text-xs disabled:opacity-50"
+                                placeholder="Manual part name"
+                                value={manual.name}
+                                onChange={(e) =>
+                                  setManualParts((prev) => ({
+                                    ...prev,
+                                    [it.id]: {
+                                      name: e.target.value,
+                                      sku: prev[it.id]?.sku ?? "",
+                                    },
+                                  }))
+                                }
+                                disabled={isSaved}
+                              />
+                              <input
+                                className="w-20 rounded border border-neutral-700 bg-neutral-900 p-1 text-xs disabled:opacity-50"
+                                placeholder="SKU"
+                                value={manual.sku}
+                                onChange={(e) =>
+                                  setManualParts((prev) => ({
+                                    ...prev,
+                                    [it.id]: {
+                                      name: prev[it.id]?.name ?? "",
+                                      sku: e.target.value,
+                                    },
+                                  }))
+                                }
+                                disabled={isSaved}
+                              />
+                            </div>
+                            <button
+                              className="rounded border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-xs hover:bg-neutral-800 disabled:opacity-50"
+                              onClick={() =>
+                                void createManualPartAndAttach(
+                                  it.id,
+                                  manual.name,
+                                  manual.sku,
+                                )
+                              }
+                              disabled={isSaved}
+                            >
+                              Add & attach
+                            </button>
+                          </div>
+                        </td>
+                        <td className="p-2 align-top">
+                          <input
+                            className="w-full rounded border border-neutral-700 bg-neutral-900 p-1 text-xs disabled:opacity-50"
+                            value={it.description ?? ""}
+                            placeholder="Description"
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setItems((prev) =>
+                                prev.map((x) =>
+                                  x.id === it.id
+                                    ? ({ ...x, description: v } as Item)
+                                    : x,
+                                ),
+                              );
+                              setSavedRows((prev) => ({
+                                ...prev,
+                                [it.id]: false,
+                              }));
+                            }}
+                            disabled={isSaved}
+                          />
+                        </td>
+                        <td className="p-2 text-right align-top">
+                          <input
+                            type="number"
+                            min={1}
+                            step={1}
+                            className="w-16 rounded border border-neutral-700 bg-neutral-900 p-1 text-right disabled:opacity-50"
+                            value={qty ?? ""} // allow empty
+                            onChange={(e) => {
+                              const raw = e.target.value;
+                              setItems((prev) => {
+                                return prev.map((x) => {
+                                  if (x.id !== it.id) return x;
+                                  return {
+                                    ...x,
+                                    qty: raw === "" ? null : Number(raw),
+                                  } as Item;
+                                });
+                              });
+                              setSavedRows((prev) => ({
+                                ...prev,
+                                [it.id]: false,
+                              }));
+                            }}
+                            disabled={isSaved}
+                          />
+                        </td>
+                        <td className="p-2 align-top">
+                          <input
+                            className="w-32 rounded border border-neutral-700 bg-neutral-900 p-1 disabled:opacity-50"
+                            value={it.vendor ?? ""}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setItems((prev) =>
+                                prev.map((x) =>
+                                  x.id === it.id ? { ...x, vendor: v } : x,
+                                ),
+                              );
+                              setSavedRows((prev) => ({
+                                ...prev,
+                                [it.id]: false,
+                              }));
+                            }}
+                            disabled={isSaved}
+                          />
+                        </td>
+                        <td className="p-2 text-right align-top">
+                          <input
+                            type="number"
+                            step={0.01}
+                            className="w-24 rounded border border-neutral-700 bg-neutral-900 p-1 text-right disabled:opacity-50"
+                            value={cost === 0 ? "" : cost}
+                            onChange={(e) => {
+                              const raw = e.target.value;
+                              const v = raw === "" ? null : Number(raw);
+                              setItems((prev) =>
+                                prev.map((x) =>
+                                  x.id === it.id
+                                    ? ({ ...x, quoted_price: v } as Item)
+                                    : x,
+                                ),
+                              );
+                              setSavedRows((prev) => ({
+                                ...prev,
+                                [it.id]: false,
+                              }));
+                            }}
+                            disabled={isSaved}
+                          />
+                        </td>
+                        <td className="p-2 text-right align-top">
+                          <input
+                            type="number"
+                            step={1}
+                            className="w-20 rounded border border-neutral-700 bg-neutral-900 p-1 text-right disabled:opacity-50"
+                            value={m}
+                            onChange={(e) => {
+                              setMarkupPct((prev) => ({
+                                ...prev,
+                                [it.id]: Math.max(
+                                  0,
+                                  Number(e.target.value || DEFAULT_MARKUP),
+                                ),
+                              }));
+                              setSavedRows((prev) => ({
+                                ...prev,
+                                [it.id]: false,
+                              }));
+                            }}
+                            disabled={isSaved}
+                          />
+                        </td>
+                        <td className="p-2 text-right tabular-nums align-top">
+                          {unitSell.toFixed(2)}
+                        </td>
+                        <td className="p-2 text-right tabular-nums align-top">
+                          {lineTotal.toFixed(2)}
+                        </td>
+                        <td className="p-2 align-top">
+                          <div className="flex flex-col items-stretch gap-1">
+                            <button
+                              className={`rounded border px-2 py-1 text-xs ${
+                                isSaved
+                                  ? "cursor-default border-neutral-700 bg-neutral-800/60 text-neutral-300"
+                                  : "border-neutral-700 hover:bg-neutral-800"
+                              }`}
+                              onClick={() => !isSaved && void saveLine(it)}
+                              disabled={isSaved}
+                            >
+                              {isSaved ? "Saved" : "Save"}
+                            </button>
+                            <button
+                              className="rounded border border-red-700 px-2 py-1 text-xs text-red-200 hover:bg-red-900/40"
+                              onClick={() => void deleteLine(it.id as string)}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-neutral-900/50">
+                    <td className="p-2 text-right" colSpan={7}>
+                      <span className="text-sm text-neutral-300">
+                        Total (with markup)
+                      </span>
+                    </td>
+                    <td className="p-2 text-right tabular-nums font-semibold">
+                      {grandTotals.toFixed(2)}
+                    </td>
+                    <td />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+===== app/work-orders/quote-review/page.tsx =====
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+export { default } from "@/features/work-orders/app/work-orders/quote-review/page";
+
+
+===== app/work-orders/[id]/approve/page.tsx =====
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
+import SignaturePad, { openSignaturePad } from "@/features/shared/signaturePad/controller";
+import LegalTerms from "@/features/shared/components/LegalTerms";
+import { uploadSignatureImage } from "@/features/shared/lib/utils/uploadSignature";
+
+type DB = Database;
+type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
+type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
+type Shop = DB["public"]["Tables"]["shops"]["Row"];
+
+/* ------------------------------ helpers ---------------------------------- */
+const getStr = (obj: unknown, key: string): string | null => {
+  if (obj && typeof obj === "object") {
+    const v = (obj as Record<string, unknown>)[key];
+    if (typeof v === "string") return v.trim() || null;
+  }
+  return null;
+};
+const getNum = (obj: unknown, key: string): number | null => {
+  if (obj && typeof obj === "object") {
+    const v = (obj as Record<string, unknown>)[key];
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+    if (typeof v === "string") {
+      const n = Number(v);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return null;
+};
+/* ------------------------------------------------------------------------- */
+
+export default function ApproveWorkOrderPage() {
+  const params = useParams<{ id: string }>();
+  const id = Array.isArray(params?.id) ? params.id[0] : params?.id;
+  const router = useRouter();
+  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+
+  const [wo, setWo] = useState<WorkOrder | null>(null);
+  const [shop, setShop] = useState<Shop | null>(null);
+  const [lines, setLines] = useState<Line[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [err, setErr] = useState<string | null>(null);
+
+  const [approved, setApproved] = useState<Set<string>>(new Set());
+  const [submitting, setSubmitting] = useState<boolean>(false);
+  const [savedSigUrl, setSavedSigUrl] = useState<string | null>(null);
+  const [agreed, setAgreed] = useState<boolean>(false);
+
+  useEffect(() => {
+    (async () => {
+      if (!id) return;
+      setLoading(true);
+      setErr(null);
+      try {
+        const [{ data: woRow, error: woErr }, { data: lineRows, error: liErr }] = await Promise.all([
+          supabase.from("work_orders").select("*").eq("id", id).maybeSingle(),
+          supabase
+            .from("work_order_lines")
+            .select("*")
+            .eq("work_order_id", id)
+            .neq("status", "completed")
+            .order("created_at", { ascending: true }),
+        ]);
+
+        if (woErr) throw woErr;
+        if (liErr) throw liErr;
+
+        setWo(woRow ?? null);
+        setLines(lineRows ?? []);
+        setApproved(new Set((lineRows ?? []).map((l) => l.id)));
+
+        if (woRow?.shop_id) {
+          const { data: shopRow, error: sErr } = await supabase
+            .from("shops")
+            .select("*")
+            .eq("id", woRow.shop_id)
+            .maybeSingle();
+          if (sErr) throw sErr;
+          setShop(shopRow ?? null);
+        } else {
+          setShop(null);
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Failed to load work order.";
+        setErr(msg);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [id, supabase]);
+
+  const toggle = (lineId: string) =>
+    setApproved((prev) => {
+      const next = new Set(prev);
+      if (next.has(lineId)) next.delete(lineId);
+      else next.add(lineId);
+      return next;
+    });
+
+  /* ---- Pricing helpers (mirrors Quote Review) --------------------------- */
+  const hourlyRate: number =
+    getNum(wo, "hourly_rate") ??
+    getNum(shop, "hourly_rate") ??
+    120;
+
+  const currencyCode = (getStr(shop, "currency") ?? "USD").toUpperCase();
+  const fmt = useMemo(
+    () => new Intl.NumberFormat("en-US", { style: "currency", currency: currencyCode }),
+    [currencyCode]
+  );
+
+  const approvedLines = lines.filter((l) => approved.has(l.id));
+  const hours = approvedLines.reduce<number>(
+    (sum, l) => sum + (typeof l.labor_time === "number" ? l.labor_time : 0),
+    0
+  );
+  const laborTotal = hours * hourlyRate;
+
+  // if your line rows don’t include parts_total, this stays 0
+  const partsTotal = approvedLines.reduce<number>(
+    (sum, l) => sum + (getNum(l, "parts_total") ?? 0),
+    0
+  );
+  const grandTotal = laborTotal + partsTotal;
+
+  const totals = { hours: hours.toFixed(1) };
+  /* ---------------------------------------------------------------------- */
+
+  async function handleSubmit(signatureDataUrl?: string) {
+    if (!id) return;
+    setSubmitting(true);
+    try {
+      let signatureUrl: string | null = savedSigUrl;
+      if (signatureDataUrl) {
+        const uploaded = await uploadSignatureImage(signatureDataUrl, id);
+        signatureUrl = uploaded;
+        setSavedSigUrl(uploaded);
+      }
+
+      const approvedLineIds: string[] = Array.from(approved);
+      const declinedLineIds: string[] = lines.map((l) => l.id).filter((x) => !approved.has(x));
+
+      const res = await fetch("/work-orders/approval-webhook", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workOrderId: id,
+          shopId: wo?.shop_id ?? null,
+          customerId: wo?.customer_id ?? null,
+          approvedLineIds,
+          declinedLineIds,
+          declineUnchecked: true,
+          approverId: null,
+          signatureUrl,
+        }),
+      });
+
+      const j = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) {
+        throw new Error(j?.error ?? "Failed to submit approval");
+      }
+
+      router.replace(`/work-orders/confirm?woId=${id}`);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Approval failed");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="mx-auto max-w-2xl p-6 text-white">
+        <div className="mb-4 h-8 w-48 animate-pulse rounded bg-neutral-800" />
+        <div className="h-24 animate-pulse rounded bg-neutral-800" />
+      </div>
+    );
+  }
+
+  if (!wo) {
+    return <div className="mx-auto max-w-2xl p-6 text-red-400">Work order not found.</div>;
+  }
+
+  return (
+    <div className="mx-auto max-w-3xl p-4 text-white sm:p-6">
+      <h1 className="text-2xl font-semibold">
+        {shop?.name ? `${shop.name} — Customer Approval` : "Approve Work Order"}
+      </h1>
+      <p className="mt-1 text-neutral-300">
+        {wo.custom_id ? `#${wo.custom_id}` : `#${wo.id.slice(0, 8)}`}
+      </p>
+
+      {err && <div className="mt-3 rounded border border-red-500/40 bg-red-500/10 p-3">{err}</div>}
+
+      {/* Items */}
+      <div className="mt-4 rounded border border-neutral-800 bg-neutral-900">
+        <div className="border-b border-neutral-800 p-3 font-semibold">Items</div>
+        <div className="divide-y divide-neutral-800">
+          {lines.map((l) => (
+            <label
+              key={l.id}
+              className="flex cursor-pointer items-start gap-3 p-3 hover:bg-neutral-900/60"
+            >
+              <input
+                type="checkbox"
+                className="mt-1 h-4 w-4"
+                checked={approved.has(l.id)}
+                onChange={() => toggle(l.id)}
+              />
+              <div className="min-w-0">
+                <div className="truncate font-medium">
+                  {l.description || l.complaint || "Untitled item"}
+                </div>
+                <div className="text-xs text-neutral-400">
+                  {(l.job_type ?? "job").replaceAll("_", " ")} •{" "}
+                  {typeof l.labor_time === "number" ? `${l.labor_time.toFixed(1)}h` : "—"}
+                </div>
+                {(l.cause || l.correction) && (
+                  <div className="mt-1 text-xs text-neutral-500">
+                    {l.cause ? `Cause: ${l.cause}  ` : ""}
+                    {l.correction ? `| Corr: ${l.correction}` : ""}
+                  </div>
+                )}
+              </div>
+            </label>
+          ))}
+          {lines.length === 0 && (
+            <div className="p-3 text-sm text-neutral-400">No items to approve.</div>
+          )}
+        </div>
+        <div className="border-t border-neutral-800 p-3 text-sm text-neutral-300">
+          Total labor (approved):{" "}
+          <span className="font-semibold text-white">{totals.hours}h</span>
+        </div>
+      </div>
+
+      {/* Totals (like Quote Review) */}
+      <div className="mt-4 rounded border border-neutral-800 bg-neutral-900">
+        <div className="border-b border-neutral-800 p-3 font-semibold">Totals</div>
+        <div className="p-3 text-sm">
+          <div className="flex items-center justify-between py-1">
+            <div>Labor ({hours.toFixed(1)}h @ {fmt.format(hourlyRate)}/hr)</div>
+            <div className="font-medium">{fmt.format(laborTotal)}</div>
+          </div>
+          <div className="flex items-center justify-between py-1">
+            <div>Parts</div>
+            <div className="font-medium">{fmt.format(partsTotal)}</div>
+          </div>
+          <div className="mt-2 border-t border-neutral-800 pt-2 flex items-center justify-between">
+            <div className="font-semibold">Total</div>
+            <div className="font-semibold">{fmt.format(grandTotal)}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Terms */}
+      <LegalTerms onAgreeChange={setAgreed} defaultOpen />
+
+      {/* Actions */}
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button
+          className="rounded bg-green-600 px-4 py-2 font-semibold text-white hover:bg-green-700 disabled:opacity-60"
+          onClick={async () => {
+            const base64: string | null = await openSignaturePad({ shopName: shop?.name || "" });
+            if (base64) await handleSubmit(base64);
+          }}
+          disabled={submitting || !agreed}
+          title={!agreed ? "Please agree to the Terms & Conditions" : "Sign & Submit"}
+        >
+          {submitting ? "Submitting…" : "Sign & Submit"}
+        </button>
+
+        <button
+          className="rounded border border-neutral-700 px-4 py-2 hover:border-orange-500 disabled:opacity-60"
+          onClick={() => void handleSubmit()}
+          disabled={submitting || !agreed}
+        >
+          Submit without Signature
+        </button>
+      </div>
+
+      {/* Mount the modal host once */}
+      <SignaturePad />
+    </div>
+  );
+}
+

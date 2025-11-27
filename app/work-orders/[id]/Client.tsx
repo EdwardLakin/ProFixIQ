@@ -1,5 +1,4 @@
 // app/work-orders/[id]/page.client.tsx
-
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -23,6 +22,7 @@ import PartsDrawer from "@/features/parts/components/PartsDrawer";
 import AssignTechModal from "@/features/work-orders/components/workorders/extras/AssignTechModal";
 import { JobCard } from "@/features/work-orders/components/JobCard";
 import { WorkOrderSuggestionsPanel } from "@/features/work-orders/components/WorkOrderSuggestionsPanel";
+import { useWorkOrderActions } from "@/features/work-orders/hooks/useWorkOrderActions";
 
 // inspection modal
 const InspectionModal = dynamic(
@@ -507,8 +507,44 @@ export default function WorkOrderIdClient(): JSX.Element {
   }, [fetchAll]);
 
   /* ----------------------- Derived data ----------------------- */
+  // lines that are already quoted & waiting on customer
   const approvalPending = useMemo(
     () => lines.filter((l) => (l.approval_state ?? null) === "pending"),
+    [lines],
+  );
+
+  // lines that still need to be sent to parts for quoting
+  const linesNeedingQuote = useMemo(
+    () =>
+      lines.filter((l) => {
+        const approval = l.approval_state ?? null;
+        const status = l.status ?? "awaiting";
+
+        // skip items already in an approval state
+        if (approval === "pending" || approval === "approved" || approval === "declined") {
+          return false;
+        }
+
+        // skip completed / invoiced stuff
+        if (
+          status === "completed" ||
+          status === "ready_to_invoice" ||
+          status === "invoiced"
+        ) {
+          return false;
+        }
+
+        // skip if already on hold specifically for parts / quote
+        const hold = (l.hold_reason ?? "").toLowerCase();
+        if (
+          status === "on_hold" &&
+          (hold.includes("part") || hold.includes("quote"))
+        ) {
+          return false;
+        }
+
+        return true;
+      }),
     [lines],
   );
 
@@ -565,6 +601,16 @@ export default function WorkOrderIdClient(): JSX.Element {
   }, [assignables]);
 
   /* ----------------------- line actions ----------------------- */
+
+  // hook for parts-quoting actions
+  const { sendAllPendingToParts } = useWorkOrderActions({
+    // we want the bulk-quote button to operate on lines that *need* quoting,
+    // so feed those into the hook
+    approvalPending: linesNeedingQuote,
+    setPartsLineId,
+    setBulkQueue,
+    setBulkActive,
+  });
 
   const approveLine = useCallback(
     async (lineId: string) => {
@@ -642,43 +688,6 @@ export default function WorkOrderIdClient(): JSX.Element {
     },
     [fetchAll],
   );
-
-  const sendToParts = useCallback(
-    async (lineId: string) => {
-      if (!lineId) return;
-      const { error } = await supabase
-        .from("work_order_lines")
-        .update({
-          status: "on_hold",
-          hold_reason: "Awaiting parts quote",
-        } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-        .eq("id", lineId);
-      if (error) return toast.error(error.message);
-      setPartsLineId(lineId);
-      toast.success("Sent to parts for quoting");
-    },
-    [],
-  );
-
-  const sendAllPendingToParts = useCallback(async () => {
-    if (!approvalPending.length) return;
-    const ids = approvalPending.map((l) => l.id);
-    const { error } = await supabase
-      .from("work_order_lines")
-      .update({
-        status: "on_hold",
-        hold_reason: "Awaiting parts quote",
-      } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-      .in("id", ids);
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    setBulkQueue(ids);
-    setBulkActive(true);
-    setPartsLineId(ids[0] ?? null);
-    toast.success("Queued all pending lines for parts quoting");
-  }, [approvalPending]);
 
   // open inspection
   const openInspectionForLine = useCallback(
@@ -799,7 +808,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       {!currentUserId && (
         <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-900/10 p-3 text-sm text-amber-100">
           You appear signed out on this tab. If actions fail, open{" "}
-            <Link href="/sign-in" className="underline hover:text-white">
+          <Link href="/sign-in" className="underline hover:text-white">
             Sign In
           </Link>{" "}
           and return here.
@@ -971,16 +980,6 @@ export default function WorkOrderIdClient(): JSX.Element {
                 <h2 className="text-sm font-semibold text-blue-200 sm:text-base">
                   Awaiting customer approval
                 </h2>
-                {approvalPending.length > 1 && (
-                  <button
-                    type="button"
-                    className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-500"
-                    onClick={sendAllPendingToParts}
-                    title="Queue all pending lines for parts quoting"
-                  >
-                    Quote all pending lines
-                  </button>
-                )}
               </div>
 
               {!hasAnyApprovalItems ? (
@@ -1035,7 +1034,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                                   )}
                                 </div>
 
-                                {/* 👇 flag AI / parts-queued lines */}
+                                {/* 👇 flag lines that are on hold for parts */}
                                 {isAwaitingParts && (
                                   <div className="mt-1 inline-flex items-center rounded-full border border-blue-500/50 bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-200">
                                     Awaiting parts quote
@@ -1064,25 +1063,6 @@ export default function WorkOrderIdClient(): JSX.Element {
                                 >
                                   Decline
                                 </button>
-
-                                {isAwaitingParts ? (
-                                  <button
-                                    type="button"
-                                    disabled
-                                    className="cursor-not-allowed rounded-md border border-neutral-700 px-2 py-1 text-[11px] text-neutral-400"
-                                  >
-                                    Sent to parts
-                                  </button>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    className="rounded-md border border-blue-700 px-2 py-1 text-[11px] font-medium text-blue-200 hover:bg-blue-900/25"
-                                    onClick={() => sendToParts(ln.id)}
-                                    title="Send to parts for quoting"
-                                  >
-                                    Send to parts
-                                  </button>
-                                )}
                               </div>
                             </div>
                           </div>
@@ -1168,6 +1148,18 @@ export default function WorkOrderIdClient(): JSX.Element {
                     Tap a job to open the focused panel with full controls.
                   </p>
                 </div>
+
+                {linesNeedingQuote.length > 0 && (
+                  <button
+                    type="button"
+                    className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-60"
+                    onClick={sendAllPendingToParts}
+                    disabled={bulkActive}
+                    title="Send all jobs to parts for quoting"
+                  >
+                    Quote all lines
+                  </button>
+                )}
               </div>
 
               {sortedLines.length === 0 ? (

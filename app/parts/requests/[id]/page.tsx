@@ -16,6 +16,8 @@ type Item = DB["public"]["Tables"]["part_request_items"]["Row"] & {
 };
 type Status = Request["status"];
 type Part = DB["public"]["Tables"]["parts"]["Row"];
+type QuoteUpdate =
+  DB["public"]["Tables"]["work_order_quote_lines"]["Update"];
 
 const DEFAULT_MARKUP = 30; // %
 
@@ -210,6 +212,48 @@ export default function PartsRequestDetail() {
           .eq("id", lineId);
         if (wolErr) {
           console.warn("could not set line to quoted:", wolErr.message);
+        }
+
+        // 🔗 sync pricing into work_order_quote_lines for this WO line
+        if (req?.work_order_id) {
+          let partsTotalForLine = 0;
+
+          for (const it of items) {
+            if (it.work_order_line_id !== lineId) continue;
+
+            const cost =
+              typeof it.quoted_price === "number" &&
+              !Number.isNaN(it.quoted_price)
+                ? it.quoted_price
+                : 0;
+            const m = markupPct[it.id] ?? DEFAULT_MARKUP;
+            const unitSell = cost * (1 + m / 100);
+            const qty =
+              typeof it.qty === "number" && it.qty > 0
+                ? Number(it.qty)
+                : 0;
+
+            partsTotalForLine += unitSell * qty;
+          }
+
+          const { error: quoteErr } = await supabase
+            .from("work_order_quote_lines")
+            .update({
+              stage: "advisor_pending",
+              parts_total: partsTotalForLine,
+              grand_total: partsTotalForLine,
+            } as QuoteUpdate)
+            .match({
+              work_order_id: req.work_order_id,
+              work_order_line_id: lineId,
+            });
+
+          if (quoteErr) {
+            console.warn(
+              "could not sync work_order_quote_lines from parts quote:",
+              quoteErr.message,
+            );
+          }
         }
 
         // save to menu items (grow Saved Menu)
@@ -480,7 +524,9 @@ export default function PartsRequestDetail() {
                         : 0;
                     const m = markupPct[it.id] ?? DEFAULT_MARKUP;
                     const qty =
-                      typeof it.qty === "number" && it.qty > 0 ? it.qty : null;
+                      typeof it.qty === "number" && it.qty > 0
+                        ? it.qty
+                        : null;
                     const unitSell = cost * (1 + m / 100);
                     const lineTotal = unitSell * (qty ?? 0);
                     const isSaved = savedRows[it.id] === true;
