@@ -1,4 +1,3 @@
-// components/layout/MobileBottomNav.tsx
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
@@ -23,7 +22,12 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/mobile/settings", label: "Me" },
 ];
 
-export function MobileBottomNav() {
+type Props = {
+  open: boolean;
+  onClose: () => void;
+};
+
+export function MobileBottomNav({ open, onClose }: Props) {
   const pathname = usePathname();
   const supabase = createClientComponentClient<DB>();
 
@@ -31,7 +35,9 @@ export function MobileBottomNav() {
   const [shiftStatus, setShiftStatus] = useState<ShiftStatus>("none");
   const [busy, setBusy] = useState(false);
 
-  // Load current user + check if they have an open shift (day punch)
+  /* ---------------------------------------------------------------------- */
+  /* Load current user + check for open shift                                */
+  /* ---------------------------------------------------------------------- */
   useEffect(() => {
     const load = async () => {
       const {
@@ -61,13 +67,16 @@ export function MobileBottomNav() {
     void load();
   }, [supabase]);
 
+  /* ---------------------------------------------------------------------- */
+  /* Punch in/out logic – EXACT same as existing bottom nav                  */
+  /* ---------------------------------------------------------------------- */
   const handleToggleShift = useCallback(async () => {
     if (!userId || busy) return;
 
     setBusy(true);
     try {
       if (shiftStatus === "active") {
-        // End the most recent open shift for this user
+        // End shift
         const { data: openShift } = await supabase
           .from("tech_shifts")
           .select("id")
@@ -89,7 +98,7 @@ export function MobileBottomNav() {
 
         setShiftStatus("ended");
       } else {
-        // Start a new day shift
+        // Start new shift
         await supabase
           .from("tech_shifts")
           .insert({
@@ -106,6 +115,7 @@ export function MobileBottomNav() {
     }
   }, [busy, shiftStatus, supabase, userId]);
 
+  /* ---------------------------------------------------------------------- */
   const punchLabel =
     shiftStatus === "active"
       ? busy
@@ -122,45 +132,94 @@ export function MobileBottomNav() {
       ? "Shift ended"
       : "Off shift";
 
+  /* ---------------------------------------------------------------------- */
+  /* UI – Slide-in drawer                                                    */
+  /* ---------------------------------------------------------------------- */
   return (
-    <nav className="border-t border-border bg-background/95 backdrop-blur-md">
-      {/* Small day-punch strip */}
-      <button
-        type="button"
-        onClick={handleToggleShift}
-        disabled={!userId || busy}
-        className="flex w-full items-center justify-between px-4 py-1.5 text-[11px] text-neutral-100 bg-gradient-to-r from-orange-600 to-orange-500 shadow-[0_-4px_10px_rgba(0,0,0,0.7)] disabled:opacity-60"
+    <>
+      {/* Backdrop */}
+      <div
+        onClick={onClose}
+        className={`fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity ${
+          open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+        }`}
+      />
+
+      {/* Side drawer */}
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 w-72 max-w-[80%] transform shadow-[12px_0_35px_rgba(0,0,0,0.9)] transition-transform duration-200 bg-[#050910] border-r border-[var(--metal-border-soft)] ${
+          open ? "translate-x-0" : "-translate-x-full"
+        }`}
       >
-        <span className="font-semibold uppercase tracking-[0.16em]">
-          {punchLabel}
-        </span>
-        <span className="rounded-full border border-orange-200/70 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-orange-50 bg-black/10">
-          {statusLabel}
-        </span>
-      </button>
+        {/* Header */}
+        <div className="metal-bar flex items-center justify-between px-4 py-3 border-b border-[var(--metal-border-soft)]">
+          <div className="flex flex-col">
+            <span className="font-blackops text-[0.65rem] tracking-[0.24em] text-[var(--accent-copper-light)]">
+              PROFIXIQ
+            </span>
+            <span className="text-[0.7rem] text-neutral-300">Mobile Bench</span>
+          </div>
 
-      {/* Main bottom nav */}
-      <div className="flex h-12 items-center justify-around">
-        {NAV_ITEMS.map((item) => {
-          const isRoot = item.href === "/mobile";
-          const active = isRoot
-            ? pathname === "/mobile"
-            : pathname.startsWith(item.href);
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close menu"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-black/50 hover:bg-black/70 active:scale-95"
+          >
+            ✕
+          </button>
+        </div>
 
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex flex-1 flex-col items-center justify-center text-[11px] ${
-                active ? "font-semibold text-white" : "text-muted-foreground"
-              }`}
-            >
-              <span>{item.label}</span>
-            </Link>
-          );
-        })}
-      </div>
-    </nav>
+        {/* Punch button (EXACT original code) */}
+        <button
+          type="button"
+          onClick={handleToggleShift}
+          disabled={!userId || busy}
+          className="flex items-center justify-between px-4 py-2 text-[11px] text-neutral-100 bg-gradient-to-r from-[var(--accent-copper-soft)] to-[var(--accent-copper)] shadow-[0_4px_14px_rgba(0,0,0,0.85)] disabled:opacity-60"
+        >
+          <span className="font-semibold uppercase tracking-[0.16em]">
+            {punchLabel}
+          </span>
+
+          <span className="accent-chip px-2 py-0.5 text-[10px] uppercase tracking-[0.14em]">
+            {statusLabel}
+          </span>
+        </button>
+
+        {/* Navigation */}
+        <nav className="flex-1 overflow-y-auto px-2 py-3">
+          <div className="space-y-1">
+            {NAV_ITEMS.map((item) => {
+              const isRoot = item.href === "/mobile";
+              const active = isRoot
+                ? pathname === "/mobile"
+                : pathname.startsWith(item.href);
+
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={onClose}
+                  className={`metal-card block rounded-xl px-3 py-2 text-sm transition ${
+                    active
+                      ? "border-[var(--accent-copper)] text-white"
+                      : "border-[var(--metal-border-soft)] text-neutral-200 hover:border-[var(--accent-copper-light)]"
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
+
+        {/* Footer */}
+        <div className="border-t border-[var(--metal-border-soft)] px-4 py-2 text-[0.65rem] text-neutral-500">
+          <div>Tech Mode</div>
+          <div className="text-[0.6rem] text-neutral-600">v0.1 • Early Build</div>
+        </div>
+      </aside>
+    </>
   );
 }
 

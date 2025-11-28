@@ -1,8 +1,12 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@shared/types/types/supabase";
 import type { MobileRole } from "@/features/mobile/config/mobile-tiles";
 import { MobileRoleHub } from "@/features/mobile/components/MobileRoleHub";
+
+type DB = Database;
 
 export type PeriodStats = {
   workedHours: number;
@@ -23,7 +27,7 @@ export type MobileTechJob = {
   id: string;
   label: string; // e.g. "2018 F-150 – Brakes"
   status: string; // e.g. "in_progress"
-  href: string;   // e.g. "/mobile/work-orders/123"
+  href: string; // e.g. "/mobile/work-orders/123"
 };
 
 type Props = {
@@ -33,6 +37,8 @@ type Props = {
   jobs: MobileTechJob[];
   loadingStats?: boolean;
 };
+
+type ShiftStatus = "none" | "active" | "ended";
 
 export function MobileTechHome({
   techName,
@@ -58,6 +64,56 @@ export function MobileTechHome({
   const assignedJobs = stats?.assignedJobs ?? 0;
   const jobsCompletedToday = stats?.jobsCompletedToday ?? 0;
 
+  // ── Shift chip state (reads from tech_shifts) ──────────────────────────────
+  const [shiftStatus, setShiftStatus] = useState<ShiftStatus>("none");
+  const [shiftStart, setShiftStart] = useState<string | null>(null);
+  const [loadingShift, setLoadingShift] = useState<boolean>(true);
+
+  useEffect(() => {
+    const loadShift = async () => {
+      try {
+        const supabase = createClientComponentClient<DB>();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        const userId = session?.user?.id;
+        if (!userId) {
+          setShiftStatus("none");
+          setShiftStart(null);
+          return;
+        }
+
+        // latest shift for this user
+        const { data: lastShift } = await supabase
+          .from("tech_shifts")
+          .select("start_time, end_time")
+          .eq("user_id", userId)
+          .order("start_time", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!lastShift) {
+          setShiftStatus("none");
+          setShiftStart(null);
+          return;
+        }
+
+        if (lastShift.end_time === null) {
+          setShiftStatus("active");
+          setShiftStart(lastShift.start_time ?? null);
+        } else {
+          setShiftStatus("ended");
+          setShiftStart(lastShift.start_time ?? null);
+        }
+      } finally {
+        setLoadingShift(false);
+      }
+    };
+
+    void loadShift();
+  }, []);
+
   return (
     <div className="px-4 py-4 space-y-6">
       {/* header */}
@@ -68,20 +124,21 @@ export function MobileTechHome({
         <p className="mt-1 text-xs text-neutral-300">
           Bench view of today’s work.
         </p>
+
+        {/* Today’s clock / shift chip */}
+        <div className="mt-3">
+          <ShiftChip
+            status={shiftStatus}
+            startTime={shiftStart}
+            loading={loadingShift}
+          />
+        </div>
       </section>
 
       {/* summary cards – worked vs billed */}
       <section className="space-y-3">
-        <SummaryCard
-          label="Today"
-          stats={today}
-          loading={loadingStats}
-        />
-        <SummaryCard
-          label="This week"
-          stats={week}
-          loading={loadingStats}
-        />
+        <SummaryCard label="Today" stats={today} loading={loadingStats} />
+        <SummaryCard label="This week" stats={week} loading={loadingStats} />
       </section>
 
       {/* stat chips */}
@@ -109,7 +166,7 @@ export function MobileTechHome({
             </h2>
             <a
               href="/mobile/work-orders"
-              className="text-[0.7rem] text-orange-300 underline-offset-4 hover:underline"
+              className="text-[0.7rem] text-[var(--accent-copper-light)] underline-offset-4 hover:underline"
             >
               View all
             </a>
@@ -123,7 +180,7 @@ export function MobileTechHome({
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="truncate font-medium">{job.label}</div>
-                    <span className="rounded-full border border-orange-400/60 px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-orange-200">
+                    <span className="rounded-full border border-[var(--accent-copper-light)]/80 px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-[var(--accent-copper-light)]">
                       {job.status.replace(/_/g, " ")}
                     </span>
                   </div>
@@ -183,16 +240,19 @@ function SummaryCard({
     loading || eff === null ? "–" : `${eff.toFixed(0)}%`;
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 shadow-card">
+    <div className="metal-panel metal-panel--card rounded-2xl border px-4 py-3 shadow-card">
       <div className="flex items-center justify-between">
         <div className="text-[0.65rem] uppercase tracking-[0.18em] text-neutral-400">
           {label} – Worked vs Billed
         </div>
         <div className="text-[0.7rem] text-neutral-400">
           Efficiency:{" "}
-          <span className="font-semibold text-orange-200">{effText}</span>
+          <span className="font-semibold text-[var(--accent-copper-light)]">
+            {effText}
+          </span>
         </div>
       </div>
+
       <div className="mt-2 flex items-baseline gap-4 text-sm text-neutral-100">
         <div>
           <span className="text-neutral-400">Worked</span>{" "}
@@ -203,6 +263,71 @@ function SummaryCard({
           <span className="font-semibold text-white">{billedText}</span>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ───────────────────────────── Shift Chip ──────────────────────────────── */
+
+function ShiftChip({
+  status,
+  startTime,
+  loading,
+}: {
+  status: ShiftStatus;
+  startTime: string | null;
+  loading: boolean;
+}) {
+  if (loading) {
+    return (
+      <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/40 px-3 py-1 text-[0.7rem] text-neutral-300">
+        <span className="h-2 w-2 animate-pulse rounded-full bg-neutral-400" />
+        <span>Checking today&apos;s clock…</span>
+      </div>
+    );
+  }
+
+  let badgeClass =
+    "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.7rem]";
+  let pillDotClass = "h-2 w-2 rounded-full";
+  let label = "";
+  let detail = "";
+
+  const timeLabel =
+    startTime != null
+      ? new Date(startTime).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : null;
+
+  if (status === "active") {
+    badgeClass +=
+      " border-emerald-500/70 bg-emerald-500/10 text-emerald-100";
+    pillDotClass += " bg-emerald-400";
+    label = "On shift";
+    detail = timeLabel ? `since ${timeLabel}` : "clock running";
+  } else if (status === "ended") {
+    badgeClass +=
+      " border-[var(--accent-copper)]/70 bg-black/40 text-neutral-200";
+    pillDotClass += " bg-[var(--accent-copper-light)]";
+    label = "Shift ended";
+    detail = timeLabel ? `started at ${timeLabel}` : "no active shift";
+  } else {
+    badgeClass +=
+      " border-white/15 bg-black/40 text-neutral-300";
+    pillDotClass += " bg-neutral-400";
+    label = "Off shift";
+    detail = "tap punch button to start";
+  }
+
+  return (
+    <div className={badgeClass}>
+      <span className={pillDotClass} />
+      <span className="font-semibold uppercase tracking-[0.15em]">
+        {label}
+      </span>
+      <span className="text-[0.65rem] text-neutral-300">{detail}</span>
     </div>
   );
 }

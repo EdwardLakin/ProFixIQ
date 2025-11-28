@@ -885,94 +885,97 @@ export default function WorkOrderIdClient(): JSX.Element {
             </div>
 
             {/* Vehicle & Customer */}
-            <div className="rounded-xl border border-border bg-card/95 p-4">
-              <div className="flex items-center justify-between gap-2">
-                <h2 className="text-sm font-semibold text-white sm:text-base">
-                  Vehicle &amp; Customer
-                </h2>
-                <button
-                  type="button"
-                  className="text-xs font-medium text-orange-400 hover:text-orange-300 hover:underline"
-                  onClick={() => setShowDetails((v) => !v)}
-                  aria-expanded={showDetails}
-                >
-                  {showDetails ? "Hide details" : "Show details"}
-                </button>
-              </div>
+<div className="rounded-xl border border-border bg-card/95 p-4">
+  <div className="flex items-center justify-between gap-2">
+    <h2 className="text-sm font-semibold text-white sm:text-base">
+      Vehicle &amp; Customer
+    </h2>
+    <button
+      type="button"
+      className="text-xs font-medium text-orange-400 hover:text-orange-300 hover:underline"
+      onClick={() => setShowDetails((v) => !v)}
+      aria-expanded={showDetails}
+    >
+      {showDetails ? "Hide details" : "Show details"}
+    </button>
+  </div>
 
-              {showDetails && (
-                <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                  <div className="rounded-lg bg-neutral-950/60 p-3">
-                    <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-400">
-                      Vehicle
-                    </h3>
-                    {vehicle ? (
-                      <>
-                        <p className="text-sm font-medium text-white">
-                          {(vehicle.year ?? "").toString()}{" "}
-                          {vehicle.make ?? ""} {vehicle.model ?? ""}
-                        </p>
-                        <p className="mt-1 text-xs text-neutral-400">
-                          VIN:{" "}
-                          <span className="font-mono">
-                            {vehicle.vin ?? "—"}
-                          </span>
-                          <br />
-                          Plate:{" "}
-                          {vehicle.license_plate ?? (
-                            <span className="text-neutral-500">—</span>
-                          )}
-                        </p>
-                      </>
-                    ) : (
-                      <p className="text-sm text-neutral-500">
-                        No vehicle linked yet.
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="rounded-lg bg-neutral-950/60 p-3">
-                    <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-400">
-                      Customer
-                    </h3>
-                    {customer ? (
-                      <>
-                        <p className="text-sm font-medium text-white">
-                          {[
-                            customer.first_name ?? "",
-                            customer.last_name ?? "",
-                          ]
-                            .filter(Boolean)
-                            .join(" ") || "—"}
-                        </p>
-                        <p className="mt-1 text-xs text-neutral-400">
-                          {customer.phone ?? "—"}{" "}
-                          {customer.email ? (
-                            <>
-                              <span className="mx-1 text-neutral-600">•</span>
-                              {customer.email}
-                            </>
-                          ) : null}
-                        </p>
-                        {customer.id && (
-                          <Link
-                            href={`/customers/${customer.id}`}
-                            className="mt-2 inline-flex text-[11px] font-medium text-orange-400 hover:text-orange-300 hover:underline"
-                            title="Open customer profile"
-                          >
-                            View customer profile →
-                          </Link>
-                        )}
-                      </>
-                    ) : (
-                      <p className="text-sm text-neutral-500">
-                        No customer linked yet.
-                      </p>
-                    )}
-                  </div>
-                </div>
+  {showDetails && (
+    <div className="mt-3 grid gap-4 sm:grid-cols-2">
+      {/* Vehicle */}
+      <div className="rounded-lg bg-neutral-950/60 p-3">
+        <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+          Vehicle
+        </h3>
+        {vehicle ? (
+          <>
+            <p className="text-sm font-medium text-white">
+              {(vehicle.year ?? "").toString()} {vehicle.make ?? ""}{" "}
+              {vehicle.model ?? ""}
+            </p>
+            <p className="mt-1 text-xs text-neutral-400">
+              VIN: <span className="font-mono">{vehicle.vin ?? "—"}</span>
+              <br />
+              Plate:{" "}
+              {vehicle.license_plate ?? (
+                <span className="text-neutral-500">—</span>
               )}
-            </div>
+              <br />
+              Mileage:{" "}
+              {vehicle.mileage
+                ? vehicle.mileage
+                : wo?.odometer_km != null
+                ? `${wo.odometer_km} km`
+                : "—"}
+            </p>
+          </>
+        ) : (
+          <p className="text-sm text-neutral-500">
+            No vehicle linked yet.
+          </p>
+        )}
+      </div>
+
+      {/* Customer */}
+      <div className="rounded-lg bg-neutral-950/60 p-3">
+        <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+          Customer
+        </h3>
+        {customer ? (
+          <>
+            <p className="text-sm font-medium text-white">
+              {[customer.first_name ?? "", customer.last_name ?? ""]
+                .filter(Boolean)
+                .join(" ") || "—"}
+            </p>
+            <p className="mt-1 text-xs text-neutral-400">
+              {customer.phone ?? "—"}{" "}
+              {customer.email ? (
+                <>
+                  <span className="mx-1 text-neutral-600">•</span>
+                  {customer.email}
+                </>
+              ) : null}
+            </p>
+            {customer.id && (
+              <Link
+                href={`/customers/${customer.id}`}
+                className="mt-2 inline-flex text-[11px] font-medium text-orange-400 hover:text-orange-300 hover:underline"
+                title="Open customer profile"
+              >
+                View customer profile →
+              </Link>
+            )}
+          </>
+        ) : (
+          <p className="text-sm text-neutral-500">
+            No customer linked yet.
+          </p>
+        )}
+      </div>
+    </div>
+  )}
+</div>
 
             {/* Awaiting Customer Approval */}
             <div className="rounded-xl border border-blue-900/60 bg-gradient-to-b from-slate-950 to-slate-950/90 p-4">

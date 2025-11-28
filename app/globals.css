@@ -3,6 +3,24 @@
 @tailwind utilities;
 
 /* -------------------------------------------------------------------------- */
+/* 🎨 Theme Tokens – Copper + Dark Metal                                      */
+/* -------------------------------------------------------------------------- */
+:root {
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  /* Copper accent */
+  --accent-copper: #C1663B;
+  --accent-copper-soft: #7E4023;
+  --accent-copper-light: #E39A6E;
+
+  /* Dark “brushed metal” neutrals */
+  --metal-bg: #050910;
+  --metal-panel: #050b12;
+  --metal-border-soft: rgba(148, 163, 184, 0.3);
+  --metal-border-strong: rgba(148, 163, 184, 0.6);
+}
+
+/* -------------------------------------------------------------------------- */
 /* 🧭 Global Base Look */
 /* -------------------------------------------------------------------------- */
 html {
@@ -12,7 +30,7 @@ html {
 }
 
 body {
-  /* use a built-in color so build never fails */
+  /* base dark background */
   @apply bg-neutral-950 text-white antialiased;
   /* Main app font (Inter via next/font variable) */
   font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
@@ -29,8 +47,11 @@ body {
 /* -------------------------------------------------------------------------- */
 .input {
   @apply w-full px-3 py-2 rounded bg-neutral-900 border border-neutral-700
-         text-white placeholder:text-neutral-400
-         focus:outline-none focus:ring-2 focus:ring-orange-500;
+         text-white placeholder:text-neutral-400;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background-color 0.15s ease;
 }
 
 /* Ensure all native fields stay legible */
@@ -43,8 +64,17 @@ select {
   color: rgb(163 163 163); /* neutral-400 */
 }
 
+/* Copper focus ring */
 :focus-visible {
-  @apply outline-none ring-2 ring-orange-500;
+  outline: none;
+  box-shadow:
+    0 0 0 1px var(--accent-copper-soft),
+    0 0 0 3px rgba(193, 102, 59, 0.4);
+}
+
+/* Make .input focus feel a bit stronger */
+.input:focus-visible {
+  border-color: var(--accent-copper);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -65,20 +95,103 @@ select {
 }
 
 /* -------------------------------------------------------------------------- */
-/* 🧱 UI Elements */
+/* 🧱 UI Elements – Copper + Metal                                            */
 /* -------------------------------------------------------------------------- */
 .btn {
   @apply inline-flex items-center justify-center px-4 py-2 font-medium rounded transition-colors;
 }
+
+/* Primary accent button – copper */
 .btn-orange {
-  @apply bg-orange-500 hover:bg-orange-600 text-black;
+  @apply text-black;
+  background-color: var(--accent-copper);
+  transition:
+    background-color 0.15s ease,
+    transform 0.06s ease,
+    box-shadow 0.15s ease;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.7);
 }
+.btn-orange:hover {
+  background-color: var(--accent-copper-soft);
+}
+.btn-orange:active {
+  transform: translateY(1px) scale(0.99);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.8);
+}
+
+/* Simple outline button still available */
 .btn-outline {
   @apply border border-white text-white hover:bg-white hover:text-black;
 }
 
+/* Generic card updated to dark metal feel */
 .card {
-  @apply rounded-xl border border-white/10 bg-black/20 backdrop-blur-md shadow-md p-6;
+  @apply rounded-xl p-6;
+  background-color: var(--metal-panel);
+  border: 1px solid var(--metal-border-soft);
+  box-shadow:
+    0 18px 45px rgba(0, 0, 0, 0.85),
+    inset 0 0 0 1px rgba(15, 23, 42, 0.5);
+  background-image:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.06),
+      rgba(0, 0, 0, 0.4)
+    ),
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.04) 0px,
+      rgba(255, 255, 255, 0.0) 1px,
+      rgba(0, 0, 0, 0.2) 2px
+    );
+}
+
+/* Explicit metal bar – use for top / bottom nav, mobile headers */
+.metal-bar {
+  background-color: var(--metal-bg);
+  background-image:
+    linear-gradient(
+      120deg,
+      rgba(255, 255, 255, 0.06),
+      rgba(255, 255, 255, 0.0) 40%
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.04),
+      rgba(0, 0, 0, 0.10) 1px,
+      rgba(0, 0, 0, 0.20) 3px,
+      rgba(255, 255, 255, 0.02) 4px
+    );
+  border-bottom: 1px solid var(--metal-border-soft);
+}
+
+/* Explicit metal card – for mobile tiles / panels */
+.metal-card {
+  background-color: var(--metal-panel);
+  background-image:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.06),
+      rgba(0, 0, 0, 0.4)
+    ),
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.04) 0px,
+      rgba(255, 255, 255, 0.0) 1px,
+      rgba(0, 0, 0, 0.2) 2px
+    );
+  border: 1px solid var(--metal-border-soft);
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.85),
+    inset 0 0 0 1px rgba(15, 23, 42, 0.55);
+}
+
+/* Small copper pill / chip (for statuses, WO IDs, etc.) */
+.accent-chip {
+  border-radius: 9999px;
+  border: 1px solid var(--accent-copper-light);
+  background-color: rgba(193, 102, 59, 0.18);
+  color: var(--accent-copper-light);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -88,11 +201,14 @@ select {
   width: 8px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #ff6a00;
+  background: var(--accent-copper-soft);
   border-radius: 8px;
 }
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-copper);
+}
 ::-webkit-scrollbar-track {
-  background: #1a1a1a;
+  background: #050810;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -130,11 +246,4 @@ select {
   dialog.wo-modal[open]::backdrop {
     background: rgba(0, 0, 0, 0.6);
   }
-}
-
-/* -------------------------------------------------------------------------- */
-/* 🧩 Safe-area helpers (iOS) */
-/* -------------------------------------------------------------------------- */
-:root {
-  --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
