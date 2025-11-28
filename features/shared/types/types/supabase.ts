@@ -6613,7 +6613,7 @@ export type Database = {
           parts_total: number | null
           qty: number | null
           sent_to_customer_at: string | null
-          shop_id: string | null
+          shop_id: string
           stage: string | null
           status: string
           subtotal: number | null
@@ -6644,7 +6644,7 @@ export type Database = {
           parts_total?: number | null
           qty?: number | null
           sent_to_customer_at?: string | null
-          shop_id?: string | null
+          shop_id: string
           stage?: string | null
           status?: string
           subtotal?: number | null
@@ -6675,7 +6675,7 @@ export type Database = {
           parts_total?: number | null
           qty?: number | null
           sent_to_customer_at?: string | null
-          shop_id?: string | null
+          shop_id?: string
           stage?: string | null
           status?: string
           subtotal?: number | null

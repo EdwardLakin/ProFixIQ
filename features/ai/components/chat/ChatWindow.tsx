@@ -9,13 +9,9 @@ import {
   useState,
 } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type {
-  RealtimePostgresInsertPayload,
-} from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 
-type DB = Database;
-type Message = DB["public"]["Tables"]["messages"]["Row"];
+type Message = Database["public"]["Tables"]["messages"]["Row"];
 
 type ChatWindowProps = {
   conversationId: string;
@@ -23,16 +19,39 @@ type ChatWindowProps = {
   title?: string;
 };
 
+// Helper type for Realtime broadcast payloads coming from realtime.broadcast_changes
+type BroadcastPayload<T> = {
+  payload?: {
+    record?: T;
+    new?: T;
+    old?: T | null;
+    [key: string]: unknown;
+  };
+  record?: T;
+  new?: T;
+  old?: T | null;
+  [key: string]: unknown;
+};
+
+function extractRecord<T>(payload: BroadcastPayload<T>): T | null {
+  return (
+    payload?.payload?.record ??
+    payload?.payload?.new ??
+    payload?.record ??
+    payload?.new ??
+    null
+  ) as T | null;
+}
+
 export default function ChatWindow({
   conversationId,
   userId,
   title = "Conversation",
 }: ChatWindowProps) {
   const supabase = useMemo(
-    () => createClientComponentClient<DB>(),
+    () => createClientComponentClient<Database>(),
     [],
   );
-
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
@@ -65,58 +84,90 @@ export default function ChatWindow({
     }
   }, [conversationId]);
 
-  // initial load & when conversation changes
   useEffect(() => {
     void fetchMessages();
   }, [fetchMessages]);
 
-  // realtime: new messages in this conversation
+  // 🛡️ Set auth token for private Realtime channels
+  useEffect(() => {
+    let mounted = true;
+
+    (async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (token && mounted) {
+        await supabase.realtime.setAuth(token);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [supabase]);
+
+  // 🔔 Realtime broadcast from `public.broadcast_chat_messages`
   useEffect(() => {
     if (!conversationId) return;
 
+    const topic = `room:${conversationId}:messages`;
+
     const channel = supabase
-      .channel(`chat-window-${conversationId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: `conversation_id=eq.${conversationId}`,
+      .channel(topic, {
+        config: {
+          broadcast: {
+            self: true,
+            ack: true,
+          },
         },
-        (payload: RealtimePostgresInsertPayload<Message>) => {
-          const row = payload.new;
-          setMessages((prev) => {
-            // already have it
-            if (prev.some((m) => m.id === row.id)) return prev;
-
-            // try to replace optimistic temp message (same sender + content)
-            const idx = prev.findIndex(
-              (m) =>
-                typeof m.id === "string" &&
-                m.id.startsWith("temp-") &&
-                m.sender_id === row.sender_id &&
-                (m.content ?? "").trim() === (row.content ?? "").trim(),
-            );
-
-            if (idx !== -1) {
-              const next = [...prev];
-              next[idx] = row;
-              return next;
-            }
-
-            return [...prev, row];
-          });
+      })
+      .on(
+        "broadcast",
+        { event: "INSERT" },
+        (payload: BroadcastPayload<Message>) => {
+          const msg = extractRecord<Message>(payload);
+          if (!msg) {
+            console.warn("[ChatWindow] INSERT payload missing record", payload);
+            return;
+          }
+          setMessages((prev) =>
+            prev.some((m) => m.id === msg.id) ? prev : [...prev, msg],
+          );
         },
       )
-      .subscribe();
+      // optional: handle UPDATE / DELETE if you use them
+      .on(
+        "broadcast",
+        { event: "UPDATE" },
+        (payload: BroadcastPayload<Message>) => {
+          const msg = extractRecord<Message>(payload);
+          if (!msg) return;
+          setMessages((prev) =>
+            prev.map((m) => (m.id === msg.id ? msg : m)),
+          );
+        },
+      )
+      .on(
+        "broadcast",
+        { event: "DELETE" },
+        (payload: BroadcastPayload<Message>) => {
+          const msg =
+            (payload?.payload?.old as Message | undefined) ??
+            (payload.old as Message | undefined) ??
+            null;
+          if (!msg) return;
+          setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+        },
+      )
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          console.log("[ChatWindow] subscribed to", topic);
+        }
+      });
 
     return () => {
-      try {
-        supabase.removeChannel(channel);
-      } catch {
-        // ignore
-      }
+      supabase.removeChannel(channel);
     };
   }, [supabase, conversationId]);
 
@@ -125,14 +176,14 @@ export default function ChatWindow({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // focus composer once
+  // focus once
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
   const sendMessage = useCallback(async () => {
     const content = newMessage.trim();
-    if (!content || sending || !conversationId) return;
+    if (!content || sending) return;
 
     const tempId = `temp-${Date.now()}`;
     const optimistic: Message = {
@@ -141,15 +192,7 @@ export default function ChatWindow({
       sender_id: userId,
       content,
       sent_at: new Date().toISOString(),
-      // satisfy TS for other columns we don't care about:
-      recipients: [] as any,
-      attachments: [] as any,
-      reply_to: null,
-      created_at: new Date().toISOString() as any,
-      edited_at: null,
-      deleted_at: null,
-      metadata: {} as any,
-    };
+    } as Message;
 
     setMessages((prev) => [...prev, optimistic]);
     setNewMessage("");
@@ -164,6 +207,7 @@ export default function ChatWindow({
           conversationId,
           senderId: userId,
           content,
+          recipients: [],
         }),
       });
       if (!res.ok) {
@@ -172,13 +216,11 @@ export default function ChatWindow({
           await res.text(),
         );
         setError("Message failed to send.");
-        // reload from server to reconcile
         void fetchMessages();
       }
     } catch (err) {
       console.error("[ChatWindow] sendMessage error:", err);
       setError("Message failed to send.");
-      void fetchMessages();
     } finally {
       setSending(false);
     }
@@ -209,34 +251,25 @@ export default function ChatWindow({
     [messages],
   );
 
-  const handleKeyDown = (
-    e: React.KeyboardEvent<HTMLTextAreaElement>,
-  ) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void sendMessage();
     }
   };
 
-  // group by day & render metadata
+  // group & render helpers (unchanged)
   const grouped = useMemo(() => {
     const byDay: Array<
       | { type: "day"; label: string }
-      | {
-          type: "msg";
-          msg: Message;
-          isMine: boolean;
-          showAvatar: boolean;
-        }
+      | { type: "msg"; msg: Message; isMine: boolean; showAvatar: boolean }
     > = [];
 
     let lastDay = "";
     let lastSender = "";
 
     messages.forEach((m) => {
-      const day = m.sent_at
-        ? new Date(m.sent_at).toDateString()
-        : "Unknown";
+      const day = m.sent_at ? new Date(m.sent_at).toDateString() : "Unknown";
       if (day !== lastDay) {
         byDay.push({ type: "day", label: day });
         lastDay = day;
@@ -244,7 +277,7 @@ export default function ChatWindow({
       }
 
       const isMine = m.sender_id === userId;
-      const showAvatar = (m.sender_id ?? "") !== lastSender;
+      const showAvatar = m.sender_id !== lastSender;
       byDay.push({ type: "msg", msg: m, isMine, showAvatar });
 
       lastSender = m.sender_id ?? "";
@@ -257,9 +290,7 @@ export default function ChatWindow({
     <div className="flex h-full flex-col rounded border border-neutral-800 bg-neutral-950 text-white">
       {/* header */}
       <div className="border-b border-neutral-800 px-4 py-3 flex items-center justify-between">
-        <div className="text-sm font-medium text-neutral-200">
-          {title}
-        </div>
+        <div className="text-sm font-medium text-neutral-200">{title}</div>
         {error ? (
           <div className="text-[10px] text-red-200/80">{error}</div>
         ) : null}
@@ -328,9 +359,7 @@ export default function ChatWindow({
                       <p
                         className={[
                           "mt-1 text-[10px]",
-                          isMine
-                            ? "text-black/60"
-                            : "text-neutral-400",
+                          isMine ? "text-black/60" : "text-neutral-400",
                         ].join(" ")}
                       >
                         {time}
@@ -338,10 +367,10 @@ export default function ChatWindow({
                     ) : null}
                   </div>
 
-                  {isMine && !String(msg.id).startsWith("temp-") ? (
+                  {isMine ? (
                     <button
                       type="button"
-                      onClick={() => void deleteMessage(msg.id as string)}
+                      onClick={() => void deleteMessage(msg.id)}
                       className="absolute -top-2 -right-2 h-5 w-5 rounded-full bg-neutral-900 text-[10px] text-white/70 hover:bg-red-500 hover:text-white"
                       aria-label="Delete message"
                     >

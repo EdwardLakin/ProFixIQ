@@ -1,3 +1,4 @@
+// features/ai/components/chat/NewChatModal.tsx
 "use client";
 
 import React, {
@@ -50,6 +51,30 @@ type Props = {
 
 const LOCAL_ACTIVE_KEY = "pfq-chat-last-conversation";
 const LOCAL_RECENT_KEY = "pfq-chat-recent-convos";
+
+// Realtime broadcast payload helper
+type BroadcastPayload<T> = {
+  payload?: {
+    record?: T;
+    new?: T;
+    old?: T | null;
+    [key: string]: unknown;
+  };
+  record?: T;
+  new?: T;
+  old?: T | null;
+  [key: string]: unknown;
+};
+
+function extractRecord<T>(payload: BroadcastPayload<T>): T | null {
+  return (
+    payload?.payload?.record ??
+    payload?.payload?.new ??
+    payload?.record ??
+    payload?.new ??
+    null
+  ) as T | null;
+}
 
 export default function NewChatModal({
   isOpen,
@@ -111,6 +136,23 @@ export default function NewChatModal({
         setCurrentUserRole(profile?.role ?? null);
       }
     })();
+  }, [supabase]);
+
+  // 🛡️ Realtime auth token
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (token && mounted) {
+        await supabase.realtime.setAuth(token);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
   }, [supabase]);
 
   // helpers for localStorage
@@ -177,7 +219,10 @@ export default function NewChatModal({
           setApiError(json?.error || `HTTP ${res.status}`);
         }
       } catch (err) {
-        console.warn("[NewChatModal] /api/chat/users failed, will fallback:", err);
+        console.warn(
+          "[NewChatModal] /api/chat/users failed, will fallback:",
+          err,
+        );
       }
 
       // fallback to client-side profiles (prefer user_id)
@@ -243,7 +288,7 @@ export default function NewChatModal({
     }
   }, [isOpen, context_type, currentUserRole]);
 
-  // load messages for active convo
+  // load messages for active convo (initial fetch)
   useEffect(() => {
     if (!isOpen) return;
     if (!activeConvoId) {
@@ -286,25 +331,43 @@ export default function NewChatModal({
     };
   }, [activeConvoId, isOpen, upsertRecent]);
 
-  // realtime for current convo
+  // 🔔 Realtime broadcast for current convo (room:<id>:messages)
   useEffect(() => {
     if (!activeConvoId) return;
+
+    const topic = `room:${activeConvoId}:messages`;
+
     const channel = supabase
-      .channel(`modal-messages-${activeConvoId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: `conversation_id=eq.${activeConvoId}`,
+      .channel(topic, {
+        config: {
+          broadcast: {
+            self: true,
+            ack: true,
+          },
         },
-        (payload) => {
-          const newMsg = payload.new as MessageRow;
-          setMessages((prev) => [...prev, newMsg]);
+      })
+      .on(
+        "broadcast",
+        { event: "INSERT" },
+        (payload: BroadcastPayload<MessageRow>) => {
+          const msg = extractRecord<MessageRow>(payload);
+          if (!msg) {
+            console.warn(
+              "[NewChatModal] INSERT payload missing record",
+              payload,
+            );
+            return;
+          }
+          setMessages((prev) =>
+            prev.some((m) => m.id === msg.id) ? prev : [...prev, msg],
+          );
         },
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          console.log("[NewChatModal] subscribed to", topic);
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
@@ -360,10 +423,9 @@ export default function NewChatModal({
 
   // ⬇️ Selecting recipients starts a NEW conversation (refresh chat area)
   useEffect(() => {
-    // If user changes recipients, clear current thread (new unsaved convo)
     setActiveConvoId(null);
     setMessages([]);
-  }, [selectedIds.join(",")]); // join to avoid effect spam
+  }, [selectedIds.join(",")]);
 
   const getOrFetchUserId = useCallback(async () => {
     if (currentUserId) return currentUserId;
@@ -516,7 +578,6 @@ export default function NewChatModal({
     async (convoId: string) => {
       if (!convoId || recentLabels[convoId]) return;
       try {
-        // participants for convo
         const { data: parts, error: partsErr } = await supabase
           .from("conversation_participants")
           .select("user_id")
@@ -525,7 +586,6 @@ export default function NewChatModal({
         if (partsErr || !parts?.length) return;
 
         const ids = parts.map((p) => p.user_id).filter(Boolean);
-        // profiles by user_id (auth uid)
         const { data: profs } = await supabase
           .from("profiles")
           .select("full_name,user_id")
@@ -549,7 +609,6 @@ export default function NewChatModal({
   );
 
   useEffect(() => {
-    // fetch labels for top 12 recents
     recentConversationIds.slice(0, 12).forEach((id) => {
       void buildRecentLabel(id);
     });
@@ -570,7 +629,7 @@ export default function NewChatModal({
         </div>
         <a
           href="/chat"
-          className="text-xs text-orange-400 hover:text-orange-300"
+          className="text-xs text-amber-300 hover:text-amber-200"
         >
           Open conversation history →
         </a>
@@ -631,13 +690,15 @@ export default function NewChatModal({
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Search name, role, or email…"
-                    className="flex-1 rounded border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-white placeholder:text-neutral-500 focus:border-orange-400 focus:outline-none"
+                    className="flex-1 rounded border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-white placeholder:text-neutral-500 focus:border-amber-400 focus:outline-none"
                   />
                 </div>
 
                 <div className="mt-2 max-h-56 overflow-y-auto rounded border border-neutral-800 bg-neutral-950/60">
                   {loadingUsers ? (
-                    <div className="p-3 text-xs text-neutral-400">Loading…</div>
+                    <div className="p-3 text-xs text-neutral-400">
+                      Loading…
+                    </div>
                   ) : filtered.length === 0 ? (
                     <div className="p-3 text-xs text-neutral-400">
                       No users match this filter.
@@ -651,7 +712,7 @@ export default function NewChatModal({
                             <label className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs text-white hover:bg-neutral-800/70">
                               <input
                                 type="checkbox"
-                                className="h-4 w-4 accent-orange-500"
+                                className="h-4 w-4 accent-amber-500"
                                 checked={checked}
                                 onChange={() => toggle(u.id)}
                               />
@@ -700,7 +761,9 @@ export default function NewChatModal({
               {roleOpen ? "Close role filter" : "Filter roles"}
             </button>
             <div className="text-[11px] text-neutral-500">
-              Current: {ROLE_OPTIONS.find((r) => r.value === role)?.label ?? "All roles"}
+              Current:{" "}
+              {ROLE_OPTIONS.find((r) => r.value === role)?.label ??
+                "All roles"}
             </div>
           </div>
 
@@ -715,7 +778,7 @@ export default function NewChatModal({
                         <input
                           type="radio"
                           name="role-filter"
-                          className="h-4 w-4 accent-orange-500"
+                          className="h-4 w-4 accent-amber-500"
                           checked={role === r.value}
                           onChange={() => {
                             setRole(r.value);
@@ -737,7 +800,9 @@ export default function NewChatModal({
         <div className="text-[11px] text-neutral-500">Recent:</div>
         <div className="flex flex-wrap gap-2">
           {recentConversationIds.length === 0 ? (
-            <div className="text-[11px] text-neutral-500">No recent threads.</div>
+            <div className="text-[11px] text-neutral-500">
+              No recent threads.
+            </div>
           ) : (
             recentConversationIds.slice(0, 12).map((id) => {
               const active = id === activeConvoId;
@@ -752,7 +817,7 @@ export default function NewChatModal({
                   }}
                   className={`rounded px-2 py-1 text-[11px] ${
                     active
-                      ? "bg-orange-500 text-black"
+                      ? "bg-amber-500 text-black"
                       : "border border-neutral-700 bg-neutral-900 text-neutral-200 hover:bg-neutral-800"
                   }`}
                   title={id}
@@ -806,12 +871,14 @@ export default function NewChatModal({
               return (
                 <div
                   key={m.id}
-                  className={`flex ${isMine ? "justify-end" : "justify-start"}`}
+                  className={`flex ${
+                    isMine ? "justify-end" : "justify-start"
+                  }`}
                 >
                   <div
                     className={`max-w-[70%] rounded-md px-3 py-2 text-xs break-words ${
                       isMine
-                        ? "bg-orange-500 text-black"
+                        ? "bg-amber-500 text-black"
                         : "bg-neutral-900 text-neutral-100"
                     }`}
                   >
@@ -846,7 +913,7 @@ export default function NewChatModal({
             }}
             rows={1}
             placeholder="Type a message… (Enter to send, Shift+Enter for new line)"
-            className="flex-1 resize-none rounded bg-neutral-900 border border-neutral-700 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-400 focus:outline-none"
+            className="flex-1 resize-none rounded bg-neutral-900 border border-neutral-700 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-amber-400 focus:outline-none"
           />
           <button
             onClick={() => void handleSend()}
@@ -855,7 +922,7 @@ export default function NewChatModal({
               !sendText.trim() ||
               (!activeConvoId && selectedIds.length === 0)
             }
-            className="rounded border border-orange-500/70 text-orange-300 px-4 py-2 text-sm font-semibold hover:bg-orange-500/10 disabled:opacity-50"
+            className="rounded border border-amber-500/80 text-amber-200 px-4 py-2 text-sm font-semibold hover:bg-amber-500/10 disabled:opacity-50"
           >
             {sending ? "Sending…" : "Send"}
           </button>
