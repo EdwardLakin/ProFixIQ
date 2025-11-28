@@ -9,7 +9,6 @@ import {
   useState,
 } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 
 type Message = Database["public"]["Tables"]["messages"]["Row"];
@@ -53,7 +52,6 @@ export default function ChatWindow({
     () => createClientComponentClient<Database>(),
     [],
   );
-
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
@@ -65,7 +63,6 @@ export default function ChatWindow({
 
   const fetchMessages = useCallback(async () => {
     if (!conversationId) return;
-    setLoading(true);
     setError(null);
     try {
       const res = await fetch("/api/chat/get-messages", {
@@ -86,98 +83,104 @@ export default function ChatWindow({
     }
   }, [conversationId]);
 
+  // initial load
   useEffect(() => {
+    if (!conversationId) return;
+    setLoading(true);
     void fetchMessages();
-  }, [fetchMessages]);
+  }, [conversationId, fetchMessages]);
+
+  // 🔁 gentle polling safety net (no postgres_changes)
+  useEffect(() => {
+    if (!conversationId) return;
+    const id = window.setInterval(() => {
+      void fetchMessages();
+    }, 4000); // every 4s
+    return () => window.clearInterval(id);
+  }, [conversationId, fetchMessages]);
+
+  // 🛡️ Set auth token for Realtime (safe even if not strictly required)
+  useEffect(() => {
+    let mounted = true;
+
+    (async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (token && mounted) {
+        try {
+          await supabase.realtime.setAuth(token);
+          console.log("[ChatWindow] realtime.setAuth OK");
+        } catch (e) {
+          console.warn("[ChatWindow] realtime.setAuth failed", e);
+        }
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [supabase]);
 
   // 🔔 Realtime broadcast from `public.broadcast_chat_messages`
   useEffect(() => {
     if (!conversationId) return;
 
-    let channel: RealtimeChannel | null = null;
-    let cancelled = false;
+    const topic = `room:${conversationId}:messages`;
 
-    (async () => {
-      try {
-        // 1) get current session
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-
-        const token = session?.access_token;
-
-        // 2) set auth for Realtime channels (needed for RLS on realtime.messages)
-        if (token) {
-          await supabase.realtime.setAuth(token);
-        }
-
-        if (cancelled) return;
-
-        const topic = `room:${conversationId}:messages`;
-
-        // 3) subscribe to the room topic (broadcast_changes trigger uses this)
-        channel = supabase
-          .channel(topic, {
-            config: {
-              broadcast: {
-                self: true,
-                ack: true,
-              },
-            },
-          })
-          .on(
-            "broadcast",
-            { event: "INSERT" },
-            (payload: BroadcastPayload<Message>) => {
-              const msg = extractRecord<Message>(payload);
-              if (!msg) {
-                console.warn(
-                  "[ChatWindow] INSERT payload missing record",
-                  payload,
-                );
-                return;
-              }
-              setMessages((prev) =>
-                prev.some((m) => m.id === msg.id) ? prev : [...prev, msg],
-              );
-            },
-          )
-          .on(
-            "broadcast",
-            { event: "UPDATE" },
-            (payload: BroadcastPayload<Message>) => {
-              const msg = extractRecord<Message>(payload);
-              if (!msg) return;
-              setMessages((prev) =>
-                prev.map((m) => (m.id === msg.id ? msg : m)),
-              );
-            },
-          )
-          .on(
-            "broadcast",
-            { event: "DELETE" },
-            (payload: BroadcastPayload<Message>) => {
-              const msg =
-                (payload?.payload?.old as Message | undefined) ??
-                (payload.old as Message | undefined) ??
-                null;
-              if (!msg) return;
-              setMessages((prev) => prev.filter((m) => m.id !== msg.id));
-            },
-          )
-          .subscribe((status) => {
-            console.log("[ChatWindow] Realtime status", topic, status);
-          });
-      } catch (err) {
-        console.error("[ChatWindow] realtime setup error:", err);
-      }
-    })();
+    const channel = supabase
+      .channel(topic, {
+        config: {
+          broadcast: {
+            self: true,
+            ack: true,
+          },
+        },
+      })
+      .on(
+        "broadcast",
+        { event: "INSERT" },
+        (payload: BroadcastPayload<Message>) => {
+          console.log("[ChatWindow] broadcast INSERT", payload);
+          const msg = extractRecord<Message>(payload);
+          if (!msg) return;
+          setMessages((prev) =>
+            prev.some((m) => m.id === msg.id) ? prev : [...prev, msg],
+          );
+        },
+      )
+      .on(
+        "broadcast",
+        { event: "UPDATE" },
+        (payload: BroadcastPayload<Message>) => {
+          console.log("[ChatWindow] broadcast UPDATE", payload);
+          const msg = extractRecord<Message>(payload);
+          if (!msg) return;
+          setMessages((prev) =>
+            prev.map((m) => (m.id === msg.id ? msg : m)),
+          );
+        },
+      )
+      .on(
+        "broadcast",
+        { event: "DELETE" },
+        (payload: BroadcastPayload<Message>) => {
+          console.log("[ChatWindow] broadcast DELETE", payload);
+          const msg =
+            (payload?.payload?.old as Message | undefined) ??
+            (payload.old as Message | undefined) ??
+            null;
+          if (!msg) return;
+          setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+        },
+      )
+      .subscribe((status) => {
+        console.log("[ChatWindow] broadcast subscribe status", status, topic);
+      });
 
     return () => {
-      cancelled = true;
-      if (channel) {
-        supabase.removeChannel(channel);
-      }
+      supabase.removeChannel(channel);
     };
   }, [supabase, conversationId]);
 
@@ -226,7 +229,7 @@ export default function ChatWindow({
           await res.text(),
         );
         setError("Message failed to send.");
-        void fetchMessages();
+        // let polling / next fetch sync things up
       }
     } catch (err) {
       console.error("[ChatWindow] sendMessage error:", err);
@@ -234,7 +237,7 @@ export default function ChatWindow({
     } finally {
       setSending(false);
     }
-  }, [conversationId, newMessage, sending, userId, fetchMessages]);
+  }, [conversationId, newMessage, sending, userId]);
 
   const deleteMessage = useCallback(
     async (id: string) => {
@@ -268,7 +271,7 @@ export default function ChatWindow({
     }
   };
 
-  // group & render helpers (unchanged logic, new colors)
+  // group & render helpers
   const grouped = useMemo(() => {
     const byDay: Array<
       | { type: "day"; label: string }
@@ -297,23 +300,23 @@ export default function ChatWindow({
   }, [messages, userId]);
 
   return (
-    <div className="flex h-full flex-col rounded border border-[#3b2a24] bg-[#0b0807] text-[#f5f2ee]">
+    <div className="flex h-full flex-col rounded border border-[var(--metal-border-soft)] bg-[var(--metal-surface)] text-neutral-50">
       {/* header */}
-      <div className="border-b border-[#3b2a24] px-4 py-3 flex items-center justify-between bg-[#120d0b]">
-        <div className="text-sm font-medium text-[#f5f2ee]">{title}</div>
+      <div className="border-b border-[var(--metal-border-soft)] px-4 py-3 flex items-center justify-between">
+        <div className="text-sm font-medium text-neutral-100">{title}</div>
         {error ? (
-          <div className="text-[10px] text-[#f8b0a0]/90">{error}</div>
+          <div className="text-[10px] text-red-200/80">{error}</div>
         ) : null}
       </div>
 
       {/* messages */}
       <div className="flex-1 overflow-y-auto px-3 py-4 space-y-2">
         {loading ? (
-          <div className="text-center text-[#9c8b7c] text-sm py-6">
+          <div className="text-center text-neutral-400 text-sm py-6">
             Loading messages…
           </div>
         ) : grouped.length === 0 ? (
-          <div className="text-center text-[#9c8b7c] text-sm py-6">
+          <div className="text-center text-neutral-500 text-sm py-6">
             No messages yet. Say hi 👋
           </div>
         ) : (
@@ -321,7 +324,7 @@ export default function ChatWindow({
             if (item.type === "day") {
               return (
                 <div key={`day-${idx}`} className="flex justify-center">
-                  <span className="rounded-full bg-[#1a120f] px-3 py-1 text-[11px] text-[#c1aa98]">
+                  <span className="rounded-full bg-black/40 px-3 py-1 text-[11px] text-neutral-400">
                     {item.label}
                   </span>
                 </div>
@@ -344,7 +347,7 @@ export default function ChatWindow({
                 }`}
               >
                 {!isMine && showAvatar ? (
-                  <div className="mt-6 h-7 w-7 rounded-full bg-[#2c211d] flex items-center justify-center text-[10px] text-[#f5f2ee]/80">
+                  <div className="mt-6 h-7 w-7 rounded-full bg-neutral-800 flex items-center justify-center text-[10px] text-neutral-100/80">
                     U
                   </div>
                 ) : (
@@ -360,8 +363,8 @@ export default function ChatWindow({
                       "px-3 py-2 text-sm",
                       "whitespace-pre-wrap break-words",
                       isMine
-                        ? "bg-[#c9733a] text-black"
-                        : "bg-[#17100e] text-[#f5f2ee]",
+                        ? "bg-[var(--accent-copper-soft)] text-black"
+                        : "bg-black/50 text-neutral-100",
                     ].join(" ")}
                   >
                     <p>{msg.content}</p>
@@ -369,9 +372,7 @@ export default function ChatWindow({
                       <p
                         className={[
                           "mt-1 text-[10px]",
-                          isMine
-                            ? "text-black/60"
-                            : "text-[#b89a84]",
+                          isMine ? "text-black/60" : "text-neutral-400",
                         ].join(" ")}
                       >
                         {time}
@@ -383,7 +384,7 @@ export default function ChatWindow({
                     <button
                       type="button"
                       onClick={() => void deleteMessage(msg.id)}
-                      className="absolute -top-2 -right-2 h-5 w-5 rounded-full bg-[#120d0b] text-[10px] text-[#f5f2ee]/70 hover:bg-[#e0583b] hover:text-white"
+                      className="absolute -top-2 -right-2 h-5 w-5 rounded-full bg-black/70 text-[10px] text-white/70 hover:bg-red-500 hover:text-white"
                       aria-label="Delete message"
                     >
                       ×
@@ -399,7 +400,7 @@ export default function ChatWindow({
       </div>
 
       {/* composer */}
-      <div className="border-t border-[#3b2a24] bg-[#100b09] p-3 flex gap-2 items-end">
+      <div className="border-t border-[var(--metal-border-soft)] bg-black/40 p-3 flex gap-2 items-end">
         <textarea
           ref={inputRef}
           value={newMessage}
@@ -407,12 +408,12 @@ export default function ChatWindow({
           onKeyDown={handleKeyDown}
           rows={1}
           placeholder="Type a message… (Enter to send, Shift+Enter for new line)"
-          className="flex-1 resize-none rounded bg-[#18110f] border border-[#4b3329] px-3 py-2 text-sm text-[#f5f2ee] placeholder:text-[#8c7464] focus:border-[#c9733a] focus:outline-none"
+          className="flex-1 resize-none rounded bg-black/70 border border-[var(--metal-border-soft)] px-3 py-2 text-sm text-neutral-50 placeholder:text-neutral-500 focus:border-[var(--accent-copper-soft)] focus:outline-none"
         />
         <button
           onClick={() => void sendMessage()}
           disabled={sending || !newMessage.trim()}
-          className="rounded border border-[#c9733a]/80 text-[#f5f2ee] px-4 py-2 text-sm font-semibold bg-[#201410] hover:bg-[#c9733a] hover:text-black disabled:opacity-50 disabled:hover:bg-[#201410]"
+          className="rounded-full border border-[var(--accent-copper-soft)] bg-black/70 px-4 py-2 text-sm font-semibold text-[var(--accent-copper-soft)] shadow-[0_10px_24px_rgba(0,0,0,0.85)] hover:bg-black/90 disabled:opacity-50"
         >
           {sending ? "Sending…" : "Send"}
         </button>
