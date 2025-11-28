@@ -6,7 +6,6 @@ export type MobileCustomer = {
   last_name: string | null;
   phone: string | null;
   email: string | null;
-  // extra fields to match desktop create
   business_name?: string | null;
   address?: string | null;
   city?: string | null;
@@ -16,13 +15,18 @@ export type MobileCustomer = {
 
 export type MobileVehicle = {
   id: string | null;
-  vin: string | null;
+
+  // optional because mobile does NOT input this
+  vin?: string | null;
+
   year: string | number | null;
   make: string | null;
   model: string | null;
   license_plate: string | null;
   mileage: string | null;
-  color: string | null;          // required because desktop vehicle has color
-  unit_number?: string | null;   // fleet / unit bar
+
+  // optional in mobile UI
+  color?: string | null;
+  unit_number?: string | null;
   engine_hours?: string | number | null;
 };

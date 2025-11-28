@@ -782,7 +782,7 @@ export default function MobileWorkOrderClient({
                       </p>
                       {customer.id && (
                         <Link
-                          href={`/customers/${customer.id}`}
+                          href={`/mobile/work-orders/${wo.id}/vehicle`}
                           className="mt-2 inline-flex text-[11px] font-medium text-[color:var(--accent-copper-light)] underline-offset-2 hover:underline"
                           title="Open customer profile"
                         >

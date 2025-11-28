@@ -211,3 +211,5 @@ export function MobileCustomerVehicleForm({
     </div>
   );
 }
+
+export default MobileCustomerVehicleForm;

@@ -1,4 +1,4 @@
-// app/mobile/settings/page.tsx (or similar)
+//mobile/settings/MobileSettingsScreen.tsx (or similar)
 "use client";
 
 import { useEffect, useState } from "react";
