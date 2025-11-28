@@ -1,7 +1,7 @@
 // features/mobile/dashboard/MobileTechHome.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
@@ -43,12 +43,14 @@ type ShiftStatus = "none" | "active" | "ended";
 
 export function MobileTechHome({
   techName,
-  role: _role, // reserved for future role-specific tweaks
+  role: _role,
   stats,
   jobs,
   loadingStats = false,
 }: Props) {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const [userId, setUserId] = useState<string | null>(null);
+
   const [shiftStatus, setShiftStatus] = useState<ShiftStatus>("none");
   const [shiftStart, setShiftStart] = useState<string | null>(null);
   const [loadingShift, setLoadingShift] = useState(false);
@@ -72,46 +74,10 @@ export function MobileTechHome({
   const assignedJobs = stats?.assignedJobs ?? 0;
   const jobsCompletedToday = stats?.jobsCompletedToday ?? 0;
 
-  // Load current shift state for the chip
-  useEffect(() => {
-    void (async () => {
-      setLoadingShift(true);
-      try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
+  /* ---------------------------------------------------------------------- */
+  /* Live clock for header                                                  */
+  /* ---------------------------------------------------------------------- */
 
-        const userId = session?.user?.id ?? null;
-        if (!userId) {
-          setShiftStatus("none");
-          setShiftStart(null);
-          return;
-        }
-
-        const { data: openShift } = await supabase
-          .from("tech_shifts")
-          .select("id, start_time, end_time, type")
-          .eq("user_id", userId)
-          .eq("type", "shift")
-          .is("end_time", null)
-          .order("start_time", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (openShift?.id) {
-          setShiftStatus("active");
-          setShiftStart(openShift.start_time);
-        } else {
-          setShiftStatus("none");
-          setShiftStart(null);
-        }
-      } finally {
-        setLoadingShift(false);
-      }
-    })();
-  }, [supabase]);
-
-  // Live current time for the header
   useEffect(() => {
     const update = () => {
       const now = new Date();
@@ -122,58 +88,144 @@ export function MobileTechHome({
         }),
       );
     };
+
     update();
     const id = window.setInterval(update, 60_000);
     return () => window.clearInterval(id);
   }, []);
 
-  let chipLabel = "Off shift";
-  let chipDetail: string | null = "Use the menu to start your day.";
-  let chipVariant: "active" | "idle" = "idle";
+  /* ---------------------------------------------------------------------- */
+  /* Load / refresh shift state                                             */
+  /* ---------------------------------------------------------------------- */
+
+  const refreshShiftState = useCallback(async () => {
+    setLoadingShift(true);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const id = session?.user?.id ?? null;
+      setUserId(id);
+
+      if (!id) {
+        setShiftStatus("none");
+        setShiftStart(null);
+        return;
+      }
+
+      const { data: openShift } = await supabase
+        .from("tech_shifts")
+        .select("id, start_time, end_time, status")
+        .eq("user_id", id)
+        .order("start_time", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!openShift) {
+        setShiftStatus("none");
+        setShiftStart(null);
+        return;
+      }
+
+      if (openShift.end_time == null) {
+        setShiftStatus("active");
+        setShiftStart(openShift.start_time);
+      } else {
+        setShiftStatus("ended");
+        setShiftStart(openShift.start_time);
+      }
+    } finally {
+      setLoadingShift(false);
+    }
+  }, [supabase]);
+
+  // initial load
+  useEffect(() => {
+    void refreshShiftState();
+  }, [refreshShiftState]);
+
+  // realtime: follow tech_shifts for this user so it matches bottom nav punches
+  useEffect(() => {
+    if (!userId) return;
+
+    const channel = supabase
+      .channel(`mobile-tech-home-shifts:${userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "tech_shifts",
+          filter: `user_id=eq.${userId}`,
+        },
+        () => {
+          void refreshShiftState();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      try {
+        supabase.removeChannel(channel);
+      } catch {
+        // ignore
+      }
+    };
+  }, [supabase, userId, refreshShiftState]);
+
+  /* ---------------------------------------------------------------------- */
+  /* Derived labels for hero chip                                           */
+  /* ---------------------------------------------------------------------- */
+
+  let statusLabel: string = "Off shift";
+  let statusDetail: string | null = "Use the menu to start your day.";
 
   if (loadingShift) {
-    chipLabel = "Checking shift…";
-    chipDetail = null;
-    chipVariant = "idle";
+    statusLabel = "Checking shift…";
+    statusDetail = null;
   } else if (shiftStatus === "active" && shiftStart) {
     const dt = new Date(shiftStart);
     const timeStr = dt.toLocaleTimeString([], {
       hour: "2-digit",
       minute: "2-digit",
     });
-    chipLabel = "On shift";
-    chipDetail = `since ${timeStr}`;
-    chipVariant = "active";
+    statusLabel = "On shift";
+    statusDetail = `since ${timeStr}`;
   } else if (shiftStatus === "ended") {
-    chipLabel = "Shift ended";
-    chipDetail = null;
-    chipVariant = "idle";
+    statusLabel = "Shift ended";
+    statusDetail = "You can start a new shift from the menu.";
   }
 
   return (
     <div className="space-y-6 px-4 py-4">
-      {/* current time */}
+      {/* current time – little metal tag */}
       <div className="flex justify-center">
-        <div className="rounded-full border border-white/10 bg-black/70 px-3 py-1 text-[0.65rem] font-medium tracking-[0.16em] text-neutral-300 shadow-[0_12px_28px_rgba(0,0,0,0.9)]">
+        <div className="metal-bar rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1 text-[0.65rem] font-medium tracking-[0.16em] text-neutral-300 shadow-[0_12px_28px_rgba(0,0,0,0.8)]">
           {currentTime}
         </div>
       </div>
 
-      {/* header / hero */}
-      <section className="metal-panel metal-panel--hero rounded-2xl border border-[var(--accent-copper-soft)]/80 px-4 py-4 text-white shadow-[0_18px_40px_rgba(0,0,0,0.95),0_0_26px_rgba(212,118,49,0.35)]">
+      {/* hero – brushed metal panel */}
+      <section className="metal-panel metal-panel--hero rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 text-white shadow-[0_18px_40px_rgba(0,0,0,0.85)]">
         <div className="space-y-3">
           <div>
             <h1 className="text-xl font-semibold leading-tight">
-              <span className="text-[var(--accent-copper)]">
-                {`Welcome back, ${firstName}`}
-              </span>{" "}
+              <span className="text-neutral-100">Welcome back, </span>
+              <span className="text-[var(--accent-copper)]">{firstName}</span>{" "}
               <span className="align-middle">👋</span>
             </h1>
             <p className="mt-1 text-xs text-neutral-300">
               Bench-side view of today’s work and efficiency.
             </p>
           </div>
-          <ShiftChip variant={chipVariant} label={chipLabel} detail={chipDetail} />
+
+          <ShiftStatusChip
+            status={shiftStatus}
+            label={statusLabel}
+            detail={statusDetail}
+            loading={loadingShift}
+          />
         </div>
       </section>
 
@@ -216,11 +268,11 @@ export function MobileTechHome({
               <li key={job.id}>
                 <Link
                   href={job.href}
-                  className="block rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-neutral-100 shadow-[0_18px_40px_rgba(0,0,0,0.9)] backdrop-blur-md"
+                  className="metal-card block rounded-2xl border border-[var(--metal-border-soft)] px-3 py-2 text-xs text-neutral-100"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="truncate font-medium">{job.label}</div>
-                    <span className="rounded-full border border-[var(--accent-copper-soft)]/70 px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-[var(--accent-copper-soft)]">
+                    <span className="accent-chip rounded-full px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-[var(--accent-copper-soft)]">
                       {job.status.replace(/_/g, " ")}
                     </span>
                   </div>
@@ -231,7 +283,7 @@ export function MobileTechHome({
         </section>
       )}
 
-      {/* tools – My jobs + Team chat */}
+      {/* tools */}
       <section className="space-y-2">
         <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
           Tools
@@ -256,6 +308,10 @@ export function MobileTechHome({
   );
 }
 
+/* ------------------------------------------------------------------------ */
+/* Pieces                                                                   */
+/* ------------------------------------------------------------------------ */
+
 function StatCard({
   label,
   value,
@@ -266,12 +322,12 @@ function StatCard({
   variant?: "default" | "accent";
 }) {
   const base =
-    "rounded-2xl px-3 py-3 backdrop-blur-md shadow-[0_16px_40px_rgba(0,0,0,0.95)]";
+    "metal-card rounded-2xl px-3 py-3 shadow-[0_16px_32px_rgba(0,0,0,0.75)]";
 
   const variantClasses =
     variant === "accent"
-      ? "border border-[var(--accent-copper-soft)]/85 bg-white/[0.04] shadow-[0_16px_40px_rgba(0,0,0,0.95),0_0_28px_rgba(212,118,49,0.6)]"
-      : "border border-white/10 bg-white/[0.03]";
+      ? "border border-[var(--accent-copper-soft)]/80 shadow-[0_16px_32px_rgba(0,0,0,0.75),0_0_24px_rgba(212,118,49,0.55)]"
+      : "border border-[var(--metal-border-soft)]";
 
   return (
     <div className={`${base} ${variantClasses}`}>
@@ -303,7 +359,7 @@ function SummaryCard({
   const effText = loading || eff === null ? "–" : `${eff.toFixed(0)}%`;
 
   return (
-    <div className="metal-panel metal-panel--card rounded-2xl border border-[var(--accent-copper-soft)]/55 px-4 py-3 shadow-[0_18px_50px_rgba(0,0,0,0.95)] backdrop-blur-md">
+    <div className="metal-panel metal-panel--card rounded-2xl border border-[var(--metal-border-soft)] px-4 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.75)]">
       <div className="flex items-center justify-between">
         <div className="text-[0.65rem] uppercase tracking-[0.18em] text-neutral-300">
           {label} – Worked vs Billed
@@ -329,41 +385,50 @@ function SummaryCard({
   );
 }
 
-function ShiftChip({
-  variant,
+function ShiftStatusChip({
+  status,
   label,
   detail,
+  loading,
 }: {
-  variant: "active" | "idle";
+  status: ShiftStatus;
   label: string;
   detail?: string | null;
+  loading?: boolean;
 }) {
-  // rectangular, copper gradient when idle; green accent when active
+  // Match the visual language of the bottom-nav status pill,
+  // but make it a rectangular chip that sits inside the hero.
   const base =
-    "inline-flex w-full max-w-xs items-center justify-between gap-2 rounded-lg border px-3 py-2 text-[0.7rem] font-medium shadow-[0_10px_24px_rgba(0,0,0,0.9)]";
+    "accent-chip inline-flex w-full max-w-xs items-center justify-between gap-2 rounded-md px-3 py-2 text-[0.7rem] font-medium";
 
-  const idleClasses =
-    "border-[var(--accent-copper-soft)] bg-[linear-gradient(135deg,#d9783a,#b35422)] text-black";
-  const activeClasses =
-    "border-emerald-400/80 bg-[linear-gradient(135deg,#059669,#16a34a)] text-emerald-50";
+  let classes =
+    "border border-[var(--accent-copper-soft)] text-[var(--accent-copper-soft)] bg-black/40";
 
-  const pillClass = `${base} ${
-    variant === "active" ? activeClasses : idleClasses
-  }`;
-
-  const dotClass =
-    variant === "active"
-      ? "bg-emerald-100 shadow-[0_0_8px_rgba(16,185,129,0.9)]"
-      : "bg-black/40";
+  if (loading) {
+    classes =
+      "border border-[var(--metal-border-soft)] text-neutral-200 bg-black/40";
+  } else if (status === "active") {
+    classes =
+      "border border-emerald-400/80 text-emerald-200 bg-black/40 shadow-[0_0_16px_rgba(16,185,129,0.35)]";
+  } else if (status === "ended") {
+    classes =
+      "border border-[var(--metal-border-soft)] text-neutral-200 bg-black/40";
+  }
 
   return (
-    <div className={pillClass}>
+    <div className={`${base} ${classes}`}>
       <div className="flex items-center gap-2">
-        <span className={`h-2 w-2 rounded-full ${dotClass}`} />
+        <span
+          className={`h-2 w-2 rounded-full ${
+            status === "active"
+              ? "bg-emerald-300 shadow-[0_0_8px_rgba(16,185,129,0.9)]"
+              : "bg-neutral-500"
+          }`}
+        />
         <span className="uppercase tracking-[0.16em]">{label}</span>
       </div>
       {detail ? (
-        <span className="text-[0.65rem] opacity-85">{detail}</span>
+        <span className="text-[0.65rem] text-neutral-200">{detail}</span>
       ) : null}
     </div>
   );
@@ -381,7 +446,7 @@ function ToolCard({
   return (
     <Link
       href={href}
-      className="block rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-neutral-100 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-md transition hover:border-[var(--accent-copper-soft)] hover:bg-white/[0.07]"
+      className="metal-card block rounded-2xl border border-[var(--metal-border-soft)] px-4 py-3 text-sm text-neutral-100 transition hover:border-[var(--accent-copper-soft)]"
     >
       <div className="flex items-center justify-between gap-3">
         <div>
