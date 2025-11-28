@@ -1,3 +1,4 @@
+// features/work-orders/mobile/MobileFocusedJob.tsx
 "use client";
 
 import {
@@ -56,15 +57,20 @@ const chip = (s: string | null) =>
 const btnBase =
   "rounded-md border text-sm px-3 py-2 transition-colors text-left";
 const btnNeutral =
-  btnBase + " border-neutral-700 text-neutral-100 hover:bg-neutral-800/80";
+  btnBase +
+  " border-white/15 bg-black/40 text-neutral-100 hover:bg-white/5";
 const btnWarn =
-  btnBase + " border-amber-500/70 text-amber-100 hover:bg-amber-500/10";
+  btnBase +
+  " border-amber-400/80 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20";
 const btnDanger =
-  btnBase + " border-red-500/70 text-red-100 hover:bg-red-500/10";
+  btnBase +
+  " border-red-500/80 bg-red-500/10 text-red-100 hover:bg-red-500/20";
 const btnInfo =
-  btnBase + " border-sky-500/70 text-sky-100 hover:bg-sky-500/10";
+  btnBase +
+  " border-sky-500/80 bg-sky-500/10 text-sky-100 hover:bg-sky-500/20";
 const btnAccent =
-  btnBase + " border-accent/80 text-accent hover:bg-accent/10";
+  btnBase +
+  " border-[var(--accent-copper-light)] bg-[var(--accent-copper-faint)] text-[var(--accent-copper-light)] hover:bg-[var(--accent-copper-soft)]";
 
 type DB = Database;
 type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
@@ -227,7 +233,7 @@ export default function MobileFocusedJob(props: {
           if (next && typeof (next as Partial<WorkOrderLine>).id === "string") {
             setLine(next as WorkOrderLine);
           }
-        }
+        },
       )
       .subscribe();
     return () => {
@@ -270,7 +276,7 @@ export default function MobileFocusedJob(props: {
           table: "work_order_part_allocations",
           filter: `work_order_line_id=eq.${workOrderLineId}`,
         },
-        () => void loadAllocations()
+        () => void loadAllocations(),
       )
       .subscribe();
 
@@ -283,17 +289,20 @@ export default function MobileFocusedJob(props: {
     };
   }, [workOrderLineId, supabase, loadAllocations]);
 
-  const refresh = useCallback(async () => {
-    const { data: l } = await supabase
-      .from("work_order_lines")
-      .select("*")
-      .eq("id", workOrderLineId)
-      .maybeSingle<WorkOrderLine>();
-    setLine(l ?? null);
-    setTechNotes(l?.notes ?? "");
-    await onChanged?.();
-    await loadAllocations();
-  }, [supabase, workOrderLineId, onChanged, loadAllocations]);
+  const refresh = useCallback(
+    async () => {
+      const { data: l } = await supabase
+        .from("work_order_lines")
+        .select("*")
+        .eq("id", workOrderLineId)
+        .maybeSingle<WorkOrderLine>();
+      setLine(l ?? null);
+      setTechNotes(l?.notes ?? "");
+      await onChanged?.();
+      await loadAllocations();
+    },
+    [supabase, workOrderLineId, onChanged, loadAllocations],
+  );
 
   useEffect(() => {
     const handler = () => void refresh();
@@ -398,7 +407,9 @@ export default function MobileFocusedJob(props: {
     const workflow = next.split(":")[1] as WorkflowStatus;
     const { error } = await supabase
       .from("work_order_lines")
-      .update({ status: workflow } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+      .update({
+        status: workflow,
+      } as DB["public"]["Tables"]["work_order_lines"]["Update"])
       .eq("id", workOrderLineId);
     if (error) return showErr("Update status failed", error);
     toast.success("Status updated");
@@ -474,90 +485,102 @@ export default function MobileFocusedJob(props: {
         lineId={line?.id ?? undefined}
       />
 
-      <div className="flex min-h-screen flex-col bg-neutral-950 text-foreground">
+      <div className="app-shell flex min-h-screen flex-col text-foreground">
         {/* Header */}
-        <header className="flex items-center justify-between gap-2 border-b border-white/10 px-3 py-2">
+        <header className="metal-bar sticky top-0 z-40 flex items-center justify-between gap-2 px-3 py-2">
           <button
             type="button"
             onClick={() => {
               closeAllSubModals();
               onBack();
             }}
-            className="rounded-md border border-white/15 px-2 py-1 text-xs text-foreground/80 hover:bg-white/10"
+            className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-black/40 px-3 py-1 text-[11px] text-neutral-100 hover:bg-black/70"
           >
-            ← Back
+            <span>←</span>
+            <span className="uppercase tracking-[0.16em]">Back</span>
           </button>
-          <div className="flex-1 truncate px-2 text-center text-xs font-semibold">
+          <div className="flex-1 truncate px-2 text-center text-[11px] font-medium">
             {line ? (
               <span className={chip(line.status ?? null)}>{titleText}</span>
             ) : (
               "Job"
             )}
           </div>
-          {workOrder?.id && (
+          {workOrder?.id ? (
             <button
               type="button"
-              className="rounded-md bg-accent px-3 py-1.5 text-[11px] font-medium text-black hover:bg-accent/90"
+              className="rounded-full border border-[var(--accent-copper-light)] bg-[var(--accent-copper-soft)] px-3 py-1.5 text-[11px] font-semibold text-black shadow-[0_0_12px_rgba(248,113,22,0.35)] hover:bg-[var(--accent-copper-light)]"
               onClick={() => {
                 closeAllSubModals();
                 setOpenAddJob(true);
               }}
               disabled={busy}
             >
-              Add Job
+              + Job
             </button>
+          ) : (
+            <div className="w-14" />
           )}
         </header>
 
         {/* Body */}
-        <main className="flex-1 overflow-y-auto px-3 py-3">
+        <main className="mobile-body-gradient flex-1 overflow-y-auto px-3 py-3">
           <div className="mx-auto max-w-xl space-y-4">
             {busy && !line ? (
               <div className="grid gap-3">
-                <div className="h-6 w-40 animate-pulse rounded bg-neutral-800/60" />
-                <div className="h-24 animate-pulse rounded bg-neutral-800/60" />
+                <div className="h-6 w-40 animate-pulse rounded-full bg-white/5" />
+                <div className="h-24 animate-pulse rounded-2xl bg-white/5" />
               </div>
             ) : !line ? (
-              <div className="text-sm text-muted-foreground">No job found.</div>
+              <div className="glass-card text-sm text-neutral-300">
+                No job found.
+              </div>
             ) : (
               <>
                 {/* meta info */}
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <div className="rounded border border-white/5 bg-neutral-900/70 p-3">
-                    <div className="text-xs text-muted-foreground">Status</div>
-                    <div className={`font-medium ${chip(line.status ?? null)}`}>
-                      {String(line.status || "awaiting").replaceAll(
-                        "_",
-                        " "
-                      )}
+                  <div className="glass-card p-3">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+                      Status
+                    </div>
+                    <div className={`mt-1 text-sm font-semibold ${chip(line.status ?? null)}`}>
+                      {String(line.status || "awaiting").replaceAll("_", " ")}
                     </div>
                   </div>
-                  <div className="rounded border border-white/5 bg-neutral-900/70 p-3">
-                    <div className="text-xs text-muted-foreground">Start</div>
-                    <div className="font-medium">{createdStart}</div>
+                  <div className="glass-card p-3">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+                      Start
+                    </div>
+                    <div className="mt-1 text-sm text-neutral-100">
+                      {createdStart}
+                    </div>
                   </div>
-                  <div className="rounded border border-white/5 bg-neutral-900/70 p-3">
-                    <div className="text-xs text-muted-foreground">Finish</div>
-                    <div className="font-medium">{createdFinish}</div>
+                  <div className="glass-card p-3">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+                      Finish
+                    </div>
+                    <div className="mt-1 text-sm text-neutral-100">
+                      {createdFinish}
+                    </div>
                   </div>
-                  <div className="rounded border border-white/5 bg-neutral-900/70 p-3">
-                    <div className="text-xs text-muted-foreground">
+                  <div className="glass-card p-3">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
                       Hold Reason
                     </div>
-                    <div className="font-medium">
+                    <div className="mt-1 text-sm text-neutral-100">
                       {line.hold_reason ?? "—"}
                     </div>
                   </div>
                 </div>
 
                 {/* vehicle & customer */}
-                <div className="rounded border border-white/5 bg-neutral-900/70 p-3 text-sm">
+                <div className="glass-card p-3 text-sm">
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div>
-                      <div className="text-xs text-muted-foreground">
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
                         Vehicle
                       </div>
-                      <div className="truncate">
+                      <div className="mt-1 truncate text-neutral-100">
                         {vehicle
                           ? `${vehicle.year ?? ""} ${
                               vehicle.make ?? ""
@@ -566,23 +589,23 @@ export default function MobileFocusedJob(props: {
                               .replace(/\s+/g, " ") || "—"
                           : "—"}
                       </div>
-                      <div className="text-xs text-muted-foreground/80">
+                      <div className="mt-0.5 text-[11px] text-neutral-400">
                         VIN: {vehicle?.vin ?? "—"} • Plate:{" "}
                         {vehicle?.license_plate ?? "—"}
                       </div>
                     </div>
                     <div>
-                      <div className="text-xs text-muted-foreground">
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
                         Customer
                       </div>
-                      <div className="truncate">
+                      <div className="mt-1 truncate text-neutral-100">
                         {customer
                           ? [customer.first_name ?? "", customer.last_name ?? ""]
                               .filter(Boolean)
                               .join(" ") || "—"
                           : "—"}
                       </div>
-                      <div className="text-xs text-muted-foreground/80">
+                      <div className="mt-0.5 text-[11px] text-neutral-400">
                         {customer?.phone ?? "—"}{" "}
                         {customer?.email ? `• ${customer.email}` : ""}
                       </div>
@@ -592,7 +615,7 @@ export default function MobileFocusedJob(props: {
 
                 {/* punch */}
                 {mode === "tech" && line && (
-                  <div className="grid">
+                  <div className="glass-card p-3">
                     <JobPunchButton
                       lineId={line.id}
                       punchedInAt={line.punched_in_at}
@@ -617,7 +640,7 @@ export default function MobileFocusedJob(props: {
                       (line.approval_state &&
                         line.approval_state !== "approved") ||
                       line.status === "declined") && (
-                      <div className="mt-1 text-xs text-amber-300">
+                      <div className="mt-2 text-[11px] text-amber-300">
                         {line.status === "awaiting_approval"
                           ? "Awaiting approval — punching disabled"
                           : line.status === "declined"
@@ -753,20 +776,20 @@ export default function MobileFocusedJob(props: {
                 </div>
 
                 {/* parts used */}
-                <div className="rounded border border-white/5 bg-neutral-900/70 p-3">
-                  <div className="mb-2 text-sm font-medium text-foreground/90">
+                <div className="glass-card p-3">
+                  <div className="mb-2 text-sm font-medium text-neutral-100">
                     Parts used
                   </div>
 
                   {allocsLoading ? (
-                    <div className="text-sm text-muted-foreground">Loading…</div>
+                    <div className="text-sm text-neutral-300">Loading…</div>
                   ) : allocs.length === 0 ? (
-                    <div className="text-sm text-muted-foreground">
+                    <div className="text-sm text-neutral-300">
                       No parts used yet.
                     </div>
                   ) : (
-                    <div className="overflow-hidden rounded border border-white/5">
-                      <div className="grid grid-cols-12 bg-neutral-900/80 px-3 py-2 text-xs text-muted-foreground">
+                    <div className="overflow-hidden rounded-xl border border-white/10 bg-black/40">
+                      <div className="grid grid-cols-12 bg-white/5 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-neutral-400">
                         <div className="col-span-7">Part</div>
                         <div className="col-span-3">Location</div>
                         <div className="col-span-2 text-right">Qty</div>
@@ -777,15 +800,15 @@ export default function MobileFocusedJob(props: {
                             key={a.id}
                             className="grid grid-cols-12 items-center px-3 py-2 text-sm"
                           >
-                            <div className="col-span-7 truncate">
+                            <div className="col-span-7 truncate text-neutral-100">
                               {a.parts?.name ?? "Part"}
                             </div>
-                            <div className="col-span-3 truncate text-muted-foreground">
+                            <div className="col-span-3 truncate text-neutral-400">
                               {a.location_id
                                 ? `loc ${String(a.location_id).slice(0, 6)}…`
                                 : "—"}
                             </div>
-                            <div className="col-span-2 text-right font-semibold">
+                            <div className="col-span-2 text-right font-semibold text-neutral-100">
                               {a.qty}
                             </div>
                           </li>
@@ -796,8 +819,8 @@ export default function MobileFocusedJob(props: {
                 </div>
 
                 {/* tech notes */}
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-foreground/90">
+                <div className="glass-card p-3">
+                  <label className="mb-1 block text-sm font-medium text-neutral-100">
                     Tech Notes
                   </label>
                   <textarea
@@ -806,14 +829,14 @@ export default function MobileFocusedJob(props: {
                     onChange={(e) => setTechNotes(e.target.value)}
                     onBlur={saveNotes}
                     disabled={savingNotes}
-                    className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-400 focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-400"
+                    className="w-full rounded-md border border-white/15 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-neutral-400 focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-light)]"
                     placeholder="Add notes for this job…"
                   />
                 </div>
 
                 {/* AI suggestions */}
-                <div className="rounded border border-white/5 bg-neutral-900/70 p-3">
-                  <h3 className="mb-2 text-sm font-medium text-foreground/90">
+                <div className="glass-card p-3">
+                  <h3 className="mb-2 text-sm font-medium text-neutral-100">
                     AI Suggested Repairs
                   </h3>
                   {line && workOrder ? (
@@ -827,13 +850,13 @@ export default function MobileFocusedJob(props: {
                       }}
                     />
                   ) : (
-                    <div className="text-sm text-muted-foreground">
+                    <div className="text-sm text-neutral-300">
                       Vehicle/work order details required.
                     </div>
                   )}
                 </div>
 
-                <div className="pb-16 text-xs text-muted-foreground">
+                <div className="pb-16 text-[11px] text-neutral-400">
                   Job ID: {line.id}
                   {typeof line.labor_time === "number"
                     ? ` • Labor: ${line.labor_time.toFixed(1)}h`
@@ -849,7 +872,7 @@ export default function MobileFocusedJob(props: {
         </main>
 
         {/* bottom mic */}
-        <footer className="sticky bottom-0 flex items-center justify-center border-t border-white/10 bg-neutral-950/90 px-3 py-2">
+        <footer className="mobile-footer-bar sticky bottom-0 flex items-center justify-center px-3 py-2">
           <VoiceButton />
         </footer>
       </div>

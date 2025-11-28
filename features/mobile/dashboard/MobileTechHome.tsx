@@ -1,10 +1,11 @@
+ // features/mobile/dashboard/MobileTechHome.tsx
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import type { MobileRole } from "@/features/mobile/config/mobile-tiles";
-import { MobileRoleHub } from "@/features/mobile/components/MobileRoleHub";
 
 type DB = Database;
 
@@ -42,11 +43,16 @@ type ShiftStatus = "none" | "active" | "ended";
 
 export function MobileTechHome({
   techName,
-  role,
+  role: _role, // kept for future role-specific tweaks
   stats,
   jobs,
   loadingStats = false,
 }: Props) {
+  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+  const [shiftStatus, setShiftStatus] = useState<ShiftStatus>("none");
+  const [shiftStart, setShiftStart] = useState<string | null>(null);
+  const [loadingShift, setLoadingShift] = useState(false);
+
   const firstName = techName?.split(" ")[0] ?? techName ?? "Tech";
 
   const today = stats?.today ?? {
@@ -64,74 +70,80 @@ export function MobileTechHome({
   const assignedJobs = stats?.assignedJobs ?? 0;
   const jobsCompletedToday = stats?.jobsCompletedToday ?? 0;
 
-  // ── Shift chip state (reads from tech_shifts) ──────────────────────────────
-  const [shiftStatus, setShiftStatus] = useState<ShiftStatus>("none");
-  const [shiftStart, setShiftStart] = useState<string | null>(null);
-  const [loadingShift, setLoadingShift] = useState<boolean>(true);
-
+  // Load current shift state for the chip
   useEffect(() => {
-    const loadShift = async () => {
+    void (async () => {
+      setLoadingShift(true);
       try {
-        const supabase = createClientComponentClient<DB>();
         const {
           data: { session },
         } = await supabase.auth.getSession();
 
-        const userId = session?.user?.id;
+        const userId = session?.user?.id ?? null;
         if (!userId) {
           setShiftStatus("none");
           setShiftStart(null);
           return;
         }
 
-        // latest shift for this user
-        const { data: lastShift } = await supabase
+        const { data: openShift } = await supabase
           .from("tech_shifts")
-          .select("start_time, end_time")
+          .select("id, start_time, end_time, type")
           .eq("user_id", userId)
+          .eq("type", "shift")
+          .is("end_time", null)
           .order("start_time", { ascending: false })
           .limit(1)
           .maybeSingle();
 
-        if (!lastShift) {
+        if (openShift?.id) {
+          setShiftStatus("active");
+          setShiftStart(openShift.start_time);
+        } else {
           setShiftStatus("none");
           setShiftStart(null);
-          return;
-        }
-
-        if (lastShift.end_time === null) {
-          setShiftStatus("active");
-          setShiftStart(lastShift.start_time ?? null);
-        } else {
-          setShiftStatus("ended");
-          setShiftStart(lastShift.start_time ?? null);
         }
       } finally {
         setLoadingShift(false);
       }
-    };
+    })();
+  }, [supabase]);
 
-    void loadShift();
-  }, []);
+  let chipLabel = "Off shift";
+  let chipDetail: string | null = "Use the menu to start your day.";
+  let chipVariant: "active" | "idle" = "idle";
+
+  if (loadingShift) {
+    chipLabel = "Checking shift…";
+    chipDetail = null;
+    chipVariant = "idle";
+  } else if (shiftStatus === "active" && shiftStart) {
+    const dt = new Date(shiftStart);
+    const timeStr = dt.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    chipLabel = "On shift";
+    chipDetail = `since ${timeStr}`;
+    chipVariant = "active";
+  } else if (shiftStatus === "ended") {
+    chipLabel = "Shift ended";
+    chipDetail = null;
+    chipVariant = "idle";
+  }
 
   return (
     <div className="px-4 py-4 space-y-6">
-      {/* header */}
-      <section className="rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_60%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.95),#020617_70%)] px-4 py-4 shadow-card text-white">
+      {/* header / hero */}
+      <section className="metal-panel metal-panel--hero rounded-2xl border border-white/10 px-4 py-4 shadow-card text-white">
         <h1 className="text-xl font-semibold">
           {`Welcome back, ${firstName} 👋`}
         </h1>
         <p className="mt-1 text-xs text-neutral-300">
           Bench view of today’s work.
         </p>
-
-        {/* Today’s clock / shift chip */}
         <div className="mt-3">
-          <ShiftChip
-            status={shiftStatus}
-            startTime={shiftStart}
-            loading={loadingShift}
-          />
+          <ShiftChip variant={chipVariant} label={chipLabel} detail={chipDetail} />
         </div>
       </section>
 
@@ -143,14 +155,8 @@ export function MobileTechHome({
 
       {/* stat chips */}
       <section className="grid grid-cols-3 gap-3">
-        <StatCard
-          label="Open jobs"
-          value={loadingStats ? "…" : openJobs}
-        />
-        <StatCard
-          label="Assigned"
-          value={loadingStats ? "…" : assignedJobs}
-        />
+        <StatCard label="Open jobs" value={loadingStats ? "…" : openJobs} />
+        <StatCard label="Assigned" value={loadingStats ? "…" : assignedJobs} />
         <StatCard
           label="Jobs done"
           value={loadingStats ? "…" : jobsCompletedToday}
@@ -164,40 +170,54 @@ export function MobileTechHome({
             <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
               Today&apos;s jobs
             </h2>
-            <a
+            <Link
               href="/mobile/work-orders"
-              className="text-[0.7rem] text-[var(--accent-copper-light)] underline-offset-4 hover:underline"
+              className="text-[0.7rem] text-[var(--accent-copper-soft)] underline-offset-4 hover:underline"
             >
               View all
-            </a>
+            </Link>
           </div>
           <ul className="space-y-2">
             {jobs.map((job) => (
               <li key={job.id}>
-                <a
+                <Link
                   href={job.href}
-                  className="block rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-xs text-neutral-100 shadow-card"
+                  className="block rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-neutral-100 shadow-card backdrop-blur-md"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="truncate font-medium">{job.label}</div>
-                    <span className="rounded-full border border-[var(--accent-copper-light)]/80 px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-[var(--accent-copper-light)]">
+                    <span className="rounded-full border border-[var(--accent-copper-soft)]/70 px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-[var(--accent-copper-soft)]">
                       {job.status.replace(/_/g, " ")}
                     </span>
                   </div>
-                </a>
+                </Link>
               </li>
             ))}
           </ul>
         </section>
       )}
 
-      {/* mobile role hub */}
-      <MobileRoleHub
-        role={role}
-        scopes={["home"]}
-        title="Tools"
-        subtitle="Quick actions for your bench."
-      />
+      {/* tools – only My jobs + Team chat, full-width glass cards */}
+      <section className="space-y-2">
+        <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+          Tools
+        </h2>
+        <p className="text-[0.7rem] text-neutral-500">
+          Quick actions for your bench.
+        </p>
+        <div className="space-y-2">
+          <ToolCard
+            href="/mobile/work-orders"
+            label="My jobs"
+            description="Assigned work orders"
+          />
+          <ToolCard
+            href="/mobile/messages"
+            label="Team chat"
+            description="Stay in sync"
+          />
+        </div>
+      </section>
     </div>
   );
 }
@@ -210,7 +230,7 @@ function StatCard({
   value: number | string;
 }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 shadow-card">
+    <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3 shadow-card backdrop-blur-md">
       <div className="text-[0.6rem] uppercase tracking-[0.18em] text-neutral-400">
         {label}
       </div>
@@ -236,23 +256,21 @@ function SummaryCard({
 
   const workedText = loading ? "…" : `${worked.toFixed(1)} h`;
   const billedText = loading ? "…" : `${billed.toFixed(1)} h`;
-  const effText =
-    loading || eff === null ? "–" : `${eff.toFixed(0)}%`;
+  const effText = loading || eff === null ? "–" : `${eff.toFixed(0)}%`;
 
   return (
     <div className="metal-panel metal-panel--card rounded-2xl border px-4 py-3 shadow-card">
       <div className="flex items-center justify-between">
-        <div className="text-[0.65rem] uppercase tracking-[0.18em] text-neutral-400">
+        <div className="text-[0.65rem] uppercase tracking-[0.18em] text-neutral-300">
           {label} – Worked vs Billed
         </div>
         <div className="text-[0.7rem] text-neutral-400">
           Efficiency:{" "}
-          <span className="font-semibold text-[var(--accent-copper-light)]">
+          <span className="font-semibold text-[var(--accent-copper-soft)]">
             {effText}
           </span>
         </div>
       </div>
-
       <div className="mt-2 flex items-baseline gap-4 text-sm text-neutral-100">
         <div>
           <span className="text-neutral-400">Worked</span>{" "}
@@ -267,67 +285,63 @@ function SummaryCard({
   );
 }
 
-/* ───────────────────────────── Shift Chip ──────────────────────────────── */
-
 function ShiftChip({
-  status,
-  startTime,
-  loading,
+  variant,
+  label,
+  detail,
 }: {
-  status: ShiftStatus;
-  startTime: string | null;
-  loading: boolean;
+  variant: "active" | "idle";
+  label: string;
+  detail?: string | null;
 }) {
-  if (loading) {
-    return (
-      <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/40 px-3 py-1 text-[0.7rem] text-neutral-300">
-        <span className="h-2 w-2 animate-pulse rounded-full bg-neutral-400" />
-        <span>Checking today&apos;s clock…</span>
-      </div>
-    );
-  }
+  const pillClass =
+    variant === "active"
+      ? "bg-gradient-to-r from-[var(--accent-copper-deep)] to-emerald-600/70 border-emerald-300/60 text-emerald-50"
+      : "bg-white/5 border-white/15 text-neutral-100";
 
-  let badgeClass =
-    "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[0.7rem]";
-  let pillDotClass = "h-2 w-2 rounded-full";
-  let label = "";
-  let detail = "";
-
-  const timeLabel =
-    startTime != null
-      ? new Date(startTime).toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        })
-      : null;
-
-  if (status === "active") {
-    badgeClass +=
-      " border-emerald-500/70 bg-emerald-500/10 text-emerald-100";
-    pillDotClass += " bg-emerald-400";
-    label = "On shift";
-    detail = timeLabel ? `since ${timeLabel}` : "clock running";
-  } else if (status === "ended") {
-    badgeClass +=
-      " border-[var(--accent-copper)]/70 bg-black/40 text-neutral-200";
-    pillDotClass += " bg-[var(--accent-copper-light)]";
-    label = "Shift ended";
-    detail = timeLabel ? `started at ${timeLabel}` : "no active shift";
-  } else {
-    badgeClass +=
-      " border-white/15 bg-black/40 text-neutral-300";
-    pillDotClass += " bg-neutral-400";
-    label = "Off shift";
-    detail = "tap punch button to start";
-  }
+  const dotClass =
+    variant === "active"
+      ? "bg-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.9)]"
+      : "bg-neutral-400";
 
   return (
-    <div className={badgeClass}>
-      <span className={pillDotClass} />
-      <span className="font-semibold uppercase tracking-[0.15em]">
+    <div
+      className={`inline-flex items-center gap-3 rounded-full px-3 py-1.5 text-[0.7rem] backdrop-blur-sm ${pillClass}`}
+    >
+      <span className={`h-2 w-2 rounded-full ${dotClass}`} />
+      <span className="font-semibold uppercase tracking-[0.16em]">
         {label}
       </span>
-      <span className="text-[0.65rem] text-neutral-300">{detail}</span>
+      {detail ? (
+        <span className="text-[0.65rem] text-neutral-100/80">{detail}</span>
+      ) : null}
     </div>
+  );
+}
+
+function ToolCard({
+  href,
+  label,
+  description,
+}: {
+  href: string;
+  label: string;
+  description: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="block rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 shadow-card backdrop-blur-md transition hover:border-[var(--accent-copper-soft)] hover:bg-white/[0.07]"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-[0.65rem] uppercase tracking-[0.18em] text-neutral-400">
+            {label}
+          </div>
+          <div className="mt-1 text-sm text-neutral-100">{description}</div>
+        </div>
+        <span className="text-xs text-[var(--accent-copper-soft)]">›</span>
+      </div>
+    </Link>
   );
 }

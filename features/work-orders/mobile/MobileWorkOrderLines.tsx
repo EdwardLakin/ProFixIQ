@@ -1,4 +1,4 @@
-//Features/work-orders/mobile/MobileWorkOrderLines.tsx
+// features/work-orders/mobile/MobileWorkOrderLines.tsx
 "use client";
 
 import type { Database } from "@shared/types/types/supabase";
@@ -23,9 +23,9 @@ export function MobileWorkOrderLines({
 
   if (!lines.length) {
     return (
-      <div className="rounded-xl border border-dashed border-neutral-700 bg-neutral-950/60 px-3 py-3 text-xs text-neutral-400">
+      <div className="glass-card rounded-2xl border border-dashed border-white/15 bg-black/30 px-3 py-3 text-[0.75rem] text-neutral-300">
         No jobs added yet. Use{" "}
-        <span className="font-semibold text-neutral-200">
+        <span className="font-semibold text-[var(--accent-copper-light)]">
           Add job line
         </span>{" "}
         below to start the quote.
@@ -34,12 +34,12 @@ export function MobileWorkOrderLines({
   }
 
   return (
-    <div className="space-y-2 rounded-xl border border-neutral-800 bg-neutral-950 p-3">
-      <div className="mb-1 flex items-center justify-between">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
+    <div className="glass-card rounded-2xl border border-white/12 bg-black/40 px-3 py-3">
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-neutral-400">
           Jobs on this work order
         </h2>
-        <span className="text-[10px] text-neutral-500">
+        <span className="text-[0.65rem] text-neutral-500">
           {lines.length} line{lines.length === 1 ? "" : "s"}
         </span>
       </div>
@@ -54,7 +54,7 @@ export function MobileWorkOrderLines({
           return (
             <li
               key={line.id}
-              className="flex items-start justify-between gap-2 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-xs"
+              className="flex items-start justify-between gap-2 rounded-xl border border-white/12 bg-black/45 px-3 py-2 text-xs shadow-card"
             >
               <div className="min-w-0">
                 <div className="truncate text-[0.8rem] font-medium text-neutral-50">
@@ -66,7 +66,7 @@ export function MobileWorkOrderLines({
                   </div>
                 )}
                 {line.status && (
-                  <div className="mt-1 text-[0.65rem] uppercase tracking-wide text-neutral-500">
+                  <div className="mt-1 text-[0.65rem] uppercase tracking-[0.16em] text-neutral-500">
                     {line.status.replaceAll("_", " ")}
                   </div>
                 )}
@@ -74,7 +74,7 @@ export function MobileWorkOrderLines({
               <button
                 type="button"
                 onClick={() => onDelete(line.id)}
-                className="shrink-0 rounded-full border border-red-500/60 px-2 py-0.5 text-[0.7rem] text-red-200 hover:bg-red-900/30"
+                className="shrink-0 rounded-full border border-red-500/70 px-2 py-0.5 text-[0.7rem] text-red-100 hover:bg-red-500/15"
               >
                 Delete
               </button>

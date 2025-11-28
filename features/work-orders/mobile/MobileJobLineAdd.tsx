@@ -1,4 +1,4 @@
-//features/work-orders/mobile/MobileJobLineAdd.tsx
+// features/work-orders/mobile/MobileJobLineAdd.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -46,12 +46,17 @@ export function MobileJobLineAdd({
   }
 
   return (
-    <NewWorkOrderLineForm
-      workOrderId={workOrderId}
-      vehicleId={vehicleId}
-      defaultJobType={defaultJobType}
-      shopId={shopId}
-      onCreated={onCreated}
-    />
+    <div className="space-y-2">
+      <div className="text-[0.7rem] uppercase tracking-[0.16em] text-neutral-500">
+        Add job line
+      </div>
+      <NewWorkOrderLineForm
+        workOrderId={workOrderId}
+        vehicleId={vehicleId}
+        defaultJobType={defaultJobType}
+        shopId={shopId}
+        onCreated={onCreated}
+      />
+    </div>
   );
 }

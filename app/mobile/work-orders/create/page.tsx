@@ -358,95 +358,111 @@ export default function MobileCreateWorkOrderPage() {
   /* UI                                                                       */
   /* ------------------------------------------------------------------------ */
   return (
-    <div className="space-y-6 px-4 py-4">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl font-blackops text-orange-400">
-          Create Work Order
-        </h1>
-        {wo?.custom_id && (
-          <p className="mt-1 text-xs text-neutral-400">
-            WO#: <span className="font-mono">{wo.custom_id}</span>
-          </p>
-        )}
-        {error && (
-          <p className="mt-2 rounded border border-red-500/50 bg-red-950/60 px-3 py-2 text-xs text-red-100">
-            {error}
-          </p>
-        )}
-      </div>
+    <div className="px-4 py-4">
+      <div className="mx-auto max-w-xl space-y-6">
+        {/* Header card */}
+        <section className="metal-panel metal-panel--card rounded-2xl border border-white/10 px-4 py-4 shadow-card text-white">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h1 className="text-lg font-blackops tracking-[0.16em] text-[var(--accent-copper-light)]">
+                Create Work Order
+              </h1>
+              <p className="mt-1 text-[0.75rem] text-neutral-300">
+                Start a new ticket from the lane.
+              </p>
+            </div>
+            {wo?.custom_id && (
+              <div className="rounded-full border border-white/15 bg-black/40 px-3 py-1 text-[0.7rem] font-mono text-neutral-100">
+                WO&nbsp;
+                <span className="text-[var(--accent-copper-soft)]">
+                  {wo.custom_id}
+                </span>
+              </div>
+            )}
+          </div>
+          {error && (
+            <p className="mt-3 rounded-lg border border-red-500/50 bg-red-950/70 px-3 py-2 text-[0.7rem] text-red-100">
+              {error}
+            </p>
+          )}
+        </section>
 
-      {/* Customer + Vehicle Form */}
-      <MobileCustomerVehicleForm
-        wo={wo}
-        customer={customer}
-        vehicle={vehicle}
-        onCustomerChange={setCustomer}
-        onVehicleChange={setVehicle}
-        supabase={supabase}
-      />
+        {/* Customer + Vehicle Form */}
+        <div className="glass-card rounded-2xl border border-white/10 px-3 py-3">
+          <MobileCustomerVehicleForm
+            wo={wo}
+            customer={customer}
+            vehicle={vehicle}
+            onCustomerChange={setCustomer}
+            onVehicleChange={setVehicle}
+            supabase={supabase}
+          />
 
-      {/* VIN scan (reads decoded VIN and patches local + draft state) */}
-      <div className="mt-2 flex flex-wrap gap-2">
-        <VinCaptureModal
-          userId={currentUserId ?? "anon"}
-          action="/api/vin"
-          onDecoded={(decoded) => {
-            // store in shared draft (used by desktop + other flows)
-            draft.setVehicle({
-              vin: decoded.vin ?? null,
-              year: decoded.year ?? null,
-              make: decoded.make ?? null,
-              model: decoded.model ?? null,
-            });
+          {/* VIN scan (reads decoded VIN and patches local + draft state) */}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <VinCaptureModal
+              userId={currentUserId ?? "anon"}
+              action="/api/vin"
+              onDecoded={(decoded) => {
+                // store in shared draft (used by desktop + other flows)
+                draft.setVehicle({
+                  vin: decoded.vin ?? null,
+                  year: decoded.year ?? null,
+                  make: decoded.make ?? null,
+                  model: decoded.model ?? null,
+                });
 
-            // patch local mobile vehicle state
-            setVehicle((prev) => ({
-              ...prev,
-              vin: decoded.vin ?? prev.vin,
-              year: decoded.year ?? prev.year,
-              make: decoded.make ?? prev.make,
-              model: decoded.model ?? prev.model,
-            }));
+                // patch local mobile vehicle state
+                setVehicle((prev) => ({
+                  ...prev,
+                  vin: decoded.vin ?? prev.vin,
+                  year: decoded.year ?? prev.year,
+                  make: decoded.make ?? prev.make,
+                  model: decoded.model ?? prev.model,
+                }));
+              }}
+            >
+              <span className="cursor-pointer rounded-full border border-[var(--accent-copper)] px-3 py-1.5 text-[0.7rem] font-medium text-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/10">
+                Add by VIN / Scan
+              </span>
+            </VinCaptureModal>
+          </div>
+        </div>
+
+        {/* Job Lines */}
+        <MobileWorkOrderLines
+          lines={lines}
+          workOrderId={wo?.id ?? null}
+          onDelete={async (lineId) => {
+            if (!wo?.id) return;
+            await supabase
+              .from("work_order_lines")
+              .delete()
+              .eq("id", lineId)
+              .eq("work_order_id", wo.id);
+            await fetchLines();
           }}
+        />
+
+        {/* Add a Line */}
+        <div className="glass-card rounded-2xl border border-white/10 px-3 py-3">
+          <MobileJobLineAdd
+            workOrderId={wo?.id ?? null}
+            vehicleId={vehicle.id}
+            defaultJobType="diagnosis"
+            onCreated={fetchLines}
+          />
+        </div>
+
+        {/* Continue */}
+        <button
+          disabled={loading || !wo?.id}
+          onClick={handleSubmit}
+          className="w-full rounded-full bg-[var(--accent-copper)] py-3 text-sm font-semibold text-black shadow-[0_0_25px_rgba(0,0,0,0.9)] transition active:opacity-85 disabled:opacity-60"
         >
-          <span className="cursor-pointer rounded border border-orange-500/80 px-3 py-1.5 text-xs text-orange-300 hover:bg-orange-500/10">
-            Add by VIN / Scan
-          </span>
-        </VinCaptureModal>
+          {loading ? "Saving…" : "Approve & Continue"}
+        </button>
       </div>
-
-      {/* Job Lines */}
-      <MobileWorkOrderLines
-        lines={lines}
-        workOrderId={wo?.id ?? null}
-        onDelete={async (lineId) => {
-          if (!wo?.id) return;
-          await supabase
-            .from("work_order_lines")
-            .delete()
-            .eq("id", lineId)
-            .eq("work_order_id", wo.id);
-          await fetchLines();
-        }}
-      />
-
-      {/* Add a Line */}
-      <MobileJobLineAdd
-        workOrderId={wo?.id ?? null}
-        vehicleId={vehicle.id}
-        defaultJobType="diagnosis"
-        onCreated={fetchLines}
-      />
-
-      {/* Continue */}
-      <button
-        disabled={loading || !wo?.id}
-        onClick={handleSubmit}
-        className="w-full rounded-lg bg-orange-500 py-3 font-semibold text-black disabled:opacity-60 active:opacity-80"
-      >
-        {loading ? "Saving..." : "Approve & Continue"}
-      </button>
     </div>
   );
 }

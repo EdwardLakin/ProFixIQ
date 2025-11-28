@@ -1,4 +1,4 @@
-//features/work-orders/mobile/MobileCustomerVehicleForm.tsx
+// features/work-orders/mobile/MobileCustomerVehicleForm.tsx
 "use client";
 
 import type React from "react";
@@ -15,7 +15,7 @@ type Props = {
   vehicle: MobileVehicle;
   onCustomerChange: React.Dispatch<React.SetStateAction<MobileCustomer>>;
   onVehicleChange: React.Dispatch<React.SetStateAction<MobileVehicle>>;
-  supabase: SupabaseClient<DB>; // passed in for future use (lookups, etc.)
+  supabase: SupabaseClient<DB>; // kept for future lookups
 };
 
 export function MobileCustomerVehicleForm({
@@ -27,38 +27,46 @@ export function MobileCustomerVehicleForm({
 }: Props) {
   const woLabel = wo?.custom_id ?? (wo ? wo.id.slice(0, 8) : null);
 
+  const inputBase =
+    "w-full rounded-md border border-white/15 bg-black/40 px-3 py-2 text-sm text-white " +
+    "placeholder:text-neutral-400 focus:border-[var(--accent-copper-light)] " +
+    "focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-light)]";
+
+  const inputTight =
+    "w-full rounded-md border border-white/15 bg-black/40 px-2 py-2 text-sm text-white " +
+    "placeholder:text-neutral-400 focus:border-[var(--accent-copper-light)] " +
+    "focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-light)]";
+
+  const labelClass = "text-[11px] uppercase tracking-[0.16em] text-neutral-400";
+
   return (
-    <div className="space-y-6 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+    <div className="glass-card space-y-6 p-4">
       {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <div>
           <h2 className="text-sm font-semibold text-neutral-100">
-            Customer & Vehicle
+            Customer &amp; Vehicle
           </h2>
-          <p className="text-[11px] text-neutral-500">
+          <p className="text-[11px] text-neutral-400">
             Quick capture for the counter — you can refine later.
           </p>
         </div>
         {woLabel && (
-          <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-0.5 text-[10px] font-mono text-neutral-300">
-            WO {woLabel}
+          <span className="glass-chip font-mono text-[10px]">
+            WO&nbsp;{woLabel}
           </span>
         )}
       </div>
 
       {/* Customer */}
       <div className="space-y-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
-          Customer
-        </h3>
+        <h3 className={labelClass}>Customer</h3>
         <div className="grid grid-cols-1 gap-3">
           <div className="flex gap-2">
             <div className="flex-1 space-y-1">
-              <label className="text-[11px] text-neutral-300">
-                First name
-              </label>
+              <label className={labelClass}>First name</label>
               <input
-                className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+                className={inputBase}
                 value={customer.first_name ?? ""}
                 onChange={(e) =>
                   onCustomerChange((prev) => ({
@@ -70,11 +78,9 @@ export function MobileCustomerVehicleForm({
               />
             </div>
             <div className="flex-1 space-y-1">
-              <label className="text-[11px] text-neutral-300">
-                Last name
-              </label>
+              <label className={labelClass}>Last name</label>
               <input
-                className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+                className={inputBase}
                 value={customer.last_name ?? ""}
                 onChange={(e) =>
                   onCustomerChange((prev) => ({
@@ -88,9 +94,9 @@ export function MobileCustomerVehicleForm({
           </div>
 
           <div className="space-y-1">
-            <label className="text-[11px] text-neutral-300">Phone</label>
+            <label className={labelClass}>Phone</label>
             <input
-              className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+              className={inputBase}
               value={customer.phone ?? ""}
               onChange={(e) =>
                 onCustomerChange((prev) => ({
@@ -103,10 +109,10 @@ export function MobileCustomerVehicleForm({
           </div>
 
           <div className="space-y-1">
-            <label className="text-[11px] text-neutral-300">Email</label>
+            <label className={labelClass}>Email</label>
             <input
               type="email"
-              className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+              className={inputBase}
               value={customer.email ?? ""}
               onChange={(e) =>
                 onCustomerChange((prev) => ({
@@ -122,16 +128,14 @@ export function MobileCustomerVehicleForm({
 
       {/* Vehicle */}
       <div className="space-y-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
-          Vehicle
-        </h3>
+        <h3 className={labelClass}>Vehicle</h3>
         <div className="grid grid-cols-1 gap-3">
           <div className="flex gap-2">
             <div className="w-20 space-y-1">
-              <label className="text-[11px] text-neutral-300">Year</label>
+              <label className={labelClass}>Year</label>
               <input
                 inputMode="numeric"
-                className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-2 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+                className={inputTight}
                 value={vehicle.year ?? ""}
                 onChange={(e) =>
                   onVehicleChange((prev) => ({
@@ -143,9 +147,9 @@ export function MobileCustomerVehicleForm({
               />
             </div>
             <div className="flex-1 space-y-1">
-              <label className="text-[11px] text-neutral-300">Make</label>
+              <label className={labelClass}>Make</label>
               <input
-                className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+                className={inputBase}
                 value={vehicle.make ?? ""}
                 onChange={(e) =>
                   onVehicleChange((prev) => ({
@@ -157,9 +161,9 @@ export function MobileCustomerVehicleForm({
               />
             </div>
             <div className="flex-1 space-y-1">
-              <label className="text-[11px] text-neutral-300">Model</label>
+              <label className={labelClass}>Model</label>
               <input
-                className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+                className={inputBase}
                 value={vehicle.model ?? ""}
                 onChange={(e) =>
                   onVehicleChange((prev) => ({
@@ -173,11 +177,9 @@ export function MobileCustomerVehicleForm({
           </div>
 
           <div className="space-y-1">
-            <label className="text-[11px] text-neutral-300">
-              License plate
-            </label>
+            <label className={labelClass}>License plate</label>
             <input
-              className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+              className={inputBase}
               value={vehicle.license_plate ?? ""}
               onChange={(e) =>
                 onVehicleChange((prev) => ({
@@ -190,12 +192,10 @@ export function MobileCustomerVehicleForm({
           </div>
 
           <div className="space-y-1">
-            <label className="text-[11px] text-neutral-300">
-              Odometer / mileage
-            </label>
+            <label className={labelClass}>Odometer / mileage</label>
             <input
               inputMode="numeric"
-              className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
+              className={inputBase}
               value={vehicle.mileage ?? ""}
               onChange={(e) =>
                 onVehicleChange((prev) => ({
