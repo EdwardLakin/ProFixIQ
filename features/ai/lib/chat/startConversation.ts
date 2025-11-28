@@ -1,4 +1,4 @@
-// lib/chat/startConversation.ts
+// src/lib/chat/startConversation.ts
 import { createClient } from "@supabase/supabase-js";
 import { v4 as uuidv4 } from "uuid";
 import { Database } from "@shared/types/types/supabase";
@@ -19,7 +19,7 @@ export async function startConversation({
   context_type?: string;
   context_id?: string;
 }) {
-  // 🔸 generate id yourself — this is what the working modal does
+  // Generate conversation ID
   const conversationId = uuidv4();
 
   const { error: convoErr } = await supabase
@@ -48,7 +48,9 @@ export async function startConversation({
     .insert(participants);
 
   if (participantsError) {
-    throw new Error("Failed to add participants: " + participantsError.message);
+    throw new Error(
+      "Failed to add participants: " + participantsError.message,
+    );
   }
 
   return { id: conversationId };
