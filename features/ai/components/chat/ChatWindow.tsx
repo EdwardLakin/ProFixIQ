@@ -99,7 +99,7 @@ export default function ChatWindow({
     return () => window.clearInterval(id);
   }, [conversationId, fetchMessages]);
 
-  // 🛡️ Set auth token for Realtime (safe even if not strictly required)
+  // 🛡️ Set auth token for Realtime
   useEffect(() => {
     let mounted = true;
 
@@ -132,12 +132,11 @@ export default function ChatWindow({
     const channel = supabase
       .channel(topic, {
         config: {
-          private: true,
           broadcast: {
             self: true,
             ack: true,
           },
-        } as any,
+        },
       })
       .on(
         "broadcast",
@@ -230,7 +229,6 @@ export default function ChatWindow({
           await res.text(),
         );
         setError("Message failed to send.");
-        // let polling / next fetch sync things up
       }
     } catch (err) {
       console.error("[ChatWindow] sendMessage error:", err);
@@ -358,8 +356,10 @@ export default function ChatWindow({
                 <div className="relative">
                   <div
                     className={[
-                      "inline-block",
-                      "max-w-[80%]",
+                      "inline-flex",
+                      "flex-col",
+                      "min-w-[140px]",   // 👈 prevents super-narrow bubbles
+                      "max-w-[80%]",     // 👈 lets them stretch nicely on wider screens
                       "rounded-2xl",
                       "px-3 py-2 text-sm",
                       "whitespace-pre-wrap break-words",
