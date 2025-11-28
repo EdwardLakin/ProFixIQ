@@ -132,11 +132,12 @@ export default function ChatWindow({
     const channel = supabase
       .channel(topic, {
         config: {
+          private: true,
           broadcast: {
             self: true,
             ack: true,
           },
-        },
+        } as any,
       })
       .on(
         "broadcast",
