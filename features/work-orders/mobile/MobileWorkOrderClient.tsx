@@ -20,7 +20,7 @@ import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
 import VoiceButton from "@/features/shared/voice/VoiceButton";
 import { useTabState } from "@/features/shared/hooks/useTabState";
 import { JobCard } from "@/features/work-orders/components/JobCard";
-import FocusedJobModal from "@/features/work-orders/components/workorders/FocusedJobModal";
+import MobileFocusedJob from "@/features/work-orders/mobile/MobileFocusedJob";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -130,7 +130,7 @@ export default function MobileWorkOrderClient({
   );
   const [warnedMissing, setWarnedMissing] = useState(false);
 
-  // focused job modal
+  // mobile focused job view
   const [focusedJobId, setFocusedJobId] = useState<string | null>(null);
   const [focusedOpen, setFocusedOpen] = useState(false);
 
@@ -386,7 +386,7 @@ export default function MobileWorkOrderClient({
     };
   }, [wo?.id, fetchAll]);
 
-  // 🔁 refresh when a parts request or inspection completes (FocusedJobModal flow)
+  // 🔁 refresh when a parts request or inspection completes
   useEffect(() => {
     const handleParts = () => {
       void fetchAll();
@@ -405,6 +405,7 @@ export default function MobileWorkOrderClient({
       setFocusedJobId(lineId);
       setFocusedOpen(true);
 
+      // legacy event for desktop flow – harmless if unused on mobile
       window.dispatchEvent(
         new CustomEvent("wo:prefill-cause-correction", {
           detail: {
@@ -470,7 +471,7 @@ export default function MobileWorkOrderClient({
       ? format(createdAt, "PPpp")
       : "—";
 
-  const canAssign = false; // stripped-down mobile view: assignments done in FocusedJobModal or desktop
+  const canAssign = false; // assignments handled in focused view / desktop
 
   /* ----------------------- line & quote actions ----------------------- */
 
@@ -578,6 +579,19 @@ export default function MobileWorkOrderClient({
     },
     [fetchAll],
   );
+
+  /* ----------------------- mobile focused job view ----------------------- */
+
+  if (focusedOpen && focusedJobId) {
+    return (
+      <MobileFocusedJob
+        workOrderLineId={focusedJobId}
+        onBack={() => setFocusedOpen(false)}
+        onChanged={fetchAll}
+        mode="tech"
+      />
+    );
+  }
 
   /* -------------------------- UI -------------------------- */
   if (!routeId)
@@ -979,7 +993,7 @@ export default function MobileWorkOrderClient({
                   Jobs in this work order
                 </h2>
                 <p className="text-[11px] text-neutral-500">
-                  Tap a job to open the focused job view.
+                  Tap a job or open inspection to go into the focused job view.
                 </p>
               </div>
             </div>
@@ -992,21 +1006,23 @@ export default function MobileWorkOrderClient({
                   const punchedIn =
                     !!ln.punched_in_at && !ln.punched_out_at;
 
+                  const openFocused = () => {
+                    setFocusedJobId(ln.id);
+                    setFocusedOpen(true);
+                  };
+
                   return (
                     <JobCard
                       key={ln.id}
                       index={idx}
                       line={ln}
                       parts={[]} // stripped-down: no parts list on main mobile view
-                      technicians={[]} // assignment handled in focused modal / desktop
+                      technicians={[]} // assignment handled in focused view / desktop
                       canAssign={canAssign}
                       isPunchedIn={punchedIn}
-                      onOpen={() => {
-                        setFocusedJobId(ln.id);
-                        setFocusedOpen(true);
-                      }}
+                      onOpen={openFocused}
                       onAssign={undefined}
-                      onOpenInspection={undefined}
+                      onOpenInspection={openFocused}
                       onAddPart={undefined}
                     />
                   );
@@ -1015,17 +1031,6 @@ export default function MobileWorkOrderClient({
             )}
           </div>
         </div>
-      )}
-
-      {/* Focused job modal (full controls, parts, inspection, etc.) */}
-      {focusedOpen && focusedJobId && (
-        <FocusedJobModal
-          isOpen={focusedOpen}
-          onClose={() => setFocusedOpen(false)}
-          workOrderLineId={focusedJobId}
-          onChanged={fetchAll}
-          mode="tech"
-        />
       )}
 
       <div className="mt-4 flex justify-center pb-1">
