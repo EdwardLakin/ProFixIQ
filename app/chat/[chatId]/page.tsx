@@ -41,7 +41,7 @@ export default function ChatThreadPage(): JSX.Element {
         if (res.ok) {
           const data = (await res.json()) as ConversationPayload[];
           const found = data.find(
-            (item) => item.conversation.id === conversationId
+            (item) => item.conversation.id === conversationId,
           );
           if (found) {
             const others =
@@ -64,7 +64,7 @@ export default function ChatThreadPage(): JSX.Element {
   return (
     <PageShell title={title}>
       {!userId ? (
-        <div className="rounded border border-neutral-800 bg-neutral-900/40 p-4 text-sm text-neutral-300">
+        <div className="rounded border border-[#3b2a21] bg-[#0b0806] p-4 text-sm text-[#d5b9a0]">
           Loading…
         </div>
       ) : (

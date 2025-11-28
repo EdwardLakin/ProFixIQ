@@ -287,10 +287,10 @@ export default function ChatWindow({
   }, [messages, userId]);
 
   return (
-    <div className="flex h-full flex-col rounded border border-neutral-800 bg-neutral-950 text-white">
+    <div className="flex h-full flex-col rounded border border-[#3b2a21] bg-[#050506] text-[#fdf4ec]">
       {/* header */}
-      <div className="border-b border-neutral-800 px-4 py-3 flex items-center justify-between">
-        <div className="text-sm font-medium text-neutral-200">{title}</div>
+      <div className="border-b border-[#3b2a21] px-4 py-3 flex items-center justify-between bg-[#0b0806]">
+        <div className="text-sm font-medium text-[#f9e7d7]">{title}</div>
         {error ? (
           <div className="text-[10px] text-red-200/80">{error}</div>
         ) : null}
@@ -299,11 +299,11 @@ export default function ChatWindow({
       {/* messages */}
       <div className="flex-1 overflow-y-auto px-3 py-4 space-y-2">
         {loading ? (
-          <div className="text-center text-neutral-500 text-sm py-6">
+          <div className="text-center text-[#b89c86] text-sm py-6">
             Loading messages…
           </div>
         ) : grouped.length === 0 ? (
-          <div className="text-center text-neutral-500 text-sm py-6">
+          <div className="text-center text-[#b89c86] text-sm py-6">
             No messages yet. Say hi 👋
           </div>
         ) : (
@@ -311,7 +311,7 @@ export default function ChatWindow({
             if (item.type === "day") {
               return (
                 <div key={`day-${idx}`} className="flex justify-center">
-                  <span className="rounded-full bg-neutral-900 px-3 py-1 text-[11px] text-neutral-400">
+                  <span className="rounded-full bg-[#14100e] px-3 py-1 text-[11px] text-[#c9b3a3]">
                     {item.label}
                   </span>
                 </div>
@@ -334,7 +334,7 @@ export default function ChatWindow({
                 }`}
               >
                 {!isMine && showAvatar ? (
-                  <div className="mt-6 h-7 w-7 rounded-full bg-neutral-700 flex items-center justify-center text-[10px] text-white/80">
+                  <div className="mt-6 h-7 w-7 rounded-full bg-[#4a3a30] flex items-center justify-center text-[10px] text-[#f6e6d6]/80">
                     U
                   </div>
                 ) : (
@@ -350,8 +350,8 @@ export default function ChatWindow({
                       "px-3 py-2 text-sm",
                       "whitespace-pre-wrap break-words",
                       isMine
-                        ? "bg-orange-500 text-black"
-                        : "bg-neutral-800 text-neutral-100",
+                        ? "bg-[#c9743f] text-black"
+                        : "bg-[#14100e] text-[#f5e7dd]",
                     ].join(" ")}
                   >
                     <p>{msg.content}</p>
@@ -359,7 +359,7 @@ export default function ChatWindow({
                       <p
                         className={[
                           "mt-1 text-[10px]",
-                          isMine ? "text-black/60" : "text-neutral-400",
+                          isMine ? "text-black/60" : "text-[#b1957e]",
                         ].join(" ")}
                       >
                         {time}
@@ -371,7 +371,7 @@ export default function ChatWindow({
                     <button
                       type="button"
                       onClick={() => void deleteMessage(msg.id)}
-                      className="absolute -top-2 -right-2 h-5 w-5 rounded-full bg-neutral-900 text-[10px] text-white/70 hover:bg-red-500 hover:text-white"
+                      className="absolute -top-2 -right-2 h-5 w-5 rounded-full bg-[#0b0806] text-[10px] text-[#f6e6d6]/70 hover:bg-red-500 hover:text-white"
                       aria-label="Delete message"
                     >
                       ×
@@ -387,7 +387,7 @@ export default function ChatWindow({
       </div>
 
       {/* composer */}
-      <div className="border-t border-neutral-800 p-3 flex gap-2 items-end">
+      <div className="border-t border-[#3b2a21] bg-[#080605] p-3 flex gap-2 items-end">
         <textarea
           ref={inputRef}
           value={newMessage}
@@ -395,12 +395,12 @@ export default function ChatWindow({
           onKeyDown={handleKeyDown}
           rows={1}
           placeholder="Type a message… (Enter to send, Shift+Enter for new line)"
-          className="flex-1 resize-none rounded bg-neutral-900 border border-neutral-700 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-400 focus:outline-none"
+          className="flex-1 resize-none rounded bg-[#14100e] border border-[#5a4334] px-3 py-2 text-sm text-[#fdf4ec] placeholder:text-[#8e7461] focus:border-[#f19b4b] focus:outline-none"
         />
         <button
           onClick={() => void sendMessage()}
           disabled={sending || !newMessage.trim()}
-          className="rounded border border-orange-500/70 text-orange-200 px-4 py-2 text-sm font-semibold hover:bg-orange-500/10 disabled:opacity-50"
+          className="rounded border border-[#f19b4b]/80 text-[#f7d3a8] px-4 py-2 text-sm font-semibold hover:bg-[#f19b4b1a] disabled:opacity-50"
         >
           {sending ? "Sending…" : "Send"}
         </button>
