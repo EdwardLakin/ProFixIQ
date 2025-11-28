@@ -1,14 +1,14 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
-type DB = Database;
+import MobileShiftTracker from "@/features/mobile/components/MobileShiftTracker";
 
-type ShiftStatus = "none" | "active" | "ended";
+type DB = Database;
 
 type NavItem = {
   href: string;
@@ -32,11 +32,9 @@ export function MobileBottomNav({ open, onClose }: Props) {
   const supabase = createClientComponentClient<DB>();
 
   const [userId, setUserId] = useState<string | null>(null);
-  const [shiftStatus, setShiftStatus] = useState<ShiftStatus>("none");
-  const [busy, setBusy] = useState(false);
 
   /* ---------------------------------------------------------------------- */
-  /* Load current user + check for open shift                                */
+  /* Load current user – shift logic is handled inside MobileShiftTracker   */
   /* ---------------------------------------------------------------------- */
   useEffect(() => {
     const load = async () => {
@@ -46,91 +44,10 @@ export function MobileBottomNav({ open, onClose }: Props) {
 
       const id = session?.user?.id ?? null;
       setUserId(id);
-
-      if (!id) {
-        setShiftStatus("none");
-        return;
-      }
-
-      const { data: openShift } = await supabase
-        .from("tech_shifts")
-        .select("id")
-        .eq("user_id", id)
-        .is("end_time", null)
-        .order("start_time", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      setShiftStatus(openShift ? "active" : "none");
     };
 
     void load();
   }, [supabase]);
-
-  /* ---------------------------------------------------------------------- */
-  /* Punch in/out logic – EXACT same as existing bottom nav                  */
-  /* ---------------------------------------------------------------------- */
-  const handleToggleShift = useCallback(async () => {
-    if (!userId || busy) return;
-
-    setBusy(true);
-    try {
-      if (shiftStatus === "active") {
-        // End shift
-        const { data: openShift } = await supabase
-          .from("tech_shifts")
-          .select("id")
-          .eq("user_id", userId)
-          .is("end_time", null)
-          .order("start_time", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (openShift?.id) {
-          await supabase
-            .from("tech_shifts")
-            .update({
-              end_time: new Date().toISOString(),
-              status: "completed",
-            } as DB["public"]["Tables"]["tech_shifts"]["Update"])
-            .eq("id", openShift.id);
-        }
-
-        setShiftStatus("ended");
-      } else {
-        // Start new shift
-        await supabase
-          .from("tech_shifts")
-          .insert({
-            user_id: userId,
-            start_time: new Date().toISOString(),
-            type: "shift",
-            status: "active",
-          } as DB["public"]["Tables"]["tech_shifts"]["Insert"]);
-
-        setShiftStatus("active");
-      }
-    } finally {
-      setBusy(false);
-    }
-  }, [busy, shiftStatus, supabase, userId]);
-
-  /* ---------------------------------------------------------------------- */
-  const punchLabel =
-    shiftStatus === "active"
-      ? busy
-        ? "Ending shift…"
-        : "End shift"
-      : busy
-      ? "Starting shift…"
-      : "Start shift";
-
-  const statusLabel =
-    shiftStatus === "active"
-      ? "On shift"
-      : shiftStatus === "ended"
-      ? "Shift ended"
-      : "Off shift";
 
   /* ---------------------------------------------------------------------- */
   /* UI – Slide-in drawer                                                    */
@@ -141,7 +58,9 @@ export function MobileBottomNav({ open, onClose }: Props) {
       <div
         onClick={onClose}
         className={`fixed inset-0 z-40 bg-black/50 backdrop-blur-sm transition-opacity ${
-          open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+          open
+            ? "opacity-100 pointer-events-auto"
+            : "opacity-0 pointer-events-none"
         }`}
       />
 
@@ -170,21 +89,16 @@ export function MobileBottomNav({ open, onClose }: Props) {
           </button>
         </div>
 
-        {/* Punch button (EXACT original code) */}
-        <button
-          type="button"
-          onClick={handleToggleShift}
-          disabled={!userId || busy}
-          className="flex items-center justify-between px-4 py-2 text-[11px] text-neutral-100 bg-gradient-to-r from-[var(--accent-copper-soft)] to-[var(--accent-copper)] shadow-[0_4px_14px_rgba(0,0,0,0.85)] disabled:opacity-60"
-        >
-          <span className="font-semibold uppercase tracking-[0.16em]">
-            {punchLabel}
-          </span>
-
-          <span className="accent-chip px-2 py-0.5 text-[10px] uppercase tracking-[0.14em]">
-            {statusLabel}
-          </span>
-        </button>
+        {/* Shift tracker – copper / glass card */}
+        <div className="px-3 pt-3 pb-2 border-b border-[var(--metal-border-soft)] bg-black/40">
+          {userId ? (
+            <MobileShiftTracker userId={userId} />
+          ) : (
+            <div className="rounded-2xl border border-white/10 bg-black/40 px-3 py-2 text-[0.7rem] text-neutral-300">
+              Sign in to start tracking your shift.
+            </div>
+          )}
+        </div>
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto px-2 py-3">
