@@ -113,9 +113,9 @@ export default function MobileMessagesPage() {
                 .filter((name): name is string => Boolean(name));
 
               const title =
-                conversation.title ??
-                participantNames.join(", ") ||
-                `Conversation ${conversation.id.slice(0, 6)}`;
+  conversation.title ??
+  (participantNames.join(", ") ||
+    `Conversation ${conversation.id.slice(0, 6)}`);
 
               return (
                 <Link
