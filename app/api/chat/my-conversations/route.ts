@@ -1,3 +1,4 @@
+// app/api/chat/my-conversations/route.ts
 import { NextResponse } from "next/server";
 import {
   createServerSupabaseRoute,
@@ -10,12 +11,13 @@ export const dynamic = "force-dynamic";
 type DB = Database;
 type ConversationRow = DB["public"]["Tables"]["conversations"]["Row"];
 type MessageRow = DB["public"]["Tables"]["messages"]["Row"];
-type ParticipantRow = DB["public"]["Tables"]["conversation_participants"]["Row"];
+type ParticipantRow =
+  DB["public"]["Tables"]["conversation_participants"]["Row"];
 type ProfileRow = DB["public"]["Tables"]["profiles"]["Row"];
 
 interface ParticipantInfo {
   id: string;
-  full_name: string | null; // will be name or email fallback
+  full_name: string | null; // name or email fallback
 }
 
 interface ConversationPayload {
@@ -37,7 +39,9 @@ export async function GET(): Promise<NextResponse> {
 
   const admin = createAdminSupabase();
 
-  // Conversations I created
+  // ---------------------------------------------------------------------------
+  // 1) Conversations I created
+  // ---------------------------------------------------------------------------
   const { data: createdConvos, error: createdErr } = await admin
     .from("conversations")
     .select("id, created_at, created_by, context_type, context_id")
@@ -48,10 +52,12 @@ export async function GET(): Promise<NextResponse> {
     return NextResponse.json({ error: createdErr.message }, { status: 500 });
   }
 
-  // Conversations I'm a participant in
+  // ---------------------------------------------------------------------------
+  // 2) Conversations I'm a participant in
+  // ---------------------------------------------------------------------------
   const { data: partRows, error: partsErr } = await admin
     .from("conversation_participants")
-    .select("conversation_id")
+    .select("conversation_id, user_id")
     .eq("user_id", user.id);
 
   if (partsErr) {
@@ -70,7 +76,9 @@ export async function GET(): Promise<NextResponse> {
     return NextResponse.json<ConversationPayload[]>([], { status: 200 });
   }
 
-  // All conversations
+  // ---------------------------------------------------------------------------
+  // 3) All conversations in that set
+  // ---------------------------------------------------------------------------
   const { data: convos, error: convErr } = await admin
     .from("conversations")
     .select("id, created_at, created_by, context_type, context_id")
@@ -83,7 +91,9 @@ export async function GET(): Promise<NextResponse> {
 
   const safeConvos = (convos ?? []) as ConversationRow[];
 
-  // Latest messages
+  // ---------------------------------------------------------------------------
+  // 4) Latest messages for those conversations
+  // ---------------------------------------------------------------------------
   const { data: msgs, error: msgErr } = await admin
     .from("messages")
     .select("*")
@@ -103,74 +113,95 @@ export async function GET(): Promise<NextResponse> {
     }
   });
 
-  // Participants WITH profile (name/email)
-  type ParticipantWithProfile = ParticipantRow & {
-    profiles: Pick<ProfileRow, "full_name" | "email"> | null;
+  // ---------------------------------------------------------------------------
+  // 5) All participants for those conversations (no embedded join)
+  // ---------------------------------------------------------------------------
+  const {
+    data: allParticipants,
+    error: allPartsErr,
+  } = (await admin
+    .from("conversation_participants")
+    .select("conversation_id, user_id")
+    .in("conversation_id", convoIds)) as {
+    data: ParticipantRow[] | null;
+    error: { message: string } | null;
   };
 
-  const { data: partsWithNames, error: partsNamesErr } = await admin
-    .from("conversation_participants")
-    .select(
-      `
-        conversation_id,
-        user_id,
-        profiles:profiles!conversation_participants_user_id_fkey ( full_name, email )
-      `,
-    )
-    .in("conversation_id", convoIds);
-
-  if (partsNamesErr) {
-    console.error("[my-conversations] partsNamesErr:", partsNamesErr);
+  if (allPartsErr) {
+    console.error("[my-conversations] allPartsErr:", allPartsErr);
   }
 
+  // ---------------------------------------------------------------------------
+  // 6) Collect all user_ids we care about (participants + creators)
+  // ---------------------------------------------------------------------------
+  const userIdSet = new Set<string>();
+
+  (allParticipants ?? []).forEach((row) => {
+    if (row.user_id) userIdSet.add(row.user_id);
+  });
+
+  safeConvos.forEach((c) => {
+    if (c.created_by) userIdSet.add(c.created_by);
+  });
+
+  const allUserIds = Array.from(userIdSet);
+
+  // ---------------------------------------------------------------------------
+  // 7) Fetch profiles once for all those users
+  //     - assumes profiles.id == auth.user.id (Supabase default)
+  // ---------------------------------------------------------------------------
+  const { data: profiles, error: profilesErr } = await admin
+    .from("profiles")
+    .select("id, full_name, email")
+    .in("id", allUserIds);
+
+  if (profilesErr) {
+    console.error("[my-conversations] profilesErr:", profilesErr);
+  }
+
+  const profileMap = new Map<string, Pick<ProfileRow, "full_name" | "email">>();
+  (profiles ?? []).forEach((p) => {
+    profileMap.set(p.id, { full_name: p.full_name, email: p.email });
+  });
+
+  const displayNameFor = (userId: string | null): string | null => {
+    if (!userId) return null;
+    const p = profileMap.get(userId);
+    if (!p) return null;
+    return p.full_name ?? p.email ?? null;
+  };
+
+  // ---------------------------------------------------------------------------
+  // 8) Build participantsByConvo
+  // ---------------------------------------------------------------------------
   const participantsByConvo = new Map<string, ParticipantInfo[]>();
-  (partsWithNames as ParticipantWithProfile[] | null)?.forEach((row) => {
+
+  (allParticipants ?? []).forEach((row) => {
     if (!row.conversation_id || !row.user_id) return;
     const arr = participantsByConvo.get(row.conversation_id) ?? [];
-    const display = row.profiles?.full_name ?? row.profiles?.email ?? null;
     arr.push({
       id: row.user_id,
-      full_name: display,
+      full_name: displayNameFor(row.user_id),
     });
     participantsByConvo.set(row.conversation_id, arr);
   });
 
-  // Ensure creator is included with a label (name→email fallback)
-  const creatorIds = Array.from(
-    new Set(
-      safeConvos
-        .map((c) => c.created_by)
-        .filter(Boolean) as string[],
-    ),
-  );
-
-  const creatorProfileMap = new Map<string, string | null>();
-  if (creatorIds.length > 0) {
-    const { data: creators, error: creatorsErr } = await admin
-      .from("profiles")
-      .select("id, full_name, email")
-      .in("id", creatorIds);
-
-    if (creatorsErr) {
-      console.error("[my-conversations] creatorsErr:", creatorsErr);
-    }
-
-    (creators ?? []).forEach((p) => {
-      creatorProfileMap.set(p.id, p.full_name ?? p.email ?? null);
-    });
-  }
-
+  // Ensure creator is included as a participant with a label
   safeConvos.forEach((c) => {
     if (!c.id || !c.created_by) return;
     const arr = participantsByConvo.get(c.id) ?? [];
     if (!arr.some((p) => p.id === c.created_by)) {
-      const display = creatorProfileMap.get(c.created_by) ?? null;
-      arr.push({ id: c.created_by, full_name: display });
+      arr.push({
+        id: c.created_by,
+        full_name: displayNameFor(c.created_by),
+      });
     }
     participantsByConvo.set(c.id, arr);
   });
 
-  // Build payload
+  // ---------------------------------------------------------------------------
+  // 9) Build payload
+  // ---------------------------------------------------------------------------
   const payload: ConversationPayload[] = safeConvos.map((c) => ({
     conversation: c,
     latest_message: latestByConvo.get(c.id) ?? null,
