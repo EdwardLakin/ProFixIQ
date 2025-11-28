@@ -1,10 +1,10 @@
+// app/mobile/messages/page.client.tsx (or equivalent)
 "use client";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
-import { MobileShell } from "components/layout/MobileShell";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
@@ -50,19 +50,19 @@ export default function MobileMessagesPage() {
   }, []);
 
   return (
-    <MobileShell>
-      <div className="px-4 py-4 space-y-4 text-foreground">
+    <div className="min-h-screen bg-background px-4 py-4 text-foreground">
+      <div className="mx-auto max-w-2xl space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between gap-2">
-          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-200">
+          <h1 className="font-blackops text-lg uppercase tracking-[0.18em] text-neutral-200">
             Messages
           </h1>
           <button
             type="button"
-            onClick={() => router.push("/dashboard")}
-            className="rounded-full border border-neutral-700 bg-neutral-900 px-3 py-1 text-[0.7rem] text-neutral-200 hover:border-orange-400 hover:bg-neutral-800"
+            onClick={() => router.push("/mobile/messages/new")}
+            className="rounded-full border border-[var(--accent-copper-soft)] bg-black/60 px-3 py-1 text-[0.7rem] font-medium text-[var(--accent-copper-soft)] shadow-[0_10px_24px_rgba(0,0,0,0.75)] hover:bg-black/80"
           >
-            Dashboard
+            New chat
           </button>
         </div>
 
@@ -73,12 +73,12 @@ export default function MobileMessagesPage() {
         )}
 
         {loading ? (
-          <div className="rounded-lg border border-white/10 bg-black/40 px-3 py-4 text-sm text-neutral-300">
+          <div className="metal-card rounded-xl border border-[var(--metal-border-soft)] px-3 py-4 text-sm text-neutral-300">
             Loading conversations…
           </div>
         ) : rows.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-white/15 bg-black/40 px-3 py-6 text-sm text-neutral-400">
-            No conversations yet.
+          <div className="metal-card rounded-xl border border-dashed border-[var(--metal-border-soft)] px-3 py-6 text-sm text-neutral-400">
+            No conversations yet. Start a new chat to get things moving.
           </div>
         ) : (
           <div className="space-y-2">
@@ -91,7 +91,6 @@ export default function MobileMessagesPage() {
               } = row;
 
               const href = `/mobile/messages/${conversation.id}`;
-
               const preview =
                 latest_message?.content?.slice(0, 80) ?? "No messages yet.";
 
@@ -118,7 +117,7 @@ export default function MobileMessagesPage() {
                 <Link
                   key={conversation.id}
                   href={href}
-                  className="flex items-start justify-between gap-2 rounded-xl border border-neutral-800 bg-neutral-950/80 px-3 py-3 text-sm text-neutral-100 shadow-sm shadow-black/30 hover:border-orange-500/70 hover:bg-neutral-900/80"
+                  className="metal-card flex items-start justify-between gap-2 rounded-xl border border-[var(--metal-border-soft)] px-3 py-3 text-sm text-neutral-100 transition hover:border-[var(--accent-copper-soft)]"
                 >
                   <div className="min-w-0 space-y-1">
                     <div className="flex items-center gap-2">
@@ -126,7 +125,7 @@ export default function MobileMessagesPage() {
                         {title}
                       </span>
                       {unread_count > 0 && (
-                        <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-orange-500 px-1 text-[0.65rem] font-semibold text-black">
+                        <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[var(--accent-copper-soft)] px-1 text-[0.65rem] font-semibold text-black">
                           {unread_count}
                         </span>
                       )}
@@ -144,6 +143,6 @@ export default function MobileMessagesPage() {
           </div>
         )}
       </div>
-    </MobileShell>
+    </div>
   );
 }

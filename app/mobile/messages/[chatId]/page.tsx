@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
-import { MobileShell } from "components/layout/MobileShell";
 import ChatWindow from "@/features/ai/components/chat/ChatWindow";
 
 type DB = Database;
@@ -69,42 +68,38 @@ export default function MobileChatThreadPage() {
   }, [supabase, conversationId]);
 
   return (
-    <MobileShell>
-      <div className="flex h-full flex-col px-4 py-3">
-        {/* Top bar */}
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={() => router.back()}
-            className="rounded-full border border-neutral-700 bg-neutral-950 px-3 py-1 text-xs text-neutral-200 hover:bg-neutral-900"
-          >
-            ← Back
-          </button>
-          <div className="min-w-0 text-right">
-            <h1 className="truncate text-sm font-blackops uppercase tracking-[0.18em] text-neutral-200">
-              {title}
-            </h1>
-            <p className="mt-0.5 text-[0.65rem] text-neutral-500">
-              Chat
-            </p>
-          </div>
+    <div className="flex min-h-screen flex-col bg-background px-4 py-3 text-foreground">
+      {/* Top bar */}
+      <div className="metal-bar mb-3 flex items-center justify-between gap-2 border-b border-[var(--metal-border-soft)] pb-2">
+        <button
+          type="button"
+          onClick={() => router.back()}
+          className="inline-flex items-center rounded-full border border-[var(--metal-border-soft)] bg-black/60 px-3 py-1 text-xs text-neutral-200 shadow-[0_4px_10px_rgba(0,0,0,0.7)] hover:bg-black/80"
+        >
+          ← Back
+        </button>
+        <div className="min-w-0 text-right">
+          <h1 className="truncate text-sm font-blackops uppercase tracking-[0.18em] text-[var(--accent-copper-light)]">
+            {title}
+          </h1>
+          <p className="mt-0.5 text-[0.65rem] text-neutral-500">Chat</p>
         </div>
-
-        {/* Chat window */}
-        {!userId ? (
-          <div className="mt-4 rounded border border-neutral-800 bg-neutral-900/40 p-4 text-sm text-neutral-300">
-            Loading…
-          </div>
-        ) : (
-          <div className="flex-1">
-            <ChatWindow
-              conversationId={conversationId}
-              userId={userId}
-              title={title}
-            />
-          </div>
-        )}
       </div>
-    </MobileShell>
+
+      {/* Chat window */}
+      {!userId ? (
+        <div className="metal-card mt-4 rounded-xl border border-[var(--metal-border-soft)] bg-black/40 p-4 text-sm text-neutral-300">
+          Loading…
+        </div>
+      ) : (
+        <div className="metal-panel metal-panel--card flex min-h-0 flex-1 flex-col rounded-2xl border border-[var(--metal-border-soft)] bg-black/40 px-2 py-2">
+          <ChatWindow
+            conversationId={conversationId}
+            userId={userId}
+            title={title}
+          />
+        </div>
+      )}
+    </div>
   );
 }

@@ -1,7 +1,12 @@
 // features/mobile/dashboard/MobileTechHome.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+  useCallback,
+} from "react";
 import Link from "next/link";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
@@ -41,6 +46,8 @@ type Props = {
 
 type ShiftStatus = "none" | "active" | "ended";
 
+type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
+
 export function MobileTechHome({
   techName,
   role: _role,
@@ -56,6 +63,10 @@ export function MobileTechHome({
   const [loadingShift, setLoadingShift] = useState(false);
 
   const [currentTime, setCurrentTime] = useState<string>("");
+
+  // current punched-in job
+  const [currentJob, setCurrentJob] = useState<WorkOrderLine | null>(null);
+  const [loadingCurrentJob, setLoadingCurrentJob] = useState(false);
 
   const firstName = techName?.split(" ")[0] ?? techName ?? "Tech";
 
@@ -175,6 +186,50 @@ export function MobileTechHome({
   }, [supabase, userId, refreshShiftState]);
 
   /* ---------------------------------------------------------------------- */
+  /* Current job – job the tech is punched in on                            */
+  /* ---------------------------------------------------------------------- */
+
+  const loadCurrentJob = useCallback(
+    async (uid: string | null) => {
+      if (!uid) {
+        setCurrentJob(null);
+        return;
+      }
+
+      setLoadingCurrentJob(true);
+      try {
+        const { data, error } = await supabase
+          .from("work_order_lines")
+          .select(
+            "id, work_order_id, description, complaint, job_type, punched_in_at, punched_out_at, punched_in_by",
+          )
+          .eq("punched_in_by", uid)
+          .is("punched_out_at", null)
+          .order("punched_in_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (error) {
+          // eslint-disable-next-line no-console
+          console.error("[MobileTechHome] current job load error:", error);
+          setCurrentJob(null);
+          return;
+        }
+
+        setCurrentJob((data as WorkOrderLine | null) ?? null);
+      } finally {
+        setLoadingCurrentJob(false);
+      }
+    },
+    [supabase],
+  );
+
+  // load current job whenever user or shift status changes
+  useEffect(() => {
+    void loadCurrentJob(userId);
+  }, [userId, shiftStatus, loadCurrentJob]);
+
+  /* ---------------------------------------------------------------------- */
   /* Derived labels for hero chip                                           */
   /* ---------------------------------------------------------------------- */
 
@@ -228,6 +283,14 @@ export function MobileTechHome({
           />
         </div>
       </section>
+
+      {/* current job pill */}
+      {shiftStatus === "active" && (
+        <CurrentJobPill
+          loading={loadingCurrentJob}
+          job={currentJob}
+        />
+      )}
 
       {/* summary cards – worked vs billed */}
       <section className="space-y-3">
@@ -311,6 +374,62 @@ export function MobileTechHome({
 /* ------------------------------------------------------------------------ */
 /* Pieces                                                                   */
 /* ------------------------------------------------------------------------ */
+
+function CurrentJobPill({
+  loading,
+  job,
+}: {
+  loading: boolean;
+  job: WorkOrderLine | null;
+}) {
+  if (loading) {
+    return (
+      <div className="metal-card inline-flex w-full items-center justify-between rounded-2xl border border-[var(--metal-border-soft)] px-3 py-2 text-[0.75rem] text-neutral-300">
+        <span className="uppercase tracking-[0.16em] text-neutral-400">
+          Current job
+        </span>
+        <span>Loading…</span>
+      </div>
+    );
+  }
+
+  if (!job || !job.work_order_id) {
+    return (
+      <div className="metal-card inline-flex w-full items-center justify-between rounded-2xl border border-[var(--metal-border-soft)] px-3 py-2 text-[0.75rem] text-neutral-400">
+        <span className="uppercase tracking-[0.16em] text-neutral-400">
+          Current job
+        </span>
+        <span className="text-[0.7rem] text-neutral-500">
+          No active job punch
+        </span>
+      </div>
+    );
+  }
+
+  const label =
+    job.description ||
+    job.complaint ||
+    String(job.job_type ?? "Job in progress");
+
+  const href = `/mobile/work-orders/${job.work_order_id}`;
+
+  return (
+    <Link
+      href={href}
+      className="metal-card flex items-center justify-between rounded-2xl border border-[var(--accent-copper-soft)] px-3 py-2 text-[0.8rem] text-neutral-100 shadow-[0_0_24px_rgba(212,118,49,0.45)]"
+    >
+      <div className="flex flex-col">
+        <span className="text-[0.65rem] uppercase tracking-[0.18em] text-[var(--accent-copper-soft)]">
+          Current job
+        </span>
+        <span className="mt-0.5 truncate text-sm font-medium">{label}</span>
+      </div>
+      <span className="ml-3 text-xs text-[var(--accent-copper-soft)]">
+        Go →
+      </span>
+    </Link>
+  );
+}
 
 function StatCard({
   label,
@@ -396,8 +515,6 @@ function ShiftStatusChip({
   detail?: string | null;
   loading?: boolean;
 }) {
-  // Match the visual language of the bottom-nav status pill,
-  // but make it a rectangular chip that sits inside the hero.
   const base =
     "accent-chip inline-flex w-full max-w-xs items-center justify-between gap-2 rounded-md px-3 py-2 text-[0.7rem] font-medium";
 
