@@ -133,15 +133,23 @@ export function MobileTechHome({
   }
 
   return (
-    <div className="px-4 py-4 space-y-6">
+    <div className="space-y-6 px-4 py-4 text-white">
       {/* header / hero */}
-      <section className="metal-panel metal-panel--hero rounded-2xl border border-white/10 px-4 py-4 shadow-card text-white">
-        <h1 className="text-xl font-semibold">
-          {`Welcome back, ${firstName} 👋`}
-        </h1>
-        <p className="mt-1 text-xs text-neutral-300">
-          Bench view of today’s work.
-        </p>
+      <section className="metal-panel metal-panel--hero rounded-2xl border border-[var(--accent-copper-soft)]/60 bg-gradient-to-br from-[var(--accent-copper-deep)]/70 via-black to-slate-950/95 px-4 py-4 shadow-[0_18px_45px_rgba(0,0,0,0.85)]">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-black tracking-wide">
+              <span className="text-neutral-100">Welcome back, </span>
+              <span className="text-[var(--accent-copper-soft)]">
+                {firstName}
+              </span>{" "}
+              <span aria-hidden="true">👋</span>
+            </h1>
+            <p className="mt-1 text-[0.75rem] text-neutral-200/85">
+              Bench-side view of today&#39;s work and efficiency.
+            </p>
+          </div>
+        </div>
         <div className="mt-3">
           <ShiftChip variant={chipVariant} label={chipLabel} detail={chipDetail} />
         </div>
@@ -167,12 +175,12 @@ export function MobileTechHome({
       {jobs.length > 0 && (
         <section className="space-y-2">
           <div className="flex items-center justify-between">
-            <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+            <h2 className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-neutral-400">
               Today&apos;s jobs
             </h2>
             <Link
               href="/mobile/work-orders"
-              className="text-[0.7rem] text-[var(--accent-copper-soft)] underline-offset-4 hover:underline"
+              className="text-[0.7rem] font-medium text-[var(--accent-copper-soft)] underline-offset-4 hover:text-[var(--accent-copper-light)] hover:underline"
             >
               View all
             </Link>
@@ -182,11 +190,11 @@ export function MobileTechHome({
               <li key={job.id}>
                 <Link
                   href={job.href}
-                  className="block rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-neutral-100 shadow-card backdrop-blur-md"
+                  className="block rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-neutral-100 shadow-card backdrop-blur-md transition hover:border-[var(--accent-copper-soft)]/80 hover:bg-white/[0.06]"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="truncate font-medium">{job.label}</div>
-                    <span className="rounded-full border border-[var(--accent-copper-soft)]/70 px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-[var(--accent-copper-soft)]">
+                    <span className="rounded-full border border-[var(--accent-copper-soft)]/80 bg-[var(--accent-copper-deep)]/10 px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-[var(--accent-copper-soft)]">
                       {job.status.replace(/_/g, " ")}
                     </span>
                   </div>
@@ -199,7 +207,7 @@ export function MobileTechHome({
 
       {/* tools – only My jobs + Team chat, full-width glass cards */}
       <section className="space-y-2">
-        <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
+        <h2 className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-neutral-400">
           Tools
         </h2>
         <p className="text-[0.7rem] text-neutral-500">
@@ -230,12 +238,12 @@ function StatCard({
   value: number | string;
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3 shadow-card backdrop-blur-md">
+    <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-950/90 via-black to-slate-900/90 px-3 py-3 shadow-card backdrop-blur-md">
       <div className="text-[0.6rem] uppercase tracking-[0.18em] text-neutral-400">
         {label}
       </div>
-      <div className="mt-1 flex items-baseline gap-1 text-lg font-semibold text-white">
-        <span>{value}</span>
+      <div className="mt-1 flex items-baseline gap-1 text-lg font-semibold">
+        <span className="text-[var(--accent-copper-soft)]">{value}</span>
       </div>
     </div>
   );
@@ -259,8 +267,8 @@ function SummaryCard({
   const effText = loading || eff === null ? "–" : `${eff.toFixed(0)}%`;
 
   return (
-    <div className="metal-panel metal-panel--card rounded-2xl border px-4 py-3 shadow-card">
-      <div className="flex items-center justify-between">
+    <div className="metal-panel metal-panel--card rounded-2xl border border-white/10 bg-gradient-to-br from-slate-950/95 via-black to-slate-900/95 px-4 py-3 shadow-card">
+      <div className="flex items-center justify-between gap-2">
         <div className="text-[0.65rem] uppercase tracking-[0.18em] text-neutral-300">
           {label} – Worked vs Billed
         </div>
@@ -296,7 +304,7 @@ function ShiftChip({
 }) {
   const pillClass =
     variant === "active"
-      ? "bg-gradient-to-r from-[var(--accent-copper-deep)] to-emerald-600/70 border-emerald-300/60 text-emerald-50"
+      ? "bg-gradient-to-r from-[var(--accent-copper-deep)] via-[var(--accent-copper-soft)]/85 to-emerald-600/70 border-[var(--accent-copper-soft)]/60 text-emerald-50"
       : "bg-white/5 border-white/15 text-neutral-100";
 
   const dotClass =
@@ -331,7 +339,7 @@ function ToolCard({
   return (
     <Link
       href={href}
-      className="block rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 shadow-card backdrop-blur-md transition hover:border-[var(--accent-copper-soft)] hover:bg-white/[0.07]"
+      className="block rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 shadow-card backdrop-blur-md transition hover:border-[var(--accent-copper-soft)]/80 hover:bg-white/[0.08]"
     >
       <div className="flex items-center justify-between gap-3">
         <div>
