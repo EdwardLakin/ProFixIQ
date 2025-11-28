@@ -1,4 +1,4 @@
- // features/mobile/dashboard/MobileTechHome.tsx
+// features/mobile/dashboard/MobileTechHome.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -43,7 +43,7 @@ type ShiftStatus = "none" | "active" | "ended";
 
 export function MobileTechHome({
   techName,
-  role: _role, // kept for future role-specific tweaks
+  role: _role, // reserved for future tweaks
   stats,
   jobs,
   loadingStats = false,
@@ -133,15 +133,25 @@ export function MobileTechHome({
   }
 
   return (
-    <div className="space-y-6 px-4 py-4 text-white">
+    <div
+      className="min-h-screen space-y-6 px-4 py-6 text-white"
+      // brushed metal-ish backdrop: subtle diagonal streaks + dark base
+      style={{
+        backgroundColor: "#030304",
+        backgroundImage:
+          "repeating-linear-gradient(120deg,#050608 0,#050608 1px,#050810 1px,#050810 3px)",
+        backgroundSize: "220% 220%",
+      }}
+    >
       {/* header / hero */}
-      <section className="metal-panel metal-panel--hero rounded-2xl border border-[var(--accent-copper-soft)]/60 bg-gradient-to-br from-[var(--accent-copper-deep)]/70 via-black to-slate-950/95 px-4 py-4 shadow-[0_18px_45px_rgba(0,0,0,0.85)]">
-        <div className="flex items-start justify-between gap-3">
+      <section className="metal-panel metal-panel--hero relative overflow-hidden rounded-2xl border border-[var(--accent-copper-soft)]/70 bg-gradient-to-br from-[var(--accent-copper-deep)]/85 via-black to-slate-950/98 px-4 py-4 shadow-[0_24px_60px_rgba(0,0,0,0.95)]">
+        {/* subtle copper glow ring */}
+        <div className="pointer-events-none absolute -inset-1 rounded-3xl bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.25),transparent_55%)] opacity-70" />
+        <div className="relative flex items-start justify-between gap-3">
           <div>
             <h1 className="text-xl font-black tracking-wide">
-              <span className="text-neutral-100">Welcome back, </span>
-              <span className="text-[var(--accent-copper-soft)]">
-                {firstName}
+              <span className="bg-gradient-to-r from-[#f5d6b0] via-[var(--accent-copper-soft)] to-[#f97316] bg-clip-text text-transparent">
+                Welcome back, {firstName}
               </span>{" "}
               <span aria-hidden="true">👋</span>
             </h1>
@@ -150,7 +160,7 @@ export function MobileTechHome({
             </p>
           </div>
         </div>
-        <div className="mt-3">
+        <div className="relative mt-3">
           <ShiftChip variant={chipVariant} label={chipLabel} detail={chipDetail} />
         </div>
       </section>
@@ -190,11 +200,11 @@ export function MobileTechHome({
               <li key={job.id}>
                 <Link
                   href={job.href}
-                  className="block rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-neutral-100 shadow-card backdrop-blur-md transition hover:border-[var(--accent-copper-soft)]/80 hover:bg-white/[0.06]"
+                  className="block rounded-2xl border border-white/12 bg-white/[0.03] px-3 py-2 text-xs text-neutral-100 shadow-[0_18px_45px_rgba(0,0,0,0.9)] backdrop-blur-md transition hover:border-[var(--accent-copper-soft)]/80 hover:bg-white/[0.07]"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="truncate font-medium">{job.label}</div>
-                    <span className="rounded-full border border-[var(--accent-copper-soft)]/80 bg-[var(--accent-copper-deep)]/10 px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-[var(--accent-copper-soft)]">
+                    <span className="rounded-full border border-[var(--accent-copper-soft)]/85 bg-[var(--accent-copper-deep)]/15 px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-[var(--accent-copper-soft)]">
                       {job.status.replace(/_/g, " ")}
                     </span>
                   </div>
@@ -238,7 +248,7 @@ function StatCard({
   value: number | string;
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-950/90 via-black to-slate-900/90 px-3 py-3 shadow-card backdrop-blur-md">
+    <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-950/90 via-black to-slate-900/90 px-3 py-3 shadow-[0_16px_38px_rgba(0,0,0,0.9)] backdrop-blur-md">
       <div className="text-[0.6rem] uppercase tracking-[0.18em] text-neutral-400">
         {label}
       </div>
@@ -267,14 +277,14 @@ function SummaryCard({
   const effText = loading || eff === null ? "–" : `${eff.toFixed(0)}%`;
 
   return (
-    <div className="metal-panel metal-panel--card rounded-2xl border border-white/10 bg-gradient-to-br from-slate-950/95 via-black to-slate-900/95 px-4 py-3 shadow-card">
+    <div className="metal-panel metal-panel--card rounded-2xl border border-white/10 bg-gradient-to-br from-slate-950/95 via-black to-slate-900/95 px-4 py-3 shadow-[0_22px_55px_rgba(0,0,0,0.95)] backdrop-blur-md">
       <div className="flex items-center justify-between gap-2">
         <div className="text-[0.65rem] uppercase tracking-[0.18em] text-neutral-300">
           {label} – Worked vs Billed
         </div>
         <div className="text-[0.7rem] text-neutral-400">
           Efficiency:{" "}
-          <span className="font-semibold text-[var(--accent-copper-soft)]">
+          <span className="bg-gradient-to-r from-[var(--accent-copper-soft)] to-amber-300 bg-clip-text font-semibold text-transparent">
             {effText}
           </span>
         </div>
@@ -304,7 +314,7 @@ function ShiftChip({
 }) {
   const pillClass =
     variant === "active"
-      ? "bg-gradient-to-r from-[var(--accent-copper-deep)] via-[var(--accent-copper-soft)]/85 to-emerald-600/70 border-[var(--accent-copper-soft)]/60 text-emerald-50"
+      ? "bg-gradient-to-r from-[var(--accent-copper-deep)] via-[var(--accent-copper-soft)]/85 to-emerald-500/80 border-[var(--accent-copper-soft)]/70 text-emerald-50 shadow-[0_0_24px_rgba(248,113,22,0.4)]"
       : "bg-white/5 border-white/15 text-neutral-100";
 
   const dotClass =
@@ -321,7 +331,7 @@ function ShiftChip({
         {label}
       </span>
       {detail ? (
-        <span className="text-[0.65rem] text-neutral-100/80">{detail}</span>
+        <span className="text-[0.65rem] text-neutral-100/85">{detail}</span>
       ) : null}
     </div>
   );
@@ -339,7 +349,7 @@ function ToolCard({
   return (
     <Link
       href={href}
-      className="block rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 shadow-card backdrop-blur-md transition hover:border-[var(--accent-copper-soft)]/80 hover:bg-white/[0.08]"
+      className="block rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 shadow-[0_18px_45px_rgba(0,0,0,0.9)] backdrop-blur-md transition hover:border-[var(--accent-copper-soft)]/80 hover:bg-white/[0.08]"
     >
       <div className="flex items-center justify-between gap-3">
         <div>
