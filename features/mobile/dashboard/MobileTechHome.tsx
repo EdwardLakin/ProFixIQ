@@ -43,7 +43,7 @@ type ShiftStatus = "none" | "active" | "ended";
 
 export function MobileTechHome({
   techName,
-  role: _role, // reserved for future tweaks
+  role: _role,
   stats,
   jobs,
   loadingStats = false,
@@ -133,35 +133,34 @@ export function MobileTechHome({
   }
 
   return (
-    <div
-      className="min-h-screen space-y-6 px-4 py-6 text-white"
-      // brushed metal-ish backdrop: subtle diagonal streaks + dark base
-      style={{
-        backgroundColor: "#030304",
-        backgroundImage:
-          "repeating-linear-gradient(120deg,#050608 0,#050608 1px,#050810 1px,#050810 3px)",
-        backgroundSize: "220% 220%",
-      }}
-    >
+    <div className="px-4 py-4 space-y-6">
       {/* header / hero */}
-      <section className="metal-panel metal-panel--hero relative overflow-hidden rounded-2xl border border-[var(--accent-copper-soft)]/70 bg-gradient-to-br from-[var(--accent-copper-deep)]/85 via-black to-slate-950/98 px-4 py-4 shadow-[0_24px_60px_rgba(0,0,0,0.95)]">
-        {/* subtle copper glow ring */}
-        <div className="pointer-events-none absolute -inset-1 rounded-3xl bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.25),transparent_55%)] opacity-70" />
-        <div className="relative flex items-start justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-black tracking-wide">
-              <span className="bg-gradient-to-r from-[#f5d6b0] via-[var(--accent-copper-soft)] to-[#f97316] bg-clip-text text-transparent">
-                Welcome back, {firstName}
-              </span>{" "}
-              <span aria-hidden="true">👋</span>
-            </h1>
-            <p className="mt-1 text-[0.75rem] text-neutral-200/85">
-              Bench-side view of today&#39;s work and efficiency.
-            </p>
-          </div>
+      <section
+        className="
+          relative overflow-hidden rounded-2xl
+          border border-[var(--accent-copper-soft)]/85
+          bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.06),_transparent_55%),linear-gradient(135deg,#050608,#0a0f17,#050608)]
+          shadow-[0_0_0_1px_rgba(255,255,255,0.05),0_22px_55px_rgba(0,0,0,0.95),0_0_40px_rgba(223,138,84,0.55)]
+          text-white
+        "
+      >
+        {/* subtle copper sweep */}
+        <div className="pointer-events-none absolute inset-0 opacity-70 mix-blend-screen">
+          <div className="h-full w-full bg-[radial-gradient(circle_at_10%_0%,rgba(223,138,84,0.45),transparent_55%),radial-gradient(circle_at_90%_100%,rgba(56,189,248,0.25),transparent_55%)]" />
         </div>
-        <div className="relative mt-3">
-          <ShiftChip variant={chipVariant} label={chipLabel} detail={chipDetail} />
+
+        <div className="relative px-4 py-4">
+          <h1 className="text-xl font-black leading-tight">
+            <span className="bg-gradient-to-r from-[var(--accent-copper-light)] via-[var(--accent-copper)] to-sky-300 bg-clip-text text-transparent">
+              {`Welcome back, ${firstName} 👋`}
+            </span>
+          </h1>
+          <p className="mt-1 text-xs text-neutral-300">
+            Bench-side view of today’s work and efficiency.
+          </p>
+          <div className="mt-3">
+            <ShiftChip variant={chipVariant} label={chipLabel} detail={chipDetail} />
+          </div>
         </div>
       </section>
 
@@ -185,12 +184,12 @@ export function MobileTechHome({
       {jobs.length > 0 && (
         <section className="space-y-2">
           <div className="flex items-center justify-between">
-            <h2 className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+            <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
               Today&apos;s jobs
             </h2>
             <Link
               href="/mobile/work-orders"
-              className="text-[0.7rem] font-medium text-[var(--accent-copper-soft)] underline-offset-4 hover:text-[var(--accent-copper-light)] hover:underline"
+              className="text-[0.7rem] text-[var(--accent-copper-soft)] underline-offset-4 hover:underline"
             >
               View all
             </Link>
@@ -200,11 +199,11 @@ export function MobileTechHome({
               <li key={job.id}>
                 <Link
                   href={job.href}
-                  className="block rounded-2xl border border-white/12 bg-white/[0.03] px-3 py-2 text-xs text-neutral-100 shadow-[0_18px_45px_rgba(0,0,0,0.9)] backdrop-blur-md transition hover:border-[var(--accent-copper-soft)]/80 hover:bg-white/[0.07]"
+                  className="block rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-neutral-100 shadow-[0_18px_40px_rgba(0,0,0,0.9)] backdrop-blur-md"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="truncate font-medium">{job.label}</div>
-                    <span className="rounded-full border border-[var(--accent-copper-soft)]/85 bg-[var(--accent-copper-deep)]/15 px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-[var(--accent-copper-soft)]">
+                    <span className="rounded-full border border-[var(--accent-copper-soft)]/70 px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.12em] text-[var(--accent-copper-soft)]">
                       {job.status.replace(/_/g, " ")}
                     </span>
                   </div>
@@ -217,7 +216,7 @@ export function MobileTechHome({
 
       {/* tools – only My jobs + Team chat, full-width glass cards */}
       <section className="space-y-2">
-        <h2 className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+        <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
           Tools
         </h2>
         <p className="text-[0.7rem] text-neutral-500">
@@ -248,12 +247,12 @@ function StatCard({
   value: number | string;
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-950/90 via-black to-slate-900/90 px-3 py-3 shadow-[0_16px_38px_rgba(0,0,0,0.9)] backdrop-blur-md">
+    <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3 shadow-[0_16px_40px_rgba(0,0,0,0.95),0_0_24px_rgba(15,23,42,0.6)] backdrop-blur-md">
       <div className="text-[0.6rem] uppercase tracking-[0.18em] text-neutral-400">
         {label}
       </div>
-      <div className="mt-1 flex items-baseline gap-1 text-lg font-semibold">
-        <span className="text-[var(--accent-copper-soft)]">{value}</span>
+      <div className="mt-1 flex items-baseline gap-1 text-lg font-semibold text-white">
+        <span>{value}</span>
       </div>
     </div>
   );
@@ -277,14 +276,14 @@ function SummaryCard({
   const effText = loading || eff === null ? "–" : `${eff.toFixed(0)}%`;
 
   return (
-    <div className="metal-panel metal-panel--card rounded-2xl border border-white/10 bg-gradient-to-br from-slate-950/95 via-black to-slate-900/95 px-4 py-3 shadow-[0_22px_55px_rgba(0,0,0,0.95)] backdrop-blur-md">
-      <div className="flex items-center justify-between gap-2">
+    <div className="rounded-2xl border border-white/12 bg-white/[0.03] px-4 py-3 shadow-[0_18px_50px_rgba(0,0,0,0.95),0_0_26px_rgba(15,23,42,0.7)] backdrop-blur-md">
+      <div className="flex items-center justify-between">
         <div className="text-[0.65rem] uppercase tracking-[0.18em] text-neutral-300">
           {label} – Worked vs Billed
         </div>
         <div className="text-[0.7rem] text-neutral-400">
           Efficiency:{" "}
-          <span className="bg-gradient-to-r from-[var(--accent-copper-soft)] to-amber-300 bg-clip-text font-semibold text-transparent">
+          <span className="font-semibold text-[var(--accent-copper-soft)]">
             {effText}
           </span>
         </div>
@@ -314,13 +313,13 @@ function ShiftChip({
 }) {
   const pillClass =
     variant === "active"
-      ? "bg-gradient-to-r from-[var(--accent-copper-deep)] via-[var(--accent-copper-soft)]/85 to-emerald-500/80 border-[var(--accent-copper-soft)]/70 text-emerald-50 shadow-[0_0_24px_rgba(248,113,22,0.4)]"
-      : "bg-white/5 border-white/15 text-neutral-100";
+      ? "bg-gradient-to-r from-[var(--accent-copper-deep)] via-[var(--accent-copper)] to-sky-500/80 border-[var(--accent-copper-soft)]/90 text-neutral-50 shadow-[0_10px_26px_rgba(0,0,0,0.9)]"
+      : "bg-[var(--accent-copper-deep)] border-[var(--accent-copper-soft)]/90 text-neutral-50 shadow-[0_10px_24px_rgba(0,0,0,0.85)]";
 
   const dotClass =
     variant === "active"
-      ? "bg-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.9)]"
-      : "bg-neutral-400";
+      ? "bg-emerald-300/90 shadow-[0_0_8px_rgba(45,212,191,0.9)]"
+      : "bg-black/60";
 
   return (
     <div
@@ -349,7 +348,7 @@ function ToolCard({
   return (
     <Link
       href={href}
-      className="block rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 shadow-[0_18px_45px_rgba(0,0,0,0.9)] backdrop-blur-md transition hover:border-[var(--accent-copper-soft)]/80 hover:bg-white/[0.08]"
+      className="block rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-md transition hover:border-[var(--accent-copper-soft)] hover:bg-white/[0.07]"
     >
       <div className="flex items-center justify-between gap-3">
         <div>
