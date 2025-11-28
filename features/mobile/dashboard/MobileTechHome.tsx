@@ -53,6 +53,10 @@ export function MobileTechHome({
   const [shiftStart, setShiftStart] = useState<string | null>(null);
   const [loadingShift, setLoadingShift] = useState(false);
 
+  const [currentTime, setCurrentTime] = useState<string>(() =>
+    new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+  );
+
   const firstName = techName?.split(" ")[0] ?? techName ?? "Tech";
 
   const today = stats?.today ?? {
@@ -69,6 +73,19 @@ export function MobileTechHome({
   const openJobs = stats?.openJobs ?? 0;
   const assignedJobs = stats?.assignedJobs ?? 0;
   const jobsCompletedToday = stats?.jobsCompletedToday ?? 0;
+
+  // clock
+  useEffect(() => {
+    const id = setInterval(() => {
+      setCurrentTime(
+        new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      );
+    }, 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   // Load current shift state for the chip
   useEffect(() => {
@@ -138,20 +155,22 @@ export function MobileTechHome({
       <section
         className="
           relative overflow-hidden rounded-2xl
-          border border-[var(--accent-copper-soft)]/85
-          bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.06),_transparent_55%),linear-gradient(135deg,#050608,#0a0f17,#050608)]
-          shadow-[0_0_0_1px_rgba(255,255,255,0.05),0_22px_55px_rgba(0,0,0,0.95),0_0_40px_rgba(223,138,84,0.55)]
-          text-white
+          border border-[var(--accent-copper-soft)]
+          bg-black/40
+          shadow-[0_0_0_1px_rgba(255,255,255,0.03),0_18px_45px_rgba(0,0,0,0.9),0_0_32px_rgba(223,138,84,0.4)]
+          backdrop-blur-md text-white
         "
       >
-        {/* subtle copper sweep */}
-        <div className="pointer-events-none absolute inset-0 opacity-70 mix-blend-screen">
-          <div className="h-full w-full bg-[radial-gradient(circle_at_10%_0%,rgba(223,138,84,0.45),transparent_55%),radial-gradient(circle_at_90%_100%,rgba(56,189,248,0.25),transparent_55%)]" />
-        </div>
-
         <div className="relative px-4 py-4">
+          {/* current time */}
+          <div className="mb-2 flex justify-center">
+            <div className="rounded-full border border-[var(--accent-copper-soft)]/40 bg-black/40 px-3 py-0.5 text-[0.7rem] tracking-[0.18em] text-neutral-300">
+              {currentTime}
+            </div>
+          </div>
+
           <h1 className="text-xl font-black leading-tight">
-            <span className="bg-gradient-to-r from-[var(--accent-copper-light)] via-[var(--accent-copper)] to-sky-300 bg-clip-text text-transparent">
+            <span className="text-[var(--accent-copper)]">
               {`Welcome back, ${firstName} 👋`}
             </span>
           </h1>
@@ -159,7 +178,11 @@ export function MobileTechHome({
             Bench-side view of today’s work and efficiency.
           </p>
           <div className="mt-3">
-            <ShiftChip variant={chipVariant} label={chipLabel} detail={chipDetail} />
+            <ShiftChip
+              variant={chipVariant}
+              label={chipLabel}
+              detail={chipDetail}
+            />
           </div>
         </div>
       </section>
@@ -172,7 +195,11 @@ export function MobileTechHome({
 
       {/* stat chips */}
       <section className="grid grid-cols-3 gap-3">
-        <StatCard label="Open jobs" value={loadingStats ? "…" : openJobs} />
+        <StatCard
+          label="Open jobs"
+          value={loadingStats ? "…" : openJobs}
+          highlight
+        />
         <StatCard label="Assigned" value={loadingStats ? "…" : assignedJobs} />
         <StatCard
           label="Jobs done"
@@ -242,12 +269,24 @@ export function MobileTechHome({
 function StatCard({
   label,
   value,
+  highlight = false,
 }: {
   label: string;
   value: number | string;
+  highlight?: boolean;
 }) {
+  const borderClass = highlight
+    ? "border-[var(--accent-copper-soft)]"
+    : "border-white/10";
+
+  const shadowClass = highlight
+    ? "shadow-[0_0_0_1px_rgba(223,138,84,0.35),0_18px_40px_rgba(0,0,0,0.95),0_0_24px_rgba(223,138,84,0.6)]"
+    : "shadow-[0_16px_40px_rgba(0,0,0,0.95),0_0_24px_rgba(15,23,42,0.6)]";
+
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3 shadow-[0_16px_40px_rgba(0,0,0,0.95),0_0_24px_rgba(15,23,42,0.6)] backdrop-blur-md">
+    <div
+      className={`rounded-2xl border ${borderClass} bg-white/[0.04] px-3 py-3 backdrop-blur-md ${shadowClass}`}
+    >
       <div className="text-[0.6rem] uppercase tracking-[0.18em] text-neutral-400">
         {label}
       </div>
@@ -276,7 +315,7 @@ function SummaryCard({
   const effText = loading || eff === null ? "–" : `${eff.toFixed(0)}%`;
 
   return (
-    <div className="rounded-2xl border border-white/12 bg-white/[0.03] px-4 py-3 shadow-[0_18px_50px_rgba(0,0,0,0.95),0_0_26px_rgba(15,23,42,0.7)] backdrop-blur-md">
+    <div className="rounded-2xl border border-[var(--accent-copper-soft)] bg-white/[0.03] px-4 py-3 shadow-[0_18px_50px_rgba(0,0,0,0.95),0_0_26px_rgba(15,23,42,0.7)] backdrop-blur-md">
       <div className="flex items-center justify-between">
         <div className="text-[0.65rem] uppercase tracking-[0.18em] text-neutral-300">
           {label} – Worked vs Billed
@@ -313,13 +352,13 @@ function ShiftChip({
 }) {
   const pillClass =
     variant === "active"
-      ? "bg-gradient-to-r from-[var(--accent-copper-deep)] via-[var(--accent-copper)] to-sky-500/80 border-[var(--accent-copper-soft)]/90 text-neutral-50 shadow-[0_10px_26px_rgba(0,0,0,0.9)]"
-      : "bg-[var(--accent-copper-deep)] border-[var(--accent-copper-soft)]/90 text-neutral-50 shadow-[0_10px_24px_rgba(0,0,0,0.85)]";
+      ? "bg-emerald-700/80 border-emerald-300/70 text-emerald-50 shadow-[0_10px_26px_rgba(0,0,0,0.9)]"
+      : "bg-[var(--accent-copper-deep)] border-[var(--accent-copper-soft)] text-neutral-50 shadow-[0_0_0_1px_rgba(223,138,84,0.4),0_10px_26px_rgba(0,0,0,0.9)]";
 
   const dotClass =
     variant === "active"
       ? "bg-emerald-300/90 shadow-[0_0_8px_rgba(45,212,191,0.9)]"
-      : "bg-black/60";
+      : "bg-black/70";
 
   return (
     <div
