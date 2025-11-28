@@ -9,10 +9,13 @@ import {
   useState,
 } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { RealtimePostgresInsertPayload } from "@supabase/supabase-js";
+import type {
+  RealtimePostgresInsertPayload,
+} from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 
-type Message = Database["public"]["Tables"]["messages"]["Row"];
+type DB = Database;
+type Message = DB["public"]["Tables"]["messages"]["Row"];
 
 type ChatWindowProps = {
   conversationId: string;
@@ -26,9 +29,10 @@ export default function ChatWindow({
   title = "Conversation",
 }: ChatWindowProps) {
   const supabase = useMemo(
-    () => createClientComponentClient<Database>(),
+    () => createClientComponentClient<DB>(),
     [],
   );
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(true);
@@ -39,6 +43,7 @@ export default function ChatWindow({
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const fetchMessages = useCallback(async () => {
+    if (!conversationId) return;
     setLoading(true);
     setError(null);
     try {
@@ -49,7 +54,9 @@ export default function ChatWindow({
       });
       if (!res.ok) throw new Error(String(res.status));
       const data = (await res.json()) as Message[];
-      setMessages((prev) => (prev.length > 0 && data.length === 0 ? prev : data));
+      setMessages((prev) =>
+        prev.length > 0 && data.length === 0 ? prev : data,
+      );
     } catch (err) {
       console.error("[ChatWindow] fetchMessages error:", err);
       setError("Couldn't load messages.");
@@ -58,44 +65,17 @@ export default function ChatWindow({
     }
   }, [conversationId]);
 
+  // initial load & when conversation changes
   useEffect(() => {
     void fetchMessages();
   }, [fetchMessages]);
 
-  // broadcast (trigger) channel
+  // realtime: new messages in this conversation
   useEffect(() => {
     if (!conversationId) return;
 
     const channel = supabase
-      .channel(`conversation:${conversationId}:messages`, {
-        config: { broadcast: { self: true } },
-      })
-      .on("broadcast", { event: "INSERT" }, (payload: unknown) => {
-        const row = (payload as { record?: Message })?.record;
-        if (!row) return;
-        setMessages((prev) => (prev.some((m) => m.id === row.id) ? prev : [...prev, row]));
-      })
-      .on("broadcast", { event: "UPDATE" }, (payload: unknown) => {
-        const row = (payload as { record?: Message })?.record;
-        if (!row) return;
-        setMessages((prev) => prev.map((m) => (m.id === row.id ? row : m)));
-      })
-      .on("broadcast", { event: "DELETE" }, (payload: unknown) => {
-        const row = (payload as { record?: Message })?.record;
-        if (!row) return;
-        setMessages((prev) => prev.filter((m) => m.id !== row.id));
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [supabase, conversationId]);
-
-  // postgres_changes fallback
-  useEffect(() => {
-    const channel = supabase
-      .channel(`messages-fallback-${conversationId}`)
+      .channel(`chat-window-${conversationId}`)
       .on(
         "postgres_changes",
         {
@@ -105,15 +85,38 @@ export default function ChatWindow({
           filter: `conversation_id=eq.${conversationId}`,
         },
         (payload: RealtimePostgresInsertPayload<Message>) => {
-          setMessages((prev) =>
-            prev.some((m) => m.id === payload.new.id) ? prev : [...prev, payload.new],
-          );
+          const row = payload.new;
+          setMessages((prev) => {
+            // already have it
+            if (prev.some((m) => m.id === row.id)) return prev;
+
+            // try to replace optimistic temp message (same sender + content)
+            const idx = prev.findIndex(
+              (m) =>
+                typeof m.id === "string" &&
+                m.id.startsWith("temp-") &&
+                m.sender_id === row.sender_id &&
+                (m.content ?? "").trim() === (row.content ?? "").trim(),
+            );
+
+            if (idx !== -1) {
+              const next = [...prev];
+              next[idx] = row;
+              return next;
+            }
+
+            return [...prev, row];
+          });
         },
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      try {
+        supabase.removeChannel(channel);
+      } catch {
+        // ignore
+      }
     };
   }, [supabase, conversationId]);
 
@@ -122,14 +125,14 @@ export default function ChatWindow({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // focus once
+  // focus composer once
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
   const sendMessage = useCallback(async () => {
     const content = newMessage.trim();
-    if (!content || sending) return;
+    if (!content || sending || !conversationId) return;
 
     const tempId = `temp-${Date.now()}`;
     const optimistic: Message = {
@@ -138,7 +141,15 @@ export default function ChatWindow({
       sender_id: userId,
       content,
       sent_at: new Date().toISOString(),
-    } as Message;
+      // satisfy TS for other columns we don't care about:
+      recipients: [] as any,
+      attachments: [] as any,
+      reply_to: null,
+      created_at: new Date().toISOString() as any,
+      edited_at: null,
+      deleted_at: null,
+      metadata: {} as any,
+    };
 
     setMessages((prev) => [...prev, optimistic]);
     setNewMessage("");
@@ -153,17 +164,21 @@ export default function ChatWindow({
           conversationId,
           senderId: userId,
           content,
-          recipients: [],
         }),
       });
       if (!res.ok) {
-        console.error("[ChatWindow] send-message failed:", await res.text());
+        console.error(
+          "[ChatWindow] send-message failed:",
+          await res.text(),
+        );
         setError("Message failed to send.");
+        // reload from server to reconcile
         void fetchMessages();
       }
     } catch (err) {
       console.error("[ChatWindow] sendMessage error:", err);
       setError("Message failed to send.");
+      void fetchMessages();
     } finally {
       setSending(false);
     }
@@ -180,7 +195,10 @@ export default function ChatWindow({
           body: JSON.stringify({ id }),
         });
         if (!res.ok) {
-          console.error("[ChatWindow] delete-message failed:", await res.text());
+          console.error(
+            "[ChatWindow] delete-message failed:",
+            await res.text(),
+          );
           setMessages(prev);
         }
       } catch (err) {
@@ -191,25 +209,34 @@ export default function ChatWindow({
     [messages],
   );
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (
+    e: React.KeyboardEvent<HTMLTextAreaElement>,
+  ) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void sendMessage();
     }
   };
 
-  // group & render helpers
+  // group by day & render metadata
   const grouped = useMemo(() => {
     const byDay: Array<
       | { type: "day"; label: string }
-      | { type: "msg"; msg: Message; isMine: boolean; showAvatar: boolean }
+      | {
+          type: "msg";
+          msg: Message;
+          isMine: boolean;
+          showAvatar: boolean;
+        }
     > = [];
 
     let lastDay = "";
     let lastSender = "";
 
     messages.forEach((m) => {
-      const day = m.sent_at ? new Date(m.sent_at).toDateString() : "Unknown";
+      const day = m.sent_at
+        ? new Date(m.sent_at).toDateString()
+        : "Unknown";
       if (day !== lastDay) {
         byDay.push({ type: "day", label: day });
         lastDay = day;
@@ -217,7 +244,7 @@ export default function ChatWindow({
       }
 
       const isMine = m.sender_id === userId;
-      const showAvatar = m.sender_id !== lastSender;
+      const showAvatar = (m.sender_id ?? "") !== lastSender;
       byDay.push({ type: "msg", msg: m, isMine, showAvatar });
 
       lastSender = m.sender_id ?? "";
@@ -230,14 +257,20 @@ export default function ChatWindow({
     <div className="flex h-full flex-col rounded border border-neutral-800 bg-neutral-950 text-white">
       {/* header */}
       <div className="border-b border-neutral-800 px-4 py-3 flex items-center justify-between">
-        <div className="text-sm font-medium text-neutral-200">{title}</div>
-        {error ? <div className="text-[10px] text-red-200/80">{error}</div> : null}
+        <div className="text-sm font-medium text-neutral-200">
+          {title}
+        </div>
+        {error ? (
+          <div className="text-[10px] text-red-200/80">{error}</div>
+        ) : null}
       </div>
 
       {/* messages */}
       <div className="flex-1 overflow-y-auto px-3 py-4 space-y-2">
         {loading ? (
-          <div className="text-center text-neutral-500 text-sm py-6">Loading messages…</div>
+          <div className="text-center text-neutral-500 text-sm py-6">
+            Loading messages…
+          </div>
         ) : grouped.length === 0 ? (
           <div className="text-center text-neutral-500 text-sm py-6">
             No messages yet. Say hi 👋
@@ -257,10 +290,18 @@ export default function ChatWindow({
             const { msg, isMine, showAvatar } = item;
             const time =
               msg.sent_at &&
-              new Date(msg.sent_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+              new Date(msg.sent_at).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              });
 
             return (
-              <div key={msg.id} className={`flex gap-2 ${isMine ? "justify-end" : "justify-start"}`}>
+              <div
+                key={msg.id}
+                className={`flex gap-2 ${
+                  isMine ? "justify-end" : "justify-start"
+                }`}
+              >
                 {!isMine && showAvatar ? (
                   <div className="mt-6 h-7 w-7 rounded-full bg-neutral-700 flex items-center justify-center text-[10px] text-white/80">
                     U
@@ -272,11 +313,11 @@ export default function ChatWindow({
                 <div className="relative">
                   <div
                     className={[
-                      "inline-block",             // keep natural width
-                      "max-w-[80%]",              // roomy but consistent
-                      "rounded-2xl",              // consistent bubble shape
+                      "inline-block",
+                      "max-w-[80%]",
+                      "rounded-2xl",
                       "px-3 py-2 text-sm",
-                      "whitespace-pre-wrap break-words", // no skinny “C\no\nl” bubbles
+                      "whitespace-pre-wrap break-words",
                       isMine
                         ? "bg-orange-500 text-black"
                         : "bg-neutral-800 text-neutral-100",
@@ -287,7 +328,9 @@ export default function ChatWindow({
                       <p
                         className={[
                           "mt-1 text-[10px]",
-                          isMine ? "text-black/60" : "text-neutral-400",
+                          isMine
+                            ? "text-black/60"
+                            : "text-neutral-400",
                         ].join(" ")}
                       >
                         {time}
@@ -295,10 +338,10 @@ export default function ChatWindow({
                     ) : null}
                   </div>
 
-                  {isMine ? (
+                  {isMine && !String(msg.id).startsWith("temp-") ? (
                     <button
                       type="button"
-                      onClick={() => void deleteMessage(msg.id)}
+                      onClick={() => void deleteMessage(msg.id as string)}
                       className="absolute -top-2 -right-2 h-5 w-5 rounded-full bg-neutral-900 text-[10px] text-white/70 hover:bg-red-500 hover:text-white"
                       aria-label="Delete message"
                     >
