@@ -1,3 +1,4 @@
+// features/work-orders/components/workorders/CustomerContactModal.tsx
 "use client";
 
 import { useState } from "react";
@@ -13,20 +14,49 @@ interface Props {
   onSendSms?: (message: string) => void | Promise<void>;
 }
 
-export default function CustomerContactModal(props: any) {
-  const {
-    isOpen,
-    onClose,
-    customerName,
-    customerEmail,
-    customerPhone,
-    onSendEmail,
-    onSendSms,
-  } = props as Props;
-
+export default function CustomerContactModal({
+  isOpen,
+  onClose,
+  customerName,
+  customerEmail,
+  customerPhone,
+  onSendEmail,
+  onSendSms,
+}: Props) {
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [sms, setSms] = useState("");
+  const [sendingSms, setSendingSms] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
+
+  const canSendEmail = !!onSendEmail && (subject.trim() || body.trim());
+  const canSendSms = !!onSendSms && sms.trim().length > 0;
+
+  const handleSendSms = async () => {
+    if (!onSendSms || !canSendSms) return;
+    setSendingSms(true);
+    try {
+      await onSendSms(sms.trim());
+      setSms("");
+    } finally {
+      setSendingSms(false);
+    }
+  };
+
+  const handleSendEmail = onSendEmail
+    ? async () => {
+        if (!canSendEmail) return;
+        setSendingEmail(true);
+        try {
+          await onSendEmail(subject.trim(), body.trim());
+          setSubject("");
+          setBody("");
+          onClose();
+        } finally {
+          setSendingEmail(false);
+        }
+      }
+    : undefined;
 
   return (
     <ModalShell
@@ -37,64 +67,62 @@ export default function CustomerContactModal(props: any) {
       footerLeft={
         onSendSms ? (
           <button
-            onClick={async () => {
-              if (!sms.trim()) return;
-              await onSendSms(sms.trim());
-              setSms("");
-            }}
-            className="rounded bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-60"
-            disabled={!sms.trim()}
+            type="button"
+            onClick={() => void handleSendSms()}
+            className="rounded border border-emerald-500/70 bg-emerald-500/10 px-3 py-1.5 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/20 disabled:opacity-60"
+            disabled={!canSendSms || sendingSms}
           >
-            Send SMS {customerPhone ? `(${customerPhone})` : ""}
+            {sendingSms ? "Sending SMS…" : "Send SMS"}{" "}
+            {customerPhone ? `(${customerPhone})` : ""}
           </button>
         ) : null
       }
-      onSubmit={
-        onSendEmail
-          ? async () => {
-              if (!subject.trim() && !body.trim()) return;
-              await onSendEmail(subject.trim(), body.trim());
-              setSubject("");
-              setBody("");
-              onClose();
-            }
-          : undefined
-      }
-      submitText="Send Email"
+      onSubmit={handleSendEmail}
+      submitText={sendingEmail ? "Sending…" : "Send Email"}
     >
-      <div className="mb-3 text-sm text-neutral-500">
-        {customerName ? <span className="font-medium">{customerName}</span> : null}{" "}
+      <div className="mb-3 text-sm text-muted-foreground">
+        {customerName ? (
+          <span className="font-medium text-foreground">{customerName}</span>
+        ) : null}{" "}
         {customerEmail ? <span>• {customerEmail}</span> : null}
         {customerPhone ? <span> • {customerPhone}</span> : null}
       </div>
 
       <label className="block text-sm">
-        <span className="mb-1 block text-neutral-400">Subject</span>
+        <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Subject
+        </span>
         <input
           type="text"
           value={subject}
           onChange={(e) => setSubject(e.target.value)}
-          className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
+          className="w-full rounded border border-border/60 bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
+          placeholder="Subject line…"
         />
       </label>
 
       <label className="mt-3 block text-sm">
-        <span className="mb-1 block text-neutral-400">Email Body</span>
+        <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Email Body
+        </span>
         <textarea
           rows={6}
           value={body}
           onChange={(e) => setBody(e.target.value)}
-          className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
+          className="w-full rounded border border-border/60 bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
+          placeholder="Write your email to the customer…"
         />
       </label>
 
       <label className="mt-4 block text-sm">
-        <span className="mb-1 block text-neutral-400">SMS</span>
+        <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          SMS
+        </span>
         <textarea
           rows={3}
           value={sms}
           onChange={(e) => setSms(e.target.value)}
-          className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-white placeholder:text-neutral-400"
+          className="w-full rounded border border-border/60 bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
           placeholder="Quick text message…"
         />
       </label>

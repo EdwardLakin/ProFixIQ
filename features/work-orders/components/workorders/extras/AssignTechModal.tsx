@@ -1,3 +1,4 @@
+// features/work-orders/components/workorders/AssignTechModal.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -35,6 +36,7 @@ export default function AssignTechModal({
     return mechanics ?? initialMechanics ?? [];
   });
   const [techId, setTechId] = useState<string>("");
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -60,17 +62,18 @@ export default function AssignTechModal({
           setUsers((data as Assignable[]) ?? []);
         }
       } catch {
-        // ignore
+        // ignore, leave users as-is
       }
     })();
   }, [isOpen, mechanics, initialMechanics, supabase]);
 
   const submit = async () => {
-    if (!techId) {
+    if (!techId || submitting) {
       onClose();
       return;
     }
 
+    setSubmitting(true);
     try {
       const res = await fetch("/api/work-orders/assign-line", {
         method: "POST",
@@ -89,12 +92,13 @@ export default function AssignTechModal({
       }
 
       toast.success("Mechanic assigned.");
+      await onAssigned?.(techId);
+      onClose();
     } catch {
       toast.error("Failed to assign mechanic.");
+    } finally {
+      setSubmitting(false);
     }
-
-    await onAssigned?.(techId);
-    onClose();
   };
 
   return (
@@ -103,21 +107,26 @@ export default function AssignTechModal({
       onClose={onClose}
       onSubmit={submit}
       title="Assign mechanic"
-      submitText="Assign"
+      submitText={submitting ? "Assigning…" : "Assign"}
       size="sm"
     >
-      <select
-        className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-sm text-white"
-        value={techId}
-        onChange={(e) => setTechId(e.target.value)}
-      >
-        <option value="">Choose a mechanic…</option>
-        {users.map((u) => (
-          <option key={u.id} value={u.id}>
-            {u.full_name ?? "(no name)"} {u.role ? `(${u.role})` : ""}
-          </option>
-        ))}
-      </select>
+      <label className="block text-sm">
+        <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Choose mechanic
+        </span>
+        <select
+          className="w-full rounded border border-border/60 bg-background px-3 py-2 text-sm text-foreground dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
+          value={techId}
+          onChange={(e) => setTechId(e.target.value)}
+        >
+          <option value="">Select…</option>
+          {users.map((u) => (
+            <option key={u.id} value={u.id}>
+              {u.full_name ?? "(no name)"} {u.role ? `(${u.role})` : ""}
+            </option>
+          ))}
+        </select>
+      </label>
     </ModalShell>
   );
 }
