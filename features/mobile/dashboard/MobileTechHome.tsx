@@ -44,7 +44,7 @@ type Props = {
   loadingStats?: boolean;
 };
 
-type ShiftStatus = "none" | "active" | "ended";
+type ShiftStatus = "none" | "active" | "break" | "lunch" | "ended";
 
 type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
 
@@ -61,8 +61,6 @@ export function MobileTechHome({
   const [shiftStatus, setShiftStatus] = useState<ShiftStatus>("none");
   const [shiftStart, setShiftStart] = useState<string | null>(null);
   const [loadingShift, setLoadingShift] = useState(false);
-
-  const [currentTime, setCurrentTime] = useState<string>("");
 
   // current punched-in job
   const [currentJob, setCurrentJob] = useState<WorkOrderLine | null>(null);
@@ -86,27 +84,7 @@ export function MobileTechHome({
   const jobsCompletedToday = stats?.jobsCompletedToday ?? 0;
 
   /* ---------------------------------------------------------------------- */
-  /* Live clock for header                                                  */
-  /* ---------------------------------------------------------------------- */
-
-  useEffect(() => {
-    const update = () => {
-      const now = new Date();
-      setCurrentTime(
-        now.toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-      );
-    };
-
-    update();
-    const id = window.setInterval(update, 60_000);
-    return () => window.clearInterval(id);
-  }, []);
-
-  /* ---------------------------------------------------------------------- */
-  /* Load / refresh shift state                                             */
+  /* Load / refresh shift state (aligned with MobileShiftTracker)           */
   /* ---------------------------------------------------------------------- */
 
   const refreshShiftState = useCallback(async () => {
@@ -125,7 +103,8 @@ export function MobileTechHome({
         return;
       }
 
-      const { data: openShift } = await supabase
+      // Latest shift for this user
+      const { data: latestShift, error: sErr } = await supabase
         .from("tech_shifts")
         .select("id, start_time, end_time, status")
         .eq("user_id", id)
@@ -133,19 +112,37 @@ export function MobileTechHome({
         .limit(1)
         .maybeSingle();
 
-      if (!openShift) {
+      if (sErr || !latestShift) {
         setShiftStatus("none");
         setShiftStart(null);
         return;
       }
 
-      if (openShift.end_time == null) {
-        setShiftStatus("active");
-        setShiftStart(openShift.start_time);
-      } else {
+      setShiftStart(latestShift.start_time ?? null);
+
+      // If shift is closed, mark ended
+      if (latestShift.end_time != null) {
         setShiftStatus("ended");
-        setShiftStart(openShift.start_time);
+        return;
       }
+
+      // Open shift – use last punch_event to decide active/break/lunch
+      const { data: lastPunch } = await supabase
+        .from("punch_events")
+        .select("event_type")
+        .eq("shift_id", latestShift.id)
+        .order("timestamp", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const t = lastPunch?.event_type;
+      let computed: ShiftStatus = "active";
+
+      if (t === "break_start") computed = "break";
+      else if (t === "lunch_start") computed = "lunch";
+      else if (t === "end_shift") computed = "ended";
+
+      setShiftStatus(computed);
     } finally {
       setLoadingShift(false);
     }
@@ -236,31 +233,48 @@ export function MobileTechHome({
   let statusLabel: string = "Off shift";
   let statusDetail: string | null = "Use the menu to start your day.";
 
-  if (loadingShift) {
-    statusLabel = "Checking shift…";
-    statusDetail = null;
-  } else if (shiftStatus === "active" && shiftStart) {
+  let timeStr: string | null = null;
+  if (shiftStart) {
     const dt = new Date(shiftStart);
-    const timeStr = dt.toLocaleTimeString([], {
+    timeStr = dt.toLocaleTimeString([], {
       hour: "2-digit",
       minute: "2-digit",
     });
-    statusLabel = "On shift";
-    statusDetail = `since ${timeStr}`;
-  } else if (shiftStatus === "ended") {
-    statusLabel = "Shift ended";
-    statusDetail = "You can start a new shift from the menu.";
+  }
+
+  if (loadingShift) {
+    statusLabel = "Checking shift…";
+    statusDetail = null;
+  } else {
+    switch (shiftStatus) {
+      case "none":
+        statusLabel = "Off shift";
+        statusDetail = "Use the menu to start your day.";
+        break;
+      case "active":
+        statusLabel = "On shift";
+        statusDetail = timeStr ? `since ${timeStr}` : null;
+        break;
+      case "break":
+        statusLabel = "On break";
+        statusDetail = timeStr ? `since ${timeStr}` : null;
+        break;
+      case "lunch":
+        statusLabel = "At lunch";
+        statusDetail = timeStr ? `since ${timeStr}` : null;
+        break;
+      case "ended":
+        statusLabel = "Shift ended";
+        statusDetail = "You can start a new shift from the menu.";
+        break;
+      default:
+        statusLabel = "Off shift";
+        statusDetail = "Use the menu to start your day.";
+    }
   }
 
   return (
     <div className="space-y-6 px-4 py-4">
-      {/* current time – little metal tag */}
-      <div className="flex justify-center">
-        <div className="metal-bar rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1 text-[0.65rem] font-medium tracking-[0.16em] text-neutral-300 shadow-[0_12px_28px_rgba(0,0,0,0.8)]">
-          {currentTime}
-        </div>
-      </div>
-
       {/* hero – brushed metal panel */}
       <section className="metal-panel metal-panel--hero rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 text-white shadow-[0_18px_40px_rgba(0,0,0,0.85)]">
         <div className="space-y-3">
@@ -285,11 +299,8 @@ export function MobileTechHome({
       </section>
 
       {/* current job pill */}
-      {shiftStatus === "active" && (
-        <CurrentJobPill
-          loading={loadingCurrentJob}
-          job={currentJob}
-        />
+      {shiftStatus !== "none" && shiftStatus !== "ended" && (
+        <CurrentJobPill loading={loadingCurrentJob} job={currentJob} />
       )}
 
       {/* summary cards – worked vs billed */}
@@ -516,36 +527,55 @@ function ShiftStatusChip({
   loading?: boolean;
 }) {
   const base =
-    "accent-chip inline-flex w-full max-w-xs items-center justify-between gap-2 rounded-md px-3 py-2 text-[0.7rem] font-medium";
+    // rectangular banner, no rounded pill
+    "accent-chip inline-flex w-full max-w-xs items-center justify-between gap-2 px-3 py-2 text-[0.7rem] font-medium rounded-none border";
 
-  let classes =
-    "border border-[var(--accent-copper-soft)] text-[var(--accent-copper-soft)] bg-black/40";
+  let classes = "";
 
   if (loading) {
+    // neutral copper-ish gradient while checking
     classes =
-      "border border-[var(--metal-border-soft)] text-neutral-200 bg-black/40";
+      "border-[var(--metal-border-soft)] text-neutral-100 " +
+      "bg-[linear-gradient(to_right,rgba(148,163,184,0.4),rgba(15,23,42,0.95))]";
   } else if (status === "active") {
     classes =
-      "border border-emerald-400/80 text-emerald-200 bg-black/40 shadow-[0_0_16px_rgba(16,185,129,0.35)]";
-  } else if (status === "ended") {
+      "border-emerald-400/80 text-emerald-50 " +
+      "bg-[linear-gradient(to_right,rgba(16,185,129,0.55),rgba(15,23,42,0.97))] " +
+      "shadow-[0_0_16px_rgba(16,185,129,0.45)]";
+  } else if (status === "break") {
     classes =
-      "border border-[var(--metal-border-soft)] text-neutral-200 bg-black/40";
+      "border-yellow-400/80 text-yellow-50 " +
+      "bg-[linear-gradient(to_right,rgba(250,204,21,0.55),rgba(15,23,42,0.97))] " +
+      "shadow-[0_0_16px_rgba(250,204,21,0.45)]";
+  } else if (status === "lunch") {
+    classes =
+      "border-orange-400/80 text-orange-50 " +
+      "bg-[linear-gradient(to_right,rgba(249,115,22,0.65),rgba(15,23,42,0.97))] " +
+      "shadow-[0_0_16px_rgba(249,115,22,0.5)]";
+  } else {
+    // none / ended – burnt copper but more subdued
+    classes =
+      "border-[var(--accent-copper-soft)]/60 text-[var(--accent-copper-soft)] " +
+      "bg-[linear-gradient(to_right,rgba(212,118,49,0.45),rgba(15,23,42,0.96))]";
   }
+
+  const dotClass =
+    status === "active"
+      ? "bg-emerald-300 shadow-[0_0_8px_rgba(16,185,129,0.9)]"
+      : status === "break"
+      ? "bg-yellow-300 shadow-[0_0_8px_rgba(250,204,21,0.9)]"
+      : status === "lunch"
+      ? "bg-orange-300 shadow-[0_0_8px_rgba(249,115,22,0.9)]"
+      : "bg-neutral-400";
 
   return (
     <div className={`${base} ${classes}`}>
       <div className="flex items-center gap-2">
-        <span
-          className={`h-2 w-2 rounded-full ${
-            status === "active"
-              ? "bg-emerald-300 shadow-[0_0_8px_rgba(16,185,129,0.9)]"
-              : "bg-neutral-500"
-          }`}
-        />
+        <span className={`h-2 w-2 rounded-full ${dotClass}`} />
         <span className="uppercase tracking-[0.16em]">{label}</span>
       </div>
       {detail ? (
-        <span className="text-[0.65rem] text-neutral-200">{detail}</span>
+        <span className="text-[0.65rem] text-neutral-100">{detail}</span>
       ) : null}
     </div>
   );
