@@ -1,4 +1,3 @@
-// features/work-orders/mobile/MobileWorkOrderLines.tsx
 "use client";
 
 import type { Database } from "@shared/types/types/supabase";
@@ -12,14 +11,33 @@ type Props = {
   onDelete: (lineId: string) => Promise<void> | void;
 };
 
+const statusTextColor: Record<string, string> = {
+  in_progress: "text-emerald-300 border-emerald-400/40 bg-emerald-500/10",
+  awaiting: "text-slate-200 border-slate-300/30 bg-slate-500/10",
+  queued: "text-indigo-200 border-indigo-400/40 bg-indigo-500/10",
+  on_hold: "text-amber-200 border-amber-400/50 bg-amber-500/10",
+  completed: "text-emerald-200 border-emerald-400/60 bg-emerald-500/10",
+  paused: "text-amber-200 border-amber-400/50 bg-amber-500/10",
+  assigned: "text-sky-200 border-sky-400/50 bg-sky-500/10",
+  unassigned: "text-neutral-200 border-neutral-400/40 bg-neutral-700/20",
+  awaiting_approval: "text-blue-200 border-blue-400/50 bg-blue-500/10",
+  declined: "text-red-200 border-red-500/60 bg-red-500/10",
+};
+
+const statusChip = (s: string | null | undefined) => {
+  const key = (s ?? "awaiting").toLowerCase().replaceAll(" ", "_");
+  return (
+    statusTextColor[key] ??
+    "text-neutral-200 border-neutral-500/40 bg-neutral-700/20"
+  );
+};
+
 export function MobileWorkOrderLines({
   lines,
   workOrderId,
   onDelete,
 }: Props) {
-  if (!workOrderId) {
-    return null;
-  }
+  if (!workOrderId) return null;
 
   if (!lines.length) {
     return (
@@ -34,7 +52,7 @@ export function MobileWorkOrderLines({
   }
 
   return (
-    <div className="glass-card rounded-2xl border border-white/12 bg-black/40 px-3 py-3">
+    <div className="glass-card rounded-2xl border border-white/12 bg-black/40 px-3 py-3 shadow-card">
       <div className="mb-2 flex items-center justify-between">
         <h2 className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-neutral-400">
           Jobs on this work order
@@ -45,39 +63,70 @@ export function MobileWorkOrderLines({
       </div>
 
       <ul className="space-y-2">
-        {lines.map((line) => {
+        {lines.map((line, idx) => {
           const label =
             line.description ||
             line.complaint ||
             "Job line";
 
+          const statusLabel = line.status
+            ? line.status.replaceAll("_", " ")
+            : "awaiting";
+
           return (
             <li
               key={line.id}
-              className="flex items-start justify-between gap-2 rounded-xl border border-white/12 bg-black/45 px-3 py-2 text-xs shadow-card"
+              className="group flex items-stretch justify-between gap-2 rounded-2xl border border-white/12 bg-gradient-to-br from-neutral-950/95 via-neutral-900/90 to-black/90 px-3 py-2 text-xs shadow-[0_0_0_1px_rgba(15,23,42,0.9)]"
             >
-              <div className="min-w-0">
-                <div className="truncate text-[0.8rem] font-medium text-neutral-50">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1 text-[0.7rem] text-neutral-500">
+                  <span className="font-mono text-[0.65rem] text-neutral-500">
+                    #{(idx + 1).toString().padStart(2, "0")}
+                  </span>
+                  {line.job_type && (
+                    <span className="rounded-full border border-white/10 bg-white/5 px-1.5 py-0.5 text-[0.6rem] uppercase tracking-[0.16em] text-neutral-300">
+                      {String(line.job_type).replaceAll("_", " ")}
+                    </span>
+                  )}
+                </div>
+
+                <div className="mt-0.5 truncate text-[0.8rem] font-medium text-neutral-50">
                   {label}
                 </div>
+
                 {line.complaint && (
                   <div className="mt-0.5 line-clamp-2 text-[0.7rem] text-neutral-400">
                     {line.complaint}
                   </div>
                 )}
+
                 {line.status && (
-                  <div className="mt-1 text-[0.65rem] uppercase tracking-[0.16em] text-neutral-500">
-                    {line.status.replaceAll("_", " ")}
+                  <div className="mt-1">
+                    <span
+                      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.16em] ${statusChip(
+                        line.status,
+                      )}`}
+                    >
+                      {statusLabel}
+                    </span>
                   </div>
                 )}
               </div>
-              <button
-                type="button"
-                onClick={() => onDelete(line.id)}
-                className="shrink-0 rounded-full border border-red-500/70 px-2 py-0.5 text-[0.7rem] text-red-100 hover:bg-red-500/15"
-              >
-                Delete
-              </button>
+
+              <div className="flex flex-col items-end justify-between gap-1 pl-1">
+                {typeof line.labor_time === "number" && (
+                  <span className="rounded-full border border-white/10 bg-black/40 px-2 py-0.5 text-[0.6rem] text-neutral-200">
+                    {line.labor_time.toFixed(1)}h
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => onDelete(line.id)}
+                  className="shrink-0 rounded-full border border-red-500/70 px-2 py-0.5 text-[0.7rem] text-red-100 hover:bg-red-500/15"
+                >
+                  Delete
+                </button>
+              </div>
             </li>
           );
         })}
