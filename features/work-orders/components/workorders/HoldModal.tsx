@@ -20,7 +20,7 @@ interface HoldModalProps {
   onApply: (
     reason: string,
     notes?: string,
-    holdUntil?: string | null
+    holdUntil?: string | null,
   ) => Promise<void> | void;
   onRelease?: () => Promise<void> | void;
   canRelease?: boolean;
@@ -50,6 +50,7 @@ export default function HoldModal({
 
   useEffect(() => {
     if (!isOpen) return;
+
     setReason(defaultReason);
     setNotes(defaultNotes);
     setHoldPlacedAt(new Date().toLocaleString());
@@ -73,16 +74,17 @@ export default function HoldModal({
     <ModalShell
       isOpen={isOpen}
       onClose={onClose}
-      title="Place / Update Hold"
+      title="PLACE / UPDATE HOLD"
       size="sm"
       footerLeft={
         canRelease ? (
           <button
-            className="rounded border border-red-500 px-3 py-2 text-sm text-white hover:border-orange-400"
-            onClick={() => Promise.resolve(onRelease?.()).then(onClose)}
             type="button"
+            className="inline-flex items-center gap-1 rounded-full border border-red-500/80 bg-red-500/10 px-3 py-1.5 text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-red-100 hover:bg-red-500/20"
+            onClick={() => Promise.resolve(onRelease?.()).then(onClose)}
           >
-            Release Hold
+            <span>●</span>
+            <span>Release hold</span>
           </button>
         ) : null
       }
@@ -107,84 +109,107 @@ export default function HoldModal({
       }}
       submitText="Apply Hold"
     >
-      <p className="mb-3 text-sm text-neutral-300">
-        Choose a reason and add optional notes
-      </p>
+      <div className="space-y-4">
+        <p className="text-[0.8rem] text-neutral-300">
+          Park this job with a clear reason so advisors and techs know why it&apos;s
+          on hold.
+        </p>
 
-      <label className="mb-1 block text-xs text-neutral-400">Reason</label>
-      <select
-        className="mb-3 w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-sm text-white focus:border-orange-400 focus:outline-none"
-        value={reason}
-        onChange={(e) => setReason(e.target.value)}
-      >
-        {HOLD_REASONS.map((r) => (
-          <option key={r} value={r}>
-            {r}
-          </option>
-        ))}
-        {!HOLD_REASONS.includes(reason as HoldReason) && (
-          <option value={reason}>{reason}</option>
-        )}
-      </select>
-
-      <label className="mb-1 block text-xs text-neutral-400">Notes</label>
-      <textarea
-        rows={3}
-        className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-400 focus:outline-none"
-        value={notes}
-        onChange={(e) => setNotes(e.target.value)}
-        placeholder="Optional notes for the hold…"
-      />
-
-      <div className="mt-4 rounded border border-neutral-700 bg-neutral-900/50 p-3">
-        <div className="mb-2 text-xs text-neutral-400">
-          Hold placed at:{" "}
-          <span className="text-white">{holdPlacedAt || "—"}</span>
-        </div>
-        <label className="inline-flex items-center gap-2 text-xs text-white">
-          <input
-            type="checkbox"
-            checked={autoRelease}
-            onChange={(e) => setAutoRelease(e.target.checked)}
-            className="h-4 w-4 rounded border-neutral-700 bg-neutral-900 text-orange-400"
-          />
-          Auto-release this hold
-        </label>
-
-        {autoRelease && (
-          <div className="mt-3 space-y-2">
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-neutral-400">
-                After (minutes)
-              </label>
-              <input
-                type="number"
-                min={5}
-                step={5}
-                value={releaseAfterMinutes}
-                onChange={(e) =>
-                  setReleaseAfterMinutes(Number(e.target.value) || 0)
-                }
-                className="w-24 rounded border border-neutral-700 bg-neutral-900 p-1 text-sm text-white focus:border-orange-400 focus:outline-none"
-                disabled={releaseAt !== ""}
-              />
-              <span className="text-[10px] text-neutral-500">
-                leave empty if using date/time
-              </span>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-neutral-400">
-                Or release at date/time
-              </label>
-              <input
-                type="datetime-local"
-                value={releaseAt}
-                onChange={(e) => setReleaseAt(e.target.value)}
-                className="w-full rounded border border-neutral-700 bg-neutral-900 p-1 text-sm text-white focus:border-orange-400 focus:outline-none"
-              />
+        {/* Reason */}
+        <div className="space-y-1">
+          <label className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+            Reason
+          </label>
+          <div className="relative">
+            <select
+              className="w-full rounded-lg border border-[var(--metal-border-soft)] bg-black/70 px-3 py-2 text-sm text-neutral-100 outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+            >
+              {HOLD_REASONS.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+              {!HOLD_REASONS.includes(reason as HoldReason) && (
+                <option value={reason}>{reason}</option>
+              )}
+            </select>
+            <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-neutral-500">
+              ▼
             </div>
           </div>
-        )}
+        </div>
+
+        {/* Notes */}
+        <div className="space-y-1">
+          <label className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+            Notes
+          </label>
+          <textarea
+            rows={3}
+            className="w-full rounded-lg border border-[var(--metal-border-soft)] bg-black/70 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Optional notes for this hold…"
+          />
+        </div>
+
+        {/* Auto-release card */}
+        <div className="rounded-xl border border-[var(--metal-border-soft)] bg-black/50 px-3 py-3 shadow-[0_12px_30px_rgba(0,0,0,0.75)]">
+          <div className="mb-2 flex items-center justify-between text-[0.7rem] text-neutral-400">
+            <span>
+              Hold placed at:{" "}
+              <span className="text-neutral-100">{holdPlacedAt || "—"}</span>
+            </span>
+          </div>
+
+          <label className="inline-flex items-center gap-2 text-[0.7rem] text-neutral-100">
+            <input
+              type="checkbox"
+              checked={autoRelease}
+              onChange={(e) => setAutoRelease(e.target.checked)}
+              className="h-4 w-4 rounded border-[var(--metal-border-soft)] bg-black text-[var(--accent-copper-soft)] focus:ring-[var(--accent-copper-soft)]"
+            />
+            Auto-release this hold
+          </label>
+
+          {autoRelease && (
+            <div className="mt-3 space-y-3 text-[0.75rem]">
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="text-neutral-400">
+                  After (minutes)
+                </label>
+                <input
+                  type="number"
+                  min={5}
+                  step={5}
+                  value={releaseAfterMinutes}
+                  onChange={(e) =>
+                    setReleaseAfterMinutes(Number(e.target.value) || 0)
+                  }
+                  className="w-24 rounded-md border border-[var(--metal-border-soft)] bg-black/70 px-2 py-1 text-sm text-neutral-100 outline-none focus:border-[var(--accent-copper-soft)] focus:ring-1 focus:ring-[var(--accent-copper-soft)]/70"
+                  disabled={releaseAt !== ""}
+                />
+                <span className="text-[0.65rem] text-neutral-500">
+                  Leave empty if using a specific date/time.
+                </span>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-[0.7rem] text-neutral-400">
+                  Or release at date / time
+                </label>
+                <input
+                  type="datetime-local"
+                  value={releaseAt}
+                  onChange={(e) => setReleaseAt(e.target.value)}
+                  className="w-full rounded-md border border-[var(--metal-border-soft)] bg-black/70 px-2 py-1 text-sm text-neutral-100 outline-none focus:border-[var(--accent-copper-soft)] focus:ring-1 focus:ring-[var(--accent-copper-soft)]/70"
+                />
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </ModalShell>
   );

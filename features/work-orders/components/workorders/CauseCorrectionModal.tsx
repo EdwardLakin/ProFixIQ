@@ -1,13 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Dialog } from "@headlessui/react";
+import ModalShell from "@/features/shared/components/ModalShell";
 
 interface CauseCorrectionModalProps {
   isOpen: boolean;
   onClose: () => void;
   jobId: string;
+  /** Complete job – usually updates cause, correction, status, punched_out_at, etc. */
   onSubmit: (cause: string, correction: string) => Promise<void>;
+  /** Optional: save cause/correction without completing the job */
+  onSaveDraft?: (cause: string, correction: string) => Promise<void>;
   initialCause?: string;
   initialCorrection?: string;
 }
@@ -17,12 +20,14 @@ export default function CauseCorrectionModal({
   onClose,
   jobId,
   onSubmit,
+  onSaveDraft,
   initialCause = "",
   initialCorrection = "",
 }: CauseCorrectionModalProps) {
   const [cause, setCause] = useState(initialCause);
   const [correction, setCorrection] = useState(initialCorrection);
   const [submitting, setSubmitting] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
   const causeRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
@@ -34,7 +39,7 @@ export default function CauseCorrectionModal({
   }, [isOpen, initialCause, initialCorrection]);
 
   const handleSubmit = async () => {
-    if (submitting) return;
+    if (submitting || savingDraft) return;
     setSubmitting(true);
     try {
       await onSubmit(cause.trim(), correction.trim());
@@ -44,101 +49,127 @@ export default function CauseCorrectionModal({
     }
   };
 
-  return (
-    <Dialog
-      open={isOpen}
-      onClose={onClose}
-      className="fixed inset-0 z-[500] flex items-center justify-center px-3 py-6 sm:px-4"
-    >
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 z-[500] bg-black/70 backdrop-blur-sm"
-        aria-hidden="true"
-      />
+  const handleSaveDraft = async () => {
+    if (!onSaveDraft || submitting || savingDraft) return;
+    setSavingDraft(true);
+    try {
+      await onSaveDraft(cause.trim(), correction.trim());
+      // keep modal open so they can continue / complete later
+    } finally {
+      setSavingDraft(false);
+    }
+  };
 
-      {/* Panel */}
-      <div className="relative z-[510] w-full max-w-lg">
-        <Dialog.Panel className="overflow-hidden rounded-lg border border-orange-400 bg-neutral-950 text-white shadow-2xl">
-          {/* Header */}
-          <div className="flex items-center justify-between gap-3 border-b border-neutral-800 px-5 py-3">
-            <div>
-              <Dialog.Title className="text-sm font-blackops tracking-wide text-orange-400 sm:text-base">
-                Complete Job
-              </Dialog.Title>
-              <p className="mt-0.5 text-[11px] text-neutral-400">
-                Job ID:{" "}
-                <span className="font-mono text-neutral-200">{jobId}</span>
-              </p>
-            </div>
+  const busy = submitting || savingDraft;
+
+  return (
+    <ModalShell
+      isOpen={isOpen}
+      onClose={onClose}
+      title="COMPLETE JOB"
+      size="md"
+      hideFooter
+    >
+      <div className="space-y-4">
+        {/* Job meta */}
+        <div className="flex items-center justify-between text-[0.7rem] text-neutral-400">
+          <div className="flex flex-col gap-0.5">
+            <span className="font-semibold uppercase tracking-[0.18em]">
+              Job ID
+            </span>
+            <span className="font-mono text-[0.7rem] text-neutral-200">
+              {jobId}
+            </span>
+          </div>
+          <span className="rounded-full border border-[var(--metal-border-soft)] bg-black/60 px-3 py-1 text-[0.65rem] uppercase tracking-[0.18em] text-neutral-300">
+            Cause / Correction
+          </span>
+        </div>
+
+        {/* Cause */}
+        <div className="space-y-1">
+          <label className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-neutral-300">
+            Cause
+          </label>
+          <textarea
+            ref={causeRef}
+            rows={3}
+            className="w-full rounded-lg border border-[var(--metal-border-soft)] bg-black/75 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
+            value={cause}
+            onChange={(e) => setCause(e.target.value)}
+            placeholder="What caused the issue?"
+          />
+        </div>
+
+        {/* Correction */}
+        <div className="space-y-1">
+          <label className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-neutral-300">
+            Correction
+          </label>
+          <textarea
+            rows={3}
+            className="w-full rounded-lg border border-[var(--metal-border-soft)] bg-black/75 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-2 focus:ring-[var(--accent-copper-soft)]/60"
+            value={correction}
+            onChange={(e) => setCorrection(e.target.value)}
+            placeholder="Describe what was done to correct the issue…"
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                e.preventDefault();
+                void handleSubmit();
+              }
+            }}
+          />
+          <p className="mt-1 text-[0.7rem] text-neutral-500">
+            Press{" "}
+            <kbd className="rounded border border-neutral-700 bg-black/60 px-1 text-[0.65rem]">
+              Ctrl
+            </kbd>{" "}
+            /{" "}
+            <kbd className="rounded border border-neutral-700 bg-black/60 px-1 text-[0.65rem]">
+              ⌘
+            </kbd>{" "}
+            +{" "}
+            <kbd className="rounded border border-neutral-700 bg-black/60 px-1 text-[0.65rem]">
+              Enter
+            </kbd>{" "}
+            to complete the job.
+          </p>
+        </div>
+
+        {/* Footer actions (custom, since we need two primary actions) */}
+        <div className="mt-2 flex flex-col gap-2 border-t border-[var(--metal-border-soft)] pt-3 sm:flex-row sm:items-center sm:justify-between">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className="inline-flex items-center justify-center rounded-full border border-[var(--metal-border-soft)] bg-black/60 px-4 py-1.5 text-xs font-medium uppercase tracking-[0.18em] text-neutral-200 hover:bg-white/5 disabled:opacity-60"
+          >
+            Cancel
+          </button>
+
+          <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:justify-end">
+            {onSaveDraft && (
+              <button
+                type="button"
+                onClick={() => void handleSaveDraft()}
+                disabled={busy}
+                className="inline-flex flex-1 items-center justify-center rounded-full border border-[var(--accent-copper-soft)]/70 bg-black/50 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-copper-soft)] shadow-[0_0_12px_rgba(212,118,49,0.35)] hover:bg-[var(--accent-copper-faint)] disabled:opacity-60 sm:flex-none sm:px-5"
+              >
+                {savingDraft ? "Saving…" : "Save notes"}
+              </button>
+            )}
+
             <button
               type="button"
-              onClick={onClose}
-              className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-800"
+              onClick={() => void handleSubmit()}
+              disabled={busy}
+              className="inline-flex flex-1 items-center justify-center rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.22em] text-black shadow-[0_0_20px_rgba(212,118,49,0.7)] hover:brightness-110 disabled:opacity-60 sm:flex-none sm:px-6"
             >
-              ✕
+              {submitting ? "Completing…" : "Complete job"}
             </button>
           </div>
-
-          {/* Body */}
-          <div className="px-5 py-4 space-y-4">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-neutral-300">
-                Cause
-              </label>
-              <textarea
-                ref={causeRef}
-                rows={3}
-                className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
-                value={cause}
-                onChange={(e) => setCause(e.target.value)}
-                placeholder="What caused the issue?"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-xs font-medium text-neutral-300">
-                Correction
-              </label>
-              <textarea
-                rows={3}
-                className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-orange-500 focus:outline-none"
-                value={correction}
-                onChange={(e) => setCorrection(e.target.value)}
-                placeholder="Describe what was done to correct the issue…"
-                onKeyDown={(e) => {
-                  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-                    e.preventDefault();
-                    handleSubmit();
-                  }
-                }}
-              />
-              <p className="mt-1 text-[11px] text-neutral-500">
-                Press <kbd className="rounded border border-neutral-700 bg-neutral-900 px-1 text-[10px]">Ctrl</kbd>/
-                <kbd className="rounded border border-neutral-700 bg-neutral-900 px-1 text-[10px]">⌘</kbd>+
-                <kbd className="rounded border border-neutral-700 bg-neutral-900 px-1 text-[10px]">Enter</kbd> to submit.
-              </p>
-            </div>
-          </div>
-
-          {/* Footer */}
-          <div className="flex items-center justify-end gap-2 border-t border-neutral-800 px-5 py-3">
-            <button
-              className="rounded border border-neutral-700 bg-neutral-900 px-4 py-1.5 text-sm text-neutral-200 hover:bg-neutral-800"
-              onClick={onClose}
-              disabled={submitting}
-            >
-              Cancel
-            </button>
-            <button
-              className="rounded bg-orange-500 px-4 py-1.5 text-sm font-semibold text-black hover:bg-orange-400 disabled:opacity-60"
-              onClick={handleSubmit}
-              disabled={submitting}
-            >
-              {submitting ? "Saving…" : "Submit"}
-            </button>
-          </div>
-        </Dialog.Panel>
+        </div>
       </div>
-    </Dialog>
+    </ModalShell>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import ModalShell from "@/features/shared/components/ModalShell";
 
 type WorkflowStatus =
@@ -12,7 +12,10 @@ type WorkflowStatus =
   | "assigned"
   | "unassigned";
 
-type ApprovalPick = "approval:pending" | "approval:approved" | "approval:declined";
+type ApprovalPick =
+  | "approval:pending"
+  | "approval:approved"
+  | "approval:declined";
 type StatusPick = `status:${WorkflowStatus}`;
 type PickerValue = StatusPick | ApprovalPick;
 
@@ -40,8 +43,14 @@ export default function StatusPickerModal(props: {
 }) {
   const { isOpen, onClose, current = "awaiting", onChange } = props;
 
-  // default to current workflow status
   const [value, setValue] = useState<PickerValue>(`status:${current}`);
+
+  // Reset to current workflow status whenever the modal opens or current changes
+  useEffect(() => {
+    if (isOpen) {
+      setValue(`status:${current}`);
+    }
+  }, [isOpen, current]);
 
   return (
     <ModalShell
@@ -55,44 +64,58 @@ export default function StatusPickerModal(props: {
       }}
       submitText="Apply"
     >
-      {/* Center the selector content */}
-      <div className="flex flex-col items-center justify-center gap-3">
-        <div className="w-full text-center text-xs uppercase tracking-wide text-neutral-400">
-          Workflow Status
+      <div className="flex flex-col gap-4">
+        {/* Workflow */}
+        <div className="space-y-2">
+          <div className="text-center text-xs font-medium uppercase tracking-[0.16em] text-neutral-400">
+            Workflow Status
+          </div>
+          <select
+            className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
+            value={
+              value.startsWith("status:")
+                ? (value as StatusPick)
+                : (`status:${current}` as StatusPick)
+            }
+            onChange={(e) => setValue(e.target.value as StatusPick)}
+          >
+            {WORKFLOW_OPTIONS.map((s) => {
+              const v: StatusPick = `status:${s}`;
+              return (
+                <option key={v} value={v}>
+                  {s.replaceAll("_", " ")}
+                </option>
+              );
+            })}
+          </select>
         </div>
-        <select
-          className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-sm text-white"
-          value={value.startsWith("status:") ? (value as StatusPick) : `status:${current}`}
-          onChange={(e) => setValue(e.target.value as StatusPick)}
-        >
-          {WORKFLOW_OPTIONS.map((s) => {
-            const v: StatusPick = `status:${s}`;
-            return (
-              <option key={v} value={v}>
-                {s.replaceAll("_", " ")}
-              </option>
-            );
-          })}
-        </select>
 
-        <div className="mt-3 w-full text-center text-xs uppercase tracking-wide text-neutral-400">
-          Approval State
+        {/* Divider-ish helper */}
+        <div className="text-center text-[10px] uppercase tracking-[0.18em] text-neutral-600">
+          or adjust approval
         </div>
-        <select
-          className="w-full rounded border border-neutral-700 bg-neutral-900 p-2 text-sm text-white"
-          value={
-            value.startsWith("approval:")
-              ? (value as ApprovalPick)
-              : ("approval:pending" as ApprovalPick)
-          }
-          onChange={(e) => setValue(e.target.value as ApprovalPick)}
-        >
-          {APPROVAL_OPTIONS.map((v) => (
-            <option key={v} value={v}>
-              {v.replace("approval:", "").replaceAll("_", " ")}
-            </option>
-          ))}
-        </select>
+
+        {/* Approval */}
+        <div className="space-y-2">
+          <div className="text-center text-xs font-medium uppercase tracking-[0.16em] text-neutral-400">
+            Approval State
+          </div>
+          <select
+            className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper-light)]"
+            value={
+              value.startsWith("approval:")
+                ? (value as ApprovalPick)
+                : ("approval:pending" as ApprovalPick)
+            }
+            onChange={(e) => setValue(e.target.value as ApprovalPick)}
+          >
+            {APPROVAL_OPTIONS.map((v) => (
+              <option key={v} value={v}>
+                {v.replace("approval:", "").replaceAll("_", " ")}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
     </ModalShell>
   );

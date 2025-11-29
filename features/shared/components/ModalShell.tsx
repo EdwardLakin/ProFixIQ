@@ -43,19 +43,19 @@ export default function ModalShell({
       onClose={onClose}
       className="fixed inset-0 z-[500] flex items-center justify-center px-3 py-6 sm:px-4"
     >
-      {/* backdrop */}
+      {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/70 backdrop-blur-sm"
+        className="fixed inset-0 bg-black/80 backdrop-blur-md"
         aria-hidden="true"
       />
 
-      {/* panel wrapper */}
+      {/* Panel wrapper */}
       <div className={`relative z-[510] w-full ${width}`}>
-        <Dialog.Panel className="w-full overflow-hidden rounded-lg border border-border bg-background text-foreground shadow-2xl dark:border-orange-400/90 dark:bg-neutral-950 dark:text-white">
-          {/* header — orange bar in dark mode */}
-          <div className="flex items-center justify-between border-b border-border/60 bg-muted px-4 py-3 text-foreground dark:border-neutral-800 dark:bg-orange-500 dark:text-black">
+        <Dialog.Panel className="w-full overflow-hidden rounded-2xl border border-[var(--metal-border-soft)] bg-[radial-gradient(circle_at_top,_#050910,_#020308_60%,_#000)] text-neutral-100 shadow-[0_24px_80px_rgba(0,0,0,0.95)]">
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-[var(--metal-border-soft)] bg-black/40 px-4 py-3">
             {title ? (
-              <Dialog.Title className="text-base font-semibold font-header tracking-wide">
+              <Dialog.Title className="font-blackops text-[0.8rem] tracking-[0.22em] text-neutral-200">
                 {title}
               </Dialog.Title>
             ) : (
@@ -64,7 +64,7 @@ export default function ModalShell({
             <button
               type="button"
               onClick={onClose}
-              className="rounded px-2 py-1 text-sm hover:bg-black/5 dark:hover:bg-black/10"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-black/60 text-[0.75rem] text-neutral-200 hover:bg-black/80 hover:text-white active:scale-95"
               aria-label="Close"
               title="Close"
             >
@@ -72,18 +72,20 @@ export default function ModalShell({
             </button>
           </div>
 
-          {/* body */}
-          <div className="px-4 py-4">{children}</div>
+          {/* Body */}
+          <div className="px-4 py-4 sm:px-5 sm:py-5">{children}</div>
 
-          {/* footer */}
+          {/* Footer */}
           {!hideFooter && (onSubmit || footerLeft) && (
-            <div className="flex items-center justify-between gap-3 border-t border-border/60 px-4 py-3 dark:border-neutral-800">
-              <div>{footerLeft}</div>
+            <div className="flex items-center justify-between gap-3 border-t border-[var(--metal-border-soft)] bg-black/40 px-4 py-3 sm:px-5">
+              <div className="flex items-center gap-2 text-[0.7rem] text-neutral-400">
+                {footerLeft}
+              </div>
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={onClose}
-                  className="rounded border border-border/60 bg-muted px-3 py-1.5 text-sm text-foreground hover:bg-muted/70 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"
+                  className="rounded-full border border-[var(--metal-border-soft)] bg-black/60 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.18em] text-neutral-200 hover:bg-white/5"
                 >
                   Cancel
                 </button>
@@ -91,7 +93,7 @@ export default function ModalShell({
                   <button
                     type="button"
                     onClick={() => void onSubmit()}
-                    className="rounded bg-orange-500 px-3 py-1.5 text-sm font-semibold text-black hover:bg-orange-400 disabled:opacity-60"
+                    className="rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.22em] text-black shadow-[0_0_20px_rgba(212,118,49,0.7)] hover:brightness-110 disabled:opacity-60"
                   >
                     {submitText}
                   </button>

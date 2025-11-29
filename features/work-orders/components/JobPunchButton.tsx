@@ -14,71 +14,50 @@ type Props = {
   disabled?: boolean;
 };
 
-// keep pause/resume hitting your existing API for now
-async function callPunchEndpoint(
-  lineId: string,
-  action: "pause" | "resume",
-) {
-  const res = await fetch(`/api/work-orders/lines/${lineId}/${action}`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-  });
-  const j = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(j?.error || `Failed to ${action}`);
-  return j as { success: boolean };
-}
-
 export default function JobPunchButton({
   lineId,
   punchedInAt,
-  punchedOutAt,
-  status,
+  punchedOutAt, // still passed so you can disable on awaiting_approval / declined, etc
   onUpdated,
   onFinishRequested,
   disabled = false,
 }: Props) {
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const [busy, setBusy] = useState(false);
-  const [flash, setFlash] = useState<"started" | "paused" | "resumed" | null>(
-    null,
-  );
+  const [flash, setFlash] = useState<"started" | "finished" | null>(null);
 
   const isStarted = !!punchedInAt && !punchedOutAt;
-  const isPaused = String(status).toLowerCase() === "paused";
 
   const showFlash = (kind: typeof flash) => {
     setFlash(kind);
     window.setTimeout(() => setFlash(null), 1200);
   };
 
+  /* ------------------------------------------------------------------ */
+  /* Core punch actions – RPC, single active job enforced by DB         */
+  /* ------------------------------------------------------------------ */
+
   const start = async () => {
     if (busy || disabled) return;
     setBusy(true);
     try {
-      // NEW: secure RPC backed by RLS + unique index
       const { error } = await supabase.rpc("punch_in", {
         line_id: lineId,
       });
 
       if (error) {
-        // hit if user already has another active job
-        if (
-          error.code === "23505" ||
-          (error.message || "")
-            .toLowerCase()
-            .includes("uq_active_punch_per_user")
-        ) {
-          toast.error(
-            "You already have an active job punch. Punch out of the other job first.",
-          );
+        if (error.code === "23505") {
+          // partial unique index hit
+          toast.error("You already have another active job. Finish it first.");
+        } else if (error.code === "28000") {
+          toast.error("Job is not assigned to you.");
         } else {
-          toast.error(error.message || "Start failed");
+          toast.error(error.message ?? "Start failed");
         }
         return;
       }
 
-      toast.success("Started");
+      toast.success("Started job");
       showFlash("started");
       window.dispatchEvent(new CustomEvent("wol:refresh"));
       await onUpdated?.();
@@ -89,112 +68,52 @@ export default function JobPunchButton({
     }
   };
 
-  const pause = async () => {
-    if (busy || disabled) return;
-    setBusy(true);
-    try {
-      await callPunchEndpoint(lineId, "pause");
-      toast.message("Paused");
-      showFlash("paused");
-      window.dispatchEvent(new CustomEvent("wol:refresh"));
-      await onUpdated?.();
-    } catch (e: any) {
-      toast.error(e?.message ?? "Pause failed");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const resume = async () => {
-    if (busy || disabled) return;
-    setBusy(true);
-    try {
-      await callPunchEndpoint(lineId, "resume");
-      toast.message("Resumed");
-      showFlash("resumed");
-      window.dispatchEvent(new CustomEvent("wol:refresh"));
-      await onUpdated?.();
-    } catch (e: any) {
-      toast.error(e?.message ?? "Resume failed");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  // Primary button:
-  // - If not started → punch_in RPC
-  // - If already started → go to Finish flow (Cause/Correction modal),
-  //   which will set punched_out_at & completed in your existing code.
+  // NOTE: finishing still goes through the Cause / Correction modal.
+  // That modal will set status=completed + punched_out_at.
   const handlePrimary = () => {
     if (busy || disabled) return;
+
     if (isStarted) {
+      // Let the parent open Complete modal; when that saves it will punch_out.
       onFinishRequested?.();
-    } else {
-      void start();
+      showFlash("finished");
+      return;
     }
+
+    void start();
   };
 
   return (
     <div className="relative w-full">
-      <div className="flex w-full items-center justify-between gap-2">
-        {/* Primary: Start / Finish */}
-        <button
-          type="button"
-          onClick={handlePrimary}
-          disabled={busy || disabled}
-          className={`font-header flex-1 rounded border px-4 py-3 text-sm text-center transition-colors 
-            ${
-              isStarted
-                ? "border-neutral-600 text-neutral-200 hover:bg-neutral-800"
-                : "border-green-600 text-green-300 hover:bg-green-900/30"
-            }
-            ${busy || disabled ? "opacity-60 cursor-not-allowed" : ""}
-          `}
-          aria-pressed={isStarted}
-          aria-busy={busy}
-        >
-          {busy ? "Saving..." : isStarted ? "Finish" : "Start"}
-        </button>
+      <button
+        type="button"
+        onClick={handlePrimary}
+        disabled={busy || disabled}
+        className={`font-header inline-flex w-full items-center justify-center rounded-md border px-4 py-3 text-center text-sm tracking-[0.16em] uppercase transition
+          ${
+            isStarted
+              ? "border-neutral-600 bg-black/40 text-neutral-100 hover:bg-black/70"
+              : "border-[var(--accent-copper-soft)] bg-[var(--accent-copper-faint)] text-[var(--accent-copper-light)] hover:bg-[var(--accent-copper-soft)] hover:text-black shadow-[0_0_18px_rgba(212,118,49,0.55)]"
+          }
+          ${busy || disabled ? "cursor-not-allowed opacity-60 shadow-none" : ""}
+        `}
+        aria-pressed={isStarted}
+        aria-busy={busy}
+      >
+        {busy ? "Saving…" : isStarted ? "Finish job" : "Start job"}
+      </button>
 
-        {/* Secondary: Pause / Resume */}
-        {isStarted && (
-          <button
-            type="button"
-            disabled={busy || disabled}
-            onClick={isPaused ? resume : pause}
-            className={`font-header flex-1 rounded border px-4 py-3 text-sm text-center transition-colors
-              ${
-                isPaused
-                  ? "border-green-600 text-green-300 hover:bg-green-900/30"
-                  : "border-amber-600 text-amber-300 hover:bg-amber-900/30"
-              }
-              ${busy || disabled ? "opacity-60 cursor-not-allowed" : ""}
-            `}
-            aria-pressed={isPaused}
-            aria-busy={busy}
-          >
-            {isPaused ? "Resume" : "Pause"}
-          </button>
-        )}
-      </div>
-
-      {/* Flash overlay (✓ Started / ⏸ Paused / ⏯ Resumed) */}
+      {/* Flash overlay */}
       {flash && (
         <div
-          className={`absolute inset-x-0 -top-3 mx-auto w-fit rounded px-2 py-1 text-xs font-semibold shadow-md
+          className={`pointer-events-none absolute inset-x-0 -top-3 mx-auto w-fit rounded px-2 py-1 text-xs font-semibold shadow-md
             ${
               flash === "started"
-                ? "bg-green-700/80 text-green-100"
-                : flash === "paused"
-                ? "bg-amber-700/80 text-amber-100"
-                : "bg-green-700/80 text-green-100"
+                ? "bg-emerald-700/80 text-emerald-100"
+                : "bg-[var(--accent-copper-soft)]/90 text-black"
             }`}
         >
-          {flash === "started"
-            ? "✓ Started"
-            : flash === "paused"
-            ? "⏸ Paused"
-            : "⏯ Resumed"}
+          {flash === "started" ? "✓ Started" : "✓ Finish requested"}
         </div>
       )}
     </div>

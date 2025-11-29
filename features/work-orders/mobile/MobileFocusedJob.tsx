@@ -15,21 +15,13 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 import CauseCorrectionModal from "@work-orders/components/workorders/CauseCorrectionModal";
 import PartsRequestModal from "@/features/work-orders/components/workorders/PartsRequestModal";
-
 import HoldModal from "@/features/work-orders/components/workorders/HoldModal";
-import StatusPickerModal from "@/features/work-orders/components/workorders/extras/StatusPickerModal";
-import TimeAdjustModal from "@/features/work-orders/components/workorders/extras/TimeAdjustModal";
 import PhotoCaptureModal from "@/features/work-orders/components/workorders/extras/PhotoCaptureModal";
 import AddJobModal from "@work-orders/components/workorders/AddJobModal";
-
 import AIAssistantModal from "@work-orders/components/workorders/AiAssistantModal";
-
-import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
-import VoiceButton from "@/features/shared/voice/VoiceButton";
 
 import NewChatModal from "@/features/ai/components/chat/NewChatModal";
 import SuggestedQuickAdd from "@work-orders/components/SuggestedQuickAdd";
-
 import JobPunchButton from "@/features/work-orders/components/JobPunchButton";
 
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
@@ -95,14 +87,6 @@ type WorkflowStatus =
   | "assigned"
   | "unassigned";
 
-type ApprovalState = "pending" | "approved" | "declined" | null;
-
-type PickerValue =
-  | `status:${WorkflowStatus}`
-  | "approval:pending"
-  | "approval:approved"
-  | "approval:declined";
-
 export default function MobileFocusedJob(props: {
   workOrderLineId: string;
   onBack: () => void;
@@ -126,8 +110,6 @@ export default function MobileFocusedJob(props: {
   const [openComplete, setOpenComplete] = useState(false);
   const [openParts, setOpenParts] = useState(false);
   const [openHold, setOpenHold] = useState(false);
-  const [openStatus, setOpenStatus] = useState(false);
-  const [openTime, setOpenTime] = useState(false);
   const [openPhoto, setOpenPhoto] = useState(false);
   const [openChat, setOpenChat] = useState(false);
   const [openAddJob, setOpenAddJob] = useState(false);
@@ -150,8 +132,6 @@ export default function MobileFocusedJob(props: {
     setOpenComplete(false);
     setOpenParts(false);
     setOpenHold(false);
-    setOpenStatus(false);
-    setOpenTime(false);
     setOpenPhoto(false);
     setOpenChat(false);
     setOpenAddJob(false);
@@ -388,55 +368,6 @@ export default function MobileFocusedJob(props: {
     }
   };
 
-  const changeStatus = async (next: PickerValue) => {
-    if (next.startsWith("approval:")) {
-      const val = next.split(":")[1] as ApprovalState;
-      if (!line?.id) return;
-      const { error } = await supabase
-        .from("work_order_lines")
-        .update({
-          approval_state: val,
-        } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-        .eq("id", line.id);
-      if (error) return showErr("Update approval failed", error);
-      toast.success("Approval state updated");
-      await refresh();
-      return;
-    }
-
-    const workflow = next.split(":")[1] as WorkflowStatus;
-    const { error } = await supabase
-      .from("work_order_lines")
-      .update({
-        status: workflow,
-      } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-      .eq("id", workOrderLineId);
-    if (error) return showErr("Update status failed", error);
-    toast.success("Status updated");
-    await refresh();
-  };
-
-  const updateTime = async (inAt: string | null, outAt: string | null) => {
-    if (busy) return;
-    setBusy(true);
-    try {
-      const { error } = await supabase
-        .from("work_order_lines")
-        .update({
-          punched_in_at: inAt,
-          punched_out_at: outAt,
-        } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-        .eq("id", workOrderLineId)
-        .select("id, punched_in_at, punched_out_at")
-        .single();
-      if (error) return showErr("Update time failed", error);
-      toast.success("Time updated");
-      await refresh();
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const uploadPhoto = async (file: File) => {
     if (!workOrderLineId || !workOrder?.id) return;
     const path = `wo/${workOrder.id}/lines/${workOrderLineId}/${uuidv4()}_${file.name}`;
@@ -477,14 +408,6 @@ export default function MobileFocusedJob(props: {
 
   return (
     <>
-      <VoiceContextSetter
-        currentView="focused_job_mobile"
-        workOrderId={workOrder?.id ?? undefined}
-        vehicleId={vehicle?.id ?? undefined}
-        customerId={customer?.id ?? undefined}
-        lineId={line?.id ?? undefined}
-      />
-
       <div className="app-shell flex min-h-screen flex-col text-foreground">
         {/* Header */}
         <header className="metal-bar sticky top-0 z-40 flex items-center justify-between gap-2 px-3 py-2">
@@ -543,7 +466,11 @@ export default function MobileFocusedJob(props: {
                     <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
                       Status
                     </div>
-                    <div className={`mt-1 text-sm font-semibold ${chip(line.status ?? null)}`}>
+                    <div
+                      className={`mt-1 text-sm font-semibold ${chip(
+                        line.status ?? null,
+                      )}`}
+                    >
                       {String(line.status || "awaiting").replaceAll("_", " ")}
                     </div>
                   </div>
@@ -582,9 +509,9 @@ export default function MobileFocusedJob(props: {
                       </div>
                       <div className="mt-1 truncate text-neutral-100">
                         {vehicle
-                          ? `${vehicle.year ?? ""} ${
-                              vehicle.make ?? ""
-                            } ${vehicle.model ?? ""}`
+                          ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${
+                              vehicle.model ?? ""
+                            }`
                               .trim()
                               .replace(/\s+/g, " ") || "—"
                           : "—"}
@@ -613,8 +540,8 @@ export default function MobileFocusedJob(props: {
                   </div>
                 </div>
 
-                {/* punch */}
-                {mode === "tech" && line && (
+                {/* punch — hide once completed */}
+                {mode === "tech" && line && line.status !== "completed" && (
                   <div className="glass-card p-3">
                     <JobPunchButton
                       lineId={line.id}
@@ -695,18 +622,6 @@ export default function MobileFocusedJob(props: {
 
                       <button
                         type="button"
-                        className={btnInfo}
-                        onClick={() => {
-                          closeAllSubModals();
-                          setOpenStatus(true);
-                        }}
-                        disabled={busy}
-                      >
-                        Change Status
-                      </button>
-
-                      <button
-                        type="button"
                         className={btnNeutral}
                         onClick={() => {
                           closeAllSubModals();
@@ -741,16 +656,6 @@ export default function MobileFocusedJob(props: {
                     </>
                   ) : (
                     <>
-                      <button
-                        type="button"
-                        className={btnInfo}
-                        onClick={() => {
-                          closeAllSubModals();
-                          setOpenStatus(true);
-                        }}
-                      >
-                        Change Status
-                      </button>
                       <button
                         type="button"
                         className={btnNeutral}
@@ -870,11 +775,6 @@ export default function MobileFocusedJob(props: {
             )}
           </div>
         </main>
-
-        {/* bottom mic */}
-        <footer className="mobile-footer-bar sticky bottom-0 flex items-center justify-center px-3 py-2">
-          <VoiceButton />
-        </footer>
       </div>
 
       {/* sub-modals */}
@@ -920,29 +820,6 @@ export default function MobileFocusedJob(props: {
           onRelease={line.hold_reason ? releaseHold : undefined}
           canRelease={!!line.hold_reason}
           defaultReason={line.hold_reason || "Awaiting parts"}
-        />
-      )}
-
-      {openStatus && line && (
-        <StatusPickerModal
-          isOpen={openStatus}
-          onClose={() => setOpenStatus(false)}
-          current={
-            (line?.status || "awaiting") as Parameters<
-              typeof StatusPickerModal
-            >[0]["current"]
-          }
-          onChange={changeStatus}
-        />
-      )}
-
-      {openTime && line && (
-        <TimeAdjustModal
-          isOpen={openTime}
-          onClose={() => setOpenTime(false)}
-          punchedInAt={line.punched_in_at}
-          punchedOutAt={line.punched_out_at}
-          onApply={updateTime}
         />
       )}
 

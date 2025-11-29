@@ -7,23 +7,19 @@ import { toast } from "sonner";
 import { v4 as uuidv4 } from "uuid";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
+import DtcSuggestionModal from "@/features/work-orders/components/workorders/DtcSuggestionPopup";
+
 // existing modals
 import CauseCorrectionModal from "@work-orders/components/workorders/CauseCorrectionModal";
 import PartsRequestModal from "@/features/work-orders/components/workorders/PartsRequestModal";
 
 // extras
 import HoldModal from "@/features/work-orders/components/workorders/HoldModal";
-import StatusPickerModal from "@/features/work-orders/components/workorders/extras/StatusPickerModal";
-import TimeAdjustModal from "@/features/work-orders/components/workorders/extras/TimeAdjustModal";
 import PhotoCaptureModal from "@/features/work-orders/components/workorders/extras/PhotoCaptureModal";
 import AddJobModal from "@work-orders/components/workorders/AddJobModal";
 
-// 🔸 AI assistant modal (the one we just made to look like other modals)
+// 🔸 AI assistant modal
 import AIAssistantModal from "@work-orders/components/workorders/AiAssistantModal";
-
-// voice
-import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
-import VoiceButton from "@/features/shared/voice/VoiceButton";
 
 // chat
 import NewChatModal from "@/features/ai/components/chat/NewChatModal";
@@ -57,15 +53,20 @@ const chip = (s: string | null) =>
 const btnBase =
   "rounded-md border text-sm px-3 py-2 transition-colors text-left";
 const btnNeutral =
-  btnBase + " border-neutral-700 text-neutral-100 hover:bg-neutral-800/80";
+  btnBase +
+  " border-white/15 bg-black/40 text-neutral-100 hover:bg-white/5";
 const btnWarn =
-  btnBase + " border-amber-500/70 text-amber-100 hover:bg-amber-500/10";
+  btnBase +
+  " border-amber-400/80 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20";
 const btnDanger =
-  btnBase + " border-red-500/70 text-red-100 hover:bg-red-500/10";
+  btnBase +
+  " border-red-500/80 bg-red-500/10 text-red-100 hover:bg-red-500/20";
 const btnInfo =
-  btnBase + " border-sky-500/70 text-sky-100 hover:bg-sky-500/10";
+  btnBase +
+  " border-sky-500/80 bg-sky-500/10 text-sky-100 hover:bg-sky-500/20";
 const btnAccent =
-  btnBase + " border-accent/80 text-accent hover:bg-accent/10";
+  btnBase +
+  " border-[var(--accent-copper-light)] bg-[var(--accent-copper-faint)] text-[var(--accent-copper-light)] hover:bg-[var(--accent-copper-soft)]";
 
 type DB = Database;
 type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
@@ -89,14 +90,6 @@ type WorkflowStatus =
   | "completed"
   | "assigned"
   | "unassigned";
-
-type ApprovalState = "pending" | "approved" | "declined" | null;
-
-type PickerValue =
-  | `status:${WorkflowStatus}`
-  | "approval:pending"
-  | "approval:approved"
-  | "approval:declined";
 
 export default function FocusedJobModal(props: {
   isOpen: boolean;
@@ -122,12 +115,11 @@ export default function FocusedJobModal(props: {
   const [openComplete, setOpenComplete] = useState(false);
   const [openParts, setOpenParts] = useState(false);
   const [openHold, setOpenHold] = useState(false);
-  const [openStatus, setOpenStatus] = useState(false);
-  const [openTime, setOpenTime] = useState(false);
   const [openPhoto, setOpenPhoto] = useState(false);
   const [openChat, setOpenChat] = useState(false);
   const [openAddJob, setOpenAddJob] = useState(false);
   const [openAi, setOpenAi] = useState(false);
+  const [openDtc, setOpenDtc] = useState(false);
 
   // prefill
   const [prefillCause, setPrefillCause] = useState("");
@@ -146,8 +138,6 @@ export default function FocusedJobModal(props: {
     setOpenComplete(false);
     setOpenParts(false);
     setOpenHold(false);
-    setOpenStatus(false);
-    setOpenTime(false);
     setOpenPhoto(false);
     setOpenChat(false);
     setOpenAddJob(false);
@@ -235,7 +225,7 @@ export default function FocusedJobModal(props: {
           if (next && typeof (next as Partial<WorkOrderLine>).id === "string") {
             setLine(next as WorkOrderLine);
           }
-        }
+        },
       )
       .subscribe();
     return () => {
@@ -279,7 +269,7 @@ export default function FocusedJobModal(props: {
           table: "work_order_part_allocations",
           filter: `work_order_line_id=eq.${workOrderLineId}`,
         },
-        () => void loadAllocations()
+        () => void loadAllocations(),
       )
       .subscribe();
 
@@ -345,7 +335,8 @@ export default function FocusedJobModal(props: {
     };
 
     window.addEventListener("inspection:completed", onInspectionDone);
-    return () => window.removeEventListener("inspection:completed", onInspectionDone);
+    return () =>
+      window.removeEventListener("inspection:completed", onInspectionDone);
   }, [workOrderLineId]);
 
   const applyHold = async (reason: string, notes?: string) => {
@@ -381,53 +372,6 @@ export default function FocusedJobModal(props: {
         .eq("id", workOrderLineId);
       if (error) return showErr("Remove hold failed", error);
       toast.success("Hold removed");
-      await refresh();
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const changeStatus = async (next: PickerValue) => {
-    if (next.startsWith("approval:")) {
-      const val = next.split(":")[1] as ApprovalState;
-      if (!line?.id) return;
-      const { error } = await supabase
-        .from("work_order_lines")
-        .update({
-          approval_state: val,
-        } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-        .eq("id", line.id);
-      if (error) return showErr("Update approval failed", error);
-      toast.success("Approval state updated");
-      await refresh();
-      return;
-    }
-
-    const workflow = next.split(":")[1] as WorkflowStatus;
-    const { error } = await supabase
-      .from("work_order_lines")
-      .update({ status: workflow } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-      .eq("id", workOrderLineId);
-    if (error) return showErr("Update status failed", error);
-    toast.success("Status updated");
-    await refresh();
-  };
-
-  const updateTime = async (inAt: string | null, outAt: string | null) => {
-    if (busy) return;
-    setBusy(true);
-    try {
-      const { error } = await supabase
-        .from("work_order_lines")
-        .update({
-          punched_in_at: inAt,
-          punched_out_at: outAt,
-        } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-        .eq("id", workOrderLineId)
-        .select("id, punched_in_at, punched_out_at")
-        .single();
-      if (error) return showErr("Update time failed", error);
-      toast.success("Time updated");
       await refresh();
     } finally {
       setBusy(false);
@@ -474,16 +418,6 @@ export default function FocusedJobModal(props: {
 
   return (
     <>
-      {isOpen && (
-        <VoiceContextSetter
-          currentView="focused_job"
-          workOrderId={workOrder?.id ?? undefined}
-          vehicleId={vehicle?.id ?? undefined}
-          customerId={customer?.id ?? undefined}
-          lineId={line?.id ?? undefined}
-        />
-      )}
-
       <Dialog
         open={isOpen}
         onClose={() => {
@@ -492,19 +426,24 @@ export default function FocusedJobModal(props: {
         }}
         className="fixed inset-0 z-[100] flex items-center justify-center"
       >
-        <div className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm" aria-hidden="true" />
+        {/* backdrop */}
+        <div
+          className="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm"
+          aria-hidden="true"
+        />
 
+        {/* panel wrapper */}
         <div
           className="relative z-[110] mx-4 my-6 w-full max-w-5xl"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="max-h-[75vh] overflow-y-auto rounded-lg border border-white/10 bg-neutral-950/95 p-5 text-foreground shadow-xl">
+          <div className="max-h-[75vh] overflow-y-auto rounded-lg border border-white/15 bg-neutral-950/95 p-5 text-foreground shadow-xl">
             {/* header */}
             <div className="mb-3 flex items-start justify-between gap-3">
               <div className="text-lg font-semibold tracking-tight">
                 <span className={chip(line?.status ?? null)}>{titleText}</span>
                 {workOrder ? (
-                  <span className="ml-2 text-xs font-normal text-muted-foreground">
+                  <span className="ml-2 text-xs font-normal text-neutral-400">
                     WO #{workOrder.custom_id || workOrder.id?.slice(0, 8)}
                   </span>
                 ) : null}
@@ -524,14 +463,14 @@ export default function FocusedJobModal(props: {
                 {workOrder?.id && (
                   <button
                     type="button"
-                    className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-black hover:bg-accent/90"
+                    className="rounded-md border border-[var(--accent-copper-light)] bg-[var(--accent-copper-soft)] px-3 py-1.5 text-xs font-semibold text-black shadow-[0_0_12px_rgba(248,113,22,0.35)] hover:bg-[var(--accent-copper-light)]"
                     onClick={() => {
                       closeAllSubModals();
                       setOpenAddJob(true);
                     }}
                     disabled={busy}
                   >
-                    Add Job
+                    + Job
                   </button>
                 )}
                 <button
@@ -540,7 +479,7 @@ export default function FocusedJobModal(props: {
                     closeAllSubModals();
                     onClose();
                   }}
-                  className="rounded-md border border-white/10 px-2 py-1 text-xs text-foreground/80 hover:bg-white/5"
+                  className="rounded-md border border-white/15 bg-black/40 px-2 py-1 text-xs text-neutral-200 hover:bg-white/5"
                   title="Close"
                 >
                   ✕
@@ -551,61 +490,86 @@ export default function FocusedJobModal(props: {
             {/* body */}
             {busy && !line ? (
               <div className="grid gap-3">
-                <div className="h-6 w-40 animate-pulse rounded bg-neutral-800/60" />
-                <div className="h-24 animate-pulse rounded bg-neutral-800/60" />
+                <div className="h-6 w-40 animate-pulse rounded-full bg-white/5" />
+                <div className="h-24 animate-pulse rounded-2xl bg-white/5" />
               </div>
             ) : !line ? (
-              <div className="text-muted-foreground text-sm">No job found.</div>
+              <div className="text-sm text-neutral-300">No job found.</div>
             ) : (
               <div className="space-y-4">
                 {/* meta info */}
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <div className="rounded border border-white/5 bg-neutral-900/70 p-3">
-                    <div className="text-xs text-muted-foreground">Status</div>
-                    <div className={`font-medium ${chip(line.status ?? null)}`}>
+                  <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+                      Status
+                    </div>
+                    <div
+                      className={`mt-1 text-sm font-semibold ${chip(
+                        line.status ?? null,
+                      )}`}
+                    >
                       {String(line.status || "awaiting").replaceAll("_", " ")}
                     </div>
                   </div>
-                  <div className="rounded border border-white/5 bg-neutral-900/70 p-3">
-                    <div className="text-xs text-muted-foreground">Start</div>
-                    <div className="font-medium">{createdStart}</div>
+                  <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+                      Start
+                    </div>
+                    <div className="mt-1 text-sm text-neutral-100">
+                      {createdStart}
+                    </div>
                   </div>
-                  <div className="rounded border border-white/5 bg-neutral-900/70 p-3">
-                    <div className="text-xs text-muted-foreground">Finish</div>
-                    <div className="font-medium">{createdFinish}</div>
+                  <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+                      Finish
+                    </div>
+                    <div className="mt-1 text-sm text-neutral-100">
+                      {createdFinish}
+                    </div>
                   </div>
-                  <div className="rounded border border-white/5 bg-neutral-900/70 p-3">
-                    <div className="text-xs text-muted-foreground">Hold Reason</div>
-                    <div className="font-medium">{line.hold_reason ?? "—"}</div>
+                  <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+                      Hold Reason
+                    </div>
+                    <div className="mt-1 text-sm text-neutral-100">
+                      {line.hold_reason ?? "—"}
+                    </div>
                   </div>
                 </div>
 
                 {/* vehicle & customer */}
-                <div className="rounded border border-white/5 bg-neutral-900/70 p-3 text-sm">
+                <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3 text-sm">
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div>
-                      <div className="text-muted-foreground text-xs">Vehicle</div>
-                      <div className="truncate">
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+                        Vehicle
+                      </div>
+                      <div className="mt-1 truncate text-neutral-100">
                         {vehicle
-                          ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`
+                          ? `${vehicle.year ?? ""} ${
+                              vehicle.make ?? ""
+                            } ${vehicle.model ?? ""}`
                               .trim()
                               .replace(/\s+/g, " ") || "—"
                           : "—"}
                       </div>
-                      <div className="text-xs text-muted-foreground/80">
-                        VIN: {vehicle?.vin ?? "—"} • Plate: {vehicle?.license_plate ?? "—"}
+                      <div className="mt-0.5 text-[11px] text-neutral-400">
+                        VIN: {vehicle?.vin ?? "—"} • Plate:{" "}
+                        {vehicle?.license_plate ?? "—"}
                       </div>
                     </div>
                     <div>
-                      <div className="text-muted-foreground text-xs">Customer</div>
-                      <div className="truncate">
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+                        Customer
+                      </div>
+                      <div className="mt-1 truncate text-neutral-100">
                         {customer
                           ? [customer.first_name ?? "", customer.last_name ?? ""]
                               .filter(Boolean)
                               .join(" ") || "—"
                           : "—"}
                       </div>
-                      <div className="text-xs text-muted-foreground/80">
+                      <div className="mt-0.5 text-[11px] text-neutral-400">
                         {customer?.phone ?? "—"}{" "}
                         {customer?.email ? `• ${customer.email}` : ""}
                       </div>
@@ -613,9 +577,9 @@ export default function FocusedJobModal(props: {
                   </div>
                 </div>
 
-                {/* punch */}
-                {mode === "tech" && line && (
-                  <div className="grid">
+                {/* punch – hidden once job is completed, same as mobile */}
+                {mode === "tech" && line && line.status !== "completed" && (
+                  <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
                     <JobPunchButton
                       lineId={line.id}
                       punchedInAt={line.punched_in_at}
@@ -640,7 +604,7 @@ export default function FocusedJobModal(props: {
                       (line.approval_state &&
                         line.approval_state !== "approved") ||
                       line.status === "declined") && (
-                      <div className="mt-1 text-xs text-amber-300">
+                      <div className="mt-2 text-[11px] text-amber-300">
                         {line.status === "awaiting_approval"
                           ? "Awaiting approval — punching disabled"
                           : line.status === "declined"
@@ -695,18 +659,6 @@ export default function FocusedJobModal(props: {
 
                       <button
                         type="button"
-                        className={btnInfo}
-                        onClick={() => {
-                          closeAllSubModals();
-                          setOpenStatus(true);
-                        }}
-                        disabled={busy}
-                      >
-                        Change Status
-                      </button>
-
-                      <button
-                        type="button"
                         className={btnNeutral}
                         onClick={() => {
                           closeAllSubModals();
@@ -743,16 +695,6 @@ export default function FocusedJobModal(props: {
                     <>
                       <button
                         type="button"
-                        className={btnInfo}
-                        onClick={() => {
-                          closeAllSubModals();
-                          setOpenStatus(true);
-                        }}
-                      >
-                        Change Status
-                      </button>
-                      <button
-                        type="button"
                         className={btnNeutral}
                         onClick={() => {
                           closeAllSubModals();
@@ -776,20 +718,20 @@ export default function FocusedJobModal(props: {
                 </div>
 
                 {/* parts used */}
-                <div className="rounded border border-white/5 bg-neutral-900/70 p-3">
-                  <div className="mb-2 text-sm font-medium text-foreground/90">
+                <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
+                  <div className="mb-2 text-sm font-medium text-neutral-100">
                     Parts used
                   </div>
 
                   {allocsLoading ? (
-                    <div className="text-sm text-muted-foreground">Loading…</div>
+                    <div className="text-sm text-neutral-300">Loading…</div>
                   ) : allocs.length === 0 ? (
-                    <div className="text-sm text-muted-foreground">
+                    <div className="text-sm text-neutral-300">
                       No parts used yet.
                     </div>
                   ) : (
-                    <div className="overflow-hidden rounded border border-white/5">
-                      <div className="grid grid-cols-12 bg-neutral-900/80 px-3 py-2 text-xs text-muted-foreground">
+                    <div className="overflow-hidden rounded-xl border border-white/10 bg-black/40">
+                      <div className="grid grid-cols-12 bg-white/5 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-neutral-400">
                         <div className="col-span-7">Part</div>
                         <div className="col-span-3">Location</div>
                         <div className="col-span-2 text-right">Qty</div>
@@ -800,15 +742,15 @@ export default function FocusedJobModal(props: {
                             key={a.id}
                             className="grid grid-cols-12 items-center px-3 py-2 text-sm"
                           >
-                            <div className="col-span-7 truncate">
+                            <div className="col-span-7 truncate text-neutral-100">
                               {a.parts?.name ?? "Part"}
                             </div>
-                            <div className="col-span-3 truncate text-muted-foreground">
+                            <div className="col-span-3 truncate text-neutral-400">
                               {a.location_id
                                 ? `loc ${String(a.location_id).slice(0, 6)}…`
                                 : "—"}
                             </div>
-                            <div className="col-span-2 text-right font-semibold">
+                            <div className="col-span-2 text-right font-semibold text-neutral-100">
                               {a.qty}
                             </div>
                           </li>
@@ -819,8 +761,8 @@ export default function FocusedJobModal(props: {
                 </div>
 
                 {/* tech notes */}
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-foreground/90">
+                <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
+                  <label className="mb-1 block text-sm font-medium text-neutral-100">
                     Tech Notes
                   </label>
                   <textarea
@@ -829,14 +771,14 @@ export default function FocusedJobModal(props: {
                     onChange={(e) => setTechNotes(e.target.value)}
                     onBlur={saveNotes}
                     disabled={savingNotes}
-                    className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white placeholder:text-neutral-400 focus:border-orange-400 focus:ring-2 focus:ring-orange-400 focus:outline-none"
+                    className="w-full rounded-md border border-white/15 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-neutral-400 focus:border-[var(--accent-copper-light)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-light)]"
                     placeholder="Add notes for this job…"
                   />
                 </div>
 
                 {/* AI suggestions */}
-                <div className="rounded border border-white/5 bg-neutral-900/70 p-3">
-                  <h3 className="mb-2 text-sm font-medium text-foreground/90">
+                <div className="glass-card rounded-2xl border border-white/10 bg-black/40 p-3">
+                  <h3 className="mb-2 text-sm font-medium text-neutral-100">
                     AI Suggested Repairs
                   </h3>
                   {line && workOrder ? (
@@ -850,28 +792,27 @@ export default function FocusedJobModal(props: {
                       }}
                     />
                   ) : (
-                    <div className="text-sm text-muted-foreground">
+                    <div className="text-sm text-neutral-300">
                       Vehicle/work order details required.
                     </div>
                   )}
                 </div>
 
-                <div className="text-xs text-muted-foreground">
+                <div className="text-xs text-neutral-400">
                   Job ID: {line.id}
                   {typeof line.labor_time === "number"
                     ? ` • Labor: ${line.labor_time.toFixed(1)}h`
                     : ""}
                   {line.hold_reason ? ` • Hold: ${line.hold_reason}` : ""}
-                  {line.approval_state ? ` • Approval: ${line.approval_state}` : ""}
+                  {line.approval_state
+                    ? ` • Approval: ${line.approval_state}`
+                    : ""}
                 </div>
               </div>
             )}
           </div>
         </div>
       </Dialog>
-
-      {/* mic */}
-      {isOpen && <VoiceButton />}
 
       {/* sub-modals */}
       {openComplete && line && (
@@ -899,6 +840,18 @@ export default function FocusedJobModal(props: {
         />
       )}
 
+      <button
+        type="button"
+        className={btnInfo}
+        onClick={() => {
+            closeAllSubModals();
+            setOpenDtc(true);
+          }}
+        disabled={busy}
+        >
+          DTC Assist (AI)
+      </button>
+
       {openParts && workOrder?.id && line && (
         <PartsRequestModal
           isOpen={openParts}
@@ -916,29 +869,6 @@ export default function FocusedJobModal(props: {
           onRelease={line.hold_reason ? releaseHold : undefined}
           canRelease={!!line.hold_reason}
           defaultReason={line.hold_reason || "Awaiting parts"}
-        />
-      )}
-
-      {openStatus && line && (
-        <StatusPickerModal
-          isOpen={openStatus}
-          onClose={() => setOpenStatus(false)}
-          current={
-            (line?.status || "awaiting") as Parameters<
-              typeof StatusPickerModal
-            >[0]["current"]
-          }
-          onChange={changeStatus}
-        />
-      )}
-
-      {openTime && line && (
-        <TimeAdjustModal
-          isOpen={openTime}
-          onClose={() => setOpenTime(false)}
-          punchedInAt={line.punched_in_at}
-          punchedOutAt={line.punched_out_at}
-          onApply={updateTime}
         />
       )}
 
@@ -961,7 +891,6 @@ export default function FocusedJobModal(props: {
         />
       )}
 
-      {/* 🔸 AI assistant wired in here */}
       {openAi && (
         <AIAssistantModal
           isOpen={openAi}
@@ -975,9 +904,32 @@ export default function FocusedJobModal(props: {
                   model: vehicle.model ?? undefined,
                 }
               : undefined
-            }
-          />
+          }
+        />
       )}
+
+      {openDtc && line && (
+  <DtcSuggestionModal
+    isOpen={openDtc}
+    onClose={() => setOpenDtc(false)}
+    jobId={line.id}
+    vehicle={
+      vehicle
+        ? {
+            
+            year: vehicle.year ? String(vehicle.year) : "",
+            make: vehicle.make ?? "",
+            model: vehicle.model ?? "",
+          }
+        : {
+          
+            year: "",
+            make: "",
+            model: "",
+          }
+    }
+  />
+)}
 
       {openAddJob && workOrder?.id && (
         <AddJobModal
