@@ -1,7 +1,8 @@
- "use client";
+"use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 type Props = {
   lineId: string;
@@ -13,7 +14,11 @@ type Props = {
   disabled?: boolean;
 };
 
-async function callPunchEndpoint(lineId: string, action: "start" | "pause" | "resume") {
+// keep pause/resume hitting your existing API for now
+async function callPunchEndpoint(
+  lineId: string,
+  action: "pause" | "resume",
+) {
   const res = await fetch(`/api/work-orders/lines/${lineId}/${action}`, {
     method: "POST",
     credentials: "include",
@@ -33,24 +38,49 @@ export default function JobPunchButton({
   onFinishRequested,
   disabled = false,
 }: Props) {
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [busy, setBusy] = useState(false);
-  const [flash, setFlash] = useState<"started" | "paused" | "resumed" | null>(null);
+  const [flash, setFlash] = useState<"started" | "paused" | "resumed" | null>(
+    null,
+  );
 
   const isStarted = !!punchedInAt && !punchedOutAt;
   const isPaused = String(status).toLowerCase() === "paused";
 
   const showFlash = (kind: typeof flash) => {
     setFlash(kind);
-    setTimeout(() => setFlash(null), 1200);
+    window.setTimeout(() => setFlash(null), 1200);
   };
 
   const start = async () => {
+    if (busy || disabled) return;
     setBusy(true);
     try {
-      await callPunchEndpoint(lineId, "start");
+      // NEW: secure RPC backed by RLS + unique index
+      const { error } = await supabase.rpc("punch_in", {
+        line_id: lineId,
+      });
+
+      if (error) {
+        // hit if user already has another active job
+        if (
+          error.code === "23505" ||
+          (error.message || "")
+            .toLowerCase()
+            .includes("uq_active_punch_per_user")
+        ) {
+          toast.error(
+            "You already have an active job punch. Punch out of the other job first.",
+          );
+        } else {
+          toast.error(error.message || "Start failed");
+        }
+        return;
+      }
+
       toast.success("Started");
       showFlash("started");
-      window.dispatchEvent(new CustomEvent("wol:refresh")); // nudge parent
+      window.dispatchEvent(new CustomEvent("wol:refresh"));
       await onUpdated?.();
     } catch (e: any) {
       toast.error(e?.message ?? "Start failed");
@@ -60,6 +90,7 @@ export default function JobPunchButton({
   };
 
   const pause = async () => {
+    if (busy || disabled) return;
     setBusy(true);
     try {
       await callPunchEndpoint(lineId, "pause");
@@ -75,6 +106,7 @@ export default function JobPunchButton({
   };
 
   const resume = async () => {
+    if (busy || disabled) return;
     setBusy(true);
     try {
       await callPunchEndpoint(lineId, "resume");
@@ -89,13 +121,17 @@ export default function JobPunchButton({
     }
   };
 
+  // Primary button:
+  // - If not started → punch_in RPC
+  // - If already started → go to Finish flow (Cause/Correction modal),
+  //   which will set punched_out_at & completed in your existing code.
   const handlePrimary = () => {
     if (busy || disabled) return;
     if (isStarted) {
-      onFinishRequested?.(); // open cause/correction modal
-      return;
+      onFinishRequested?.();
+    } else {
+      void start();
     }
-    void start();
   };
 
   return (
@@ -107,9 +143,11 @@ export default function JobPunchButton({
           onClick={handlePrimary}
           disabled={busy || disabled}
           className={`font-header flex-1 rounded border px-4 py-3 text-sm text-center transition-colors 
-            ${isStarted
-              ? "border-neutral-600 text-neutral-200 hover:bg-neutral-800"
-              : "border-green-600 text-green-300 hover:bg-green-900/30"}
+            ${
+              isStarted
+                ? "border-neutral-600 text-neutral-200 hover:bg-neutral-800"
+                : "border-green-600 text-green-300 hover:bg-green-900/30"
+            }
             ${busy || disabled ? "opacity-60 cursor-not-allowed" : ""}
           `}
           aria-pressed={isStarted}
@@ -125,9 +163,11 @@ export default function JobPunchButton({
             disabled={busy || disabled}
             onClick={isPaused ? resume : pause}
             className={`font-header flex-1 rounded border px-4 py-3 text-sm text-center transition-colors
-              ${isPaused
-                ? "border-green-600 text-green-300 hover:bg-green-900/30"
-                : "border-amber-600 text-amber-300 hover:bg-amber-900/30"}
+              ${
+                isPaused
+                  ? "border-green-600 text-green-300 hover:bg-green-900/30"
+                  : "border-amber-600 text-amber-300 hover:bg-amber-900/30"
+              }
               ${busy || disabled ? "opacity-60 cursor-not-allowed" : ""}
             `}
             aria-pressed={isPaused}
@@ -150,7 +190,11 @@ export default function JobPunchButton({
                 : "bg-green-700/80 text-green-100"
             }`}
         >
-          {flash === "started" ? "✓ Started" : flash === "paused" ? "⏸ Paused" : "⏯ Resumed"}
+          {flash === "started"
+            ? "✓ Started"
+            : flash === "paused"
+            ? "⏸ Paused"
+            : "⏯ Resumed"}
         </div>
       )}
     </div>

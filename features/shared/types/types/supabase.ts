@@ -7345,6 +7345,8 @@ export type Database = {
       is_shop_member: { Args: { p_shop: string }; Returns: boolean }
       is_staff_for_shop: { Args: { _shop: string }; Returns: boolean }
       mark_active: { Args: never; Returns: undefined }
+      punch_in: { Args: { line_id: string }; Returns: undefined }
+      punch_out: { Args: { line_id: string }; Returns: undefined }
       recompute_work_order_status: {
         Args: { p_wo: string }
         Returns: undefined
