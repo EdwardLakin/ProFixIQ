@@ -3,6 +3,12 @@ import { NextResponse } from "next/server";
 import { openai } from "lib/server/openai"; // adjust path if needed
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
+type DtcSuggestion = {
+  cause?: string;
+  correction?: string;
+  laborTime?: number;
+};
+
 export async function POST(req: Request) {
   try {
     const { jobId } = (await req.json()) as { jobId?: string };
@@ -29,11 +35,13 @@ export async function POST(req: Request) {
       );
     }
 
-    let vehicle: {
-      year?: number | null;
-      make?: string | null;
-      model?: string | null;
-    } | null = null;
+    let vehicle:
+      | {
+          year?: number | null;
+          make?: string | null;
+          model?: string | null;
+        }
+      | null = null;
 
     if (job.work_order_id) {
       const { data: wo } = await supabase
@@ -93,12 +101,12 @@ export async function POST(req: Request) {
     });
 
     const raw = completion.choices[0]?.message?.content ?? "{}";
-    let parsed: { cause?: string; correction?: string; laborTime?: number } =
-      {};
+
+    let parsed: DtcSuggestion = {};
     try {
-      parsed = JSON.parse(raw);
+      parsed = JSON.parse(raw) as DtcSuggestion;
     } catch {
-      // fall through to a generic error
+      // fall through to a generic error below
     }
 
     if (!parsed.cause || !parsed.correction) {
@@ -116,10 +124,11 @@ export async function POST(req: Request) {
           typeof parsed.laborTime === "number" ? parsed.laborTime : null,
       },
     });
-  } catch (err: any) {
-    console.error("[dtc-suggest] error", err);
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error("Unexpected error");
+    console.error("[dtc-suggest] error", error);
     return NextResponse.json(
-      { error: err?.message ?? "Unexpected error" },
+      { error: error.message },
       { status: 500 },
     );
   }
