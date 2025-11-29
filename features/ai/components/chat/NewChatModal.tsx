@@ -47,6 +47,11 @@ type Props = {
   context_type?: string | null;
   context_id?: string | null;
   activeConversationId?: string | null;
+  /**
+   * Where the "Open conversation history →" link should go.
+   * Desktop can use "/chat"; mobile can pass its own route, e.g. "/mobile/chat".
+   */
+  historyHref?: string;
 };
 
 const LOCAL_ACTIVE_KEY = "pfq-chat-last-conversation";
@@ -84,6 +89,7 @@ export default function NewChatModal({
   context_type = null,
   context_id = null,
   activeConversationId: forcedConversationId = null,
+  historyHref = "/chat",
 }: Props) {
   const supabase = useMemo(() => createBrowserSupabase(), []);
 
@@ -628,7 +634,7 @@ export default function NewChatModal({
           Pick recipients → type → send. Conversation is created automatically.
         </div>
         <a
-          href="/chat"
+          href={historyHref}
           className="text-xs text-amber-300 hover:text-amber-200"
         >
           Open conversation history →
