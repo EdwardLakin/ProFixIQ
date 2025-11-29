@@ -37,10 +37,11 @@ export function MobileCustomerVehicleForm({
     "placeholder:text-neutral-400 focus:border-[var(--accent-copper-light)] " +
     "focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-light)]";
 
-  const labelClass = "text-[11px] uppercase tracking-[0.16em] text-neutral-400";
+  const labelClass =
+    "text-[11px] uppercase tracking-[0.16em] text-neutral-400";
 
   return (
-    <div className="glass-card space-y-6 p-4">
+    <div className="glass-card rounded-2xl border border-white/12 bg-black/40 p-4 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <div>
@@ -48,7 +49,7 @@ export function MobileCustomerVehicleForm({
             Customer &amp; Vehicle
           </h2>
           <p className="text-[11px] text-neutral-400">
-            Quick capture for the counter — you can refine later.
+            Full customer and unit details for this work order.
           </p>
         </div>
         {woLabel && (
@@ -174,6 +175,21 @@ export function MobileCustomerVehicleForm({
                 placeholder="F-150, T800…"
               />
             </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className={labelClass}>VIN</label>
+            <input
+              className={inputBase}
+              value={vehicle.vin ?? ""}
+              onChange={(e) =>
+                onVehicleChange((prev) => ({
+                  ...prev,
+                  vin: e.target.value || null,
+                }))
+              }
+              placeholder="17-character VIN"
+            />
           </div>
 
           <div className="space-y-1">
