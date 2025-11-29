@@ -277,8 +277,8 @@ export function MobileTechHome({
     <div className="space-y-6 px-4 py-4">
       {/* hero – brushed metal panel */}
       <section className="metal-panel metal-panel--hero rounded-2xl border border-[var(--metal-border-soft)] px-4 py-4 text-white shadow-[0_18px_40px_rgba(0,0,0,0.85)]">
-        <div className="space-y-3">
-          <div>
+        <div className="space-y-4">
+          <div className="text-center">
             <h1 className="text-xl font-semibold leading-tight">
               <span className="text-neutral-100">Welcome back, </span>
               <span className="text-[var(--accent-copper)]">{firstName}</span>{" "}
@@ -461,10 +461,10 @@ function StatCard({
 
   return (
     <div className={`${base} ${variantClasses}`}>
-      <div className="text-[0.6rem] uppercase tracking-[0.18em] text-neutral-400">
+      <div className="text-[0.6rem] uppercase tracking-[0.18em] text-neutral-400 text-center">
         {label}
       </div>
-      <div className="mt-1 flex items-baseline gap-1 text-lg font-semibold text-white">
+      <div className="mt-1 flex items-baseline justify-center gap-1 text-lg font-semibold text-white">
         <span>{value}</span>
       </div>
     </div>
@@ -490,26 +490,26 @@ function SummaryCard({
 
   return (
     <div className="metal-panel metal-panel--card rounded-2xl border border-[var(--metal-border-soft)] px-4 py-3 shadow-[0_18px_40px_rgba(0,0,0,0.75)]">
-      <div className="flex items-center justify-between">
-        <div className="text-[0.65rem] uppercase tracking-[0.18em] text-neutral-300">
-          {label} – Worked vs Billed
-        </div>
-        <div className="text-[0.7rem] text-neutral-400">
-          Efficiency:{" "}
-          <span className="font-semibold text-[var(--accent-copper-soft)]">
-            {effText}
-          </span>
-        </div>
+      <div className="text-center text-[0.65rem] uppercase tracking-[0.18em] text-neutral-300">
+        {label} – Worked vs Billed
       </div>
-      <div className="mt-2 flex items-baseline gap-4 text-sm text-neutral-100">
-        <div>
+
+      <div className="mt-2 flex items-baseline justify-center gap-4 text-sm text-neutral-100">
+        <div className="text-center">
           <span className="text-neutral-400">Worked</span>{" "}
           <span className="font-semibold text-white">{workedText}</span>
         </div>
-        <div>
+        <div className="text-center">
           <span className="text-neutral-400">Billed</span>{" "}
           <span className="font-semibold text-white">{billedText}</span>
         </div>
+      </div>
+
+      <div className="mt-2 text-center text-[0.7rem] text-neutral-400">
+        Efficiency:{" "}
+        <span className="font-semibold text-[var(--accent-copper-soft)]">
+          {effText}
+        </span>
       </div>
     </div>
   );
@@ -526,14 +526,13 @@ function ShiftStatusChip({
   detail?: string | null;
   loading?: boolean;
 }) {
+  // full-width rectangular banner
   const base =
-    // rectangular banner, no rounded pill
-    "accent-chip inline-flex w-full max-w-xs items-center justify-between gap-2 px-3 py-2 text-[0.7rem] font-medium rounded-none border";
+    "w-full border px-4 py-3 text-[0.75rem] font-medium rounded-md flex flex-col items-center justify-center text-center";
 
   let classes = "";
 
   if (loading) {
-    // neutral copper-ish gradient while checking
     classes =
       "border-[var(--metal-border-soft)] text-neutral-100 " +
       "bg-[linear-gradient(to_right,rgba(148,163,184,0.4),rgba(15,23,42,0.95))]";
@@ -552,30 +551,24 @@ function ShiftStatusChip({
       "border-orange-400/80 text-orange-50 " +
       "bg-[linear-gradient(to_right,rgba(249,115,22,0.65),rgba(15,23,42,0.97))] " +
       "shadow-[0_0_16px_rgba(249,115,22,0.5)]";
+  } else if (status === "ended") {
+    // ended – red gradient
+    classes =
+      "border-red-500/80 text-red-50 " +
+      "bg-[linear-gradient(to_right,rgba(239,68,68,0.7),rgba(15,23,42,0.97))] " +
+      "shadow-[0_0_18px_rgba(239,68,68,0.55)]";
   } else {
-    // none / ended – burnt copper but more subdued
+    // none – subtle burnt copper
     classes =
       "border-[var(--accent-copper-soft)]/60 text-[var(--accent-copper-soft)] " +
       "bg-[linear-gradient(to_right,rgba(212,118,49,0.45),rgba(15,23,42,0.96))]";
   }
 
-  const dotClass =
-    status === "active"
-      ? "bg-emerald-300 shadow-[0_0_8px_rgba(16,185,129,0.9)]"
-      : status === "break"
-      ? "bg-yellow-300 shadow-[0_0_8px_rgba(250,204,21,0.9)]"
-      : status === "lunch"
-      ? "bg-orange-300 shadow-[0_0_8px_rgba(249,115,22,0.9)]"
-      : "bg-neutral-400";
-
   return (
     <div className={`${base} ${classes}`}>
-      <div className="flex items-center gap-2">
-        <span className={`h-2 w-2 rounded-full ${dotClass}`} />
-        <span className="uppercase tracking-[0.16em]">{label}</span>
-      </div>
+      <span className="uppercase tracking-[0.2em]">{label}</span>
       {detail ? (
-        <span className="text-[0.65rem] text-neutral-100">{detail}</span>
+        <span className="mt-1 text-[0.7rem] text-neutral-100/90">{detail}</span>
       ) : null}
     </div>
   );
