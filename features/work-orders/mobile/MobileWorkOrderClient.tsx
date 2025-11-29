@@ -748,6 +748,11 @@ export default function MobileWorkOrderClient({
                         {vehicle.license_plate ?? (
                           <span className="text-neutral-500">—</span>
                         )}
+                        <br />
+                          Mileage:{" "}
+                          {vehicle.mileage ?? (
+                            <span className="text-neutral-500">—</span>
+                          )}
                       </p>
                     </>
                   ) : (
