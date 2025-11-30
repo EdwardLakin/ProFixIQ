@@ -8,11 +8,18 @@ import { inspectionToQuoteLinesUnified } from "@/features/inspections/unified/da
  * Body (optional): { session?: InspectionSession }
  * If omitted, we pull from the in-memory store.
  */
-export async function POST(
-  req: Request,
-  { params }: { params: { lineId: string } },
-) {
-  const { lineId } = params;
+export async function POST(req: Request) {
+  const url = new URL(req.url);
+
+  // path: /api/inspections/unified/session/[lineId]/quote
+  // segments: ["api","inspections","unified","session","123","quote"]
+  const segments = url.pathname.split("/").filter(Boolean);
+  const sessionIndex = segments.indexOf("session");
+
+  const lineId =
+    sessionIndex !== -1 && segments.length > sessionIndex + 1
+      ? segments[sessionIndex + 1]
+      : null;
 
   if (!lineId) {
     return NextResponse.json(
@@ -27,6 +34,7 @@ export async function POST(
 
   let session = body?.session;
 
+  // Fall back to in-memory store if not provided in body
   if (!session) {
     session = getSessionFromStore(lineId) ?? undefined;
   }
