@@ -1,3 +1,4 @@
+// app/api/inspections/unified/session/[lineId]/route.ts
 import { NextResponse } from "next/server";
 import type { InspectionSession } from "@inspections/lib/inspection/types";
 import {
@@ -9,11 +10,15 @@ import {
  * GET – load unified session for a work-order line.
  * Currently backed by the in-memory store.
  */
-export async function GET(
-  _req: Request,
-  { params }: { params: { lineId: string } },
-) {
-  const { lineId } = params;
+export async function GET(_req: Request, context: any) {
+  const lineId: string | undefined = context?.params?.lineId;
+
+  if (!lineId) {
+    return NextResponse.json(
+      { ok: false, error: "Missing lineId in route path" },
+      { status: 400 },
+    );
+  }
 
   const session = getSessionFromStore(lineId);
   if (!session) {
@@ -30,11 +35,15 @@ export async function GET(
  * POST – persist unified session for a work-order line.
  * Body shape: { session: InspectionSession }
  */
-export async function POST(
-  req: Request,
-  { params }: { params: { lineId: string } },
-) {
-  const { lineId } = params;
+export async function POST(req: Request, context: any) {
+  const lineId: string | undefined = context?.params?.lineId;
+
+  if (!lineId) {
+    return NextResponse.json(
+      { ok: false, error: "Missing lineId in route path" },
+      { status: 400 },
+    );
+  }
 
   const body = (await req.json().catch(() => null)) as
     | { session?: InspectionSession }
