@@ -5,28 +5,37 @@ import { finishInspectionSessionUnified } from "@/features/inspections/unified/d
 
 /**
  * POST – mark unified session finished.
- * Body (optional): { session?: InspectionSession }
- * If omitted, we pull from the in-memory store.
+ * Reading `lineId` manually from req.url so we do NOT depend on Next.js
+ * route context typing (which Vercel's build worker is rejecting).
  */
-export async function POST(
-  req: Request,
-  { params }: { params: { lineId: string } },
-) {
-  const { lineId } = params;
+export async function POST(req: Request) {
+  const url = new URL(req.url);
+
+  // path: /api/inspections/unified/session/[lineId]/finish
+  // segments: ["api","inspections","unified","session","123","finish"]
+  const segments = url.pathname.split("/").filter(Boolean);
+  const sessionIndex = segments.indexOf("session");
+
+  const lineId =
+    sessionIndex !== -1 && segments.length > sessionIndex + 1
+      ? segments[sessionIndex + 1]
+      : null;
 
   if (!lineId) {
     return NextResponse.json(
       { ok: false, error: "Missing lineId in route path" },
-      { status: 400 },
+      { status: 400 }
     );
   }
 
+  // Try to read JSON body
   const body = (await req.json().catch(() => null)) as
     | { session?: InspectionSession }
     | null;
 
   let session = body?.session;
 
+  // Fall back to local store
   if (!session) {
     session = getSessionFromStore(lineId) ?? undefined;
   }
@@ -34,7 +43,7 @@ export async function POST(
   if (!session) {
     return NextResponse.json(
       { ok: false, error: "Session not found", lineId },
-      { status: 404 },
+      { status: 404 }
     );
   }
 
