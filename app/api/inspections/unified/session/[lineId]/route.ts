@@ -1,4 +1,3 @@
-// app/api/inspections/unified/session/[lineId]/route.ts
 import { NextResponse } from "next/server";
 import type { InspectionSession } from "@inspections/lib/inspection/types";
 import {
@@ -10,8 +9,11 @@ import {
  * GET – load unified session for a work-order line.
  * Currently backed by the in-memory store.
  */
-export async function GET(_req: Request, context: any) {
-  const lineId: string | undefined = context?.params?.lineId;
+export async function GET(
+  _req: Request,
+  { params }: { params: { lineId: string } },
+) {
+  const { lineId } = params;
 
   if (!lineId) {
     return NextResponse.json(
@@ -35,8 +37,11 @@ export async function GET(_req: Request, context: any) {
  * POST – persist unified session for a work-order line.
  * Body shape: { session: InspectionSession }
  */
-export async function POST(req: Request, context: any) {
-  const lineId: string | undefined = context?.params?.lineId;
+export async function POST(
+  req: Request,
+  { params }: { params: { lineId: string } },
+) {
+  const { lineId } = params;
 
   if (!lineId) {
     return NextResponse.json(
@@ -67,6 +72,5 @@ export async function POST(req: Request, context: any) {
 
   saveSessionToStore(lineId, session);
 
-  // Later: replace with Supabase-backed persistence.
   return NextResponse.json({ ok: true, lineId, sessionId: id });
 }

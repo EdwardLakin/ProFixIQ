@@ -6,24 +6,17 @@ import { finishInspectionSessionUnified } from "@/features/inspections/unified/d
 /**
  * POST – mark unified session finished.
  * Body (optional): { session?: InspectionSession }
- * If omitted, we pull from the in-memory store keyed by lineId.
- *
- * NOTE: We intentionally take only (req) and read lineId from the URL
- * to avoid Next 15's strict context typing errors.
+ * If omitted, we pull from the in-memory store.
  */
-export async function POST(req: Request) {
-  const url = new URL(req.url);
-  const segments = url.pathname.split("/").filter(Boolean);
-  // expected: .../inspections/unified/session/[lineId]/finish
-  const sessionIdx = segments.lastIndexOf("session");
-  const lineId =
-    sessionIdx !== -1 && segments.length > sessionIdx + 1
-      ? segments[sessionIdx + 1]
-      : "";
+export async function POST(
+  req: Request,
+  { params }: { params: { lineId: string } },
+) {
+  const { lineId } = params;
 
   if (!lineId) {
     return NextResponse.json(
-      { ok: false, error: "Missing lineId in path" },
+      { ok: false, error: "Missing lineId in route path" },
       { status: 400 },
     );
   }
@@ -34,7 +27,6 @@ export async function POST(req: Request) {
 
   let session = body?.session;
 
-  // If caller didn't send a session, fall back to our in-memory store.
   if (!session) {
     session = getSessionFromStore(lineId) ?? undefined;
   }

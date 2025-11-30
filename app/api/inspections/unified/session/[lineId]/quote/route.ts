@@ -1,4 +1,3 @@
-// app/api/inspections/unified/session/[lineId]/quote/route.ts
 import { NextResponse } from "next/server";
 import type { InspectionSession } from "@inspections/lib/inspection/types";
 import { getSessionFromStore } from "@/features/inspections/unified/data/sessionStore";
@@ -9,8 +8,11 @@ import { inspectionToQuoteLinesUnified } from "@/features/inspections/unified/da
  * Body (optional): { session?: InspectionSession }
  * If omitted, we pull from the in-memory store.
  */
-export async function POST(req: Request, context: any) {
-  const lineId: string | undefined = context?.params?.lineId;
+export async function POST(
+  req: Request,
+  { params }: { params: { lineId: string } },
+) {
+  const { lineId } = params;
 
   if (!lineId) {
     return NextResponse.json(
@@ -38,6 +40,5 @@ export async function POST(req: Request, context: any) {
 
   const quoteLines = inspectionToQuoteLinesUnified(session);
 
-  // Later we can POST these into work_order_quote_lines / parts flows.
   return NextResponse.json({ ok: true, lineId, quoteLines });
 }
