@@ -1,4 +1,3 @@
-// features/inspections/app/inspection/templates/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -96,96 +95,146 @@ export default function InspectionTemplatesPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl p-4 text-white">
-      <h1 className="mb-4 text-2xl font-bold">Inspection Templates</h1>
+    <div className="min-h-[calc(100vh-3rem)] bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.14),#020617_88%)] px-4 py-6 text-white">
+      <div className="mx-auto w-full max-w-5xl rounded-2xl border border-white/10 bg-black/40 p-5 shadow-[0_22px_55px_rgba(0,0,0,0.95)] backdrop-blur">
+        {/* Header */}
+        <header className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-xl font-blackops uppercase tracking-[0.2em] text-orange-400">
+              Inspection Templates
+            </h1>
+            <p className="mt-1 text-xs text-neutral-400">
+              Build, share, and run inspection layouts that feed the unified
+              inspection runner.
+            </p>
+          </div>
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div className="flex overflow-hidden rounded border border-zinc-700">
-          {(["mine", "shared", "all"] as Scope[]).map((s) => (
-            <button
-              key={s}
-              onClick={() => setScope(s)}
-              className={
-                "px-3 py-1 text-sm " +
-                (scope === s ? "bg-orange-600" : "bg-zinc-800 hover:bg-zinc-700")
-              }
-            >
-              {s.toUpperCase()}
-            </button>
-          ))}
-        </div>
+          {/* Scope + search */}
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+            <div className="flex overflow-hidden rounded-full border border-neutral-700 bg-neutral-950/80 shadow-[0_0_22px_rgba(15,23,42,0.9)]">
+              {(["mine", "shared", "all"] as Scope[]).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setScope(s)}
+                  className={
+                    "px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] transition " +
+                    (scope === s
+                      ? "bg-orange-500 text-black shadow-[0_0_24px_rgba(249,115,22,0.7)]"
+                      : "bg-transparent text-neutral-300 hover:bg-neutral-900")
+                  }
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
 
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search templates…"
-          className="min-w-[220px] flex-1 rounded border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm placeholder:text-zinc-500"
-        />
-      </div>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search templates…"
+              className="w-full rounded-full border border-neutral-700 bg-neutral-950/80 px-3 py-2 text-xs text-neutral-100 placeholder:text-neutral-500 shadow-[0_0_22px_rgba(15,23,42,0.9)] focus:outline-none focus:ring-2 focus:ring-orange-500/80 sm:w-56"
+            />
+          </div>
+        </header>
 
-      {loading ? (
-        <div className="rounded border border-zinc-800 bg-zinc-900 p-4">Loading…</div>
-      ) : rows.length === 0 ? (
-        <div className="rounded border border-zinc-800 bg-zinc-900 p-6 text-center text-zinc-400">
-          No templates found.
-        </div>
-      ) : (
-        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {rows.map((t) => {
-            const mineOwned = canEditOrDelete(t);
-            const encodedName = encodeURIComponent(t.template_name ?? "Custom Inspection");
-            return (
-              <li key={t.id} className="rounded border border-zinc-800 bg-zinc-900 p-4">
-                <div className="mb-1 text-lg font-semibold text-orange-400">
-                  {t.template_name ?? "Untitled Template"}
-                </div>
-                <div className="mb-3 line-clamp-3 text-sm text-zinc-300">
-                  {t.description || "—"}
-                </div>
+        {loading ? (
+          <div className="mt-4 rounded-2xl border border-neutral-800 bg-neutral-950/80 p-4 text-sm text-neutral-300">
+            Loading…
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="mt-4 rounded-2xl border border-neutral-800 bg-neutral-950/80 p-6 text-center text-sm text-neutral-400">
+            No templates found yet. Use the custom builder to create your first
+            inspection layout.
+          </div>
+        ) : (
+          <ul className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {rows.map((t) => {
+              const mineOwned = canEditOrDelete(t);
+              const encodedName = encodeURIComponent(
+                t.template_name ?? "Custom Inspection",
+              );
 
-                <div className="flex items-center justify-between text-xs text-zinc-500">
-                  <span>
-                    {t.is_public ? "Shared" : "Private"} ·{" "}
-                    {new Date(t.created_at ?? Date.now()).toLocaleDateString()}
-                  </span>
+              const created =
+                t.created_at ??
+                new Date().toISOString(); // safe fallback for display only
 
-                  <div className="flex items-center gap-2">
-                    {/* Use Template / run */}
-                    <Link
-                      href={`/inspections/run?templateId=${t.id}`}
-                      className="rounded border border-zinc-700 px-2 py-1 text-zinc-200 hover:bg-zinc-800"
-                    >
-                      Use
-                    </Link>
+              return (
+                <li
+                  key={t.id}
+                  className="rounded-2xl border border-neutral-800/90 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.12),rgba(15,23,42,0.98))] p-4 shadow-[0_18px_45px_rgba(0,0,0,0.92)]"
+                >
+                  <div className="mb-1 flex items-start justify-between gap-2">
+                    <div>
+                      <div className="text-sm font-semibold text-orange-400">
+                        {t.template_name ?? "Untitled Template"}
+                      </div>
+                      <div className="mt-1 text-[11px] text-neutral-400">
+                        {t.is_public ? "Shared library" : "Private"} ·{" "}
+                        {new Date(created).toLocaleDateString()}
+                      </div>
+                    </div>
 
-                    {/* Edit -> go to custom draft, pass templateId + template name so header fills */}
-                    {mineOwned && (
-                      <Link
-                        href={`/inspections/custom-draft?templateId=${t.id}&template=${encodedName}`}
-                        className="rounded border border-zinc-700 px-2 py-1 text-zinc-200 hover:bg-zinc-800"
-                      >
-                        Edit
-                      </Link>
-                    )}
-
-                    {/* Delete */}
-                    {mineOwned && (
-                      <button
-                        onClick={() => handleDelete(t.id)}
-                        disabled={deletingId === t.id}
-                        className="rounded border border-red-700 px-2 py-1 text-red-200 hover:bg-red-900/40 disabled:opacity-60"
-                        title="Delete template"
-                      >
-                        {deletingId === t.id ? "Deleting…" : "Delete"}
-                      </button>
+                    {Array.isArray(t.tags) && t.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {t.tags.map((tag) => (
+                          <span
+                            key={tag}
+                            className="rounded-full bg-neutral-900/80 px-2 py-[2px] text-[10px] text-neutral-300"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
                     )}
                   </div>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+
+                  <div className="mb-3 line-clamp-3 text-xs text-neutral-200">
+                    {t.description || "No description provided."}
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 text-[11px]">
+                    <span className="text-neutral-500">
+                      {mineOwned ? "Owned by you" : "From shop library"}
+                    </span>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      {/* Use Template -> unified custom-draft in run mode */}
+                      <Link
+                        href={`/inspections/unified/custom-draft?templateId=${t.id}&template=${encodedName}&mode=run`}
+                        className="rounded-full border border-emerald-400/80 bg-emerald-500 px-3 py-1 text-[11px] font-semibold text-black shadow-[0_0_22px_rgba(16,185,129,0.65)] hover:bg-emerald-400"
+                      >
+                        Use
+                      </Link>
+
+                      {/* Edit Template -> unified custom-draft in edit mode */}
+                      {mineOwned && (
+                        <Link
+                          href={`/inspections/unified/custom-draft?templateId=${t.id}&template=${encodedName}&mode=edit`}
+                          className="rounded-full border border-neutral-600/80 bg-neutral-900 px-3 py-1 text-[11px] font-semibold text-neutral-100 hover:bg-neutral-800"
+                        >
+                          Edit
+                        </Link>
+                      )}
+
+                      {/* Delete */}
+                      {mineOwned && (
+                        <button
+                          onClick={() => handleDelete(t.id)}
+                          disabled={deletingId === t.id}
+                          className="rounded-full border border-red-500/80 bg-red-950/70 px-3 py-1 text-[11px] font-semibold text-red-200 hover:bg-red-900/80 disabled:opacity-60"
+                          title="Delete template"
+                        >
+                          {deletingId === t.id ? "Deleting…" : "Delete"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

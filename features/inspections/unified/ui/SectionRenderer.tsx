@@ -1,4 +1,3 @@
-// features/inspections/unified/SectionRenderer.tsx
 "use client";
 
 import React from "react";
@@ -21,8 +20,11 @@ type Props = {
   ) => void;
 };
 
+// Steer / Drive / Trailer Left|Right ...
 const AIR_RE = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
+// LF / RF / LR / RR ...
 const HYD_ABBR_RE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
+// Left Front / Right Rear ...
 const HYD_FULL_RE =
   /^(?<corner>(Left|Right)\s+(Front|Rear))\s+(?<metric>.+)$/i;
 
@@ -50,31 +52,35 @@ export default function SectionRenderer({ sections, onUpdateItem }: Props) {
         const items = section.items ?? [];
         const layout = detectLayout(items);
 
-        // HYDRAULIC CORNER GRID (LF/RF/LR/RR)
+        // HYDRAULIC CORNER GRID (LF/RF/LR/RR + metrics)
         if (layout === "hyd") {
           return (
             <CornerGrid
               key={`${sectionIndex}-${section.title || "hyd"}`}
               sectionIndex={sectionIndex}
               items={items}
+              unitMode="imperial"
+              showKpaHint={true}
               onUpdateItem={onUpdateItem}
             />
           );
         }
 
-        // AIR / AXLE GRID (Steer / Drive / Trailer Left | Item | Right)
+        // AIR / AXLE GRID (Steer / Drive / Trailer Left/Right + metrics)
         if (layout === "air") {
           return (
             <AxleGrid
               key={`${sectionIndex}-${section.title || "air"}`}
               sectionIndex={sectionIndex}
               items={items}
+              unitMode="imperial"
+              showKpaHint={true}
               onUpdateItem={onUpdateItem}
             />
           );
         }
 
-        // GENERIC “CARD” SECTION — unified, no legacy imports
+        // GENERIC “CARD” SECTION – unified theme, no legacy imports
         return (
           <SectionDisplay
             key={`${sectionIndex}-${section.title || "plain"}`}

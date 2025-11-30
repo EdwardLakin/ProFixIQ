@@ -2,6 +2,9 @@
 export type InspectionItemStatus = "ok" | "fail" | "na" | "recommend";
 export type BrakeType = "air" | "hydraulic";
 
+/** Duty class for inspections (light/medium/heavy) */
+export type DutyClass = "light" | "medium" | "heavy";
+
 export interface InspectionItem {
   /** Primary label. Some code uses `item`, some uses `name` — support both. */
   item?: string;
@@ -299,6 +302,9 @@ export interface InspectionSession {
   /** Selected brake system for rendering/units */
   brakeType?: BrakeType;
 
+  /** Optional duty class for this inspection (light/medium/heavy) */
+  dutyClass?: DutyClass | null;
+
   location?: string | null;
 
   /** Progress */
@@ -327,4 +333,14 @@ export interface InspectionSession {
 
   /** Quotes can be DB-sourced or UI-generated — accept both */
   quote?: Array<QuoteLine | QuoteLineItem>;
+
+  /**
+   * Optional runtime-only metadata.
+   * Unified flows can stash arbitrary info here (e.g. source, duty class, debug flags).
+   */
+  meta?: {
+    dutyClass?: DutyClass | null;
+    source?: string;
+    [key: string]: unknown;
+  };
 }

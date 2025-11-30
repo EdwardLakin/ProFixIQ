@@ -40,7 +40,10 @@ export default function CustomBuilderPage() {
 
   // ---- Select-all helpers ----
   function selectAllInSection(sectionTitle: string, items: { item: string }[]) {
-    setSelections((prev) => ({ ...prev, [sectionTitle]: items.map((i) => i.item) }));
+    setSelections((prev) => ({
+      ...prev,
+      [sectionTitle]: items.map((i) => i.item),
+    }));
   }
   function clearSection(sectionTitle: string) {
     setSelections((prev) => ({ ...prev, [sectionTitle]: [] }));
@@ -57,15 +60,21 @@ export default function CustomBuilderPage() {
   }
 
   function goToRunWithSections(sections: Section[] | unknown, tplTitle: string) {
+    // legacy keys so unified custom-draft can read them
     sessionStorage.setItem("customInspection:sections", JSON.stringify(sections));
     sessionStorage.setItem("customInspection:title", tplTitle);
-    sessionStorage.setItem("customInspection:includeOil", JSON.stringify(includeOil));
+    sessionStorage.setItem(
+      "customInspection:includeOil",
+      JSON.stringify(includeOil),
+    );
     sessionStorage.setItem("customInspection:dutyClass", dutyClass);
 
     const qs = new URLSearchParams(sp.toString());
     qs.set("template", tplTitle);
     qs.set("dutyClass", dutyClass);
-    router.push(`/inspections/custom-draft?${qs.toString()}`);
+
+    // 🔁 NEW: go through unified custom draft
+    router.push(`/inspections/unified/custom-draft?${qs.toString()}`);
   }
 
   // Normalization + merge helpers
@@ -134,7 +143,8 @@ export default function CustomBuilderPage() {
     }) as unknown as Section[];
 
     const withOil =
-      includeOil && !built.some((s) => normalizeTitle(s.title) === "oil change")
+      includeOil &&
+      !built.some((s) => normalizeTitle(s.title) === "oil change")
         ? [...built, buildOilSection()]
         : built;
 
@@ -183,7 +193,7 @@ export default function CustomBuilderPage() {
 
       // final safety: drop any empty sections so the runtime doesn’t render blank blocks
       const cleaned = merged.filter(
-        (s) => Array.isArray(s.items) && s.items.length > 0
+        (s) => Array.isArray(s.items) && s.items.length > 0,
       );
 
       goToRunWithSections(cleaned, title || "AI Inspection");
@@ -198,27 +208,31 @@ export default function CustomBuilderPage() {
 
   /* ---------------------------------- UI ---------------------------------- */
   return (
-    <div className="p-4 text-white">
-      <div className="mx-auto w-full max-w-6xl">
-        <h1 className="mb-3 text-center text-2xl font-bold">
+    <div className="bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.16),#020617_90%)] px-4 py-6 text-white">
+      <div className="mx-auto w-full max-w-6xl rounded-2xl border border-white/10 bg-black/40 p-4 shadow-[0_22px_55px_rgba(0,0,0,0.95)] backdrop-blur">
+        <h1 className="mb-3 text-center text-2xl font-blackops uppercase tracking-[0.18em] text-orange-400">
           Build Custom Inspection
         </h1>
 
         {/* Title + Duty class */}
         <div className="mb-4 grid gap-3 md:grid-cols-2">
           <label className="flex flex-col gap-1 text-center md:text-left">
-            <span className="text-sm text-neutral-300">Title</span>
+            <span className="text-xs font-medium uppercase tracking-[0.16em] text-neutral-400">
+              Title
+            </span>
             <input
-              className="w-full rounded bg-neutral-800 px-3 py-2"
+              className="w-full rounded-lg border border-white/10 bg-neutral-900/80 px-3 py-2 text-sm shadow-[0_0_24px_rgba(15,23,42,0.9)] focus:outline-none focus:ring-2 focus:ring-orange-500/80"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
             />
           </label>
 
           <label className="flex flex-col gap-1 text-center md:text-left">
-            <span className="text-sm text-neutral-300">Duty Class</span>
+            <span className="text-xs font-medium uppercase tracking-[0.16em] text-neutral-400">
+              Duty Class
+            </span>
             <select
-              className="rounded bg-neutral-800 px-3 py-2"
+              className="rounded-lg border border-white/10 bg-neutral-900/80 px-3 py-2 text-sm shadow-[0_0_24px_rgba(15,23,42,0.9)] focus:outline-none focus:ring-2 focus:ring-orange-500/80"
               value={dutyClass}
               onChange={(e) => setDutyClass(e.target.value as DutyClass)}
             >
@@ -235,57 +249,61 @@ export default function CustomBuilderPage() {
             type="button"
             onClick={() => setIncludeOil((v) => !v)}
             className={
-              "rounded px-4 py-2 text-sm font-semibold " +
+              "rounded-full px-4 py-2 text-xs font-semibold tracking-wide shadow-[0_0_24px_rgba(16,185,129,0.45)] transition " +
               (includeOil
-                ? "bg-emerald-600 text-black"
-                : "bg-zinc-700 text-white hover:bg-zinc-600")
+                ? "border border-emerald-400/80 bg-emerald-500 text-black hover:bg-emerald-400"
+                : "border border-zinc-600/70 bg-zinc-900 text-white hover:bg-zinc-800")
             }
           >
-            {includeOil ? "Remove Oil Change Section" : "Add Oil Change Section"}
+            {includeOil
+              ? "Remove Oil Change Section"
+              : "Add Oil Change Section"}
           </button>
         </div>
 
         {/* AI builder */}
-        <div className="mb-8 rounded border border-neutral-800 bg-neutral-900 p-3">
-          <div className="mb-2 text-center font-semibold text-orange-400">
+        <div className="mb-8 rounded-2xl border border-neutral-800/90 bg-gradient-to-br from-neutral-950 via-neutral-950 to-slate-950 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)]">
+          <div className="mb-1 text-center text-xs font-semibold uppercase tracking-[0.18em] text-orange-400">
             Build with AI (optional)
           </div>
-          <p className="mb-2 text-center text-sm text-neutral-300">
-            Describe what you want to inspect. We’ll generate sections &amp; items and send
-            them to the editor.
+          <p className="mb-3 text-center text-[11px] text-neutral-300">
+            Describe what you want to inspect. We’ll generate sections &amp;
+            items and send them into the unified inspection editor.
           </p>
           <textarea
-            className="mb-3 min-h-[90px] w-full rounded bg-neutral-800 p-3"
+            className="mb-3 min-h-[100px] w-full rounded-xl border border-white/10 bg-neutral-900/80 p-3 text-sm text-neutral-100 shadow-[0_0_30px_rgba(15,23,42,0.95)] focus:outline-none focus:ring-2 focus:ring-orange-500/70"
             placeholder="e.g. 60-point commercial truck inspection with air brakes, suspension, steering, lighting, and undercarriage."
             value={aiPrompt}
             onChange={(e) => setAiPrompt(e.target.value)}
           />
-          <div className="flex items-center justify-center gap-3">
+          <div className="flex flex-wrap items-center justify-center gap-3">
             <button
               onClick={buildFromPrompt}
               disabled={aiLoading || !aiPrompt.trim()}
-              className="rounded bg-indigo-600 px-4 py-2 font-semibold text-white hover:bg-indigo-500 disabled:opacity-60"
+              className="rounded-full border border-indigo-400/80 bg-indigo-500 px-4 py-2 text-xs font-semibold tracking-wide text-white shadow-[0_0_26px_rgba(129,140,248,0.6)] hover:bg-indigo-400 disabled:opacity-60"
             >
               {aiLoading ? "Generating…" : "Build from AI Prompt"}
             </button>
-            {aiError ? <span className="text-sm text-red-400">{aiError}</span> : null}
+            {aiError ? (
+              <span className="text-xs text-red-400">{aiError}</span>
+            ) : null}
           </div>
         </div>
 
         {/* Bulk actions */}
-        <div className="mb-2 flex flex-wrap items-center justify-center gap-2">
-          <span className="text-sm text-neutral-400">Bulk actions:</span>
+        <div className="mb-3 flex flex-wrap items-center justify-center gap-2 text-[11px] text-neutral-400">
+          <span className="uppercase tracking-[0.16em]">Bulk actions</span>
           <button
             type="button"
             onClick={selectAllEverywhere}
-            className="rounded bg-zinc-700 px-3 py-1 text-xs text-white hover:bg-zinc-600"
+            className="rounded-full border border-zinc-600/80 bg-zinc-900 px-3 py-1 text-[11px] text-white hover:bg-zinc-800"
           >
             Select all (all sections)
           </button>
           <button
             type="button"
             onClick={clearAll}
-            className="rounded bg-zinc-800 px-3 py-1 text-xs text-white hover:bg-zinc-700"
+            className="rounded-full border border-zinc-700/80 bg-zinc-950 px-3 py-1 text-[11px] text-white hover:bg-zinc-900"
           >
             Clear all
           </button>
@@ -294,31 +312,33 @@ export default function CustomBuilderPage() {
         {/* Manual pick list */}
         <div className="mb-8 space-y-4">
           {masterInspectionList.map((sec) => {
-            const selectedCount = (selections[sec.title]?.length ?? 0);
+            const selectedCount = selections[sec.title]?.length ?? 0;
             return (
               <div
                 key={sec.title}
-                className="rounded border border-neutral-800 bg-neutral-900 p-3"
+                className="rounded-2xl border border-neutral-800/90 bg-neutral-950/80 p-3 shadow-[0_16px_40px_rgba(0,0,0,0.85)]"
               >
-                <div className="mb-2 flex items-center justify-between">
+                <div className="mb-2 flex items-center justify-between gap-2">
                   <div className="font-semibold text-orange-400">
                     {sec.title}
-                    <span className="ml-2 rounded bg-zinc-800 px-2 py-[2px] text-[11px] text-zinc-300">
+                    <span className="ml-2 rounded-full bg-zinc-900 px-2 py-[2px] text-[10px] text-zinc-300">
                       {selectedCount}/{sec.items.length}
                     </span>
                   </div>
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => selectAllInSection(sec.title, sec.items)}
-                      className="rounded bg-zinc-700 px-2 py-1 text-xs text-white hover:bg-zinc-600"
+                      onClick={() =>
+                        selectAllInSection(sec.title, sec.items)
+                      }
+                      className="rounded-full bg-zinc-800 px-2 py-1 text-[10px] text-white hover:bg-zinc-700"
                     >
                       Select all
                     </button>
                     <button
                       type="button"
                       onClick={() => clearSection(sec.title)}
-                      className="rounded bg-zinc-800 px-2 py-1 text-xs text-white hover:bg-zinc-700"
+                      className="rounded-full bg-zinc-900 px-2 py-1 text-[10px] text-white hover:bg-zinc-800"
                     >
                       Clear
                     </button>
@@ -327,13 +347,18 @@ export default function CustomBuilderPage() {
 
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {sec.items.map((i) => {
-                    const checked = (selections[sec.title] ?? []).includes(i.item);
+                    const checked =
+                      (selections[sec.title] ?? []).includes(i.item);
                     return (
-                      <label key={i.item} className="flex items-center gap-2 text-sm">
+                      <label
+                        key={i.item}
+                        className="flex items-center gap-2 rounded-lg bg-neutral-900/70 px-2 py-1 text-sm text-neutral-100"
+                      >
                         <input
                           type="checkbox"
                           checked={checked}
                           onChange={() => toggle(sec.title, i.item)}
+                          className="h-4 w-4 rounded border-neutral-600 bg-neutral-950"
                         />
                         <span>{i.item}</span>
                       </label>
@@ -349,14 +374,14 @@ export default function CustomBuilderPage() {
         <div className="flex flex-wrap justify-center gap-3">
           <button
             onClick={startManual}
-            className="rounded bg-orange-600 px-4 py-2 font-semibold text-black hover:bg-orange-500"
+            className="rounded-full border border-orange-400/90 bg-orange-500 px-4 py-2 text-xs font-semibold tracking-wide text-black shadow-[0_0_26px_rgba(249,115,22,0.7)] hover:bg-orange-400"
           >
             Start Inspection (Manual)
           </button>
           <button
             onClick={buildFromPrompt}
             disabled={aiLoading || !aiPrompt.trim()}
-            className="rounded bg-indigo-600 px-4 py-2 font-semibold text-white hover:bg-indigo-500 disabled:opacity-60"
+            className="rounded-full border border-indigo-400/80 bg-indigo-500 px-4 py-2 text-xs font-semibold tracking-wide text-white shadow-[0_0_26px_rgba(129,140,248,0.6)] hover:bg-indigo-400 disabled:opacity-60"
           >
             {aiLoading ? "Generating…" : "Start with AI"}
           </button>
