@@ -1,4 +1,4 @@
-// app/mobile/work-orders/[id]/page.client.tsx
+// app/work-orders/mobile/MobileWorkOrderClient.tsx
 "use client";
 
 import React, {
@@ -21,6 +21,7 @@ import VoiceButton from "@/features/shared/voice/VoiceButton";
 import { useTabState } from "@/features/shared/hooks/useTabState";
 import { JobCard } from "@/features/work-orders/components/JobCard";
 import MobileFocusedJob from "@/features/work-orders/mobile/MobileFocusedJob";
+import InspectionModal from "@/features/inspections/components/InspectionModal"; // NEW
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -133,6 +134,10 @@ export default function MobileWorkOrderClient({
   // mobile focused job view
   const [focusedJobId, setFocusedJobId] = useState<string | null>(null);
   const [focusedOpen, setFocusedOpen] = useState(false);
+
+  // unified inspection modal state
+  const [inspectionOpen, setInspectionOpen] = useState(false); // NEW
+  const [inspectionSrc, setInspectionSrc] = useState<string | null>(null); // NEW
 
   /* ---------------------- AUTH ---------------------- */
   useEffect(() => {
@@ -580,6 +585,42 @@ export default function MobileWorkOrderClient({
     [fetchAll],
   );
 
+  /* ----------------------- helpers ----------------------- */
+
+  const openInspection = useCallback(
+    (line: WorkOrderLine) => {
+      if (!wo?.id) return;
+
+      const anyLine = line as any;
+
+      const templateFromMeta =
+        anyLine?.inspection_template ??
+        anyLine?.inspectionTemplate ??
+        anyLine?.template ??
+        anyLine?.metadata?.inspection_template ??
+        anyLine?.metadata?.template ??
+        null;
+
+      const template =
+        templateFromMeta ||
+        (String(line.job_type ?? "")
+          .toLowerCase()
+          .includes("air")
+          ? "maintenance50-air"
+          : "maintenance50");
+
+      const url = `/inspection/${encodeURIComponent(
+        template,
+      )}?workOrderId=${encodeURIComponent(
+        wo.id,
+      )}&workOrderLineId=${encodeURIComponent(line.id)}`;
+
+      setInspectionSrc(url);
+      setInspectionOpen(true);
+    },
+    [wo],
+  );
+
   /* ----------------------- mobile focused job view ----------------------- */
 
   if (focusedOpen && focusedJobId) {
@@ -749,10 +790,10 @@ export default function MobileWorkOrderClient({
                           <span className="text-neutral-500">—</span>
                         )}
                         <br />
-                          Mileage:{" "}
-                          {vehicle.mileage ?? (
-                            <span className="text-neutral-500">—</span>
-                          )}
+                        Mileage:{" "}
+                        {vehicle.mileage ?? (
+                          <span className="text-neutral-500">—</span>
+                        )}
                       </p>
                     </>
                   ) : (
@@ -1027,7 +1068,7 @@ export default function MobileWorkOrderClient({
                       isPunchedIn={punchedIn}
                       onOpen={openFocused}
                       onAssign={undefined}
-                      onOpenInspection={openFocused}
+                      onOpenInspection={() => openInspection(ln)} // CHANGED
                       onAddPart={undefined}
                     />
                   );
@@ -1041,6 +1082,14 @@ export default function MobileWorkOrderClient({
       <div className="mt-4 flex justify-center pb-1">
         <VoiceButton />
       </div>
+
+      {/* unified inspection modal */}
+      <InspectionModal
+        open={inspectionOpen}
+        src={inspectionSrc}
+        title="Inspection"
+        onClose={() => setInspectionOpen(false)}
+      />
     </div>
   );
 }

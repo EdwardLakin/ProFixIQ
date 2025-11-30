@@ -27,6 +27,29 @@ export interface InspectionCategory {
 /** Many places import `InspectionSection`; keep it as an alias. */
 export type InspectionSection = InspectionCategory;
 
+/** Template definition used by unified inspection builder / loader */
+export interface InspectionTemplate {
+  id: string;
+  templateName: string;
+
+  description?: string | null;
+  tags?: string[] | null;
+  vehicleType?: string | null;
+
+  /** Whether this template is shared/public in the shop/library */
+  isPublic?: boolean | null;
+
+  /** Optional default labor hours for the template */
+  laborHours?: number | null;
+
+  /** Rendered sections (mirrors inspection_templates.sections JSON) */
+  sections: InspectionSection[];
+
+  /** Optional audit fields (mapped from DB created_at/updated_at) */
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
 /** ---------- Parsed voice/AI commands (support both shapes) ---------- */
 /** Older, name-based command shape used by dispatchCommand/interpreter */
 export type ParsedCommandNameBased =
@@ -300,7 +323,7 @@ export interface InspectionSession {
   vehicle?: SessionVehicle | null;
 
   /** Content */
-  sections: InspectionCategory[];
+  sections: InspectionSection[];
 
   /** Quotes can be DB-sourced or UI-generated — accept both */
   quote?: Array<QuoteLine | QuoteLineItem>;
