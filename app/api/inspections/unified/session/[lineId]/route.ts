@@ -6,14 +6,28 @@ import {
 } from "@/features/inspections/unified/data/sessionStore";
 
 /**
- * GET – load unified session for a work-order line.
- * Currently backed by the in-memory store.
+ * Extract lineId from the URL path manually.
+ * Works on Vercel and avoids RouteContext typing issues.
  */
-export async function GET(
-  _req: Request,
-  { params }: { params: { lineId: string } },
-) {
-  const { lineId } = params;
+function extractLineId(req: Request): string | null {
+  const url = new URL(req.url);
+  const segments = url.pathname.split("/").filter(Boolean);
+
+  // e.g. ["api","inspections","unified","session","123"]
+  const idx = segments.indexOf("session");
+
+  if (idx !== -1 && segments.length > idx + 1) {
+    return segments[idx + 1];
+  }
+
+  return null;
+}
+
+/**
+ * GET – load unified session for a work-order line.
+ */
+export async function GET(req: Request) {
+  const lineId = extractLineId(req);
 
   if (!lineId) {
     return NextResponse.json(
@@ -23,6 +37,7 @@ export async function GET(
   }
 
   const session = getSessionFromStore(lineId);
+
   if (!session) {
     return NextResponse.json(
       { ok: false, error: "Session not found", lineId },
@@ -35,13 +50,10 @@ export async function GET(
 
 /**
  * POST – persist unified session for a work-order line.
- * Body shape: { session: InspectionSession }
+ * Body: { session: InspectionSession }
  */
-export async function POST(
-  req: Request,
-  { params }: { params: { lineId: string } },
-) {
-  const { lineId } = params;
+export async function POST(req: Request) {
+  const lineId = extractLineId(req);
 
   if (!lineId) {
     return NextResponse.json(
