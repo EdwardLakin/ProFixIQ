@@ -3,16 +3,15 @@ import type { InspectionSession } from "@inspections/lib/inspection/types";
 import { getSessionFromStore } from "@/features/inspections/unified/data/sessionStore";
 import { finishInspectionSessionUnified } from "@/features/inspections/unified/data/finishSession";
 
-type RouteParams = {
-  params: { lineId: string };
-};
-
 /**
  * POST – mark unified session finished.
  * Body (optional): { session?: InspectionSession }
  * If omitted, we pull from the in-memory store.
  */
-export async function POST(req: Request, { params }: RouteParams) {
+export async function POST(
+  req: Request,
+  { params }: { params: { lineId: string } },
+) {
   const { lineId } = params;
 
   const body = (await req.json().catch(() => null)) as

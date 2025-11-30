@@ -5,15 +5,14 @@ import {
   saveSessionToStore,
 } from "@/features/inspections/unified/data/sessionStore";
 
-type RouteParams = {
-  params: { lineId: string };
-};
-
 /**
  * GET – load unified session for a work-order line.
  * Currently backed by the in-memory store.
  */
-export async function GET(_req: Request, { params }: RouteParams) {
+export async function GET(
+  _req: Request,
+  { params }: { params: { lineId: string } },
+) {
   const { lineId } = params;
 
   const session = getSessionFromStore(lineId);
@@ -31,7 +30,10 @@ export async function GET(_req: Request, { params }: RouteParams) {
  * POST – persist unified session for a work-order line.
  * Body shape: { session: InspectionSession }
  */
-export async function POST(req: Request, { params }: RouteParams) {
+export async function POST(
+  req: Request,
+  { params }: { params: { lineId: string } },
+) {
   const { lineId } = params;
 
   const body = (await req.json().catch(() => null)) as
