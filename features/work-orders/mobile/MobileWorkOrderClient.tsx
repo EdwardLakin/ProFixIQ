@@ -21,7 +21,7 @@ import VoiceButton from "@/features/shared/voice/VoiceButton";
 import { useTabState } from "@/features/shared/hooks/useTabState";
 import { JobCard } from "@/features/work-orders/components/JobCard";
 import MobileFocusedJob from "@/features/work-orders/mobile/MobileFocusedJob";
-import InspectionModal from "@/features/inspections/components/InspectionModal"; // NEW
+import InspectionModal from "@/features/inspections/components/InspectionModal";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -136,8 +136,8 @@ export default function MobileWorkOrderClient({
   const [focusedOpen, setFocusedOpen] = useState(false);
 
   // unified inspection modal state
-  const [inspectionOpen, setInspectionOpen] = useState(false); // NEW
-  const [inspectionSrc, setInspectionSrc] = useState<string | null>(null); // NEW
+  const [inspectionOpen, setInspectionOpen] = useState(false);
+  const [inspectionSrc, setInspectionSrc] = useState<string | null>(null);
 
   /* ---------------------- AUTH ---------------------- */
   useEffect(() => {
@@ -548,9 +548,12 @@ export default function MobileWorkOrderClient({
     async (quoteId: string) => {
       if (!quoteId) return;
       try {
-        const res = await fetch(`/api/work-orders/quotes/${quoteId}/authorize`, {
-          method: "POST",
-        });
+        const res = await fetch(
+          `/api/work-orders/quotes/${quoteId}/authorize`,
+          {
+            method: "POST",
+          },
+        );
         const j = await res.json().catch(() => null);
         if (!res.ok) {
           throw new Error(j?.error || "Failed to authorize quote line");
@@ -587,33 +590,38 @@ export default function MobileWorkOrderClient({
 
   /* ----------------------- helpers ----------------------- */
 
+  // 🔗 Open unified inspection screen in the modal (new unified stack)
   const openInspection = useCallback(
     (line: WorkOrderLine) => {
       if (!wo?.id) return;
 
       const anyLine = line as any;
 
-      const templateFromMeta =
+      // prefer explicit unified template id if present
+      const templateId: string | null =
+        anyLine?.inspection_template_id ??
         anyLine?.inspection_template ??
-        anyLine?.inspectionTemplate ??
         anyLine?.template ??
         anyLine?.metadata?.inspection_template ??
         anyLine?.metadata?.template ??
         null;
 
-      const template =
-        templateFromMeta ||
-        (String(line.job_type ?? "")
-          .toLowerCase()
-          .includes("air")
-          ? "maintenance50-air"
-          : "maintenance50");
+      // Unified inspection session loader is responsible for:
+      // - creating a session if one doesn't exist for this line
+      // - loading sections/template based on templateId / job_type
+      // - wiring unified UI (corner grid, axle grid, voice, quote builder)
+      const params = new URLSearchParams({
+        workOrderId: wo.id,
+        workOrderLineId: line.id,
+      });
 
-      const url = `/inspection/${encodeURIComponent(
-        template,
-      )}?workOrderId=${encodeURIComponent(
-        wo.id,
-      )}&workOrderLineId=${encodeURIComponent(line.id)}`;
+      if (wo.vehicle_id) params.set("vehicleId", wo.vehicle_id);
+      if (wo.customer_id) params.set("customerId", wo.customer_id);
+      if (templateId) params.set("templateId", templateId);
+
+      const url = `/inspections/unified/session/${encodeURIComponent(
+        line.id,
+      )}?${params.toString()}`;
 
       setInspectionSrc(url);
       setInspectionOpen(true);
@@ -1068,7 +1076,7 @@ export default function MobileWorkOrderClient({
                       isPunchedIn={punchedIn}
                       onOpen={openFocused}
                       onAssign={undefined}
-                      onOpenInspection={() => openInspection(ln)} // CHANGED
+                      onOpenInspection={() => openInspection(ln)}
                       onAddPart={undefined}
                     />
                   );
@@ -1083,7 +1091,7 @@ export default function MobileWorkOrderClient({
         <VoiceButton />
       </div>
 
-      {/* unified inspection modal */}
+      {/* unified inspection modal – now loads unified session screen */}
       <InspectionModal
         open={inspectionOpen}
         src={inspectionSrc}

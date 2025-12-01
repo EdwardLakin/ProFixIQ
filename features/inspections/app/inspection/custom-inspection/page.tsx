@@ -1,3 +1,4 @@
+//features/inspections/app/inspection/custom-inspection/page.tsx
 "use client";
 
 import { useState } from "react";

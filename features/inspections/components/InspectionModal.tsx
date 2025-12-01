@@ -1,8 +1,9 @@
+// features/inspections/components/InspectionModal.tsx
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Dialog } from "@headlessui/react";
 import InspectionHost from "@/features/inspections/components/inspectionHost";
+import ModalShell from "@/features/shared/components/ModalShell";
 
 type Props = {
   open: boolean;
@@ -27,20 +28,37 @@ export default function InspectionModal({
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const derived = useMemo(() => {
-    if (!src)
-      return { template: null as string | null, params: {}, missingWOLine: false };
+    if (!src) {
+      return {
+        template: null as string | null,
+        params: {} as Record<string, string>,
+        missingWOLine: false,
+      };
+    }
+
     try {
       const base =
-        typeof window !== "undefined" ? window.location.origin : "http://localhost";
+        typeof window !== "undefined"
+          ? window.location.origin
+          : "http://localhost";
       const url = new URL(src, base);
       const parts = url.pathname.split("/").filter(Boolean);
-      const idx = parts.findIndex((p) => p === "inspection" || p === "inspections");
+
+      const idx = parts.findIndex(
+        (p) => p === "inspection" || p === "inspections",
+      );
       const template = idx >= 0 ? parts[idx + 1] : parts[parts.length - 1];
+
       const params = paramsToObject(url.searchParams);
       const missingWOLine = !url.searchParams.get("workOrderLineId");
+
       return { template, params, missingWOLine };
     } catch {
-      return { template: src.replace(/^\//, ""), params: {}, missingWOLine: false };
+      return {
+        template: src.replace(/^\//, ""),
+        params: {},
+        missingWOLine: false,
+      };
     }
   }, [src]);
 
@@ -51,7 +69,7 @@ export default function InspectionModal({
     }
   };
 
-  // 💡 wheel/touch guard: keep scroll inside THIS box
+  // 💡 keep scroll inside this modal body (wheel/touch guard)
   useEffect(() => {
     if (!open) return;
     const el = scrollRef.current;
@@ -106,118 +124,90 @@ export default function InspectionModal({
     };
   }, [open]);
 
-  const panelWidth = compact ? "max-w-4xl" : "max-w-6xl";
   const bodyHeight = compact ? "max-h-[80vh]" : "max-h-[92vh]";
 
   return (
-    <Dialog
-      open={open}
+    <ModalShell
+      isOpen={open}
       onClose={close}
-      className="fixed inset-0 z-[300] flex items-center justify-center px-2 py-6 sm:px-4"
+      title={title}
+      size="xl"
+      hideFooter
     >
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 z-[300] bg-black/70 backdrop-blur-sm"
-        aria-hidden="true"
-      />
-
-      {/* Panel */}
-      <Dialog.Panel
-        className={`relative z-[310] mx-auto w-full ${panelWidth}`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="mb-2 flex items-start justify-between gap-3 rounded-t-lg border border-b-0 border-orange-500 bg-neutral-950/90 px-4 py-3">
-          <div className="space-y-1">
-            <Dialog.Title className="text-base font-blackops tracking-wide text-orange-400 sm:text-lg">
-              {title}
-            </Dialog.Title>
-            {derived.template && (
-              <p className="text-[11px] text-neutral-400">
-                Template:{" "}
-                <span className="font-mono text-neutral-200">
-                  {derived.template}
-                </span>
-              </p>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setCompact((v) => !v)}
-              className="rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-[11px] text-neutral-100 hover:border-orange-500 hover:bg-neutral-800"
-            >
-              {compact ? "Expand" : "Shrink"}
-            </button>
-            <button
-              type="button"
-              onClick={close}
-              className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs text-neutral-200 hover:bg-neutral-800"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-
-        {/* Scrollable body */}
-        <div
-          ref={scrollRef}
-          className={`${bodyHeight} overflow-y-auto overscroll-contain rounded-b-lg border border-orange-500 bg-neutral-950 p-4 text-white shadow-xl`}
-          style={{
-            WebkitOverflowScrolling: "touch",
-            scrollbarGutter: "stable both-edges",
-          }}
-        >
+      {/* Top meta row (inside shell body) */}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="space-y-1">
+          {derived.template && (
+            <p className="text-[11px] text-neutral-400">
+              Template:{" "}
+              <span className="font-mono text-neutral-200">
+                {derived.template}
+              </span>
+            </p>
+          )}
           {derived.missingWOLine && (
-            <div className="mb-3 rounded border border-yellow-700 bg-yellow-900/30 px-3 py-2 text-xs text-yellow-200">
+            <div className="mt-1 rounded border border-yellow-700 bg-yellow-900/30 px-3 py-2 text-[11px] text-yellow-200">
               <strong>Heads up:</strong>{" "}
-              <code className="font-mono text-yellow-100">workOrderLineId</code>{" "}
+              <code className="font-mono text-yellow-100">
+                workOrderLineId
+              </code>{" "}
               is missing; Save/Finish may be blocked.
             </div>
           )}
+        </div>
 
-          {!derived.template ? (
-            <div className="rounded border border-neutral-800 bg-neutral-900 px-4 py-6 text-center text-sm text-neutral-400">
-              No inspection selected.
-            </div>
-          ) : (
-            <div className="mx-auto w-full max-w-5xl">
-              <InspectionHost
-                template={derived.template}
-                embed
-                params={derived.params}
-              />
-            </div>
-          )}
+        <button
+          type="button"
+          onClick={() => setCompact((v) => !v)}
+          className="rounded-full border border-[var(--metal-border-soft)] bg-black/60 px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.18em] text-neutral-200 hover:bg-white/5"
+        >
+          {compact ? "Expand view" : "Shrink view"}
+        </button>
+      </div>
 
-          {/* Footer actions */}
-          <div className="mt-4 flex flex-col gap-2 border-t border-neutral-800 pt-3 sm:flex-row sm:items-center sm:justify-between">
+      {/* Scrollable inspection body */}
+      <div
+        ref={scrollRef}
+        className={`${bodyHeight} overflow-y-auto overscroll-contain rounded-2xl border border-[var(--metal-border-soft)] bg-black/40 p-4 text-white shadow-inner`}
+        style={{
+          WebkitOverflowScrolling: "touch",
+          scrollbarGutter: "stable both-edges",
+        }}
+      >
+        {!derived.template ? (
+          <div className="rounded-xl border border-neutral-800 bg-neutral-950/80 px-4 py-6 text-center text-sm text-neutral-400">
+            No inspection selected.
+          </div>
+        ) : (
+          <div className="mx-auto w-full max-w-5xl">
+            <InspectionHost
+              template={derived.template}
+              embed
+              params={derived.params}
+            />
+          </div>
+        )}
+
+        {/* Local footer for inspection */}
+        <div className="mt-4 flex flex-col gap-2 border-t border-neutral-800 pt-3 sm:flex-row sm:items-center sm:justify-between">
+          <button
+            type="button"
+            onClick={() => setCompact((v) => !v)}
+            className="inline-flex items-center justify-center rounded-full border border-[var(--metal-border-soft)] bg-black/60 px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.18em] text-neutral-200 hover:bg-white/5"
+          >
+            {compact ? "Expand view" : "Shrink view"}
+          </button>
+          <div className="flex justify-end gap-2">
             <button
               type="button"
-              onClick={() => setCompact((v) => !v)}
-              className="inline-flex items-center justify-center rounded border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-xs text-neutral-100 hover:border-orange-500 hover:bg-neutral-800 sm:text-[11px]"
+              onClick={close}
+              className="rounded-full border border-[var(--metal-border-soft)] bg-black/60 px-4 py-1.5 text-xs font-medium uppercase tracking-[0.18em] text-neutral-200 hover:bg-white/5"
             >
-              {compact ? "Expand View" : "Shrink View"}
+              Close
             </button>
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={close}
-                className="rounded border border-neutral-700 bg-neutral-900 px-4 py-1.5 text-xs sm:text-sm text-neutral-200 hover:bg-neutral-800"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={close}
-                className="rounded border border-orange-500 bg-orange-500/10 px-4 py-1.5 text-xs sm:text-sm font-medium text-orange-100 hover:bg-orange-500/20"
-              >
-                Close
-              </button>
-            </div>
           </div>
         </div>
-      </Dialog.Panel>
-    </Dialog>
+      </div>
+    </ModalShell>
   );
 }
