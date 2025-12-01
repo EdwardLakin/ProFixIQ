@@ -797,7 +797,7 @@ export default function CreateWorkOrderPage() {
     async (line: LineRow) => {
       if (!wo?.id || !line?.id) return;
 
-      // simple template picker
+      // simple template picker (still uses legacy templates here)
       const desc = (line.description || "").toLowerCase();
       const isAir = /\bair\b|cvip|push\s*rod|air\s*brake/.test(desc);
       const templateSlug = isAir ? "maintenance50-air" : "maintenance50";
@@ -962,363 +962,374 @@ export default function CreateWorkOrderPage() {
 
   /* UI */
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 text-white">
-      {/* header row */}
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-blackops text-orange-400">
-            Create Work Order
-          </h1>
-          <p className="text-sm text-neutral-400">
-            Capture customer &amp; vehicle, add jobs, then approve.
-          </p>
-          {wo?.custom_id && (
-            <div className="mt-1 text-xs text-neutral-500">
-              Current WO:&nbsp;
-              <span className="font-mono text-orange-300">
-                {wo.custom_id}
+    <div className="min-h-[calc(100vh-4rem)] bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),#020617_82%)] px-4 py-6 text-white">
+      <div className="mx-auto max-w-6xl rounded-2xl border border-[var(--metal-border-soft)] bg-[radial-gradient(circle_at_top,_#050910,_#020308_65%,_#000)] px-4 py-5 shadow-[0_24px_80px_rgba(0,0,0,0.95)] sm:px-6 sm:py-6">
+        {/* slim header row – no giant title */}
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="space-y-1">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/60 px-3 py-1">
+              <span className="text-[0.7rem] font-blackops uppercase tracking-[0.22em] text-neutral-200">
+                Create Work Order
               </span>
             </div>
-          )}
-        </div>
-        <div className="flex gap-2">
+            {wo?.custom_id && (
+              <div className="text-[11px] text-neutral-400">
+                Current WO:&nbsp;
+                <span className="font-mono text-orange-300">
+                  {wo.custom_id}
+                </span>
+              </div>
+            )}
+          </div>
           <button
             type="button"
             onClick={() => router.push("/work-orders")}
-            className="rounded border border-neutral-700 px-3 py-1.5 text-sm text-neutral-200 hover:bg-neutral-800"
+            className="rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.18em] text-neutral-200 hover:bg-white/5"
           >
             Back to list
           </button>
         </div>
-      </div>
 
-      {error && (
-        <div className="mb-4 rounded border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm text-red-200">
-          {error}
-        </div>
-      )}
+        {error && (
+          <div className="mb-4 rounded-lg border border-red-500/60 bg-red-950/70 px-4 py-2 text-sm text-red-100">
+            {error}
+          </div>
+        )}
 
-      {uploadSummary && (
-        <div className="mb-4 rounded border border-neutral-700 bg-neutral-950 px-4 py-2 text-sm text-neutral-200">
-          Uploaded {uploadSummary.uploaded} file(s)
-          {uploadSummary.failed ? `, ${uploadSummary.failed} failed` : ""}.
-        </div>
-      )}
-      {inviteNotice && (
-        <div className="mb-4 rounded border border-neutral-700 bg-neutral-950 px-4 py-2 text-sm text-neutral-200">
-          {inviteNotice}
-        </div>
-      )}
+        {uploadSummary && (
+          <div className="mb-4 rounded-lg border border-neutral-700 bg-black/60 px-4 py-2 text-sm text-neutral-100">
+            Uploaded {uploadSummary.uploaded} file(s)
+            {uploadSummary.failed ? `, ${uploadSummary.failed} failed` : ""}.
+          </div>
+        )}
+        {inviteNotice && (
+          <div className="mb-4 rounded-lg border border-neutral-700 bg-black/60 px-4 py-2 text-sm text-neutral-100">
+            {inviteNotice}
+          </div>
+        )}
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Customer & Vehicle */}
-        <section className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 sm:p-5">
-          <h2 className="mb-3 text-sm font-semibold text-white">
-            Customer &amp; Vehicle
-          </h2>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Customer & Vehicle */}
+          <section className="rounded-2xl border border-[var(--metal-border-soft)] bg-black/55 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)] sm:p-5">
+            <h2 className="mb-3 text-center text-sm font-blackops uppercase tracking-[0.22em] text-orange-300 sm:text-[0.8rem]">
+              Customer &amp; Vehicle
+            </h2>
 
-          <CustomerVehicleForm
-            customer={customer}
-            vehicle={vehicle}
-            saving={savingCv}
-            workOrderExists={!!wo?.id}
-            shopId={wo?.shop_id ?? currentShopId}
-            handlers={{
-              onCustomerChange,
-              onVehicleChange,
-              onCustomerSelected: (id: string) => setCustomerId(id),
-              onVehicleSelected: (id: string) => setVehicleId(id),
-            }}
-          />
+            <CustomerVehicleForm
+              customer={customer}
+              vehicle={vehicle}
+              saving={savingCv}
+              workOrderExists={!!wo?.id}
+              shopId={wo?.shop_id ?? currentShopId}
+              handlers={{
+                onCustomerChange,
+                onVehicleChange,
+                onCustomerSelected: (id: string) => setCustomerId(id),
+                onVehicleSelected: (id: string) => setVehicleId(id),
+              }}
+            />
 
-          {/* Local buttons row */}
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={handleSaveCustomerVehicle}
-              disabled={savingCv || loading}
-              className="rounded border border-neutral-700 px-3 py-1.5 text-xs sm:text-sm hover:border-orange-500 disabled:opacity-60"
-            >
-              {savingCv ? "Saving…" : "Save & Continue"}
-            </button>
+            {/* Local buttons row */}
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleSaveCustomerVehicle}
+                disabled={savingCv || loading}
+                className="rounded-full border border-[var(--metal-border-soft)] bg-black/70 px-3 py-1.5 text-xs sm:text-sm font-medium uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-500 hover:bg-black/80 disabled:opacity-60"
+              >
+                {savingCv ? "Saving…" : "Save & Continue"}
+              </button>
 
-            <button
-              type="button"
-              onClick={handleClearForm}
-              className="rounded border border-neutral-700 px-3 py-1.5 text-xs sm:text-sm hover:border-red-500"
-            >
-              Clear form
-            </button>
+              <button
+                type="button"
+                onClick={handleClearForm}
+                className="rounded-full border border-red-600/70 bg-black/70 px-3 py-1.5 text-xs sm:text-sm font-medium uppercase tracking-[0.16em] text-red-200 hover:bg-red-900/30"
+              >
+                Clear form
+              </button>
 
-            <VinCaptureModal
-              userId={currentUserId ?? "anon"}
-              action="/api/vin"
-              onDecoded={(d) => {
-                draft.setVehicle({
-                  vin: d.vin,
-                  year: d.year ?? null,
-                  make: d.make ?? null,
-                  model: d.model ?? null,
-                });
-                setVehicle((prev) => ({
-                  ...prev,
-                  vin: d.vin || prev.vin,
-                  year: d.year ?? prev.year,
-                  make: d.make ?? prev.make,
-                  model: d.model ?? prev.model,
-                }));
-                cvDraft.bulkSet({
-                  vehicle: {
-                    vin: d.vin ?? null,
+              <VinCaptureModal
+                userId={currentUserId ?? "anon"}
+                action="/api/vin"
+                onDecoded={(d) => {
+                  draft.setVehicle({
+                    vin: d.vin,
                     year: d.year ?? null,
                     make: d.make ?? null,
                     model: d.model ?? null,
-                  },
-                });
-              }}
-            >
-              <span className="cursor-pointer rounded border border-orange-500/80 px-3 py-1.5 text-xs text-orange-300 hover:bg-orange-500/10 sm:text-sm">
-                Add by VIN / Scan
-              </span>
-            </VinCaptureModal>
-          </div>
-
-          <label className="mt-3 flex items-center gap-2 text-xs text-neutral-300">
-            <input
-              id="send-invite"
-              type="checkbox"
-              checked={sendInvite}
-              onChange={(e) => setSendInvite(e.target.checked)}
-              className="h-4 w-4 rounded border-neutral-700 bg-neutral-900"
-              disabled={loading}
-            />
-            Email a customer portal sign-up link
-          </label>
-        </section>
-
-        {/* Uploads */}
-        <section className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 sm:p-5">
-          <h2 className="mb-3 text-sm font-semibold text-white">Uploads</h2>
-          <div className="grid gap-3 md:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
-                Vehicle Photos
-              </label>
-              <input
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={(e) => setPhotoFiles(Array.from(e.target.files ?? []))}
-                className="input"
-                disabled={loading}
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
-                Documents (PDF/JPG/PNG)
-              </label>
-              <input
-                type="file"
-                accept="application/pdf,image/*"
-                multiple
-                onChange={(e) => setDocFiles(Array.from(e.target.files ?? []))}
-                className="input"
-                disabled={loading}
-              />
-            </div>
-          </div>
-        </section>
-
-        {/* Quick add from menu */}
-        {wo?.id && (
-          <section className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 sm:p-5">
-            <h2 className="mb-3 text-sm font-semibold text-orange-300">
-              Quick add from menu
-            </h2>
-            <MenuQuickAdd workOrderId={wo.id} />
-          </section>
-        )}
-
-        {/* Manual add line */}
-        {wo?.id && (
-          <section className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 sm:p-5">
-            <h2 className="mb-3 text-sm font-semibold text-white">
-              Add Job Line
-            </h2>
-            <NewWorkOrderLineForm
-              workOrderId={wo.id}
-              vehicleId={vehicleId}
-              defaultJobType={type}
-              shopId={wo.shop_id ?? null}
-              onCreated={fetchLines}
-            />
-          </section>
-        )}
-
-        {/* Current Lines */}
-        <section className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 sm:p-5">
-          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-sm font-semibold text-white">
-              Current Lines
-            </h2>
-            {wo?.id && (
-              <button
-                type="button"
-                onClick={() => setAiSuggestOpen(true)}
-                className="inline-flex items-center rounded border border-blue-600 bg-neutral-950 px-3 py-1.5 text-xs sm:text-sm text-blue-300 hover:bg-blue-900/30"
+                  });
+                  setVehicle((prev) => ({
+                    ...prev,
+                    vin: d.vin || prev.vin,
+                    year: d.year ?? prev.year,
+                    make: d.make ?? prev.make,
+                    model: d.model ?? prev.model,
+                  }));
+                  cvDraft.bulkSet({
+                    vehicle: {
+                      vin: d.vin ?? null,
+                      year: d.year ?? null,
+                      make: d.make ?? null,
+                      model: d.model ?? null,
+                    },
+                  });
+                }}
               >
-                AI: Suggest Jobs
-              </button>
-            )}
-          </div>
-          {!wo?.id || lines.length === 0 ? (
-            <p className="text-sm text-neutral-400">No lines yet.</p>
-          ) : (
-            <div className="space-y-2">
-              {lines.map((ln) => (
-                <div
-                  key={ln.id}
-                  className="flex flex-col gap-3 rounded border border-neutral-800 bg-neutral-950 p-3 sm:flex-row sm:items-start sm:justify-between"
+                <span className="cursor-pointer rounded-full border border-orange-500/80 bg-black/70 px-3 py-1.5 text-xs text-orange-300 hover:bg-orange-500/10 sm:text-sm">
+                  Add by VIN / Scan
+                </span>
+              </VinCaptureModal>
+            </div>
+
+            <label className="mt-3 flex items-center gap-2 text-xs text-neutral-300">
+              <input
+                id="send-invite"
+                type="checkbox"
+                checked={sendInvite}
+                onChange={(e) => setSendInvite(e.target.checked)}
+                className="h-4 w-4 rounded border-neutral-700 bg-neutral-900"
+                disabled={loading}
+              />
+              Email a customer portal sign-up link
+            </label>
+          </section>
+
+          {/* Uploads */}
+          <section className="rounded-2xl border border-[var(--metal-border-soft)] bg-black/55 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)] sm:p-5">
+            <h2 className="mb-3 text-sm font-semibold text-neutral-100">
+              Uploads
+            </h2>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
+                  Vehicle Photos
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(e) =>
+                    setPhotoFiles(Array.from(e.target.files ?? []))
+                  }
+                  className="input"
+                  disabled={loading}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
+                  Documents (PDF/JPG/PNG)
+                </label>
+                <input
+                  type="file"
+                  accept="application/pdf,image/*"
+                  multiple
+                  onChange={(e) =>
+                    setDocFiles(Array.from(e.target.files ?? []))
+                  }
+                  className="input"
+                  disabled={loading}
+                />
+              </div>
+            </div>
+          </section>
+
+          {/* Quick add from menu */}
+          {wo?.id && (
+            <section className="rounded-2xl border border-[var(--metal-border-soft)] bg-black/55 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)] sm:p-5">
+              <h2 className="mb-3 text-sm font-semibold text-orange-300">
+                Quick add from menu
+              </h2>
+              <MenuQuickAdd workOrderId={wo.id} />
+            </section>
+          )}
+
+          {/* Manual add line */}
+          {wo?.id && (
+            <section className="rounded-2xl border border-[var(--metal-border-soft)] bg-black/55 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)] sm:p-5">
+              <h2 className="mb-3 text-sm font-semibold text-neutral-100">
+                Add Job Line
+              </h2>
+              <NewWorkOrderLineForm
+                workOrderId={wo.id}
+                vehicleId={vehicleId}
+                defaultJobType={type}
+                shopId={wo.shop_id ?? null}
+                onCreated={fetchLines}
+              />
+            </section>
+          )}
+
+          {/* Current Lines */}
+          <section className="rounded-2xl border border-[var(--metal-border-soft)] bg-black/55 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)] sm:p-5">
+            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <h2 className="text-sm font-semibold text-neutral-100">
+                Current Lines
+              </h2>
+              {wo?.id && (
+                <button
+                  type="button"
+                  onClick={() => setAiSuggestOpen(true)}
+                  className="inline-flex items-center rounded-full border border-blue-600 bg-black/70 px-3 py-1.5 text-xs sm:text-sm text-blue-300 hover:bg-blue-900/30"
                 >
-                  <div className="min-w-0">
-                    <div className="truncate font-medium">
-                      {ln.description || ln.complaint || "Untitled job"}
-                    </div>
-                    <div className="text-xs text-neutral-400">
-                      {String(ln.job_type ?? "job").replaceAll("_", " ")} •{" "}
-                      {typeof ln.labor_time === "number"
-                        ? `${ln.labor_time}h`
-                        : "—"}{" "}
-                      • {(ln.status ?? "awaiting").replaceAll("_", " ")}
-                    </div>
-                    {(ln.complaint || ln.cause || ln.correction) && (
-                      <div className="mt-1 text-xs text-neutral-500">
-                        {ln.complaint ? `Cmpl: ${ln.complaint}  ` : ""}
-                        {ln.cause ? `| Cause: ${ln.cause}  ` : ""}
-                        {ln.correction ? `| Corr: ${ln.correction}` : ""}
+                  AI: Suggest Jobs
+                </button>
+              )}
+            </div>
+            {!wo?.id || lines.length === 0 ? (
+              <p className="text-sm text-neutral-400">No lines yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {lines.map((ln) => (
+                  <div
+                    key={ln.id}
+                    className="flex flex-col gap-3 rounded-xl border border-neutral-800 bg-neutral-950/80 p-3 sm:flex-row sm:items-start sm:justify-between"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate font-medium">
+                        {ln.description || ln.complaint || "Untitled job"}
                       </div>
-                    )}
-                  </div>
-                  <div className="flex gap-2">
-                    {ln.job_type === "inspection" && (
+                      <div className="text-xs text-neutral-400">
+                        {String(ln.job_type ?? "job").replaceAll("_", " ")} •{" "}
+                        {typeof ln.labor_time === "number"
+                          ? `${ln.labor_time}h`
+                          : "—"}{" "}
+                        • {(ln.status ?? "awaiting").replaceAll("_", " ")}
+                      </div>
+                      {(ln.complaint || ln.cause || ln.correction) && (
+                        <div className="mt-1 text-xs text-neutral-500">
+                          {ln.complaint ? `Cmpl: ${ln.complaint}  ` : ""}
+                          {ln.cause ? `| Cause: ${ln.cause}  ` : ""}
+                          {ln.correction ? `| Corr: ${ln.correction}` : ""}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      {ln.job_type === "inspection" && (
+                        <button
+                          type="button"
+                          onClick={() => openInspectionForLine(ln)}
+                          className="rounded border border-orange-500 px-2 py-1 text-xs text-orange-200 hover:bg-orange-500/10"
+                        >
+                          Open Inspection
+                        </button>
+                      )}
                       <button
                         type="button"
-                        onClick={() => openInspectionForLine(ln)}
-                        className="rounded border border-orange-500 px-2 py-1 text-xs text-orange-200 hover:bg-orange-500/10"
+                        onClick={() => handleDeleteLine(ln.id)}
+                        className="rounded border border-red-600 px-2 py-1 text-xs text-red-300 hover:bg-red-900/20"
                       >
-                        Open Inspection
+                        Delete
                       </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteLine(ln.id)}
-                      className="rounded border border-red-600 px-2 py-1 text-xs text-red-300 hover:bg-red-900/20"
-                    >
-                      Delete
-                    </button>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
+                ))}
+              </div>
+            )}
+          </section>
 
-        {/* Work Order defaults */}
-        <section className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 sm:p-5">
-          <h2 className="mb-3 text-sm font-semibold text-white">
-            Work Order options
-          </h2>
-          <div className="grid gap-3 md:grid-cols-3">
-            <div>
-              <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
-                Default job type
-              </label>
-              <select
-                value={type}
-                onChange={(e) => setType(e.target.value as WOType)}
-                className="input"
-                disabled={loading}
-              >
-                <option value="maintenance">Maintenance</option>
-                <option value="diagnosis">Diagnosis</option>
-                <option value="inspection">Inspection</option>
-              </select>
+          {/* Work Order defaults */}
+          <section className="rounded-2xl border border-[var(--metal-border-soft)] bg-black/55 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)] sm:p-5">
+            <h2 className="mb-3 text-sm font-semibold text-neutral-100">
+              Work Order options
+            </h2>
+            <div className="grid gap-3 md:grid-cols-3">
+              <div>
+                <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
+                  Default job type
+                </label>
+                <select
+                  value={type}
+                  onChange={(e) => setType(e.target.value as WOType)}
+                  className="input"
+                  disabled={loading}
+                >
+                  <option value="maintenance">Maintenance</option>
+                  <option value="diagnosis">Diagnosis</option>
+                  <option value="inspection">Inspection</option>
+                </select>
+                <p className="mt-1 text-[11px] text-neutral-500">
+                  Sets the default for new lines you add on this work order.
+                </p>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
+                  Priority
+                </label>
+                <select
+                  value={priority}
+                  onChange={(e) => setPriority(Number(e.target.value))}
+                  className="input"
+                  disabled={loading}
+                >
+                  <option value={1}>Urgent</option>
+                  <option value={2}>High</option>
+                  <option value={3}>Normal</option>
+                  <option value={4}>Low</option>
+                </select>
+                <p className="mt-1 text-[11px] text-neutral-500">
+                  Used to highlight urgent jobs in queues and dashboards.
+                </p>
+              </div>
+              <div className="md:col-span-3">
+                <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
+                  Notes
+                </label>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="input"
+                  rows={3}
+                  placeholder="Optional notes for technician"
+                  disabled={loading}
+                />
+              </div>
             </div>
-            <div>
-              <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
-                Priority
-              </label>
-              <select
-                value={priority}
-                onChange={(e) => setPriority(Number(e.target.value))}
-                className="input"
-                disabled={loading}
-              >
-                <option value={1}>Urgent</option>
-                <option value={2}>High</option>
-                <option value={3}>Normal</option>
-                <option value={4}>Low</option>
-              </select>
-            </div>
-            <div className="md:col-span-3">
-              <label className="mb-1 block text-xs uppercase tracking-wide text-neutral-400">
-                Notes
-              </label>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="input"
-                rows={3}
-                placeholder="Optional notes for technician"
-                disabled={loading}
-              />
-            </div>
+          </section>
+
+          {/* Submit */}
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="submit"
+              disabled={loading}
+              className="rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-5 py-2 text-sm font-semibold uppercase tracking-[0.2em] text-black shadow-[0_0_24px_rgba(212,118,49,0.7)] hover:brightness-110 disabled:opacity-60"
+            >
+              {loading ? "Creating..." : "Approve & Sign"}
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push("/work-orders")}
+              className="text-sm text-neutral-400 hover:text-white"
+              disabled={loading}
+            >
+              Cancel
+            </button>
           </div>
-        </section>
+        </form>
 
-        {/* Submit */}
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="submit"
-            disabled={loading}
-            className="rounded bg-orange-500 px-4 py-2 text-sm font-semibold text-black hover:bg-orange-400 disabled:opacity-60"
-          >
-            {loading ? "Creating..." : "Approve & Sign"}
-          </button>
-          <button
-            type="button"
-            onClick={() => router.push("/work-orders")}
-            className="text-sm text-neutral-400 hover:text-white"
-            disabled={loading}
-          >
-            Cancel
-          </button>
-        </div>
-      </form>
+        {/* 👇 inspection modal lives here */}
+        {inspectionOpen && inspectionSrc && (
+          <InspectionModal
+            open={inspectionOpen}
+            src={inspectionSrc}
+            title="Inspection"
+            onClose={() => setInspectionOpen(false)}
+          />
+        )}
 
-      {/* 👇 inspection modal lives here */}
-      {inspectionOpen && inspectionSrc && (
-        <InspectionModal
-          open={inspectionOpen}
-          src={inspectionSrc}
-          title="Inspection"
-          onClose={() => setInspectionOpen(false)}
-        />
-      )}
-
-      {/* 👇 AI Suggest modal lives here */}
-      {wo?.id && (
-        <AiSuggestModal
-          open={aiSuggestOpen}
-          onClose={() => setAiSuggestOpen(false)}
-          workOrderId={wo.id}
-          vehicleId={vehicleId}
-          vehicleLabel={vehicleLabel}
-          onAdded={() => {
-            void fetchLines();
-          }}
-        />
-      )}
+        {/* 👇 AI Suggest modal lives here */}
+        {wo?.id && (
+          <AiSuggestModal
+            open={aiSuggestOpen}
+            onClose={() => setAiSuggestOpen(false)}
+            workOrderId={wo.id}
+            vehicleId={vehicleId}
+            vehicleLabel={vehicleLabel}
+            onAdded={() => {
+              void fetchLines();
+            }}
+          />
+        )}
+      </div>
     </div>
   );
 }
