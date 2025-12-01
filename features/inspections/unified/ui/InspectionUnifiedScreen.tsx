@@ -17,7 +17,6 @@ import { addWorkOrderLineFromSuggestion } from "@inspections/lib/inspection/addW
 
 import SectionRenderer from "./SectionRenderer";
 import InspectionHeader from "./InspectionHeader";
-import InspectionActionBar from "./InspectionActionBar";
 import InspectionSummary from "./InspectionSummary";
 import VoiceInspectionController from "../voice/VoiceInspectionController";
 
@@ -282,25 +281,48 @@ export default function InspectionUnifiedScreen({
   const handleSave = () => {
     // Passing an empty patch still triggers persistence in the parent page
     onUpdateSession({});
+    toast.success("Inspection progress saved.");
   };
 
   const handleFinish = () => {
-    onUpdateSession({
+    const patch: Partial<InspectionSession> = {
       status: "completed",
       completed: true,
       isPaused: false,
-    });
+      isListening: false,
+    };
+
+    onUpdateSession(patch);
+
+    // Notify host (FocusedJobModal / inspection modal) that this inspection is done
+    try {
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("inspection:completed", {
+            detail: {
+              sessionId: session.id,
+              workOrderId: session.workOrderId ?? null,
+              templateId: session.templateId ?? null,
+            },
+          }),
+        );
+      }
+    } catch {
+      // non-fatal; just don’t crash UI
+    }
+
+    toast.success("Inspection marked as completed.");
   };
 
   // --------------------------------------------------------------------------
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Top meta + actions */}
+      {/* Top meta */}
       <div className="flex flex-col gap-3">
         <InspectionHeader session={session} />
 
-        <div className="flex flex-col gap-2 rounded-xl border border-white/10 bg-black/40 p-3 text-xs text-neutral-300">
+        <div className="flex flex-col gap-2 rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/50 px-3 py-2 text-xs text-neutral-300 shadow-[0_18px_40px_rgba(0,0,0,0.85)] backdrop-blur-xl">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">
@@ -322,7 +344,7 @@ export default function InspectionUnifiedScreen({
               <span className="hidden text-neutral-700 md:inline">•</span>
               <button
                 type="button"
-                className="rounded-full border border-white/15 bg-black/60 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-neutral-200 hover:border-orange-400 hover:text-orange-300"
+                className="rounded-full border border-white/15 bg-black/70 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-neutral-200 hover:border-[color:var(--accent-copper,#fb923c)] hover:text-[color:var(--accent-copper-light,#fed7aa)]"
                 onClick={() =>
                   setUnitMode((m) => (m === "metric" ? "imperial" : "metric"))
                 }
@@ -334,18 +356,10 @@ export default function InspectionUnifiedScreen({
               </button>
             </div>
           </div>
-
-          <InspectionActionBar
-            onSave={handleSave}
-            onFinish={handleFinish}
-            // Voice buttons currently mirror session.isListening;
-            // actual start/stop control lives in VoiceInspectionController.
-            isListening={!!session.isListening}
-          />
         </div>
       </div>
 
-      {/* Voice controller (new unified stack) */}
+      {/* Voice controller (Start / stop voice, “Hey Techy”, etc.) */}
       <VoiceInspectionController
         session={session}
         onUpdateSession={onUpdateSession}
@@ -360,28 +374,47 @@ export default function InspectionUnifiedScreen({
       {/* Quick summary card */}
       <InspectionSummary session={session} />
 
-      {/* Footer actions */}
-      <div className="mt-4 flex flex-col gap-3 border-t border-white/10 pt-3 text-xs text-neutral-400 md:flex-row md:items-center md:justify-between">
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            disabled={buildingQuote}
-            onClick={buildQuotesForAll}
-            className="inline-flex items-center gap-1 rounded-full border border-orange-500/70 bg-orange-500/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-orange-200 hover:bg-orange-500/20 disabled:opacity-50"
-          >
-            {buildingQuote
-              ? "Building estimates…"
-              : "Build estimates for FAIL / REC"}
-          </button>
-          {!workOrderId && (
-            <span className="text-[11px] text-red-300">
-              Work order id missing – new jobs & parts requests will not be
-              created.
-            </span>
-          )}
+      {/* Footer actions – Save / Finish + AI add-line logic entry point */}
+      <div className="mt-4 border-t border-[color:var(--metal-border-soft,#1f2937)] pt-3">
+        <div className="flex flex-col gap-3 text-xs text-neutral-400 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={buildingQuote}
+              onClick={buildQuotesForAll}
+              className="inline-flex items-center gap-1 rounded-full border border-[color:var(--accent-copper,#f97316)]/70 bg-[color:var(--accent-copper-dark,#7c2d12)]/30 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper-light,#fed7aa)] hover:bg-[color:var(--accent-copper,#f97316)]/35 disabled:opacity-50"
+            >
+              {buildingQuote
+                ? "Building estimates…"
+                : "Build estimates for FAIL / REC"}
+            </button>
+            {!workOrderId && (
+              <span className="text-[11px] text-red-300">
+                Work order id missing – new jobs & parts requests will not be
+                created.
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 md:justify-end">
+            <button
+              type="button"
+              onClick={handleSave}
+              className="rounded-full border border-white/15 bg-black/60 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-200 hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:text-[color:var(--accent-copper-soft,#fdba74)]"
+            >
+              Save progress
+            </button>
+            <button
+              type="button"
+              onClick={handleFinish}
+              className="rounded-full bg-[color:var(--accent-copper,#f97316)] px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-black hover:bg-[color:var(--accent-copper-light,#fed7aa)]"
+            >
+              Finish inspection
+            </button>
+          </div>
         </div>
 
-        <div className="text-[11px] text-neutral-500 md:text-right">
+        <div className="mt-2 text-[11px] text-neutral-500 md:text-right">
           P = Pass &nbsp;•&nbsp; F = Fail &nbsp;•&nbsp; NA = Not applicable
           &nbsp;•&nbsp; REC = Recommend
         </div>
