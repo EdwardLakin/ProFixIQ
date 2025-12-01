@@ -72,8 +72,10 @@ export default function ModalShell({
             </button>
           </div>
 
-          {/* Body */}
-          <div className="px-4 py-4 sm:px-5 sm:py-5">{children}</div>
+          {/* Body – make inner content scrollable */}
+          <div className="max-h-[calc(100vh-8rem)] overflow-y-auto px-4 py-4 sm:px-5 sm:py-5">
+            {children}
+          </div>
 
           {/* Footer */}
           {!hideFooter && (onSubmit || footerLeft) && (
@@ -84,7 +86,7 @@ export default function ModalShell({
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={onClose}  
+                  onClick={onClose}
                   className="rounded-full border border-[var(--metal-border-soft)] bg-black/60 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.18em] text-neutral-200 hover:bg-white/5"
                 >
                   Cancel

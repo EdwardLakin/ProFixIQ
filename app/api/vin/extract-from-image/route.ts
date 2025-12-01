@@ -20,6 +20,8 @@ export async function POST(req: NextRequest) {
     }
 
     const bytes = Buffer.from(await file.arrayBuffer());
+    const base64 = bytes.toString("base64");
+    const dataUrl = "data:" + file.type + ";base64," + base64;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4.1-mini",
@@ -40,7 +42,7 @@ export async function POST(req: NextRequest) {
             {
               type: "image_url",
               image_url: {
-                url: \`data:\${file.type};base64,\${bytes.toString("base64")}\`,
+                url: dataUrl,
               },
             },
           ],
@@ -50,6 +52,7 @@ export async function POST(req: NextRequest) {
 
     const raw =
       completion.choices[0]?.message?.content?.toString().trim() ?? "";
+
     if (!raw || raw.toUpperCase() === "NONE") {
       return NextResponse.json({ vin: null });
     }
@@ -60,7 +63,7 @@ export async function POST(req: NextRequest) {
     console.error("VIN extract error", err);
     return NextResponse.json(
       { error: "Failed to extract VIN from image" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

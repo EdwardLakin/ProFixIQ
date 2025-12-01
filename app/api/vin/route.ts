@@ -5,7 +5,6 @@ export async function POST(req: NextRequest) {
     const contentType = req.headers.get("content-type") || "";
 
     let vin: string | null = null;
-    let userId: string | null = null;
 
     if (contentType.includes("application/json")) {
       const body = (await req.json().catch(() => ({}))) as {
@@ -13,31 +12,31 @@ export async function POST(req: NextRequest) {
         user_id?: string;
       };
       vin = (body.vin ?? "").toString().trim();
-      userId = body.user_id ? String(body.user_id) : null;
+      // we ignore user_id here for now
     } else {
       const form = await req.formData();
       vin = (form.get("vin") ?? "").toString().trim();
-      const u = form.get("user_id");
-      userId = u ? String(u) : null;
+      // const u = form.get("user_id"); // not used currently
     }
 
     if (!vin || vin.length !== 17) {
       return NextResponse.json(
         { error: "Invalid VIN: must be a 17-character VIN." },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
-    const apiRes = await fetch(
-      \`https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValuesExtended/\${encodeURIComponent(
-        vin,
-      )}?format=json\`,
-    );
+    const url =
+      "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValuesExtended/" +
+      encodeURIComponent(vin) +
+      "?format=json";
+
+    const apiRes = await fetch(url);
 
     if (!apiRes.ok) {
       return NextResponse.json(
-        { error: \`VIN decode failed (\${apiRes.status})\` },
-        { status: 502 },
+        { error: `VIN decode failed (${apiRes.status})` },
+        { status: 502 }
       );
     }
 
@@ -61,7 +60,7 @@ export async function POST(req: NextRequest) {
     console.error("VIN decode error", err);
     return NextResponse.json(
       { error: "Unexpected error decoding VIN." },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
