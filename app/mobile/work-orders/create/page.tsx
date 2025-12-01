@@ -1,4 +1,3 @@
-// app/mobile/work-orders/create/page.tsx
 "use client";
 
 /**
@@ -33,6 +32,22 @@ type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
 type WorkOrderLineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
+
+type DraftCustomerShape = {
+  first_name?: string | null;
+  last_name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+};
+
+type DraftVehicleShape = {
+  vin?: string | null;
+  year?: string | null;
+  make?: string | null;
+  model?: string | null;
+  license_plate?: string | null;
+  plate?: string | null;
+};
 
 /* -------------------------------------------------------------------------- */
 /* Helpers (mirrored from desktop create page)                                */
@@ -150,30 +165,36 @@ export default function MobileCreateWorkOrderPage() {
   /* Hydrate from shared VIN / OCR draft (desktop + mobile shared store)      */
   /* ------------------------------------------------------------------------ */
   useEffect(() => {
-    const hasVeh = Object.values(draft.vehicle || {}).some((v) => v);
-    const hasCust = Object.values(draft.customer || {}).some((v) => v);
+    const draftCustomer = (draft.customer ?? null) as DraftCustomerShape | null;
+    const draftVehicle = (draft.vehicle ?? null) as DraftVehicleShape | null;
 
-    if (hasCust) {
+    const hasCust =
+      draftCustomer != null &&
+      Object.values(draftCustomer).some((v) => v != null && v !== "");
+    const hasVeh =
+      draftVehicle != null &&
+      Object.values(draftVehicle).some((v) => v != null && v !== "");
+
+    if (hasCust && draftCustomer) {
       setCustomer((prev) => ({
         ...prev,
-        first_name: draft.customer.first_name ?? prev.first_name,
-        last_name: draft.customer.last_name ?? prev.last_name,
-        phone: draft.customer.phone ?? prev.phone,
-        email: draft.customer.email ?? prev.email,
+        first_name: draftCustomer.first_name ?? prev.first_name,
+        last_name: draftCustomer.last_name ?? prev.last_name,
+        phone: draftCustomer.phone ?? prev.phone,
+        email: draftCustomer.email ?? prev.email,
       }));
     }
 
-    if (hasVeh) {
+    if (hasVeh && draftVehicle) {
       setVehicle((prev) => ({
         ...prev,
-        vin: draft.vehicle.vin ?? prev.vin,
-        year: draft.vehicle.year ?? prev.year,
-        make: draft.vehicle.make ?? prev.make,
-        model: draft.vehicle.model ?? prev.model,
-        // support both new `license_plate` and legacy `plate` fields
+        vin: draftVehicle.vin ?? prev.vin,
+        year: draftVehicle.year ?? prev.year,
+        make: draftVehicle.make ?? prev.make,
+        model: draftVehicle.model ?? prev.model,
         license_plate:
-          (draft.vehicle as any).license_plate ??
-          (draft.vehicle as any).plate ??
+          draftVehicle.license_plate ??
+          draftVehicle.plate ??
           prev.license_plate,
       }));
     }
@@ -300,18 +321,18 @@ export default function MobileCreateWorkOrderPage() {
         // Seed local state
         setCustomer((prev) => ({
           ...prev,
-          id: placeholderCustomer!.id,
-          first_name: placeholderCustomer!.first_name ?? prev.first_name,
-          last_name: placeholderCustomer!.last_name ?? prev.last_name,
+          id: placeholderCustomer.id,
+          first_name: placeholderCustomer.first_name ?? prev.first_name,
+          last_name: placeholderCustomer.last_name ?? prev.last_name,
         }));
 
         setVehicle((prev) => ({
           ...prev,
-          id: placeholderVehicle!.id,
-          make: placeholderVehicle!.make ?? prev.make,
-          model: placeholderVehicle!.model ?? prev.model,
+          id: placeholderVehicle.id,
+          make: placeholderVehicle.make ?? prev.make,
+          model: placeholderVehicle.model ?? prev.model,
           license_plate:
-            placeholderVehicle!.license_plate ?? prev.license_plate,
+            placeholderVehicle.license_plate ?? prev.license_plate,
         }));
       } catch (e) {
         const msg =

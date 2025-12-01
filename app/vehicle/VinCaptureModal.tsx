@@ -31,7 +31,7 @@ export type VinDecodedDetail = {
   trim: string | null;
   engine?: string | null;
 
-  // 🔽 new optional fields from /api/vin
+  // extra fields from /api/vin
   engineDisplacementL?: string | null;
   engineCylinders?: string | null;
   fuelType?: string | null;
@@ -49,6 +49,17 @@ type Props = {
   /** server route that upserts (defaults to /api/vin) */
   action?: string;
   triggerClassName?: string;
+};
+
+type DecodeVinResponse = Awaited<ReturnType<typeof decodeVin>>;
+
+type DecodeVinResponseExtended = DecodeVinResponse & {
+  engineDisplacementL?: string | null;
+  engineCylinders?: string | null;
+  fuelType?: string | null;
+  transmission?: string | null;
+  driveType?: string | null;
+  bodyClass?: string | null;
 };
 
 function isLikelyVin(s: string) {
@@ -306,7 +317,9 @@ export default function VinCaptureModal({
           return;
         }
 
-        // Still only hydrate the fields the draft currently expects.
+        const extended = resp as DecodeVinResponseExtended;
+
+        // hydrate shared draft
         setVehicleDraft({
           vin,
           year: resp.year ?? null,
@@ -323,15 +336,12 @@ export default function VinCaptureModal({
           model: resp.model ?? null,
           trim: resp.trim ?? null,
           engine: resp.engine ?? null,
-
-          // 🔽 extra decoded values – read via `any` so this stays
-          // compatible even if decodeVin's type hasn’t been expanded yet.
-          engineDisplacementL: (resp as any).engineDisplacementL ?? null,
-          engineCylinders: (resp as any).engineCylinders ?? null,
-          fuelType: (resp as any).fuelType ?? null,
-          transmission: (resp as any).transmission ?? null,
-          driveType: (resp as any).driveType ?? null,
-          bodyClass: (resp as any).bodyClass ?? null,
+          engineDisplacementL: extended.engineDisplacementL ?? null,
+          engineCylinders: extended.engineCylinders ?? null,
+          fuelType: extended.fuelType ?? null,
+          transmission: extended.transmission ?? null,
+          driveType: extended.driveType ?? null,
+          bodyClass: extended.bodyClass ?? null,
         };
 
         onDecodedRef.current?.(detail);
