@@ -45,6 +45,20 @@ type AllocationRow =
 type LineTechRow =
   DB["public"]["Tables"]["work_order_line_technicians"]["Row"];
 
+ type WorkOrderLineWithInspectionMeta = WorkOrderLine & {
+  inspection_template?: string | null;
+  inspectionTemplate?: string | null;
+  template?: string | null;
+  metadata?: {
+    inspection_template?: string | null;
+    template?: string | null;
+  } | null;
+  metadata2?: {
+    inspection_template?: string | null;
+    template?: string | null;
+  } | null;
+};
+
 const looksLikeUuid = (s: string) => s.includes("-") && s.length >= 36;
 
 function splitCustomId(raw: string): { prefix: string; n: number | null } {
@@ -694,7 +708,7 @@ export default function WorkOrderIdClient(): JSX.Element {
     async (ln: WorkOrderLine) => {
       if (!ln?.id) return;
 
-const anyLine = ln as unknown as { [key: string]: any };      
+      const anyLine = ln as WorkOrderLineWithInspectionMeta;
 
       // Pull the template slug strictly from metadata / custom config.
       const templateFromMeta =
