@@ -1,4 +1,21 @@
+// app/api/vin/route.ts
 import { NextRequest, NextResponse } from "next/server";
+
+type VpicRow = {
+  ModelYear?: string;
+  Make?: string;
+  Model?: string;
+  Series?: string;
+  Trim?: string;
+  EngineModel?: string;
+  EngineConfiguration?: string;
+  DisplacementL?: string;
+  [key: string]: unknown;
+};
+
+type VpicResponse = {
+  Results?: VpicRow[];
+};
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,7 +29,7 @@ export async function POST(req: NextRequest) {
         user_id?: string;
       };
       vin = (body.vin ?? "").toString().trim();
-      // we ignore user_id here for now
+      // user_id is accepted but not used here yet
     } else {
       const form = await req.formData();
       vin = (form.get("vin") ?? "").toString().trim();
@@ -22,7 +39,7 @@ export async function POST(req: NextRequest) {
     if (!vin || vin.length !== 17) {
       return NextResponse.json(
         { error: "Invalid VIN: must be a 17-character VIN." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -36,12 +53,12 @@ export async function POST(req: NextRequest) {
     if (!apiRes.ok) {
       return NextResponse.json(
         { error: `VIN decode failed (${apiRes.status})` },
-        { status: 502 }
+        { status: 502 },
       );
     }
 
-    const data = (await apiRes.json()) as any;
-    const row = data?.Results?.[0] ?? {};
+    const data = (await apiRes.json()) as VpicResponse;
+    const row: VpicRow = data.Results?.[0] ?? {};
 
     const result = {
       year: row.ModelYear || null,
@@ -60,7 +77,7 @@ export async function POST(req: NextRequest) {
     console.error("VIN decode error", err);
     return NextResponse.json(
       { error: "Unexpected error decoding VIN." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
