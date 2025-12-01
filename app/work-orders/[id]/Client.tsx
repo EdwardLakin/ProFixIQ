@@ -24,6 +24,8 @@ import { JobCard } from "@/features/work-orders/components/JobCard";
 import { WorkOrderSuggestionsPanel } from "@/features/work-orders/components/WorkOrderSuggestionsPanel";
 import { useWorkOrderActions } from "@/features/work-orders/hooks/useWorkOrderActions";
 
+import { loadInspectionSession } from "@/features/inspections/unified/data/loadSession";
+
 // inspection modal
 const InspectionModal = dynamic(
   () => import("@/features/inspections/components/InspectionModal"),
@@ -704,73 +706,64 @@ export default function WorkOrderIdClient(): JSX.Element {
   );
 
   // 🔍 open inspection – ONLY custom / user-defined templates
-  const openInspectionForLine = useCallback(
-    async (ln: WorkOrderLine) => {
-      if (!ln?.id) return;
+const openInspectionForLine = useCallback(
+  async (ln: WorkOrderLine) => {
+    if (!ln?.id) return;
 
-      const anyLine = ln as WorkOrderLineWithInspectionMeta;
+    const anyLine = ln as WorkOrderLineWithInspectionMeta;
 
-      // Pull the template slug strictly from metadata / custom config.
-      const templateFromMeta =
-        anyLine?.inspection_template ??
-        anyLine?.inspectionTemplate ??
-        anyLine?.template ??
-        anyLine?.metadata?.inspection_template ??
-        anyLine?.metadata?.template ??
-        null;
+    // Pull the template slug strictly from metadata / custom config.
+    const templateFromMeta =
+      anyLine?.inspection_template ??
+      anyLine?.inspectionTemplate ??
+      anyLine?.template ??
+      anyLine?.metadata?.inspection_template ??
+      anyLine?.metadata?.template ??
+      null;
 
-      const templateSlug = templateFromMeta as string | null;
+    const templateSlug = templateFromMeta as string | null;
 
-      if (!templateSlug) {
-        toast.error(
-          "This job line doesn't have an inspection template attached yet. Build or attach a custom inspection first.",
-        );
-        return;
+    if (!templateSlug) {
+      toast.error(
+        "This job line doesn't have an inspection template attached yet. Build or attach a custom inspection first.",
+      );
+      return;
+    }
+
+    try {
+      // 1) see if there is already a unified session for this line
+      const existingSession = await loadInspectionSession(ln.id);
+
+      // 2) build querystring for unified runner
+      const sp = new URLSearchParams();
+
+      if (wo?.id) sp.set("workOrderId", wo.id);
+      sp.set("workOrderLineId", ln.id);
+      sp.set("template", templateSlug);
+      sp.set("embed", "1");
+
+      if (ln.description) sp.set("seed", String(ln.description));
+
+      // if the API found an existing unified session, pass it through
+      if (existingSession?.id) {
+        sp.set("sessionId", existingSession.id);
       }
 
-      try {
-        const res = await fetch("/api/inspections/session/create", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            workOrderId: wo?.id ?? null,
-            workOrderLineId: ln.id,
-            vehicleId: vehicle?.id ?? null,
-            customerId: customer?.id ?? null,
-            template: templateSlug,
-          }),
-        });
+      const url = `/inspections/unified/run?${sp.toString()}`;
 
-        const j = (await res.json().catch(() => null)) as
-          | { sessionId?: string; error?: string }
-          | null;
+      setInspectionSrc(url);
+      setInspectionOpen(true);
+      toast.success(
+        existingSession ? "Inspection reopened" : "Inspection started",
+      );
+    } catch (e) {
+      const err = e as { message?: string };
+      toast.error(err?.message ?? "Unable to open inspection");
+    }
+  },
+  [wo?.id], // plus setInspectionSrc / setInspectionOpen if ESLint complains
+);
 
-        if (!res.ok || !j?.sessionId) {
-          throw new Error(j?.error || "Failed to create inspection session");
-        }
-
-        const sp = new URLSearchParams();
-        if (wo?.id) sp.set("workOrderId", wo.id);
-        sp.set("workOrderLineId", ln.id);
-        sp.set("inspectionId", j.sessionId);
-        sp.set("template", templateSlug);
-        sp.set("embed", "1");
-        if (ln.description) sp.set("seed", String(ln.description));
-
-        const url = `/inspection/${encodeURIComponent(
-          templateSlug,
-        )}?${sp.toString()}`;
-
-        setInspectionSrc(url);
-        setInspectionOpen(true);
-        toast.success("Inspection opened");
-      } catch (e) {
-        const err = e as { message?: string };
-        toast.error(err?.message ?? "Unable to open inspection");
-      }
-    },
-    [wo?.id, vehicle?.id, customer?.id],
-  );
 
   // parts drawer close / bulk
   useEffect(() => {
