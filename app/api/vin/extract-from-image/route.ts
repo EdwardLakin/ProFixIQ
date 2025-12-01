@@ -1,4 +1,3 @@
-// app/api/vin/extract-from-image/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 
@@ -41,7 +40,7 @@ export async function POST(req: NextRequest) {
             {
               type: "image_url",
               image_url: {
-                url: `data:${file.type};base64,${bytes.toString("base64")}`,
+                url: \`data:\${file.type};base64,\${bytes.toString("base64")}\`,
               },
             },
           ],
