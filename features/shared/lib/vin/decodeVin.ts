@@ -4,10 +4,21 @@ export type DecodedVin = {
   model?: string | null;
   trim?: string | null;
   engine?: string | null;
+
+  engineDisplacementL?: string | null;
+  engineCylinders?: string | null;
+  fuelType?: string | null;
+  transmission?: string | null;
+  driveType?: string | null;
+  bodyClass?: string | null;
+
   error?: string;
 };
 
-export async function decodeVin(vin: string, userId: string): Promise<DecodedVin> {
+export async function decodeVin(
+  vin: string,
+  userId: string,
+): Promise<DecodedVin> {
   const res = await fetch("/api/vin", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -15,8 +26,12 @@ export async function decodeVin(vin: string, userId: string): Promise<DecodedVin
   });
 
   if (!res.ok) {
-    try { return await res.json(); } catch { /* noop */ }
-    return { error: `VIN decode failed (${res.status})` };
+    try {
+      return (await res.json()) as DecodedVin;
+    } catch {
+      return { error: `VIN decode failed (${res.status})` };
+    }
   }
-  return res.json();
+
+  return (await res.json()) as DecodedVin;
 }

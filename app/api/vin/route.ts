@@ -10,6 +10,11 @@ type VpicRow = {
   EngineModel?: string;
   EngineConfiguration?: string;
   DisplacementL?: string;
+  EngineCylinders?: string;
+  FuelTypePrimary?: string;
+  TransmissionStyle?: string;
+  DriveType?: string;
+  BodyClass?: string;
   [key: string]: unknown;
 };
 
@@ -70,6 +75,14 @@ export async function POST(req: NextRequest) {
         row.EngineConfiguration ||
         row.DisplacementL ||
         null,
+
+      // 🔽 extra structured fields you can use in the UI / DB
+      engineDisplacementL: row.DisplacementL || null,
+      engineCylinders: row.EngineCylinders || null,
+      fuelType: row.FuelTypePrimary || null,
+      transmission: row.TransmissionStyle || null,
+      driveType: row.DriveType || null,
+      bodyClass: row.BodyClass || null,
     };
 
     return NextResponse.json(result);

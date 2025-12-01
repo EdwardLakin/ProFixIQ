@@ -147,6 +147,43 @@ export default function MobileCreateWorkOrderPage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   /* ------------------------------------------------------------------------ */
+  /* Hydrate from shared VIN / OCR draft (desktop + mobile shared store)      */
+  /* ------------------------------------------------------------------------ */
+  useEffect(() => {
+    const hasVeh = Object.values(draft.vehicle || {}).some((v) => v);
+    const hasCust = Object.values(draft.customer || {}).some((v) => v);
+
+    if (hasCust) {
+      setCustomer((prev) => ({
+        ...prev,
+        first_name: draft.customer.first_name ?? prev.first_name,
+        last_name: draft.customer.last_name ?? prev.last_name,
+        phone: draft.customer.phone ?? prev.phone,
+        email: draft.customer.email ?? prev.email,
+      }));
+    }
+
+    if (hasVeh) {
+      setVehicle((prev) => ({
+        ...prev,
+        vin: draft.vehicle.vin ?? prev.vin,
+        year: draft.vehicle.year ?? prev.year,
+        make: draft.vehicle.make ?? prev.make,
+        model: draft.vehicle.model ?? prev.model,
+        // support both new `license_plate` and legacy `plate` fields
+        license_plate:
+          (draft.vehicle as any).license_plate ??
+          (draft.vehicle as any).plate ??
+          prev.license_plate,
+      }));
+    }
+
+    if (hasVeh || hasCust) {
+      draft.reset();
+    }
+  }, [draft]);
+
+  /* ------------------------------------------------------------------------ */
   /* Resolve current user id (for VIN modal)                                  */
   /* ------------------------------------------------------------------------ */
   useEffect(() => {
@@ -273,7 +310,8 @@ export default function MobileCreateWorkOrderPage() {
           id: placeholderVehicle!.id,
           make: placeholderVehicle!.make ?? prev.make,
           model: placeholderVehicle!.model ?? prev.model,
-          license_plate: placeholderVehicle!.license_plate ?? prev.license_plate,
+          license_plate:
+            placeholderVehicle!.license_plate ?? prev.license_plate,
         }));
       } catch (e) {
         const msg =

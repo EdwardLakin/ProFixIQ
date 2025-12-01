@@ -166,12 +166,15 @@ export default function CreateWorkOrderPage() {
     if (hasDraftVeh) {
       setVehicle((prev) => ({
         ...prev,
-        ...Object.fromEntries(
-          Object.entries(d.vehicle).map(([k, v]) => [
-            k as keyof SessionVehicle,
-            (prev as any)[k] ?? v ?? null,
-          ]),
-        ),
+        vin: d.vehicle.vin ?? prev.vin,
+        year: d.vehicle.year ?? prev.year,
+        make: d.vehicle.make ?? prev.make,
+        model: d.vehicle.model ?? prev.model,
+        license_plate:
+            // support both new `license_plate` and legacy `plate` fields
+        (draft.vehicle as any).license_plate ??
+        (draft.vehicle as any).plate ??
+        prev.license_plate,
       }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1052,26 +1055,57 @@ export default function CreateWorkOrderPage() {
                 userId={currentUserId ?? "anon"}
                 action="/api/vin"
                 onDecoded={(d) => {
+                  // 1) push into transient VIN draft store
                   draft.setVehicle({
                     vin: d.vin,
                     year: d.year ?? null,
                     make: d.make ?? null,
                     model: d.model ?? null,
-                  });
-                  setVehicle((prev) => ({
-                    ...prev,
-                    vin: d.vin || prev.vin,
-                    year: d.year ?? prev.year,
-                    make: d.make ?? prev.make,
-                    model: d.model ?? prev.model,
-                  }));
+                    engine: d.engine ?? null,
+                    fuel_type: d.fuelType ?? null,
+                    drivetrain: d.driveType ?? null,
+                    transmission: d.transmission ?? null,
+                  } as any);
+
+                  // 2) hydrate the visible form state
+                  setVehicle((prev) =>
+                    ({
+                      ...prev,
+                      vin: d.vin || prev.vin,
+                      year: d.year ?? prev.year,
+                      make: d.make ?? prev.make,
+                      model: d.model ?? prev.model,
+                      engine:
+                        d.engine ??
+                        (prev as any).engine ??
+                        null,
+                      fuel_type:
+                        d.fuelType ??
+                        (prev as any).fuel_type ??
+                        null,
+                      drivetrain:
+                        d.driveType ??
+                        (prev as any).drivetrain ??
+                        null,
+                      transmission:
+                        d.transmission ??
+                        (prev as any).transmission ??
+                        null,
+                    } as any),
+                  );
+
+                  // 3) persist into CV draft
                   cvDraft.bulkSet({
                     vehicle: {
                       vin: d.vin ?? null,
                       year: d.year ?? null,
                       make: d.make ?? null,
                       model: d.model ?? null,
-                    },
+                      engine: d.engine ?? null,
+                      fuel_type: d.fuelType ?? null,
+                      drivetrain: d.driveType ?? null,
+                      transmission: d.transmission ?? null,
+                    } as any,
                   });
                 }}
               >

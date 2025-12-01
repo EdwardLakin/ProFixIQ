@@ -30,6 +30,14 @@ export type VinDecodedDetail = {
   model: string | null;
   trim: string | null;
   engine?: string | null;
+
+  // 🔽 new optional fields from /api/vin
+  engineDisplacementL?: string | null;
+  engineCylinders?: string | null;
+  fuelType?: string | null;
+  transmission?: string | null;
+  driveType?: string | null;
+  bodyClass?: string | null;
 };
 
 type Props = {
@@ -298,6 +306,7 @@ export default function VinCaptureModal({
           return;
         }
 
+        // Still only hydrate the fields the draft currently expects.
         setVehicleDraft({
           vin,
           year: resp.year ?? null,
@@ -314,6 +323,15 @@ export default function VinCaptureModal({
           model: resp.model ?? null,
           trim: resp.trim ?? null,
           engine: resp.engine ?? null,
+
+          // 🔽 extra decoded values – read via `any` so this stays
+          // compatible even if decodeVin's type hasn’t been expanded yet.
+          engineDisplacementL: (resp as any).engineDisplacementL ?? null,
+          engineCylinders: (resp as any).engineCylinders ?? null,
+          fuelType: (resp as any).fuelType ?? null,
+          transmission: (resp as any).transmission ?? null,
+          driveType: (resp as any).driveType ?? null,
+          bodyClass: (resp as any).bodyClass ?? null,
         };
 
         onDecodedRef.current?.(detail);
