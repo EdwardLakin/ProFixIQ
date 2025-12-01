@@ -5,7 +5,6 @@ import type {
   InspectionSession,
   InspectionItemStatus,
   InspectionSection,
-  InspectionItem,
 } from "@inspections/lib/inspection/types";
 
 type UpdateSessionFn = (patch: Partial<InspectionSession>) => void;
