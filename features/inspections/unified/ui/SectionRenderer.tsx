@@ -9,7 +9,7 @@ import type {
 
 import CornerGrid from "@inspections/unified/ui/CornerGrid";
 import AxleGrid from "@inspections/unified/ui/AxleGrid";
-import SectionDisplay from "@inspections/unified/SectionDisplay";
+import SectionDisplay from "@inspections/unified/ui/SectionDisplay";
 
 type Props = {
   sections: InspectionSection[];

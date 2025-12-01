@@ -1,0 +1,1728 @@
+===== FILE: ./features/inspections/lib/inspection/aiQuote.ts =====
+// features/inspections/lib/inspection/aiQuote.ts
+export type AISuggestion = {
+  parts: { name: string; qty?: number; cost?: number; notes?: string }[];
+  laborHours: number;
+  laborRate?: number;
+  summary: string;
+  confidence?: "low" | "medium" | "high";
+  price?: number;
+  notes?: string;
+  title?: string;
+};
+
+export async function requestQuoteSuggestion(args: {
+  item: string;
+  notes?: string;
+  section: string;
+  status: string;
+  value?: string;
+  unit?: string;
+  vehicle?: Record<string, any>;
+}): Promise<AISuggestion | null> {
+  try {
+    const res = await fetch("/api/ai/quote-suggest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(args),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return (data?.suggestion ?? null) as AISuggestion | null;
+  } catch (e) {
+    console.error("requestQuoteSuggestion error:", e);
+    return null;
+  }
+}
+===== FILE: ./features/inspections/lib/inspection/addWorkOrderLine.ts =====
+export type AISuggestion = {
+  parts: { name: string; qty?: number; cost?: number; notes?: string }[];
+  laborHours: number;
+  laborRate?: number;
+  summary: string;
+  confidence?: "low" | "medium" | "high";
+  price?: number;
+  notes?: string;
+  title?: string;
+};
+
+type JobType = "diagnosis" | "inspection" | "maintenance" | "repair" | "tech-suggested";
+
+export async function addWorkOrderLineFromSuggestion(args: {
+  workOrderId: string;
+  description: string;
+  section?: string;
+  status?: "recommend" | "fail";
+  suggestion: AISuggestion;
+  source?: "inspection";
+  /** mark AI-added items clearly for UI rules like “not punchable until approved” */
+  jobType?: JobType; // default will be set server-side if omitted
+}) {
+  const res = await fetch("/api/work-orders/add-line", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(args),
+  });
+
+  if (!res.ok) {
+    const j = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(j?.error || "Failed to add work order line");
+  }
+
+  return (await res.json()) as { id: string };
+}
+===== FILE: ./features/inspections/lib/inspection/types.ts =====
+/** ---------- Item / Section ---------- */
+export type InspectionItemStatus = "ok" | "fail" | "na" | "recommend";
+export type BrakeType = "air" | "hydraulic";
+
+/** Duty class for inspections (light/medium/heavy) */
+export type DutyClass = "light" | "medium" | "heavy";
+
+export interface InspectionItem {
+  /** Primary label. Some code uses `item`, some uses `name` — support both. */
+  item?: string;
+  name?: string;
+
+  status?: InspectionItemStatus;
+  notes?: string;
+  /** Some AI/normalizers use singular `note`. */
+  note?: string;
+
+  value?: string | number | null;
+  unit?: string | null;
+
+  photoUrls?: string[];
+  recommend?: string[];
+}
+
+export interface InspectionCategory {
+  title: string;
+  items: InspectionItem[];
+}
+
+/** Many places import `InspectionSection`; keep it as an alias. */
+export type InspectionSection = InspectionCategory;
+
+/** Template definition used by unified inspection builder / loader */
+export interface InspectionTemplate {
+  id: string;
+  templateName: string;
+
+  description?: string | null;
+  tags?: string[] | null;
+  vehicleType?: string | null;
+
+  /** Whether this template is shared/public in the shop/library */
+  isPublic?: boolean | null;
+
+  /** Optional default labor hours for the template */
+  laborHours?: number | null;
+
+  /** Rendered sections (mirrors inspection_templates.sections JSON) */
+  sections: InspectionSection[];
+
+  /** Optional audit fields (mapped from DB created_at/updated_at) */
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+/** ---------- Parsed voice/AI commands (support both shapes) ---------- */
+/** Older, name-based command shape used by dispatchCommand/interpreter */
+export type ParsedCommandNameBased =
+  | { type: "status"; section: string; item: string; status: InspectionItemStatus }
+  | { type: "add"; section: string; item: string; note: string }
+  | { type: "recommend"; section: string; item: string; note: string }
+  | {
+      type: "measurement";
+      section: string;
+      item: string;
+      value: number | string;
+      unit?: string;
+    };
+
+/** Newer, index-based command shape used by convertParsedCommands.ts */
+export type ParsedCommandIndexed = {
+  command:
+    | "update_status"
+    | "update_value"
+    | "add_note"
+    | "recommend"
+    | "complete_item"
+    | "skip_item"
+    | "pause_inspection"
+    | "finish_inspection";
+  sectionIndex?: number;
+  itemIndex?: number;
+  status?: InspectionItemStatus;
+  value?: string | number;
+  unit?: string;
+  notes?: string;
+  recommend?: string;
+};
+
+/** Unified ParsedCommand covering both shapes */
+export type ParsedCommand = ParsedCommandNameBased | ParsedCommandIndexed;
+
+/**
+ * Commands consumed by dispatchCommand (older name-based shape),
+ * plus a simple "pause" variant used in a few places.
+ */
+export type InspectionCommand =
+  | ParsedCommandNameBased
+  | { type: "pause"; section?: string; item?: string };
+
+/** ---------- Runtime command objects (AI → actions) ---------- */
+export type Command =
+  | {
+      type: "update_status";
+      sectionIndex: number;
+      itemIndex: number;
+      status: InspectionItemStatus;
+    }
+  | {
+      type: "update_value";
+      sectionIndex: number;
+      itemIndex: number;
+      value: string | number;
+      unit?: string;
+    }
+  | {
+      type: "add_note";
+      sectionIndex: number;
+      itemIndex: number;
+      notes: string;
+    }
+  | {
+      type: "recommend";
+      sectionIndex: number;
+      itemIndex: number;
+      recommendation: string;
+    }
+  | {
+      type: "complete";
+      sectionIndex: number;
+      itemIndex: number;
+    }
+  | {
+      type: "skip";
+      sectionIndex: number;
+      itemIndex: number;
+    }
+  | { type: "pause" }
+  | { type: "finish" };
+
+/** ---------- Quote shapes ---------- */
+/** Rich source descriptor for where a line came from. */
+export type QuoteSource = "inspection" | "manual" | string;
+
+/**
+ * Lightweight line produced by AI generators / costing flows.
+ * Extended to include fields your costing + menu matching code writes.
+ */
+export interface QuoteLine {
+  /** Core */
+  description: string;
+
+  /** IDs / provenance */
+  id?: string;
+  source?: QuoteSource;
+
+  /** Names used across flows */
+  item?: string;             // selected service/menu name
+  name?: string;             // occasional alias
+  inspectionItem?: string;   // originating inspection item text
+
+  /** Status / notes */
+  status?: InspectionItemStatus;
+  notes?: string;
+
+  /** Time & rates */
+  hours?: number;
+  rate?: number;
+  total?: number;
+  laborHours?: number | null;
+  laborTime?: number;        // alias used on some screens
+  laborRate?: number;
+
+  /** Parts */
+  parts?: Array<{ name?: string; number?: string; price?: number; type?: string }>;
+  partNumber?: string | null;
+  partName?: string;
+  unitPrice?: number | null;
+
+  /** Roll-up / pricing */
+  qty?: number;
+  price?: number;            // some code writes final line price here
+  totalCost?: number;
+}
+
+/** Detailed line used by PDF/store. */
+export interface QuoteLineItem {
+  id: string;
+
+  /** Some places map description into both `item` and `name`. */
+  item?: string;
+  name?: string;
+  description: string;
+
+  status: InspectionItemStatus;
+  notes?: string;
+
+  /** Unified commercial fields */
+  price: number; // line price/total
+  laborHours?: number;
+  /** Additional variants used in some flows */
+  laborTime?: number; // alias used on some pages
+  laborRate?: number;
+
+  /** Item-level measurement value (rare) */
+  value?: string | number | null;
+
+  /** Parts can be object or split fields */
+  part?: { name: string; price: number };
+  partName?: string;
+  partPrice?: number | null;
+
+  /** Old-style fields occasionally present */
+  qty?: number;
+  unitPrice?: number | null;
+
+  /** Misc UI helpers */
+  photoUrls?: string[];
+  editable?: boolean;
+  source?: QuoteSource;
+
+  /** Collections used by some UIs */
+  parts?: Array<{ name?: string; number?: string; price?: number }>;
+  totalCost?: number;
+
+  /** Optional back-reference to the inspection item */
+  inspectionItem?: string;
+
+  /** Optional AI suggestion metadata */
+  ai?: {
+    summary: string;
+    confidence?: string;
+    parts?: { name: string; qty?: number; cost?: number; notes?: string }[];
+  };
+
+  /** UI-only: track AI enrichment progress for this line */
+  aiState?: "idle" | "loading" | "done" | "error";
+}
+
+/** ---------- Inspection Summary ---------- */
+export interface SummaryItem {
+  section: string;
+  item: string;
+  status: InspectionItemStatus;
+  note?: string;
+  value?: string | number | null;
+  unit?: string | null;
+  photoUrls?: string[];
+  recommend?: string[];
+}
+
+export interface InspectionSummary {
+  templateName?: string | null;
+  date: string;
+  items: SummaryItem[];
+  summaryText: string;
+}
+
+/** ---------- Session (customer/vehicle) ---------- */
+export interface SessionCustomer {
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  city: string | null;
+  province: string | null;
+  postal_code: string | null;
+}
+
+export interface SessionVehicle {
+  year: string | null;
+  make: string | null;
+  model: string | null;
+  vin: string | null;
+  license_plate: string | null;
+  mileage: string | null;
+  color: string | null;
+  /** Added for your form */
+  unit_number?: string | null;
+  engine_hours?: string | null;
+}
+
+/** ---------- Session status ---------- */
+export type InspectionStatus = "not_started" | "in_progress" | "paused" | "completed";
+
+/** ---------- Full session ---------- */
+export interface InspectionSession {
+  id?: string;
+
+  /** Links to other records */
+  customerId?: string | null;
+  vehicleId?: string | null;
+  workOrderId?: string | null;
+
+  /** Template meta */
+  templateId?: string | null;
+  templateName?: string | null;
+  /** Legacy alias still used by some pages */
+  templateitem?: string | null;
+
+  /** Selected brake system for rendering/units */
+  brakeType?: BrakeType;
+
+  /** Optional duty class for this inspection (light/medium/heavy) */
+  dutyClass?: DutyClass | null;
+
+  location?: string | null;
+
+  /** Progress */
+  currentSectionIndex: number;
+  currentItemIndex: number;
+
+  /** Voice */
+  transcript?: string;
+  isListening: boolean;
+
+  /** Lifecycle */
+  status: InspectionStatus;
+  started: boolean;
+  completed: boolean;
+  isPaused: boolean;
+
+  /** Audit */
+  lastUpdated?: string;
+
+  /** Entities */
+  customer?: SessionCustomer | null;
+  vehicle?: SessionVehicle | null;
+
+  /** Content */
+  sections: InspectionSection[];
+
+  /** Quotes can be DB-sourced or UI-generated — accept both */
+  quote?: Array<QuoteLine | QuoteLineItem>;
+
+  /**
+   * Optional runtime-only metadata.
+   * Unified flows can stash arbitrary info here (e.g. source, duty class, debug flags).
+   */
+  meta?: {
+    dutyClass?: DutyClass | null;
+    source?: string;
+    [key: string]: unknown;
+  };
+}
+===== FILE: ./features/inspections/lib/inspection/SectionDisplay.tsx =====
+"use client";
+
+import { useState, useMemo } from "react";
+import {
+  InspectionSection,
+  InspectionItemStatus,
+} from "@inspections/lib/inspection/types";
+import InspectionItemCard from "./InspectionItemCard";
+import { Button } from "@shared/components/ui/Button";
+
+interface SectionDisplayProps {
+  title: string;
+  section: InspectionSection;
+  sectionIndex: number;
+  showNotes: boolean;
+  showPhotos: boolean;
+  onUpdateStatus: (
+    sectionIndex: number,
+    itemIndex: number,
+    status: InspectionItemStatus,
+  ) => void;
+  onUpdateNote: (
+    sectionIndex: number,
+    itemIndex: number,
+    note: string,
+  ) => void;
+  onUpload: (
+    photoUrl: string,
+    sectionIndex: number,
+    itemIndex: number,
+  ) => void;
+
+  /** require a note and show a Submit button for AI */
+  requireNoteForAI?: boolean;
+  /** handler to run AI + persist, invoked per item */
+  onSubmitAI?: (sectionIndex: number, itemIndex: number) => void;
+  /** let parent indicate a submit is in-flight for this item */
+  isSubmittingAI?: (sectionIndex: number, itemIndex: number) => boolean;
+}
+
+export default function SectionDisplay(props: SectionDisplayProps) {
+  const {
+    title,
+    section,
+    sectionIndex,
+    showNotes = false,
+    showPhotos = true,
+    onUpdateStatus,
+    onUpdateNote,
+    onUpload,
+    requireNoteForAI,
+    onSubmitAI,
+    isSubmittingAI,
+  } = props;
+
+  const [open, setOpen] = useState(true);
+
+  const stats = useMemo(() => {
+    const total = section.items.length || 0;
+    const counts = { ok: 0, fail: 0, na: 0, recommend: 0, unset: 0 };
+    for (const it of section.items) {
+      const s = (it.status ?? "unset") as keyof typeof counts;
+      if (counts[s] !== undefined) counts[s] += 1;
+      else counts.unset += 1;
+    }
+    return { total, ...counts };
+  }, [section.items]);
+
+  const markAll = (status: InspectionItemStatus) => {
+    section.items.forEach((_item, idx) =>
+      onUpdateStatus(sectionIndex, idx, status),
+    );
+  };
+
+  return (
+    <div className="mb-6 rounded-2xl border border-white/8 bg-black/30 px-4 py-3 shadow-card backdrop-blur-md md:px-5 md:py-4">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 pb-3">
+        {/* Title still toggles open/closed */}
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="text-left text-lg font-semibold tracking-wide text-orange-400"
+          style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+          aria-expanded={open}
+        >
+          {title}
+        </button>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className="hidden text-[11px] uppercase tracking-wide text-neutral-400 md:inline"
+            style={{ fontFamily: "Roboto, system-ui, sans-serif" }}
+          >
+            {stats.ok} OK · {stats.fail} FAIL · {stats.na} NA ·{" "}
+            {stats.recommend} REC · {stats.unset} —
+          </span>
+
+          <div className="flex flex-wrap items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-[11px]"
+              onClick={() => markAll("ok")}
+              title="Mark all OK"
+              type="button"
+            >
+              All OK
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-[11px]"
+              onClick={() => markAll("fail")}
+              title="Mark all FAIL"
+              type="button"
+            >
+              All FAIL
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-[11px]"
+              onClick={() => markAll("na")}
+              title="Mark all NA"
+              type="button"
+            >
+              All NA
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-[11px]"
+              onClick={() => markAll("recommend")}
+              title="Mark all Recommend"
+              type="button"
+            >
+              All REC
+            </Button>
+
+            {/* explicit collapse/expand control */}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-1 h-7 px-2 text-[11px]"
+              onClick={() => setOpen((v) => !v)}
+              aria-expanded={open}
+              title={open ? "Collapse section" : "Expand section"}
+              type="button"
+            >
+              {open ? "Collapse" : "Expand"}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Body */}
+      {open && (
+        <div className="space-y-3 pt-3">
+          {section.items.map((item, itemIndex) => {
+            const key =
+              (item.item ?? item.name ?? `item-${sectionIndex}-${itemIndex}`) +
+              `-${itemIndex}`;
+
+            const status = String(item.status ?? "").toLowerCase();
+            const isFailOrRec = status === "fail" || status === "recommend";
+            const note = (item.notes ?? "").trim();
+            const canShowSubmit =
+              !!requireNoteForAI &&
+              isFailOrRec &&
+              note.length > 0 &&
+              typeof onSubmitAI === "function";
+
+            const submitting =
+              isSubmittingAI?.(sectionIndex, itemIndex) ?? false;
+
+            return (
+              <div
+                key={key}
+                className="rounded-xl border border-white/5 bg-black/40 p-3 md:p-3.5"
+              >
+                <InspectionItemCard
+                  item={item}
+                  sectionIndex={sectionIndex}
+                  itemIndex={itemIndex}
+                  showNotes={showNotes}
+                  showPhotos={showPhotos}
+                  onUpdateStatus={onUpdateStatus}
+                  onUpdateNote={onUpdateNote}
+                  onUpload={onUpload}
+                />
+
+                {canShowSubmit && (
+                  <div className="mt-3 flex items-center justify-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="px-3"
+                      disabled={submitting}
+                      onClick={() => onSubmitAI!(sectionIndex, itemIndex)}
+                    >
+                      {submitting ? "Submitting…" : "Submit for estimate"}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+===== FILE: ./features/inspections/lib/inspection/handleTranscript.ts =====
+// features/inspections/lib/inspection/handleTranscript.ts
+
+import {
+  ParsedCommand,
+  ParsedCommandNameBased,
+  ParsedCommandIndexed,
+  InspectionSession,
+  InspectionItemStatus,
+} from "@inspections/lib/inspection/types";
+
+type UpdateInspectionFn = (updates: Partial<InspectionSession>) => void;
+type UpdateItemFn = (
+  sectionIndex: number,
+  itemIndex: number,
+  updates: Partial<InspectionSession["sections"][number]["items"][number]>,
+) => void;
+type UpdateSectionFn = (
+  sectionIndex: number,
+  updates: Partial<InspectionSession["sections"][number]>,
+) => void;
+
+interface HandleTranscriptArgs {
+  command: ParsedCommand;
+  session: InspectionSession;
+  updateInspection: UpdateInspectionFn;
+  updateItem: UpdateItemFn;
+  updateSection: UpdateSectionFn;
+  finishSession: () => void;
+}
+
+export async function handleTranscriptFn({
+  command,
+  session,
+  updateItem,
+}: HandleTranscriptArgs): Promise<void> {
+  // Normalized fields
+  let section: string | undefined;
+  let item: string | undefined;
+  let status: InspectionItemStatus | undefined;
+  let note: string | undefined;
+  let value: string | number | undefined;
+  let unit: string | undefined;
+  let mode: string; // which type of command
+
+  if ("command" in command) {
+    // Indexed shape
+    const c = command as ParsedCommandIndexed;
+    mode = c.command;
+    status = c.status;
+    note = c.notes;
+    value = c.value;
+    unit = c.unit;
+  } else {
+    // Name-based shape
+    const c = command as ParsedCommandNameBased;
+    mode = c.type;
+    section = c.section;
+    item = c.item;
+    if ("status" in c) status = c.status;
+    if ("note" in c) note = c.note;
+    if ("value" in c) value = c.value;
+    if ("unit" in c) unit = c.unit;
+  }
+
+  // Locate section & item by name (fallback)
+  const sectionIndex = session.sections.findIndex((sec) =>
+    section ? sec.title.toLowerCase().includes(section.toLowerCase()) : false,
+  );
+  const itemIndex =
+    sectionIndex >= 0
+      ? session.sections[sectionIndex].items.findIndex((it) =>
+          item ? (it.name ?? it.item ?? "").toLowerCase().includes(item.toLowerCase()) : false,
+        )
+      : -1;
+
+  if (sectionIndex === -1 || itemIndex === -1) {
+    console.warn("Could not match section/item from transcript:", { section, item });
+    return;
+  }
+
+  const itemUpdates: Partial<
+    InspectionSession["sections"][number]["items"][number]
+  > = {};
+
+  switch (mode) {
+    case "update_status":
+    case "status":
+      if (status) itemUpdates.status = status;
+      break;
+
+    case "update_value":
+    case "measurement":
+      if (value) itemUpdates.value = value;
+      if (unit) itemUpdates.unit = unit;
+      break;
+
+    case "add_note":
+    case "add":
+      if (note) itemUpdates.notes = note;
+      break;
+
+    case "recommend":
+      if (note) itemUpdates.recommend = [note];
+      break;
+
+    case "complete_item":
+    case "skip_item":
+      // no-op for now
+      break;
+
+    default:
+      break;
+  }
+
+  if (Object.keys(itemUpdates).length > 0) {
+    updateItem(sectionIndex, itemIndex, itemUpdates);
+  }
+}
+===== FILE: ./features/inspections/lib/inspection/handleTranscript.js =====
+[NO JS VERSION]
+
+===== FILE: ./features/inspections/components/inspection/interpretCommand.ts =====
+// src/lib/inspection/interpretCommand.ts
+
+import { ParsedCommand } from "@inspections/lib/inspection/types";
+
+export const interpretCommand = async (
+  transcript: string,
+): Promise<ParsedCommand[]> => {
+  try {
+    const response = await fetch("/api/ai/interpret", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ transcript }),
+    });
+
+    if (!response.ok) {
+      console.error("Interpretation request failed");
+      return [];
+    }
+
+    const data = await response.json();
+
+    if (!Array.isArray(data)) {
+      console.warn("Unexpected AI response format:", data);
+      return [];
+    }
+
+    return data as ParsedCommand[];
+  } catch (error) {
+    console.error("Interpretation error:", error);
+    return [];
+  }
+};
+
+===== FILE: ./features/inspections/components/inspection/interpretCommand.js =====
+[NO JS VERSION]
+
+===== FILE: ./features/inspections/hooks/useInspectionSession.ts =====
+"use client";
+
+import { useState } from "react";
+import {
+  InspectionItem,
+  InspectionSection,
+  InspectionSession,
+  QuoteLineItem,      // ⬅️ use only QuoteLineItem here
+  BrakeType,
+} from "@inspections/lib/inspection/types";
+
+type AxleLayoutConfig = { axleCount: number; brakeType: BrakeType };
+
+function generateAxleSections({ axleCount, brakeType }: AxleLayoutConfig): InspectionSection[] {
+  const sections: InspectionSection[] = [];
+
+  for (let i = 1; i <= axleCount; i++) {
+    const title = `Axle ${i}`;
+    const items: InspectionItem[] = [
+      { item: "Left Tread Depth",  name: "Left Tread Depth",  value: null, unit: "mm",  notes: "",  photoUrls: [] },
+      { item: "Right Tread Depth", name: "Right Tread Depth", value: null, unit: "mm",  notes: "",  photoUrls: [] },
+      { item: "Left Tire Pressure",  name: "Left Tire Pressure",  value: null, unit: "psi", notes: "", photoUrls: [] },
+      { item: "Right Tire Pressure", name: "Right Tire Pressure", value: null, unit: "psi", notes: "", photoUrls: [] },
+      { item: "Left Lining Thickness",  name: "Left Lining Thickness",  value: null, unit: "mm", notes: "", photoUrls: [] },
+      { item: "Right Lining Thickness", name: "Right Lining Thickness", value: null, unit: "mm", notes: "", photoUrls: [] },
+      { item: "Wheel Torque", name: "Wheel Torque", value: null, unit: "ft lbs", notes: "", photoUrls: [] },
+    ];
+
+    if (brakeType === "air") {
+      items.push(
+        { item: "Left Push Rod Travel",  name: "Left Push Rod Travel",  value: null, unit: "in", notes: "", photoUrls: [] },
+        { item: "Right Push Rod Travel", name: "Right Push Rod Travel", value: null, unit: "in", notes: "", photoUrls: [] },
+      );
+    }
+
+    sections.push({ title, items });
+  }
+
+  return sections;
+}
+
+export default function useInspectionSession(initialSession?: Partial<InspectionSession>) {
+  const [session, setSession] = useState<InspectionSession>(() => ({
+    id: "",
+    vehicleId: "",
+    customerId: "",
+    workOrderId: "",
+    templateId: "",
+    templateName: "",
+    location: "",
+    currentSectionIndex: 0,
+    currentItemIndex: 0,
+    transcript: "",
+    status: "not_started",
+    started: false,
+    completed: false,
+    isListening: false,
+    isPaused: false,
+    quote: [],                                 // ⬅️ QuoteLineItem[]
+    lastUpdated: new Date().toISOString(),
+    customer: {
+      first_name: "",
+      last_name: "",
+      phone: "",
+      email: "",
+      address: "",
+      city: "",
+      province: "",
+      postal_code: "",
+    },
+    vehicle: {
+      year: "",
+      make: "",
+      model: "",
+      vin: "",
+      license_plate: "",
+      mileage: "",
+      color: "",
+    },
+    sections: [],
+    ...initialSession,
+  }));
+
+  const stamp = () => ({ lastUpdated: new Date().toISOString() });
+
+  const updateInspection = (updates: Partial<InspectionSession>) =>
+    setSession(prev => ({ ...prev, ...updates, ...stamp() }));
+
+  const updateSection = (sectionIndex: number, updates: Partial<InspectionSection>) =>
+    setSession(prev => {
+      const sections = [...prev.sections];
+      sections[sectionIndex] = { ...sections[sectionIndex], ...updates };
+      return { ...prev, sections, ...stamp() };
+    });
+
+  const updateItem = (sectionIndex: number, itemIndex: number, updates: Partial<InspectionItem>) =>
+    setSession(prev => {
+      const sections = [...prev.sections];
+      const items = [...sections[sectionIndex].items];
+      items[itemIndex] = { ...items[itemIndex], ...updates };
+      sections[sectionIndex] = { ...sections[sectionIndex], items };
+      return { ...prev, sections, ...stamp() };
+    });
+
+  // ✅ strictly QuoteLineItem (the normalized/store+PDF shape)
+  const addQuoteLine = (line: QuoteLineItem) =>
+    setSession(prev => ({ ...prev, quote: [...(prev.quote ?? []), line], ...stamp() }));
+
+  const updateQuoteLines = (lines: QuoteLineItem[]) =>
+    setSession(prev => ({ ...prev, quote: lines, ...stamp() }));
+
+  // ✅ targeted updater for enriching a single line (AI merge, edits, etc.)
+  const updateQuoteLine = (id: string, patch: Partial<QuoteLineItem>) =>
+    setSession(prev => ({
+      ...prev,
+      quote: (prev.quote ?? []).map((l) => (l.id === id ? { ...l, ...patch } : l)),
+      ...stamp(),
+    }));
+
+  const startSession = (sessionData: Partial<InspectionSession> & { axleConfig?: AxleLayoutConfig }) => {
+    const { axleConfig, ...rest } = sessionData;
+    const newSections =
+      axleConfig?.axleCount && axleConfig?.brakeType
+        ? generateAxleSections(axleConfig)
+        : sessionData.sections || session.sections;
+
+    setSession(prev => ({
+      ...prev,
+      ...rest,
+      sections: newSections,
+      currentSectionIndex: 0,
+      currentItemIndex: 0,
+      transcript: "",
+      started: true,
+      completed: false,
+      status: "in_progress",
+      isPaused: false,
+      ...stamp(),
+    }));
+  };
+
+  const pauseSession  = () => updateInspection({ isPaused: true,  status: "paused" });
+  const resumeSession = () => updateInspection({ isPaused: false, status: "in_progress" });
+  const finishSession = () => updateInspection({ completed: true, status: "completed", isPaused: false });
+  const setIsListening = (value: boolean) => updateInspection({ isListening: value });
+
+  return {
+    session,
+    updateInspection,
+    updateSection,
+    updateItem,
+    addQuoteLine,
+    updateQuoteLines,
+    updateQuoteLine,   // ⬅️ expose the targeted updater
+    startSession,
+    pauseSession,
+    resumeSession,
+    finishSession,
+    setIsListening,
+    isPaused: session.isPaused,
+  };
+}
+===== FILE: ./features/inspections/lib/inspection/PauseResume.tsx =====
+"use client";
+
+import {
+  stopVoiceRecognition,
+  startVoiceRecognition,
+} from "@inspections/lib/inspection/voiceControl";
+
+interface PauseResumeButtonProps {
+  isPaused: boolean;
+  onPause: () => void;
+  onResume: () => void;
+  isListening: boolean;
+  setIsListening: (val: boolean) => void;
+  recognitionInstance: SpeechRecognition | null;
+  onTranscript?: (text: string) => void;
+  setRecognitionRef: (instance: SpeechRecognition | null) => void;
+}
+
+const PauseResumeButton = ({
+  isPaused,
+  onPause,
+  onResume,
+  setIsListening,
+  recognitionInstance,
+  onTranscript,
+  setRecognitionRef,
+}: PauseResumeButtonProps) => {
+  const handlePause = () => {
+    stopVoiceRecognition(recognitionInstance);
+    onPause();
+    setIsListening(false);
+  };
+
+  const handleResume = () => {
+    const newInstance = startVoiceRecognition((text: string) => {
+      onTranscript?.(text);
+    });
+    setRecognitionRef(newInstance);
+    onResume();
+    setIsListening(true);
+  };
+
+  return (
+    <div className="text-center mt-2">
+      {isPaused ? (
+        <button
+          onClick={handleResume}
+          className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
+        >
+          Resume
+        </button>
+      ) : (
+        <button
+          onClick={handlePause}
+          className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded"
+        >
+          Pause
+        </button>
+      )}
+    </div>
+  );
+};
+
+export default PauseResumeButton;
+
+===== FILE: ./features/inspections/lib/inspection/StartListeningButton.tsx =====
+"use client";
+
+import React from "react";
+
+interface StartListeningButtonProps {
+  isListening: boolean;
+  setIsListening: (val: boolean) => void;
+  onStart: () => void;
+}
+
+export default function StartListeningButton(props: any) {
+  const { isListening, setIsListening, onStart } =
+    props as StartListeningButtonProps;
+
+  const handleStart = () => {
+    setIsListening(true);
+    onStart(); // Trigger the actual startListening logic from parent
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleStart}
+      disabled={isListening}
+      className="px-4 py-2 bg-green-600 text-white rounded disabled:opacity-50"
+    >
+      {isListening ? "Listening..." : "Start Listening"}
+    </button>
+  );
+}
+===== FILE: ./features/inspections/lib/inspection/ProgressTracker.tsx =====
+// lib/inspection/ProgressTracker.tsx
+
+import React from "react";
+
+interface ProgressTrackerProps {
+  currentItem: number;
+  currentSection: number;
+  totalSections: number;
+  totalItems: number;
+}
+
+const ProgressTracker = ({
+  currentItem,
+  currentSection,
+  totalSections,
+  totalItems,
+}: ProgressTrackerProps) => {
+  return (
+    <div className="text-xs text-gray-400 text-center mb-2">
+      Section {currentSection + 1} of {totalSections} • Item {currentItem + 1}{" "}
+      of {totalItems}
+    </div>
+  );
+};
+
+export default ProgressTracker;
+
+===== FILE: ./features/inspections/lib/inspection/ui/AxlesCornerGrid.tsx =====
+// shared/components/ui/AxlesCornerGrid.tsx
+"use client";
+
+import { useMemo, useRef, useState } from "react";
+import { useInspectionForm } from "@inspections/lib/inspection/ui/InspectionFormContext";
+import type { InspectionItem } from "@inspections/lib/inspection/types";
+
+type Props = {
+  sectionIndex: number;
+  items: InspectionItem[];
+  /** Optional unit resolver when an item has no unit */
+  unitHint?: (label: string) => string;
+  /** Only shown (and used) for AIR mode */
+  onAddAxle?: (axleLabel: string) => void;
+};
+
+/* ---------------------------- shared helpers ---------------------------- */
+
+const AIR_RE = /^(?<axle>.+?)\s+(?<side>Left|Right)\s+(?<metric>.+)$/i;
+const HYD_ABBR_RE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
+const HYD_FULL_RE = /^(?<corner>(Left|Right)\s+(Front|Rear))\s+(?<metric>.+)$/i;
+
+type Side = "Left" | "Right";
+type Region = "Front" | "Rear";
+type CornerKey = "LF" | "RF" | "LR" | "RR";
+
+const cornerToRegion: Record<CornerKey, { side: Side; region: Region }> = {
+  LF: { side: "Left", region: "Front" },
+  RF: { side: "Right", region: "Front" },
+  LR: { side: "Left", region: "Rear" },
+  RR: { side: "Right", region: "Rear" },
+};
+
+const normalizeCorner = (raw: string): CornerKey | null => {
+  const s = raw.toLowerCase();
+  if (s.startsWith("lf") || s === "left front") return "LF";
+  if (s.startsWith("rf") || s === "right front") return "RF";
+  if (s.startsWith("lr") || s === "left rear") return "LR";
+  if (s.startsWith("rr") || s === "right rear") return "RR";
+  return null;
+};
+
+const isPressureMetric = (label: string) => /pressure/i.test(label);
+const kpaFromPsi = (psiStr: string) => {
+  const n = Number(psiStr);
+  return isFinite(n) ? Math.round(n * 6.894757) : null;
+};
+
+/* --------------------- strict ordering for AIR (matches steer) --------------------- */
+const airPriority = (metric: string): [number, number] => {
+  const m = metric.toLowerCase();
+
+  if (/tire\s*pressure/i.test(m)) {
+    const second = /outer/i.test(m) ? 0 : /inner/i.test(m) ? 1 : 0;
+    return [0, second];
+  }
+  if (/(tire\s*)?tread\s*depth|tire\s*tread/i.test(m)) {
+    const second = /outer/i.test(m) ? 0 : /inner/i.test(m) ? 1 : 0;
+    return [1, second];
+  }
+  if (/(lining|shoe|pad)/i.test(m)) return [2, 0];
+  if (/(drum|rotor)/i.test(m)) return [3, 0];
+  if (/push\s*rod/i.test(m)) return [4, 0];
+  if (/wheel\s*torque/i.test(m)) return [5, /inner/i.test(m) ? 1 : 0];
+  return [99, 0];
+};
+const airCompare = (a: string, b: string) => {
+  const [pa, sa] = airPriority(a);
+  const [pb, sb] = airPriority(b);
+  return pa !== pb ? pa - pb : sa - sb;
+};
+
+/* ---------------------- ordering for HYD (CornerGrid parity) ---------------------- */
+const hydMetricOrder = [
+  "Tire Pressure",
+  "Tire Tread",
+  "Brake Pad",
+  "Rotor",
+  "Rotor Condition",
+  "Rotor Thickness",
+  "Wheel Torque",
+];
+const hydCompare = (a: string, b: string) => {
+  const ai = hydMetricOrder.findIndex((x) =>
+    a.toLowerCase().includes(x.toLowerCase()),
+  );
+  const bi = hydMetricOrder.findIndex((x) =>
+    b.toLowerCase().includes(x.toLowerCase()),
+  );
+  const A = ai === -1 ? Number.MAX_SAFE_INTEGER : ai;
+  const B = bi === -1 ? Number.MAX_SAFE_INTEGER : bi;
+  return A - B;
+};
+
+export default function AxlesCornerGrid({
+  sectionIndex,
+  items,
+  unitHint,
+  onAddAxle,
+}: Props) {
+  const { updateItem } = useInspectionForm();
+
+  // Detect mode from the item labels
+  const mode: "air" | "hyd" = useMemo(() => {
+    for (const it of items) {
+      const label = it.item ?? "";
+      if (AIR_RE.test(label)) return "air";
+      if (HYD_ABBR_RE.test(label) || HYD_FULL_RE.test(label)) return "hyd";
+    }
+    return "hyd"; // safe default
+  }, [items]);
+
+  /* ------------------------------------------------------------------ */
+  /* HYDRAULIC (LF/RF/LR/RR) — matches CornerGrid layout                */
+  /* ------------------------------------------------------------------ */
+
+  type HydCell = {
+    idx: number;
+    metric: string;
+    unit: string;
+    fullLabel: string;
+    isPressure: boolean;
+    initial: string;
+  };
+  type HydRow = { metric: string; left?: HydCell; right?: HydCell };
+
+  const hydGroups = useMemo(() => {
+    if (mode !== "hyd") return [] as Array<{ region: Region; rows: HydRow[] }>;
+
+    const byRegion = new Map<Region, Map<string, HydRow>>();
+    const ensureRegion = (r: Region) =>
+      byRegion.get(r) ?? byRegion.set(r, new Map()).get(r)!;
+
+    items.forEach((it, idx) => {
+      const label = it.item ?? "";
+      let ck: CornerKey | null = null;
+      let metric = "";
+
+      const m1 = label.match(HYD_ABBR_RE);
+      if (m1?.groups) {
+        ck = normalizeCorner(m1.groups.corner);
+        metric = m1.groups.metric.trim();
+      } else {
+        const m2 = label.match(HYD_FULL_RE);
+        if (m2?.groups) {
+          ck = normalizeCorner(m2.groups.corner);
+          metric = m2.groups.metric.trim();
+        }
+      }
+      if (!ck) return;
+
+      const { side, region } = cornerToRegion[ck];
+      const reg = ensureRegion(region);
+
+      const key = metric.toLowerCase();
+      if (!reg.has(key)) reg.set(key, { metric });
+
+      const unit =
+        (it.unit ?? "") || (unitHint ? unitHint(label) : "") || "";
+      const cell: HydCell = {
+        idx,
+        metric,
+        unit,
+        fullLabel: label,
+        isPressure: isPressureMetric(metric),
+        initial: String(it.value ?? ""),
+      };
+
+      const row = reg.get(key)!;
+      if (side === "Left") row.left = cell;
+      else row.right = cell;
+    });
+
+    const out: Array<{ region: Region; rows: HydRow[] }> = [];
+    (["Front", "Rear"] as Region[]).forEach((region) => {
+      const reg = byRegion.get(region);
+      if (!reg) return;
+      const rows = Array.from(reg.values()).sort((a, b) =>
+        hydCompare(a.metric, b.metric),
+      );
+      out.push({ region, rows });
+    });
+    return out;
+  }, [items, unitHint, mode]);
+
+  /* ------------------------------------------------------------------ */
+  /* AIR (Steer / Drive / Trailer … Left | Item | Right)                */
+  /* ------------------------------------------------------------------ */
+
+  type AirCell = {
+    metric: string;
+    idx: number;
+    unit: string;
+    fullLabel: string;
+    isPressure: boolean;
+    initial: string;
+  };
+  type AirGroup = { axle: string; left: AirCell[]; right: AirCell[] };
+  type AirRow = { metric: string; left?: AirCell; right?: AirCell };
+
+  const isDualAxle = (axle: string) => {
+    const a = axle.toLowerCase();
+    if (a.startsWith("drive") || a.startsWith("trailer") || a.includes("rear"))
+      return true;
+    if (a.startsWith("tag") || a.startsWith("steer")) return false;
+    return false;
+  };
+
+  const isDualizable = (metric: string) =>
+    /tire\s*pressure/i.test(metric) ||
+    /(tire\s*)?tread\s*depth|tire\s*tread/i.test(metric);
+  const hasInnerOuter = (m: string) => /(inner|outer)/i.test(m);
+
+  function expandDuals(axle: string, cells: AirCell[]): AirCell[] {
+    if (!isDualAxle(axle)) return cells;
+    const out: AirCell[] = [];
+    for (const c of cells) {
+      if (isDualizable(c.metric) && !hasInnerOuter(c.metric)) {
+        const base = c.metric.replace(/\s*\((inner|outer)\)\s*/i, "").trim();
+        out.push({ ...c, metric: `${base} (Outer)` });
+        out.push({ ...c, metric: `${base} (Inner)` });
+      } else {
+        out.push(c);
+      }
+    }
+    return out;
+  }
+
+  const airGroups = useMemo(() => {
+    if (mode !== "air") return [] as AirGroup[];
+
+    const byAxle = new Map<string, { Left: AirCell[]; Right: AirCell[] }>();
+
+    items.forEach((it, idx) => {
+      const label = it.item ?? "";
+      const m = label.match(AIR_RE);
+      if (!m?.groups) return;
+
+      const axle = m.groups.axle.trim();
+      const side = (m.groups.side as Side) || "Left";
+      const metric = m.groups.metric.trim();
+
+      if (!byAxle.has(axle)) byAxle.set(axle, { Left: [], Right: [] });
+
+      const unit =
+        (it.unit ?? "") || (unitHint ? unitHint(label) : "") || "";
+      const cell: AirCell = {
+        metric,
+        idx,
+        unit,
+        fullLabel: label,
+        isPressure: isPressureMetric(metric),
+        initial: String(it.value ?? ""),
+      };
+
+      byAxle.get(axle)![side].push(cell);
+    });
+
+    return Array.from(byAxle.entries()).map(([axle, sides]) => {
+      const left = expandDuals(axle, sides.Left).sort((a, b) =>
+        airCompare(a.metric, b.metric),
+      );
+      const right = expandDuals(axle, sides.Right).sort((a, b) =>
+        airCompare(a.metric, b.metric),
+      );
+      return { axle, left, right };
+    });
+  }, [items, unitHint, mode]);
+
+  // build rows for AIR like AirCornerGrid (merge left/right by metric)
+  const airRowsPerAxle: Array<{ axle: string; rows: AirRow[] }> = useMemo(() => {
+    if (mode !== "air") return [];
+    const rows: Array<{ axle: string; rows: AirRow[] }> = [];
+
+    for (const g of airGroups) {
+      const map = new Map<string, AirRow>();
+      const add = (c: AirCell, which: "left" | "right") => {
+        const k = c.metric.toLowerCase();
+        const existing = map.get(k) || { metric: c.metric };
+        map.set(k, { ...existing, metric: c.metric, [which]: c } as AirRow);
+      };
+      g.left.forEach((c) => add(c, "left"));
+      g.right.forEach((c) => add(c, "right"));
+      const merged = Array.from(map.values()).sort((a, b) =>
+        airCompare(a.metric, b.metric),
+      );
+      rows.push({ axle: g.axle, rows: merged });
+    }
+    return rows;
+  }, [airGroups, mode]);
+
+  /* ---------------------------- UI state ---------------------------- */
+
+  const [open, setOpen] = useState(true);
+  const [showKpa, setShowKpa] = useState(true);
+  const [filledMap, setFilledMap] = useState<Record<number, boolean>>(() => {
+    const m: Record<number, boolean> = {};
+    items.forEach((it, i) => (m[i] = !!String(it.value ?? "").trim()));
+    return m;
+  });
+  const commit = (idx: number, el: HTMLInputElement | null) => {
+    if (!el) return;
+    const value = el.value;
+    updateItem(sectionIndex, idx, { value });
+    setFilledMap((p) =>
+      p[idx] === !!value.trim() ? p : { ...p, [idx]: !!value.trim() },
+    );
+  };
+
+  /* ------------------- shared input used by both modes ------------------ */
+
+  const InputWithInlineUnit = ({
+    idx,
+    isPressureRow,
+    unit,
+    defaultValue,
+  }: {
+    idx: number;
+    isPressureRow: boolean;
+    unit: string;
+    defaultValue: string;
+  }) => {
+    const spanRef = useRef<HTMLSpanElement | null>(null);
+
+    const seedText = () => {
+      if (!isPressureRow) return unit;
+      const k = kpaFromPsi(defaultValue);
+      if (!showKpa) return "psi";
+      return k != null ? `psi (${k} kPa)` : "psi (— kPa)";
+    };
+
+    const onInput = (e: React.FormEvent<HTMLInputElement>) => {
+      if (!isPressureRow || !spanRef.current) return;
+      const k = kpaFromPsi(e.currentTarget.value);
+      if (!showKpa) {
+        spanRef.current.textContent = "psi";
+      } else if (k != null) {
+        spanRef.current.textContent = `psi (${k} kPa)`;
+      } else {
+        spanRef.current.textContent = "psi (— kPa)";
+      }
+    };
+
+    return (
+      <div className="relative w-full max-w-[11rem]">
+        <input
+          defaultValue={defaultValue}
+          tabIndex={0}
+          className="w-full rounded-lg border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 pr-20 text-sm text-white placeholder:text-neutral-500 focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+          placeholder="Value"
+          autoComplete="off"
+          inputMode="decimal"
+          onInput={onInput}
+          onBlur={(e) => commit(idx, e.currentTarget)}
+          onKeyDown={(e) =>
+            e.key === "Enter" &&
+            (e.currentTarget as HTMLInputElement).blur()
+          }
+        />
+        <span
+          ref={spanRef}
+          className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-neutral-400"
+        >
+          {seedText()}
+        </span>
+      </div>
+    );
+  };
+
+  /* ---------------------------- HYD UI ---------------------------- */
+
+  const HydRegionCard = ({ region, rows }: { region: Region; rows: HydRow[] }) => (
+    <div className="rounded-2xl border border-white/8 bg-black/40 p-4 shadow-card backdrop-blur-md">
+      <div
+        className="mb-3 text-lg font-semibold text-accent"
+        style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+      >
+        {region}
+      </div>
+
+      <div className="mb-2 grid grid-cols-[1fr_auto_1fr] items-center gap-4 text-xs text-neutral-400">
+        <div>Left</div>
+        <div className="text-center">Item</div>
+        <div className="text-right">Right</div>
+      </div>
+
+      {open && (
+        <div className="space-y-3">
+          {rows.map((row, i) => (
+            <div
+              key={`${region}-${row.metric}-${i}`}
+              className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded-xl bg-neutral-950/70 p-3"
+            >
+              <div>
+                {row.left ? (
+                  <InputWithInlineUnit
+                    idx={row.left.idx}
+                    isPressureRow={row.left.isPressure}
+                    unit={row.left.unit}
+                    defaultValue={row.left.initial}
+                  />
+                ) : (
+                  <div className="h-[34px]" />
+                )}
+              </div>
+
+              <div
+                className="min-w-0 truncate text-center text-sm font-semibold text-white"
+                style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+                title={row.metric}
+              >
+                {row.metric}
+              </div>
+
+              <div className="justify-self-end">
+                {row.right ? (
+                  <InputWithInlineUnit
+                    idx={row.right.idx}
+                    isPressureRow={row.right.isPressure}
+                    unit={row.right.unit}
+                    defaultValue={row.right.initial}
+                  />
+                ) : (
+                  <div className="h-[34px]" />
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  /* ----------------------------- AIR UI ----------------------------- */
+
+  const AirAxleCard = ({ axle, rows }: { axle: string; rows: AirRow[] }) => (
+    <div className="rounded-2xl border border-white/8 bg-black/40 p-4 shadow-card backdrop-blur-md">
+      <div
+        className="mb-3 text-lg font-semibold text-accent"
+        style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+      >
+        {axle}
+      </div>
+
+      <div className="mb-2 grid grid-cols-[1fr_auto_1fr] items-center gap-4 text-xs text-neutral-400">
+        <div>Left</div>
+        <div className="text-center">Item</div>
+        <div className="text-right">Right</div>
+      </div>
+
+      {open && (
+        <div className="space-y-3">
+          {rows.map((row, i) => (
+            <div
+              key={`${axle}-${row.metric}-${i}`}
+              className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded-xl bg-neutral-950/70 p-3"
+            >
+              <div>
+                {row.left ? (
+                  <InputWithInlineUnit
+                    idx={row.left.idx}
+                    isPressureRow={row.left.isPressure}
+                    unit={row.left.unit}
+                    defaultValue={row.left.initial}
+                  />
+                ) : (
+                  <div className="h-[34px]" />
+                )}
+              </div>
+
+              <div
+                className="min-w-0 truncate text-center text-sm font-semibold text-white"
+                style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+                title={row.metric}
+              >
+                {row.metric}
+              </div>
+
+              <div className="justify-self-end">
+                {row.right ? (
+                  <InputWithInlineUnit
+                    idx={row.right.idx}
+                    isPressureRow={row.right.isPressure}
+                    unit={row.right.unit}
+                    defaultValue={row.right.initial}
+                  />
+                ) : (
+                  <div className="h-[34px]" />
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const countFilled = (cells: Array<{ idx: number }>) =>
+    cells.reduce((sum, c) => sum + (filledMap[c.idx] ? 1 : 0), 0);
+
+  /* ------------------------------- render ------------------------------ */
+
+  return (
+    <div className="grid gap-3">
+      <div className="flex items-center justify-between gap-3 px-1">
+        {/* progress strip for AIR mode */}
+        {mode === "air" ? (
+          <div
+            className="hidden text-xs text-neutral-400 md:block"
+            style={{ fontFamily: "Roboto, system-ui, sans-serif" }}
+          >
+            {airGroups.map((g, i) => {
+              const filled = countFilled(g.left) + countFilled(g.right);
+              const total = g.left.length + g.right.length;
+              return (
+                <span key={g.axle}>
+                  {g.axle} {filled}/{total}
+                  {i < airGroups.length - 1 ? "  |  " : ""}
+                </span>
+              );
+            })}
+          </div>
+        ) : (
+          <div />
+        )}
+
+        <div className="flex items-center gap-3">
+          <label className="flex select-none items-center gap-2 text-xs text-neutral-300">
+            <input
+              type="checkbox"
+              className="h-3 w-3 accent-orange-500"
+              checked={showKpa}
+              onChange={(e) => setShowKpa(e.target.checked)}
+              tabIndex={-1}
+            />
+            kPa hint
+          </label>
+
+          <button
+            onClick={() => setOpen((v) => !v)}
+            className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs text-white hover:border-accent hover:bg-white/10"
+            title={open ? "Collapse" : "Expand"}
+            tabIndex={-1}
+          >
+            {open ? "Collapse" : "Expand"}
+          </button>
+        </div>
+      </div>
+
+      {/* inline axle picker only for AIR and when provided */}
+      {mode === "air" && onAddAxle && (
+        <AddAxlePicker
+          existingAxles={airGroups.map((g) => g.axle)}
+          onAddAxle={onAddAxle}
+        />
+      )}
+
+      {mode === "hyd" ? (
+        <div className="grid gap-4">
+          {hydGroups.map((g) => (
+            <HydRegionCard key={g.region} region={g.region} rows={g.rows} />
+          ))}
+        </div>
+      ) : (
+        <>
+          {airRowsPerAxle.map(({ axle, rows }) => (
+            <AirAxleCard key={axle} axle={axle} rows={rows} />
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+/* -------------------------- Add Axle (AIR only) -------------------------- */
+
+function AddAxlePicker({
+  existingAxles,
+  onAddAxle,
+}: {
+  existingAxles: string[];
+  onAddAxle: (axleLabel: string) => void;
+}) {
+  const [pending, setPending] = useState<string>("");
+
+  const candidates = useMemo(() => {
+    const wants: string[] = [];
+    for (let i = 1; i <= 2; i++) wants.push(`Steer ${i}`);
+    for (let i = 1; i <= 4; i++) wants.push(`Drive ${i}`);
+    wants.push("Tag", "Trailer 1", "Trailer 2", "Trailer 3");
+    return wants.filter((l) => !existingAxles.includes(l));
+  }, [existingAxles]);
+
+  return (
+    <div className="flex items-center gap-2 px-1">
+      <select
+        className="rounded-lg border border-neutral-700 bg-neutral-900/80 px-2 py-1 text-sm text-white"
+        value={pending}
+        onChange={(e) => setPending(e.target.value)}
+      >
+        <option value="">Add axle…</option>
+        {candidates.map((l) => (
+          <option key={l} value={l}>
+            {l}
+          </option>
+        ))}
+      </select>
+      <button
+        className="rounded-lg bg-accent px-3 py-1 text-sm font-semibold text-black hover:bg-orange-500 disabled:opacity-40"
+        onClick={() => pending && onAddAxle(pending)}
+        disabled={!pending}
+      >
+        + Add
+      </button>
+    </div>
+  );
+}
+===== FILE: ./features/inspections/lib/inspection/ui/InspectionFormContext.tsx =====
+"use client";
+
+import { createContext, useContext } from "react";
+import type { InspectionItem } from "@inspections/lib/inspection/types";
+
+// The shape of the context value (includes a function—totally fine here)
+export type UpdateItemFn = (
+  sectionIdx: number,
+  itemIdx: number,
+  patch: Partial<InspectionItem>
+) => void;
+
+type Ctx = {
+  updateItem: UpdateItemFn;
+};
+
+// Export the context itself (no wrapper component!)
+export const InspectionFormCtx = createContext<Ctx | null>(null);
+
+export function useInspectionForm(): Ctx {
+  const ctx = useContext(InspectionFormCtx);
+  if (!ctx) {
+    throw new Error("useInspectionForm must be used inside <InspectionFormCtx.Provider>");
+  }
+  return ctx;
+}

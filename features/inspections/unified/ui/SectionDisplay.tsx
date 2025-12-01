@@ -1,4 +1,4 @@
-// features/inspections/unified/ui/SectionDisplay.tsx
+//features/inspections/unified/ui/SectionDisplay.tsx
 "use client";
 
 import React, { useMemo, useState } from "react";

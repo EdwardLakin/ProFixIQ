@@ -1,3 +1,4 @@
+// features/inspections/unified/custom-draft/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -14,7 +15,6 @@ function safeParseSections(raw: string | null): InspectionSection[] {
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
-    // already shaped by custom builder / draft
     return parsed as InspectionSection[];
   } catch {
     return [];
@@ -47,7 +47,6 @@ export default function UnifiedCustomDraftPage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    // Pull staged sections from the classic custom builder / draft
     const sectionsRaw = window.sessionStorage.getItem(
       "customInspection:sections",
     );
@@ -108,11 +107,10 @@ export default function UnifiedCustomDraftPage() {
         color: "",
       },
       sections,
-      // extra metadata – allowed by the updated types
       meta: {
         dutyClass,
         source: "custom-builder",
-      } as any,
+      } as unknown as InspectionSession["meta"],
     };
 
     setSession(unifiedSession);
@@ -128,17 +126,19 @@ export default function UnifiedCustomDraftPage() {
 
   const handleUpdateSession = async (patch: Partial<InspectionSession>) => {
     if (!session) return;
+
     const next: InspectionSession = {
       ...session,
       ...patch,
       lastUpdated: new Date().toISOString(),
     };
+
     setSession(next);
 
     try {
       await saveInspectionSessionUnified(next);
     } catch (e) {
-      // currently a stub – keep UI quiet
+      // keep UI quiet – this is still a stub
       // eslint-disable-next-line no-console
       console.debug("saveInspectionSessionUnified error (stub)", e);
     }
@@ -146,16 +146,16 @@ export default function UnifiedCustomDraftPage() {
 
   if (bootError) {
     return (
-      <div className="min-h-[60vh] bg-gradient-to-b from-black via-slate-950 to-slate-950 px-4 py-6 text-sm text-red-200">
-        <div className="mx-auto max-w-3xl rounded-2xl border border-red-500/40 bg-red-950/40 px-4 py-3 shadow-[0_18px_45px_rgba(0,0,0,0.85)]">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-red-200/80">
+      <div className="min-h-[60vh] bg-gradient-to-b from-black via-slate-950 to-black px-4 py-6 text-sm text-red-100">
+        <div className="mx-auto max-w-3xl rounded-2xl border border-red-500/40 bg-gradient-to-br from-red-950/70 via-black/80 to-black/95 px-4 py-4 shadow-[0_26px_60px_rgba(0,0,0,0.95)] backdrop-blur-xl">
+          <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-red-200/80">
             Custom Inspection
           </div>
           <p>{bootError}</p>
           <button
             type="button"
             onClick={() => router.back()}
-            className="mt-3 inline-flex items-center rounded-full border border-red-500/70 bg-red-600/80 px-3 py-1.5 text-[11px] font-semibold text-black hover:bg-red-500"
+            className="mt-3 inline-flex items-center rounded-full border border-red-500/70 bg-red-500/90 px-3 py-1.5 text-[11px] font-semibold text-black hover:bg-red-400"
           >
             ← Back
           </button>
@@ -166,28 +166,45 @@ export default function UnifiedCustomDraftPage() {
 
   if (!session) {
     return (
-      <div className="min-h-[60vh] bg-gradient-to-b from-black via-slate-950 to-slate-950 px-4 py-6 text-sm text-neutral-300">
-        <div className="mx-auto max-w-3xl rounded-2xl border border-white/10 bg-black/60 px-4 py-3 shadow-[0_18px_45px_rgba(0,0,0,0.85)]">
+      <div className="min-h-[60vh] bg-gradient-to-b from-black via-slate-950 to-black px-4 py-6 text-sm text-neutral-200">
+        <div className="mx-auto max-w-3xl rounded-2xl border border-white/10 bg-black/70 px-4 py-4 shadow-[0_22px_55px_rgba(0,0,0,0.95)] backdrop-blur-xl">
           Preparing unified inspection…
         </div>
       </div>
     );
   }
 
+  const dutyLabel =
+    (session.meta && "dutyClass" in session.meta && session.meta.dutyClass) ||
+    "";
+
   return (
-    <div className="min-h-[60vh] bg-gradient-to-b from-black via-slate-950 to-slate-950 px-4 py-6">
-      <div className="mx-auto max-w-6xl rounded-2xl border border-white/10 bg-black/60 p-4 shadow-[0_22px_55px_rgba(0,0,0,0.95)]">
-        <div className="mb-3 flex items-center justify-between gap-2">
+    <div className="min-h-[60vh] bg-gradient-to-b from-black via-slate-950 to-black px-4 py-6">
+      <div className="mx-auto max-w-6xl rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-br from-black/80 via-slate-950/90 to-black/95 p-4 shadow-[0_26px_70px_rgba(0,0,0,0.98)] backdrop-blur-2xl">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-sm font-semibold uppercase tracking-[0.18em] text-neutral-300">
+            <div className="text-[11px] font-blackops uppercase tracking-[0.22em] text-neutral-400">
               Unified Inspection
-            </h1>
+            </div>
             <p className="text-xs text-neutral-500">
               Built from custom template draft ·{" "}
               <span className="text-[color:var(--accent-copper-light,#fb923c)]">
                 {session.templateName || "Custom Inspection"}
               </span>
             </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 text-[10px] text-neutral-400">
+            {dutyLabel && (
+              <span className="rounded-full border border-[color:var(--accent-copper-soft,#fdba74)]/60 bg-black/70 px-3 py-1 font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper-soft,#fdba74)]">
+                Duty: {String(dutyLabel).toUpperCase()}
+              </span>
+            )}
+            {session.location && (
+              <span className="rounded-full border border-white/10 bg-black/60 px-3 py-1 font-mono text-[10px] text-neutral-300">
+                {session.location}
+              </span>
+            )}
           </div>
         </div>
 
