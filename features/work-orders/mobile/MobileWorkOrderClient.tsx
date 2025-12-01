@@ -22,6 +22,8 @@ import { useTabState } from "@/features/shared/hooks/useTabState";
 import { JobCard } from "@/features/work-orders/components/JobCard";
 import MobileFocusedJob from "@/features/work-orders/mobile/MobileFocusedJob";
 import InspectionModal from "@/features/inspections/components/InspectionModal";
+import { loadInspectionSession } from "@/features/inspections/unified/data/loadSession";
+import type { InspectionSession } from "@inspections/lib/inspection/types";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -592,36 +594,50 @@ export default function MobileWorkOrderClient({
 
   // 🔗 Open unified inspection screen in the modal (new unified stack)
   const openInspection = useCallback(
-    (line: WorkOrderLine) => {
+    async (line: WorkOrderLine) => {
       if (!wo?.id) return;
 
       const anyLine = line as any;
 
-      // prefer explicit unified template id if present
-      const templateId: string | null =
-        anyLine?.inspection_template_id ??
+      // Prefer explicit template slug/name from metadata
+      const templateSlug: string | null =
         anyLine?.inspection_template ??
+        anyLine?.inspectionTemplate ??
         anyLine?.template ??
         anyLine?.metadata?.inspection_template ??
         anyLine?.metadata?.template ??
         null;
 
-      // Unified inspection session loader is responsible for:
-      // - creating a session if one doesn't exist for this line
-      // - loading sections/template based on templateId / job_type
-      // - wiring unified UI (corner grid, axle grid, voice, quote builder)
+      if (!templateSlug) {
+        toast.error(
+          "This job line doesn't have an inspection template attached yet.",
+        );
+        return;
+      }
+
+      // Try to load an existing unified session for this line
+      let existing: InspectionSession | null = null;
+      try {
+        existing = await loadInspectionSession(line.id);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.debug("mobile loadInspectionSession error", err);
+      }
+
       const params = new URLSearchParams({
         workOrderId: wo.id,
         workOrderLineId: line.id,
+        template: templateSlug,
+        embed: "1",
+        view: "mobile",
       });
 
       if (wo.vehicle_id) params.set("vehicleId", wo.vehicle_id);
       if (wo.customer_id) params.set("customerId", wo.customer_id);
-      if (templateId) params.set("templateId", templateId);
+      if (line.description) params.set("seed", String(line.description));
+      if (existing?.id) params.set("sessionId", existing.id);
 
-      const url = `/inspections/unified/session/${encodeURIComponent(
-        line.id,
-      )}?${params.toString()}`;
+      const url = `/inspections/unified/run?${params.toString()}`;
 
       setInspectionSrc(url);
       setInspectionOpen(true);
@@ -762,7 +778,7 @@ export default function MobileWorkOrderClient({
           {/* Vehicle & Customer */}
           <div className="rounded-2xl border border-white/10 bg-black/35 p-4 shadow-[0_14px_36px_rgba(0,0,0,0.80)] backdrop-blur-md">
             <div className="flex items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold sm:text-base">
+              <h2 className="text-sm font-semibold sm:text;base">
                 Vehicle &amp; Customer
               </h2>
               <button
@@ -817,7 +833,7 @@ export default function MobileWorkOrderClient({
                   </h3>
                   {customer ? (
                     <>
-                      <p className="text-sm font-medium text-white">
+                      <p className="text-sm font-medium text:white">
                         {[
                           customer.first_name ?? "",
                           customer.last_name ?? "",
@@ -897,7 +913,7 @@ export default function MobileWorkOrderClient({
                       return (
                         <div
                           key={ln.id}
-                          className="rounded-xl border border-white/10 bg-slate-950/70 p-3 backdrop-blur"
+                          className="rounded-xl border border:white/10 bg-slate-950/70 p-3 backdrop-blur"
                         >
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                             <div className="min-w-0">
@@ -1076,7 +1092,9 @@ export default function MobileWorkOrderClient({
                       isPunchedIn={punchedIn}
                       onOpen={openFocused}
                       onAssign={undefined}
-                      onOpenInspection={() => openInspection(ln)}
+                      onOpenInspection={() => {
+                        void openInspection(ln);
+                      }}
                       onAddPart={undefined}
                     />
                   );

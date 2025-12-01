@@ -39,13 +39,13 @@ export default function VinCaptureModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="vin-modal-title"
-      className="fixed inset-0 z-[1000] flex items-center justify-center"
+      className="fixed inset-0 z-[1000] flex items-start justify-center overflow-y-auto"
     >
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/70" />
+      <div className="fixed inset-0 bg-black/70" />
 
-      {/* Panel — orange accent border, dark shell */}
-      <div className="relative z-[1001] w-[min(680px,92vw)] overflow-hidden rounded-lg border border-orange-400 bg-neutral-950 shadow-2xl">
+      {/* Panel */}
+      <div className="relative z-[1001] my-8 w-[min(680px,92vw)] max-h-[calc(100vh-4rem)] overflow-hidden rounded-lg border border-orange-400 bg-neutral-950 shadow-2xl">
         {/* Header */}
         <div className="border-b border-neutral-800 px-4 py-3 sm:px-5">
           <h2
@@ -55,21 +55,24 @@ export default function VinCaptureModal({
             {title}
           </h2>
           {description ? (
-            <p className="mt-0.5 font-sans text-xs text-neutral-400">{description}</p>
+            <p className="mt-0.5 font-sans text-xs text-neutral-400">
+              {description}
+            </p>
           ) : null}
         </div>
 
-        {/* Body */}
-        <div className="grid gap-6 px-4 py-5 font-sans text-white sm:px-5 sm:py-6 lg:grid-cols-2">
+        {/* Body (scrollable) */}
+        <div className="grid max-h-[calc(100vh-11rem)] gap-6 overflow-y-auto px-4 py-5 font-sans text-white sm:px-5 sm:py-6 lg:grid-cols-2">
           {/* Manual Entry */}
           <section className="rounded border border-neutral-800 bg-neutral-900/40 p-4">
-            <h3 className="font-header text-sm font-semibold text-white">Manual Entry</h3>
+            <h3 className="font-header text-sm font-semibold text-white">
+              Manual Entry
+            </h3>
             <p className="mt-1 text-xs text-neutral-400">
               Paste or type a 17-character VIN. Letters only (no “I”, “O”, “Q”).
             </p>
 
             <form method="post" action={action} className="mt-3 space-y-3">
-              {/* Hidden user id */}
               <input type="hidden" name="user_id" value={userId} />
 
               <label className="block text-xs text-neutral-300">
@@ -90,7 +93,6 @@ export default function VinCaptureModal({
                   By submitting, the VIN will be decoded via NHTSA vPIC.
                 </div>
 
-                {/* Submit button styled to match your theme */}
                 <button
                   type="submit"
                   className="font-header rounded border border-orange-500 px-4 py-2 text-sm text-white hover:bg-orange-500/10"
@@ -101,13 +103,14 @@ export default function VinCaptureModal({
             </form>
           </section>
 
-          {/* Scan Slot (client wrapper hydrates this) */}
+          {/* Scan Slot */}
           <section className="rounded border border-neutral-800 bg-neutral-900/40 p-4">
             <h3 className="font-header text-sm font-semibold text-white">
               Scan (Camera / Barcode)
             </h3>
             <p className="mt-1 text-xs text-neutral-400">
-              Your camera scanner will appear here when enabled by the client wrapper.
+              Your camera scanner will appear here when enabled by the client
+              wrapper.
             </p>
 
             <div className="mt-3 min-h-[220px] rounded border border-dashed border-neutral-700 bg-neutral-950/40 p-3">

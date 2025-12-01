@@ -1,6 +1,12 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 import VinCaptureModalShell from "@/features/vehicles/components/VinCaptureModal";
 import { decodeVin } from "@/features/shared/lib/vin/decodeVin";
@@ -40,7 +46,7 @@ function isLikelyVin(s: string) {
   return vin.length === 17 && !/[IOQ]/.test(vin);
 }
 
-/** Minimal scanner pane for the modal's scanSlot */
+/** Scanner pane used in scanSlot */
 function ScannerPane({
   onFoundVin,
   isBusy,
@@ -52,17 +58,18 @@ function ScannerPane({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [active, setActive] = useState(false);
-  const lockedRef = useRef(false); // stop multiple fires
+  const lockedRef = useRef(false);
 
   useEffect(() => {
     let stream: MediaStream | null = null;
     let raf = 0;
-    let detector: InstanceType<NonNullable<typeof window.BarcodeDetector>> | null = null;
+    let detector:
+      | InstanceType<NonNullable<typeof window.BarcodeDetector>>
+      | null = null;
 
     const start = async () => {
       setError(null);
       try {
-        // Try camera
         stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: "environment" },
           audio: false,
@@ -74,7 +81,7 @@ function ScannerPane({
 
         if (window.BarcodeDetector) {
           detector = new window.BarcodeDetector({
-            formats: ["qr_code", "code_39", "code_128", "pdf417", "aztec", "data_matrix"],
+            formats: ["code_39", "code_128", "pdf417", "data_matrix"],
           });
 
           const scan = async () => {
@@ -100,10 +107,12 @@ function ScannerPane({
           };
           raf = requestAnimationFrame(scan);
         } else {
-          setError("Live barcode detection not supported in this browser. Use photo upload below.");
+          setError(
+            "Live barcode detection not supported in this browser. Use photo upload below.",
+          );
         }
       } catch {
-        setError("Camera unavailable. Grant permission or use photo upload below.");
+        setError("Camera unavailable. Use photo upload below.");
       }
     };
 
@@ -121,12 +130,17 @@ function ScannerPane({
   }, [onFoundVin]);
 
   return (
-    <div className={`space-y-3 ${isBusy ? "ring-2 ring-orange-500 rounded-md animate-pulse" : ""}`}>
-      {/* Busy banner */}
+    <div
+      className={`space-y-3 ${
+        isBusy ? "ring-2 ring-orange-500 rounded-md animate-pulse" : ""
+      }`}
+    >
       {isBusy && (
         <div className="flex items-center gap-2 rounded border border-orange-500/60 bg-neutral-950 px-3 py-2">
           <span className="inline-block h-4 w-4 rounded-full border-2 border-orange-500 border-t-transparent animate-spin" />
-          <span className="text-xs text-orange-300">Decoding VIN… this can take a moment</span>
+          <span className="text-xs text-orange-300">
+            Decoding VIN… this can take a moment
+          </span>
         </div>
       )}
 
@@ -144,29 +158,66 @@ function ScannerPane({
         <div className="text-xs text-amber-300">{error}</div>
       ) : (
         <div className="text-xs text-neutral-400">
-          {active ? "Point the camera at the VIN barcode / label…" : "Initializing camera…"}
+          {active
+            ? "Point the camera at the VIN barcode / label…"
+            : "Initializing camera…"}
         </div>
       )}
 
-      {/* Fallback: photo upload (Safari/iPad) */}
+      {/* Photo upload → OCR route */}
       <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
-        <div className="mb-2 text-sm text-neutral-200">Or upload a photo of the VIN label</div>
+        <div className="mb-2 text-sm text-neutral-200">
+          Or upload a photo of the VIN label
+        </div>
         <input
           type="file"
           accept="image/*"
-          capture="environment"
           disabled={isBusy}
           className="block w-full text-xs text-neutral-300 file:mr-3 file:rounded file:border-0 file:bg-orange-500 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-black hover:file:bg-orange-400 disabled:opacity-60"
           onChange={async (e) => {
             if (isBusy) return;
             const file = e.target.files?.[0];
             if (!file) return;
-            const typed = window.prompt("Type the 17-character VIN from the photo:");
-            if (typed && isLikelyVin(typed)) onFoundVin(typed.toUpperCase());
+
+            try {
+              const formData = new FormData();
+              formData.append("image", file);
+
+              const res = await fetch("/api/vin/extract-from-image", {
+                method: "POST",
+                body: formData,
+              });
+
+              if (!res.ok) {
+                alert("Could not read VIN from image. Please try again.");
+                e.target.value = "";
+                return;
+              }
+
+              const data = (await res.json()) as { vin?: string | null };
+              const vin = data?.vin?.toString().toUpperCase() ?? "";
+              if (!vin || !isLikelyVin(vin)) {
+                alert(
+                  "No clear VIN found in the photo. Please retake or type it manually.",
+                );
+                e.target.value = "";
+                return;
+              }
+
+              onFoundVin(vin);
+            } catch (err) {
+              console.error(err);
+              alert(
+                "Error reading VIN from image. Please try again or enter it manually.",
+              );
+            } finally {
+              e.target.value = "";
+            }
           }}
         />
         <div className="mt-2 text-[11px] text-neutral-500">
-          Tip: Most VIN stickers include a Code 39/128 or PDF417 barcode.
+          Tip: Take a close, well-lit photo of the VIN sticker on the door frame or
+          dash.
         </div>
       </div>
 
@@ -187,7 +238,7 @@ export default function VinCaptureModal({
   triggerClassName,
 }: Props) {
   const [internalOpen, setInternalOpen] = useState(false);
-  const [isDecoding, setIsDecoding] = useState(false);   // 🟠 NEW
+  const [isDecoding, setIsDecoding] = useState(false);
 
   const isControlled = typeof open === "boolean";
   const isOpen = isControlled ? (open as boolean) : internalOpen;
@@ -202,6 +253,16 @@ export default function VinCaptureModal({
 
   const router = useRouter();
   const setVehicleDraft = useWorkOrderDraft((s) => s.setVehicle);
+
+  // Lock body scroll when modal is open
+  useEffect(() => {
+    if (!isOpen) return;
+    const original = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = original;
+    };
+  }, [isOpen]);
 
   // Keep latest onDecoded
   const onDecodedRef = useRef<Props["onDecoded"]>(onDecoded);
@@ -220,14 +281,14 @@ export default function VinCaptureModal({
       }
     };
     window.addEventListener("vin:decoded", handler as EventListener);
-    return () => window.removeEventListener("vin:decoded", handler as EventListener);
+    return () =>
+      window.removeEventListener("vin:decoded", handler as EventListener);
   }, [setOpen]);
 
-  // When scanner finds a VIN: decode & upsert, stash draft, kick recalls, then jump to Create.
   const handleFoundVin = useCallback(
     async (vin: string) => {
-      if (isDecoding) return;              // prevent double fires
-      setIsDecoding(true);                 // 🟠 show busy UX
+      if (isDecoding) return; // prevent double fires
+      setIsDecoding(true);
       try {
         const resp = await decodeVin(vin, userId);
         if (resp?.error) {
@@ -235,7 +296,6 @@ export default function VinCaptureModal({
           return;
         }
 
-        // Stash into your Zustand draft (Create page reads this on mount)
         setVehicleDraft({
           vin,
           year: resp.year ?? null,
@@ -254,10 +314,9 @@ export default function VinCaptureModal({
           engine: resp.engine ?? null,
         };
 
-        // Optional callback for inline usage (if on Create page already)
         onDecodedRef.current?.(detail);
 
-        // 🔶 Fire-and-forget recalls fetch with richer payload
+        // fire-and-forget recalls fetch
         try {
           void fetch("/api/recalls/fetch", {
             method: "POST",
@@ -278,7 +337,7 @@ export default function VinCaptureModal({
         setOpen(false);
         router.push("/work-orders/create?source=vin");
       } finally {
-        setIsDecoding(false);              // 🟠 stop busy UX
+        setIsDecoding(false);
       }
     },
     [userId, setVehicleDraft, router, setOpen, isDecoding],
@@ -304,7 +363,11 @@ export default function VinCaptureModal({
   return (
     <>
       {children ? (
-        <span onClick={() => setOpen(true)} role="button" style={{ cursor: "pointer" }}>
+        <span
+          onClick={() => setOpen(true)}
+          role="button"
+          style={{ cursor: "pointer" }}
+        >
           {children}
         </span>
       ) : (
@@ -315,8 +378,13 @@ export default function VinCaptureModal({
         open={isOpen}
         userId={userId}
         action={action}
-        // inject the scanner UI into the server shell
-        scanSlot={<ScannerPane userId={userId} onFoundVin={handleFoundVin} isBusy={isDecoding} />}
+        scanSlot={
+          <ScannerPane
+            userId={userId}
+            onFoundVin={handleFoundVin}
+            isBusy={isDecoding}
+          />
+        }
       />
     </>
   );
