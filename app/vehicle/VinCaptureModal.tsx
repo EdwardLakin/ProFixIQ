@@ -8,7 +8,9 @@ import React, {
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
-import VinCaptureModalShell from "@/features/vehicles/components/VinCaptureModal";
+
+import ModalShell from "@/features/shared/components/ModalShell";
+import VinCaptureModalContent from "@/features/vehicles/components/VinCaptureModal";
 import { decodeVin } from "@/features/shared/lib/vin/decodeVin";
 import { useWorkOrderDraft } from "app/work-orders/state/useWorkOrderDraft";
 
@@ -374,18 +376,25 @@ export default function VinCaptureModal({
         defaultTrigger
       )}
 
-      <VinCaptureModalShell
-        open={isOpen}
-        userId={userId}
-        action={action}
-        scanSlot={
-          <ScannerPane
-            userId={userId}
-            onFoundVin={handleFoundVin}
-            isBusy={isDecoding}
-          />
-        }
-      />
+      <ModalShell
+        isOpen={isOpen}
+        onClose={() => setOpen(false)}
+        title="Add Vehicle by VIN"
+        size="md"
+        hideFooter={true}
+      >
+        <VinCaptureModalContent
+          action={action}
+          userId={userId}
+          scanSlot={
+            <ScannerPane
+              userId={userId}
+              onFoundVin={handleFoundVin}
+              isBusy={isDecoding}
+            />
+          }
+        />
+      </ModalShell>
     </>
   );
 }
