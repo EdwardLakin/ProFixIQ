@@ -27,6 +27,9 @@ import { MobileJobLineAdd } from "@/features/work-orders/mobile/MobileJobLineAdd
 import { useWorkOrderDraft } from "app/work-orders/state/useWorkOrderDraft";
 import VinCaptureModal from "app/vehicle/VinCaptureModal";
 
+// 🔢 shared custom-id generator (same as desktop)
+import { generateWorkOrderCustomId } from "@/features/work-orders/lib/generateCustomId";
+
 type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
 type WorkOrderLineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
@@ -52,47 +55,6 @@ type DraftVehicleShape = {
 /* -------------------------------------------------------------------------- */
 /* Helpers (mirrored from desktop create page)                                */
 /* -------------------------------------------------------------------------- */
-
-function getInitials(
-  first?: string | null,
-  last?: string | null,
-  fallback?: string | null,
-): string {
-  const f = (first ?? "").trim();
-  const l = (last ?? "").trim();
-  if (f || l) return `${f[0] ?? ""}${l[0] ?? ""}`.toUpperCase() || "WO";
-  const fb = (fallback ?? "").trim();
-  if (fb.includes("@")) {
-    return fb.split("@")[0].slice(0, 2).toUpperCase() || "WO";
-  }
-  return fb.slice(0, 2).toUpperCase() || "WO";
-}
-
-async function generateCustomId(
-  supabase: ReturnType<typeof createClientComponentClient<DB>>,
-  prefix: string,
-): Promise<string> {
-  const p = prefix.replace(/[^A-Z]/g, "").slice(0, 3) || "WO";
-  const { data } = await supabase
-    .from("work_orders")
-    .select("custom_id")
-    .ilike("custom_id", `${p}%`)
-    .order("created_at", { ascending: false })
-    .limit(50);
-
-  let max = 0;
-  (data ?? []).forEach((r) => {
-    const cid = r.custom_id ?? "";
-    const m = cid.match(/^([A-Z]+)(\d{1,})$/i);
-    if (m && m[1].toUpperCase() === p) {
-      const n = parseInt(m[2], 10);
-      if (!Number.isNaN(n)) max = Math.max(max, n);
-    }
-  });
-
-  const next = (max + 1).toString().padStart(4, "0");
-  return `${p}${next}`;
-}
 
 /**
  * Resolve the user's shop_id.
@@ -287,13 +249,11 @@ export default function MobileCreateWorkOrderPage() {
 
         if (!placeholderVehicle) return;
 
-        // Generate custom_id like desktop
-        const initials = getInitials(
-          placeholderCustomer.first_name,
-          placeholderCustomer.last_name,
-          user.email,
+        // 🔢 Generate custom_id using shared helper (same as desktop)
+        const customId = await generateWorkOrderCustomId(
+          supabase,
+          placeholderCustomer.id,
         );
-        const customId = await generateCustomId(supabase, initials);
 
         const newId = uuidv4();
 
@@ -301,7 +261,7 @@ export default function MobileCreateWorkOrderPage() {
           .from("work_orders")
           .insert({
             id: newId,
-            custom_id: customId,
+            custom_id: customId ?? null,
             user_id: user.id,
             shop_id: shopId,
             customer_id: placeholderCustomer.id,

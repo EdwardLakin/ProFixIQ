@@ -57,6 +57,22 @@ type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
 type WOType = "inspection" | "maintenance" | "diagnosis";
 type UploadSummary = { uploaded: number; failed: number };
 
+// Extended line type so we can read template metadata safely
+type WorkOrderLineWithInspectionMeta = LineRow & {
+  inspection_template?: string | null;
+  inspectionTemplate?: string | null;
+  template?: string | null;
+  inspection_template_id?: string | null;
+  metadata?:
+    | {
+        inspection_template_id?: string | null;
+        inspection_template?: string | null;
+        template?: string | null;
+        [key: string]: unknown;
+      }
+    | null;
+};
+
 const getStrField = (obj: unknown, key: string): string | null => {
   if (obj && typeof obj === "object") {
     const v = (obj as Record<string, unknown>)[key];
@@ -65,6 +81,14 @@ const getStrField = (obj: unknown, key: string): string | null => {
     if (v == null) return null;
   }
   return null;
+};
+
+const getMetaString = (meta: unknown, key: string): string | null => {
+  if (!meta || typeof meta !== "object") return null;
+  const v = (meta as Record<string, unknown>)[key];
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return t.length ? t : null;
 };
 
 const strOrNull = (v: string | null | undefined) => {
@@ -171,10 +195,10 @@ export default function CreateWorkOrderPage() {
         make: d.vehicle.make ?? prev.make,
         model: d.vehicle.model ?? prev.model,
         license_plate:
-            // support both new `license_plate` and legacy `plate` fields
-        (draft.vehicle as any).license_plate ??
-        (draft.vehicle as any).plate ??
-        prev.license_plate,
+          // support both new `license_plate` and legacy `plate` fields
+          (d.vehicle as any).license_plate ??
+          (d.vehicle as any).plate ??
+          prev.license_plate,
       }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -290,7 +314,10 @@ export default function CreateWorkOrderPage() {
         year: draft.vehicle.year ?? prev.year,
         make: draft.vehicle.make ?? prev.make,
         model: draft.vehicle.model ?? prev.model,
-        license_plate: draft.vehicle.plate ?? prev.license_plate,
+        license_plate:
+          (draft.vehicle as any).license_plate ??
+          (draft.vehicle as any).plate ??
+          prev.license_plate,
       }));
     }
     if (hasCust) {
@@ -795,50 +822,50 @@ export default function CreateWorkOrderPage() {
     [supabase, wo?.id, wo?.shop_id, fetchLines, setLines],
   );
 
-  // ✅ open inspection for a given line
+  // ✅ open inspection for a given line – unified stack
   const openInspectionForLine = useCallback(
-    async (line: LineRow) => {
+    (line: LineRow) => {
       if (!wo?.id || !line?.id) return;
 
-      // simple template picker (still uses legacy templates here)
-      const desc = (line.description || "").toLowerCase();
-      const isAir = /\bair\b|cvip|push\s*rod|air\s*brake/.test(desc);
-      const templateSlug = isAir ? "maintenance50-air" : "maintenance50";
+      const ln = line as WorkOrderLineWithInspectionMeta;
 
-      try {
-        const res = await fetch("/api/inspections/session/create", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            workOrderId: wo.id,
-            workOrderLineId: line.id,
-            vehicleId: vehicleId,
-            customerId: customerId,
-            template: templateSlug,
-          }),
-        });
+      // Prefer FK → inspection_templates.id
+      const templateId: string | null =
+        ln.inspection_template_id ??
+        getMetaString(ln.metadata, "inspection_template_id");
 
-        const j = (await res.json().catch(() => null)) as
-          | { sessionId?: string; error?: string }
-          | null;
+      // Optional human-readable slug / name (for legacy routes / context)
+      const templateSlug: string | null =
+        ln.inspection_template ??
+        ln.inspectionTemplate ??
+        ln.template ??
+        getMetaString(ln.metadata, "inspection_template") ??
+        getMetaString(ln.metadata, "template");
 
-        if (!res.ok || !j?.sessionId) {
-          throw new Error(j?.error || "Failed to create inspection session");
-        }
-
-        const sp = new URLSearchParams();
-        sp.set("workOrderId", wo.id);
-        sp.set("workOrderLineId", line.id);
-        sp.set("inspectionId", j.sessionId);
-        sp.set("template", templateSlug);
-        sp.set("embed", "1");
-
-        const url = `/inspection/${templateSlug}?${sp.toString()}`;
-        setInspectionSrc(url);
-        setInspectionOpen(true);
-      } catch (err: any) {
-        alert(err?.message || "Unable to open inspection");
+      if (!templateId && !templateSlug) {
+        alert(
+          "This job line doesn't have an inspection template attached yet. Build or attach a custom inspection first.",
+        );
+        return;
       }
+
+      const params = new URLSearchParams({
+        workOrderId: wo.id,
+        workOrderLineId: line.id,
+      });
+
+      if (vehicleId) params.set("vehicleId", vehicleId);
+      if (customerId) params.set("customerId", customerId);
+      if (templateId) params.set("templateId", templateId);
+      if (templateSlug) params.set("template", templateSlug);
+      params.set("embed", "1");
+
+      const url = `/inspections/unified/session/${encodeURIComponent(
+        line.id,
+      )}?${params.toString()}`;
+
+      setInspectionSrc(url);
+      setInspectionOpen(true);
     },
     [wo?.id, vehicleId, customerId],
   );
