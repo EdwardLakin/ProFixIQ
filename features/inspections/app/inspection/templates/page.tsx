@@ -203,7 +203,7 @@ export default function InspectionTemplatesPage() {
                     <div className="flex flex-wrap items-center gap-2">
                       {/* Use Template -> new run loader + legacy fill */}
                       <Link
-                        href={`/inspection/run?templateId=${t.id}`}
+                        href={`/inspections/run?templateId=${t.id}`}
                         className="rounded-full border border-accent/80 bg-transparent px-3 py-1 text-[11px] font-semibold text-accent shadow-[0_0_22px_rgba(0,0,0,0.75)] hover:bg-accent/10"
                       >
                         Use
