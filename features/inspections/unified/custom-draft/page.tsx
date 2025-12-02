@@ -17,9 +17,14 @@ const UNIT_OPTIONS = ["", "mm", "psi", "kPa", "in", "ft·lb"] as const;
 type VehicleType = "car" | "truck" | "bus" | "trailer";
 type DutyClass = "light" | "medium" | "heavy";
 
-/** Narrow Insert type to include labor_hours until your generated types include it */
+/** Narrow types to include labor_hours until generated types include it */
 type InsertTemplate =
   Database["public"]["Tables"]["inspection_templates"]["Insert"] & {
+    labor_hours?: number | null;
+  };
+
+type UpdateTemplate =
+  Database["public"]["Tables"]["inspection_templates"]["Update"] & {
     labor_hours?: number | null;
   };
 
@@ -340,35 +345,107 @@ export default function UnifiedCustomDraftPage() {
     });
   }
 
+  /* -------------------------- shared payload builder -------------------------- */
+
+  const buildTemplatePayload = (
+    userId: string,
+  ): { cleaned: InspectionSection[]; payload: InsertTemplate } | null => {
+    const cleaned = normalizeSections(sections);
+    if (cleaned.length === 0) {
+      toast.error("Add at least one section with items.");
+      return null;
+    }
+
+    const payload: InsertTemplate = {
+      user_id: userId,
+      template_name: (title || "").trim() || "Custom Template",
+      sections:
+        (cleaned as unknown) as Database["public"]["Tables"]["inspection_templates"]["Insert"]["sections"],
+      description: "Created from Custom Draft",
+      vehicle_type: vehicleType || undefined,
+      tags: ["custom", "draft"],
+      is_public: false,
+      labor_hours: Number.isFinite(laborHours) ? laborHours : null,
+    };
+
+    return { cleaned, payload };
+  };
+
   /* --------------------------------- actions --------------------------------- */
 
   const saveTemplate = async () => {
+    setSaving(true);
     try {
-      setSaving(true);
       const { data: u } = await supabase.auth.getUser();
       if (!u?.user) {
         toast.error("Please sign in.");
         return;
       }
 
-      const cleaned = normalizeSections(sections);
-      if (cleaned.length === 0) {
-        toast.error("Add at least one section with items.");
+      const built = buildTemplatePayload(u.user.id);
+      if (!built) return;
+      const { payload } = built;
+
+      // If editing an existing template, update instead of inserting a new one
+      if (templateId) {
+        const updatePayload: UpdateTemplate = { ...payload };
+        const { error } = await supabase
+          .from("inspection_templates")
+          .update(updatePayload)
+          .eq("id", templateId);
+
+        if (error) {
+          console.error(error);
+          toast.error("Failed to update template.");
+          return;
+        }
+
+        toast.success("Template updated.");
+      } else {
+        const { error, data } = await supabase
+          .from("inspection_templates")
+          .insert(payload)
+          .select("id")
+          .maybeSingle();
+
+        if (error || !data?.id) {
+          console.error(error);
+          toast.error("Failed to save template.");
+          return;
+        }
+
+        toast.success("Template saved.");
+      }
+
+      router.replace(`/inspections/templates`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveAndRun = async () => {
+    setRunning(true);
+    try {
+      const { data: u } = await supabase.auth.getUser();
+      if (!u?.user) {
+        toast.error("Please sign in.");
         return;
       }
 
-      const payload: InsertTemplate = {
-        user_id: u.user.id,
-        template_name: (title || "").trim() || "Custom Template",
-        sections:
-          cleaned as unknown as Database["public"]["Tables"]["inspection_templates"]["Insert"]["sections"],
-        description: "Created from Custom Draft",
-        vehicle_type: vehicleType || undefined,
-        tags: ["custom", "draft"],
-        is_public: false,
-        labor_hours: Number.isFinite(laborHours) ? laborHours : null,
-      };
+      const built = buildTemplatePayload(u.user.id);
+      if (!built) return;
+      const { cleaned, payload } = built;
 
+      // keep staging for now (not strictly required)
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("inspection:sections", JSON.stringify(cleaned));
+        sessionStorage.setItem(
+          "inspection:title",
+          (title || "").trim() || "Inspection",
+        );
+      }
+
+      // Always create a fresh template row for "Save & Run"
       const { error, data } = await supabase
         .from("inspection_templates")
         .insert(payload)
@@ -381,32 +458,12 @@ export default function UnifiedCustomDraftPage() {
         return;
       }
 
-      toast.success("Template saved.");
-      router.replace(`/inspections/templates`);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const saveAndRun = () => {
-    try {
-      setRunning(true);
-      const cleaned = normalizeSections(sections);
-      if (cleaned.length === 0) {
-        toast.error("Add at least one section with items.");
-        return;
-      }
-      // Stage into generic inspection keys for the run page
-      sessionStorage.setItem("inspection:sections", JSON.stringify(cleaned));
-      sessionStorage.setItem(
-        "inspection:title",
-        (title || "").trim() || "Inspection",
-      );
-
       const qs = new URLSearchParams();
-      qs.set("template", title || "Inspection");
+      qs.set("templateId", data.id);
       if (vehicleType) qs.set("vehicleType", vehicleType);
       if (dutyClass) qs.set("dutyClass", dutyClass);
+
+      // unified runner now expects templateId in the query
       router.push(`/inspections/run?${qs.toString()}`);
     } finally {
       setRunning(false);
@@ -659,7 +716,7 @@ export default function UnifiedCustomDraftPage() {
             onClick={saveAndRun}
             disabled={running}
             className="rounded-full border border-emerald-500/70 bg-emerald-500/15 px-5 py-2 text-sm font-semibold uppercase tracking-[0.2em] text-emerald-100 hover:bg-emerald-500/25 disabled:opacity-60"
-            title="Stage this draft and open the Run page"
+            title="Save this draft as a template and open the Run page"
           >
             {running ? "Opening…" : "Save & Run"}
           </button>
