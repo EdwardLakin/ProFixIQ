@@ -1,3 +1,4 @@
+// features/shared/components/AppShell.tsx
 "use client";
 
 import Link from "next/link";
@@ -8,10 +9,10 @@ import type { Database } from "@shared/types/types/supabase";
 import { Toaster } from "sonner";
 
 import RoleSidebar from "@/features/shared/components/RoleSidebar";
-import ThemeToggleButton from "@/features/shared/components/ThemeToggleButton";
 import ShiftTracker from "@shared/components/ShiftTracker";
 import NewChatModal from "@/features/ai/components/chat/NewChatModal";
 import AgentRequestModal from "@/features/agent/components/AgentRequestModal";
+import { cn } from "@/features/shared/utils/cn";
 
 const NON_APP_ROUTES = [
   "/",
@@ -35,7 +36,7 @@ const ActionButton = ({
     type="button"
     onClick={onClick}
     title={title}
-    className="inline-flex items-center gap-1 rounded-md border border-white/5 bg-surface/70 px-2.5 py-1.5 text-xs text-foreground hover:border-accent hover:text-white transition"
+    className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-black/60 px-2.5 py-1.5 text-xs text-neutral-100 shadow-sm backdrop-blur-md transition hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:text-white hover:bg-black/80"
   >
     {children}
   </button>
@@ -52,6 +53,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [chatOpen, setChatOpen] = useState(false);
   const [agentDialogOpen, setAgentDialogOpen] = useState(false);
   const [incomingConvoId, setIncomingConvoId] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+
   const punchRef = useRef<HTMLDivElement | null>(null);
 
   const isAppRoute = !NON_APP_ROUTES.some(
@@ -141,12 +144,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return (
       <Link
         href={href}
-        className={[
-          "flex-1 text-center py-2 text-xs font-medium transition-colors",
+        className={cn(
+          "flex-1 py-2 text-center text-xs font-medium transition-colors",
           active
-            ? "text-accent font-semibold"
-            : "text-muted-foreground hover:text-foreground",
-        ].join(" ")}
+            ? "text-[color:var(--accent-copper,#f97316)] font-semibold"
+            : "text-neutral-500 hover:text-neutral-100",
+        )}
       >
         {label}
       </Link>
@@ -160,52 +163,81 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   if (!isAppRoute) {
     return (
-      <div className="min-h-screen bg-background text-foreground">
+      <div className="min-h-screen bg-black text-foreground">
         {children}
-        {/* Global toaster even on non-app routes if you want */}
-        <Toaster closeButton richColors position="top-right" theme="dark" />
+        <Toaster
+          closeButton
+          richColors
+          position="top-right"
+          theme="dark"
+        />
       </div>
     );
   }
 
   return (
     <>
-      <div className="min-h-screen flex bg-background text-foreground">
-        {/* Sidebar */}
-        <aside className="hidden md:flex md:w-64 md:flex-col border-r border-white/5 bg-surface/80 backdrop-blur">
-          <div className="h-14 flex items-center justify-between px-4 border-b border-white/5">
+      <div className="flex min-h-screen bg-transparent text-foreground">
+        {/* Sidebar – collapsible on desktop */}
+        <aside
+          className={cn(
+            "hidden md:flex md:flex-col border-r border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-b from-black/90 via-slate-950/95 to-black/90 backdrop-blur-xl transition-all duration-300",
+            sidebarOpen
+              ? "md:w-64 translate-x-0"
+              : "md:w-0 -translate-x-full pointer-events-none",
+          )}
+        >
+          <div className="flex h-14 items-center justify-between border-b border-white/10 px-4">
             <Link
               href="/dashboard"
-              className="text-lg font-semibold tracking-tight text-foreground hover:text-accent transition"
+              className="text-lg font-semibold tracking-tight text-neutral-100 hover:text-[color:var(--accent-copper,#f97316)] transition-colors"
+              style={{
+                fontFamily: "Black Ops One, var(--font-blackops), system-ui",
+              }}
             >
               ProFixIQ
             </Link>
-            <ThemeToggleButton />
           </div>
 
           <RoleSidebar />
 
-          <div className="mt-auto h-12 border-t border-white/5" />
+          <div className="mt-auto h-12 border-t border-white/10" />
         </aside>
 
         {/* Main */}
-        <div className="flex-1 flex flex-col min-h-screen">
+        <div className="flex min-h-screen flex-1 flex-col">
           {/* Top bar */}
-          <header className="hidden md:flex items-center justify-between h-14 px-6 border-b border-white/5 bg-background/60 backdrop-blur z-40">
-            <nav className="flex gap-6 text-sm text-muted-foreground">
-              <Link href="/dashboard" className="hover:text-foreground">
-                Dashboard
-              </Link>
-              <Link href="/work-orders" className="hover:text-foreground">
-                Work Orders
-              </Link>
-              <Link href="/inspections" className="hover:text-foreground">
-                Inspections
-              </Link>
-              <Link href="/parts" className="hover:text-foreground">
-                Parts
-              </Link>
-            </nav>
+          <header className="fixed inset-x-0 top-0 z-40 hidden h-14 items-center justify-between border-b border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-r from-black/90 via-slate-950/90 to-black/90 px-4 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl md:flex">
+            <div className="flex items-center gap-3">
+              {/* Sidebar toggle */}
+              <button
+                type="button"
+                onClick={() => setSidebarOpen((v) => !v)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/10 bg-black/60 text-neutral-300 shadow-sm transition hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:text-white hover:bg-black/80"
+              >
+                <span className="sr-only">Toggle navigation</span>
+                <div className="space-y-0.5">
+                  <span className="block h-[2px] w-4 rounded-full bg-current" />
+                  <span className="block h-[2px] w-4 rounded-full bg-current" />
+                  <span className="block h-[2px] w-4 rounded-full bg-current" />
+                </div>
+              </button>
+
+              <nav className="flex gap-4 text-sm text-neutral-400">
+                <Link href="/dashboard" className="hover:text-neutral-100">
+                  Dashboard
+                </Link>
+                <Link href="/work-orders" className="hover:text-neutral-100">
+                  Work Orders
+                </Link>
+                <Link href="/inspections" className="hover:text-neutral-100">
+                  Inspections
+                </Link>
+                <Link href="/parts" className="hover:text-neutral-100">
+                  Parts
+                </Link>
+              </nav>
+            </div>
 
             <div className="flex items-center gap-2">
               {userId ? (
@@ -213,17 +245,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   onClick={() => setPunchOpen((p) => !p)}
                   title="Punch / shift tracker"
                 >
-                  <span className="inline-block h-2 w-2 rounded-full bg-emerald-400" />
+                  <span className="inline-block h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.9)]" />
                   Shift
                 </ActionButton>
               ) : null}
 
-              {/* open our chat modal */}
               <ActionButton onClick={() => setChatOpen(true)} title="Messages">
                 💬 <span className="hidden lg:inline">Messages</span>
               </ActionButton>
 
-              {/* Agent Request – available to any signed-in user */}
               {userId && (
                 <ActionButton
                   onClick={() => setAgentDialogOpen(true)}
@@ -247,7 +277,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 ⚡ <span className="hidden lg:inline">AI Planner</span>
               </ActionButton>
 
-              {/* Agent Console (role-gated) */}
               {userId && canSeeAgentConsole && (
                 <ActionButton
                   onClick={() => router.push("/agent")}
@@ -273,9 +302,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           {punchOpen && userId ? (
             <div
               ref={punchRef}
-              className="hidden md:block fixed right-6 top-16 z-50 w-72 rounded-lg border border-white/10 bg-surface/95 backdrop-blur p-3 shadow-lg"
+              className="fixed right-6 top-20 z-50 hidden w-72 rounded-xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/90 p-3 shadow-[0_18px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl md:block"
             >
-              <h2 className="text-sm font-medium mb-2 text-foreground/80">
+              <h2 className="mb-2 text-sm font-medium text-neutral-100">
                 Shift Tracker
               </h2>
               <ShiftTracker userId={userId} />
@@ -283,12 +312,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           ) : null}
 
           {/* content */}
-          <main className="flex-1 px-3 md:px-6 pt-14 md:pt-6 pb-14 md:pb-6 max-w-6xl w-full mx-auto">
+          <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-3 pb-14 pt-16 md:px-6 md:pb-6 md:pt-20">
             {children}
           </main>
 
           {/* mobile nav */}
-          <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-background/95 backdrop-blur border-t border-white/10 pb-[env(safe-area-inset-bottom)]">
+          <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-[color:var(--metal-border-soft,#1f2937)] bg-black/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
             <div className="flex px-1">
               <NavItem href="/dashboard" label="Dashboard" />
               <NavItem href="/work-orders" label="Work Orders" />
@@ -296,14 +325,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <NavItem href="/chat" label="Messages" />
               <NavItem href="/mobile/planner" label="Planner" />
 
-              {/* Mobile sign-out */}
               <button
                 type="button"
                 onClick={async () => {
                   await supabase.auth.signOut();
                   router.replace("/sign-in");
                 }}
-                className="flex-1 text-center py-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+                className="flex-1 py-2 text-center text-xs font-medium text-neutral-500 transition-colors hover:text-neutral-100"
               >
                 Sign Out
               </button>
@@ -333,7 +361,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         />
       )}
 
-      {/* Global toaster for the entire app shell (agent modal, etc.) */}
+      {/* Global toaster for the entire app shell */}
       <Toaster closeButton richColors position="top-right" theme="dark" />
     </>
   );

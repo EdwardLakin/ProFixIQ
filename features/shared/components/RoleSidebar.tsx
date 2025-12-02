@@ -90,11 +90,9 @@ export default function RoleSidebar() {
       const hasActive = groupTiles.some(
         (t) => pathname === t.href || pathname.startsWith(t.href + "/"),
       );
-      // default closed, but open the one that contains active
       next[group] = hasActive;
     }
     setOpenSections((prev) =>
-      // keep any user toggles, but ensure active stays open
       Object.fromEntries(
         Object.entries(next).map(([k, v]) => [k, prev[k] ?? v ?? false]),
       ),
@@ -114,7 +112,13 @@ export default function RoleSidebar() {
   };
 
   return (
-    <nav className="flex-1 overflow-y-auto py-4 space-y-3">
+    <nav
+      className="
+        flex-1 overflow-y-auto py-4 space-y-3
+        bg-gradient-to-b from-black/70 via-slate-950/90 to-black/90
+        metal-scroll
+      "
+    >
       {sortedGroups.map(([group, groupTiles]) => {
         const open = !!openSections[group];
         const hasActive = groupTiles.some(
@@ -129,15 +133,17 @@ export default function RoleSidebar() {
               onClick={() => toggleSection(group)}
               className={cn(
                 "flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left",
-                "text-[0.65rem] uppercase tracking-[0.12em]",
-                "border border-white/5 bg-white/5/0 hover:bg-white/5",
+                "text-[0.65rem] uppercase tracking-[0.16em]",
+                "border border-[color:var(--metal-border-soft,#1f2937)] bg-black/40",
+                "hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:bg-white/5",
                 "text-neutral-400 hover:text-white transition-colors",
-                hasActive && "border-orange-400/60 text-white shadow-glow",
+                hasActive &&
+                  "border-[color:var(--accent-copper,#f97316)]/80 text-white shadow-[0_0_18px_rgba(249,115,22,0.55)]",
               )}
             >
               <span className="flex items-center gap-2">
                 {hasActive && (
-                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-orange-400 shadow-glow" />
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-[color:var(--accent-copper,#f97316)] shadow-[0_0_14px_rgba(249,115,22,0.9)]" />
                 )}
                 <span>{labelForGroup(group)}</span>
               </span>
@@ -160,17 +166,15 @@ export default function RoleSidebar() {
                       href={t.href}
                       className={cn(
                         "group flex items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-[0.8rem] transition-colors",
-                        "bg-white/0 border border-transparent",
+                        "border bg-gradient-to-r from-slate-950/70 via-black/70 to-slate-950/70",
                         active
-                          ? "bg-white/5 border-orange-400/70 text-white shadow-sm"
-                          : "text-neutral-400 hover:text-white hover:bg-white/5 hover:border-white/10",
+                          ? "border-[color:var(--accent-copper,#f97316)]/75 text-white shadow-[0_0_25px_rgba(249,115,22,0.55)]"
+                          : "border-white/5 text-neutral-400 hover:text-white hover:border-[color:var(--accent-copper-soft,#fdba74)] hover:bg-black/80",
                       )}
                     >
-                      <span className="truncate">
-                        {t.title}
-                      </span>
+                      <span className="truncate">{t.title}</span>
                       {t.cta ? (
-                        <span className="text-[0.7rem] text-neutral-500 group-hover:text-neutral-300">
+                        <span className="text-[0.7rem] text-neutral-500 group-hover:text-neutral-200">
                           {t.cta}
                         </span>
                       ) : null}

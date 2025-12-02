@@ -55,7 +55,11 @@ export default function InspectionTemplatesPage() {
 
   const rows = useMemo<Template[]>(() => {
     const pool =
-      scope === "mine" ? mine : scope === "shared" ? shared : [...mine, ...shared];
+      scope === "mine"
+        ? mine
+        : scope === "shared"
+        ? shared
+        : [...mine, ...shared];
 
     if (!search.trim()) return pool;
 
@@ -155,8 +159,7 @@ export default function InspectionTemplatesPage() {
               );
 
               const created =
-                t.created_at ??
-                new Date().toISOString(); // safe fallback for display only
+                t.created_at ?? new Date().toISOString(); // display fallback only
 
               return (
                 <li
@@ -198,15 +201,15 @@ export default function InspectionTemplatesPage() {
                     </span>
 
                     <div className="flex flex-wrap items-center gap-2">
-                      {/* Use Template -> unified custom-draft in run mode */}
+                      {/* Preview Template – unified runner in preview mode */}
                       <Link
-                        href={`/inspections/unified/custom-draft?templateId=${t.id}&template=${encodedName}&mode=run`}
-                        className="rounded-full border border-emerald-400/80 bg-emerald-500 px-3 py-1 text-[11px] font-semibold text-black shadow-[0_0_22px_rgba(16,185,129,0.65)] hover:bg-emerald-400"
+                        href={`/inspections/unified/custom-draft?templateId=${t.id}&template=${encodedName}&mode=preview`}
+                        className="rounded-full border border-orange-400/80 bg-orange-500 px-3 py-1 text-[11px] font-semibold text-black shadow-[0_0_22px_rgba(249,115,22,0.65)] hover:bg-orange-400"
                       >
-                        Use
+                        Preview
                       </Link>
 
-                      {/* Edit Template -> unified custom-draft in edit mode */}
+                      {/* Edit Template */}
                       {mineOwned && (
                         <Link
                           href={`/inspections/unified/custom-draft?templateId=${t.id}&template=${encodedName}&mode=edit`}

@@ -125,7 +125,13 @@ export default function UnifiedCustomDraftPage() {
   const sp = useSearchParams();
   const supabase = useMemo(() => createClientComponentClient<Database>(), []);
 
-  // if the user clicked "Edit" from the template list we expect ?templateId=...
+  // mode: edit (default) | preview
+  const modeParam = sp.get("mode");
+  type Mode = "edit" | "preview";
+  const mode: Mode = modeParam === "preview" ? "preview" : "edit";
+  const isPreview = mode === "preview";
+
+  // if the user clicked "Edit" or "Preview" from the template list we expect ?templateId=...
   const templateId = sp.get("templateId");
 
   const [title, setTitle] = useState(sp.get("template") || "Custom Inspection");
@@ -208,7 +214,7 @@ export default function UnifiedCustomDraftPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 2) if we came from "Edit template", pull it from Supabase and override
+  // 2) if we came from "Edit template" or "Preview", pull it from Supabase and override
   useEffect(() => {
     if (!templateId) return;
 
@@ -252,6 +258,7 @@ export default function UnifiedCustomDraftPage() {
   /* ----------------------------- editing helpers ----------------------------- */
 
   function addSection() {
+    if (isPreview) return;
     setSections((prev) => [
       ...prev,
       {
@@ -262,10 +269,12 @@ export default function UnifiedCustomDraftPage() {
   }
 
   function removeSection(idx: number) {
+    if (isPreview) return;
     setSections((prev) => prev.filter((_, i) => i !== idx));
   }
 
   function moveSection(idx: number, dir: -1 | 1) {
+    if (isPreview) return;
     setSections((prev) => {
       const next = [...prev];
       const j = idx + dir;
@@ -276,6 +285,7 @@ export default function UnifiedCustomDraftPage() {
   }
 
   function updateSectionTitle(idx: number, nextTitle: string) {
+    if (isPreview) return;
     setSections((prev) => {
       const next = [...prev];
       next[idx] = { ...next[idx], title: nextTitle };
@@ -284,6 +294,7 @@ export default function UnifiedCustomDraftPage() {
   }
 
   function addItem(secIdx: number) {
+    if (isPreview) return;
     setSections((prev) => {
       const next = [...prev];
       const s = next[secIdx];
@@ -299,6 +310,7 @@ export default function UnifiedCustomDraftPage() {
   }
 
   function removeItem(secIdx: number, itemIdx: number) {
+    if (isPreview) return;
     setSections((prev) => {
       const next = [...prev];
       const s = next[secIdx];
@@ -311,6 +323,7 @@ export default function UnifiedCustomDraftPage() {
   }
 
   function updateItemLabel(secIdx: number, itemIdx: number, label: string) {
+    if (isPreview) return;
     setSections((prev) => {
       const next = [...prev];
       const s = next[secIdx];
@@ -322,6 +335,7 @@ export default function UnifiedCustomDraftPage() {
   }
 
   function updateItemUnit(secIdx: number, itemIdx: number, unit: string) {
+    if (isPreview) return;
     setSections((prev) => {
       const next = [...prev];
       const s = next[secIdx];
@@ -333,6 +347,7 @@ export default function UnifiedCustomDraftPage() {
   }
 
   function moveItem(secIdx: number, itemIdx: number, dir: -1 | 1) {
+    if (isPreview) return;
     setSections((prev) => {
       const next = [...prev];
       const s = next[secIdx];
@@ -374,6 +389,7 @@ export default function UnifiedCustomDraftPage() {
   /* --------------------------------- actions --------------------------------- */
 
   const saveTemplate = async () => {
+    if (isPreview) return;
     setSaving(true);
     try {
       const { data: u } = await supabase.auth.getUser();
@@ -424,6 +440,7 @@ export default function UnifiedCustomDraftPage() {
   };
 
   const saveAndRun = async () => {
+    if (isPreview) return;
     setRunning(true);
     try {
       const { data: u } = await supabase.auth.getUser();
@@ -478,17 +495,25 @@ export default function UnifiedCustomDraftPage() {
         <header className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="text-[11px] font-blackops uppercase tracking-[0.22em] text-neutral-400">
-              Custom Inspection · Builder
+              Custom Inspection · {isPreview ? "Preview" : "Builder"}
             </div>
             <h1 className="text-xl font-blackops tracking-[0.18em] text-[color:var(--accent-copper-light,#fed7aa)]">
-              Template Draft (Editable)
+              {isPreview ? "Template Preview (Read-only)" : "Template Draft (Editable)"}
             </h1>
             <p className="text-xs text-neutral-500">
-              Tweak sections & items, set labor hours and units, then save as a
-              reusable template.
+              {isPreview
+                ? "Read-only view of this inspection layout. Use the builder to make changes."
+                : "Tweak sections & items, set labor hours and units, then save as a reusable template."}
             </p>
           </div>
         </header>
+
+        {isPreview && (
+          <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-950/40 px-3 py-2 text-[11px] text-amber-100 shadow-[0_0_18px_rgba(245,158,11,0.4)]">
+            Preview mode — all fields are read-only. To edit this template,
+            open it in the Custom Draft builder.
+          </div>
+        )}
 
         {/* Header controls */}
         <div className="mb-4 grid gap-3 md:grid-cols-[1fr,auto,auto,auto] md:items-end">
@@ -497,9 +522,10 @@ export default function UnifiedCustomDraftPage() {
               Template name
             </span>
             <input
-              className="rounded border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-copper,#ea580c)] focus:ring-1 focus:ring-[color:var(--accent-copper-soft,#fdba74)]"
+              className="rounded border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-copper,#ea580c)] focus:ring-1 focus:ring-[color:var(--accent-copper-soft,#fdba74)] disabled:opacity-60"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
+              disabled={isPreview}
             />
           </label>
 
@@ -523,19 +549,20 @@ export default function UnifiedCustomDraftPage() {
 
           <label className="flex flex-col gap-1">
             <span className="text-[11px] uppercase tracking-[0.16em] text-neutral-400">
-              Labor hours (editable)
+              Labor hours {isPreview ? "(read-only)" : "(editable)"}
             </span>
             <input
               type="number"
               min={0}
               step={0.25}
               inputMode="decimal"
-              className="w-40 rounded border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-copper,#ea580c)] focus:ring-1 focus:ring-[color:var(--accent-copper-soft,#fdba74)]"
+              className="w-40 rounded border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-2 text-sm outline-none focus:border-[color:var(--accent-copper,#ea580c)] focus:ring-1 focus:ring-[color:var(--accent-copper-soft,#fdba74)] disabled:opacity-60"
               value={Number.isFinite(laborHours) ? laborHours : 0}
               onChange={(e) => {
                 setLaborHours(Number(e.target.value));
                 setUserEditedLabor(true);
               }}
+              disabled={isPreview}
             />
           </label>
         </div>
@@ -558,33 +585,35 @@ export default function UnifiedCustomDraftPage() {
                       Section
                     </span>
                     <input
-                      className="min-w-[220px] rounded border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-1.5 text-sm text-white outline-none focus:border-[color:var(--accent-copper,#ea580c)] focus:ring-1 focus:ring-[color:var(--accent-copper-soft,#fdba74)]"
+                      className="min-w-[220px] rounded border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-1.5 text-sm text-white outline-none focus:border-[color:var(--accent-copper,#ea580c)] focus:ring-1 focus:ring-[color:var(--accent-copper-soft,#fdba74)] disabled:opacity-60"
                       value={sec.title}
                       onChange={(e) => updateSectionTitle(i, e.target.value)}
+                      disabled={isPreview}
                     />
                   </div>
 
                   <div className="flex gap-2">
                     <button
                       onClick={() => moveSection(i, -1)}
-                      className="rounded border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-2 py-1 text-xs hover:bg-white/5 disabled:opacity-50"
-                      disabled={i === 0}
+                      className="rounded border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-2 py-1 text-xs hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed"
+                      disabled={i === 0 || isPreview}
                       title="Move up"
                     >
                       ↑
                     </button>
                     <button
                       onClick={() => moveSection(i, +1)}
-                      className="rounded border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-2 py-1 text-xs hover:bg-white/5 disabled:opacity-50"
-                      disabled={i === sections.length - 1}
+                      className="rounded border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-2 py-1 text-xs hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed"
+                      disabled={i === sections.length - 1 || isPreview}
                       title="Move down"
                     >
                       ↓
                     </button>
                     <button
                       onClick={() => removeSection(i)}
-                      className="rounded border border-red-600/70 bg-red-900/30 px-2 py-1 text-xs text-red-200 hover:bg-red-900/60"
+                      className="rounded border border-red-600/70 bg-red-900/30 px-2 py-1 text-xs text-red-200 hover:bg-red-900/60 disabled:opacity-40 disabled:cursor-not-allowed"
                       title="Remove section"
+                      disabled={isPreview}
                     >
                       Remove
                     </button>
@@ -602,7 +631,7 @@ export default function UnifiedCustomDraftPage() {
                         className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr,140px,auto,auto] sm:items-center"
                       >
                         {/* label or dropdown */}
-                        {isPlaceholder && hasMaster ? (
+                        {isPlaceholder && hasMaster && !isPreview ? (
                           <select
                             className="rounded border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-1.5 text-sm"
                             value=""
@@ -624,23 +653,25 @@ export default function UnifiedCustomDraftPage() {
                           </select>
                         ) : (
                           <input
-                            className="rounded border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-1.5 text-sm"
+                            className="rounded border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-1.5 text-sm disabled:opacity-60"
                             value={it.item}
                             onChange={(e) =>
                               updateItemLabel(i, j, e.target.value)
                             }
                             placeholder="Item label"
+                            disabled={isPreview}
                           />
                         )}
 
                         {/* unit */}
                         <select
-                          className="rounded border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-2 py-1.5 text-sm"
+                          className="rounded border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-2 py-1.5 text-sm disabled:opacity-60"
                           value={it.unit ?? ""}
                           onChange={(e) =>
                             updateItemUnit(i, j, e.target.value)
                           }
                           title="Measurement unit"
+                          disabled={isPreview}
                         >
                           {UNIT_OPTIONS.map((u) => (
                             <option key={u || "blank"} value={u}>
@@ -653,16 +684,18 @@ export default function UnifiedCustomDraftPage() {
                         <div className="flex gap-2">
                           <button
                             onClick={() => moveItem(i, j, -1)}
-                            className="rounded border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-2 py-1 text-[11px] hover:bg-white/5 disabled:opacity-50"
-                            disabled={j === 0}
+                            className="rounded border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-2 py-1 text-[11px] hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed"
+                            disabled={j === 0 || isPreview}
                             title="Move up"
                           >
                             ↑
                           </button>
                           <button
                             onClick={() => moveItem(i, j, +1)}
-                            className="rounded border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-2 py-1 text-[11px] hover:bg-white/5 disabled:opacity-50"
-                            disabled={j === (sec.items?.length ?? 0) - 1}
+                            className="rounded border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-2 py-1 text-[11px] hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed"
+                            disabled={
+                              j === (sec.items?.length ?? 0) - 1 || isPreview
+                            }
                             title="Move down"
                           >
                             ↓
@@ -672,8 +705,9 @@ export default function UnifiedCustomDraftPage() {
                         {/* remove */}
                         <button
                           onClick={() => removeItem(i, j)}
-                          className="justify-self-start rounded border border-red-600/70 bg-red-900/30 px-2 py-1 text-[11px] text-red-200 hover:bg-red-900/60 sm:justify-self-end"
+                          className="justify-self-start rounded border border-red-600/70 bg-red-900/30 px-2 py-1 text-[11px] text-red-200 hover:bg-red-900/60 disabled:opacity-40 disabled:cursor-not-allowed sm:justify-self-end"
                           title="Remove item"
+                          disabled={isPreview}
                         >
                           Remove
                         </button>
@@ -681,14 +715,16 @@ export default function UnifiedCustomDraftPage() {
                     );
                   })}
 
-                  <div>
-                    <button
-                      onClick={() => addItem(i)}
-                      className="mt-2 rounded border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-1.5 text-sm hover:bg-white/5"
-                    >
-                      + Add Item
-                    </button>
-                  </div>
+                  {!isPreview && (
+                    <div>
+                      <button
+                        onClick={() => addItem(i)}
+                        className="mt-2 rounded border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-3 py-1.5 text-sm hover:bg-white/5"
+                      >
+                        + Add Item
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -696,31 +732,33 @@ export default function UnifiedCustomDraftPage() {
         </div>
 
         {/* Footer actions */}
-        <div className="mt-6 flex flex-wrap gap-3">
-          <button
-            onClick={addSection}
-            className="rounded border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-4 py-2 text-sm hover:bg-white/5"
-          >
-            + Add Section
-          </button>
+        {!isPreview && (
+          <div className="mt-6 flex flex-wrap gap-3">
+            <button
+              onClick={addSection}
+              className="rounded border border-[color:var(--metal-border-soft,#1f2937)] bg-black/70 px-4 py-2 text-sm hover:bg-white/5"
+            >
+              + Add Section
+            </button>
 
-          <button
-            onClick={saveTemplate}
-            disabled={saving}
-            className="rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft,#fdba74),var(--accent-copper,#ea580c))] px-5 py-2 text-sm font-semibold uppercase tracking-[0.2em] text-black shadow-[0_0_26px_rgba(234,88,12,0.85)] hover:brightness-110 disabled:opacity-60"
-          >
-            {saving ? "Saving…" : "Save as Template"}
-          </button>
+            <button
+              onClick={saveTemplate}
+              disabled={saving}
+              className="rounded-full bg-[linear-gradient(to_right,var(--accent-copper-soft,#fdba74),var(--accent-copper,#ea580c))] px-5 py-2 text-sm font-semibold uppercase tracking-[0.2em] text-black shadow-[0_0_26px_rgba(234,88,12,0.85)] hover:brightness-110 disabled:opacity-60"
+            >
+              {saving ? "Saving…" : "Save as Template"}
+            </button>
 
-          <button
-            onClick={saveAndRun}
-            disabled={running}
-            className="rounded-full border border-emerald-500/70 bg-emerald-500/15 px-5 py-2 text-sm font-semibold uppercase tracking-[0.2em] text-emerald-100 hover:bg-emerald-500/25 disabled:opacity-60"
-            title="Save this draft as a template and open the Run page"
-          >
-            {running ? "Opening…" : "Save & Run"}
-          </button>
-        </div>
+            <button
+              onClick={saveAndRun}
+              disabled={running}
+              className="rounded-full border border-emerald-500/70 bg-emerald-500/15 px-5 py-2 text-sm font-semibold uppercase tracking-[0.2em] text-emerald-100 hover:bg-emerald-500/25 disabled:opacity-60"
+              title="Save this draft as a template and open the Run page"
+            >
+              {running ? "Opening…" : "Save & Run"}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

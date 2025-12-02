@@ -44,20 +44,38 @@ export default async function RootLayout({
       className={`${inter.variable} ${blackOps.variable} dark`}
       suppressHydrationWarning
     >
-      <body className="bg-background text-white">
+      <body
+        className="
+          min-h-screen
+          bg-[radial-gradient(circle_at_top,_rgba(249,115,22,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.96),#020617_70%)]
+          text-white
+          antialiased
+        "
+      >
         <Providers initialSession={session ?? null}>
           <VoiceProvider>
             <AppShell>
               {session?.user ? (
                 <TabsBridge>
-                  <main>{children}</main>
+                  <main className="relative z-0">{children}</main>
                 </TabsBridge>
               ) : (
-                <main>{children}</main>
+                <main className="relative z-0">{children}</main>
               )}
             </AppShell>
           </VoiceProvider>
-          <Toaster position="bottom-center" />
+          {/* Legacy toast for older parts of the app – dark metal theme */}
+          <Toaster
+            position="bottom-center"
+            toastOptions={{
+              style: {
+                background:
+                  "radial-gradient(circle at top, rgba(15,23,42,0.96), #020617 70%)",
+                border: "1px solid rgba(148, 163, 184, 0.5)",
+                color: "#e5e7eb",
+              },
+            }}
+          />
         </Providers>
       </body>
     </html>

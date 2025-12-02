@@ -44,7 +44,6 @@ export default function DashboardPage() {
   useEffect(() => {
     (async () => {
       const [appt, wo, parts] = await Promise.all([
-        // 🔁 appointments → bookings
         supabase
           .from("bookings")
           .select("id", { count: "exact", head: true }),
@@ -68,14 +67,14 @@ export default function DashboardPage() {
 
   return (
     <div className="relative space-y-8 fade-in">
-      {/* soft gradient background for this page */}
+      {/* soft gradient background for this page (extra metal wash) */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(249,115,22,0.14),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.9),#020617_70%)]"
+        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(248,113,22,0.18),transparent_55%),radial-gradient(circle_at_bottom,_rgba(15,23,42,0.95),#020617_70%)]"
       />
 
       {/* welcome panel */}
-      <section className="rounded-xl border border-white/10 bg-white/[0.03] px-5 py-4 shadow-card backdrop-blur-md flex items-center justify-between gap-4">
+      <section className="flex items-center justify-between gap-4 rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-r from-black/80 via-slate-950/90 to-black/80 px-5 py-4 shadow-[0_22px_45px_rgba(0,0,0,0.9)] backdrop-blur-xl">
         <div>
           <h1 className="text-2xl font-semibold text-white">
             {firstName ? `Welcome back, ${firstName} 👋` : "Welcome 👋"}
@@ -144,8 +143,7 @@ function OverviewCard({
   href?: string;
 }) {
   const content = (
-    <div className="group relative overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] px-4 py-4 shadow-card backdrop-blur-md transition hover:border-accent hover:shadow-glow">
-      {/* subtle highlight wash on hover */}
+    <div className="group relative overflow-hidden rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-br from-black/80 via-slate-950/90 to-black/85 px-4 py-4 shadow-[0_20px_40px_rgba(0,0,0,0.95)] backdrop-blur-xl transition hover:border-[color:var(--accent-copper,#f97316)]/80 hover:shadow-[0_0_35px_rgba(249,115,22,0.55)]">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.12),transparent_60%)] opacity-0 transition-opacity group-hover:opacity-100" />
       <div className="relative">
         <p className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
@@ -176,7 +174,7 @@ function QuickButton({
   return (
     <Link
       href={href}
-      className="inline-flex items-center gap-2 rounded-md border border-orange-400/60 bg-white/[0.03] px-4 py-2 text-sm text-white shadow-sm backdrop-blur-md transition hover:bg-orange-500/10 hover:border-orange-400"
+      className="inline-flex items-center gap-2 rounded-full border border-[color:var(--accent-copper,#f97316)]/70 bg-gradient-to-r from-black/70 via-slate-950/90 to-black/80 px-4 py-2 text-sm text-white shadow-[0_12px_28px_rgba(0,0,0,0.9)] backdrop-blur-md transition hover:bg-[color:var(--accent-copper,#f97316)]/15 hover:border-[color:var(--accent-copper-light,#fed7aa)]"
     >
       {children}
     </Link>
