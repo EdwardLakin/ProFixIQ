@@ -1,170 +1,56 @@
+// features/inspections/unified/ui/CornerGrid.tsx
 "use client";
 
-import React from "react";
+import React, { useMemo, useRef, useState } from "react";
 import type { InspectionItem } from "@inspections/lib/inspection/types";
 
 type GridUnitMode = "metric" | "imperial";
-type Side = "left" | "right";
-type Variant = "main" | "inner" | "outer";
 
-interface CornerGridProps {
-  title?: string;
-  sectionIndex: number;
-  items: InspectionItem[];
-  unitMode: GridUnitMode;
-  showKpaHint: boolean;
-  onUpdateItem: (
-    sectionIndex: number,
-    itemIndex: number,
-    patch: Partial<InspectionItem>,
-  ) => void;
-}
+type CornerKey = "LF" | "RF" | "LR" | "RR";
+type Side = "Left" | "Right";
+type Region = "Front" | "Rear";
 
-interface CornerCell {
-  itemIndex: number;
-  item: InspectionItem;
-}
+const cornerToRegion: Record<CornerKey, { side: Side; region: Region }> = {
+  LF: { side: "Left", region: "Front" },
+  RF: { side: "Right", region: "Front" },
+  LR: { side: "Left", region: "Rear" },
+  RR: { side: "Right", region: "Rear" },
+};
 
-interface CornerSideInputs {
-  main?: CornerCell; // LF / RF / LR / RR
-  inner?: CornerCell; // LRI / RRI
-  outer?: CornerCell; // LRO / RRO
-}
+// Examples this supports:
+//
+//  - "LF Tire Pressure"
+//  - "LR Tire Tread"
+//  - "Left Front Tire Pressure"
+//  - "Right Rear Rotor Thickness"
+const abbrevRE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
+const fullRE = /^(?<corner>(Left|Right)\s+(Front|Rear))\s+(?<metric>.+)$/i;
 
-interface CornerRow {
-  metricKey: string;
-  metricLabel: string;
-  left: CornerSideInputs;
-  right: CornerSideInputs;
-}
-
-interface ParsedHydLocation {
-  side: Side;
-  variant: Variant;
-  metric: string;
-  metricBase: string;
-}
-
-/**
- * Remove "Inner" / "Outer" markup from a metric to group rows,
- * e.g. "Tire Tread (Outer)" + "Tire Tread (Inner)" → "Tire Tread".
- */
-function normaliseMetric(metric: string): string {
-  return metric
-    .replace(/\(\s*(inner|outer)\s*\)/gi, "")
-    .replace(/\b(inner|outer)\b/gi, "")
-    .replace(/\s{2,}/g, " ")
-    .trim();
-}
-
-/**
- * Support:
- *  - "LF Tire Pressure"
- *  - "RRI Brake Pad Thickness"
- *  - "Left Front Tire Tread"
- *  - "Right Rear Inner Tire Tread (Outer)"
- */
-function parseHydLabel(labelRaw: string): ParsedHydLocation | null {
-  const label = labelRaw.trim();
-  if (!label) return null;
-
-  // Abbreviated location codes
-  const abbrMatch = label.match(
-    /^(LF|RF|LR|RR|LRI|LRO|RRI|RRO)\s+(.+)$/i,
+const metricOrder = [
+  "Tire Pressure",
+  "Tire Tread",
+  "Brake Pad",
+  "Pad Thickness",
+  "Rotor",
+  "Rotor Condition",
+  "Rotor Thickness",
+  "Wheel Torque",
+];
+const orderIndex = (m: string) => {
+  const i = metricOrder.findIndex((x) =>
+    m.toLowerCase().includes(x.toLowerCase()),
   );
-  if (abbrMatch) {
-    const code = abbrMatch[1].toUpperCase();
-    const metric = abbrMatch[2].trim();
-    if (!metric) return null;
+  return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+};
 
-    const side: Side = code.startsWith("L") ? "left" : "right";
-    let variant: Variant = "main";
+function getUnitLabel(metric: string, unitMode: GridUnitMode): string {
+  const lower = metric.toLowerCase();
 
-    if (code.endsWith("I")) variant = "inner";
-    if (code.endsWith("O")) variant = "outer";
-
-    const metricBase = normaliseMetric(metric);
-
-    return {
-      side,
-      variant,
-      metric,
-      metricBase: metricBase || metric,
-    };
+  if (lower.includes("pressure")) {
+    // Always psi here – kPa is shown as a hint.
+    return "psi";
   }
 
-  // Full text – e.g. "Left Rear Inner Tire Tread"
-  const fullMatch = label.match(
-    /^(Left|Right)\s+(Front|Rear)(?:\s+(Inner|Outer))?\s+(.+)$/i,
-  );
-  if (fullMatch) {
-    const side: Side = fullMatch[1].toLowerCase() === "left" ? "left" : "right";
-    const innerOuter = (fullMatch[3] ?? "").toLowerCase();
-    const metric = fullMatch[4].trim();
-    if (!metric) return null;
-
-    let variant: Variant = "main";
-    if (innerOuter === "inner") variant = "inner";
-    if (innerOuter === "outer") variant = "outer";
-
-    const metricBase = normaliseMetric(metric);
-
-    return {
-      side,
-      variant,
-      metric,
-      metricBase: metricBase || metric,
-    };
-  }
-
-  return null;
-}
-
-function buildRows(items: InspectionItem[]): {
-  rows: CornerRow[];
-  loose: Array<{ itemIndex: number; item: InspectionItem }>;
-} {
-  const rowsMap = new Map<string, CornerRow>();
-  const loose: Array<{ itemIndex: number; item: InspectionItem }> = [];
-
-  items.forEach((item, idx) => {
-    const label = item.item ?? item.name ?? "";
-    const parsed = parseHydLabel(label);
-    if (!parsed) {
-      loose.push({ itemIndex: idx, item });
-      return;
-    }
-
-    const existing =
-      rowsMap.get(parsed.metricBase) ??
-      ({
-        metricKey: parsed.metricBase,
-        metricLabel: parsed.metricBase,
-        left: {},
-        right: {},
-      } as CornerRow);
-
-    const cell: CornerCell = { itemIndex: idx, item };
-
-    if (parsed.side === "left") {
-      existing.left[parsed.variant] = cell;
-    } else {
-      existing.right[parsed.variant] = cell;
-    }
-
-    rowsMap.set(parsed.metricBase, existing);
-  });
-
-  return { rows: Array.from(rowsMap.values()), loose };
-}
-
-function getUnitLabel(metricLabel: string, unitMode: GridUnitMode): string {
-  const lower = metricLabel.toLowerCase();
-
-  // Pressure is always psi – unit toggle does not affect this.
-  if (lower.includes("pressure")) return "psi";
-
-  // Everything else here is a length/thickness-style measurement.
   if (
     lower.includes("tread") ||
     lower.includes("pad") ||
@@ -177,217 +63,311 @@ function getUnitLabel(metricLabel: string, unitMode: GridUnitMode): string {
   return unitMode === "metric" ? "mm" : "in";
 }
 
-interface ValueInputProps {
-  value: string | number | null | undefined;
-  unit: string;
-  showKpaHint?: boolean;
-  isPressure?: boolean;
-  placeholder?: string;
-  onChange: (next: string) => void;
-}
-
-const ValueInput: React.FC<ValueInputProps> = ({
-  value,
-  unit,
-  showKpaHint,
-  isPressure,
-  placeholder = "Value",
-  onChange,
-}) => {
-  const display = value ?? "";
-
-  return (
-    <div className="flex items-center gap-2 rounded-xl border border-[color:var(--metal-border-soft)] bg-black/70 px-3 py-1.5 text-xs shadow-[0_10px_25px_rgba(0,0,0,0.9)] backdrop-blur-md">
-      <input
-        type="number"
-        inputMode="decimal"
-        className="w-full bg-transparent text-sm text-white placeholder:text-neutral-500 focus:outline-none"
-        placeholder={placeholder}
-        value={display}
-        onChange={(e) => onChange(e.target.value)}
-      />
-      <div className="flex flex-col items-end text-[10px] leading-tight text-neutral-400">
-        <span>{unit}</span>
-        {isPressure && showKpaHint && (
-          <span className="text-[9px] text-neutral-500">kPa hint</span>
-        )}
-      </div>
-    </div>
-  );
-};
-
-interface SideStackProps {
-  label: string;
-  side: CornerSideInputs;
+type CornerGridProps = {
+  title?: string;
   sectionIndex: number;
-  unit: string;
-  isPressure: boolean;
+  items: InspectionItem[];
+  unitMode: GridUnitMode;
+  /** initial state for the kPa hint checkbox */
   showKpaHint: boolean;
-  alignRight?: boolean;
   onUpdateItem: (
     sectionIndex: number,
     itemIndex: number,
     patch: Partial<InspectionItem>,
   ) => void;
-}
-
-const SideStack: React.FC<SideStackProps> = ({
-  label,
-  side,
-  sectionIndex,
-  unit,
-  isPressure,
-  showKpaHint,
-  alignRight = false,
-  onUpdateItem,
-}) => {
-  const pieces: Array<{ key: string; caption: string; cell: CornerCell }> = [];
-
-  if (side.main) {
-    pieces.push({ key: "main", caption: label, cell: side.main });
-  }
-  if (side.outer) {
-    pieces.push({ key: "outer", caption: `${label} Outer`, cell: side.outer });
-  }
-  if (side.inner) {
-    pieces.push({ key: "inner", caption: `${label} Inner`, cell: side.inner });
-  }
-
-  if (!pieces.length) return null;
-
-  return (
-    <div className="space-y-1 sm:max-w-[40%]">
-      {pieces.map(({ key, caption, cell }) => (
-        <div key={key} className="space-y-1">
-          <div
-            className={`text-[11px] font-medium uppercase tracking-[0.18em] text-neutral-400 ${
-              alignRight ? "text-right" : ""
-            }`}
-          >
-            {caption}
-          </div>
-          <ValueInput
-            value={cell.item.value}
-            unit={unit}
-            isPressure={isPressure}
-            showKpaHint={isPressure && showKpaHint}
-            onChange={(next) =>
-              onUpdateItem(sectionIndex, cell.itemIndex, { value: next })
-            }
-          />
-        </div>
-      ))}
-    </div>
-  );
 };
 
-const CornerGrid: React.FC<CornerGridProps> = ({
-  title,
+type MetricCell = {
+  idx: number;
+  metric: string;
+  unit: string;
+  fullLabel: string;
+  isPressure: boolean;
+  initial: string;
+};
+
+type RowTriplet = { metric: string; left?: MetricCell; right?: MetricCell };
+
+export default function CornerGrid({
   sectionIndex,
   items,
   unitMode,
-  showKpaHint,
+  showKpaHint: showKpaInitial,
   onUpdateItem,
-}) => {
-  const { rows, loose } = buildRows(items);
+}: CornerGridProps) {
+  const parseCorner = (
+    label: string,
+  ): { corner: CornerKey | null; metric: string } => {
+    let corner: CornerKey | null = null;
+    let metric = "";
 
-  if (rows.length === 0 && loose.length === 0) return null;
+    const m1 = label.match(abbrevRE);
+    if (m1?.groups) {
+      corner = (m1.groups.corner.toUpperCase() as CornerKey) || null;
+      metric = m1.groups.metric.trim();
+      return { corner, metric };
+    }
 
-  return (
-    <section className="metal-card rounded-2xl p-4 sm:p-5">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <div>
-          <h3 className="text-sm font-semibold text-white sm:text-base">
-            {title ?? "Measurements (Hydraulic)"}
-          </h3>
-          <p className="text-[11px] text-neutral-400">
-            Corner-based measurements: tire pressure, tread depth, pad / rotor
-            thickness. Values only – statuses live in other sections.
-          </p>
-        </div>
+    const m2 = label.match(fullRE);
+    if (m2?.groups) {
+      const c = m2.groups.corner.toLowerCase();
+      if (c === "left front") corner = "LF";
+      if (c === "right front") corner = "RF";
+      if (c === "left rear") corner = "LR";
+      if (c === "right rear") corner = "RR";
+      metric = m2.groups.metric.trim();
+      return { corner, metric };
+    }
+
+    return { corner: null, metric: "" };
+  };
+
+  type RegionGroup = { region: Region; rows: RowTriplet[] };
+
+  const groups: RegionGroup[] = useMemo(() => {
+    const byRegion = new Map<
+      Region,
+      Map<
+        string,
+        {
+          metric: string;
+          left?: MetricCell;
+          right?: MetricCell;
+        }
+      >
+    >();
+
+    const ensureRegion = (r: Region) =>
+      byRegion.get(r) ?? byRegion.set(r, new Map()).get(r)!;
+
+    items.forEach((it, idx) => {
+      const label = it.item ?? it.name ?? "";
+      if (!label) return;
+
+      const { corner, metric } = parseCorner(label);
+      if (!corner) return;
+
+      const { side, region } = cornerToRegion[corner];
+      const reg = ensureRegion(region);
+
+      const key = metric.toLowerCase();
+      if (!reg.has(key)) reg.set(key, { metric });
+
+      const unit = (it.unit ?? "") || getUnitLabel(metric, unitMode);
+      const cell: MetricCell = {
+        idx,
+        metric,
+        unit,
+        fullLabel: label,
+        isPressure: /pressure/i.test(metric),
+        initial: String(it.value ?? ""),
+      };
+
+      const row = reg.get(key)!;
+      if (side === "Left") row.left = cell;
+      else row.right = cell;
+    });
+
+    const sorted: RegionGroup[] = [];
+    (["Front", "Rear"] as Region[]).forEach((region) => {
+      const reg = byRegion.get(region);
+      if (!reg) return;
+      const rows = Array.from(reg.values()).sort(
+        (a, b) => orderIndex(a.metric) - orderIndex(b.metric),
+      );
+      sorted.push({ region, rows });
+    });
+
+    return sorted;
+  }, [items, unitMode]);
+
+  const [open, setOpen] = useState(true);
+  const [showKpaHint, setShowKpaHint] = useState<boolean>(showKpaInitial);
+
+  // map item index -> “has a value”
+  const [, setFilledMap] = useState<Record<number, boolean>>(() => {
+    const m: Record<number, boolean> = {};
+    items.forEach((it, i) => (m[i] = !!String(it.value ?? "").trim()));
+    return m;
+  });
+
+  const commit = (idx: number, el: HTMLInputElement | null) => {
+    if (!el) return;
+    const value = el.value;
+    onUpdateItem(sectionIndex, idx, { value });
+    const has = value.trim().length > 0;
+    setFilledMap((p) => (p[idx] === has ? p : { ...p, [idx]: has }));
+  };
+
+  const kpaFromPsi = (psiStr: string) => {
+    const n = Number(psiStr);
+    return Number.isFinite(n) ? Math.round(n * 6.894757) : null;
+  };
+
+  const InputCell = ({
+    idx,
+    defaultValue,
+    isPressure,
+    unit,
+  }: {
+    idx: number;
+    defaultValue: string;
+    isPressure: boolean;
+    unit: string;
+  }) => {
+    const kpaRef = useRef<HTMLSpanElement | null>(null);
+
+    const onInput = (e: React.FormEvent<HTMLInputElement>) => {
+      if (!isPressure || !kpaRef.current) return;
+      const k = kpaFromPsi(e.currentTarget.value);
+      if (!showKpaHint) {
+        kpaRef.current.textContent = unit;
+      } else if (k != null) {
+        kpaRef.current.textContent = `${unit} (${k} kPa)`;
+      } else {
+        kpaRef.current.textContent = `${unit} (— kPa)`;
+      }
+    };
+
+    // seed inline unit text
+    const seed = () => {
+      if (!isPressure) return unit;
+      const k = kpaFromPsi(defaultValue);
+      if (!showKpaHint) return unit;
+      return k != null ? `${unit} (${k} kPa)` : `${unit} (— kPa)`;
+    };
+
+    return (
+      <div className="relative w-full max-w-[11rem]">
+        <input
+          name={`hyd-${idx}`}
+          defaultValue={defaultValue}
+          tabIndex={0}
+          className="w-full rounded-lg border border-[color:var(--metal-border-soft,#374151)] bg-black/80 px-3 py-1.5 pr-24 text-sm text-white placeholder:text-neutral-500 focus:border-[color:var(--accent-copper,#f97316)] focus:ring-2 focus:ring-[color:var(--accent-copper-soft,#fdba74)]"
+          placeholder="Value"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          inputMode="decimal"
+          onInput={onInput}
+          onBlur={(e) => commit(idx, e.currentTarget)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
+          }}
+        />
+        <span
+          ref={kpaRef}
+          className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-neutral-400"
+        >
+          {seed()}
+        </span>
+      </div>
+    );
+  };
+
+  const RegionCard = ({
+    region,
+    rows,
+  }: {
+    region: Region;
+    rows: RowTriplet[];
+  }) => (
+    <div className="rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-black/60 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.9)] backdrop-blur-md">
+      <div
+        className="mb-3 text-lg font-semibold text-[color:var(--accent-copper,#f97316)]"
+        style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+      >
+        {region}
       </div>
 
-      {/* Desktop header */}
-      <div className="hidden text-[11px] text-neutral-400 sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,1fr)] sm:gap-2 sm:border-t sm:border-white/10 sm:pt-3">
-        <div className="px-2 py-1">Left</div>
-        <div className="px-2 py-1 text-center">Item</div>
-        <div className="px-2 py-1 text-right">Right</div>
+      <div className="mb-2 grid grid-cols-[1fr_auto_1fr] items-center gap-4 text-xs text-neutral-400">
+        <div>Left</div>
+        <div className="text-center">Item</div>
+        <div className="text-right">Right</div>
       </div>
 
-      <div className="space-y-3 pt-1">
-        {rows.map((row) => {
-          const unit = getUnitLabel(row.metricLabel, unitMode);
-          const isPressure = row.metricLabel.toLowerCase().includes("pressure");
-
-          return (
+      {open && (
+        <div className="space-y-3">
+          {rows.map((row, i) => (
             <div
-              key={row.metricKey}
-              className="rounded-xl border border-white/10 bg-black/60 p-3 shadow-[0_12px_30px_rgba(0,0,0,0.9)] backdrop-blur-md"
+              key={`${region}-${row.metric}-${i}`}
+              className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded-xl bg-black/80 p-3"
             >
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-                <SideStack
-                  label="Left"
-                  side={row.left}
-                  sectionIndex={sectionIndex}
-                  unit={unit}
-                  isPressure={isPressure}
-                  showKpaHint={showKpaHint}
-                  onUpdateItem={onUpdateItem}
-                />
+              <div>
+                {row.left ? (
+                  <InputCell
+                    idx={row.left.idx}
+                    defaultValue={row.left.initial}
+                    isPressure={row.left.isPressure}
+                    unit={row.left.unit}
+                  />
+                ) : (
+                  <div className="h-[34px]" />
+                )}
+              </div>
 
-                <div className="flex-1 text-center text-sm font-medium text-neutral-100">
-                  {row.metricLabel}
-                </div>
+              <div
+                className="min-w-0 truncate text-center text-sm font-semibold text-white"
+                style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+                title={row.metric}
+              >
+                {row.metric}
+              </div>
 
-                <SideStack
-                  label="Right"
-                  side={row.right}
-                  sectionIndex={sectionIndex}
-                  unit={unit}
-                  isPressure={isPressure}
-                  showKpaHint={showKpaHint}
-                  alignRight
-                  onUpdateItem={onUpdateItem}
-                />
+              <div className="justify-self-end">
+                {row.right ? (
+                  <InputCell
+                    idx={row.right.idx}
+                    defaultValue={row.right.initial}
+                    isPressure={row.right.isPressure}
+                    unit={row.right.unit}
+                  />
+                ) : (
+                  <div className="h-[34px]" />
+                )}
               </div>
             </div>
-          );
-        })}
-      </div>
-
-      {loose.length > 0 && (
-        <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-950/30 p-3 text-[11px] text-amber-100">
-          <div className="mb-1 font-semibold tracking-wide">
-            Other measurements
-          </div>
-          <div className="space-y-2">
-            {loose.map(({ item, itemIndex }) => {
-              const label = item.item ?? item.name ?? "Item";
-              const unit = getUnitLabel(label, unitMode);
-              const isPressure = label.toLowerCase().includes("pressure");
-
-              return (
-                <div key={itemIndex} className="space-y-1">
-                  <div className="text-[11px] text-amber-100/80">
-                    {label}
-                  </div>
-                  <ValueInput
-                    value={item.value}
-                    unit={unit}
-                    isPressure={isPressure}
-                    showKpaHint={showKpaHint}
-                    onChange={(next) =>
-                      onUpdateItem(sectionIndex, itemIndex, { value: next })
-                    }
-                  />
-                </div>
-              );
-            })}
-          </div>
+          ))}
         </div>
       )}
-    </section>
+    </div>
   );
-};
 
-export default CornerGrid;
+  if (!groups.length) return null;
+
+  return (
+    <div className="grid gap-3">
+      {/* top controls – kPa hint + collapse */}
+      <div className="flex items-center justify-end gap-3 px-1">
+        <label className="flex select-none items-center gap-2 text-xs text-neutral-400">
+          <input
+            type="checkbox"
+            className="h-3 w-3 accent-[color:var(--accent-copper,#f97316)]"
+            checked={showKpaHint}
+            onChange={(e) => setShowKpaHint(e.target.checked)}
+            tabIndex={-1}
+          />
+          kPa hint
+        </label>
+
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs text-white hover:border-[color:var(--accent-copper,#f97316)] hover:bg-white/10"
+          aria-expanded={open}
+          title={open ? "Collapse" : "Expand"}
+          tabIndex={-1}
+        >
+          {open ? "Collapse" : "Expand"}
+        </button>
+      </div>
+
+      <div className="grid gap-4">
+        {groups.map((g) => (
+          <RegionCard key={g.region} region={g.region} rows={g.rows} />
+        ))}
+      </div>
+    </div>
+  );
+}

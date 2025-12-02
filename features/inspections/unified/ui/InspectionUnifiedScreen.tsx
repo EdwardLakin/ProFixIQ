@@ -1,4 +1,3 @@
-// features/inspections/unified/ui/InspectionUnifiedScreen.tsx
 "use client";
 
 import React, { useMemo, useRef, useState } from "react";
@@ -10,6 +9,7 @@ import type {
   InspectionSection,
   InspectionItemStatus,
   QuoteLineItem,
+  InspectionItem,
 } from "@inspections/lib/inspection/types";
 
 import { requestQuoteSuggestion } from "@inspections/lib/inspection/aiQuote";
@@ -82,6 +82,22 @@ export default function InspectionUnifiedScreen({
     if (!items[itemIndex]) return;
 
     items[itemIndex] = { ...items[itemIndex], ...patch };
+    nextSections[sectionIndex] = {
+      ...nextSections[sectionIndex],
+      items,
+    };
+
+    onUpdateSession({ sections: nextSections });
+  };
+
+  const replaceSectionItems = (
+    sectionIndex: number,
+    items: InspectionItem[],
+  ) => {
+    const currentSections = session.sections ?? [];
+    if (!currentSections[sectionIndex]) return;
+
+    const nextSections = [...currentSections];
     nextSections[sectionIndex] = {
       ...nextSections[sectionIndex],
       items,
@@ -369,6 +385,8 @@ export default function InspectionUnifiedScreen({
       <SectionRenderer
         sections={session.sections ?? []}
         onUpdateItem={updateSections}
+        unitMode={unitMode}
+        onReplaceSectionItems={replaceSectionItems}
       />
 
       {/* Quick summary card */}

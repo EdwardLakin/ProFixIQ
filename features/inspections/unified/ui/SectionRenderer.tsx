@@ -1,4 +1,3 @@
-// features/inspections/unified/ui/SectionRenderer.tsx
 "use client";
 
 import React from "react";
@@ -23,6 +22,11 @@ type Props = {
   ) => void;
   /** Passed from InspectionUnifiedScreen so the Units toggle actually does something */
   unitMode?: UnitMode;
+  /** Allows grids to replace an entire section's items (e.g. Add axle) */
+  onReplaceSectionItems?: (
+    sectionIndex: number,
+    items: InspectionItem[],
+  ) => void;
 };
 
 // Steer / Drive / Trailer Left|Right ...
@@ -62,6 +66,7 @@ export default function SectionRenderer({
   sections,
   onUpdateItem,
   unitMode = "metric",
+  onReplaceSectionItems,
 }: Props) {
   const handleBulkSetStatus = (
     sectionIndex: number,
@@ -73,6 +78,63 @@ export default function SectionRenderer({
     section.items.forEach((_, itemIndex) => {
       onUpdateItem(sectionIndex, itemIndex, { status });
     });
+  };
+
+  const handleAddAxle = (sectionIndex: number) => {
+    const section = sections[sectionIndex];
+    if (!section?.items || !onReplaceSectionItems) return;
+
+    const items = section.items;
+    const axleNames: string[] = [];
+
+    items.forEach((it) => {
+      const label = it.item ?? it.name ?? "";
+      const m = label.match(AIR_RE);
+      const axle = m?.groups?.axle?.trim();
+      if (axle && !axleNames.includes(axle)) {
+        axleNames.push(axle);
+      }
+    });
+
+    if (!axleNames.length) return;
+
+    // Use the last axle as the template (e.g. clone Drive 1 -> Drive 2)
+    const baseAxle = axleNames[axleNames.length - 1];
+
+    const candidateLabels: string[] = [];
+    for (let i = 1; i <= 2; i++) candidateLabels.push(`Steer ${i}`);
+    for (let i = 1; i <= 4; i++) candidateLabels.push(`Drive ${i}`);
+    candidateLabels.push("Tag");
+    candidateLabels.push("Trailer 1", "Trailer 2", "Trailer 3");
+
+    const nextLabel =
+      candidateLabels.find((l) => !axleNames.includes(l)) ||
+      `Axle ${axleNames.length + 1}`;
+
+    const templateItems = items.filter((it) => {
+      const label = it.item ?? it.name ?? "";
+      const m = label.match(AIR_RE);
+      const axle = m?.groups?.axle?.trim();
+      return axle === baseAxle;
+    });
+
+    if (!templateItems.length) return;
+
+    const newItemsForAxle: InspectionItem[] = templateItems.map((it) => {
+      const label = it.item ?? it.name ?? "";
+      const newLabel = label.replace(baseAxle, nextLabel);
+      return {
+        ...it,
+        item: newLabel,
+        name: newLabel,
+        value: null,
+        status: "na",
+        notes: "",
+        photoUrls: [],
+      };
+    });
+
+    onReplaceSectionItems(sectionIndex, [...items, ...newItemsForAxle]);
   };
 
   return (
@@ -105,6 +167,11 @@ export default function SectionRenderer({
               unitMode={unitMode}
               showKpaHint={unitMode === "metric"}
               onUpdateItem={onUpdateItem}
+              onAddAxle={
+                onReplaceSectionItems
+                  ? () => handleAddAxle(sectionIndex)
+                  : undefined
+              }
             />
           );
         }
