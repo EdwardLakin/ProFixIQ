@@ -203,7 +203,7 @@ export default function InspectionTemplatesPage() {
                     <div className="flex flex-wrap items-center gap-2">
                       {/* Use Template -> legacy fill page */}
                       <Link
-                        href={`/inspection/fill?template=${encodedName}`}
+                        href={`/inspections/fill?template=${encodedName}`}
                         className="rounded-full border border-emerald-400/80 bg-emerald-500 px-3 py-1 text-[11px] font-semibold text-black shadow-[0_0_22px_rgba(16,185,129,0.65)] hover:bg-emerald-400"
                       >
                         Use
