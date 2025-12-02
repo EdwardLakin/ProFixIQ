@@ -1,4 +1,4 @@
-// app/work-orders/mobile/MobileWorkOrderClient.tsx
+// app/mobile/work-orders/[id]/page.client.tsx
 "use client";
 
 import React, {
@@ -21,9 +21,6 @@ import VoiceButton from "@/features/shared/voice/VoiceButton";
 import { useTabState } from "@/features/shared/hooks/useTabState";
 import { JobCard } from "@/features/work-orders/components/JobCard";
 import MobileFocusedJob from "@/features/work-orders/mobile/MobileFocusedJob";
-import InspectionModal from "@/features/inspections/components/InspectionModal";
-import { loadInspectionSession } from "@/features/inspections/unified/data/loadSession";
-import type { InspectionSession } from "@inspections/lib/inspection/types";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -136,10 +133,6 @@ export default function MobileWorkOrderClient({
   // mobile focused job view
   const [focusedJobId, setFocusedJobId] = useState<string | null>(null);
   const [focusedOpen, setFocusedOpen] = useState(false);
-
-  // unified inspection modal state
-  const [inspectionOpen, setInspectionOpen] = useState(false);
-  const [inspectionSrc, setInspectionSrc] = useState<string | null>(null);
 
   /* ---------------------- AUTH ---------------------- */
   useEffect(() => {
@@ -550,12 +543,9 @@ export default function MobileWorkOrderClient({
     async (quoteId: string) => {
       if (!quoteId) return;
       try {
-        const res = await fetch(
-          `/api/work-orders/quotes/${quoteId}/authorize`,
-          {
-            method: "POST",
-          },
-        );
+        const res = await fetch(`/api/work-orders/quotes/${quoteId}/authorize`, {
+          method: "POST",
+        });
         const j = await res.json().catch(() => null);
         if (!res.ok) {
           throw new Error(j?.error || "Failed to authorize quote line");
@@ -588,61 +578,6 @@ export default function MobileWorkOrderClient({
       void fetchAll();
     },
     [fetchAll],
-  );
-
-  /* ----------------------- helpers ----------------------- */
-
-  // 🔗 Open unified inspection screen in the modal (new unified stack)
-  const openInspection = useCallback(
-    async (line: WorkOrderLine) => {
-      if (!wo?.id) return;
-
-      const anyLine = line as any;
-
-      // Prefer explicit template slug/name from metadata
-      const templateSlug: string | null =
-        anyLine?.inspection_template ??
-        anyLine?.inspectionTemplate ??
-        anyLine?.template ??
-        anyLine?.metadata?.inspection_template ??
-        anyLine?.metadata?.template ??
-        null;
-
-      if (!templateSlug) {
-        toast.error(
-          "This job line doesn't have an inspection template attached yet.",
-        );
-        return;
-      }
-
-      // Try to load an existing unified session for this line
-      let existing: InspectionSession | null = null;
-      try {
-        existing = await loadInspectionSession(line.id);
-      } catch (err) {
-        // eslint-disable-next-line no-console
-        console.debug("mobile loadInspectionSession error", err);
-      }
-
-      const params = new URLSearchParams({
-        workOrderId: wo.id,
-        workOrderLineId: line.id,
-        template: templateSlug,
-        embed: "1",
-        view: "mobile",
-      });
-
-      if (wo.vehicle_id) params.set("vehicleId", wo.vehicle_id);
-      if (wo.customer_id) params.set("customerId", wo.customer_id);
-      if (line.description) params.set("seed", String(line.description));
-      if (existing?.id) params.set("sessionId", existing.id);
-
-      const url = `/inspections/unified/run?${params.toString()}`;
-
-      setInspectionSrc(url);
-      setInspectionOpen(true);
-    },
-    [wo],
   );
 
   /* ----------------------- mobile focused job view ----------------------- */
@@ -778,7 +713,7 @@ export default function MobileWorkOrderClient({
           {/* Vehicle & Customer */}
           <div className="rounded-2xl border border-white/10 bg-black/35 p-4 shadow-[0_14px_36px_rgba(0,0,0,0.80)] backdrop-blur-md">
             <div className="flex items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold sm:text;base">
+              <h2 className="text-sm font-semibold sm:text-base">
                 Vehicle &amp; Customer
               </h2>
               <button
@@ -814,10 +749,10 @@ export default function MobileWorkOrderClient({
                           <span className="text-neutral-500">—</span>
                         )}
                         <br />
-                        Mileage:{" "}
-                        {vehicle.mileage ?? (
-                          <span className="text-neutral-500">—</span>
-                        )}
+                          Mileage:{" "}
+                          {vehicle.mileage ?? (
+                            <span className="text-neutral-500">—</span>
+                          )}
                       </p>
                     </>
                   ) : (
@@ -833,7 +768,7 @@ export default function MobileWorkOrderClient({
                   </h3>
                   {customer ? (
                     <>
-                      <p className="text-sm font-medium text:white">
+                      <p className="text-sm font-medium text-white">
                         {[
                           customer.first_name ?? "",
                           customer.last_name ?? "",
@@ -913,7 +848,7 @@ export default function MobileWorkOrderClient({
                       return (
                         <div
                           key={ln.id}
-                          className="rounded-xl border border:white/10 bg-slate-950/70 p-3 backdrop-blur"
+                          className="rounded-xl border border-white/10 bg-slate-950/70 p-3 backdrop-blur"
                         >
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                             <div className="min-w-0">
@@ -1092,9 +1027,7 @@ export default function MobileWorkOrderClient({
                       isPunchedIn={punchedIn}
                       onOpen={openFocused}
                       onAssign={undefined}
-                      onOpenInspection={() => {
-                        void openInspection(ln);
-                      }}
+                      onOpenInspection={openFocused}
                       onAddPart={undefined}
                     />
                   );
@@ -1108,14 +1041,6 @@ export default function MobileWorkOrderClient({
       <div className="mt-4 flex justify-center pb-1">
         <VoiceButton />
       </div>
-
-      {/* unified inspection modal – now loads unified session screen */}
-      <InspectionModal
-        open={inspectionOpen}
-        src={inspectionSrc}
-        title="Inspection"
-        onClose={() => setInspectionOpen(false)}
-      />
     </div>
   );
 }
