@@ -24,7 +24,7 @@ import { JobCard } from "@/features/work-orders/components/JobCard";
 import { WorkOrderSuggestionsPanel } from "@/features/work-orders/components/WorkOrderSuggestionsPanel";
 import { useWorkOrderActions } from "@/features/work-orders/hooks/useWorkOrderActions";
 
-import { loadInspectionSession } from "@/features/inspections/unified/data/loadSession";
+
 
 // inspection modal
 const InspectionModal = dynamic(
@@ -705,64 +705,49 @@ export default function WorkOrderIdClient(): JSX.Element {
     [fetchAll],
   );
 
-  // 🔍 open inspection – ONLY custom / user-defined templates
-const openInspectionForLine = useCallback(
-  async (ln: WorkOrderLine) => {
-    if (!ln?.id) return;
+    // 🔍 open inspection – reuse legacy generic runner (fill + corner grid)
+  const openInspectionForLine = useCallback(
+    async (ln: WorkOrderLine) => {
+      if (!ln?.id) return;
 
-    const anyLine = ln as WorkOrderLineWithInspectionMeta;
+      const anyLine = ln as WorkOrderLineWithInspectionMeta;
 
-    // Pull the template slug strictly from metadata / custom config.
-    const templateFromMeta =
-      anyLine?.inspection_template ??
-      anyLine?.inspectionTemplate ??
-      anyLine?.template ??
-      anyLine?.metadata?.inspection_template ??
-      anyLine?.metadata?.template ??
-      null;
+      // Treat this as the *templateId* for inspection_templates
+      const templateId =
+        anyLine?.inspection_template ??
+        anyLine?.inspectionTemplate ??
+        anyLine?.template ??
+        anyLine?.metadata?.inspection_template ??
+        anyLine?.metadata?.template ??
+        null;
 
-    const templateSlug = templateFromMeta as string | null;
+      if (!templateId) {
+        toast.error(
+          "This job line doesn't have an inspection template attached yet. Build or attach a custom inspection first.",
+        );
+        return;
+      }
 
-    if (!templateSlug) {
-      toast.error(
-        "This job line doesn't have an inspection template attached yet. Build or attach a custom inspection first.",
-      );
-      return;
-    }
-
-    try {
-      // 1) see if there is already a unified session for this line
-      const existingSession = await loadInspectionSession(ln.id);
-
-      // 2) build querystring for unified runner
       const sp = new URLSearchParams();
 
       if (wo?.id) sp.set("workOrderId", wo.id);
       sp.set("workOrderLineId", ln.id);
-      sp.set("template", templateSlug);
-      sp.set("embed", "1");
+      sp.set("templateId", templateId);
+      sp.set("embed", "1");      // so GenericInspectionScreen knows it's in a modal
+      sp.set("view", "mobile");  // optional: enables the mobile-only voice controls
 
-      if (ln.description) sp.set("seed", String(ln.description));
-
-      // if the API found an existing unified session, pass it through
-      if (existingSession?.id) {
-        sp.set("sessionId", existingSession.id);
+      if (ln.description) {
+        sp.set("seed", String(ln.description));
       }
 
-      const url = `/inspections/unified/run?${sp.toString()}`;
+      const url = `/inspection/run?${sp.toString()}`;
 
       setInspectionSrc(url);
       setInspectionOpen(true);
-      toast.success(
-        existingSession ? "Inspection reopened" : "Inspection started",
-      );
-    } catch (e) {
-      const err = e as { message?: string };
-      toast.error(err?.message ?? "Unable to open inspection");
-    }
-  },
-  [wo?.id], // plus setInspectionSrc / setInspectionOpen if ESLint complains
-);
+      toast.success("Inspection opened");
+    },
+    [wo?.id],
+  );
 
 
   // parts drawer close / bulk
