@@ -201,10 +201,10 @@ export default function InspectionTemplatesPage() {
                     </span>
 
                     <div className="flex flex-wrap items-center gap-2">
-                      {/* Use Template -> legacy fill page */}
+                      {/* Use Template -> unified run page with templateId */}
                       <Link
-                        href={`/inspections/fill?template=${encodedName}`}
-                        className="rounded-full border border-emerald-400/80 bg-emerald-500 px-3 py-1 text-[11px] font-semibold text-black shadow-[0_0_22px_rgba(16,185,129,0.65)] hover:bg-emerald-400"
+                        href={`/inspections/run?templateId=${t.id}&template=${encodedName}`}
+                        className="rounded-full border border-[color:var(--accent-copper,#ea580c)] bg-[linear-gradient(to_right,var(--accent-copper-soft,#fdba74),var(--accent-copper,#ea580c))] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-black shadow-[0_0_22px_rgba(234,88,12,0.75)] hover:brightness-110"
                       >
                         Use
                       </Link>
