@@ -237,21 +237,26 @@ export default function GenericInspectionScreen(): JSX.Element {
     engine_hours: sp.get("engine_hours") || "",
   };
 
-    // 🔴 Unified inspections only – no legacy customInspection fallback
   const bootSections = useMemo<InspectionSection[]>(() => {
     const staged = readStaged<InspectionSection[]>("inspection:sections");
-    if (Array.isArray(staged) && staged.length) {
-      return normalizeSections(staged);
-    }
+    if (Array.isArray(staged) && staged.length) return normalizeSections(staged);
 
-    // If we somehow hit /inspections/fill with nothing staged, show a tiny safe default
+    try {
+      const legacy =
+        typeof window !== "undefined"
+          ? sessionStorage.getItem("customInspection:sections")
+          : null;
+      if (legacy) {
+        const parsed = JSON.parse(legacy) as InspectionSection[];
+        const norm = normalizeSections(parsed);
+        return norm;
+      }
+    } catch {}
+
     return [
       {
         title: "General",
-        items: [
-          { item: "Visual walkaround" },
-          { item: "Record warning lights" },
-        ],
+        items: [{ item: "Visual walkaround" }, { item: "Record warning lights" }],
       },
     ];
   }, [sp]);

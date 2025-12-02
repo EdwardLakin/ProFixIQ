@@ -2,9 +2,6 @@
 export type InspectionItemStatus = "ok" | "fail" | "na" | "recommend";
 export type BrakeType = "air" | "hydraulic";
 
-/** Duty class for inspections (light/medium/heavy) */
-export type DutyClass = "light" | "medium" | "heavy";
-
 export interface InspectionItem {
   /** Primary label. Some code uses `item`, some uses `name` — support both. */
   item?: string;
@@ -29,29 +26,6 @@ export interface InspectionCategory {
 
 /** Many places import `InspectionSection`; keep it as an alias. */
 export type InspectionSection = InspectionCategory;
-
-/** Template definition used by unified inspection builder / loader */
-export interface InspectionTemplate {
-  id: string;
-  templateName: string;
-
-  description?: string | null;
-  tags?: string[] | null;
-  vehicleType?: string | null;
-
-  /** Whether this template is shared/public in the shop/library */
-  isPublic?: boolean | null;
-
-  /** Optional default labor hours for the template */
-  laborHours?: number | null;
-
-  /** Rendered sections (mirrors inspection_templates.sections JSON) */
-  sections: InspectionSection[];
-
-  /** Optional audit fields (mapped from DB created_at/updated_at) */
-  createdAt?: string | null;
-  updatedAt?: string | null;
-}
 
 /** ---------- Parsed voice/AI commands (support both shapes) ---------- */
 /** Older, name-based command shape used by dispatchCommand/interpreter */
@@ -302,9 +276,6 @@ export interface InspectionSession {
   /** Selected brake system for rendering/units */
   brakeType?: BrakeType;
 
-  /** Optional duty class for this inspection (light/medium/heavy) */
-  dutyClass?: DutyClass | null;
-
   location?: string | null;
 
   /** Progress */
@@ -329,18 +300,8 @@ export interface InspectionSession {
   vehicle?: SessionVehicle | null;
 
   /** Content */
-  sections: InspectionSection[];
+  sections: InspectionCategory[];
 
   /** Quotes can be DB-sourced or UI-generated — accept both */
   quote?: Array<QuoteLine | QuoteLineItem>;
-
-  /**
-   * Optional runtime-only metadata.
-   * Unified flows can stash arbitrary info here (e.g. source, duty class, debug flags).
-   */
-  meta?: {
-    dutyClass?: DutyClass | null;
-    source?: string;
-    [key: string]: unknown;
-  };
 }
