@@ -740,7 +740,7 @@ export default function WorkOrderIdClient(): JSX.Element {
         sp.set("seed", String(ln.description));
       }
 
-      const url = `/inspection/run?${sp.toString()}`;
+      const url = `/inspections/run?${sp.toString()}`;
 
       setInspectionSrc(url);
       setInspectionOpen(true);
