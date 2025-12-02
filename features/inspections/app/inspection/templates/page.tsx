@@ -201,15 +201,15 @@ export default function InspectionTemplatesPage() {
                     </span>
 
                     <div className="flex flex-wrap items-center gap-2">
-                      {/* Preview Template – unified runner in preview mode */}
+                      {/* Use Template -> legacy fill page */}
                       <Link
-                        href={`/inspections/unified/custom-draft?templateId=${t.id}&template=${encodedName}&mode=preview`}
-                        className="rounded-full border border-orange-400/80 bg-orange-500 px-3 py-1 text-[11px] font-semibold text-black shadow-[0_0_22px_rgba(249,115,22,0.65)] hover:bg-orange-400"
+                        href={`/inspection/fill?template=${encodedName}`}
+                        className="rounded-full border border-emerald-400/80 bg-emerald-500 px-3 py-1 text-[11px] font-semibold text-black shadow-[0_0_22px_rgba(16,185,129,0.65)] hover:bg-emerald-400"
                       >
-                        Preview
+                        Use
                       </Link>
 
-                      {/* Edit Template */}
+                      {/* Edit Template via unified builder */}
                       {mineOwned && (
                         <Link
                           href={`/inspections/unified/custom-draft?templateId=${t.id}&template=${encodedName}&mode=edit`}
