@@ -4,11 +4,16 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
+
 import {
   MobileTechHome,
   type MobileTechStats,
   type MobileTechJob,
 } from "@/features/mobile/dashboard/MobileTechHome";
+import MobileAdvisorHome from "@/features/mobile/dashboard/MobileAdvisorHome";
+import MobileManagerHome from "@/features/mobile/dashboard/MobileManagerHome";
+import MobileLeadHome from "@/features/mobile/dashboard/MobileLeadHandHome";
+import type { MobileRole } from "@/features/mobile/config/mobile-tiles";
 
 type DB = Database;
 
@@ -107,7 +112,7 @@ export default function MobileHome() {
     })();
   }, [supabase]);
 
-  // Load mechanic stats + today's jobs
+  // Load mechanic stats + today's jobs (used by MobileTechHome)
   useEffect(() => {
     const loadStats = async () => {
       if (!profile?.id || profile.role !== "mechanic") return;
@@ -193,7 +198,7 @@ export default function MobileHome() {
           // today's jobs list for the card (simple label)
           supabase
             .from("work_order_lines")
-            .select("id,status,description,job_type,created_at")
+            .select("id,status,description,job_type,created_at,complaint")
             .or(
               `assigned_tech_id.eq.${uid},assigned_to.eq.${uid},user_id.eq.${uid}`,
             )
@@ -245,14 +250,14 @@ export default function MobileHome() {
         const todayEff = calcEfficiencyPct(todayWorked, todayBilled);
         const weekEff = calcEfficiencyPct(weekWorked, weekBilled);
 
-        const completedTodayCount =
-          todayCompletedLines?.length ?? 0;
+        const completedTodayCount = todayCompletedLines?.length ?? 0;
 
         const active = (activeLines as WorkOrderLine[] | null) ?? [];
         const openJobs = active.length;
-        const assignedJobs = active.filter(
-          (l) => (l.status ?? "").toLowerCase() === "assigned",
-        ).length || openJobs;
+        const assignedJobs =
+          active.filter(
+            (l) => (l.status ?? "").toLowerCase() === "assigned",
+          ).length || openJobs;
 
         const jobsList: MobileTechJob[] =
           (todayJobsRaw as WorkOrderLine[] | null)?.slice(0, 6).map((l) => {
@@ -296,12 +301,16 @@ export default function MobileHome() {
     void loadStats();
   }, [profile, supabase]);
 
-  const role = profile?.role ?? null;
+  const role = (profile?.role ?? null) as MobileRole | null;
   const userName = profile?.full_name ?? null;
   const shopName = shop?.name ?? null;
 
-  // Mechanic-only tech dashboard override
+  /* ------------------------------------------------------------------ */
+  /* Role-specific mobile home pages                                    */
+  /* ------------------------------------------------------------------ */
+
   if (!loading && profile && role === "mechanic") {
+    // Tech dashboard (bench-side)
     return (
       <main className="min-h-screen bg-black text-white">
         <div className="mx-auto flex max-w-md flex-col gap-4 px-0 pb-8 pt-2">
@@ -317,7 +326,50 @@ export default function MobileHome() {
     );
   }
 
-  // Default companion home for other roles (advisor, manager, etc.)
+  if (!loading && profile && role === "advisor") {
+    return (
+      <main className="min-h-screen bg-black text-white">
+        <div className="mx-auto flex max-w-md flex-col gap-4 px-0 pb-8 pt-2">
+          <MobileAdvisorHome
+            advisorName={profile.full_name || "Advisor"}
+            role="advisor"
+          />
+        </div>
+      </main>
+    );
+  }
+
+  if (!loading && profile && (role === "manager" || role === "owner" || role === "admin")) {
+    return (
+      <main className="min-h-screen bg-black text-white">
+        <div className="mx-auto flex max-w-md flex-col gap-4 px-0 pb-8 pt-2">
+          <MobileManagerHome
+            managerName={profile.full_name || "Manager"}
+            role={role}
+          />
+        </div>
+      </main>
+    );
+  }
+
+  // optional: if you’re using a separate "lead hand" MobileRole mapped from profiles
+  if (!loading && profile && (role as string) === "lead_hand") {
+    return (
+      <main className="min-h-screen bg-black text-white">
+        <div className="mx-auto flex max-w-md flex-col gap-4 px-0 pb-8 pt-2">
+          <MobileLeadHome
+            leadName={profile.full_name || "Lead"}
+            role={role as MobileRole}
+          />
+        </div>
+      </main>
+    );
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Fallback companion home (parts, unknown roles, loading)            */
+  /* ------------------------------------------------------------------ */
+
   return (
     <main className="min-h-screen bg-black text-white">
       <div className="mx-auto flex max-w-md flex-col gap-4 px-4 pb-8 pt-6">
@@ -335,16 +387,16 @@ export default function MobileHome() {
             <p className="text-[0.8rem] text-neutral-400">Loading…</p>
           ) : userName ? (
             <p className="text-[0.8rem] text-neutral-400">
-              Hi,{" "}
+              Hi{" "}
               <span className="font-medium text-neutral-100">
                 {userName}
               </span>
-              .
               {shopName && (
                 <span className="ml-1 text-neutral-300">
                   ({shopName})
                 </span>
               )}
+              .
             </p>
           ) : (
             <p className="text-[0.8rem] text-neutral-400">
@@ -368,7 +420,7 @@ export default function MobileHome() {
                 Work Orders
               </div>
               <div className="mt-1 text-[0.75rem] text-orange-100/90">
-                View & update live jobs.
+                View &amp; update live jobs.
               </div>
             </div>
           </Link>
@@ -386,7 +438,7 @@ export default function MobileHome() {
                 New Work Order
               </div>
               <div className="mt-1 text-[0.75rem] text-neutral-400">
-                Capture customer & vehicle.
+                Capture customer &amp; vehicle.
               </div>
             </div>
           </Link>
@@ -404,7 +456,7 @@ export default function MobileHome() {
                 Inspection Queue
               </div>
               <div className="mt-1 text-[0.75rem] text-neutral-400">
-                Start & review inspection forms.
+                Start &amp; review inspection forms.
               </div>
             </div>
           </Link>
@@ -419,7 +471,7 @@ export default function MobileHome() {
             </div>
             <div>
               <div className="text-sm font-semibold text-white">
-                AI & Messages
+                AI &amp; Messages
               </div>
               <div className="mt-1 text-[0.75rem] text-neutral-400">
                 Chat with AI and your team.
@@ -437,7 +489,7 @@ export default function MobileHome() {
             </div>
             <div>
               <div className="text-sm font-semibold text-white">
-                Tech & Job Planner
+                Tech &amp; Job Planner
               </div>
               <div className="mt-1 text-[0.75rem] text-neutral-400">
                 See what’s coming up and who’s on it.
@@ -447,7 +499,7 @@ export default function MobileHome() {
         </section>
 
         <footer className="mt-2 text-center text-[0.65rem] text-neutral-500">
-          Mobile companion • Use the desktop app for admin & setup.
+          Mobile companion • Use the desktop app for admin &amp; setup.
         </footer>
       </div>
     </main>

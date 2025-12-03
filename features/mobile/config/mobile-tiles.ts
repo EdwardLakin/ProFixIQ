@@ -13,7 +13,12 @@ export type MobileScope =
   | "inspect"
   | "messages"
   | "planner"
-  | "settings";
+  | "settings"
+  // extra scopes so mobile dashboards can align with desktop views
+  | "work_orders"
+  | "appointments"
+  | "inspections"
+  | "all";
 
 export type MobileTile = {
   href: string;
@@ -29,35 +34,59 @@ export const MOBILE_TILES: MobileTile[] = [
     title: "My Jobs",
     subtitle: "Assigned work orders",
     roles: ["mechanic", "manager", "owner", "admin"],
-    scopes: ["home", "jobs"],
+    scopes: [
+      "home",
+      "jobs",
+      "work_orders",
+      "all", // show up for generic "all" scoped hubs
+    ],
   },
   {
     href: "/mobile/inspections",
     title: "Inspections",
     subtitle: "Run checklists on vehicles",
     roles: ["mechanic", "advisor", "manager"],
-    scopes: ["home", "inspect"],
+    scopes: [
+      "home",
+      "inspect",
+      "inspections",
+      "work_orders",
+      "all",
+    ],
   },
   {
     href: "/mobile/planner",
     title: "Today’s Planner",
     subtitle: "Your schedule",
     roles: ["mechanic", "manager", "owner", "admin"],
-    scopes: ["home", "planner"],
+    scopes: [
+      "home",
+      "planner",
+      "appointments",
+      "all",
+    ],
   },
   {
     href: "/mobile/messages",
     title: "Team Chat",
     subtitle: "Stay in sync",
     roles: ["mechanic", "advisor", "manager", "owner", "admin", "parts"],
-    scopes: ["home", "messages"],
+    scopes: [
+      "home",
+      "messages",
+      "all",
+    ],
   },
   {
     href: "/mobile/settings",
     title: "Settings",
     subtitle: "Account & mobile options",
     roles: ["mechanic", "advisor", "manager", "owner", "admin", "parts"],
-    scopes: ["home", "settings"],
+    scopes: [
+      "home",
+      "settings",
+      "all",
+    ],
   },
 
   // 🔶 Mobile owner/manager reports
@@ -66,6 +95,10 @@ export const MOBILE_TILES: MobileTile[] = [
     title: "Reports",
     subtitle: "Revenue & tech efficiency",
     roles: ["owner", "admin", "manager"],
-    scopes: ["home"],
+    scopes: [
+      "home",
+      "work_orders",
+      "all",
+    ],
   },
 ];

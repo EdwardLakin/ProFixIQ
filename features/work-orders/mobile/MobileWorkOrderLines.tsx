@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import type { Database } from "@shared/types/types/supabase";
+import AssignTechModal from "@/features/work-orders/components/workorders/extras/AssignTechModal";
 
 type DB = Database;
 type WorkOrderLineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
@@ -9,6 +11,8 @@ type Props = {
   lines: WorkOrderLineRow[];
   workOrderId: string | null;
   onDelete: (lineId: string) => Promise<void> | void;
+  /** set true from parent when this WO is a waiting / waiter job */
+  isWaiter?: boolean;
 };
 
 const statusTextColor: Record<string, string> = {
@@ -32,11 +36,19 @@ const statusChip = (s: string | null | undefined) => {
   );
 };
 
+// waiter pill styling (matches desktop vibe but a bit tighter for mobile)
+const waiterPillClasses =
+  "inline-flex items-center rounded-full border border-red-500/80 bg-red-500/15 px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-[0.16em] text-red-100 shadow-[0_0_10px_rgba(248,113,113,0.75)]";
+
 export function MobileWorkOrderLines({
   lines,
   workOrderId,
   onDelete,
+  isWaiter = false,
 }: Props) {
+  const [assignLineId, setAssignLineId] = useState<string | null>(null);
+  const [assignOpen, setAssignOpen] = useState(false);
+
   if (!workOrderId) return null;
 
   if (!lines.length) {
@@ -52,85 +64,116 @@ export function MobileWorkOrderLines({
   }
 
   return (
-    <div className="glass-card rounded-2xl border border-white/12 bg-black/40 px-3 py-3 shadow-card">
-      <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-neutral-400">
-          Jobs on this work order
-        </h2>
-        <span className="text-[0.65rem] text-neutral-500">
-          {lines.length} line{lines.length === 1 ? "" : "s"}
-        </span>
-      </div>
+    <>
+      <div className="glass-card rounded-2xl border border-white/12 bg-black/40 px-3 py-3 shadow-card">
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+            Jobs on this work order
+          </h2>
+          <span className="text-[0.65rem] text-neutral-500">
+            {lines.length} line{lines.length === 1 ? "" : "s"}
+          </span>
+        </div>
 
-      <ul className="space-y-2">
-        {lines.map((line, idx) => {
-          const label =
-            line.description ||
-            line.complaint ||
-            "Job line";
+        <ul className="space-y-2">
+          {lines.map((line, idx) => {
+            const label =
+              line.description ||
+              line.complaint ||
+              "Job line";
 
-          const statusLabel = line.status
-            ? line.status.replaceAll("_", " ")
-            : "awaiting";
+            const statusLabel = line.status
+              ? line.status.replaceAll("_", " ")
+              : "awaiting";
 
-          return (
-            <li
-              key={line.id}
-              className="group flex items-stretch justify-between gap-2 rounded-2xl border border-white/12 bg-gradient-to-br from-neutral-950/95 via-neutral-900/90 to-black/90 px-3 py-2 text-xs shadow-[0_0_0_1px_rgba(15,23,42,0.9)]"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1 text-[0.7rem] text-neutral-500">
-                  <span className="font-mono text-[0.65rem] text-neutral-500">
-                    #{(idx + 1).toString().padStart(2, "0")}
-                  </span>
-                  {line.job_type && (
-                    <span className="rounded-full border border-white/10 bg-white/5 px-1.5 py-0.5 text-[0.6rem] uppercase tracking-[0.16em] text-neutral-300">
-                      {String(line.job_type).replaceAll("_", " ")}
+            return (
+              <li
+                key={line.id}
+                className="group flex items-stretch justify-between gap-2 rounded-2xl border border-white/12 bg-gradient-to-br from-neutral-950/95 via-neutral-900/90 to-black/90 px-3 py-2 text-xs shadow-[0_0_0_1px_rgba(15,23,42,0.9)]"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 text-[0.7rem] text-neutral-500">
+                    <span className="font-mono text-[0.65rem] text-neutral-500">
+                      #{(idx + 1).toString().padStart(2, "0")}
                     </span>
+
+                    {line.job_type && (
+                      <span className="rounded-full border border-white/10 bg-white/5 px-1.5 py-0.5 text-[0.6rem] uppercase tracking-[0.16em] text-neutral-300">
+                        {String(line.job_type).replaceAll("_", " ")}
+                      </span>
+                    )}
+
+                    {isWaiter && (
+                      <span className={waiterPillClasses}>Waiting</span>
+                    )}
+                  </div>
+
+                  <div className="mt-0.5 truncate text-[0.8rem] font-medium text-neutral-50">
+                    {label}
+                  </div>
+
+                  {line.complaint && (
+                    <div className="mt-0.5 line-clamp-2 text-[0.7rem] text-neutral-400">
+                      {line.complaint}
+                    </div>
+                  )}
+
+                  {line.status && (
+                    <div className="mt-1">
+                      <span
+                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.16em] ${statusChip(
+                          line.status,
+                        )}`}
+                      >
+                        {statusLabel}
+                      </span>
+                    </div>
                   )}
                 </div>
 
-                <div className="mt-0.5 truncate text-[0.8rem] font-medium text-neutral-50">
-                  {label}
-                </div>
-
-                {line.complaint && (
-                  <div className="mt-0.5 line-clamp-2 text-[0.7rem] text-neutral-400">
-                    {line.complaint}
-                  </div>
-                )}
-
-                {line.status && (
-                  <div className="mt-1">
-                    <span
-                      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[0.6rem] uppercase tracking-[0.16em] ${statusChip(
-                        line.status,
-                      )}`}
-                    >
-                      {statusLabel}
+                <div className="flex flex-col items-end justify-between gap-1 pl-1">
+                  {typeof line.labor_time === "number" && (
+                    <span className="rounded-full border border-white/10 bg-black/40 px-2 py-0.5 text-[0.6rem] text-neutral-200">
+                      {line.labor_time.toFixed(1)}h
                     </span>
-                  </div>
-                )}
-              </div>
+                  )}
 
-              <div className="flex flex-col items-end justify-between gap-1 pl-1">
-                {typeof line.labor_time === "number" && (
-                  <span className="rounded-full border border-white/10 bg-black/40 px-2 py-0.5 text-[0.6rem] text-neutral-200">
-                    {line.labor_time.toFixed(1)}h
-                  </span>
-                )}
-                <button
-                  type="button"
-                  onClick={() => onDelete(line.id)}
-                  className="shrink-0 rounded-full border border-red-500/70 px-2 py-0.5 text-[0.7rem] text-red-100 hover:bg-red-500/15"
-                >
-                  Delete
-                </button>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
+                  <div className="flex flex-col items-end gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAssignLineId(line.id);
+                        setAssignOpen(true);
+                      }}
+                      className="shrink-0 rounded-full border border-sky-500/70 px-2 py-0.5 text-[0.7rem] text-sky-100 hover:bg-sky-500/15"
+                    >
+                      Assign
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => onDelete(line.id)}
+                      className="shrink-0 rounded-full border border-red-500/70 px-2 py-0.5 text-[0.7rem] text-red-100 hover:bg-red-500/15"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+
+      {assignOpen && assignLineId && (
+        <AssignTechModal
+          isOpen={assignOpen}
+          onClose={() => setAssignOpen(false)}
+          workOrderLineId={assignLineId}
+          // let the modal fetch its own mechanics; you can wire onAssigned
+          // if you want to re-fetch this work order after assignment.
+        />
+      )}
+    </>
   );
 }
