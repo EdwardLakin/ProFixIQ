@@ -12,7 +12,7 @@ export type MobileScope =
   | "jobs"
   | "inspect"
   | "messages"
-  | "planner"
+  | "planner"      // keep in case something else still references it
   | "settings"
   // extra scopes so mobile dashboards can align with desktop views
   | "work_orders"
@@ -54,15 +54,16 @@ export const MOBILE_TILES: MobileTile[] = [
       "all",
     ],
   },
+  // 🔁 Planner → Appointments (mobile day planner)
   {
-    href: "/mobile/planner",
-    title: "Today’s Planner",
-    subtitle: "Your schedule",
+    href: "/mobile/appointments",
+    title: "Appointments",
+    subtitle: "Today’s schedule",
     roles: ["mechanic", "manager", "owner", "admin"],
     scopes: [
       "home",
-      "planner",
       "appointments",
+      "work_orders",
       "all",
     ],
   },
