@@ -32,6 +32,7 @@ import { generateWorkOrderCustomId } from "@/features/work-orders/lib/generateCu
 
 type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
+type WorkOrderInsert = DB["public"]["Tables"]["work_orders"]["Insert"];
 type WorkOrderLineRow = DB["public"]["Tables"]["work_order_lines"]["Row"];
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
@@ -260,20 +261,24 @@ export default function MobileCreateWorkOrderPage() {
 
         const newId = uuidv4();
 
+        const insertPayload: WorkOrderInsert & {
+          is_waiter?: boolean | null;
+        } = {
+          id: newId,
+          custom_id: customId ?? null,
+          user_id: user.id,
+          shop_id: shopId,
+          customer_id: placeholderCustomer.id,
+          vehicle_id: placeholderVehicle.id,
+          status: "awaiting_approval",
+          priority: 3,
+          // mobile defaults to drop-off; user can flip to waiter
+          is_waiter: false,
+        };
+
         const { data: inserted, error: insertErr } = await supabase
           .from("work_orders")
-          .insert({
-            id: newId,
-            custom_id: customId ?? null,
-            user_id: user.id,
-            shop_id: shopId,
-            customer_id: placeholderCustomer.id,
-            vehicle_id: placeholderVehicle.id,
-            status: "awaiting_approval",
-            priority: 3,
-            // mobile defaults to drop-off; user can flip to waiter
-            is_waiter: false,
-          } as any)
+          .insert(insertPayload)
           .select("*")
           .single();
 
@@ -281,8 +286,12 @@ export default function MobileCreateWorkOrderPage() {
           throw new Error(insertErr?.message ?? "Failed to create work order.");
         }
 
-        setWo(inserted as WorkOrderRow);
-        setIsWaiter(((inserted as any).is_waiter ?? false) as boolean);
+        const insertedWo = inserted as WorkOrderRow & {
+          is_waiter?: boolean | null;
+        };
+
+        setWo(insertedWo);
+        setIsWaiter(Boolean(insertedWo.is_waiter));
 
         // Seed local state
         setCustomer((prev) => ({
@@ -364,12 +373,17 @@ export default function MobileCreateWorkOrderPage() {
       if (!wo?.id) return;
 
       try {
+        const updatePayload: Partial<
+          WorkOrderRow & { is_waiter?: boolean | null }
+        > = {
+          is_waiter: value,
+        };
+
         await supabase
           .from("work_orders")
-          .update({ is_waiter: value } as any)
+          .update(updatePayload)
           .eq("id", wo.id);
       } catch (e) {
-        // Keep UI in sync but surface an error banner
         const msg =
           e instanceof Error
             ? e.message
@@ -544,4 +558,7 @@ export default function MobileCreateWorkOrderPage() {
         >
           {loading ? "Saving…" : "Approve & Continue"}
         </button>
-      <
+      </div>
+    </div>
+  );
+}
