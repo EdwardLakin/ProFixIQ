@@ -58,7 +58,6 @@ export default function MobileInspectionsListPage() {
 
         if (error) throw error;
 
-        // Strictly typed mapping — no any, no unknown
         const mapped: InspectionRow[] = (data ?? []).map((r) => ({
           id: r.id,
           custom_id: r.custom_id ?? null,
@@ -81,7 +80,7 @@ export default function MobileInspectionsListPage() {
   }, [supabase]);
 
   return (
-    <div className="space-y-4 px-4 py-4 text-foreground">
+    <div className="min-h-screen space-y-4 bg-neutral-950 px-4 py-4 text-foreground">
       {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <div>
