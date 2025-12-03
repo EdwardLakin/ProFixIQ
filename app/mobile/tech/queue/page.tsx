@@ -261,7 +261,7 @@ export default function MobileTechQueuePage() {
                 key={line.id}
                 type="button"
                 onClick={() =>
-                  slug && router.push(`/work-orders/${slug}?mode=tech`)
+                  slug && router.push(`work-orders/${slug}?mode=tech`)
                 }
                 className="flex w-full items-center justify-between gap-3 rounded-2xl border border-neutral-800 bg-neutral-950/90 px-3 py-3 text-left shadow-[0_0_0_1px_rgba(15,23,42,0.9)] active:scale-[0.99]"
               >
