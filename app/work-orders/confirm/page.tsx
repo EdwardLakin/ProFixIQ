@@ -20,7 +20,8 @@ export default function ApprovalConfirmPage() {
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let redirectTimer: ReturnType<typeof setTimeout> | undefined;
+    let closeTimer: ReturnType<typeof setTimeout> | undefined;
 
     (async () => {
       if (!woId) {
@@ -39,23 +40,40 @@ export default function ApprovalConfirmPage() {
       setWo((data as WorkOrder | null) ?? null);
       setLoading(false);
 
-      // gentle auto-redirect after a moment
       if (data?.id) {
         const href = `/work-orders/${data.custom_id ?? data.id}?mode=view`;
-        timeoutId = setTimeout(() => router.replace(href), 1500);
+
+        // Redirect back → then auto-close window
+        redirectTimer = setTimeout(() => {
+          router.replace(href);
+
+          // Try to close after redirect (allowed if popup/tab was opened by app)
+          closeTimer = setTimeout(() => {
+            try {
+              window.close();
+            } catch {
+              /* ignore browser restrictions */
+            }
+          }, 500);
+        }, 1500);
       }
     })();
 
     return () => {
-      if (timeoutId) clearTimeout(timeoutId);
+      if (redirectTimer) clearTimeout(redirectTimer);
+      if (closeTimer) clearTimeout(closeTimer);
     };
   }, [woId, supabase, router]);
+
+  /* ---------------------------------------------------------------------- */
+  /*                                UI STATES                               */
+  /* ---------------------------------------------------------------------- */
 
   if (loading) {
     return (
       <div className="mx-auto max-w-2xl p-6 text-white">
-        <div className="mb-4 h-8 w-48 animate-pulse rounded bg-neutral-800" />
-        <div className="h-24 animate-pulse rounded bg-neutral-800" />
+        <div className="mb-4 h-8 w-48 animate-pulse rounded-lg bg-black/30 backdrop-blur-sm border border-white/10" />
+        <div className="h-24 animate-pulse rounded-lg bg-black/30 backdrop-blur-sm border border-white/10" />
       </div>
     );
   }
@@ -70,33 +88,71 @@ export default function ApprovalConfirmPage() {
 
   const viewHref = `/work-orders/${wo.custom_id ?? wo.id}?mode=view`;
 
+  /* ---------------------------------------------------------------------- */
+  /*                           THEMED CONFIRMATION UI                       */
+  /* ---------------------------------------------------------------------- */
+
   return (
     <div className="mx-auto max-w-xl p-6 text-white">
-      <div className="rounded border border-green-500/40 bg-green-500/10 p-4">
-        <div className="text-lg font-semibold text-green-300">Approval received ✅</div>
-        <div className="mt-1 text-sm text-neutral-300">
+      <div className="
+        rounded-2xl border border-green-500/40 
+        bg-green-500/10 
+        backdrop-blur-lg 
+        shadow-xl shadow-black/40 
+        p-6
+      ">
+        <div className="text-xl font-blackops text-green-300 tracking-wide">
+          Approval Received ✓
+        </div>
+
+        <div className="mt-2 text-sm text-neutral-300">
           This work order is now marked{" "}
-          <span className="font-semibold">
+          <span className="font-semibold text-green-200">
             {(wo.status ?? "queued").replaceAll("_", " ")}
           </span>.
         </div>
 
-        <div className="mt-4 flex gap-2">
+        <div className="mt-5 flex gap-3">
           <Link
             href={viewHref}
-            className="rounded bg-orange-500 px-4 py-2 font-semibold text-black hover:bg-orange-600"
+            className="
+              rounded-full 
+              bg-orange-500 
+              px-5 
+              py-2 
+              font-semibold 
+              text-black 
+              shadow 
+              shadow-orange-900/40
+              hover:bg-orange-400
+              transition
+            "
           >
             View Work Order
           </Link>
+
           <Link
             href="/work-orders"
-            className="rounded border border-neutral-700 px-4 py-2 text-white hover:bg-neutral-800"
+            className="
+              rounded-full 
+              border border-white/10 
+              bg-white/5 
+              px-5 
+              py-2 
+              text-white 
+              shadow-sm 
+              hover:bg-white/10
+              transition
+              backdrop-blur-sm
+            "
           >
             Back to List
           </Link>
         </div>
 
-        <div className="mt-3 text-xs text-neutral-400">You’ll be redirected shortly…</div>
+        <div className="mt-4 text-xs text-neutral-400">
+          Redirecting and closing window…
+        </div>
       </div>
     </div>
   );
