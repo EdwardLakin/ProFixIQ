@@ -544,7 +544,4 @@ export default function MobileCreateWorkOrderPage() {
         >
           {loading ? "Saving…" : "Approve & Continue"}
         </button>
-      </div>
-    </div>
-  );
-}
+      <
