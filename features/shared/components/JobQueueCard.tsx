@@ -22,6 +22,13 @@ type JobQueueCardProps = {
 } & AssignProps &
   PunchProps;
 
+// Possible waiter flags that might exist on the line row
+type JobWaiterFlags = {
+  is_waiter?: boolean | null;
+  waiter?: boolean | null;
+  customer_waiting?: boolean | null;
+};
+
 const BADGE_BASE =
   "inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-medium";
 
@@ -37,7 +44,7 @@ const STATUS_STYLES: Record<string, string> = {
 
 function getStatusBadge(
   status: string | null,
-  holdReason: string | null
+  holdReason: string | null,
 ): { text: string; className: string } {
   const key = (status ?? "awaiting").toLowerCase();
   if (key === "on_hold") {
@@ -73,7 +80,7 @@ function JobQueueCard({
   } = job;
 
   const [selectedTech, setSelectedTech] = useState<string | null>(
-    assigned_to ?? null
+    assigned_to ?? null,
   );
 
   const assignedLabel = useMemo(() => {
@@ -84,8 +91,17 @@ function JobQueueCard({
 
   const { text: badgeText, className: badgeClass } = getStatusBadge(
     status ?? null,
-    hold_reason ?? null
+    hold_reason ?? null,
   );
+
+  // 🔴 waiter flag per job line (supports multiple possible columns)
+  const waiterSource = job as JobLine & JobWaiterFlags;
+  const isWaiter =
+    !!(
+      waiterSource.is_waiter ||
+      waiterSource.waiter ||
+      waiterSource.customer_waiting
+    );
 
   const handleAssign = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const techId = e.target.value || null;
@@ -98,7 +114,9 @@ function JobQueueCard({
   return (
     <div
       className={`rounded-xl border bg-neutral-950/90 p-3 shadow-sm transition hover:border-orange-500/70 hover:shadow-md ${
-        isActive ? "border-orange-400 ring-1 ring-orange-400/70" : "border-neutral-800"
+        isActive
+          ? "border-orange-400 ring-1 ring-orange-400/70"
+          : "border-neutral-800"
       }`}
     >
       <div className="space-y-2">
@@ -120,7 +138,24 @@ function JobQueueCard({
             </div>
           </div>
 
-          <span className={badgeClass}>{badgeText}</span>
+          <div className="flex flex-col items-end gap-1">
+            {isWaiter && (
+              <span
+                className="
+                  inline-flex items-center whitespace-nowrap
+                  rounded-full border border-red-500
+                  bg-red-500/10
+                  px-3 py-1
+                  text-[10px] font-semibold uppercase tracking-[0.16em]
+                  text-red-200
+                  shadow-[0_0_14px_rgba(248,113,113,0.9)]
+                "
+              >
+                Waiter
+              </span>
+            )}
+            <span className={badgeClass}>{badgeText}</span>
+          </div>
         </div>
 
         {/* Tech assign + view */}
