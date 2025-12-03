@@ -17,7 +17,8 @@ type Props = {
 export default function JobPunchButton({
   lineId,
   punchedInAt,
-  punchedOutAt, // still passed so you can disable on awaiting_approval / declined, etc
+  punchedOutAt,
+  status,
   onUpdated,
   onFinishRequested,
   disabled = false,
@@ -26,7 +27,14 @@ export default function JobPunchButton({
   const [busy, setBusy] = useState(false);
   const [flash, setFlash] = useState<"started" | "finished" | null>(null);
 
-  const isStarted = !!punchedInAt && !punchedOutAt;
+  const normalizedStatus = (status ?? "").toLowerCase();
+  const isOnHold = normalizedStatus === "on_hold";
+
+  // 🔹 While on hold we treat it as *not started* (timer is stopped),
+  // but we will disable the button so techs must release the hold first.
+  const isStarted = !!punchedInAt && !punchedOutAt && !isOnHold;
+
+  const effectiveDisabled = disabled || isOnHold;
 
   const showFlash = (kind: typeof flash) => {
     setFlash(kind);
@@ -38,7 +46,7 @@ export default function JobPunchButton({
   /* ------------------------------------------------------------------ */
 
   const start = async () => {
-    if (busy || disabled) return;
+    if (busy || effectiveDisabled) return;
     setBusy(true);
     try {
       const { error } = await supabase.rpc("punch_in", {
@@ -71,7 +79,7 @@ export default function JobPunchButton({
   // NOTE: finishing still goes through the Cause / Correction modal.
   // That modal will set status=completed + punched_out_at.
   const handlePrimary = () => {
-    if (busy || disabled) return;
+    if (busy || effectiveDisabled) return;
 
     if (isStarted) {
       // Let the parent open Complete modal; when that saves it will punch_out.
@@ -88,19 +96,29 @@ export default function JobPunchButton({
       <button
         type="button"
         onClick={handlePrimary}
-        disabled={busy || disabled}
+        disabled={busy || effectiveDisabled}
         className={`font-header inline-flex w-full items-center justify-center rounded-md border px-4 py-3 text-center text-sm tracking-[0.16em] uppercase transition
           ${
             isStarted
               ? "border-neutral-600 bg-black/40 text-neutral-100 hover:bg-black/70"
               : "border-[var(--accent-copper-soft)] bg-[var(--accent-copper-faint)] text-[var(--accent-copper-light)] hover:bg-[var(--accent-copper-soft)] hover:text-black shadow-[0_0_18px_rgba(212,118,49,0.55)]"
           }
-          ${busy || disabled ? "cursor-not-allowed opacity-60 shadow-none" : ""}
+          ${
+            busy || effectiveDisabled
+              ? "cursor-not-allowed opacity-60 shadow-none"
+              : ""
+          }
         `}
         aria-pressed={isStarted}
         aria-busy={busy}
       >
-        {busy ? "Saving…" : isStarted ? "Finish job" : "Start job"}
+        {busy
+          ? "Saving…"
+          : isStarted
+          ? "Finish job"
+          : isOnHold
+          ? "On hold"
+          : "Start job"}
       </button>
 
       {/* Flash overlay */}
@@ -114,6 +132,12 @@ export default function JobPunchButton({
             }`}
         >
           {flash === "started" ? "✓ Started" : "✓ Finish requested"}
+        </div>
+      )}
+
+      {isOnHold && !busy && (
+        <div className="mt-1 text-center text-[10px] text-amber-300">
+          Job is on hold — release hold to start again.
         </div>
       )}
     </div>

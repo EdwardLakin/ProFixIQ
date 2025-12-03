@@ -329,19 +329,31 @@ export default function MobileFocusedJob(props: {
       window.removeEventListener("inspection:completed", onInspectionDone);
   }, [workOrderLineId]);
 
-  const applyHold = async (reason: string, notes?: string) => {
+    const applyHold = async (reason: string, notes?: string) => {
     if (busy) return;
+    if (!line) return;
+
     setBusy(true);
     try {
+      const update: DB["public"]["Tables"]["work_order_lines"]["Update"] = {
+        hold_reason: reason || "On hold",
+        status: "on_hold",
+        // keep any existing notes unless overridden
+        notes: notes ?? line.notes ?? null,
+      };
+
+      // 🔹 If the job is actively running, "punch off" when putting it on hold
+      if (line.punched_in_at && !line.punched_out_at) {
+        update.punched_out_at = new Date().toISOString();
+      }
+
       const { error } = await supabase
         .from("work_order_lines")
-        .update({
-          hold_reason: reason || "On hold",
-          status: "on_hold",
-          notes: notes ?? line?.notes ?? null,
-        } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+        .update(update)
         .eq("id", workOrderLineId);
+
       if (error) return showErr("Apply hold failed", error);
+
       toast.success("Hold applied");
       await refresh();
     } finally {
