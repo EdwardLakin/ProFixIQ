@@ -36,25 +36,25 @@ const BADGE_BASE =
 
 const STATUS_BADGE: Record<StatusKey, string> = {
   awaiting_approval:
-    "bg-blue-200/10 border-blue-400/50 text-blue-100",
+    "bg-blue-500/10 border-blue-400/60 text-blue-100",
   awaiting:
-    "bg-sky-200/10 border-sky-400/50 text-sky-100",
+    "bg-sky-500/10 border-sky-400/60 text-sky-100",
   queued:
-    "bg-indigo-200/10 border-indigo-400/50 text-indigo-100",
+    "bg-indigo-500/10 border-indigo-400/60 text-indigo-100",
   in_progress:
-    "bg-orange-200/10 border-orange-400/60 text-orange-100",
+    "bg-[var(--accent-copper)]/15 border-[var(--accent-copper-light)]/70 text-[var(--accent-copper-light)]",
   on_hold:
-    "bg-amber-200/10 border-amber-400/60 text-amber-100",
+    "bg-amber-500/10 border-amber-400/70 text-amber-100",
   planned:
-    "bg-purple-200/10 border-purple-400/60 text-purple-100",
+    "bg-purple-500/10 border-purple-400/70 text-purple-100",
   new:
-    "bg-neutral-800/80 border-neutral-500/80 text-neutral-100",
+    "bg-neutral-900/80 border-neutral-500/80 text-neutral-100",
   completed:
-    "bg-green-200/10 border-green-400/60 text-green-100",
+    "bg-green-500/10 border-green-400/70 text-green-100",
   ready_to_invoice:
-    "bg-emerald-200/10 border-emerald-400/60 text-emerald-100",
+    "bg-emerald-500/10 border-emerald-400/70 text-emerald-100",
   invoiced:
-    "bg-teal-200/10 border-teal-400/60 text-teal-100",
+    "bg-teal-500/10 border-teal-400/70 text-teal-100",
 };
 
 const chip = (s: string | null | undefined) => {
@@ -76,15 +76,16 @@ const NORMAL_FLOW_STATUSES: StatusKey[] = [
 // roles that can assign techs from this view
 const ASSIGN_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
 
-/* --------------------------- Dark input styles --------------------------- */
+/* --------------------------- Themed input styles --------------------------- */
 const INPUT_DARK =
-  "w-full rounded-md border border-neutral-700 !bg-neutral-950 px-3 py-1.5 text-sm text-foreground placeholder:text-neutral-500 " +
-  "focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-500/60 appearance-none [color-scheme:dark]";
+  "w-full rounded-full border border-white/15 bg-black/40 px-3 py-1.5 text-xs sm:text-sm text-neutral-100 placeholder:text-neutral-500 " +
+  "shadow-[0_0_18px_rgba(0,0,0,0.8)] backdrop-blur focus:border-[var(--accent-copper)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper)]";
 const SELECT_DARK =
-  "w-full rounded-md border border-neutral-700 !bg-neutral-950 px-3 py-1.5 text-sm text-foreground " +
-  "focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-500/60 appearance-none [color-scheme:dark]";
+  "w-full rounded-full border border-white/15 bg-black/40 px-3 py-1.5 text-xs sm:text-sm text-neutral-100 " +
+  "shadow-[0_0_18px_rgba(0,0,0,0.8)] backdrop-blur focus:border-[var(--accent-copper)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-copper)]";
 const BUTTON_MUTED =
-  "rounded-md border border-neutral-700 px-3 py-1.5 text-sm text-neutral-100 hover:bg-neutral-900/60 active:bg-neutral-800/80 transition-colors";
+  "rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs sm:text-sm text-neutral-100 shadow-[0_0_14px_rgba(0,0,0,0.7)] " +
+  "transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/15 hover:text-white active:opacity-80";
 
 export default function WorkOrdersView(): JSX.Element {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
@@ -151,7 +152,7 @@ export default function WorkOrdersView(): JSX.Element {
         *,
         customers:customers(first_name,last_name,phone,email),
         vehicles:vehicles(year,make,model,license_plate)
-      `
+      `,
       )
       .order("created_at", { ascending: false })
       .limit(100);
@@ -184,7 +185,11 @@ export default function WorkOrdersView(): JSX.Element {
               .join(" ")
               .toLowerCase();
             const plate = r.vehicles?.license_plate?.toLowerCase() ?? "";
-            const ymm = [r.vehicles?.year ?? "", r.vehicles?.make ?? "", r.vehicles?.model ?? ""]
+            const ymm = [
+              r.vehicles?.year ?? "",
+              r.vehicles?.make ?? "",
+              r.vehicles?.model ?? "",
+            ]
               .join(" ")
               .toLowerCase();
             const cid = (r.custom_id ?? "").toLowerCase();
@@ -239,7 +244,7 @@ export default function WorkOrdersView(): JSX.Element {
         { event: "*", schema: "public", table: "work_orders" },
         () => {
           setTimeout(() => void load(), 60);
-        }
+        },
       )
       .subscribe();
 
@@ -275,7 +280,7 @@ export default function WorkOrdersView(): JSX.Element {
         setRows(prev);
       }
     },
-    [rows, supabase]
+    [rows, supabase],
   );
 
   const handleAssignAll = useCallback(
@@ -308,7 +313,7 @@ export default function WorkOrdersView(): JSX.Element {
         alert(msg);
       }
     },
-    [selectedTechId, load]
+    [selectedTechId, load],
   );
 
   // make a fast lookup for tech names
@@ -332,45 +337,49 @@ export default function WorkOrdersView(): JSX.Element {
     () =>
       rows.filter((r) =>
         NORMAL_FLOW_STATUSES.includes(
-          (r.status ?? "awaiting").toLowerCase().replaceAll(" ", "_") as StatusKey
-        )
+          (r.status ?? "awaiting").toLowerCase().replaceAll(" ", "_") as StatusKey,
+        ),
       ).length,
-    [rows]
+    [rows],
   );
   const awaitingApprovalCount = useMemo(
     () =>
-      rows.filter((r) => (r.status ?? "").toLowerCase() === "awaiting_approval").length,
-    [rows]
+      rows.filter(
+        (r) => (r.status ?? "").toLowerCase() === "awaiting_approval",
+      ).length,
+    [rows],
   );
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 text-foreground">
-      {/* Header */}
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-200">
-            Work Orders
-          </h1>
-          <p className="mt-1 text-xs text-neutral-400">
-            Live view of active jobs, their status, and technician assignments.
-          </p>
-        </div>
+    <div className="mx-auto max-w-6xl bg-background px-4 py-6 text-foreground space-y-6">
+      {/* Header card */}
+      <section className="metal-panel metal-panel--card rounded-2xl border border-white/10 px-4 py-4 shadow-card">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-lg font-blackops tracking-[0.18em] text-[var(--accent-copper-light)]">
+              Work Orders
+            </h1>
+            <p className="mt-1 text-[0.75rem] text-neutral-300">
+              Live view of active jobs, their status, and technician assignments.
+            </p>
+          </div>
 
-        <div className="flex items-center gap-3">
-          <Link
-            href="/work-orders/create"
-            className="inline-flex items-center justify-center rounded-full border border-orange-500/60 bg-orange-500 px-3.5 py-1.5 text-sm font-semibold text-black shadow-sm hover:bg-orange-400 hover:border-orange-400"
-          >
-            <span className="mr-1.5 text-base leading-none">+</span>
-            New work order
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/work-orders/create"
+              className="inline-flex items-center justify-center rounded-full bg-[var(--accent-copper)] px-3.5 py-1.5 text-sm font-semibold text-black shadow-[0_0_26px_rgba(0,0,0,0.9)] transition hover:opacity-90"
+            >
+              <span className="mr-1.5 text-base leading-none">+</span>
+              New work order
+            </Link>
+          </div>
         </div>
-      </div>
+      </section>
 
       {/* Filters + stats strip */}
-      <div className="mb-5 flex flex-col gap-3 rounded-2xl border border-white/10 bg-black/40 p-3 text-xs shadow-md shadow-black/40 backdrop-blur-md sm:flex-row sm:items-center sm:justify-between">
+      <section className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-black/35 p-3 text-xs shadow-[0_0_40px_rgba(0,0,0,0.8)] backdrop-blur-md sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center">
-          <div className="flex-1 min-w-[220px]">
+          <div className="min-w-[220px] flex-1">
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
@@ -383,7 +392,7 @@ export default function WorkOrdersView(): JSX.Element {
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value)}
-              className={SELECT_DARK + " text-xs min-w-[200px]"}
+              className={SELECT_DARK + " min-w-[200px]"}
               aria-label="Filter by status"
             >
               <option value="">Active (normal flow)</option>
@@ -398,10 +407,7 @@ export default function WorkOrdersView(): JSX.Element {
               <option value="ready_to_invoice">Ready to invoice</option>
               <option value="invoiced">Invoiced</option>
             </select>
-            <button
-              onClick={() => void load()}
-              className={BUTTON_MUTED + " text-xs"}
-            >
+            <button onClick={() => void load()} className={BUTTON_MUTED}>
               Refresh
             </button>
           </div>
@@ -414,7 +420,7 @@ export default function WorkOrdersView(): JSX.Element {
             </span>
             <span className="text-sm font-semibold text-white">{total}</span>
           </div>
-          <div className="h-7 w-px bg-neutral-700/60" />
+          <div className="h-7 w-px bg-white/10" />
           <div className="flex flex-col">
             <span className="uppercase tracking-[0.13em] text-neutral-500">
               Active
@@ -423,7 +429,7 @@ export default function WorkOrdersView(): JSX.Element {
               {activeCount}
             </span>
           </div>
-          <div className="h-7 w-px bg-neutral-700/60" />
+          <div className="h-7 w-px bg-white/10" />
           <div className="flex flex-col">
             <span className="uppercase tracking-[0.13em] text-neutral-500">
               Awaiting approval
@@ -433,32 +439,32 @@ export default function WorkOrdersView(): JSX.Element {
             </span>
           </div>
         </div>
-      </div>
+      </section>
 
       {err && (
-        <div className="mb-3 rounded-md border border-red-500/60 bg-red-950/40 p-2 text-xs text-red-200">
+        <div className="rounded-xl border border-red-500/50 bg-red-950/60 px-3 py-2 text-xs text-red-100">
           {err}
         </div>
       )}
 
       {loading ? (
-        <div className="rounded-2xl border border-white/10 bg-black/40 p-4 text-sm text-neutral-300">
+        <div className="rounded-2xl border border-white/10 bg-black/40 p-4 text-sm text-neutral-300 shadow-[0_0_40px_rgba(0,0,0,0.7)]">
           Loading work orders…
         </div>
       ) : rows.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-white/15 bg-black/40 p-6 text-sm text-neutral-400">
+        <div className="rounded-2xl border border-dashed border-white/20 bg-black/40 p-6 text-sm text-neutral-400 shadow-[0_0_40px_rgba(0,0,0,0.6)]">
           No work orders match your current filters.
         </div>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/30 shadow-lg shadow-black/40">
-          <div className="hidden border-b border-white/5 bg-black/40 px-4 py-2 text-[0.7rem] uppercase tracking-[0.12em] text-neutral-500 sm:grid sm:grid-cols-[110px,1.6fr,1.1fr,auto] sm:gap-3">
+        <section className="overflow-hidden rounded-2xl border border-white/12 bg-black/30 shadow-[0_0_50px_rgba(0,0,0,0.9)] backdrop-blur">
+          <div className="hidden border-b border-white/8 bg-black/45 px-4 py-2 text-[0.7rem] uppercase tracking-[0.12em] text-neutral-500 sm:grid sm:grid-cols-[110px,1.6fr,1.1fr,auto] sm:gap-3">
             <div>Date</div>
             <div>Work order / customer / vehicle</div>
             <div>Assigned to</div>
             <div className="text-right">Actions</div>
           </div>
 
-          <div className="divide-y divide-white/5">
+          <div className="divide-y divide-white/8">
             {rows.map((r) => {
               const href = `/work-orders/${r.custom_id ?? r.id}?mode=view`;
               const isAssigning = assigningFor === r.id;
@@ -487,7 +493,7 @@ export default function WorkOrdersView(): JSX.Element {
               return (
                 <div
                   key={r.id}
-                  className="flex flex-col gap-3 px-3 py-3 text-sm sm:grid sm:grid-cols-[110px,1.6fr,1.1fr,auto] sm:items-center sm:gap-3"
+                  className="flex flex-col gap-3 bg-gradient-to-br from-black/60 to-black/40 px-3 py-3 text-sm sm:grid sm:grid-cols-[110px,1.6fr,1.1fr,auto] sm:items-center sm:gap-3 hover:bg-black/70"
                 >
                   {/* Date */}
                   <div className="text-[0.7rem] text-neutral-400">
@@ -499,12 +505,12 @@ export default function WorkOrdersView(): JSX.Element {
                     <div className="flex flex-wrap items-center gap-2">
                       <Link
                         href={href}
-                        className="text-sm font-semibold text-white underline decoration-neutral-500/40 underline-offset-2 hover:decoration-orange-400"
+                        className="text-sm font-semibold text-white underline decoration-neutral-600/50 underline-offset-2 hover:decoration-[var(--accent-copper-light)]"
                       >
                         {r.custom_id ? r.custom_id : `#${r.id.slice(0, 8)}`}
                       </Link>
                       {r.custom_id && (
-                        <span className="rounded-full border border-neutral-700/80 bg-neutral-900/70 px-1.5 py-0.5 text-[0.65rem] text-neutral-400">
+                        <span className="rounded-full border border-white/15 bg-black/60 px-1.5 py-0.5 text-[0.65rem] font-mono text-neutral-400">
                           #{r.id.slice(0, 6)}
                         </span>
                       )}
@@ -528,7 +534,7 @@ export default function WorkOrdersView(): JSX.Element {
                   {/* Assigned to */}
                   <div className="text-[0.75rem] text-neutral-300">
                     {firstTechName ? (
-                      <div className="inline-flex items-center gap-1 rounded-full bg-sky-500/10 px-2 py-0.5 text-[0.7rem] text-sky-100">
+                      <div className="inline-flex items-center gap-1 rounded-full bg-sky-500/15 px-2 py-0.5 text-[0.7rem] text-sky-100">
                         <span className="inline-block h-1.5 w-1.5 rounded-full bg-sky-400" />
                         {firstTechName}
                       </div>
@@ -541,13 +547,13 @@ export default function WorkOrdersView(): JSX.Element {
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     <Link
                       href={href}
-                      className="rounded-md border border-neutral-700 px-2.5 py-1 text-xs text-neutral-100 hover:bg-neutral-900/60"
+                      className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-xs text-neutral-100 transition hover:border-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/20"
                     >
                       Open
                     </Link>
                     <button
                       onClick={() => void handleDelete(r.id)}
-                      className="rounded-md border border-red-500/60 px-2.5 py-1 text-xs text-red-300 hover:bg-red-900/30"
+                      className="rounded-full border border-red-500/60 bg-red-500/10 px-2.5 py-1 text-xs text-red-200 transition hover:bg-red-500/20"
                     >
                       Delete
                     </button>
@@ -558,7 +564,7 @@ export default function WorkOrdersView(): JSX.Element {
                             onClick={() => {
                               setAssigningFor(r.id);
                             }}
-                            className="rounded-md border border-sky-500/60 px-2.5 py-1 text-xs text-sky-200 hover:bg-sky-900/30"
+                            className="rounded-full border border-sky-500/60 bg-sky-500/10 px-2.5 py-1 text-xs text-sky-100 transition hover:bg-sky-500/25"
                           >
                             Assign
                           </button>
@@ -582,13 +588,13 @@ export default function WorkOrdersView(): JSX.Element {
                             </select>
                             <button
                               onClick={() => void handleAssignAll(r.id)}
-                              className="rounded-md bg-orange-500 px-2 py-1 text-[0.7rem] font-semibold text-black hover:bg-orange-400"
+                              className="rounded-full bg-[var(--accent-copper)] px-2 py-1 text-[0.7rem] font-semibold text-black shadow-[0_0_18px_rgba(0,0,0,0.9)] hover:opacity-90"
                             >
                               Apply
                             </button>
                             <button
                               onClick={() => setAssigningFor(null)}
-                              className="rounded-md border border-neutral-700 px-2 py-1 text-[0.7rem] text-neutral-200 hover:bg-neutral-900/60"
+                              className="rounded-full border border-white/15 bg-white/5 px-2 py-1 text-[0.7rem] text-neutral-200 hover:bg-white/10"
                             >
                               ✕
                             </button>
@@ -601,7 +607,7 @@ export default function WorkOrdersView(): JSX.Element {
               );
             })}
           </div>
-        </div>
+        </section>
       )}
     </div>
   );

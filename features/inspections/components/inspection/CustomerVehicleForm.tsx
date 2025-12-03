@@ -158,9 +158,9 @@ function CustomerAutocomplete({
   return (
     <div ref={wrapRef} className="relative">
       {(open || busy) && (
-        <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-md border border-neutral-700 bg-neutral-900 shadow-lg">
+        <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-white/15 bg-black/80 backdrop-blur-xl shadow-lg shadow-black/70">
           {busy && (
-            <div className="px-3 py-2 text-xs text-neutral-400">
+            <div className="px-3 py-2 text-xs text-neutral-300">
               Searching…
             </div>
           )}
@@ -177,7 +177,7 @@ function CustomerAutocomplete({
               <button
                 key={c.id}
                 type="button"
-                className="block w-full cursor-pointer px-3 py-2 text-left text-sm hover:bg-neutral-800"
+                className="block w-full cursor-pointer px-3 py-2 text-left text-sm transition hover:bg-[var(--accent-copper)]/15 hover:text-neutral-50"
                 onMouseDown={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -281,9 +281,9 @@ function UnitNumberAutocomplete({
   return (
     <div ref={wrapRef} className="relative">
       {(open || busy) && (
-        <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-md border border-neutral-700 bg-neutral-900 shadow-lg">
+        <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-white/15 bg-black/80 backdrop-blur-xl shadow-lg shadow-black/70">
           {busy && (
-            <div className="px-3 py-2 text-xs text-neutral-400">
+            <div className="px-3 py-2 text-xs text-neutral-300">
               Searching…
             </div>
           )}
@@ -305,7 +305,7 @@ function UnitNumberAutocomplete({
               <button
                 key={v.id}
                 type="button"
-                className="block w-full cursor-pointer px-3 py-2 text-left text-sm hover:bg-neutral-800"
+                className="block w-full cursor-pointer px-3 py-2 text-left text-sm transition hover:bg-[var(--accent-copper)]/15 hover:text-neutral-50"
                 onMouseDown={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -363,7 +363,10 @@ export default function CustomerVehicleForm({
     const fallback = splitNamefallback(c.name);
 
     // Fill immediate customer fields (fallback to "name" when needed)
-    (onCustomerChange as any)("business_name", c.business_name ?? null);
+    (onCustomerChange as Handlers["onCustomerChange"])?.(
+      "business_name",
+      c.business_name ?? null,
+    );
     onCustomerChange("first_name", (c.first_name ?? fallback.first) ?? null);
     onCustomerChange("last_name", (c.last_name ?? fallback.last) ?? null);
     onCustomerChange("phone", c.phone ?? null);
@@ -379,7 +382,10 @@ export default function CustomerVehicleForm({
       if (data) {
         const d = data as CustomerRow;
         const fb = splitNamefallback(d.name);
-        (onCustomerChange as any)("business_name", d.business_name ?? null);
+        (onCustomerChange as Handlers["onCustomerChange"])?.(
+          "business_name",
+          d.business_name ?? null,
+        );
         onCustomerChange("first_name", (d.first_name ?? fb.first) ?? null);
         onCustomerChange("last_name", (d.last_name ?? fb.last) ?? null);
         onCustomerChange("address", d.address ?? null);
@@ -422,10 +428,22 @@ export default function CustomerVehicleForm({
           "engine_hours",
           v.engine_hours != null ? String(v.engine_hours) : null,
         );
-        (onVehicleChange as any)("engine", v.engine ?? null);
-        (onVehicleChange as any)("transmission", v.transmission ?? null);
-        (onVehicleChange as any)("fuel_type", v.fuel_type ?? null);
-        (onVehicleChange as any)("drivetrain", v.drivetrain ?? null);
+        onVehicleChange(
+          "engine" as keyof VehicleInfo,
+          (v.engine ?? null) as string | null,
+        );
+        onVehicleChange(
+          "transmission" as keyof VehicleInfo,
+          (v.transmission ?? null) as string | null,
+        );
+        onVehicleChange(
+          "fuel_type" as keyof VehicleInfo,
+          (v.fuel_type ?? null) as string | null,
+        );
+        onVehicleChange(
+          "drivetrain" as keyof VehicleInfo,
+          (v.drivetrain ?? null) as string | null,
+        );
         onVehicleSelected?.(v.id);
       }
     } catch {
@@ -442,7 +460,10 @@ export default function CustomerVehicleForm({
     try {
       if (onSave) {
         const maybePromise = onSave();
-        if (maybePromise && typeof (maybePromise as any).then === "function") {
+        if (
+          maybePromise &&
+          typeof (maybePromise as { then?: unknown }).then === "function"
+        ) {
           await (maybePromise as Promise<void>);
         }
       }
@@ -479,340 +500,368 @@ export default function CustomerVehicleForm({
   };
 
   return (
-    <div className="w-full max-w-4xl mx-auto space-y-8 text-white">
-      {/* Heading */}
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h1 className="text-xl font-blackops text-orange-400">
-            Customer & Vehicle
-          </h1>
-          <p className="text-xs text-neutral-400">
-            Search existing customers and units, or enter new details.
-          </p>
-        </div>
-        {workOrderExists && (
-          <span className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-3 py-1 text-[11px] text-emerald-200">
-            Linked to existing work order
-          </span>
-        )}
-      </div>
-
-      {/* Customer card */}
-      <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 sm:p-6 space-y-4">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-neutral-100">
-            Customer Info
-          </h2>
-          <span className="text-[11px] text-neutral-500">
-            Start typing to search existing customers in this shop.
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {/* Business name + autocomplete */}
-          <div className="sm:col-span-2 space-y-1">
-            <label className="text-xs text-neutral-300">
-              Business name{" "}
-              <span className="text-neutral-500">(optional)</span>
-            </label>
-            <input
-              className="input"
-              placeholder="Business name"
-              value={(customer as any).business_name ?? ""}
-              onChange={(e) =>
-                (onCustomerChange as any)(
-                  "business_name",
-                  e.target.value || null,
-                )
-              }
-            />
-            <CustomerAutocomplete
-              q={(customer as any).business_name ?? ""}
-              shopId={shopId}
-              onPick={handlePickedCustomer}
-            />
+    <div className="w-full max-w-5xl mx-auto px-4 py-6 space-y-8 text-white">
+      {/* Header card */}
+      <section className="metal-panel metal-panel--card rounded-2xl border border-white/10 px-4 py-4 shadow-card">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-lg font-blackops tracking-[0.16em] text-[var(--accent-copper-light)]">
+              Customer &amp; Vehicle
+            </h1>
+            <p className="mt-1 text-[0.75rem] text-neutral-300">
+              Search existing customers and units, or enter new details to
+              attach to this visit.
+            </p>
           </div>
-
-          {/* First name */}
-          <div className="space-y-1">
-            <label className="text-xs text-neutral-300">First name</label>
-            <input
-              className="input"
-              placeholder="First name"
-              value={customer.first_name ?? ""}
-              onChange={(e) =>
-                onCustomerChange("first_name", e.target.value || null)
-              }
-            />
-            <CustomerAutocomplete
-              q={customer.first_name ?? ""}
-              shopId={shopId}
-              onPick={handlePickedCustomer}
-            />
-          </div>
-
-          {/* Last name */}
-          <div className="space-y-1">
-            <label className="text-xs text-neutral-300">Last name</label>
-            <input
-              className="input"
-              placeholder="Last name"
-              value={customer.last_name ?? ""}
-              onChange={(e) =>
-                onCustomerChange("last_name", e.target.value || null)
-              }
-            />
-            <CustomerAutocomplete
-              q={customer.last_name ?? ""}
-              shopId={shopId}
-              onPick={handlePickedCustomer}
-            />
-          </div>
-
-          {/* Phone */}
-          <div className="space-y-1">
-            <label className="text-xs text-neutral-300">Phone</label>
-            <input
-              className="input"
-              placeholder="Phone"
-              value={customer.phone ?? ""}
-              onChange={(e) =>
-                onCustomerChange("phone", e.target.value || null)
-              }
-            />
-          </div>
-
-          {/* Email */}
-          <div className="space-y-1">
-            <label className="text-xs text-neutral-300">Email</label>
-            <input
-              type="email"
-              className="input"
-              placeholder="Email"
-              value={customer.email ?? ""}
-              onChange={(e) =>
-                onCustomerChange("email", e.target.value || null)
-              }
-            />
-          </div>
-
-          {/* Address */}
-          <div className="sm:col-span-2 space-y-1">
-            <label className="text-xs text-neutral-300">Address</label>
-            <input
-              className="input"
-              placeholder="Street address"
-              value={customer.address ?? ""}
-              onChange={(e) =>
-                onCustomerChange("address", e.target.value || null)
-              }
-            />
-          </div>
-
-          {/* City */}
-          <div className="space-y-1">
-            <label className="text-xs text-neutral-300">City</label>
-            <input
-              className="input"
-              placeholder="City"
-              value={customer.city ?? ""}
-              onChange={(e) =>
-                onCustomerChange("city", e.target.value || null)
-              }
-            />
-          </div>
-
-          {/* Province */}
-          <div className="space-y-1">
-            <label className="text-xs text-neutral-300">Province</label>
-            <input
-              className="input"
-              placeholder="Province / State"
-              value={customer.province ?? ""}
-              onChange={(e) =>
-                onCustomerChange("province", e.target.value || null)
-              }
-            />
-          </div>
-
-          {/* Postal code */}
-          <div className="space-y-1">
-            <label className="text-xs text-neutral-300">Postal code</label>
-            <input
-              className="input"
-              placeholder="Postal code"
-              value={customer.postal_code ?? ""}
-              onChange={(e) =>
-                onCustomerChange("postal_code", e.target.value || null)
-              }
-            />
+          <div className="flex flex-wrap items-center gap-2">
+            {workOrderExists && (
+              <span className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-3 py-1 text-[11px] font-medium text-emerald-200 shadow-[0_0_18px_rgba(16,185,129,0.25)]">
+                Linked to existing work order
+              </span>
+            )}
+            {shopId && (
+              <span className="rounded-full border border-white/10 bg-black/40 px-3 py-1 text-[11px] font-mono text-neutral-300">
+                Shop&nbsp;
+                <span className="text-[var(--accent-copper-soft)]">
+                  {shopId.slice(0, 8)}
+                </span>
+              </span>
+            )}
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Vehicle card */}
-      <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 sm:p-6 space-y-4">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-neutral-100">
-            Vehicle Info
-          </h2>
-          <span className="text-[11px] text-neutral-500">
-            Use unit # or plate to pull an existing vehicle for this customer.
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {/* Unit # + autocomplete */}
-          <div className="space-y-1">
-            <label className="text-xs text-neutral-300">Unit #</label>
-            <input
-              className="input"
-              placeholder="Unit #"
-              value={vehicle.unit_number ?? ""}
-              onChange={(e) =>
-                onVehicleChange("unit_number", e.target.value || null)
-              }
-            />
-            <UnitNumberAutocomplete
-              q={vehicle.unit_number ?? ""}
-              shopId={shopId}
-              customerId={currentCustomerId}
-              onPick={(v) => {
-                onVehicleChange("unit_number", v.unit_number ?? null);
-                onVehicleChange("vin", (v.vin ?? "") || null);
-                onVehicleChange(
-                  "year",
-                  v.year != null ? String(v.year) : null,
-                );
-                onVehicleChange("make", v.make ?? null);
-                onVehicleChange("model", v.model ?? null);
-                onVehicleChange("license_plate", v.license_plate ?? null);
-                onVehicleChange("mileage", (v.mileage ?? "") || null);
-                onVehicleChange("color", v.color ?? null);
-                onVehicleChange(
-                  "engine_hours",
-                  v.engine_hours != null ? String(v.engine_hours) : null,
-                );
-                (onVehicleChange as any)("engine", v.engine ?? null);
-                (onVehicleChange as any)(
-                  "transmission",
-                  v.transmission ?? null,
-                );
-                (onVehicleChange as any)("fuel_type", v.fuel_type ?? null);
-                (onVehicleChange as any)("drivetrain", v.drivetrain ?? null);
-                onVehicleSelected?.(v.id);
-              }}
-            />
+      {/* Main grid: Customer / Vehicle */}
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr),minmax(0,1.1fr)]">
+        {/* Customer card */}
+        <section className="glass-card rounded-2xl border border-white/10 bg-black/40 px-4 py-4 shadow-[0_0_45px_rgba(0,0,0,0.65)] backdrop-blur-xl sm:px-6 sm:py-6 space-y-4">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-white sm:text-base">
+              Customer Info
+            </h2>
+            <span className="text-[11px] text-neutral-400">
+              Start typing to search existing customers in this shop.
+            </span>
           </div>
 
-          {/* Year */}
-          <div className="space-y-1">
-            <label className="text-xs text-neutral-300">Year</label>
-            <input
-              inputMode="numeric"
-              className="input"
-              placeholder="Year"
-              value={vehicle.year ?? ""}
-              onChange={(e) =>
-                onVehicleChange("year", e.target.value || null)
-              }
-            />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {/* Business name + autocomplete */}
+            <div className="sm:col-span-2 space-y-1">
+              <label className="text-xs text-neutral-300">
+                Business name{" "}
+                <span className="text-neutral-500">(optional)</span>
+              </label>
+              <input
+                className="input"
+                placeholder="Business name"
+                value={(customer as { business_name?: string | null })
+                  .business_name ?? ""}
+                onChange={(e) =>
+                  (onCustomerChange as Handlers["onCustomerChange"])?.(
+                    "business_name",
+                    e.target.value || null,
+                  )
+                }
+              />
+              <CustomerAutocomplete
+                q={
+                  (customer as { business_name?: string | null })
+                    .business_name ?? ""
+                }
+                shopId={shopId}
+                onPick={handlePickedCustomer}
+              />
+            </div>
+
+            {/* First name */}
+            <div className="space-y-1">
+              <label className="text-xs text-neutral-300">First name</label>
+              <input
+                className="input"
+                placeholder="First name"
+                value={customer.first_name ?? ""}
+                onChange={(e) =>
+                  onCustomerChange("first_name", e.target.value || null)
+                }
+              />
+              <CustomerAutocomplete
+                q={customer.first_name ?? ""}
+                shopId={shopId}
+                onPick={handlePickedCustomer}
+              />
+            </div>
+
+            {/* Last name */}
+            <div className="space-y-1">
+              <label className="text-xs text-neutral-300">Last name</label>
+              <input
+                className="input"
+                placeholder="Last name"
+                value={customer.last_name ?? ""}
+                onChange={(e) =>
+                  onCustomerChange("last_name", e.target.value || null)
+                }
+              />
+              <CustomerAutocomplete
+                q={customer.last_name ?? ""}
+                shopId={shopId}
+                onPick={handlePickedCustomer}
+              />
+            </div>
+
+            {/* Phone */}
+            <div className="space-y-1">
+              <label className="text-xs text-neutral-300">Phone</label>
+              <input
+                className="input"
+                placeholder="Phone"
+                value={customer.phone ?? ""}
+                onChange={(e) =>
+                  onCustomerChange("phone", e.target.value || null)
+                }
+              />
+            </div>
+
+            {/* Email */}
+            <div className="space-y-1">
+              <label className="text-xs text-neutral-300">Email</label>
+              <input
+                type="email"
+                className="input"
+                placeholder="Email"
+                value={customer.email ?? ""}
+                onChange={(e) =>
+                  onCustomerChange("email", e.target.value || null)
+                }
+              />
+            </div>
+
+            {/* Address */}
+            <div className="sm:col-span-2 space-y-1">
+              <label className="text-xs text-neutral-300">Address</label>
+              <input
+                className="input"
+                placeholder="Street address"
+                value={customer.address ?? ""}
+                onChange={(e) =>
+                  onCustomerChange("address", e.target.value || null)
+                }
+              />
+            </div>
+
+            {/* City */}
+            <div className="space-y-1">
+              <label className="text-xs text-neutral-300">City</label>
+              <input
+                className="input"
+                placeholder="City"
+                value={customer.city ?? ""}
+                onChange={(e) =>
+                  onCustomerChange("city", e.target.value || null)
+                }
+              />
+            </div>
+
+            {/* Province */}
+            <div className="space-y-1">
+              <label className="text-xs text-neutral-300">Province</label>
+              <input
+                className="input"
+                placeholder="Province / State"
+                value={customer.province ?? ""}
+                onChange={(e) =>
+                  onCustomerChange("province", e.target.value || null)
+                }
+              />
+            </div>
+
+            {/* Postal code */}
+            <div className="space-y-1">
+              <label className="text-xs text-neutral-300">Postal code</label>
+              <input
+                className="input"
+                placeholder="Postal code"
+                value={customer.postal_code ?? ""}
+                onChange={(e) =>
+                  onCustomerChange("postal_code", e.target.value || null)
+                }
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* Vehicle card */}
+        <section className="glass-card rounded-2xl border border-white/10 bg-black/40 px-4 py-4 shadow-[0_0_45px_rgba(0,0,0,0.65)] backdrop-blur-xl sm:px-6 sm:py-6 space-y-4">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-white sm:text-base">
+              Vehicle Info
+            </h2>
+            <span className="text-[11px] text-neutral-400">
+              Use unit # or plate to pull an existing vehicle for this customer.
+            </span>
           </div>
 
-          {/* Make */}
-          <div className="space-y-1">
-            <label className="text-xs text-neutral-300">Make</label>
-            <input
-              className="input"
-              placeholder="Make"
-              value={vehicle.make ?? ""}
-              onChange={(e) =>
-                onVehicleChange("make", e.target.value || null)
-              }
-            />
-          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {/* Unit # + autocomplete */}
+            <div className="space-y-1">
+              <label className="text-xs text-neutral-300">Unit #</label>
+              <input
+                className="input"
+                placeholder="Unit #"
+                value={vehicle.unit_number ?? ""}
+                onChange={(e) =>
+                  onVehicleChange("unit_number", e.target.value || null)
+                }
+              />
+              <UnitNumberAutocomplete
+                q={vehicle.unit_number ?? ""}
+                shopId={shopId}
+                customerId={currentCustomerId}
+                onPick={(v) => {
+                  onVehicleChange("unit_number", v.unit_number ?? null);
+                  onVehicleChange("vin", (v.vin ?? "") || null);
+                  onVehicleChange(
+                    "year",
+                    v.year != null ? String(v.year) : null,
+                  );
+                  onVehicleChange("make", v.make ?? null);
+                  onVehicleChange("model", v.model ?? null);
+                  onVehicleChange("license_plate", v.license_plate ?? null);
+                  onVehicleChange("mileage", (v.mileage ?? "") || null);
+                  onVehicleChange("color", v.color ?? null);
+                  onVehicleChange(
+                    "engine_hours",
+                    v.engine_hours != null ? String(v.engine_hours) : null,
+                  );
+                  onVehicleChange(
+                    "engine" as keyof VehicleInfo,
+                    (v.engine ?? null) as string | null,
+                  );
+                  onVehicleChange(
+                    "transmission" as keyof VehicleInfo,
+                    (v.transmission ?? null) as string | null,
+                  );
+                  onVehicleChange(
+                    "fuel_type" as keyof VehicleInfo,
+                    (v.fuel_type ?? null) as string | null,
+                  );
+                  onVehicleChange(
+                    "drivetrain" as keyof VehicleInfo,
+                    (v.drivetrain ?? null) as string | null,
+                  );
+                  onVehicleSelected?.(v.id);
+                }}
+              />
+            </div>
 
-          {/* Model */}
-          <div className="space-y-1">
-            <label className="text-xs text-neutral-300">Model</label>
-            <input
-              className="input"
-              placeholder="Model"
-              value={vehicle.model ?? ""}
-              onChange={(e) =>
-                onVehicleChange("model", e.target.value || null)
-              }
-            />
-          </div>
+            {/* Year */}
+            <div className="space-y-1">
+              <label className="text-xs text-neutral-300">Year</label>
+              <input
+                inputMode="numeric"
+                className="input"
+                placeholder="Year"
+                value={vehicle.year ?? ""}
+                onChange={(e) =>
+                  onVehicleChange("year", e.target.value || null)
+                }
+              />
+            </div>
 
-          {/* VIN */}
-          <div className="space-y-1">
-            <label className="text-xs text-neutral-300">VIN</label>
-            <input
-              className="input"
-              placeholder="VIN"
-              value={vehicle.vin ?? ""}
-              onChange={(e) =>
-                onVehicleChange("vin", e.target.value || null)
-              }
-            />
-          </div>
+            {/* Make */}
+            <div className="space-y-1">
+              <label className="text-xs text-neutral-300">Make</label>
+              <input
+                className="input"
+                placeholder="Make"
+                value={vehicle.make ?? ""}
+                onChange={(e) =>
+                  onVehicleChange("make", e.target.value || null)
+                }
+              />
+            </div>
 
-          {/* Plate */}
-          <div className="space-y-1">
-            <label className="text-xs text-neutral-300">License plate</label>
-            <input
-              className="input"
-              placeholder="License plate"
-              value={vehicle.license_plate ?? ""}
-              onChange={(e) =>
-                onVehicleChange("license_plate", e.target.value || null)
-              }
-            />
-          </div>
+            {/* Model */}
+            <div className="space-y-1">
+              <label className="text-xs text-neutral-300">Model</label>
+              <input
+                className="input"
+                placeholder="Model"
+                value={vehicle.model ?? ""}
+                onChange={(e) =>
+                  onVehicleChange("model", e.target.value || null)
+                }
+              />
+            </div>
 
-          {/* Mileage */}
-          <div className="space-y-1">
-            <label className="text-xs text-neutral-300">Mileage</label>
-            <input
-              inputMode="numeric"
-              className="input"
-              placeholder="Mileage"
-              value={vehicle.mileage ?? ""}
-              onChange={(e) =>
-                onVehicleChange("mileage", e.target.value || null)
-              }
-            />
-          </div>
+            {/* VIN */}
+            <div className="space-y-1">
+              <label className="text-xs text-neutral-300">VIN</label>
+              <input
+                className="input"
+                placeholder="VIN"
+                value={vehicle.vin ?? ""}
+                onChange={(e) =>
+                  onVehicleChange("vin", e.target.value || null)
+                }
+              />
+            </div>
 
-          {/* Color */}
-          <div className="space-y-1">
-            <label className="text-xs text-neutral-300">Color</label>
-            <input
-              className="input"
-              placeholder="Color"
-              value={vehicle.color ?? ""}
-              onChange={(e) =>
-                onVehicleChange("color", e.target.value || null)
-              }
-            />
-          </div>
+            {/* Plate */}
+            <div className="space-y-1">
+              <label className="text-xs text-neutral-300">License plate</label>
+              <input
+                className="input"
+                placeholder="License plate"
+                value={vehicle.license_plate ?? ""}
+                onChange={(e) =>
+                  onVehicleChange("license_plate", e.target.value || null)
+                }
+              />
+            </div>
 
-          {/* Engine hours */}
-          <div className="space-y-1">
-            <label className="text-xs text-neutral-300">Engine hours</label>
-            <input
-              inputMode="numeric"
-              className="input"
-              placeholder="Engine hours"
-              value={vehicle.engine_hours ?? ""}
-              onChange={(e) =>
-                onVehicleChange("engine_hours", e.target.value || null)
-              }
-            />
-          </div>
+            {/* Mileage */}
+            <div className="space-y-1">
+              <label className="text-xs text-neutral-300">Mileage</label>
+              <input
+                inputMode="numeric"
+                className="input"
+                placeholder="Mileage"
+                value={vehicle.mileage ?? ""}
+                onChange={(e) =>
+                  onVehicleChange("mileage", e.target.value || null)
+                }
+              />
+            </div>
 
-          {/* Engine / trim */}
+            {/* Color */}
+            <div className="space-y-1">
+              <label className="text-xs text-neutral-300">Color</label>
+              <input
+                className="input"
+                placeholder="Color"
+                value={vehicle.color ?? ""}
+                onChange={(e) =>
+                  onVehicleChange("color", e.target.value || null)
+                }
+              />
+            </div>
+
+            {/* Engine hours */}
+            <div className="space-y-1">
+              <label className="text-xs text-neutral-300">Engine hours</label>
+              <input
+                inputMode="numeric"
+                className="input"
+                placeholder="Engine hours"
+                value={vehicle.engine_hours ?? ""}
+                onChange={(e) =>
+                  onVehicleChange("engine_hours", e.target.value || null)
+                }
+              />
+            </div>
+
+            {/* Engine / trim */}
           <div className="space-y-1">
             <label className="text-xs text-neutral-300">
               Engine / Trim
@@ -827,10 +876,10 @@ export default function CustomerVehicleForm({
                   e.target.value || null,
                 )
               }
-            />
-          </div>
+              />
+            </div>
 
-          {/* Transmission */}
+            {/* Transmission */}
           <div className="space-y-1">
             <label className="text-xs text-neutral-300">Transmission</label>
             <select
@@ -842,17 +891,17 @@ export default function CustomerVehicleForm({
                   e.target.value || null,
                 )
               }
-            >
-              <option value="">Select transmission</option>
-              <option value="automatic">Automatic</option>
-              <option value="manual">Manual</option>
-              <option value="cvt">CVT</option>
-              <option value="dct">Dual-clutch</option>
-              <option value="other">Other</option>
-            </select>
-          </div>
+              >
+                <option value="">Select transmission</option>
+                <option value="automatic">Automatic</option>
+                <option value="manual">Manual</option>
+                <option value="cvt">CVT</option>
+                <option value="dct">Dual-clutch</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
 
-          {/* Fuel type */}
+            {/* Fuel type */}
           <div className="space-y-1">
             <label className="text-xs text-neutral-300">Fuel type</label>
             <select
@@ -864,18 +913,18 @@ export default function CustomerVehicleForm({
                   e.target.value || null,
                 )
               }
-            >
-              <option value="">Select fuel type</option>
-              <option value="gasoline">Gasoline</option>
-              <option value="diesel">Diesel</option>
-              <option value="hybrid">Hybrid</option>
-              <option value="phev">Plug-in hybrid</option>
-              <option value="ev">Electric (BEV)</option>
-              <option value="other">Other</option>
-            </select>
-          </div>
+              >
+                <option value="">Select fuel type</option>
+                <option value="gasoline">Gasoline</option>
+                <option value="diesel">Diesel</option>
+                <option value="hybrid">Hybrid</option>
+                <option value="phev">Plug-in hybrid</option>
+                <option value="ev">Electric (BEV)</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
 
-          {/* Drivetrain */}
+            {/* Drivetrain */}
           <div className="space-y-1">
             <label className="text-xs text-neutral-300">Drivetrain</label>
             <select
@@ -887,16 +936,17 @@ export default function CustomerVehicleForm({
                   e.target.value || null,
                 )
               }
-            >
-              <option value="">Select drivetrain</option>
-              <option value="fwd">FWD</option>
-              <option value="rwd">RWD</option>
-              <option value="awd">AWD</option>
-              <option value="4x4">4x4</option>
-              <option value="other">Other</option>
-            </select>
+              >
+                <option value="">Select drivetrain</option>
+                <option value="fwd">FWD</option>
+                <option value="rwd">RWD</option>
+                <option value="awd">AWD</option>
+                <option value="4x4">4x4</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
           </div>
-        </div>
+        </section>
       </div>
 
       {/* Actions */}
@@ -907,7 +957,7 @@ export default function CustomerVehicleForm({
               type="button"
               onClick={handleSaveClick}
               disabled={saving}
-              className="btn btn-orange disabled:opacity-60"
+              className="inline-flex items-center rounded-full bg-[var(--accent-copper)] px-4 py-2 text-sm font-semibold text-black shadow-[0_0_25px_rgba(0,0,0,0.9)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
               title={
                 workOrderExists
                   ? "Update Work Order with these details"
@@ -926,7 +976,7 @@ export default function CustomerVehicleForm({
             <button
               type="button"
               onClick={onClear}
-              className="rounded border border-neutral-700 px-3 py-1 text-sm hover:border-red-500"
+              className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs sm:text-sm text-neutral-200 transition hover:border-red-400 hover:bg-red-950/40 hover:text-red-200"
               title="Clear Customer & Vehicle fields (does not delete an existing Work Order)"
             >
               Clear
@@ -936,7 +986,7 @@ export default function CustomerVehicleForm({
           {/* 🔵 DEBUG SHOP */}
           <button
             type="button"
-            className="rounded border border-blue-600 px-3 py-1 text-xs text-blue-300 hover:bg-blue-900/20"
+            className="inline-flex items-center rounded-full border border-blue-500/60 bg-blue-500/10 px-3 py-1.5 text-[11px] font-medium text-blue-200 shadow-[0_0_16px_rgba(37,99,235,0.35)] hover:bg-blue-500/20"
             onClick={async () => {
               try {
                 const {
