@@ -51,18 +51,18 @@ export default function MobileLeadHandHome({ leadName, role, stats }: Props) {
         </div>
       </section>
 
-      {/* Core flows – same as manager */}
+      {/* Core flows – mirrored with manager */}
       <section className="space-y-3">
         <ActionCard
           title="Work order queue"
           body="Review jobs in the queue and balance workload."
-          href="/work-orders/queue"
-          cta="Open job queue"
+          href="/mobile/work-orders"
+          cta="Open work orders"
         />
         <ActionCard
           title="Create work order"
           body="Spin up a new job when vehicles land."
-          href="/work-orders/create?autostart=1"
+          href="/mobile/work-orders/create"
           cta="New work order"
         />
         <ActionCard

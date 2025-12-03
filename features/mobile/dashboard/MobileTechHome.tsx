@@ -367,7 +367,7 @@ export function MobileTechHome({
         </p>
         <div className="space-y-2">
           <ToolCard
-            href="/mobile/work-orders"
+            href="/mobile/tech/queue"
             label="My jobs"
             description="Assigned work orders"
           />

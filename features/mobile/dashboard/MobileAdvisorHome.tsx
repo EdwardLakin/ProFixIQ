@@ -3,11 +3,12 @@
 import React from "react";
 import Link from "next/link";
 import type { MobileRole } from "@/features/mobile/config/mobile-tiles";
-import { MobileRoleHub } from "@/features/mobile/components/MobileRoleHub";
 
 type AdvisorStats = {
   awaitingApprovals: number;
+  /** active work orders count (was 'waiters') */
   waiters: number;
+  /** today's appointment count (was 'callbacks') */
   callbacks: number;
 };
 
@@ -19,12 +20,12 @@ type Props = {
 
 export default function MobileAdvisorHome({
   advisorName,
-  role,
+  role: _role,
   stats,
 }: Props) {
   const firstName = advisorName?.split(" ")[0] ?? advisorName ?? "Advisor";
 
-  const { awaitingApprovals, waiters, callbacks } =
+  const { awaitingApprovals, waiters: activeWos, callbacks: todaysAppts } =
     stats ?? {
       awaitingApprovals: 0,
       waiters: 0,
@@ -43,7 +44,8 @@ export default function MobileAdvisorHome({
               <span className="align-middle">📋</span>
             </h1>
             <p className="mt-1 text-xs text-neutral-300">
-              Bench-side view of approvals, waiters and customer follow-ups.
+              Bench-side view of approvals, active work orders and today&apos;s
+              appointments.
             </p>
           </div>
 
@@ -53,8 +55,8 @@ export default function MobileAdvisorHome({
               value={awaitingApprovals}
               accent
             />
-            <SummaryChip label="Waiters" value={waiters} />
-            <SummaryChip label="Callbacks" value={callbacks} />
+            <SummaryChip label="Active WOs" value={activeWos} />
+            <SummaryChip label="Appts today" value={todaysAppts} />
           </div>
         </div>
       </section>
@@ -63,14 +65,14 @@ export default function MobileAdvisorHome({
       <section className="space-y-3">
         <FocusCard
           title="Work order view"
-          body="Open the live work order board to manage jobs and assign techs."
-          href="/work-orders/view"
+          body="Open the mobile work order board to manage jobs and assign techs."
+          href="/mobile/work-orders/view"
           cta="Open work orders"
         />
         <FocusCard
           title="Create work order"
           body="Start a new work order from the counter or phone."
-          href="/work-orders/create?autostart=1"
+          href="/mobile/work-orders/create"
           cta="New work order"
         />
         <FocusCard
@@ -86,14 +88,6 @@ export default function MobileAdvisorHome({
           cta="Open messages"
         />
       </section>
-
-      {/* Shortcuts from config */}
-      <MobileRoleHub
-        role={role}
-        scopes={["work_orders", "appointments", "inspections", "all"]}
-        title="Advisor shortcuts"
-        subtitle="High-impact actions for the front counter."
-      />
     </div>
   );
 }

@@ -69,18 +69,18 @@ export default function MobileManagerHome({ managerName, role, stats }: Props) {
         </div>
       </section>
 
-      {/* Core flows – queue, create, appointments, messages */}
+      {/* Core flows – queue, create, appointments, messages (mirrors lead-hand) */}
       <section className="space-y-3">
         <FlowCard
           title="Work order queue"
           body="See jobs in flight and where capacity is tight."
-          href="/work-orders/queue"
-          cta="Open job queue"
+          href="/mobile/work-orders"
+          cta="Open work orders"
         />
         <FlowCard
           title="Create work order"
           body="Start a new job from the counter or bay."
-          href="/work-orders/create?autostart=1"
+          href="/mobile/work-orders/create"
           cta="New work order"
         />
         <FlowCard
