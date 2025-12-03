@@ -28,6 +28,7 @@ import type {
 
 import SectionDisplay from "@inspections/lib/inspection/SectionDisplay";
 import AxlesCornerGrid from "@inspections/lib/inspection/ui/AxlesCornerGrid";
+import BatteryGrid from "@inspections/lib/inspection/ui/BatteryGrid";
 
 import { InspectionFormCtx } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import { SaveInspectionButton } from "@inspections/components/inspection/SaveInspectionButton";
@@ -139,7 +140,7 @@ const HYD_FULL_RE = /^(?<corner>(Left|Right)\s+(Front|Rear))\s+(?<metric>.+)$/i;
 
 function shouldRenderCornerGrid(
   title: string | undefined,
-  items: { item?: string | null }[] = []
+  items: { item?: string | null }[] = [],
 ): boolean {
   const t = (title || "").toLowerCase();
 
@@ -188,6 +189,19 @@ function shouldRenderCornerGrid(
   return hasStrongPattern || (titleSuggestsMeasurement && enoughMeasurements);
 }
 
+/** battery-specific detector */
+function isBatterySection(
+  title: string | undefined,
+  items: { item?: string | null }[] = [],
+): boolean {
+  const t = (title || "").toLowerCase();
+  if (t.includes("battery")) return true;
+
+  return items.some((it) =>
+    (it.item || "").toLowerCase().includes("battery"),
+  );
+}
+
 /* -------------------------------------------------------------------- */
 /* Component                                                            */
 /* -------------------------------------------------------------------- */
@@ -197,22 +211,23 @@ export default function GenericInspectionScreen(): JSX.Element {
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   // 🔸 only the mobile companion should use voice
-  const isMobileView =
-    (sp.get("view") || "").toLowerCase() === "mobile";
+  const isMobileView = (sp.get("view") || "").toLowerCase() === "mobile";
 
   // Embed for iframe/modal
   const isEmbed = useMemo(
     () =>
       ["1", "true", "yes"].includes(
-        (sp.get("embed") || sp.get("compact") || "").toLowerCase()
+        (sp.get("embed") || sp.get("compact") || "").toLowerCase(),
       ),
-    [sp]
+    [sp],
   );
 
   const workOrderId = sp.get("workOrderId") || null;
   const workOrderLineId = sp.get("workOrderLineId") || "";
   const templateName =
-    (typeof window !== "undefined" ? sessionStorage.getItem("inspection:title") : null) ||
+    (typeof window !== "undefined"
+      ? sessionStorage.getItem("inspection:title")
+      : null) ||
     (sp.get("template") || "Inspection");
 
   const customer: SessionCustomer = {
@@ -239,7 +254,8 @@ export default function GenericInspectionScreen(): JSX.Element {
 
   const bootSections = useMemo<InspectionSection[]>(() => {
     const staged = readStaged<InspectionSection[]>("inspection:sections");
-    if (Array.isArray(staged) && staged.length) return normalizeSections(staged);
+    if (Array.isArray(staged) && staged.length)
+      return normalizeSections(staged);
 
     try {
       const legacy =
@@ -256,14 +272,17 @@ export default function GenericInspectionScreen(): JSX.Element {
     return [
       {
         title: "General",
-        items: [{ item: "Visual walkaround" }, { item: "Record warning lights" }],
+        items: [
+          { item: "Visual walkaround" },
+          { item: "Record warning lights" },
+        ],
       },
     ];
   }, [sp]);
 
   const inspectionId = useMemo(
     () => sp.get("inspectionId") || uuidv4(),
-    [sp]
+    [sp],
   );
 
   // 🔸 try to hydrate from localStorage
@@ -304,7 +323,7 @@ export default function GenericInspectionScreen(): JSX.Element {
       vehicle,
       sections: [],
     }),
-    [inspectionId, templateName, customer, vehicle]
+    [inspectionId, templateName, customer, vehicle],
   );
 
   const {
@@ -415,7 +434,9 @@ export default function GenericInspectionScreen(): JSX.Element {
       const { apiKey } = (await res.json()) as { apiKey: string };
       if (!apiKey) throw new Error("Missing OpenAI key");
 
-      const ws = new WebSocket("wss://api.openai.com/v1/realtime?intent=transcription");
+      const ws = new WebSocket(
+        "wss://api.openai.com/v1/realtime?intent=transcription",
+      );
       wsRef.current = ws;
 
       ws.onopen = async () => {
@@ -423,10 +444,12 @@ export default function GenericInspectionScreen(): JSX.Element {
           JSON.stringify({
             type: "authorization",
             authorization: `Bearer ${apiKey}`,
-          })
+          }),
         );
 
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
         mediaRef.current = stream;
 
         const mr = new MediaRecorder(stream, { mimeType: "audio/webm" });
@@ -511,7 +534,10 @@ export default function GenericInspectionScreen(): JSX.Element {
   const isSubmittingAI = (secIdx: number, itemIdx: number): boolean =>
     inFlightRef.current.has(`${secIdx}:${itemIdx}`);
 
-  const submitAIForItem = async (secIdx: number, itemIdx: number): Promise<void> => {
+  const submitAIForItem = async (
+    secIdx: number,
+    itemIdx: number,
+  ): Promise<void> => {
     if (!session) return;
     const key = `${secIdx}:${itemIdx}`;
     if (inFlightRef.current.has(key)) return;
@@ -526,7 +552,14 @@ export default function GenericInspectionScreen(): JSX.Element {
       return;
     }
 
+    // 🔹 pull technician-entered parts + labor from the item
+    const manualParts =
+      (((it as any).parts ?? []) as { description: string; qty: number }[]) || [];
+    const manualLaborHours =
+      ((it as any).laborHours as number | null | undefined) ?? null;
+
     inFlightRef.current.add(key);
+    let toastId: string | undefined;
     try {
       const desc = it.item ?? (it as any).name ?? "Item";
 
@@ -549,7 +582,7 @@ export default function GenericInspectionScreen(): JSX.Element {
       };
       addQuoteLine(placeholder);
 
-      const tId = toast.loading("Getting AI estimate…");
+      toastId = toast.loading("Building estimate from inspection item…");
       const suggestion = await requestQuoteSuggestion({
         item: desc,
         notes: it.notes ?? "",
@@ -560,14 +593,32 @@ export default function GenericInspectionScreen(): JSX.Element {
 
       if (!suggestion) {
         updateQuoteLine(id, { aiState: "error" });
-        toast.error("No AI suggestion available", { id: tId });
+        toast.error("No AI suggestion available", { id: toastId });
         return;
       }
 
-      const partsTotal =
-        suggestion.parts?.reduce((sum, p) => sum + (p.cost || 0), 0) ?? 0;
+      // 🔹 merge manual parts into AI suggestion parts for pricing + display
+      const mergedParts: any[] = [
+        ...(suggestion.parts ?? []),
+        ...manualParts.map((p) => ({
+          name: p.description,
+          qty: p.qty,
+          cost: undefined, // pricing is parts dept's job
+        })),
+      ];
+
+      // 🔹 let tech override labor hours if they entered a value
+      const laborTime =
+        manualLaborHours != null && !Number.isNaN(manualLaborHours)
+          ? manualLaborHours
+          : suggestion.laborHours ?? 0.5;
+
       const laborRate = suggestion.laborRate ?? 0;
-      const laborTime = suggestion.laborHours ?? 0.5;
+      const partsTotal =
+        mergedParts.reduce(
+          (sum, p) => sum + (typeof p.cost === "number" ? p.cost : 0),
+          0,
+        ) ?? 0;
       const price = Math.max(0, partsTotal + laborRate * laborTime);
 
       updateQuoteLine(id, {
@@ -577,24 +628,80 @@ export default function GenericInspectionScreen(): JSX.Element {
         ai: {
           summary: suggestion.summary,
           confidence: suggestion.confidence,
-          parts: suggestion.parts ?? [],
+          parts: mergedParts,
         },
         aiState: "done",
       });
 
+      let createdJobId: string | null = null;
+
       if (workOrderId) {
-        await addWorkOrderLineFromSuggestion({
+        // 🔹 include merged parts + adjusted labor when we create the line
+        const created = (await addWorkOrderLineFromSuggestion({
           workOrderId,
           description: desc,
           section: session.sections[secIdx].title,
           status: status as "fail" | "recommend",
-          suggestion,
+          suggestion: {
+            ...suggestion,
+            parts: mergedParts,
+            laborHours: laborTime,
+          } as any,
           source: "inspection",
           jobType: "inspection",
-        });
-        toast.success("Added to work order (awaiting approval)", { id: tId });
+        })) as any;
+
+        createdJobId = (created && created.id) || workOrderLineId || null;
+
+        // 🔹 create parts request ONLY from the tech-entered parts (no costs)
+        const cleanParts = manualParts
+          .map((p) => ({
+            description: p.description.trim(),
+            qty: p.qty,
+          }))
+          .filter((p) => p.description.length > 0 && p.qty > 0);
+
+        if (cleanParts.length > 0) {
+          try {
+            const res = await fetch("/api/parts/requests/create", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                workOrderId,
+                jobId: createdJobId,
+                notes: it.notes ?? null,
+                items: cleanParts,
+              }),
+            });
+
+            if (!res.ok) {
+              const body = await res.json().catch(() => null);
+              console.error("Parts request error", body);
+              toast.error("Line added, but parts request failed", {
+                id: toastId,
+              });
+              return;
+            }
+
+            toast.success("Line + parts request created from inspection", {
+              id: toastId,
+            });
+          } catch (err) {
+            console.error("Parts request failed", err);
+            toast.error(
+              "Line added, but couldn't reach parts request service",
+              { id: toastId },
+            );
+          }
+        } else {
+          toast.success("Added to work order (no parts requested)", {
+            id: toastId,
+          });
+        }
       } else {
-        toast.error("Missing work order id — saved locally only", { id: tId });
+        toast.error("Missing work order id — saved locally only", {
+          id: toastId,
+        });
       }
     } catch (e) {
       console.error("Submit AI failed:", e);
@@ -646,7 +753,8 @@ export default function GenericInspectionScreen(): JSX.Element {
             if (n instanceof HTMLElement) {
               scrub(n);
               n.querySelectorAll?.("*")?.forEach((child) => {
-                if (child instanceof HTMLElement) scrub(child as HTMLElement);
+                if (child instanceof HTMLElement)
+                  scrub(child as HTMLElement);
               });
             }
           });
@@ -677,12 +785,12 @@ export default function GenericInspectionScreen(): JSX.Element {
       if (e.key !== "Tab") return;
 
       const focusables = Array.from(
-        root.querySelectorAll<HTMLElement>(selector)
+        root.querySelectorAll<HTMLElement>(selector),
       ).filter(
         (el) =>
           !el.hasAttribute("disabled") &&
           el.tabIndex !== -1 &&
-          el.getAttribute("aria-hidden") !== "true"
+          el.getAttribute("aria-hidden") !== "true",
       );
 
       if (!focusables.length) return;
@@ -718,11 +826,7 @@ export default function GenericInspectionScreen(): JSX.Element {
   }, [isEmbed]);
 
   if (!session || !session.sections || session.sections.length === 0) {
-    return (
-      <div className="p-4 text-sm text-neutral-300">
-        Loading inspection…
-      </div>
-    );
+    return <div className="p-4 text-sm text-neutral-300">Loading inspection…</div>;
   }
 
   const shell = isEmbed
@@ -831,76 +935,111 @@ export default function GenericInspectionScreen(): JSX.Element {
       </div>
 
       <InspectionFormCtx.Provider value={{ updateItem }}>
-        {session.sections.map((section: InspectionSection, sectionIndex: number) => {
-          const itemsWithHints = section.items.map((it) => ({
-            ...it,
-            unit: it.unit || unitHintGeneric(it.item ?? "", unit),
-          }));
+        {session.sections.map(
+          (section: InspectionSection, sectionIndex: number) => {
+            const itemsWithHints = section.items.map((it) => ({
+              ...it,
+              unit: it.unit || unitHintGeneric(it.item ?? "", unit),
+            }));
 
-          const useGrid = shouldRenderCornerGrid(section.title, itemsWithHints);
+            const batterySection = isBatterySection(
+              section.title,
+              itemsWithHints,
+            );
+            const useGrid =
+              batterySection ||
+              shouldRenderCornerGrid(section.title, itemsWithHints);
 
-          return (
-            <div key={`${section.title}-${sectionIndex}`} className={sectionCard}>
-              <h2 className={sectionTitle}>{section.title}</h2>
-              {useGrid && (
-                <span className={hint}>
-                  {unit === "metric"
-                    ? "Enter mm / kPa / N·m"
-                    : "Enter in / psi / ft·lb"}
-                </span>
-              )}
-
-              <div className="mt-4">
-                {useGrid ? (
-                  <AxlesCornerGrid
-                    sectionIndex={sectionIndex}
-                    items={itemsWithHints}
-                  />
-                ) : (
-                  <SectionDisplay
-                    title=""
-                    section={{ ...section, items: itemsWithHints }}
-                    sectionIndex={sectionIndex}
-                    showNotes
-                    showPhotos
-                    onUpdateStatus={(
-                      secIdx: number,
-                      itemIdx: number,
-                      status: InspectionItemStatus
-                    ) => {
-                      updateItem(secIdx, itemIdx, { status });
-                    }}
-                    onUpdateNote={(secIdx, itemIdx, note) => {
-                      updateItem(secIdx, itemIdx, { notes: note });
-                    }}
-                    onUpload={(photoUrl, secIdx, itemIdx) => {
-                      const prev =
-                        session.sections[secIdx].items[itemIdx].photoUrls ?? [];
-                      updateItem(secIdx, itemIdx, {
-                        photoUrls: [...prev, photoUrl],
-                      });
-                    }}
-                    requireNoteForAI
-                    onSubmitAI={(secIdx, itemIdx) => {
-                      void submitAIForItem(secIdx, itemIdx);
-                    }}
-                    isSubmittingAI={isSubmittingAI}
-                  />
+            return (
+              <div
+                key={`${section.title}-${sectionIndex}`}
+                className={sectionCard}
+              >
+                <h2 className={sectionTitle}>{section.title}</h2>
+                {useGrid && (
+                  <span className={hint}>
+                    {unit === "metric"
+                      ? "Enter mm / kPa / N·m"
+                      : "Enter in / psi / ft·lb"}
+                  </span>
                 )}
+
+                <div className="mt-4">
+                  {useGrid ? (
+                    batterySection ? (
+                      <BatteryGrid
+                        sectionIndex={sectionIndex}
+                        items={itemsWithHints}
+                        unitHint={(label) => unitHintGeneric(label, unit)}
+                      />
+                    ) : (
+                      <AxlesCornerGrid
+                        sectionIndex={sectionIndex}
+                        items={itemsWithHints}
+                        unitHint={(label) => unitHintGeneric(label, unit)}
+                      />
+                    )
+                  ) : (
+                    <SectionDisplay
+                      title=""
+                      section={{ ...section, items: itemsWithHints }}
+                      sectionIndex={sectionIndex}
+                      showNotes
+                      showPhotos
+                      onUpdateStatus={(
+                        secIdx: number,
+                        itemIdx: number,
+                        status: InspectionItemStatus,
+                      ) => {
+                        updateItem(secIdx, itemIdx, { status });
+                      }}
+                      onUpdateNote={(secIdx, itemIdx, note) => {
+                        updateItem(secIdx, itemIdx, { notes: note });
+                      }}
+                      onUpload={(photoUrl, secIdx, itemIdx) => {
+                        const prev =
+                          session.sections[secIdx].items[itemIdx].photoUrls ??
+                          [];
+                        updateItem(secIdx, itemIdx, {
+                          photoUrls: [...prev, photoUrl],
+                        });
+                      }}
+                      /** 🔹 persist tech-entered parts + labor inside the session item */
+                      onUpdateParts={(secIdx, itemIdx, parts) => {
+                        updateItem(secIdx, itemIdx, { parts });
+                      }}
+                      onUpdateLaborHours={(secIdx, itemIdx, hours) => {
+                        updateItem(secIdx, itemIdx, { laborHours: hours });
+                      }}
+                      requireNoteForAI
+                      onSubmitAI={(secIdx, itemIdx) => {
+                        void submitAIForItem(secIdx, itemIdx);
+                      }}
+                      isSubmittingAI={isSubmittingAI}
+                    />
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          },
+        )}
       </InspectionFormCtx.Provider>
 
       {/* Footer actions */}
       <div className="mt-8 flex flex-col gap-4 border-t border-white/5 pt-4 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-wrap items-center gap-3">
-          <SaveInspectionButton session={session} workOrderLineId={workOrderLineId} />
-          <FinishInspectionButton session={session} workOrderLineId={workOrderLineId} />
+          <SaveInspectionButton
+            session={session}
+            workOrderLineId={workOrderLineId}
+          />
+          <FinishInspectionButton
+            session={session}
+            workOrderLineId={workOrderLineId}
+          />
           {!workOrderLineId && (
             <div className="text-xs text-red-400">
-              Missing <code>workOrderLineId</code> — save/finish will be blocked.
+              Missing <code>workOrderLineId</code> — save/finish will be
+              blocked.
             </div>
           )}
         </div>

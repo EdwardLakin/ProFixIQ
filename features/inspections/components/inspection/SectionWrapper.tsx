@@ -1,4 +1,4 @@
-// src/components/inspection/SectionWrapper.tsx
+// components/inspection/SectionWrapper.tsx
 import React, { useState } from "react";
 
 interface SectionWrapperProps {

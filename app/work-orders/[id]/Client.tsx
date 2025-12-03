@@ -1,4 +1,3 @@
-// app/work-orders/[id]/page.client.tsx
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -24,8 +23,6 @@ import { JobCard } from "@/features/work-orders/components/JobCard";
 import { WorkOrderSuggestionsPanel } from "@/features/work-orders/components/WorkOrderSuggestionsPanel";
 import { useWorkOrderActions } from "@/features/work-orders/hooks/useWorkOrderActions";
 
-
-
 // inspection modal
 const InspectionModal = dynamic(
   () => import("@/features/inspections/components/InspectionModal"),
@@ -47,7 +44,7 @@ type AllocationRow =
 type LineTechRow =
   DB["public"]["Tables"]["work_order_line_technicians"]["Row"];
 
- type WorkOrderLineWithInspectionMeta = WorkOrderLine & {
+type WorkOrderLineWithInspectionMeta = WorkOrderLine & {
   inspection_template?: string | null;
   inspectionTemplate?: string | null;
   template?: string | null;
@@ -105,8 +102,19 @@ const chip = (s: string | null | undefined): string => {
   return `${BASE_BADGE} ${BADGE[key] ?? BADGE.awaiting}`;
 };
 
-// roles allowed to assign
+// roles allowed to assign jobs
 const ASSIGN_ROLES = new Set(["owner", "admin", "manager", "advisor"]);
+
+// roles allowed to approve / decline
+const APPROVAL_ROLES = new Set([
+  "owner",
+  "admin",
+  "manager",
+  "advisor",
+  "lead_hand",
+  "lead",
+  "leadhand",
+]);
 
 /* ------------------------------------------------------------------------- */
 
@@ -523,6 +531,21 @@ export default function WorkOrderIdClient(): JSX.Element {
   }, [fetchAll]);
 
   /* ----------------------- Derived data ----------------------- */
+
+  // simple map of active quote-lines per work_order_line
+  const activeQuotesByLine = useMemo(() => {
+    const m: Record<string, WorkOrderQuoteLine[]> = {};
+    quoteLines.forEach((q) => {
+      const status = (q.status ?? "").toLowerCase();
+      if (status === "converted" || status === "declined") return;
+      const lineId = (q as any).work_order_line_id as string | null;
+      if (!lineId) return;
+      if (!m[lineId]) m[lineId] = [];
+      m[lineId].push(q);
+    });
+    return m;
+  }, [quoteLines]);
+
   // lines that are already quoted & waiting on customer
   const approvalPending = useMemo(
     () => lines.filter((l) => (l.approval_state ?? null) === "pending"),
@@ -606,6 +629,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       : "—";
 
   const canAssign = currentUserRole ? ASSIGN_ROLES.has(currentUserRole) : false;
+  const canApprove = currentUserRole ? APPROVAL_ROLES.has(currentUserRole) : false;
 
   const assignablesById = useMemo(() => {
     const m: Record<string, { full_name: string | null; role: string | null }> =
@@ -615,6 +639,13 @@ export default function WorkOrderIdClient(): JSX.Element {
     });
     return m;
   }, [assignables]);
+
+  // waiter flag (from future create-page field)
+  const isWaiter =
+    !!(wo &&
+      ((wo as any).is_waiter ||
+        (wo as any).waiter ||
+        (wo as any).customer_waiting));
 
   /* ----------------------- line actions ----------------------- */
 
@@ -705,7 +736,7 @@ export default function WorkOrderIdClient(): JSX.Element {
     [fetchAll],
   );
 
-    // 🔍 open inspection – reuse legacy generic runner (fill + corner grid)
+  // 🔍 open inspection – reuse legacy generic runner (fill + corner grid)
   const openInspectionForLine = useCallback(
     async (ln: WorkOrderLine) => {
       if (!ln?.id) return;
@@ -748,7 +779,6 @@ export default function WorkOrderIdClient(): JSX.Element {
     },
     [wo?.id],
   );
-
 
   // parts drawer close / bulk
   useEffect(() => {
@@ -795,7 +825,9 @@ export default function WorkOrderIdClient(): JSX.Element {
       />
 
       <div className="mb-4 flex items-center justify-between gap-2">
-        <PreviousPageButton to="/work-orders" />
+        {/* Back now goes to previous page, with /work-orders as internal fallback
+           (PreviousPageButton handles history.back() when no explicit target) */}
+        <PreviousPageButton />
         {wo?.custom_id && (
           <span className="rounded-full border border-neutral-800 bg-neutral-900/70 px-3 py-1 text-xs text-neutral-300">
             Internal ID: {wo.id.slice(0, 8)}
@@ -845,6 +877,11 @@ export default function WorkOrderIdClient(): JSX.Element {
                     <span className={chip(wo.status)}>
                       {(wo.status ?? "awaiting").replaceAll("_", " ")}
                     </span>
+                    {isWaiter && (
+                      <span className="inline-flex items-center whitespace-nowrap rounded-full border border-amber-500/70 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-200">
+                        Waiter
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-neutral-400">
                     Created {createdAtText}
@@ -995,7 +1032,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                   {approvalPending.length > 0 && (
                     <div className="space-y-2">
                       {approvalPending.map((ln, idx) => {
-                        const isAwaitingParts =
+                        const isAwaitingPartsBase =
                           (ln.status === "on_hold" &&
                             (ln.hold_reason ?? "")
                               .toLowerCase()
@@ -1003,6 +1040,13 @@ export default function WorkOrderIdClient(): JSX.Element {
                           (ln.hold_reason ?? "")
                             .toLowerCase()
                             .includes("quote");
+
+                        const hasQuotedParts =
+                          (activeQuotesByLine[ln.id] ?? []).length > 0;
+
+                        const partsLabel = hasQuotedParts
+                          ? "Quoted, awaiting approval"
+                          : "Awaiting parts quote";
 
                         return (
                           <div
@@ -1039,9 +1083,9 @@ export default function WorkOrderIdClient(): JSX.Element {
                                 </div>
 
                                 {/* 👇 flag lines that are on hold for parts */}
-                                {isAwaitingParts && (
+                                {isAwaitingPartsBase && (
                                   <div className="mt-1 inline-flex items-center rounded-full border border-blue-500/50 bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-200">
-                                    Awaiting parts quote
+                                    {partsLabel}
                                   </div>
                                 )}
 
@@ -1052,22 +1096,24 @@ export default function WorkOrderIdClient(): JSX.Element {
                                 )}
                               </div>
 
-                              <div className="flex shrink-0 flex-wrap items-center gap-2">
-                                <button
-                                  type="button"
-                                  className="rounded-md border border-green-700 px-2 py-1 text-[11px] font-medium text-green-200 hover:bg-green-900/25"
-                                  onClick={() => approveLine(ln.id)}
-                                >
-                                  Approve
-                                </button>
-                                <button
-                                  type="button"
-                                  className="rounded-md border border-red-700 px-2 py-1 text-[11px] font-medium text-red-200 hover:bg-red-900/30"
-                                  onClick={() => declineLine(ln.id)}
-                                >
-                                  Decline
-                                </button>
-                              </div>
+                              {canApprove && (
+                                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                                  <button
+                                    type="button"
+                                    className="rounded-md border border-green-700 px-2 py-1 text-[11px] font-medium text-green-200 hover:bg-green-900/25"
+                                    onClick={() => approveLine(ln.id)}
+                                  >
+                                    Approve
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="rounded-md border border-red-700 px-2 py-1 text-[11px] font-medium text-red-200 hover:bg-red-900/30"
+                                    onClick={() => declineLine(ln.id)}
+                                  >
+                                    Decline
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           </div>
                         );
@@ -1116,22 +1162,24 @@ export default function WorkOrderIdClient(): JSX.Element {
                               )}
                             </div>
 
-                            <div className="flex shrink-0 flex-wrap items-center gap-2">
-                              <button
-                                type="button"
-                                className="rounded-md border border-green-700 px-2 py-1 text-[11px] font-medium text-green-200 hover:bg-green-900/25"
-                                onClick={() => approveQuoteLine(q.id)}
-                              >
-                                Approve
-                              </button>
-                              <button
-                                type="button"
-                                className="rounded-md border border-red-700 px-2 py-1 text-[11px] font-medium text-red-200 hover:bg-red-900/30"
-                                onClick={() => declineQuoteLine(q.id)}
-                              >
-                                Decline
-                              </button>
-                            </div>
+                            {canApprove && (
+                              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                                <button
+                                  type="button"
+                                  className="rounded-md border border-green-700 px-2 py-1 text-[11px] font-medium text-green-200 hover:bg-green-900/25"
+                                  onClick={() => approveQuoteLine(q.id)}
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  type="button"
+                                  className="rounded-md border border-red-700 px-2 py-1 text-[11px] font-medium text-red-200 hover:bg-red-900/30"
+                                  onClick={() => declineQuoteLine(q.id)}
+                                >
+                                  Decline
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
                       ))}

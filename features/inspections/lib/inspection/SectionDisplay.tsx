@@ -36,6 +36,20 @@ interface SectionDisplayProps {
   onSubmitAI?: (sectionIndex: number, itemIndex: number) => void;
   /** let parent indicate a submit is in-flight for this item */
   isSubmittingAI?: (sectionIndex: number, itemIndex: number) => boolean;
+
+  /** 🔹 new: update technician-entered parts for an item */
+  onUpdateParts?: (
+    sectionIndex: number,
+    itemIndex: number,
+    parts: { description: string; qty: number }[],
+  ) => void;
+
+  /** 🔹 new: update labor hours for an item */
+  onUpdateLaborHours?: (
+    sectionIndex: number,
+    itemIndex: number,
+    hours: number | null,
+  ) => void;
 }
 
 export default function SectionDisplay(props: SectionDisplayProps) {
@@ -188,6 +202,142 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                   onUpdateNote={onUpdateNote}
                   onUpload={onUpload}
                 />
+
+                {/* 🔹 Parts + Labor, only for FAIL / REC items */}
+                {(() => {
+                  if (!isFailOrRec) return null;
+
+                  const currentParts = (item.parts ?? []) as {
+                    description: string;
+                    qty: number;
+                  }[];
+                  const currentLabor = item.laborHours ?? null;
+
+                  const handlePartsChange = (
+                    parts: { description: string; qty: number }[],
+                  ) => {
+                    props.onUpdateParts?.(sectionIndex, itemIndex, parts);
+                  };
+
+                  const handleLaborChange = (hours: number | null) => {
+                    props.onUpdateLaborHours?.(
+                      sectionIndex,
+                      itemIndex,
+                      hours,
+                    );
+                  };
+
+                  const addEmptyPart = () => {
+                    handlePartsChange([
+                      ...currentParts,
+                      { description: "", qty: 1 },
+                    ]);
+                  };
+
+                  const updatePart = (
+                    idx: number,
+                    patch: Partial<{
+                      description: string;
+                      qty: number;
+                    }>,
+                  ) => {
+                    const next = currentParts.map((p, i) =>
+                      i === idx ? { ...p, ...patch } : p,
+                    );
+                    handlePartsChange(next);
+                  };
+
+                  const removePart = (idx: number) => {
+                    const next = currentParts.filter((_, i) => i !== idx);
+                    handlePartsChange(next);
+                  };
+
+                  return (
+                    <div className="mt-3 rounded-xl border border-white/10 bg-black/40 p-3 text-xs text-neutral-200">
+                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-semibold text-neutral-100">
+                          Parts &amp; Labor
+                        </span>
+                        <span className="text-[10px] uppercase tracking-[0.16em] text-neutral-500">
+                          Only for FAIL / REC items
+                        </span>
+                      </div>
+
+                      {/* Parts list */}
+                      <div className="space-y-2">
+                        {currentParts.map((p, pIdx) => (
+                          <div
+                            key={pIdx}
+                            className="flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-black/40 px-2 py-2"
+                          >
+                            <input
+                              className="min-w-0 flex-1 rounded-md border border-neutral-700 bg-neutral-900/80 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/60"
+                              placeholder="Part description"
+                              value={p.description}
+                              onChange={(e) =>
+                                updatePart(pIdx, {
+                                  description: e.target.value,
+                                })
+                              }
+                            />
+                            <input
+                              className="w-16 rounded-md border border-neutral-700 bg-neutral-900/80 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/60"
+                              placeholder="Qty"
+                              type="number"
+                              min={1}
+                              value={Number.isFinite(p.qty) ? p.qty : ""}
+                              onChange={(e) =>
+                                updatePart(pIdx, {
+                                  qty: Number(e.target.value) || 1,
+                                })
+                              }
+                            />
+                            <button
+                              type="button"
+                              className="text-[11px] text-red-300 hover:text-red-200"
+                              onClick={() => removePart(pIdx)}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+
+                        <button
+                          type="button"
+                          onClick={addEmptyPart}
+                          className="mt-1 inline-flex items-center rounded-full border border-white/20 bg-black/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-neutral-100 hover:border-orange-400 hover:text-orange-200"
+                        >
+                          + Add Part
+                        </button>
+                      </div>
+
+                      {/* Labor */}
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <span className="text-[11px] text-neutral-400">
+                          Labor hours
+                        </span>
+                        <input
+                          className="w-20 rounded-md border border-neutral-700 bg-neutral-900/80 px-2 py-1 text-[11px] text-white placeholder:text-neutral-500 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/60"
+                          placeholder="0.0"
+                          type="number"
+                          min={0}
+                          step={0.1}
+                          value={currentLabor ?? ""}
+                          onChange={(e) =>
+                            handleLaborChange(
+                              e.target.value === ""
+                                ? null
+                                : Number(e.target.value) || 0,
+                            )
+                          }
+                        />
+                        <span className="text-[10px] text-neutral-500">
+                          (rate + pricing handled later)
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {canShowSubmit && (
                   <div className="mt-3 flex items-center justify-end">

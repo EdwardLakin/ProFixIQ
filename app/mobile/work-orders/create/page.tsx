@@ -123,6 +123,9 @@ export default function MobileCreateWorkOrderPage() {
   const [error, setError] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
+  // waiter flag (customer waiting on-site)
+  const [isWaiter, setIsWaiter] = useState(false);
+
   /* ------------------------------------------------------------------------ */
   /* Hydrate from shared VIN / OCR draft (desktop + mobile shared store)      */
   /* ------------------------------------------------------------------------ */
@@ -268,7 +271,9 @@ export default function MobileCreateWorkOrderPage() {
             vehicle_id: placeholderVehicle.id,
             status: "awaiting_approval",
             priority: 3,
-          })
+            // mobile defaults to drop-off; user can flip to waiter
+            is_waiter: false,
+          } as any)
           .select("*")
           .single();
 
@@ -277,6 +282,7 @@ export default function MobileCreateWorkOrderPage() {
         }
 
         setWo(inserted as WorkOrderRow);
+        setIsWaiter(((inserted as any).is_waiter ?? false) as boolean);
 
         // Seed local state
         setCustomer((prev) => ({
@@ -350,6 +356,31 @@ export default function MobileCreateWorkOrderPage() {
   }, [wo?.id, supabase, fetchLines]);
 
   /* ------------------------------------------------------------------------ */
+  /* Waiter toggle → persist to work_orders                                   */
+  /* ------------------------------------------------------------------------ */
+  const handleWaiterChange = useCallback(
+    async (value: boolean) => {
+      setIsWaiter(value);
+      if (!wo?.id) return;
+
+      try {
+        await supabase
+          .from("work_orders")
+          .update({ is_waiter: value } as any)
+          .eq("id", wo.id);
+      } catch (e) {
+        // Keep UI in sync but surface an error banner
+        const msg =
+          e instanceof Error
+            ? e.message
+            : "Failed to update visit type.";
+        setError(msg);
+      }
+    },
+    [wo?.id, supabase],
+  );
+
+  /* ------------------------------------------------------------------------ */
   /* Submit → go to mobile WO detail                                          */
   /* ------------------------------------------------------------------------ */
   const handleSubmit = async () => {
@@ -399,6 +430,38 @@ export default function MobileCreateWorkOrderPage() {
               </div>
             )}
           </div>
+
+          {/* Visit type / waiter toggle */}
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <span className="text-[0.68rem] font-medium uppercase tracking-[0.16em] text-neutral-400">
+              Visit type
+            </span>
+            <div className="inline-flex overflow-hidden rounded-full border border-white/15 bg-black/60 text-[0.7rem]">
+              <button
+                type="button"
+                onClick={() => handleWaiterChange(false)}
+                className={`px-3 py-1.5 font-medium transition ${
+                  !isWaiter
+                    ? "bg-white/10 text-neutral-50"
+                    : "text-neutral-400"
+                }`}
+              >
+                Drop-off
+              </button>
+              <button
+                type="button"
+                onClick={() => handleWaiterChange(true)}
+                className={`px-3 py-1.5 font-medium transition border-l border-white/10 ${
+                  isWaiter
+                    ? "bg-[var(--accent-copper)]/20 text-[var(--accent-copper-light)]"
+                    : "text-neutral-400"
+                }`}
+              >
+                Waiter
+              </button>
+            </div>
+          </div>
+
           {error && (
             <p className="mt-3 rounded-lg border border-red-500/50 bg-red-950/70 px-3 py-2 text-[0.7rem] text-red-100">
               {error}

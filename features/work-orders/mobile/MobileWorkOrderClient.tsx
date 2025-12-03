@@ -1,4 +1,3 @@
-// app/mobile/work-orders/[id]/page.client.tsx
 "use client";
 
 import React, {
@@ -86,6 +85,17 @@ const chip = (s: string | null | undefined): string => {
   return `${BASE_BADGE} ${BADGE[key] ?? BADGE.awaiting}`;
 };
 
+// roles allowed to approve / decline
+const APPROVAL_ROLES = new Set([
+  "owner",
+  "admin",
+  "manager",
+  "advisor",
+  "lead_hand",
+  "lead",
+  "leadhand",
+]);
+
 /* ------------------------------------------------------------------------- */
 
 export default function MobileWorkOrderClient({
@@ -122,7 +132,7 @@ export default function MobileWorkOrderClient({
     "m:wo:id:effectiveUid",
     null,
   );
-  const [, setCurrentUserRole] = useState<string | null>(null);
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
 
   const [showDetails, setShowDetails] = useTabState<boolean>(
     "m:wo:showDetails",
@@ -433,13 +443,32 @@ export default function MobileWorkOrderClient({
   }, [fetchAll]);
 
   /* ----------------------- Derived data ----------------------- */
+
+  // map of active quote-lines per work_order_line
+  const activeQuotesByLine = useMemo(() => {
+    const m: Record<string, WorkOrderQuoteLine[]> = {};
+    quoteLines.forEach((q) => {
+      const status = (q.status ?? "").toLowerCase();
+      if (status === "converted" || status === "declined") return;
+      const lineId = (q as any).work_order_line_id as string | null;
+      if (!lineId) return;
+      if (!m[lineId]) m[lineId] = [];
+      m[lineId].push(q);
+    });
+    return m;
+  }, [quoteLines]);
+
   const approvalPending = useMemo(
     () => lines.filter((l) => (l.approval_state ?? null) === "pending"),
     [lines],
   );
 
   const quotePending = useMemo(
-    () => quoteLines.filter((q) => q.status !== "converted"),
+    () =>
+      quoteLines.filter((q) => {
+        const status = (q.status ?? "").toLowerCase();
+        return status !== "converted" && status !== "declined";
+      }),
     [quoteLines],
   );
 
@@ -472,6 +501,16 @@ export default function MobileWorkOrderClient({
       : "—";
 
   const canAssign = false; // assignments handled in focused view / desktop
+  const canApprove = currentUserRole
+    ? APPROVAL_ROLES.has(currentUserRole)
+    : false;
+
+  // waiter flag from work order (matches desktop logic)
+  const isWaiter =
+    !!(wo &&
+      ((wo as any).is_waiter ||
+        (wo as any).waiter ||
+        (wo as any).customer_waiting));
 
   /* ----------------------- line & quote actions ----------------------- */
 
@@ -617,7 +656,8 @@ export default function MobileWorkOrderClient({
 
       {/* header bar */}
       <div className="mb-4 flex items-center justify-between gap-2">
-        <PreviousPageButton to="/mobile/work-orders" />
+        {/* Use history/back behavior instead of hard-coded route */}
+        <PreviousPageButton />
         {wo?.custom_id && (
           <span className="rounded-full border border-white/12 bg-black/40 px-3 py-1 text-[11px] text-neutral-300 backdrop-blur">
             Internal ID:{" "}
@@ -673,6 +713,11 @@ export default function MobileWorkOrderClient({
                   <span className={chip(wo.status)}>
                     {(wo.status ?? "awaiting").replaceAll("_", " ")}
                   </span>
+                  {isWaiter && (
+                    <span className="inline-flex items-center whitespace-nowrap rounded-full border border-amber-500/70 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-200">
+                      Waiter
+                    </span>
+                  )}
                 </div>
                 <p className="text-[11px] text-neutral-400">
                   Created {createdAtText}
@@ -749,10 +794,10 @@ export default function MobileWorkOrderClient({
                           <span className="text-neutral-500">—</span>
                         )}
                         <br />
-                          Mileage:{" "}
-                          {vehicle.mileage ?? (
-                            <span className="text-neutral-500">—</span>
-                          )}
+                        Mileage:{" "}
+                        {vehicle.mileage ?? (
+                          <span className="text-neutral-500">—</span>
+                        )}
                       </p>
                     </>
                   ) : (
@@ -836,7 +881,7 @@ export default function MobileWorkOrderClient({
                       Jobs awaiting approval
                     </div>
                     {approvalPending.map((ln, idx) => {
-                      const isAwaitingParts =
+                      const isAwaitingPartsBase =
                         (ln.status === "on_hold" &&
                           (ln.hold_reason ?? "")
                             .toLowerCase()
@@ -844,6 +889,13 @@ export default function MobileWorkOrderClient({
                         (ln.hold_reason ?? "")
                           .toLowerCase()
                           .includes("quote");
+
+                      const hasQuotedParts =
+                        (activeQuotesByLine[ln.id] ?? []).length > 0;
+
+                      const partsLabel = hasQuotedParts
+                        ? "Quoted, awaiting approval"
+                        : "Awaiting parts quote";
 
                       return (
                         <div
@@ -878,6 +930,13 @@ export default function MobileWorkOrderClient({
                                   " ",
                                 )}
                               </div>
+
+                              {isAwaitingPartsBase && (
+                                <div className="mt-1 inline-flex items-center rounded-full border border-sky-400/70 bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-100">
+                                  {partsLabel}
+                                </div>
+                              )}
+
                               {ln.notes && (
                                 <div className="mt-1 text-[11px] text-slate-300">
                                   Notes: {ln.notes}
@@ -886,22 +945,26 @@ export default function MobileWorkOrderClient({
                             </div>
 
                             <div className="flex flex-wrap items-center gap-2">
-                              <button
-                                type="button"
-                                className="rounded-md border border-emerald-400/80 px-2.5 py-1 text-[11px] font-medium text-emerald-100 hover:bg-emerald-500/10"
-                                onClick={() => approveLine(ln.id)}
-                              >
-                                Approve
-                              </button>
-                              <button
-                                type="button"
-                                className="rounded-md border border-red-400/80 px-2.5 py-1 text-[11px] font-medium text-red-100 hover:bg-red-500/10"
-                                onClick={() => declineLine(ln.id)}
-                              >
-                                Decline
-                              </button>
+                              {canApprove && (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="rounded-md border border-emerald-400/80 px-2.5 py-1 text-[11px] font-medium text-emerald-100 hover:bg-emerald-500/10"
+                                    onClick={() => approveLine(ln.id)}
+                                  >
+                                    Approve
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="rounded-md border border-red-400/80 px-2.5 py-1 text-[11px] font-medium text-red-100 hover:bg-red-500/10"
+                                    onClick={() => declineLine(ln.id)}
+                                  >
+                                    Decline
+                                  </button>
+                                </>
+                              )}
 
-                              {isAwaitingParts ? (
+                              {isAwaitingPartsBase ? (
                                 <button
                                   type="button"
                                   disabled
@@ -965,22 +1028,24 @@ export default function MobileWorkOrderClient({
                             )}
                           </div>
 
-                          <div className="flex flex-wrap items-center gap-2">
-                            <button
-                              type="button"
-                              className="rounded-md border border-emerald-400/80 px-2.5 py-1 text-[11px] font-medium text-emerald-100 hover:bg-emerald-500/10"
-                              onClick={() => authorizeQuote(q.id)}
-                            >
-                              Approve &amp; add job
-                            </button>
-                            <button
-                              type="button"
-                              className="rounded-md border border-red-400/80 px-2.5 py-1 text-[11px] font-medium text-red-100 hover:bg-red-500/10"
-                              onClick={() => declineQuote(q.id)}
-                            >
-                              Decline
-                            </button>
-                          </div>
+                          {canApprove && (
+                            <div className="flex flex-wrap items-center gap-2">
+                              <button
+                                type="button"
+                                className="rounded-md border border-emerald-400/80 px-2.5 py-1 text-[11px] font-medium text-emerald-100 hover:bg-emerald-500/10"
+                                onClick={() => authorizeQuote(q.id)}
+                              >
+                                Approve &amp; add job
+                              </button>
+                              <button
+                                type="button"
+                                className="rounded-md border border-red-400/80 px-2.5 py-1 text-[11px] font-medium text-red-100 hover:bg-red-500/10"
+                                onClick={() => declineQuote(q.id)}
+                              >
+                                Decline
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}

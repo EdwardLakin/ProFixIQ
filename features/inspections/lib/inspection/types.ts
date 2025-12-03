@@ -17,6 +17,15 @@ export interface InspectionItem {
 
   photoUrls?: string[];
   recommend?: string[];
+
+  /** 🔹 Technician-requested parts for THIS item (no pricing, no SKU/vendor) */
+  parts?: Array<{
+    description: string;
+    qty: number;
+  }>;
+
+  /** 🔹 Labor hours for THIS item (rate & pricing handled later) */
+  laborHours?: number | null;
 }
 
 export interface InspectionCategory {
