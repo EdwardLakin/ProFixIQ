@@ -1,4 +1,4 @@
-// app/mobile/inspections/page.tsx (or wherever this lives)
+// app/mobile/inspections/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -9,17 +9,14 @@ import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 
-/**
- * Narrow local type so we don't depend on the full DB row shape.
- * We only keep the fields we actually render.
- */
+/** Only the columns we actually care about for mobile */
 type InspectionRow = {
   id: string;
-  custom_id?: string | null;
-  status?: string | null;
-  created_at?: string | null;
-  customer_name?: string | null;
-  vehicle_label?: string | null;
+  custom_id: string | null;
+  status: string | null;
+  created_at: string | null;
+  customer_name: string | null;
+  vehicle_label: string | null;
 };
 
 const BADGE_BASE =
@@ -40,6 +37,7 @@ function statusChip(status: string | null | undefined): string {
 
 export default function MobileInspectionsListPage() {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
+
   const [rows, setRows] = useState<InspectionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -48,16 +46,20 @@ export default function MobileInspectionsListPage() {
     (async () => {
       setLoading(true);
       setErr(null);
+
       try {
         const { data, error } = await supabase
           .from("inspection_sessions")
-          .select("*") // grab all, then pick what we need locally
+          .select(
+            "id, custom_id, status, created_at, customer_name, vehicle_label",
+          )
           .order("created_at", { ascending: false })
           .limit(50);
 
         if (error) throw error;
 
-        const mapped: InspectionRow[] = (data ?? []).map((r: any) => ({
+        // Strictly typed mapping — no any, no unknown
+        const mapped: InspectionRow[] = (data ?? []).map((r) => ({
           id: r.id,
           custom_id: r.custom_id ?? null,
           status: r.status ?? null,
@@ -120,6 +122,7 @@ export default function MobileInspectionsListPage() {
               r.created_at != null
                 ? format(new Date(r.created_at), "PP p")
                 : "—";
+
             return (
               <Link
                 key={r.id}
@@ -132,16 +135,19 @@ export default function MobileInspectionsListPage() {
                       <span className="font-semibold text-neutral-50">
                         {r.custom_id ?? `Inspect ${r.id.slice(0, 6)}`}
                       </span>
+
                       <span className={statusChip(r.status ?? "open")}>
                         {(r.status ?? "open").replaceAll("_", " ")}
                       </span>
                     </div>
+
                     <div className="mt-1 truncate text-[0.75rem] text-neutral-300">
                       {r.customer_name ?? "No customer"}{" "}
                       <span className="mx-1 text-neutral-600">•</span>
                       {r.vehicle_label ?? "No vehicle"}
                     </div>
                   </div>
+
                   <span className="ml-2 shrink-0 text-[0.7rem] text-neutral-400">
                     {created}
                   </span>
