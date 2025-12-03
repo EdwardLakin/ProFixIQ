@@ -1,4 +1,5 @@
 // features/shared/config/tiles.ts
+
 export type Role =
   | "owner"
   | "admin"
@@ -50,7 +51,8 @@ export const TILES: Tile[] = [
     href: "/work-orders/queue",
     title: "Job Queue",
     subtitle: "Active & in-progress",
-    roles: ["mechanic", "manager", "owner", "admin"],
+    // 🧠 Shop-level overview: advisors + management, NOT mechanics
+    roles: ["advisor", "manager", "owner", "admin"],
     scopes: ["work_orders", "tech", "all"],
     section: "Operations",
   },
@@ -74,6 +76,7 @@ export const TILES: Tile[] = [
     href: "/work-orders/history",
     title: "History",
     subtitle: "Completed work",
+    // 👇 Mechanics can see history read-only
     roles: ["owner", "admin", "manager", "advisor", "mechanic"],
     scopes: ["work_orders", "all"],
     section: "Operations",
@@ -87,7 +90,7 @@ export const TILES: Tile[] = [
     section: "Operations",
   },
 
-  // --- Appointments (new admin page you wanted) ---
+  // --- Appointments ---
   {
     href: "/portal/appointments",
     title: "Appointments",
@@ -206,6 +209,8 @@ export const TILES: Tile[] = [
     scopes: ["settings", "all"],
     section: "Admin",
   },
+
+  // --- AI & Tech ---
   {
     href: "/ai/assistant",
     title: "AI Assistant",
@@ -213,5 +218,14 @@ export const TILES: Tile[] = [
     roles: ["owner", "admin", "manager", "advisor", "mechanic", "parts"],
     scopes: ["tech", "all"],
     section: "Tools",
+  },
+  {
+    href: "/tech/queue",
+    title: "Tech Job Queue",
+    subtitle: "My assigned work",
+    // 🔧 Tech-facing queue: mechanics + management
+    roles: ["mechanic", "manager", "owner", "admin"],
+    scopes: ["tech", "all"],
+    section: "Tech",
   },
 ];
