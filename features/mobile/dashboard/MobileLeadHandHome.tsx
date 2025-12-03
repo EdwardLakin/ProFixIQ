@@ -20,15 +20,12 @@ type Props = {
 export default function MobileLeadHandHome({ leadName, role, stats }: Props) {
   const firstName = leadName?.split(" ")[0] ?? leadName ?? "Lead";
 
-  const {
-    techsOnShift,
-    jobsInProgress,
-    jobsBlocked,
-  } = stats ?? {
-    techsOnShift: 0,
-    jobsInProgress: 0,
-    jobsBlocked: 0,
-  };
+  const { techsOnShift, jobsInProgress, jobsBlocked } =
+    stats ?? {
+      techsOnShift: 0,
+      jobsInProgress: 0,
+      jobsBlocked: 0,
+    };
 
   return (
     <div className="space-y-6 px-4 py-4">
@@ -42,7 +39,7 @@ export default function MobileLeadHandHome({ leadName, role, stats }: Props) {
               <span className="align-middle">🧰</span>
             </h1>
             <p className="mt-1 text-xs text-neutral-300">
-              Quick view of techs, in-progress work and blockers.
+              Quick view of tech coverage, in-progress work and blockers.
             </p>
           </div>
 
@@ -54,51 +51,41 @@ export default function MobileLeadHandHome({ leadName, role, stats }: Props) {
         </div>
       </section>
 
-      {/* Focused actions */}
+      {/* Core flows – same as manager */}
       <section className="space-y-3">
         <ActionCard
-          title="Assign & balance work"
-          body="Review tech queues and balance workload across the bay."
+          title="Work order queue"
+          body="Review jobs in the queue and balance workload."
           href="/work-orders/queue"
           cta="Open job queue"
         />
         <ActionCard
-          title="Unblock jobs"
-          body="Find jobs on hold for parts, info or approvals and keep flow moving."
-          href="/work-orders/view?filter=on_hold"
-          cta="View blocked jobs"
+          title="Create work order"
+          body="Spin up a new job when vehicles land."
+          href="/work-orders/create?autostart=1"
+          cta="New work order"
+        />
+        <ActionCard
+          title="Appointments"
+          body="Check today’s appointments and what’s arriving next."
+          href="/mobile/appointments"
+          cta="Open appointments"
+        />
+        <ActionCard
+          title="Messages & chat"
+          body="Coordinate with advisors, techs and parts."
+          href="/mobile/messages"
+          cta="Open messages"
         />
       </section>
 
-      {/* Shortcuts from config */}
+      {/* Shortcuts from config – same scopes as manager */}
       <MobileRoleHub
         role={role}
-        scopes={["work_orders", "inspections", "all"]}
+        scopes={["work_orders", "appointments", "all"]}
         title="Lead-hand shortcuts"
         subtitle="Hands-on tools for keeping the floor moving."
       />
-
-      {/* Tools */}
-      <section className="space-y-2">
-        <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
-          Tools
-        </h2>
-        <p className="text-[0.7rem] text-neutral-500">
-          Views you&apos;ll jump into a lot during the day.
-        </p>
-        <div className="space-y-2">
-          <ToolCard
-            href="/tech/queue"
-            label="Tech job queue"
-            description="Per-tech workload & active jobs"
-          />
-          <ToolCard
-            href="/parts/requests"
-            label="Parts requests"
-            description="Jobs waiting on parts"
-          />
-        </div>
-      </section>
     </div>
   );
 }
@@ -162,33 +149,6 @@ function ActionCard({
         <span className="text-[0.7rem] text-[var(--accent-copper-soft)]">
           {cta} →
         </span>
-      </div>
-    </Link>
-  );
-}
-
-function ToolCard({
-  href,
-  label,
-  description,
-}: {
-  href: string;
-  label: string;
-  description: string;
-}) {
-  return (
-    <Link
-      href={href}
-      className="metal-card block rounded-2xl border border-[var(--metal-border-soft)] px-4 py-3 text-sm text-neutral-100 transition hover:border-[var(--accent-copper-soft)]"
-    >
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-[0.65rem] uppercase tracking-[0.18em] text-neutral-400">
-            {label}
-          </div>
-          <div className="mt-1 text-sm">{description}</div>
-        </div>
-        <span className="text-xs text-[var(--accent-copper-soft)]">›</span>
       </div>
     </Link>
   );
