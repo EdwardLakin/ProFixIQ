@@ -28,6 +28,9 @@ type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
 type WorkOrderQuoteLine =
   DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
+type WorkOrderQuoteLineWithLineId = WorkOrderQuoteLine & {
+  work_order_line_id?: string | null;
+};
 
 const looksLikeUuid = (s: string) => s.includes("-") && s.length >= 36;
 
@@ -444,17 +447,21 @@ export default function MobileWorkOrderClient({
 
   /* ----------------------- Derived data ----------------------- */
 
-  // map of active quote-lines per work_order_line
+    // simple map of active quote-lines per work_order_line
   const activeQuotesByLine = useMemo(() => {
     const m: Record<string, WorkOrderQuoteLine[]> = {};
-    quoteLines.forEach((q) => {
+
+    (quoteLines as WorkOrderQuoteLineWithLineId[]).forEach((q) => {
       const status = (q.status ?? "").toLowerCase();
       if (status === "converted" || status === "declined") return;
-      const lineId = (q as any).work_order_line_id as string | null;
+
+      const lineId = q.work_order_line_id ?? null;
       if (!lineId) return;
+
       if (!m[lineId]) m[lineId] = [];
       m[lineId].push(q);
     });
+
     return m;
   }, [quoteLines]);
 
@@ -505,12 +512,23 @@ export default function MobileWorkOrderClient({
     ? APPROVAL_ROLES.has(currentUserRole)
     : false;
 
-  // waiter flag from work order (matches desktop logic)
+    type WorkOrderWaiterFlags = {
+    is_waiter?: boolean | null;
+    waiter?: boolean | null;
+    customer_waiting?: boolean | null;
+  };
+
+  const waiterFlagSource: (WorkOrder & WorkOrderWaiterFlags) | null = wo
+    ? (wo as WorkOrder & WorkOrderWaiterFlags)
+    : null;
+
   const isWaiter =
-    !!(wo &&
-      ((wo as any).is_waiter ||
-        (wo as any).waiter ||
-        (wo as any).customer_waiting));
+    !!(
+      waiterFlagSource &&
+      (waiterFlagSource.is_waiter ||
+        waiterFlagSource.waiter ||
+        waiterFlagSource.customer_waiting)
+    );
 
   /* ----------------------- line & quote actions ----------------------- */
 
