@@ -44,6 +44,18 @@ export type Database = {
         }
         Relationships: []
       }
+      admin_users: {
+        Row: {
+          user_id: string
+        }
+        Insert: {
+          user_id: string
+        }
+        Update: {
+          user_id?: string
+        }
+        Relationships: []
+      }
       agent_attachments: {
         Row: {
           agent_request_id: string
@@ -6757,6 +6769,7 @@ export type Database = {
           inspection_type: string | null
           invoice_total: number | null
           invoice_url: string | null
+          is_waiter: boolean
           labor_total: number | null
           notes: string | null
           odometer_km: number | null
@@ -6794,6 +6807,7 @@ export type Database = {
           inspection_type?: string | null
           invoice_total?: number | null
           invoice_url?: string | null
+          is_waiter?: boolean
           labor_total?: number | null
           notes?: string | null
           odometer_km?: number | null
@@ -6831,6 +6845,7 @@ export type Database = {
           inspection_type?: string | null
           invoice_total?: number | null
           invoice_url?: string | null
+          is_waiter?: boolean
           labor_total?: number | null
           notes?: string | null
           odometer_km?: number | null
@@ -7341,6 +7356,7 @@ export type Database = {
         Args: { increment_by?: number; input_shop_id: string }
         Returns: undefined
       }
+      is_admin: { Args: never; Returns: boolean }
       is_customer: { Args: { _customer: string }; Returns: boolean }
       is_shop_member: { Args: { p_shop: string }; Returns: boolean }
       is_staff_for_shop: { Args: { _shop: string }; Returns: boolean }

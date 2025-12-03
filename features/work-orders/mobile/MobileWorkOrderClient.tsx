@@ -732,10 +732,21 @@ export default function MobileWorkOrderClient({
                     {(wo.status ?? "awaiting").replaceAll("_", " ")}
                   </span>
                   {isWaiter && (
-                    <span className="inline-flex items-center whitespace-nowrap rounded-full border border-amber-500/70 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-200">
-                      Waiter
-                    </span>
-                  )}
+  <span
+    className="
+      ml-auto
+      inline-flex items-center whitespace-nowrap
+      rounded-full border border-red-500
+      bg-red-500/10
+      px-4 py-1.5
+      text-xs sm:text-sm font-semibold uppercase tracking-[0.16em]
+      text-red-200
+      shadow-[0_0_18px_rgba(248,113,113,0.9)]
+    "
+  >
+    Waiter
+  </span>
+)}
                 </div>
                 <p className="text-[11px] text-neutral-400">
                   Created {createdAtText}

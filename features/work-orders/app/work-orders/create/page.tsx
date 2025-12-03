@@ -911,7 +911,7 @@ export default function CreateWorkOrderPage() {
 
       const { data: latest, error: latestErr } = await supabase
         .from("work_orders")
-        .select("id, custom_id, customer_id, vehicle_id")
+        .select("id, custom_id, customer_id, vehicle_id, is_waiter")
         .eq("id", woId)
         .maybeSingle();
 
@@ -1414,7 +1414,7 @@ export default function CreateWorkOrderPage() {
               <button
                 type="button"
                 onClick={() => router.push("/work-orders")}
-                className="text-sm text-neutral-400 hover:text-white"
+                className="text-sm text-neutral-400 hover:text:white"
                 disabled={loading}
               >
                 Cancel
