@@ -32,7 +32,7 @@ const STATUS_STYLES: Record<RollupStatus, string> = {
 
 function rollupStatus(lines: Line[]): RollupStatus {
   const s = new Set(
-    (lines ?? []).map((l) => (l.status ?? "awaiting") as RollupStatus)
+    (lines ?? []).map((l) => (l.status ?? "awaiting") as RollupStatus),
   );
 
   if (s.has("in_progress")) return "in_progress";
@@ -58,6 +58,13 @@ function countLineStatuses(lines: Line[]) {
 
   return { awaiting, in_progress, on_hold, completed };
 }
+
+// allow for legacy waiter flags on the work_orders row
+type WorkOrderWaiterFlags = {
+  is_waiter?: boolean | null;
+  waiter?: boolean | null;
+  customer_waiting?: boolean | null;
+};
 
 export default function QueuePage() {
   const supabase = createClientComponentClient<DB>();
@@ -175,7 +182,7 @@ export default function QueuePage() {
 
       const visibleWos: WO[] = isTech
         ? wos.filter((wo) =>
-            (map[wo.id] ?? []).some((l) => l.assigned_to === user.id)
+            (map[wo.id] ?? []).some((l) => l.assigned_to === user.id),
           )
         : wos;
 
@@ -219,13 +226,13 @@ export default function QueuePage() {
 
     if (activeFilter != null) {
       pool = pool.filter(
-        (wo) => rollupStatus(linesByWo[wo.id] ?? []) === activeFilter
+        (wo) => rollupStatus(linesByWo[wo.id] ?? []) === activeFilter,
       );
     }
 
     if (showMineOnly && userId) {
       pool = pool.filter((wo) =>
-        (linesByWo[wo.id] ?? []).some((l) => l.assigned_to === userId)
+        (linesByWo[wo.id] ?? []).some((l) => l.assigned_to === userId),
       );
     }
 
@@ -386,6 +393,15 @@ export default function QueuePage() {
               ? new Date(wo.created_at).toLocaleString()
               : "—";
 
+            const waiterSource = wo as WO & WorkOrderWaiterFlags;
+            const isWaiter =
+              !!(
+                waiterSource &&
+                (waiterSource.is_waiter ||
+                  waiterSource.waiter ||
+                  waiterSource.customer_waiting)
+              );
+
             return (
               <Link
                 key={wo.id}
@@ -412,9 +428,18 @@ export default function QueuePage() {
                       {bucketCounts.completed} completed
                     </div>
                   </div>
-                  <span className="rounded border border-neutral-700 px-2 py-1 text-[11px] capitalize text-neutral-300">
-                    {status.replace("_", " ")}
-                  </span>
+
+                  <div className="flex flex-col items-end gap-2">
+                    <span className="rounded-full border border-neutral-700 px-2.5 py-1 text-[11px] capitalize text-neutral-300">
+                      {status.replace("_", " ")}
+                    </span>
+
+                    {isWaiter && (
+                      <span className="inline-flex items-center whitespace-nowrap rounded-full border border-red-500 bg-red-500/10 px-3.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-red-200 shadow-[0_0_18px_rgba(248,113,113,0.9)]">
+                        Waiter
+                      </span>
+                    )}
+                  </div>
                 </div>
               </Link>
             );
