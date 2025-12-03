@@ -191,6 +191,6 @@ export default function MobileInspectionDetailPage() {
           </div>
         )}
       </div>
-    </MobileShell>
+      </MobileShell>
   );
 }

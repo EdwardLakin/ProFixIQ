@@ -127,6 +127,10 @@ export default function MobileWorkOrderClient({
   const [loading, setLoading] = useState<boolean>(false);
   const [viewError, setViewError] = useState<string | null>(null);
 
+  const [techNamesById, setTechNamesById] = useState<Record<string, string>>(
+    {},
+  );
+
   const [currentUserId, setCurrentUserId] = useTabState<string | null>(
     "m:wo:id:uid",
     null,
@@ -203,7 +207,7 @@ export default function MobileWorkOrderClient({
     };
   }, [routeId, setCurrentUserId, setUserId]);
 
-  /* ---------------------- FETCH ---------------------- */
+    /* ---------------------- FETCH ---------------------- */
   const fetchAll = useCallback(
     async (retry = 0) => {
       if (!routeId) return;
@@ -316,6 +320,34 @@ export default function MobileWorkOrderClient({
         const lineRows = (linesRes.data ?? []) as WorkOrderLine[];
         setLines(lineRows);
 
+        // 🔹 NEW: populate tech names from assigned_to
+        const techIds = Array.from(
+          new Set(
+            lineRows
+              .map((ln) => ln.assigned_to)
+              .filter((id): id is string => Boolean(id)),
+          ),
+        );
+
+        if (techIds.length > 0) {
+          const { data: techProfiles, error: techErr } = await supabase
+            .from("profiles")
+            .select("id, full_name")
+            .in("id", techIds);
+
+          if (!techErr && techProfiles) {
+            const map: Record<string, string> = {};
+            techProfiles.forEach((p) => {
+              map[p.id] = p.full_name ?? "Technician";
+            });
+            setTechNamesById(map);
+          } else {
+            setTechNamesById({});
+          }
+        } else {
+          setTechNamesById({});
+        }
+
         if (quotesRes.error) throw quotesRes.error;
         setQuoteLines(
           (quotesRes.data as WorkOrderQuoteLine[] | null) ?? [],
@@ -344,6 +376,7 @@ export default function MobileWorkOrderClient({
       setQuoteLines,
       setVehicle,
       setCustomer,
+      setTechNamesById,
     ],
   );
 
@@ -444,6 +477,7 @@ export default function MobileWorkOrderClient({
       );
     };
   }, [fetchAll]);
+
 
   /* ----------------------- Derived data ----------------------- */
 
@@ -662,6 +696,13 @@ export default function MobileWorkOrderClient({
 
   const hasAnyPending = approvalPending.length > 0 || quotePending.length > 0;
 
+    // 🔹 Open mobile inspection run page for a given line
+  const openInspection = (lineId: string) => {
+    if (!lineId) return;
+    // mobile inspections run route: /app/mobile/inspections/[id]/run
+    window.location.href = `/mobile/inspections/${lineId}/run`;
+  };
+
   return (
     <div className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-4xl flex-col bg-transparent px-3 py-4 text-white">
       <VoiceContextSetter
@@ -712,9 +753,7 @@ export default function MobileWorkOrderClient({
           <Skeleton className="h-40" />
         </div>
       ) : !wo ? (
-        <div className="mt-4 text-sm text-red-300">
-          Work order not found.
-        </div>
+        <div className="mt-4 text-sm text-red-300">Work order not found.</div>
       ) : (
         <div className="space-y-5">
           {/* Header card */}
@@ -732,21 +771,21 @@ export default function MobileWorkOrderClient({
                     {(wo.status ?? "awaiting").replaceAll("_", " ")}
                   </span>
                   {isWaiter && (
-  <span
-    className="
-      ml-auto
-      inline-flex items-center whitespace-nowrap
-      rounded-full border border-red-500
-      bg-red-500/10
-      px-4 py-1.5
-      text-xs sm:text-sm font-semibold uppercase tracking-[0.16em]
-      text-red-200
-      shadow-[0_0_18px_rgba(248,113,113,0.9)]
-    "
-  >
-    Waiter
-  </span>
-)}
+                    <span
+                      className="
+                        ml-auto
+                        inline-flex items-center whitespace-nowrap
+                        rounded-full border border-red-500
+                        bg-red-500/10
+                        px-4 py-1.5
+                        text-xs sm:text-sm font-semibold uppercase tracking-[0.16em]
+                        text-red-200
+                        shadow-[0_0_18px_rgba(248,113,113,0.9)]
+                      "
+                    >
+                      Waiter
+                    </span>
+                  )}
                 </div>
                 <p className="text-[11px] text-neutral-400">
                   Created {createdAtText}
@@ -1110,20 +1149,37 @@ export default function MobileWorkOrderClient({
                     setFocusedOpen(true);
                   };
 
+                  const assignedTechName = ln.assigned_to
+                    ? techNamesById[ln.assigned_to] ?? "Assigned tech"
+                    : null;
+
                   return (
-                    <JobCard
+                    <div
                       key={ln.id}
-                      index={idx}
-                      line={ln}
-                      parts={[]} // stripped-down: no parts list on main mobile view
-                      technicians={[]} // assignment handled in focused view / desktop
-                      canAssign={canAssign}
-                      isPunchedIn={punchedIn}
-                      onOpen={openFocused}
-                      onAssign={undefined}
-                      onOpenInspection={openFocused}
-                      onAddPart={undefined}
-                    />
+                      className="space-y-1 rounded-xl border border-white/10 bg-black/40 p-2"
+                    >
+                      <JobCard
+                        index={idx}
+                        line={ln}
+                        parts={[]} // stripped-down: no parts list on main mobile view
+                        technicians={[]} // assignment handled in focused view / desktop
+                        canAssign={canAssign}
+                        isPunchedIn={punchedIn}
+                        onOpen={openFocused}
+                        onAssign={undefined}
+                        // 🔹 new: go straight to mobile inspection run
+                        onOpenInspection={() => openInspection(ln.id)}
+                        onAddPart={undefined}
+                      />
+
+                      {/* Assigned tech pill */}
+                      <div className="pl-2 text-[11px] text-neutral-400">
+                        Assigned to:{" "}
+                        <span className="font-medium text-neutral-200">
+                          {assignedTechName ?? "Unassigned"}
+                        </span>
+                      </div>
+                    </div>
                   );
                 })}
               </div>
