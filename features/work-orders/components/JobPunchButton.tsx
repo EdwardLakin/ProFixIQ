@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import type { Database } from "@shared/types/types/supabase";
 
 type Props = {
   lineId: string;
@@ -13,6 +14,8 @@ type Props = {
   onFinishRequested?: () => void;
   disabled?: boolean;
 };
+
+type DB = Database;
 
 export default function JobPunchButton({
   lineId,
@@ -42,31 +45,57 @@ export default function JobPunchButton({
   };
 
   /* ------------------------------------------------------------------ */
-  /* Core punch actions – RPC, single active job enforced by DB         */
+  /* Core punch actions – RPC, plus explicit line status/time update    */
   /* ------------------------------------------------------------------ */
 
   const start = async () => {
     if (busy || effectiveDisabled) return;
     setBusy(true);
     try {
-      const { error } = await supabase.rpc("punch_in", {
+      // 1) Core punch RPC (enforces single active job, assignment, etc.)
+      const { error: punchErr } = await supabase.rpc("punch_in", {
         line_id: lineId,
       });
 
-      if (error) {
-        if (error.code === "23505") {
+      if (punchErr) {
+        if (punchErr.code === "23505") {
           // partial unique index hit
           toast.error("You already have another active job. Finish it first.");
-        } else if (error.code === "28000") {
+        } else if (punchErr.code === "28000") {
           toast.error("Job is not assigned to you.");
         } else {
-          toast.error(error.message ?? "Start failed");
+          toast.error(punchErr.message ?? "Start failed");
         }
+        return;
+      }
+
+      // 2) Make sure the work_order_lines row reflects this:
+      //    - status -> in_progress
+      //    - punched_in_at set if it was previously null
+      const nowIso = new Date().toISOString();
+      const update: DB["public"]["Tables"]["work_order_lines"]["Update"] = {
+        status: "in_progress",
+      };
+
+      if (!punchedInAt) {
+        update.punched_in_at = nowIso;
+      }
+
+      const { error: lineErr } = await supabase
+        .from("work_order_lines")
+        .update(update)
+        .eq("id", lineId);
+
+      if (lineErr) {
+        // Not fatal for the shift, but important for UI consistency
+        toast.error(lineErr.message ?? "Failed to update job status");
         return;
       }
 
       toast.success("Started job");
       showFlash("started");
+
+      // Notify listeners (FocusedJobModal, MobileFocusedJob, WO page)
       window.dispatchEvent(new CustomEvent("wol:refresh"));
       await onUpdated?.();
     } catch (e: any) {
