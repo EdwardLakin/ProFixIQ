@@ -6,11 +6,8 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
-
-type Profile = DB["public"]["Tables"]["profiles"]["Row"];
 type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
-type LineTech =
-  DB["public"]["Tables"]["work_order_line_technicians"]["Row"];
+type Profile = DB["public"]["Tables"]["profiles"]["Row"];
 
 type MiniProfile = Pick<Profile, "id" | "full_name">;
 
@@ -29,82 +26,63 @@ export function WorkOrderAssignedSummary({ workOrderId }: Props) {
     if (!workOrderId) return;
 
     setLoading(true);
-    setHasActiveLine(false);
     setAssignedTechs([]);
+    setHasActiveLine(false);
 
-    // 1) Fetch lines for this WO
-    const { data: linesData, error: linesErr } = await supabase
+    // 1) All lines in this work order
+    const { data: lineData, error: lineErr } = await supabase
       .from("work_order_lines")
       .select(
-        "id, status, assigned_to, assigned_tech_id, punched_in_at, punched_out_at",
+        "id, assigned_to, punched_in_at, punched_out_at",
       )
       .eq("work_order_id", workOrderId);
 
-    if (linesErr || !linesData) {
+    if (lineErr || !lineData) {
+      // eslint-disable-next-line no-console
+      console.error("[WorkOrderAssignedSummary] line load error", lineErr);
       setLoading(false);
       return;
     }
 
-    const lines = linesData as Line[];
+    const lines = lineData as Line[];
 
-    // Active = any punched in and not punched out
+    // Active = any punched in & not punched out
     const active = lines.some(
       (l) => l.punched_in_at && !l.punched_out_at,
     );
     setHasActiveLine(active);
 
-    // Collect tech IDs from direct columns
-    const lineIds: string[] = [];
-    const techIdSet = new Set<string>();
+    // Source of truth for assignments: work_order_lines.assigned_to
+    const techIds = Array.from(
+      new Set(
+        lines
+          .map((l) => l.assigned_to)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
 
-    for (const line of lines) {
-      lineIds.push(line.id);
-      if (line.assigned_to) {
-        techIdSet.add(line.assigned_to as string);
-      }
-      if (line.assigned_tech_id) {
-        techIdSet.add(line.assigned_tech_id as string);
-      }
-    }
-
-    // 2) Also look at work_order_line_technicians (multi-assign link table)
-    if (lineIds.length > 0) {
-      const { data: linkData, error: linkErr } = await supabase
-        .from("work_order_line_technicians")
-        .select("work_order_line_id, technician_id")
-        .in("work_order_line_id", lineIds);
-
-      if (!linkErr && linkData) {
-        (linkData as LineTech[]).forEach((row) => {
-          if (row.technician_id) {
-            techIdSet.add(row.technician_id as string);
-          }
-        });
-      }
-    }
-
-    const techIds = Array.from(techIdSet);
     if (techIds.length === 0) {
       setAssignedTechs([]);
       setLoading(false);
       return;
     }
 
-    // 3) Load profile names for the collected IDs
-    const { data: profilesData, error: profErr } = await supabase
+    // 2) Load technician names from profiles
+    const { data: profData, error: profErr } = await supabase
       .from("profiles")
       .select("id, full_name")
       .in("id", techIds);
 
-    if (profErr || !profilesData) {
+    if (profErr || !profData) {
+      // eslint-disable-next-line no-console
+      console.error("[WorkOrderAssignedSummary] profile load error", profErr);
       setAssignedTechs([]);
       setLoading(false);
       return;
     }
 
-    const profiles = profilesData as Profile[];
+    const profiles = profData as Profile[];
 
-    // Preserve techIds order when mapping to profiles
     const ordered: MiniProfile[] = techIds
       .map((id) => profiles.find((p) => p.id === id))
       .filter(Boolean)
@@ -122,7 +100,7 @@ export function WorkOrderAssignedSummary({ workOrderId }: Props) {
   }, [load]);
 
   /* ------------------------------------------------------------------ */
-  /* Rendering                                                          */
+  /* Render                                                             */
   /* ------------------------------------------------------------------ */
 
   if (loading) {
@@ -145,7 +123,7 @@ export function WorkOrderAssignedSummary({ workOrderId }: Props) {
   let sub = "";
 
   if (hasActiveLine) {
-    // GREEN = there is an actively punched line
+    // GREEN: at least one line currently punched in
     pillClass =
       "border-emerald-400/80 bg-emerald-500/10 text-emerald-50 shadow-[0_0_18px_rgba(16,185,129,0.7)] animate-pulse";
     dotClass = "bg-emerald-400";
@@ -161,16 +139,18 @@ export function WorkOrderAssignedSummary({ workOrderId }: Props) {
       sub = "Unassigned";
     }
   } else if (count > 0) {
-    // YELLOW = assigned but no active punch
+    // YELLOW: assigned but no active punch
     pillClass =
       "border-amber-400/80 bg-amber-500/10 text-amber-50 shadow-[0_0_18px_rgba(251,191,36,0.6)] animate-pulse";
     dotClass = "bg-amber-400";
 
     label = first?.full_name ?? "Assigned tech";
     sub =
-      moreCount > 0 ? `+${moreCount} more` : "Assigned";
+      moreCount > 0
+        ? `+${moreCount} more`
+        : "Assigned";
   } else {
-    // GREY = no assignment, no active punch
+    // GREY: unassigned and no active punch
     pillClass =
       "border-neutral-700 bg-black/70 text-neutral-300";
     dotClass = "bg-neutral-500";
@@ -182,9 +162,7 @@ export function WorkOrderAssignedSummary({ workOrderId }: Props) {
     <span
       className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-[0.65rem] font-medium tracking-[0.12em] uppercase ${pillClass}`}
     >
-      <span
-        className={`h-1.5 w-1.5 rounded-full ${dotClass}`}
-      />
+      <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
       <span className="flex flex-col gap-0 leading-tight">
         <span>{label}</span>
         <span className="text-[0.6rem] normal-case opacity-80">
