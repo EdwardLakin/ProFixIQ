@@ -109,7 +109,7 @@ export default function WorkOrdersView(): JSX.Element {
   const [currentRole, setCurrentRole] = useState<string | null>(null);
 
   // 🔁 version counter to force assigned summary to refetch
-  const [assignVersion, setAssignVersion] = useState(0);
+  const [, setAssignVersion] = useState(0);
 
   // load current user role + mechanics once
   useEffect(() => {
@@ -495,10 +495,7 @@ export default function WorkOrdersView(): JSX.Element {
 
                   {/* Assigned to */}
                   <div className="text-[0.75rem] text-neutral-300">
-                    <WorkOrderAssignedSummary
-                      workOrderId={r.id}
-                      version={assignVersion}
-                    />
+                    <WorkOrderAssignedSummary workOrderId={r.id} />
                   </div>
 
                   {/* Actions */}
