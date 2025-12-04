@@ -258,29 +258,30 @@ export default function MobileTechQueuePage() {
 
             return (
               <button
-                key={line.id}
-                type="button"
-                onClick={() =>
-                  slug && router.push(`work-orders/${slug}?mode=tech`)
-                }
-                className="flex w-full items-center justify-between gap-3 rounded-2xl border border-neutral-800 bg-neutral-950/90 px-3 py-3 text-left shadow-[0_0_0_1px_rgba(15,23,42,0.9)] active:scale-[0.99]"
-              >
-                <div className="min-w-0">
-                  <div className="truncate text-[0.85rem] font-medium text-neutral-50">
-                    {wo?.custom_id
-                      ? wo.custom_id
-                      : line.work_order_id
-                      ? `WO #${line.work_order_id.slice(0, 8)}`
-                      : "Work order line"}
-                  </div>
-                  <div className="mt-0.5 text-[0.7rem] text-neutral-400">
-                    Line #{line.id.slice(0, 8)}
-                  </div>
-                </div>
-                <span className="shrink-0 rounded-full border border-neutral-700 px-2 py-0.5 text-[0.7rem] text-neutral-200">
-                  {STATUS_LABELS[bucket]}
-                </span>
-              </button>
+  key={line.id}
+  type="button"
+  onClick={() => {
+    if (!slug) return;
+    router.push(`/mobile/work-orders/${slug}?mode=tech`);
+  }}
+  className="flex w-full items-center justify-between gap-3 rounded-2xl border border-neutral-800 bg-neutral-950/90 px-3 py-3 text-left shadow-[0_0_0_1px_rgba(15,23,42,0.9)] active:scale-[0.99]"
+>
+  <div className="min-w-0">
+    <div className="truncate text-[0.85rem] font-medium text-neutral-50">
+      {wo?.custom_id
+        ? wo.custom_id
+        : line.work_order_id
+        ? `WO #${line.work_order_id.slice(0, 8)}`
+        : "Work order line"}
+    </div>
+    <div className="mt-0.5 text-[0.7rem] text-neutral-400">
+      Line #{line.id.slice(0, 8)}
+    </div>
+  </div>
+  <span className="shrink-0 rounded-full border border-neutral-700 px-2 py-0.5 text-[0.7rem] text-neutral-200">
+    {STATUS_LABELS[bucket]}
+  </span>
+</button>
             );
           })}
 
