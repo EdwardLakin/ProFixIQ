@@ -108,6 +108,9 @@ export default function WorkOrdersView(): JSX.Element {
 
   const [currentRole, setCurrentRole] = useState<string | null>(null);
 
+  // 🔁 version counter to force assigned summary to refetch
+  const [assignVersion, setAssignVersion] = useState(0);
+
   // load current user role + mechanics once
   useEffect(() => {
     (async () => {
@@ -281,6 +284,8 @@ export default function WorkOrdersView(): JSX.Element {
         }
         setAssigningFor(null);
         await load();
+        // 🔁 tell summary pills to reload assignment info
+        setAssignVersion((v) => v + 1);
         toast.success("Work order assigned to mechanic.");
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Failed to assign.";
@@ -365,7 +370,13 @@ export default function WorkOrdersView(): JSX.Element {
               <option value="ready_to_invoice">Ready to invoice</option>
               <option value="invoiced">Invoiced</option>
             </select>
-            <button onClick={() => void load()} className={BUTTON_MUTED}>
+            <button
+              onClick={() => {
+                void load();
+                setAssignVersion((v) => v + 1);
+              }}
+              className={BUTTON_MUTED}
+            >
               Refresh
             </button>
           </div>
@@ -484,7 +495,10 @@ export default function WorkOrdersView(): JSX.Element {
 
                   {/* Assigned to */}
                   <div className="text-[0.75rem] text-neutral-300">
-                    <WorkOrderAssignedSummary workOrderId={r.id} />
+                    <WorkOrderAssignedSummary
+                      workOrderId={r.id}
+                      version={assignVersion}
+                    />
                   </div>
 
                   {/* Actions */}
@@ -538,7 +552,7 @@ export default function WorkOrdersView(): JSX.Element {
                             </button>
                             <button
                               onClick={() => setAssigningFor(null)}
-                              className="rounded-full border border-white/15 bg-white/5 px-2 py-1 text-[0.7rem] text-neutral-200 hover:bg-white/10"
+                              className="rounded-full border border-white/15 bg_WHITE/5 px-2 py-1 text-[0.7rem] text-neutral-200 hover:bg-white/10"
                             >
                               ✕
                             </button>

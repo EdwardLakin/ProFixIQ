@@ -7,15 +7,19 @@ import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
 type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
+type LineTech =
+  DB["public"]["Tables"]["work_order_line_technicians"]["Row"];
 type Profile = DB["public"]["Tables"]["profiles"]["Row"];
 
 type MiniProfile = Pick<Profile, "id" | "full_name">;
 
 type Props = {
   workOrderId: string;
+  /** bump this number from the parent to force a reload */
+  version?: number;
 };
 
-export function WorkOrderAssignedSummary({ workOrderId }: Props) {
+export function WorkOrderAssignedSummary({ workOrderId, version = 0 }: Props) {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   const [loading, setLoading] = useState(true);
@@ -29,12 +33,10 @@ export function WorkOrderAssignedSummary({ workOrderId }: Props) {
     setAssignedTechs([]);
     setHasActiveLine(false);
 
-    // 1) All lines in this work order
+    // 1) lines in this WO
     const { data: lineData, error: lineErr } = await supabase
       .from("work_order_lines")
-      .select(
-        "id, assigned_to, punched_in_at, punched_out_at",
-      )
+      .select("id, assigned_to, assigned_tech_id, punched_in_at, punched_out_at")
       .eq("work_order_id", workOrderId);
 
     if (lineErr || !lineData) {
@@ -46,28 +48,53 @@ export function WorkOrderAssignedSummary({ workOrderId }: Props) {
 
     const lines = lineData as Line[];
 
-    // Active = any punched in & not punched out
+    // any active punch?
     const active = lines.some(
       (l) => l.punched_in_at && !l.punched_out_at,
     );
     setHasActiveLine(active);
 
-    // Source of truth for assignments: work_order_lines.assigned_to
-    const techIds = Array.from(
-      new Set(
-        lines
-          .map((l) => l.assigned_to)
-          .filter((id): id is string => Boolean(id)),
-      ),
-    );
+    const lineIds = lines.map((l) => l.id);
+    const techIdSet = new Set<string>();
 
+    // primary / legacy assignment fields on the line
+    for (const l of lines) {
+      if (typeof l.assigned_to === "string" && l.assigned_to) {
+        techIdSet.add(l.assigned_to);
+      }
+      if (typeof (l as any).assigned_tech_id === "string" && (l as any).assigned_tech_id) {
+        techIdSet.add((l as any).assigned_tech_id);
+      }
+    }
+
+    // 2) multi-tech link table
+    if (lineIds.length > 0) {
+      const { data: techRows, error: techErr } = await supabase
+        .from("work_order_line_technicians")
+        .select("work_order_line_id, technician_id")
+        .in("work_order_line_id", lineIds);
+
+      if (!techErr && techRows) {
+        (techRows as LineTech[]).forEach((lt) => {
+          if (lt.technician_id) techIdSet.add(lt.technician_id);
+        });
+      } else if (techErr) {
+        // eslint-disable-next-line no-console
+        console.error(
+          "[WorkOrderAssignedSummary] line_techs load error",
+          techErr,
+        );
+      }
+    }
+
+    const techIds = Array.from(techIdSet);
     if (techIds.length === 0) {
       setAssignedTechs([]);
       setLoading(false);
       return;
     }
 
-    // 2) Load technician names from profiles
+    // 3) load names from profiles
     const { data: profData, error: profErr } = await supabase
       .from("profiles")
       .select("id, full_name")
@@ -95,9 +122,10 @@ export function WorkOrderAssignedSummary({ workOrderId }: Props) {
     setLoading(false);
   }, [supabase, workOrderId]);
 
+  // run on mount, when WO id changes, AND when version bumps
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, version]);
 
   /* ------------------------------------------------------------------ */
   /* Render                                                             */
