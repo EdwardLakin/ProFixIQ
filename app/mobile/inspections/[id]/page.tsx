@@ -1,194 +1,74 @@
-// app/mobile/inspections/[id]/page.tsx
+// app/mobile/inspections/[id]/run/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { useRouter, useParams } from "next/navigation";
-import { format } from "date-fns";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@shared/types/types/supabase";
+import { useParams, useRouter } from "next/navigation";
+import type { JSX } from "react";
 
-type DB = Database;
+/**
+ * TODO: When we finish the Inspection Modal work:
+ *  - Import your real mobile inspection runner component here
+ *    (e.g. from "@/features/inspections/components/InspectionModalMobile")
+ *  - Replace <MobileInspectionPlaceholder /> with that component.
+ */
 
-type InspectionDetailRow = {
-  id: string;
-  custom_id?: string | null;
-  status?: string | null;
-  created_at?: string | null;
-  form_name?: string | null;
-  customer_name?: string | null;
-  vehicle_label?: string | null;
-  notes_summary?: string | null;
-};
-
-const BADGE_BASE =
-  "inline-flex items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.12em]";
-
-const STATUS_CLASS: Record<string, string> = {
-  open: "border-sky-500/70 bg-sky-500/10 text-sky-100",
-  in_progress: "border-orange-500/70 bg-orange-500/10 text-orange-100",
-  completed: "border-emerald-500/70 bg-emerald-500/10 text-emerald-100",
-  archived: "border-neutral-500/70 bg-neutral-800/80 text-neutral-200",
-};
-
-function statusChip(status: string | null | undefined): string {
-  const key = (status ?? "open").toLowerCase().replace(/\s+/g, "_");
-  const extra = STATUS_CLASS[key] ?? STATUS_CLASS.open;
-  return `${BADGE_BASE} ${extra}`;
+function MobileInspectionPlaceholder({ id }: { id: string }): JSX.Element {
+  return (
+    <div className="mt-4 rounded-2xl border border-white/10 bg-black/40 p-4 text-sm text-neutral-200 shadow-[0_18px_45px_rgba(0,0,0,0.85)]">
+      <p className="mb-2 font-semibold">
+        Mobile inspection runner placeholder
+      </p>
+      <p className="text-xs text-neutral-400">
+        This route is ready for the mobile inspection modal for session/job:
+        <span className="font-mono text-neutral-100"> {id}</span>.
+        <br />
+        In the inspection-modal thread we’ll mount the real inspection
+        component here so it’s fully mobile-friendly (corner grids, voice, etc.)
+        without loading the full desktop app shell.
+      </p>
+    </div>
+  );
 }
 
-export default function MobileInspectionDetailPage() {
+export default function MobileInspectionRunnerPage(): JSX.Element {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const id = params.id;
 
-  const supabase = useMemo(() => createClientComponentClient<DB>(), []);
-
-  const [inspection, setInspection] = useState<InspectionDetailRow | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!id) return;
-
-    (async () => {
-      setLoading(true);
-      setErr(null);
-      try {
-        const { data, error } = await supabase
-          .from("inspection_sessions")
-          .select(
-            "id, custom_id, status, created_at, form_name, customer_name, vehicle_label, notes_summary",
-          )
-          .eq("id", id)
-          .maybeSingle();
-
-        if (error) throw error;
-        if (!data) {
-          setInspection(null);
-          setErr("Inspection not found.");
-        } else {
-          setInspection(data as InspectionDetailRow);
-        }
-      } catch (e) {
-        const msg =
-          e instanceof Error ? e.message : "Failed to load inspection.";
-        setErr(msg);
-        setInspection(null);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [id, supabase]);
-
-  const created =
-    inspection?.created_at != null
-      ? format(new Date(inspection.created_at), "PP p")
-      : null;
+  if (!id) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-black text-red-300">
+        <p className="text-sm">Missing inspection id.</p>
+      </main>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-neutral-950 px-4 py-4 text-foreground">
-      {/* Top bar */}
+    <main className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-4xl flex-col bg-transparent px-3 py-4 text-white">
+      {/* Header bar – consistent with other mobile pages */}
       <div className="mb-4 flex items-center justify-between gap-2">
         <button
           type="button"
           onClick={() => router.back()}
-          className="rounded-full border border-neutral-700 bg-neutral-950 px-3 py-1 text-xs text-neutral-200 hover:bg-neutral-900"
+          className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-black/40 px-3 py-1 text-[11px] text-neutral-100 hover:bg-black/70"
         >
-          ← Back
+          <span>←</span>
+          <span className="uppercase tracking-[0.16em]">Back</span>
         </button>
-        <Link
-          href={`/inspections/${id}`}
-          className="rounded-full border border-orange-500/70 bg-orange-500 px-3 py-1 text-xs font-semibold text-black hover:bg-orange-400"
-        >
-          Open full view
-        </Link>
+
+        <div className="flex-1 px-2 text-center">
+          <h1 className="truncate text-xs font-blackops uppercase tracking-[0.18em] text-neutral-200">
+            Run Inspection
+          </h1>
+        </div>
+
+        {/* Right side left intentionally minimal for now */}
+        <div className="w-16" />
       </div>
 
-      {/* Heading */}
-      <div className="space-y-1">
-        <h1 className="text-lg font-blackops uppercase tracking-[0.18em] text-neutral-200">
-          Inspection
-        </h1>
-        {inspection?.custom_id && (
-          <p className="text-xs text-neutral-400">
-            ID:{" "}
-            <span className="font-mono text-neutral-100">
-              {inspection.custom_id}
-            </span>
-          </p>
-        )}
-        {inspection && (
-          <div className="mt-1 inline-flex items-center gap-2">
-            <span className={statusChip(inspection.status ?? "open")}>
-              {(inspection.status ?? "open").replaceAll("_", " ")}
-            </span>
-            {created && (
-              <span className="text-[0.7rem] text-neutral-400">
-                {created}
-              </span>
-            )}
-          </div>
-        )}
+      {/* Body – this is where the real mobile inspection modal will live */}
+      <div className="flex-1">
+        <MobileInspectionPlaceholder id={String(id)} />
       </div>
-
-      {err && (
-        <div className="mt-4 rounded-md border border-red-500/60 bg-red-950/40 px-3 py-2 text-xs text-red-200">
-          {err}
-        </div>
-      )}
-
-      {loading ? (
-        <div className="mt-4 rounded-lg border border-white/10 bg-black/40 px-3 py-4 text-sm text-neutral-300">
-          Loading inspection…
-        </div>
-      ) : !inspection ? (
-        <div className="mt-4 rounded-lg border border-dashed border-white/15 bg-black/40 px-3 py-6 text-sm text-neutral-400">
-          Inspection not found.
-        </div>
-      ) : (
-        <div className="mt-4 space-y-4">
-          {/* Context */}
-          <div className="rounded-lg border border-neutral-800 bg-neutral-950/80 px-3 py-3 text-sm">
-            <div className="mb-1 text-[0.7rem] uppercase tracking-[0.16em] text-neutral-500">
-              Context
-            </div>
-            <div className="space-y-1 text-xs text-neutral-200">
-              <div>
-                <span className="text-neutral-500">Form:</span>{" "}
-                {inspection.form_name ?? "—"}
-              </div>
-              <div>
-                <span className="text-neutral-500">Customer:</span>{" "}
-                {inspection.customer_name ?? "—"}
-              </div>
-              <div>
-                <span className="text-neutral-500">Vehicle:</span>{" "}
-                {inspection.vehicle_label ?? "—"}
-              </div>
-            </div>
-          </div>
-
-          {/* Summary / notes */}
-          <div className="rounded-lg border border-neutral-800 bg-neutral-950/80 px-3 py-3 text-sm">
-            <div className="mb-1 text-[0.7rem] uppercase tracking-[0.16em] text-neutral-500">
-              Summary
-            </div>
-            <p className="whitespace-pre-line text-xs text-neutral-200">
-              {inspection.notes_summary ??
-                "Mobile inspection editing is coming soon. Use the desktop view to complete this inspection."}
-            </p>
-          </div>
-
-          {/* Run inspection (mobile runner) */}
-          <Link
-            href={`/mobile/inspections/${id}/run`}
-            className="block w-full rounded-lg bg-accent px-4 py-2 text-center text-sm font-semibold text-black hover:bg-accent/90"
-          >
-            Run inspection
-          </Link>
-        </div>
-      )}
-    </div>
+    </main>
   );
 }

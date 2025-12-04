@@ -48,6 +48,10 @@ type LineTechRow =
   DB["public"]["Tables"]["work_order_line_technicians"]["Row"];
 
 type WorkOrderLineWithInspectionMeta = WorkOrderLine & {
+  // real DB column
+  inspection_template_id?: string | null;
+
+  // older / alternate fields we may have used in earlier iterations
   inspection_template?: string | null;
   inspectionTemplate?: string | null;
   template?: string | null;
@@ -68,6 +72,23 @@ function splitCustomId(raw: string): { prefix: string; n: number | null } {
   if (!m) return { prefix: raw.toUpperCase(), n: null };
   const n = m[2] ? parseInt(m[2], 10) : null;
   return { prefix: m[1], n: Number.isFinite(n!) ? n : null };
+}
+
+/** Normalize “where is the inspection template id stored for this line?” */
+function extractInspectionTemplateId(
+  ln: WorkOrderLineWithInspectionMeta,
+): string | null {
+  return (
+    ln.inspection_template_id ??
+    ln.inspection_template ??
+    ln.inspectionTemplate ??
+    ln.template ??
+    ln.metadata?.inspection_template ??
+    ln.metadata?.template ??
+    ln.metadata2?.inspection_template ??
+    ln.metadata2?.template ??
+    null
+  );
 }
 
 /* ---------------------------- Badges ---------------------------- */
@@ -535,7 +556,7 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   /* ----------------------- Derived data ----------------------- */
 
-    // simple map of active quote-lines per work_order_line
+  // simple map of active quote-lines per work_order_line
   const activeQuotesByLine = useMemo(() => {
     const m: Record<string, WorkOrderQuoteLine[]> = {};
 
@@ -647,7 +668,7 @@ export default function WorkOrderIdClient(): JSX.Element {
     return m;
   }, [assignables]);
 
-    type WorkOrderWaiterFlags = {
+  type WorkOrderWaiterFlags = {
     is_waiter?: boolean | null;
     waiter?: boolean | null;
     customer_waiting?: boolean | null;
@@ -762,13 +783,7 @@ export default function WorkOrderIdClient(): JSX.Element {
       const anyLine = ln as WorkOrderLineWithInspectionMeta;
 
       // Treat this as the *templateId* for inspection_templates
-      const templateId =
-        anyLine?.inspection_template ??
-        anyLine?.inspectionTemplate ??
-        anyLine?.template ??
-        anyLine?.metadata?.inspection_template ??
-        anyLine?.metadata?.template ??
-        null;
+      const templateId = extractInspectionTemplateId(anyLine);
 
       if (!templateId) {
         toast.error(
@@ -782,8 +797,8 @@ export default function WorkOrderIdClient(): JSX.Element {
       if (wo?.id) sp.set("workOrderId", wo.id);
       sp.set("workOrderLineId", ln.id);
       sp.set("templateId", templateId);
-      sp.set("embed", "1");      // so GenericInspectionScreen knows it's in a modal
-      sp.set("view", "mobile");  // optional: enables the mobile-only voice controls
+      sp.set("embed", "1"); // so GenericInspectionScreen knows it's in a modal
+      sp.set("view", "mobile"); // optional: enables the mobile-only voice controls
 
       if (ln.description) {
         sp.set("seed", String(ln.description));
@@ -886,7 +901,7 @@ export default function WorkOrderIdClient(): JSX.Element {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="text-xl font-semibold text白 sm:text-2xl">
+                    <h1 className="text-xl font-semibold text-white sm:text-2xl">
                       Work Order{" "}
                       <span className="text-orange-400">
                         {wo.custom_id || `#${wo.id.slice(0, 8)}`}
@@ -896,21 +911,21 @@ export default function WorkOrderIdClient(): JSX.Element {
                       {(wo.status ?? "awaiting").replaceAll("_", " ")}
                     </span>
                     {isWaiter && (
-  <span
-    className="
-      ml-auto
-      inline-flex items-center whitespace-nowrap
-      rounded-full border border-red-500
-      bg-red-500/10
-      px-4 py-1.5
-      text-xs sm:text-sm font-semibold uppercase tracking-[0.16em]
-      text-red-200
-      shadow-[0_0_18px_rgba(248,113,113,0.9)]
-    "
-  >
-    Waiter
-  </span>
-)}
+                      <span
+                        className="
+                          ml-auto
+                          inline-flex items-center whitespace-nowrap
+                          rounded-full border border-red-500
+                          bg-red-500/10
+                          px-4 py-1.5
+                          text-xs sm:text-sm font-semibold uppercase tracking-[0.16em]
+                          text-red-200
+                          shadow-[0_0_18px_rgba(248,113,113,0.9)]
+                        "
+                      >
+                        Waiter
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-neutral-400">
                     Created {createdAtText}
@@ -1052,7 +1067,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                 </h2>
               </div>
 
-              {!hasAnyApprovalItems ? (
+            {!hasAnyApprovalItems ? (
                 <p className="text-xs text-neutral-400">
                   No lines waiting for approval.
                 </p>
@@ -1220,9 +1235,9 @@ export default function WorkOrderIdClient(): JSX.Element {
 
             {/* Jobs list */}
             <div className="rounded-xl border border-border bg-card/95 p-4">
-              <div className="mb-3 flex items-center justify-between gap-2">
+              <div className="mb-3 flex items-center justify_between gap-2">
                 <div>
-                  <h2 className="text-sm font-semibold text-white sm:text-base">
+                  <h2 className="text-sm font-semibold text_white sm:text-base">
                     Jobs in this work order
                   </h2>
                   <p className="text-[11px] text-neutral-500">
