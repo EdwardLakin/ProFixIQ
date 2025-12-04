@@ -1,10 +1,15 @@
 // app/dashboard/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import Link from "next/link";
+
+type DB = Database;
+type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
+type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
+type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 
 type CountState = {
   appointments: number | null;
@@ -14,27 +19,42 @@ type CountState = {
 
 export default function DashboardPage() {
   const supabase = createClientComponentClient<Database>();
+
   const [name, setName] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+
   const [counts, setCounts] = useState<CountState>({
     appointments: null,
     workOrders: null,
     partsRequests: null,
   });
 
-  // fetch profile
+  // current punched-in job for this user
+  const [currentJob, setCurrentJob] = useState<WorkOrderLine | null>(null);
+  const [currentJobWorkOrder, setCurrentJobWorkOrder] =
+    useState<WorkOrder | null>(null);
+  const [currentJobVehicle, setCurrentJobVehicle] =
+    useState<Vehicle | null>(null);
+  const [loadingCurrentJob, setLoadingCurrentJob] = useState(false);
+
+  // fetch profile + user id
   useEffect(() => {
     (async () => {
       const {
         data: { session },
       } = await supabase.auth.getSession();
-      const uid = session?.user?.id;
+      const uid = session?.user?.id ?? null;
+      setUserId(uid);
+
       if (!uid) return;
+
       const { data: profile } = await supabase
         .from("profiles")
         .select("full_name, role")
         .eq("id", uid)
         .maybeSingle();
+
       setName(profile?.full_name ?? null);
       setRole(profile?.role ?? null);
     })();
@@ -63,7 +83,98 @@ export default function DashboardPage() {
     })();
   }, [supabase]);
 
+  /* ---------------------------------------------------------------------- */
+  /* Current job – job this user is actively punched in on                  */
+  /* ---------------------------------------------------------------------- */
+
+  const loadCurrentJob = useCallback(
+    async (uid: string | null) => {
+      if (!uid) {
+        setCurrentJob(null);
+        setCurrentJobWorkOrder(null);
+        setCurrentJobVehicle(null);
+        return;
+      }
+
+      setLoadingCurrentJob(true);
+      try {
+        const { data, error } = await supabase
+          .from("work_order_lines")
+          .select(
+            "id, work_order_id, description, complaint, job_type, punched_in_at, punched_out_at, punched_in_by",
+          )
+          .eq("punched_in_by", uid)
+          .is("punched_out_at", null)
+          .order("punched_in_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (error) {
+          // eslint-disable-next-line no-console
+          console.error("[Dashboard] current job load error:", error);
+          setCurrentJob(null);
+          setCurrentJobWorkOrder(null);
+          setCurrentJobVehicle(null);
+          return;
+        }
+
+        const line = (data as WorkOrderLine | null) ?? null;
+        setCurrentJob(line);
+
+        if (!line?.work_order_id) {
+          setCurrentJobWorkOrder(null);
+          setCurrentJobVehicle(null);
+          return;
+        }
+
+        // related work order
+        const { data: wo, error: woErr } = await supabase
+          .from("work_orders")
+          .select("id, custom_id, vehicle_id")
+          .eq("id", line.work_order_id)
+          .maybeSingle<WorkOrder>();
+
+        if (woErr) {
+          console.error("[Dashboard] current job WO load error:", woErr);
+          setCurrentJobWorkOrder(null);
+          setCurrentJobVehicle(null);
+          return;
+        }
+
+        const workOrder = wo ?? null;
+        setCurrentJobWorkOrder(workOrder);
+
+        if (workOrder?.vehicle_id) {
+          const { data: veh, error: vehErr } = await supabase
+            .from("vehicles")
+            .select("id, year, make, model, license_plate")
+            .eq("id", workOrder.vehicle_id)
+            .maybeSingle<Vehicle>();
+
+          if (vehErr) {
+            console.error("[Dashboard] current job vehicle load error:", vehErr);
+            setCurrentJobVehicle(null);
+          } else {
+            setCurrentJobVehicle(veh ?? null);
+          }
+        } else {
+          setCurrentJobVehicle(null);
+        }
+      } finally {
+        setLoadingCurrentJob(false);
+      }
+    },
+    [supabase],
+  );
+
+  useEffect(() => {
+    void loadCurrentJob(userId);
+  }, [userId, loadCurrentJob]);
+
   const firstName = name ? name.split(" ")[0] : null;
+
+  const isTechRole =
+    role === "tech" || role === "mechanic" || role === "technician";
 
   return (
     <div className="relative space-y-8 fade-in">
@@ -84,6 +195,18 @@ export default function DashboardPage() {
           </p>
         </div>
       </section>
+
+      {/* active job pill – only for tech/mechanic roles */}
+      {isTechRole && (
+        <section>
+          <ActiveJobCard
+            loading={loadingCurrentJob}
+            job={currentJob}
+            workOrder={currentJobWorkOrder}
+            vehicle={currentJobVehicle}
+          />
+        </section>
+      )}
 
       {/* overview cards */}
       <section className="grid gap-4 md:grid-cols-4">
@@ -111,16 +234,12 @@ export default function DashboardPage() {
 
       {/* quick actions */}
       <section className="space-y-3">
-        <h2 className="text-sm font-medium text-neutral-300">
-          Quick actions
-        </h2>
+        <h2 className="text-sm font-medium text-neutral-300">Quick actions</h2>
         <div className="flex flex-wrap gap-3">
           <QuickButton href="/work-orders/create?autostart=1">
             New work order
           </QuickButton>
-          <QuickButton href="/portal/appointments">
-            Appointments
-          </QuickButton>
+          <QuickButton href="/portal/appointments">Appointments</QuickButton>
           <QuickButton href="/ai/assistant">AI assistant</QuickButton>
           {role === "owner" || role === "admin" ? (
             <QuickButton href="/dashboard/owner/reports">
@@ -132,6 +251,100 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+/* ------------------------------------------------------------------------ */
+/* Active Job Card                                                          */
+/* ------------------------------------------------------------------------ */
+
+function ActiveJobCard({
+  loading,
+  job,
+  workOrder,
+  vehicle,
+}: {
+  loading: boolean;
+  job: WorkOrderLine | null;
+  workOrder: WorkOrder | null;
+  vehicle: Vehicle | null;
+}) {
+  if (loading) {
+    return (
+      <div className="group relative overflow-hidden rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-r from-black/85 via-slate-950/95 to-black/85 px-4 py-3 shadow-[0_20px_40px_rgba(0,0,0,0.95)]">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-neutral-400">
+              Active job
+            </p>
+            <p className="mt-1 text-sm text-neutral-300">Checking…</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!job || !workOrder) {
+    return (
+      <div className="group relative overflow-hidden rounded-2xl border border-[color:var(--metal-border-soft,#1f2937)] bg-gradient-to-r from-black/85 via-slate-950/95 to-black/85 px-4 py-3 shadow-[0_20px_40px_rgba(0,0,0,0.95)]">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">
+              Active job
+            </p>
+            <p className="mt-1 text-sm text-neutral-400">
+              No active job punch.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const jobLabel =
+    job.description ||
+    job.complaint ||
+    String(job.job_type ?? "Job in progress");
+
+  const vehicleLabel = vehicle
+    ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`
+        .trim()
+        .replace(/\s+/g, " ")
+    : null;
+
+  const woLabel = workOrder.custom_id || workOrder.id.slice(0, 8);
+
+  // 🔗 Include the line id so the job page can focus that line
+  const href = `/work-orders/${workOrder.id}?focus=${job.id}`;
+
+  return (
+    <Link
+      href={href}
+      className="group relative block overflow-hidden rounded-2xl border border-[color:var(--accent-copper,#f97316)]/80 bg-gradient-to-r from-black/85 via-slate-950/95 to-black/85 px-4 py-3 shadow-[0_24px_45px_rgba(0,0,0,0.95),0_0_35px_rgba(249,115,22,0.55)]"
+    >
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.12),transparent_60%)] opacity-0 transition-opacity group-hover:opacity-100" />
+      <div className="relative flex items-center justify-between gap-3">
+        <div>
+          <p className="text-[11px] uppercase tracking-[0.18em] text-[color:var(--accent-copper,#f97316)]">
+            Active job
+          </p>
+          <p className="mt-1 line-clamp-1 text-sm font-semibold text-white">
+            {jobLabel}
+          </p>
+          <p className="mt-1 text-xs text-neutral-300">
+            WO {woLabel}
+            {vehicleLabel ? ` • ${vehicleLabel}` : ""}
+          </p>
+        </div>
+        <span className="text-xs text-[color:var(--accent-copper,#f97316)]">
+          Open →
+        </span>
+      </div>
+    </Link>
+  );
+}
+
+/* ------------------------------------------------------------------------ */
+/* Existing cards/buttons                                                   */
+/* ------------------------------------------------------------------------ */
 
 function OverviewCard({
   title,

@@ -47,6 +47,8 @@ type Props = {
 type ShiftStatus = "none" | "active" | "break" | "lunch" | "ended";
 
 type WorkOrderLine = DB["public"]["Tables"]["work_order_lines"]["Row"];
+type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
+type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 
 export function MobileTechHome({
   techName,
@@ -64,6 +66,10 @@ export function MobileTechHome({
 
   // current punched-in job
   const [currentJob, setCurrentJob] = useState<WorkOrderLine | null>(null);
+  const [currentJobWorkOrder, setCurrentJobWorkOrder] =
+    useState<WorkOrder | null>(null);
+  const [currentJobVehicle, setCurrentJobVehicle] =
+    useState<Vehicle | null>(null);
   const [loadingCurrentJob, setLoadingCurrentJob] = useState(false);
 
   const firstName = techName?.split(" ")[0] ?? techName ?? "Tech";
@@ -190,6 +196,8 @@ export function MobileTechHome({
     async (uid: string | null) => {
       if (!uid) {
         setCurrentJob(null);
+        setCurrentJobWorkOrder(null);
+        setCurrentJobVehicle(null);
         return;
       }
 
@@ -210,10 +218,56 @@ export function MobileTechHome({
           // eslint-disable-next-line no-console
           console.error("[MobileTechHome] current job load error:", error);
           setCurrentJob(null);
+          setCurrentJobWorkOrder(null);
+          setCurrentJobVehicle(null);
           return;
         }
 
-        setCurrentJob((data as WorkOrderLine | null) ?? null);
+        const line = (data as WorkOrderLine | null) ?? null;
+        setCurrentJob(line);
+
+        if (!line?.work_order_id) {
+          setCurrentJobWorkOrder(null);
+          setCurrentJobVehicle(null);
+          return;
+        }
+
+        // Fetch the related work order
+        const { data: wo, error: woErr } = await supabase
+          .from("work_orders")
+          .select("id, custom_id, vehicle_id")
+          .eq("id", line.work_order_id)
+          .maybeSingle<WorkOrder>();
+
+        if (woErr) {
+          console.error("[MobileTechHome] current job WO load error:", woErr);
+          setCurrentJobWorkOrder(null);
+          setCurrentJobVehicle(null);
+          return;
+        }
+
+        const workOrder = wo ?? null;
+        setCurrentJobWorkOrder(workOrder);
+
+        if (workOrder?.vehicle_id) {
+          const { data: veh, error: vehErr } = await supabase
+            .from("vehicles")
+            .select("id, year, make, model, license_plate")
+            .eq("id", workOrder.vehicle_id)
+            .maybeSingle<Vehicle>();
+
+          if (vehErr) {
+            console.error(
+              "[MobileTechHome] current job vehicle load error:",
+              vehErr,
+            );
+            setCurrentJobVehicle(null);
+          } else {
+            setCurrentJobVehicle(veh ?? null);
+          }
+        } else {
+          setCurrentJobVehicle(null);
+        }
       } finally {
         setLoadingCurrentJob(false);
       }
@@ -298,9 +352,14 @@ export function MobileTechHome({
         </div>
       </section>
 
-      {/* current job pill */}
+      {/* current job pill – only while on shift */}
       {shiftStatus !== "none" && shiftStatus !== "ended" && (
-        <CurrentJobPill loading={loadingCurrentJob} job={currentJob} />
+        <CurrentJobPill
+          loading={loadingCurrentJob}
+          job={currentJob}
+          workOrder={currentJobWorkOrder}
+          vehicle={currentJobVehicle}
+        />
       )}
 
       {/* summary cards – worked vs billed */}
@@ -389,9 +448,13 @@ export function MobileTechHome({
 function CurrentJobPill({
   loading,
   job,
+  workOrder,
+  vehicle,
 }: {
   loading: boolean;
   job: WorkOrderLine | null;
+  workOrder: WorkOrder | null;
+  vehicle: Vehicle | null;
 }) {
   if (loading) {
     return (
@@ -404,7 +467,7 @@ function CurrentJobPill({
     );
   }
 
-  if (!job || !job.work_order_id) {
+  if (!job || !workOrder) {
     return (
       <div className="metal-card inline-flex w-full items-center justify-between rounded-2xl border border-[var(--metal-border-soft)] px-3 py-2 text-[0.75rem] text-neutral-400">
         <span className="uppercase tracking-[0.16em] text-neutral-400">
@@ -417,12 +480,21 @@ function CurrentJobPill({
     );
   }
 
-  const label =
+  const jobLabel =
     job.description ||
     job.complaint ||
     String(job.job_type ?? "Job in progress");
 
-  const href = `/mobile/work-orders/${job.work_order_id}`;
+  const vehicleLabel = vehicle
+    ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`
+        .trim()
+        .replace(/\s+/g, " ")
+    : null;
+
+  const woLabel = workOrder.custom_id || workOrder.id.slice(0, 8);
+
+  // 🔗 Include the line id so the mobile WO page can auto-focus that job
+  const href = `/mobile/work-orders/${workOrder.id}?focus=${job.id}`;
 
   return (
     <Link
@@ -433,7 +505,13 @@ function CurrentJobPill({
         <span className="text-[0.65rem] uppercase tracking-[0.18em] text-[var(--accent-copper-soft)]">
           Current job
         </span>
-        <span className="mt-0.5 truncate text-sm font-medium">{label}</span>
+        <span className="mt-0.5 truncate text-sm font-medium">
+          {jobLabel}
+        </span>
+        <span className="mt-0.5 text-[0.7rem] text-neutral-300">
+          WO {woLabel}
+          {vehicleLabel ? ` • ${vehicleLabel}` : ""}
+        </span>
       </div>
       <span className="ml-3 text-xs text-[var(--accent-copper-soft)]">
         Go →
