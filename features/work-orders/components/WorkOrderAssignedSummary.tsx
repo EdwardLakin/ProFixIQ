@@ -1,7 +1,7 @@
-// features/work-orders/components/WorkOrderAssignedSummary.tsx
+// src/features/work-orders/components/WorkOrderAssignedSummary.tsx
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 
@@ -11,192 +11,213 @@ type LineTech =
   DB["public"]["Tables"]["work_order_line_technicians"]["Row"];
 type Profile = DB["public"]["Tables"]["profiles"]["Row"];
 
-type MiniProfile = Pick<Profile, "id" | "full_name">;
-
 type Props = {
   workOrderId: string;
-  /** bump this number from the parent to force a reload */
-  version?: number;
 };
 
-export function WorkOrderAssignedSummary({ workOrderId, version = 0 }: Props) {
+export function WorkOrderAssignedSummary({ workOrderId }: Props) {
   const supabase = useMemo(() => createClientComponentClient<DB>(), []);
 
   const [loading, setLoading] = useState(true);
-  const [assignedTechs, setAssignedTechs] = useState<MiniProfile[]>([]);
-  const [hasActiveLine, setHasActiveLine] = useState(false);
+  const [assignedIds, setAssignedIds] = useState<string[]>([]);
+  const [profilesById, setProfilesById] = useState<
+    Record<string, Pick<Profile, "id" | "full_name" | "role">>
+  >({});
+  const [hasActive, setHasActive] = useState(false);
 
-  const load = useCallback(async () => {
+  useEffect(() => {
     if (!workOrderId) return;
 
-    setLoading(true);
-    setAssignedTechs([]);
-    setHasActiveLine(false);
+    let cancelled = false;
 
-    // 1) lines in this WO
-    const { data: lineData, error: lineErr } = await supabase
-      .from("work_order_lines")
-      .select("id, assigned_to, assigned_tech_id, punched_in_at, punched_out_at")
-      .eq("work_order_id", workOrderId);
+    const load = async () => {
+      setLoading(true);
+      setHasActive(false);
+      setAssignedIds([]);
+      setProfilesById({});
 
-    if (lineErr || !lineData) {
-      // eslint-disable-next-line no-console
-      console.error("[WorkOrderAssignedSummary] line load error", lineErr);
-      setLoading(false);
-      return;
-    }
+      try {
+        // 1) Lines for this work order
+        const { data: linesData, error: linesErr } = await supabase
+          .from("work_order_lines")
+          .select(
+            "id, assigned_tech_id, punched_in_at, punched_out_at",
+          )
+          .eq("work_order_id", workOrderId);
 
-    const lines = lineData as Line[];
+        if (linesErr) {
+          // eslint-disable-next-line no-console
+          console.error("[WorkOrderAssignedSummary] lines error:", linesErr);
+          if (!cancelled) setLoading(false);
+          return;
+        }
 
-    // any active punch?
-    const active = lines.some(
-      (l) => l.punched_in_at && !l.punched_out_at,
-    );
-    setHasActiveLine(active);
+        const lines = (linesData ?? []) as Pick<
+          Line,
+          "id" | "assigned_tech_id" | "punched_in_at" | "punched_out_at"
+        >[];
 
-    const lineIds = lines.map((l) => l.id);
-    const techIdSet = new Set<string>();
+        if (cancelled) return;
 
-    // primary / legacy assignment fields on the line
-    for (const l of lines) {
-      if (typeof l.assigned_to === "string" && l.assigned_to) {
-        techIdSet.add(l.assigned_to);
-      }
-      if (typeof (l as any).assigned_tech_id === "string" && (l as any).assigned_tech_id) {
-        techIdSet.add((l as any).assigned_tech_id);
-      }
-    }
-
-    // 2) multi-tech link table
-    if (lineIds.length > 0) {
-      const { data: techRows, error: techErr } = await supabase
-        .from("work_order_line_technicians")
-        .select("work_order_line_id, technician_id")
-        .in("work_order_line_id", lineIds);
-
-      if (!techErr && techRows) {
-        (techRows as LineTech[]).forEach((lt) => {
-          if (lt.technician_id) techIdSet.add(lt.technician_id);
-        });
-      } else if (techErr) {
-        // eslint-disable-next-line no-console
-        console.error(
-          "[WorkOrderAssignedSummary] line_techs load error",
-          techErr,
+        // active = any punched in and not punched out
+        const active = lines.some(
+          (l) => l.punched_in_at && !l.punched_out_at,
         );
+        setHasActive(active);
+
+        if (lines.length === 0) {
+          if (!cancelled) setLoading(false);
+          return;
+        }
+
+        const lineIds = lines.map((l) => l.id);
+
+        // 2) Collect tech ids from lines + line_technicians
+        const techIdSet = new Set<string>();
+
+        // from assigned_tech_id on the line
+        lines.forEach((l) => {
+          const t = l.assigned_tech_id as string | null;
+          if (t) techIdSet.add(t);
+        });
+
+        // from junction table
+        const { data: ltData, error: ltErr } = await supabase
+          .from("work_order_line_technicians")
+          .select("work_order_line_id, technician_id")
+          .in("work_order_line_id", lineIds);
+
+        if (ltErr) {
+          // eslint-disable-next-line no-console
+          console.error(
+            "[WorkOrderAssignedSummary] line_technicians error:",
+            ltErr,
+          );
+        } else {
+          (ltData as LineTech[] | null)?.forEach((lt) => {
+            const tid = lt.technician_id as string;
+            if (tid) techIdSet.add(tid);
+          });
+        }
+
+        const techIds = Array.from(techIdSet);
+
+        if (cancelled) return;
+
+        if (techIds.length === 0) {
+          setAssignedIds([]);
+          setProfilesById({});
+          setLoading(false);
+          return;
+        }
+
+        // 3) Resolve profiles
+        const { data: profs, error: profErr } = await supabase
+          .from("profiles")
+          .select("id, full_name, role")
+          .in("id", techIds);
+
+        if (profErr) {
+          // eslint-disable-next-line no-console
+          console.error("[WorkOrderAssignedSummary] profiles error:", profErr);
+          if (!cancelled) {
+            setAssignedIds([]);
+            setProfilesById({});
+            setLoading(false);
+          }
+          return;
+        }
+
+        if (cancelled) return;
+
+        const map: Record<
+          string,
+          Pick<Profile, "id" | "full_name" | "role">
+        > = {};
+        (profs ?? []).forEach((p) => {
+          map[p.id] = {
+            id: p.id,
+            full_name: p.full_name,
+            role: p.role,
+          };
+        });
+
+        setProfilesById(map);
+
+        // preserve original order where possible
+        const ordered = techIds.filter((id) => map[id]);
+        setAssignedIds(ordered);
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error("[WorkOrderAssignedSummary] unexpected error:", e);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    }
+    };
 
-    const techIds = Array.from(techIdSet);
-    if (techIds.length === 0) {
-      setAssignedTechs([]);
-      setLoading(false);
-      return;
-    }
+    void load();
 
-    // 3) load names from profiles
-    const { data: profData, error: profErr } = await supabase
-      .from("profiles")
-      .select("id, full_name")
-      .in("id", techIds);
-
-    if (profErr || !profData) {
-      // eslint-disable-next-line no-console
-      console.error("[WorkOrderAssignedSummary] profile load error", profErr);
-      setAssignedTechs([]);
-      setLoading(false);
-      return;
-    }
-
-    const profiles = profData as Profile[];
-
-    const ordered: MiniProfile[] = techIds
-      .map((id) => profiles.find((p) => p.id === id))
-      .filter(Boolean)
-      .map((p) => ({
-        id: p!.id,
-        full_name: p!.full_name,
-      }));
-
-    setAssignedTechs(ordered);
-    setLoading(false);
+    return () => {
+      cancelled = true;
+    };
   }, [supabase, workOrderId]);
 
-  // run on mount, when WO id changes, AND when version bumps
-  useEffect(() => {
-    void load();
-  }, [load, version]);
+  const firstTechLabel = useMemo(() => {
+    if (!assignedIds.length) return null;
+    const first = profilesById[assignedIds[0]];
+    const full = first?.full_name ?? "Assigned tech";
+    const firstName = full.split(" ")[0] || full;
+    return firstName;
+  }, [assignedIds, profilesById]);
 
-  /* ------------------------------------------------------------------ */
-  /* Render                                                             */
-  /* ------------------------------------------------------------------ */
+  const extraCount = assignedIds.length > 1 ? assignedIds.length - 1 : 0;
+
+  // ---------- Render states ----------
 
   if (loading) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-neutral-700 bg-black/60 px-2.5 py-1 text-[0.65rem] text-neutral-400">
-        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-neutral-500" />
+      <span className="inline-flex animate-pulse items-center rounded-full border border-neutral-700 bg-neutral-900/70 px-2.5 py-0.5 text-[0.7rem] text-neutral-400">
         Loading…
       </span>
     );
   }
 
-  const count = assignedTechs.length;
-  const first = assignedTechs[0];
-  const moreCount = Math.max(0, count - 1);
-
-  // Decide pill state
-  let pillClass = "";
-  let dotClass = "";
-  let label = "";
-  let sub = "";
-
-  if (hasActiveLine) {
-    // GREEN: at least one line currently punched in
-    pillClass =
-      "border-emerald-400/80 bg-emerald-500/10 text-emerald-50 shadow-[0_0_18px_rgba(16,185,129,0.7)] animate-pulse";
-    dotClass = "bg-emerald-400";
-
-    if (count > 0) {
-      label = first?.full_name ?? "Active job";
-      sub =
-        moreCount > 0
-          ? `+${moreCount} more • ACTIVE`
-          : "ACTIVE";
-    } else {
-      label = "Active job";
-      sub = "Unassigned";
-    }
-  } else if (count > 0) {
-    // YELLOW: assigned but no active punch
-    pillClass =
-      "border-amber-400/80 bg-amber-500/10 text-amber-50 shadow-[0_0_18px_rgba(251,191,36,0.6)] animate-pulse";
-    dotClass = "bg-amber-400";
-
-    label = first?.full_name ?? "Assigned tech";
-    sub =
-      moreCount > 0
-        ? `+${moreCount} more`
-        : "Assigned";
-  } else {
-    // GREY: unassigned and no active punch
-    pillClass =
-      "border-neutral-700 bg-black/70 text-neutral-300";
-    dotClass = "bg-neutral-500";
-    label = "Unassigned";
-    sub = "No tech selected";
+  if (!assignedIds.length || !firstTechLabel) {
+    return (
+      <span className="inline-flex items-center rounded-full border border-neutral-700 bg-neutral-950/80 px-2.5 py-0.5 text-[0.7rem] text-neutral-400">
+        Unassigned
+      </span>
+    );
   }
+
+  const base =
+    "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[0.7rem] font-medium";
+  const activeCls =
+    "border-emerald-400/80 bg-emerald-500/15 text-emerald-100 shadow-[0_0_18px_rgba(16,185,129,0.8)]";
+  const assignedCls =
+    "border-amber-400/80 bg-amber-500/15 text-amber-50";
 
   return (
     <span
-      className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-[0.65rem] font-medium tracking-[0.12em] uppercase ${pillClass}`}
+      className={`${base} ${hasActive ? activeCls : assignedCls}`}
+      title={
+        hasActive
+          ? "At least one job line is currently punched in."
+          : "Jobs assigned to this technician."
+      }
     >
-      <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
-      <span className="flex flex-col gap-0 leading-tight">
-        <span>{label}</span>
-        <span className="text-[0.6rem] normal-case opacity-80">
-          {sub}
+      {hasActive && (
+        <span className="relative mr-0.5 inline-flex h-2 w-2 items-center justify-center">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400/60" />
+          <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-300" />
         </span>
-      </span>
+      )}
+      <span>{firstTechLabel}</span>
+      {extraCount > 0 && (
+        <span className="text-[0.65rem] text-neutral-100/80">
+          +{extraCount} more
+        </span>
+      )}
     </span>
   );
 }
