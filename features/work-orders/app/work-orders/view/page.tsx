@@ -1,3 +1,4 @@
+// app/work-orders/view/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
@@ -6,6 +7,8 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
 import { toast } from "sonner";
+
+import { WorkOrderAssignedSummary } from "@/features/work-orders/components/WorkOrderAssignedSummary";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -105,9 +108,6 @@ export default function WorkOrdersView(): JSX.Element {
 
   const [currentRole, setCurrentRole] = useState<string | null>(null);
 
-  // assignments
-  const [woAssignments, setWoAssignments] = useState<Record<string, string[]>>({});
-
   // load current user role + mechanics once
   useEffect(() => {
     (async () => {
@@ -167,7 +167,6 @@ export default function WorkOrdersView(): JSX.Element {
     if (error) {
       setErr(error.message);
       setRows([]);
-      setWoAssignments({});
       setLoading(false);
       return;
     }
@@ -203,31 +202,6 @@ export default function WorkOrdersView(): JSX.Element {
           });
 
     setRows(filtered);
-
-    // 3) fetch assignments for visible rows
-    const ids = filtered.map((r) => r.id);
-    if (ids.length > 0) {
-      const { data: assigns, error: assignsErr } = await supabase
-        .from("work_order_technicians")
-        .select("work_order_id, technician_id")
-        .in("work_order_id", ids);
-
-      if (!assignsErr && assigns) {
-        const map: Record<string, string[]> = {};
-        assigns.forEach((a) => {
-          const woId = a.work_order_id as string;
-          const techId = a.technician_id as string;
-          if (!map[woId]) map[woId] = [];
-          map[woId].push(techId);
-        });
-        setWoAssignments(map);
-      } else {
-        setWoAssignments({});
-      }
-    } else {
-      setWoAssignments({});
-    }
-
     setLoading(false);
   }, [q, status, supabase]);
 
@@ -315,22 +289,6 @@ export default function WorkOrdersView(): JSX.Element {
     },
     [selectedTechId, load],
   );
-
-  // make a fast lookup for tech names
-  const techsById = useMemo(() => {
-    const m: Record<
-      string,
-      { id: string; full_name: string | null; role: string | null }
-    > = {};
-    techs.forEach((t) => {
-      m[t.id] = {
-        id: t.id,
-        full_name: t.full_name,
-        role: t.role,
-      };
-    });
-    return m;
-  }, [techs]);
 
   const total = rows.length;
   const activeCount = useMemo(
@@ -469,13 +427,6 @@ export default function WorkOrdersView(): JSX.Element {
               const href = `/work-orders/${r.custom_id ?? r.id}?mode=view`;
               const isAssigning = assigningFor === r.id;
 
-              const assignedIds = woAssignments[r.id] ?? [];
-              const firstTechId = assignedIds.length > 0 ? assignedIds[0] : null;
-              const firstTechName =
-                firstTechId && techsById[firstTechId]
-                  ? techsById[firstTechId].full_name ?? "Mechanic"
-                  : null;
-
               const customerName = r.customers
                 ? [r.customers.first_name ?? "", r.customers.last_name ?? ""]
                     .filter(Boolean)
@@ -533,14 +484,7 @@ export default function WorkOrdersView(): JSX.Element {
 
                   {/* Assigned to */}
                   <div className="text-[0.75rem] text-neutral-300">
-                    {firstTechName ? (
-                      <div className="inline-flex items-center gap-1 rounded-full bg-sky-500/15 px-2 py-0.5 text-[0.7rem] text-sky-100">
-                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-sky-400" />
-                        {firstTechName}
-                      </div>
-                    ) : (
-                      <span className="text-neutral-500">Unassigned</span>
-                    )}
+                    <WorkOrderAssignedSummary workOrderId={r.id} />
                   </div>
 
                   {/* Actions */}
