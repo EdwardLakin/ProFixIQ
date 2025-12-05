@@ -48,11 +48,11 @@ export default function TechAssistant({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultVehicle]);
 
-  // Auto-scroll reply list
+  // Auto-scroll to latest inside the conversation area
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollTop = el.scrollHeight;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [messages, partial, sending]);
 
   const canSend = useMemo(
@@ -65,21 +65,20 @@ export default function TechAssistant({
     const text = inputRef.current?.value?.trim();
     if (!text) return;
 
-    // Bundle vehicle & notes so the model stays scoped to this job
     const v = vehicle ?? {};
-    const pieces: string[] = [];
+    const lines: string[] = [];
 
     const vehicleLine = `Vehicle: ${[v.year, v.make, v.model]
       .filter(Boolean)
       .join(" ")}`.trim();
-    if (vehicleLine !== "Vehicle:") pieces.push(vehicleLine);
+    if (vehicleLine !== "Vehicle:") lines.push(vehicleLine);
 
     if (context.trim()) {
-      pieces.push(`Shop notes / complaint: ${context.trim()}`);
+      lines.push(`Shop notes / complaint: ${context.trim()}`);
     }
 
-    pieces.push(`Question: ${text}`);
-    const payload = pieces.join("\n\n");
+    lines.push(`Question: ${text}`);
+    const payload = lines.join("\n\n");
 
     sendChat(payload);
 
@@ -141,7 +140,6 @@ export default function TechAssistant({
           <div className="mb-2 text-xs font-header tracking-wide text-orange-400">
             Notes
           </div>
-          {/* Shorter notes box */}
           <textarea
             className={`${inputBase} h-20`}
             placeholder="Shop notes / context (symptoms, readings, conditions, DTCs). The assistant will use this."
@@ -200,12 +198,11 @@ export default function TechAssistant({
         </div>
       </div>
 
-      {/* CARD: Conversation – ONLY the reply list scrolls */}
+      {/* CARD: Conversation – only this list scrolls */}
       <div className="flex flex-col rounded-lg border border-white/10 bg-black/40 backdrop-blur">
-        {/* Scrollable messages area */}
         <div
           ref={scrollRef}
-          className="space-y-3 overflow-y-auto p-4 max-h-[40vh]"
+          className="min-h-[160px] max-h-[50vh] flex-1 space-y-3 overflow-y-auto p-4"
           style={{ WebkitOverflowScrolling: "touch" }}
         >
           {messages.map((m, i) => {
@@ -274,7 +271,7 @@ export default function TechAssistant({
           )}
         </div>
 
-        {/* Composer pinned to bottom of card */}
+        {/* Composer pinned to bottom */}
         <form
           onSubmit={onSubmit}
           className="flex gap-2 border-t border-white/10 p-3"
@@ -323,7 +320,6 @@ export default function TechAssistant({
         </div>
       )}
 
-      {/* Error */}
       {error && (
         <div className="rounded border border-red-600 bg-red-950/40 px-3 py-2 text-red-200">
           {error}
