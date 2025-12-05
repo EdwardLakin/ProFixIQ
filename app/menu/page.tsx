@@ -1,7 +1,7 @@
 // app/menu/page.tsx
 "use client";
 
-import React, {
+import  {
   useEffect,
   useState,
   useCallback,
