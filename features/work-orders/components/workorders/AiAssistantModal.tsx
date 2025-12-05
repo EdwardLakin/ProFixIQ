@@ -26,18 +26,26 @@ export default function AiAssistantModal({
       onClose={onClose}
       title="AI / Tech Assistant"
       size="lg"
-      // no submit button — it’s an interactive panel
       hideFooter
     >
-      {/* Make the modal body a flex column with a height cap */}
-      <div className="flex max-h-[70vh] flex-col space-y-3">
+      {/* The FIX → enforce flex + min-h-0 container */}
+      <div className="flex flex-col max-h-[70vh] min-h-0 space-y-3">
+
         <p className="text-xs text-neutral-400">
           Ask TechAssistant for diagnostics, test plans, or repair procedures.
           It stays scoped to this job and vehicle where possible.
         </p>
 
-        {/* scrollable inner panel */}
-        <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-neutral-800 bg-neutral-950/70 p-3 shadow-[0_12px_30px_rgba(0,0,0,0.85)]">
+        {/* TRUE SCROLL WRAPPER — Safari compatible */}
+        <div
+          className="
+            flex-1 min-h-0 overflow-y-auto
+            rounded-2xl border border-neutral-800 bg-neutral-950/70 p-3
+            shadow-[0_12px_30px_rgba(0,0,0,0.85)]
+            overscroll-contain
+          "
+          style={{ WebkitOverflowScrolling: "touch" }}
+        >
           <TechAssistant
             defaultVehicle={defaultVehicle}
             workOrderLineId={workOrderLineId}
